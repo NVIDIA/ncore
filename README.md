@@ -1,12 +1,37 @@
 # DriveSim-AI
 
-Main repository of the DriveSim-AI project 
+DISCLAIMER: THIS REPOSITORY IS NVIDIA INTERNAL/CONFIDENTIAL. DO NOT SHARE EXTERNALLY.
+IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC <zgojcic@nvidia.com> OR OR LITANY <olitany@nvidia.com>.
+
+NOTE: This codebase is under active development and the APIs may thus still change. If you build upon this repository, consider forking it to prevent such issues.
 
 ## Getting started
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+### Compiling the python environment
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+### Compiling the dataset proto files
+
+If you do not have the compiler installed on your system please download it from [here](https://developers.google.com/protocol-buffers/docs/downloads).
+
+```
+protoc --python_out=. protos/*.proto
+```
+
+### Compiling the c++ extensions
+To compile the c++ extensions you can run
+
+```
+cd utils
+python setup.py install
+cd ..
+```
+
+This will install a nvidia_utils python package, which contains functions for lidar unwinding, rolling shutter compensation, point to camera projections (and backprojections).
+
+
+
+pip install git+ssh://git@github.com/wearefair/protobuf-to-dict
+
 
 ## Add your files
 
