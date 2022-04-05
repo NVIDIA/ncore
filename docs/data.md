@@ -1,4 +1,25 @@
-## Data formats and APIs
+## Image metadata
+Image metadata is saved in `****.pkl` files, which can be read as:
+
+```
+with open(`****.pkl`,'rb') as file:
+    img_metadata = pickle.load(file)
+```
+
+image metadata then contains the following data:
+
+```
+
+```
+
+
+## Lidar data
+
+
+## Poses
+
+
+## Autolabels
 
 This document describes the data formats and APIs. Graphical overview of the data structure and processing pipeline is available [here](https://docs.google.com/presentation/d/1JGDH8g2PiUIWdcu3nmLBIJLt_I7dOJhlbH-QTKrz1cg/edit?usp=sharing).
 
@@ -31,6 +52,8 @@ session_name
 └───labels
     │  autolabels.parquet # Autolabel data
 ```
+
+The script will export the data in the following folder structure, which contains individual camera frames with metadata, semantic segmentation and dynamic masks, unwinded point clouds, poses, and 4D autolabels. Specific formats are described [here](data_formats.md).
 
 ```
 session_name
