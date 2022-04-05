@@ -1,25 +1,4 @@
-## Image metadata
-Image metadata is saved in `****.pkl` files, which can be read as:
-
-```
-with open(`****.pkl`,'rb') as file:
-    img_metadata = pickle.load(file)
-```
-
-image metadata then contains the following data:
-
-```
-
-```
-
-
-## Lidar data
-
-
-## Poses
-
-
-## Autolabels
+## Data formats and APIs
 
 This document describes the data formats and APIs. Graphical overview of the data structure and processing pipeline is available [here](https://docs.google.com/presentation/d/1JGDH8g2PiUIWdcu3nmLBIJLt_I7dOJhlbH-QTKrz1cg/edit?usp=sharing).
 
