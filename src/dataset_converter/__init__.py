@@ -77,7 +77,7 @@ class DataConverter(ABC):
         self.decode_image(sequence_name)
 
     @abstractmethod
-    def extract_poses(self):
+    def decode_poses_timestamps(self):
         pass
 
     @abstractmethod

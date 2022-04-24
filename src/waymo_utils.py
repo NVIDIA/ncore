@@ -2,8 +2,102 @@ from tkinter import W
 import numpy as np
 import tensorflow as tf
 from waymo_open_dataset import dataset_pb2
+from collections import defaultdict
 
 ## This code is adapted from the official waymo open github page
+def global_vel_to_ref(vel, global_from_ref_rotation):
+  # inverse means ref_from_global, rotation_matrix for normalization
+  vel = [vel[0], vel[1], 0]
+  ref = np.dot(global_from_ref_rotation.transpose(), vel) 
+  ref = [ref[0], ref[1], 0.0]
+
+  return ref
+
+def extract_lidar_labels(frame):
+  """Extract objects."""
+
+  pose = np.reshape(np.array(frame.pose.transform), [4, 4])
+
+
+  objects = []
+  for object_id, label in enumerate(frame.laser_labels):
+    category_label = label.type
+    box = label.box
+
+    # Speed and acceleration are given in the global coordinate frame
+    speed = [label.metadata.speed_x, label.metadata.speed_y]
+    accel = [label.metadata.accel_x, label.metadata.accel_y]
+    num_lidar_points_in_box = label.num_lidar_points_in_box
+
+    # Difficulty level is 0 if labeler did not say this was LEVEL_2.
+    # Set difficulty level of "999" for boxes with no points in box.
+    if num_lidar_points_in_box <= 0:
+      combined_difficulty_level = 999
+    if label.detection_difficulty_level == 0:
+      # Use points in box to compute difficulty level.
+      if num_lidar_points_in_box >= 5:
+        combined_difficulty_level = 1
+      else:
+        combined_difficulty_level = 2
+    else:
+      combined_difficulty_level = label.detection_difficulty_level
+
+    # Convert global velocity to the reference frame of the SDC
+    ref_velocity = global_vel_to_ref(speed, pose[0:3, 0:3])
+
+    objects.append({
+        'id': object_id,
+        'name': label.id,
+        'label': category_label,
+        'box': np.array([box.center_x, box.center_y, box.center_z,
+                         box.length, box.width, box.height, ref_velocity[0], 
+                         ref_velocity[1], box.heading], dtype=np.float32),
+        'num_points':
+            num_lidar_points_in_box,
+        'detection_difficulty_level':
+            label.detection_difficulty_level,
+        'combined_difficulty_level':
+            combined_difficulty_level,
+        'global_speed':
+            np.array(speed, dtype=np.float32),
+        'global_accel':
+            np.array(accel, dtype=np.float32),
+    })
+
+  return objects
+
+
+def extract_camera_labels(frame):
+
+    cam_labels = defaultdict(list)
+
+    for camera in sorted(frame.camera_labels, key=lambda i:i.name):
+
+        for label in camera.labels:
+            cam_labels['cam_{}'.format(camera.name)].append({
+                'name': label.id,
+                'label': label.type,
+                '2D_bbox': np.array([label.box.center_x, label.box.center_y, 
+                                 label.box.length, label.box.width], dtype=np.float32)
+                                  })
+
+    return cam_labels
+
+def extract_projected_labels(frame):
+    name_map = {1: 'FRONT', 2:'FRONT_LEFT', 3:'FRONT_RIGHT', 4:'SIDE_LEFT', 5:'SIDE_RIGHT'}
+
+    proj_camera_labels = defaultdict(list)
+
+    for camera in sorted(frame.projected_lidar_labels, key=lambda i:i.name):
+        for label in camera.labels:
+            proj_camera_labels['cam_{}'.format(camera.name)].append({
+                'name': label.id[0:label.id.find(name_map[camera.name])-1],
+                'label': label.type,
+                '3D_bbox_proj': np.array([label.box.center_x, label.box.center_y, 
+                                 label.box.length, label.box.width], dtype=np.float32)
+                                  })
+
+    return proj_camera_labels
 
 
 def extrapolate_pose_based_on_velocity(T_SDC_global,v_global, w_global, dt):

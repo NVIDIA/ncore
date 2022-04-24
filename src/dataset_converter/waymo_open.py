@@ -8,8 +8,9 @@ from waymo_open_dataset import dataset_pb2 as open_dataset
 import numpy as np
 import os 
 import struct
-from src.utils import extract_image_metadata, parse_range_image_and_camera_projection, convert_range_image_to_point_cloud, extrapolate_pose_based_on_velocity
-from src.common import PoseInterpolator, save_pkl
+from src.waymo_utils import parse_range_image_and_camera_projection, convert_range_image_to_point_cloud, extrapolate_pose_based_on_velocity,\
+                            extract_lidar_labels, extract_camera_labels, extract_projected_labels
+from src.common import save_pkl
 from PIL import Image
 
 class WaymoConverter(DataConverter):    
@@ -44,8 +45,9 @@ class WaymoConverter(DataConverter):
         # poses_timestamps also holds the source information in the second column: 0 - camera, 1 - lidar, 2 - frame
         poses = []
         poses_timestamps = []
-        lidar_pose_timestamps = []
-        camera_pose_timestamps = defaultdict(list)
+        lidar_timestamps = []
+        camera_timestamps = defaultdict(list)
+        annotations = defaultdict(dict)
 
         # create all the folders
         self.create_folders(sequence_name)
@@ -56,16 +58,22 @@ class WaymoConverter(DataConverter):
             frame.ParseFromString(bytearray(data.numpy()))
 
             # Decode the lidar frame
-            self.decode_lidar(frame, frame_idx, sequence_name)
+            self.decode_lidar(frame, frame_idx, lidar_timestamps, sequence_name)
 
-            # Decode the lidar frame
-            self.decode_images(frame, poses, poses_timestamps, frame_idx, sequence_name)
+            # Decode the image frames
+            self.decode_images(frame, poses, poses_timestamps, camera_timestamps, frame_idx, sequence_name)
 
-            # Decode the pose of the current frame and it timestamp
-            self.decode_pose(frame, poses, poses_timestamps)
+            # Decode the annotations
+            self.decode_labels(frame, frame_idx, annotations)
 
-    def decode_pose(self, frame, poses, poses_timestamps):
-        
+        # Decode the pose of the current frame and it timestamp
+        self.decode_poses_timestamps(frame, poses_timestamps, camera_timestamps, lidar_timestamps, sequence_name)
+
+        # Decode the pose of the current frame and it timestamp
+        self.summarize_labels_across_frames(frame, poses_timestamps, camera_timestamps, lidar_timestamps, sequence_name)
+
+
+    def decode_poses_timestamps(self, poses, poses_timestamps, camera_timestamps, lidar_timestamps, sequence_name):
         # Stack all the poses
         poses = np.stack(poses)
         poses_timestamps = np.stack(poses_timestamps)
@@ -75,12 +83,22 @@ class WaymoConverter(DataConverter):
         poses = poses[sort_idx]
         poses_timestamps = poses_timestamps[sort_idx]
 
+        # Stack the lidar timestamps
+        lidar_timestamps = np.stack(lidar_timestamps)
+        lidar_t_save_path =  os.path.join(self.output_dir, sequence_name, 
+                        self.point_cloud_save_dir, 'timestamps.npz')
+        np.savez(lidar_t_save_path, timestamps=lidar_timestamps)
 
+        # Stack the lidar timestamps
+        for cam in camera_timestamps.keys():
+            camera_timestamps[cam] = np.stack(camera_timestamps[cam])
 
-    def extract_poses(self, frame):
-        pass
+        image_t_save_path =  os.path.join(self.output_dir, sequence_name, 
+                        self.image_save_dir, 'timestamps.pkl')
 
-    def decode_lidar(self, frame, frame_idx, sequence_name):
+        save_pkl(camera_timestamps, image_t_save_path)
+
+    def decode_lidar(self, frame, frame_idx, lidar_timestamps, sequence_name):
 
         # In the first frame save the lidar extrinsic matrix
         if frame_idx == 0:
@@ -104,6 +122,8 @@ class WaymoConverter(DataConverter):
             return_rays=True
         )
 
+        # Get the timestamp of the START of the lidar spin 
+        lidar_timestamps.append(frame.timestamp_micros)
 
         # 3d points in the world coordinates system represent with start and end point coordinates [n, 8]
         lidar_save_path =  os.path.join(self.output_dir, sequence_name, 
@@ -118,7 +138,7 @@ class WaymoConverter(DataConverter):
             f.write(struct.pack('=%sf' % points_flat.size, *points_flat))
 
 
-    def decode_images(self, frame, poses, poses_timestamps, frame_idx, sequence_name):
+    def decode_images(self, frame, poses, poses_timestamps, camera_timestamps, frame_idx, sequence_name):
         images = sorted(frame.images, key=lambda i:i.name)
         
         for image in images:
@@ -142,7 +162,6 @@ class WaymoConverter(DataConverter):
 
             assert metadata['rolling_shutter_direction'] in [1,2,3,4], "Weird rolling shutter direction, aborting"
 
-
             # Velocity and angular velocity of the SDC at camera pose timestamp in global frame.
             T_SDC_global = np.array(tf.reshape(tf.constant(image.pose.transform, dtype=tf.float64), [4, 4]))
             velocity_global = np.array([image.velocity.v_x, image.velocity.v_y, image.velocity.v_z]).reshape(3,1)
@@ -151,20 +170,11 @@ class WaymoConverter(DataConverter):
 
             metadata['ego_pose_s'] = extrapolate_pose_based_on_velocity(T_SDC_global,velocity_global, omega_global, metadata['ego_pose_timestamps'][0] - image.pose_timestamp)
             metadata['ego_pose_e'] = extrapolate_pose_based_on_velocity(T_SDC_global,velocity_global, omega_global, metadata['ego_pose_timestamps'][1] - image.pose_timestamp)
-            
-            # Convert the timestamps to microseconds to be consistent 
-            metadata['ego_pose_timestamps'] *= 1e6
-            metadata['T_SDC_global'] = T_SDC_global
-            metadata['T_SDC_global_timestamp'] = image.pose_timestamp * 1e6
+        
+            # Save the camera pose timestamps, corresponds approximately to the timestamp of the principle point pixel
+            camera_timestamps[self.CAMERA_2_IDTYPERIG[image.name][0]].append(image.pose_timestamp * 1e6)
 
-            # cam_omega_cam0 = np.matmul(T_SDC_global[:3,:3].transpose(), vehicle_omega_vehicle)
-            # skew_omega = get_skew_symmetric(cam_omega_cam0)
-
-            # n_pos_cam0 = np.matmul(T_SDC_global[:3,:3], metadata['T_cam_rig'][:3,3:4])
-            # n_vel_cam0 = n_vel_vehicle + np.matmul(get_skew_symmetric(n_omega_vehicle), n_pos_cam0)
-            # T_cam_global = T_SDC_global @ metadata['T_cam_rig']
-            # skew_omega_R = -np.matmul(skew_omega, T_cam_global[:3,:3].transpose())
-
+            # Save the image and its metadata
             im = Image.fromarray(np.array(tf.image.decode_jpeg(image.image)))
     
             img_save_path =  os.path.join(self.output_dir, sequence_name, 
@@ -175,28 +185,22 @@ class WaymoConverter(DataConverter):
             save_pkl(metadata, img_save_path.replace('.jpeg','.pkl'))
 
 
+    def decode_labels(self, frame, frame_idx, annotations):
 
-    #  # Iterate over the sorted cameras and extract the calibration parameters
-    #     for camera in sorted(frame.context.camera_calibrations, key=lambda i:i.name):
+        # Extract lidar labels 
+        lidar_labels = extract_lidar_labels(frame)
 
-    #         extrinsic = tf.reshape(tf.constant(camera.extrinsic.transform, dtype=tf.float64), [4, 4])
-    #         intrinsic = tf.constant(camera.intrinsic, dtype=tf.float64)
-    #         metadata = tf.constant([camera.width, camera.height, camera.rolling_shutter_direction])
-    #         img = next(im for im in frame.images if im.name == camera.name)
+        # Extract camera labels (annotated in 2d)
+        camera_labels = extract_camera_labels(frame)
 
-    #         camera_metadata = extract_image_metadata(extrinsic, intrinsic, np.array(metadata), img)
+        # Extract lidar labels projected to the images
+        projected_lidar_labels = extract_projected_labels(frame)
 
-    #         calibration_parameters['cam_{}'.format(camera.name)] = camera_metadata
+        annotations[frame_idx] = {
+                    'lidar_labels': lidar_labels,
+                    'camera_labels': camera_labels,
+                    'projected_lidar_labels': projected_lidar_labels
+        }
+
+    def summarize_labels_across_frames(self,):
         
-    #     T_sdc_global = np.reshape(np.array(frame.pose.transform), [4, 4])
-
-    #     calibration_parameters['T_sdc_global'] = T_sdc_global
-
-    #     calib_save_path =  os.path.join(self.save_dir, sequence_name, 
-    #                                     self.metadata_save_dir, str(frame_idx).zfill(4) + '.pkl')
-
-    #     self.calibration_parameters = calibration_parameters
-
-
-    def decode_labels(self):
-        pass
