@@ -1,4 +1,4 @@
-from abs import ABC, abstractmethod
+from abc import ABC, abstractmethod
 from multiprocessing import Pool
 import tqdm 
 import os
@@ -13,47 +13,46 @@ class DataConverter(ABC):
         self.point_cloud_save_dir = 'lidar'
         self.poses_save_dir = 'poses'
 
-        self.load_dir = args.load_dir
-        self.save_dir = args.save_dir
-        self.num_proc = int(args.num_proc)
+        self.root_dir = args.root_dir
+        self.output_dir = args.output_dir
+        self.num_proc = int(args.n_proc)
 
         if self.dataset == 'nvidia':        
-            self.sequence_pathnames = sorted(glob.glob(os.path.join(self.load_dir, '*/')))
+            self.sequence_pathnames = sorted(glob.glob(os.path.join(self.root_dir, '*/')))
 
-        elif self.dataset == 'waymo_open'
-            self.sequence_pathnames = sorted(glob.glob(os.path.join(self.load_dir, '*.tfrecord')))
+        elif self.dataset == 'waymo_open':
+            self.sequence_pathnames = sorted(glob.glob(os.path.join(self.root_dir, '*.tfrecord')))
 
 
     def create_folders(self, sequence_name):
 
-        seq_path = os.path.join(self.save_dir, sequence_name)
+        seq_path = os.path.join(self.output_dir, sequence_name)
 
         if not os.path.isdir(seq_path):
             os.makedirs(seq_path)
 
-        for d in [self.label_save_dir,self.image_save_dir, self.poses_save_dir, self.point_cloud_save_dir, self.point_cloud_non_unwind_save_dir]:
+        for d in [self.label_save_dir,self.image_save_dir, self.poses_save_dir, self.point_cloud_save_dir]:
             if not os.path.isdir(os.path.join(seq_path, d)):
                 os.makedirs(os.path.join(seq_path, d))
 
-        if self.export_unreturned_points:
-            if not os.path.isdir(os.path.join(seq_path, self.all_points_dir)):
-                os.makedirs(os.path.join(seq_path, self.all_points_dir))
+        # if self.export_unreturned_points:
+        #     if not os.path.isdir(os.path.join(seq_path, self.all_points_dir)):
+        #         os.makedirs(os.path.join(seq_path, self.all_points_dir))
 
-        for camera in self.cameras:
-            cam_id = self.CAMERA_2_IDTYPERIG[camera][0]
+        for cam in self.CAMERA_2_IDTYPERIG.keys():
+            cam_id = self.CAMERA_2_IDTYPERIG[cam][0]
             if not os.path.isdir(os.path.join(seq_path, self.image_save_dir, 'image_' + cam_id)):
                 os.makedirs(os.path.join(seq_path, self.image_save_dir, 'image_' + cam_id))
 
     def convert(self):
         print("start converting ...")
         with Pool(self.num_proc) as p:
-            r = list(tqdm.tqdm(p.imap(self.convert_one, range(len(self))), total=len(self)))
+            r = tqdm.tqdm(p.map(self.convert_one, self.sequence_pathnames))
         print("\nfinished ...")
 
 
-    def convert_one(self, seq_idx):
-        sequence_name = self.sequence_pathnames[seq_idx].split(os.sep)[-2]
-        
+    def convert_one(self, sequence_path):
+        sequence_name = sequence_path.split(os.sep)[-2]
         # create all the folders
         self.create_folders(sequence_name)
 
