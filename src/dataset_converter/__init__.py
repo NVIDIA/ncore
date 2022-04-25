@@ -50,32 +50,17 @@ class DataConverter(ABC):
             r = tqdm.tqdm(p.map(self.convert_one, self.sequence_pathnames))
         print("\nfinished ...")
 
+    def run_semantic_segmentation(self, sequence_name):
+        image_folders = glob.glob(os.path.join(self.output_dir, sequence_name, self.image_save_dir) + '*/')
 
+        for img_folder in img_folders:
+            pass
+
+
+
+    @abstractmethod
     def convert_one(self, sequence_path):
-        sequence_name = sequence_path.split(os.sep)[-2]
-        # create all the folders
-        self.create_folders(sequence_name)
-
-        # Initialize the track aligned track record structure
-        self.track_data = track_data_pb2.AlignedTrackRecords()
-
-        # Read in the track record data from a proto file
-        # This includes camera_records and lidar_records (see track_record proto for more detail)
-        with open(os.path.join(self.sequence_pathnames[folder_idx], 'aligned_track_records.pb.txt'), 'r') as f:
-            text_format.Parse(f.read(), self.track_data)
-
-        # Extract all the lidar paths, timestamps and poses from the track record
-        self.track_data = protobuf_to_dict(self.track_data)
-
-        # Extract all poses
-        self.extract_poses(sequence_name)
-
-        # save lidar
-        self.decode_lidar(sequence_name)
-
-        # save images
-        self.decode_image(sequence_name)
-
+        pass
     @abstractmethod
     def decode_poses_timestamps(self):
         pass

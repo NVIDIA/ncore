@@ -1,6 +1,5 @@
+from __future__ import annotations
 from collections import defaultdict
-
-from importlib_metadata import metadata
 from src.dataset_converter import DataConverter
 import tensorflow.compat.v1 as tf        
 tf.enable_eager_execution()
@@ -9,14 +8,14 @@ import numpy as np
 import os 
 import struct
 from src.waymo_utils import parse_range_image_and_camera_projection, convert_range_image_to_point_cloud, extrapolate_pose_based_on_velocity,\
-                            extract_lidar_labels, extract_camera_labels, extract_projected_labels
-from src.common import save_pkl
+                            extract_lidar_labels, extract_camera_labels, extract_projected_labels, global_vel_to_ref
+from src.common import save_pkl, compute_iou
 from PIL import Image
 
 class WaymoConverter(DataConverter):    
     def __init__(self, args):
 
-        self.lidar_list = ['_FRONT', '_FRONT_RIGHT', '_FRONT_LEFT', '_SIDE_RIGHT', '_SIDE_LEFT']
+        self.camera_list = ['_FRONT', '_FRONT_LEFT', '_FRONT_RIGHT', '_SIDE_LEFT', '_SIDE_RIGHT']
         # Label types
         self.type_list = ['UNKNOWN', 'VEHICLE', 'PEDESTRIAN', 'SIGN', 'CYCLIST']
 
@@ -25,6 +24,13 @@ class WaymoConverter(DataConverter):
                                    3: ['02', 'pinhole', 'camera_front_right_50fov'],
                                    4: ['03', 'pinhole', 'camera_side_left_50fov'],
                                    5: ['04', 'pinhole', 'camera_side_right_50fov']}
+        
+        self.label_map = {0: 'unknown',
+                     1: 'car',
+                     2: 'pedestrian',
+                     3: 'sign',
+                     4: 'CYCLIST'
+                     }
 
         super().__init__(args)
 
@@ -47,7 +53,11 @@ class WaymoConverter(DataConverter):
         poses_timestamps = []
         lidar_timestamps = []
         camera_timestamps = defaultdict(list)
-        annotations = defaultdict(dict)
+        annotations = {}
+        annotations['3d_labels'] = defaultdict(dict)
+        annotations['2d_labels'] = defaultdict(dict)
+        annotations['label_corr_3d_2d'] = defaultdict(dict)
+        annotations['label_corr_2d_3d'] = defaultdict(dict)
 
         # create all the folders
         self.create_folders(sequence_name)
@@ -67,10 +77,7 @@ class WaymoConverter(DataConverter):
             self.decode_labels(frame, frame_idx, annotations)
 
         # Decode the pose of the current frame and it timestamp
-        self.decode_poses_timestamps(frame, poses_timestamps, camera_timestamps, lidar_timestamps, sequence_name)
-
-        # Decode the pose of the current frame and it timestamp
-        self.summarize_labels_across_frames(frame, poses_timestamps, camera_timestamps, lidar_timestamps, sequence_name)
+        self.decode_poses_timestamps(poses, poses_timestamps, camera_timestamps, lidar_timestamps, sequence_name)
 
 
     def decode_poses_timestamps(self, poses, poses_timestamps, camera_timestamps, lidar_timestamps, sequence_name):
@@ -185,22 +192,97 @@ class WaymoConverter(DataConverter):
             save_pkl(metadata, img_save_path.replace('.jpeg','.pkl'))
 
 
-    def decode_labels(self, frame, frame_idx, annotations):
+    def decode_labels(self, frame, f_idx, annotations):
 
-        # Extract lidar labels 
-        lidar_labels = extract_lidar_labels(frame)
+        sdc_pose = np.reshape(np.array(frame.pose.transform), [4, 4])
 
-        # Extract camera labels (annotated in 2d)
-        camera_labels = extract_camera_labels(frame)
+        # Iterate over the lidar labels
+        for label in frame.laser_labels:
+            if label.id not in annotations['3d_labels']:
+                # If label is not yet in the list add it and initialize the static/dynamic label 
+                # all cyclists and pedestrians are assumed to be dynamic
+                annotations['3d_labels'][label.id]['dynamic_flag'] = 1 if label.type in [2,4] else 0
+                annotations['3d_labels'][label.id]['type'] = self.label_map[label.type]
+                annotations['3d_labels'][label.id]['lidar'] = {}
 
-        # Extract lidar labels projected to the images
-        projected_lidar_labels = extract_projected_labels(frame)
+            ref_velocity = global_vel_to_ref([label.metadata.speed_x, label.metadata.speed_y], sdc_pose[0:3, 0:3])
+            # Insert the data and change the dynamic flag if the object is in motion
+            annotations['3d_labels'][label.id]['lidar'][f_idx] = {'3D_bbox': np.array([label.box.center_x, label.box.center_y, label.box.center_z,
+                                                                            label.box.length, label.box.width, label.box.height, ref_velocity[0], 
+                                                                            ref_velocity[1], label.box.heading], dtype=np.float32), 
+                                                                  'num_point': label.num_lidar_points_in_box, 
+                                                                  'global_speed':np.array([label.metadata.speed_x, label.metadata.speed_y], dtype=np.float32), 
+                                                                  'global_accel':np.array([label.metadata.accel_x, label.metadata.accel_y], dtype=np.float32)}
 
-        annotations[frame_idx] = {
-                    'lidar_labels': lidar_labels,
-                    'camera_labels': camera_labels,
-                    'projected_lidar_labels': projected_lidar_labels
-        }
+            # TODO: check if this user-defined threshold makes sense
+            if label.type in [1,2,4] and np.max([label.metadata.speed_x, label.metadata.speed_y]) >= 0.75/3.6:
+                    annotations['3d_labels'][label.id]['dynamic_flag'] = 1
 
-    def summarize_labels_across_frames(self,):
-        
+        for camera in sorted(frame.camera_labels, key=lambda i:i.name):
+            for label in camera.labels:
+                if label.id not in annotations['2d_labels']:
+                    annotations['2d_labels'][label.id]['dynamic_flag'] = 1 if label.type == 2 else 0
+                    annotations['2d_labels'][label.id]['type'] = self.label_map[label.type]
+                    annotations['2d_labels'][label.id]['cam_{}'.format(camera.name-1)] = {}
+
+
+                annotations['2d_labels'][label.id]['cam_{}'.format(camera.name-1)][f_idx] = {'2D_bbox': np.array([label.box.center_x, label.box.center_y, 
+                                                                            label.box.length, label.box.width], dtype=np.float32)}
+
+        tmp_ipu = {}
+        for camera in sorted(frame.projected_lidar_labels, key=lambda i:i.name):
+            for label in camera.labels:
+                label_name = label.id[0:label.id.find(self.camera_list[camera.name-1])]
+                proj_bbox = np.array([label.box.center_x, label.box.center_y, label.box.length, label.box.width], dtype=np.float32)
+
+                if 'cam_{}'.format(camera.name-1) not in annotations['3d_labels'][label_name]:
+                    annotations['3d_labels'][label_name]['cam_{}'.format(camera.name-1)] = {}
+                annotations['3d_labels'][label_name]['cam_{}'.format(camera.name-1)][f_idx] = {'3D_bbox_proj': proj_bbox}
+
+
+                for img_label in annotations['2d_labels'].keys():
+                    if 'cam_{}'.format(camera.name-1) in annotations['2d_labels'][img_label] and \
+                                        f_idx in annotations['2d_labels'][img_label]['cam_{}'.format(camera.name-1)]: 
+                        # Only check the IoU if both labels are of the same type
+                        if self.label_map[label.type] == annotations['2d_labels'][img_label]['type']:
+                            iou = compute_iou(proj_bbox, annotations['2d_labels'][img_label]['cam_{}'.format(camera.name-1)][f_idx]['2D_bbox'])
+                            tmp_ipu[img_label] = iou                
+
+                # Add the label to the correspondences 
+                if tmp_ipu and tmp_ipu[max(tmp_ipu, key=tmp_ipu.get)] > 0.10: # Check if there are any labels 
+                    # Assign the best fitting 2D label to the 3D one
+                    label_2d = max(tmp_ipu, key=tmp_ipu.get)
+                    if label_name in annotations['label_corr_3d_2d']['cam_{}'.format(camera.name-1)]:
+                        annotations['label_corr_3d_2d']['cam_{}'.format(camera.name-1)][label_name]['2d_name'].append(label_2d)
+                        annotations['label_corr_3d_2d']['cam_{}'.format(camera.name-1)][label_name]['iou'].append(tmp_ipu[label_2d])
+                    else:
+                        annotations['label_corr_3d_2d']['cam_{}'.format(camera.name-1)][label_name] = {}
+                        annotations['label_corr_3d_2d']['cam_{}'.format(camera.name-1)][label_name]['2d_name'] = [label_2d]
+                        annotations['label_corr_3d_2d']['cam_{}'.format(camera.name-1)][label_name]['iou'] = [tmp_ipu[label_2d]]
+
+                    # Add the assignment to the 2D label
+                    if label_2d in annotations['label_corr_2d_3d']['cam_{}'.format(camera.name-1)]:
+                        if label_name not in annotations['label_corr_2d_3d']['cam_{}'.format(camera.name-1)][label_2d]['name']:
+                            annotations['label_corr_2d_3d']['cam_{}'.format(camera.name-1)][label_2d]['name'].append(label_name)
+                        annotations['label_corr_2d_3d']['cam_{}'.format(camera.name-1)][label_2d]['count'] += 1
+                    
+                    else:
+                        annotations['label_corr_2d_3d']['cam_{}'.format(camera.name-1)][label_2d] = {}
+                        annotations['label_corr_2d_3d']['cam_{}'.format(camera.name-1)][label_2d]['name'] = [label_name]
+                        annotations['label_corr_2d_3d']['cam_{}'.format(camera.name-1)][label_2d]['count'] = 1
+
+
+    def summarize_labels_across_frames(self, frame_labels):
+
+        data = {}
+        data['3d_labels'] = defaultdict(dict)
+        data['2d_labels'] = defaultdict(dict)
+
+        label_corr_3d_2d = defaultdict(dict)
+        label_corr_2d_3d = defaultdict(dict)
+
+        for frame in frame_labels:
+            lidar_labels = frame['lidar_labels']
+            projected_lidar_labels = frame['projected_lidar_labels']
+            camera_labels = frame['camera_labels']
+

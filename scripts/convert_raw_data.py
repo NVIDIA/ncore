@@ -1,5 +1,3 @@
-from pkg_resources import require
-from src.dataset_converter import DataConverter
 from src.dataset_converter.waymo_open import WaymoConverter
 from src.dataset_converter.nvidia import NvidiaConverter
 import argparse
