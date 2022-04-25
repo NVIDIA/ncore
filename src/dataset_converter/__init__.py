@@ -3,6 +3,10 @@ from multiprocessing import Pool
 import tqdm 
 import os
 import glob 
+from PIL import Image
+import subprocess
+import shutil
+from dependencies.instance_segmentation.run_instance_segmentation import run_instance_segmentation
 
 class DataConverter(ABC):
     def __init__(self, args):
@@ -35,10 +39,6 @@ class DataConverter(ABC):
             if not os.path.isdir(os.path.join(seq_path, d)):
                 os.makedirs(os.path.join(seq_path, d))
 
-        # if self.export_unreturned_points:
-        #     if not os.path.isdir(os.path.join(seq_path, self.all_points_dir)):
-        #         os.makedirs(os.path.join(seq_path, self.all_points_dir))
-
         for cam in self.CAMERA_2_IDTYPERIG.keys():
             cam_id = self.CAMERA_2_IDTYPERIG[cam][0]
             if not os.path.isdir(os.path.join(seq_path, self.image_save_dir, 'image_' + cam_id)):
@@ -51,12 +51,61 @@ class DataConverter(ABC):
         print("\nfinished ...")
 
     def run_semantic_segmentation(self, sequence_name):
-        image_folders = glob.glob(os.path.join(self.output_dir, sequence_name, self.image_save_dir) + '*/')
-
+        img_folders = glob.glob(os.path.join(self.output_dir, sequence_name, self.image_save_dir) + '/*/')
+        
         for img_folder in img_folders:
-            pass
+            imgs = sorted(glob.glob(img_folder + '????.jpeg'))
+
+            # Create a temporary folder 
+            if not os.path.exists(os.path.join(img_folder, 'tmp_img')):
+                os.makedirs(os.path.join(img_folder, 'tmp_img'))
+            
+            # Save the target resolutions
+            img_res = []
+            for file in imgs:
+                img = Image.open(file)
+                w,h = img.size[0], img.size[1]
+                img_res.append((w,h))
+
+                # Resize if the image is to large
+                if w > 1920 or h > 1280:
+                    img = img.resize((w//2,h//2), Image.ANTIALIAS)
+                img.save(os.path.join(img_folder, 'tmp_img', file.split(os.sep)[-1]))
+
+            args =  f'--dataset cityscapes --cv 0 --fp16 --bs_val 1 --eval folder ' \
+                    '--eval_folder {} --n_scales 0.5,1.0,2.0 '\
+                    '--snapshot dependencies/semantic-segmentation/pretrained_models/cityscapes_ocrnet.HRNet_Mscale_outstanding-turtle.pth '\
+                    '--arch ocrnet.HRNet_Mscale --result_dir {}'.format(os.path.join(img_folder, 'tmp_img'),os.path.join(img_folder, 'tmp_img','semantic_seg'))
+
+            # Run the semantic segmentation
+            cmd = 'python dependencies/semantic-segmentation/train.py ' + args
+            subprocess.Popen(cmd, shell=True).wait()
+
+            predictions = sorted(glob.glob(os.path.join(img_folder, 'tmp_img','semantic_seg','best_images', '????_prediction.png')))
+
+            assert len(predictions) == len(img_res), "Number of semantic segmentation predictions is not the same as the number of input images"
+
+            for idx, pred_img in enumerate(predictions):
+                img = Image.open(pred_img)
+                w,h = img.size[0], img.size[1]
+                
+                if w != img_res[idx][0] or h != img_res[idx][1]:
+                    img = img.resize(img_res[idx], Image.ANTIALIAS)
+                
+                frame_num = pred_img.split(os.sep)[-1].split('_')[0]
+                img.save(os.path.join(img_folder, 'sem_seg_{}.png'.format(frame_num)))
+
+            # Delete the temporary file
+            shutil.rmtree(os.path.join(img_folder, 'tmp_img'))
 
 
+    def run_instance_segmentation(self, sequence_name):
+        img_folders = glob.glob(os.path.join(self.output_dir, sequence_name, self.image_save_dir) + '/*/')
+        
+        for img_folder in img_folders:
+            run_instance_segmentation(img_folder)
+
+            
 
     @abstractmethod
     def convert_one(self, sequence_path):

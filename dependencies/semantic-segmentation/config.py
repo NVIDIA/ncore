@@ -49,7 +49,7 @@ cfg = __C
 __C.GLOBAL_RANK = 0
 __C.EPOCH = 0
 # Absolute path to a location to keep some large files, not in this dir.
-__C.ASSETS_PATH = '/home/dcg-adlr-atao-data.cosmos277/assets'
+__C.ASSETS_PATH = 'dependencies/semantic-segmentation/pretrained_models'
 
 # Use class weighted loss per batch to increase loss for low pixel count classes per batch
 __C.BATCH_WEIGHTING = False
@@ -137,7 +137,7 @@ __C.MODEL.MSCALE_INIT = 0.5
 __C.MODEL.ATTNSCALE_BN_HEAD = False
 __C.MODEL.GRAD_CKPT = False
 
-WEIGHTS_PATH = os.path.join(__C.ASSETS_PATH, 'seg_weights')
+WEIGHTS_PATH = os.path.join(__C.ASSETS_PATH)
 __C.MODEL.WRN38_CHECKPOINT = \
     os.path.join(WEIGHTS_PATH, 'wider_resnet38.pth.tar')
 __C.MODEL.WRN41_CHECKPOINT = \

@@ -9,7 +9,7 @@ def make_dataset_folder(folder):
     returns: items list with None filled for mask path
     """
     items = os.listdir(folder)
-    items = [(os.path.join(folder, f), '') for f in items]
+    items = [(os.path.join(folder, f), '') for f in items if f.endswith(('.jpg','.jpeg','.png'))]
     items = sorted(items)
 
     print(f'Found {len(items)} folder imgs')

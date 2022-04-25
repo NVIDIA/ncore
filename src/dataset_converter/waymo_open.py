@@ -76,9 +76,15 @@ class WaymoConverter(DataConverter):
             # Decode the annotations
             self.decode_labels(frame, frame_idx, annotations)
 
+        # Perform instance and semantic segmentation of all the images
+        self.run_semantic_segmentation(sequence_name)
+        self.run_instance_segmentation(sequence_name)
+
         # Decode the pose of the current frame and it timestamp
         self.decode_poses_timestamps(poses, poses_timestamps, camera_timestamps, lidar_timestamps, sequence_name)
 
+        # Summarize the labels
+        self.summarize_labels_across_frames(annotations)
 
     def decode_poses_timestamps(self, poses, poses_timestamps, camera_timestamps, lidar_timestamps, sequence_name):
         # Stack all the poses

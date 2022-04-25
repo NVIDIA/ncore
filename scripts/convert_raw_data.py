@@ -1,3 +1,5 @@
+import sys
+sys.path.append('./')
 from src.dataset_converter.waymo_open import WaymoConverter
 from src.dataset_converter.nvidia import NvidiaConverter
 import argparse
