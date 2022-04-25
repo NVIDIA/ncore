@@ -39,10 +39,10 @@ session_name
 └───images # 00-05 = wide angle, 10-13 = fisheye cameras
 │   │   timestamps.npz # Timestamp of each frame
 │   └───image_00 
-│   │   │   0000.jpg         # Single frame
-│   │   │   0000.pkl         # Image metadata (see below)
-│   │   │   sem_seg_0000.png # Semantic segmentation
-│   │   │   dynamic_mask.png # Dynamic mask
+│   │   │   0000.jpg              # Single frame
+│   │   │   0000.pkl              # Image metadata (see below)
+│   │   │   sem_seg_0000.png      # Semantic segmentation
+│   │   │   dynamic_mask_0000.png # Dynamic mask
 │   │   │   ...
 │   └───...
 │   └───image_05

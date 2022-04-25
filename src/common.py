@@ -69,10 +69,10 @@ def get_2d_bbox_corners(bbox):
     
     return bbox_corners
 
-def compute_optimal_assignments(corr_2d_3d, corr_3d_2d):
+def compute_optimal_assignments(corr_2d_3d, corr_3d_2d, cameras):
     optimal_assignments = {}
     # Iterate over the cameras 
-    for cam in camera_map.keys():
+    for cam in cameras:
         optimal_assignments[cam] = {}
         # Build the cost matrix
         C = np.ones((len(corr_3d_2d[cam].keys()), len(corr_2d_3d[cam].keys()))) * 200
@@ -148,3 +148,88 @@ def compute_iou(bbox_1, bbox_2):
 
     return np.max([np.min([iou, 1.0]), 0.0])
 
+
+def points_in_bboxes(points, bboxes):
+    """Checks whether a point is in any of the bboxes
+        Args:
+            points: [N, 3] tensor. Inner dims are: [x, y, z].
+            boxes: [7] list of bboxes
+        Returns:
+            bbox_idx: [N,] idx of a bbox for each point (-1 denotes background points)
+    """
+
+    bbox_idx = -np.ones(points.shape[0])
+
+    for crnt_ind, bbox in enumerate(bboxes):
+        temp_bbox_ind = is_within_3d_bbox(points, bbox)
+        bbox_idx[temp_bbox_ind] = crnt_ind
+
+    return bbox_idx
+
+
+def is_within_3d_bbox(points, box, normals=None, return_points_in_bbox_frame=False):
+    """Checks whether a point is in a 3d box given a set of points and a box.
+        Args:
+            point: [N, 3] tensor. Inner dims are: [x, y, z].
+            box: [7] tensor. Inner dims are: [center_x, center_y, center_z, length,
+            width, height, heading].
+            name: tf name scope.
+        Returns:
+            point_in_box; [N,] boolean array.
+    """
+
+    center = box[0:3]
+    dim = box[3:6]
+    heading = box[-1]
+
+    # Get the rotation matrix from the heading angle
+    rotation = R.from_rotvec(heading*np.array([0,0,1])).as_matrix()
+
+    # [4, 4]
+    transform = rot_trans_to_se3(rotation, center)
+    # [4, 4]
+    transform = np.linalg.inv(transform)
+    # [3, 3]
+    rotation = transform[0:3, 0:3]
+    # [3]
+    translation = transform[0:3, 3]
+
+    # [M, 3]
+    points_in_box_frames = np.matmul(rotation, points.transpose()).transpose() + translation
+
+    # [M, 3]
+    point_in_box = np.logical_and(
+        np.logical_and(points_in_box_frames <= dim * 0.5,
+                       points_in_box_frames >= -dim * 0.5),
+        np.all(np.not_equal(dim, 0), axis=-1, keepdims=True))
+
+    # [N, M]
+    point_in_box = np.prod(point_in_box, axis=-1).astype(bool)
+
+    if not return_points_in_bbox_frame:
+        return point_in_box
+    else:
+        if normals is not None:
+            T_normals = np.linalg.inv(transform).transpose()
+
+            normals_in_bbox_frame = np.matmul(T_normals[0:3, 0:3], normals[point_in_box,:].transpose()).transpose() + T_normals[0:3, 3]
+
+            
+            return points_in_box_frames[point_in_box,:], normals_in_bbox_frame/np.linalg.norm(normals_in_bbox_frame,axis=1,keepdims=True)
+        else:
+            return points_in_box_frames[point_in_box,:]
+
+def rot_trans_to_se3(rot, trans):
+
+    if rot.ndim > 2:
+        T = np.eye(4)
+        T = np.tile(T,(rot.shape[0], 1, 1))
+        T[:, 0:3, 0:3] = rot
+        T[:, 0:3, 3] = trans.reshape(-1,3,)
+
+    else:
+        T = np.eye(4)
+        T[0:3, 0:3] = rot
+        T[0:3, 3] = trans.reshape(3,)
+
+    return T
