@@ -77,8 +77,11 @@ class WaymoConverter(DataConverter):
             self.decode_labels(frame, frame_idx, annotations)
 
         # Perform instance and semantic segmentation of all the images
-        self.run_semantic_segmentation(sequence_name)
-        self.run_instance_segmentation(sequence_name)
+        if self.sem_seg_flag:
+            self.run_semantic_segmentation(sequence_name)
+        
+        if self.inst_seg_flag:
+            self.run_instance_segmentation(sequence_name)
 
         # Decode the pose of the current frame and it timestamp
         self.decode_poses_timestamps(poses, poses_timestamps, camera_timestamps, lidar_timestamps, sequence_name)

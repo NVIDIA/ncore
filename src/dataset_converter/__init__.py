@@ -21,6 +21,9 @@ class DataConverter(ABC):
         self.output_dir = args.output_dir
         self.num_proc = int(args.n_proc)
 
+        self.sem_seg_flag = args.semantic_seg
+        self.inst_seg_flag = args.instance_seg
+
         if self.dataset == 'nvidia':        
             self.sequence_pathnames = sorted(glob.glob(os.path.join(self.root_dir, '*/')))
 
@@ -105,7 +108,7 @@ class DataConverter(ABC):
         for img_folder in img_folders:
             run_instance_segmentation(img_folder)
 
-            
+
 
     @abstractmethod
     def convert_one(self, sequence_path):
