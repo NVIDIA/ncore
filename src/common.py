@@ -27,9 +27,9 @@ def save_pkl(obj, path ):
 
 
 class PoseInterpolator:
-    ''' Interpolates the poses to the desired time stamps. The translation component is interpolated linearly,
-    while spherical linear interpolation (SLERP) is used for the rotations.
-    https://en.wikipedia.org/wiki/Slerp
+    ''' 
+    Interpolates the poses to the desired time stamps. The translation component is interpolated linearly,
+    while spherical linear interpolation (SLERP) is used for the rotations. https://en.wikipedia.org/wiki/Slerp
 
     Args:
         poses (np.array): poses at given timestamps in a se3 representation [n,4,4]

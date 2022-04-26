@@ -9,8 +9,16 @@ import shutil
 from dependencies.instance_segmentation.run_instance_segmentation import run_instance_segmentation
 
 class DataConverter(ABC):
-    def __init__(self, args):
+    '''
+    Base preprossing class used to preprocess AV datasets in a canonical representation as used in the Nvidia DriveSim-AI project. For adding a new dataset,
+    please inherit this class and implement the required functions. The output data should follow the conventions defined in 
+    https://gitlab-master.nvidia.com/zgojcic/drivesim-ai/-/blob/main/docs/data.md
 
+    DISCLAIMER: THIS SOURCE CODE IS NVIDIA INTERNAL/CONFIDENTIAL. DO NOT SHARE EXTERNALLY.
+    IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC zgojcic@nvidia.com. 
+    '''  
+
+    def __init__(self, args):
         self.dataset = args.dataset
         self.label_save_dir       = 'labels'
         self.image_save_dir       = 'images'
@@ -32,7 +40,13 @@ class DataConverter(ABC):
 
 
     def create_folders(self, sequence_name):
+        ''' 
+        Creates the default folder structure for a given sequence
 
+        Args: 
+            sequence_name (string): unique identifier of the sequence
+        '''
+        
         seq_path = os.path.join(self.output_dir, sequence_name)
 
         if not os.path.isdir(seq_path):
