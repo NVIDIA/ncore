@@ -49,9 +49,9 @@ def extract_lidar_labels(frame):
         'id': object_id,
         'name': label.id,
         'label': category_label,
-        'box': np.array([box.center_x, box.center_y, box.center_z,
+        '3D_bbox': np.array([box.center_x, box.center_y, box.center_z,
                          box.length, box.width, box.height, ref_velocity[0], 
-                         ref_velocity[1], box.heading], dtype=np.float32),
+                         ref_velocity[1], box.heading, 0, 0], dtype=np.float32),
         'num_points':
             num_lidar_points_in_box,
         'detection_difficulty_level':

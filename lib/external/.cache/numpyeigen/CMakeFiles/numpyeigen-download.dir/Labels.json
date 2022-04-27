@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/zgojcic/code/DriveSim_AI/lib/external/.cache/numpyeigen/CMakeFiles/numpyeigen-download"
+		},
+		{
+			"file" : "/home/zgojcic/code/DriveSim_AI/lib/external/.cache/numpyeigen/CMakeFiles/numpyeigen-download.rule"
+		},
+		{
+			"file" : "/home/zgojcic/code/DriveSim_AI/lib/external/.cache/numpyeigen/CMakeFiles/numpyeigen-download-complete.rule"
+		},
+		{
+			"file" : "/home/zgojcic/code/DriveSim_AI/lib/external/.cache/numpyeigen/numpyeigen-download-prefix/src/numpyeigen-download-stamp/numpyeigen-download-build.rule"
+		},
+		{
+			"file" : "/home/zgojcic/code/DriveSim_AI/lib/external/.cache/numpyeigen/numpyeigen-download-prefix/src/numpyeigen-download-stamp/numpyeigen-download-configure.rule"
+		},
+		{
+			"file" : "/home/zgojcic/code/DriveSim_AI/lib/external/.cache/numpyeigen/numpyeigen-download-prefix/src/numpyeigen-download-stamp/numpyeigen-download-download.rule"
+		},
+		{
+			"file" : "/home/zgojcic/code/DriveSim_AI/lib/external/.cache/numpyeigen/numpyeigen-download-prefix/src/numpyeigen-download-stamp/numpyeigen-download-install.rule"
+		},
+		{
+			"file" : "/home/zgojcic/code/DriveSim_AI/lib/external/.cache/numpyeigen/numpyeigen-download-prefix/src/numpyeigen-download-stamp/numpyeigen-download-mkdir.rule"
+		},
+		{
+			"file" : "/home/zgojcic/code/DriveSim_AI/lib/external/.cache/numpyeigen/numpyeigen-download-prefix/src/numpyeigen-download-stamp/numpyeigen-download-patch.rule"
+		},
+		{
+			"file" : "/home/zgojcic/code/DriveSim_AI/lib/external/.cache/numpyeigen/numpyeigen-download-prefix/src/numpyeigen-download-stamp/numpyeigen-download-test.rule"
+		},
+		{
+			"file" : "/home/zgojcic/code/DriveSim_AI/lib/external/.cache/numpyeigen/numpyeigen-download-prefix/src/numpyeigen-download-stamp/numpyeigen-download-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"numpyeigen-download"
+		],
+		"name" : "numpyeigen-download"
+	}
+}

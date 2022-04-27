@@ -319,7 +319,7 @@ class WaymoConverter(DataConverter):
                 # If label is not yet in the list add it and initialize the static/dynamic label 
                 # all cyclists and pedestrians are assumed to be dynamic irrespective of their speed
                 annotations['3d_labels'][label.id]['dynamic_flag'] = 1 if label.type in [2,4] else 0
-                annotations['3d_labels'][label.id]['type'] = self.label_map[label.type]
+                annotations['3d_labels'][label.id]['type'] = label.type
                 annotations['3d_labels'][label.id]['lidar'] = {}
 
             ref_velocity = global_vel_to_ref([label.metadata.speed_x, label.metadata.speed_y], sdc_pose[0:3, 0:3])

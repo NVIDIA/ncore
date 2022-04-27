@@ -1,0 +1,223 @@
+// Copyright © 2018 DeepMap Inc - All Rights Reserved
+//
+// DeepMap Confidential & Proprietary As Per Terms of Confidentiality Agreements
+//
+
+// This file defines the protobufs used to represent a LiDAR sensor device,
+// and its point cloud data the location service expects.
+//
+
+syntax = "proto3";
+
+option java_package = "ai.deepmap.api";
+option go_package = "codereview.deepmap.ai/deepmap-go/api/public/deepmap_api/protos";
+
+package deepmap.api;
+
+import "protos/coordinate_systems.proto";
+import "protos/transform.proto";
+
+// A point cloud is the collections of points from LiDAR. It is assumed the data
+// is already corrected in the x,y,z directions, based on the LiDAR geometry if
+// necessary.
+//
+
+// The presentation of a point index range within a pointcloud.
+// It is assumed there is no missing point in this range.
+message PointIndexRange {
+  uint32 start_index = 1;  // The start index.
+  uint32 end_index = 2;    // The end index.
+}
+
+// A collection of LiDAR points. The coordinates and intensity must line up for
+// each point.
+message PointCloudData {
+  // The <x,y,z> coordinate of points in a coordinate system, using either the
+  // vehicle cartesian or LiDAR sensor cartesian. The units are in meters.
+  repeated float points_x = 1;  // The x points.
+
+  repeated float points_y = 2;  // The y points.
+
+  repeated float points_z = 3;  // The z points.
+
+  // The intensity of the points in the range of [0..255].
+  bytes intensities = 4;
+
+  // Optional support for color or velocity will be added in the future.
+
+  // The <row, column> index of the points above.
+  // When the points are collected, its index should be filled in these arrays
+  // accordingly.
+  //
+  // The rows are numbered based on the descending pitch angle.
+  repeated uint32 row_indices = 5;
+
+  // The first column in the point cloud will have a column index of 0, even if
+  // it is not the first column crossing a 0 azimuth. If a few columns are not
+  // present, either due to FOV or packet drops, the subsequent columns will
+  // take their indices. In other words, column indices must not have holes.
+  repeated uint32 column_indices = 6;
+
+  // Each point index (0 based) range describes an index range where there is no
+  // missing point. For example, if a point cloud has 6 points and point 4 is
+  // missing, there should be two ranges [0..2] and [4..5].
+  repeated PointIndexRange point_index_range = 7;
+
+  // The range in meters, of each point in points_x, points_y, and points_z.
+  // The range values should be the points reported by the sensor, which may not
+  // be sqrt(x*x + y*y + z*z). This value is optional. If populated, its size
+  // must be the same as points_x, points_y, and points_z.
+  repeated float points_range = 8;
+
+  // The azimuth in degrees, for each column. They will be accessed using the
+  // values in column_indices. Therefore missing columns should be treated in
+  // the same way. Meaning, if points of a particular column are absent, no
+  // entry should exist in this field.
+  //
+  // Azimuth is the angle between a column and the Y-axis of the LiDAR
+  // coordinate system. Its range is from 0 to 360. The X-axis of the LiDAR
+  // coordinate has an azimuth of 90 degrees.
+  repeated float column_azimuth_degrees = 9;
+
+  // The end timestamp for each column. They will be accessed by using the
+  // values in column_indices. Therefore missing columns should be treated in
+  // the same way as described in the comments for column_indices.
+  repeated uint64 column_timestamps_microseconds = 10;
+}
+
+// The metadata related to point cloud data. This must be passed into the
+// location service, with the point cloud data.
+message PointCloudMetaData {
+  // The Lidar-scope sensor ID from which the point cloud data is generated.
+  // Together with the sensor-type, this uniquely identifies a given sensor in a
+  // vehicle.
+  uint32 sensor_id = 1;
+
+  // The sequence number is a per sensor, per data stream sequential number.
+  // It starts from 0 and increases by 1 for each datagram per data stream, fed
+  // into the API interface on each sensor. If a sensor generates multiple
+  // streams of data, each stream shall have its own sequential number space.
+  uint32 sequence_number = 2;
+
+  // This indicates which coordinate system the point cloud points are in.
+  // It is possible the customer software already applied the LiDAR to Vehicle
+  // coordinate system transform. We will have this flexiblity, to take the
+  // point cloud in either coordinate system.
+  CoordinateSystem coordinate_system = 3;
+
+  // The semantics of the two timestamps below, depend on the timestamp type.
+  enum TimestampType {
+    // All the points have the same timestamp.
+    GLOBAL = 0;
+    // The timestamp increases linearly from the start timestamp to the end
+    // timestamp. w.r.t. the column.
+    LINEAR_BY_COLUMN = 1;
+    // The timestamp increases linearly from the start timestamp to the end
+    // timestamp. w.r.t. the point indices.
+    LINEAR_BY_INDEX = 2;
+  }
+  TimestampType timestamp_type = 4;  // The timestamp type
+
+  // The start timestamp in microseconds.
+  // It follows the GPS time convention, measuring time since start of Sunday
+  // Jan 6, 1980 UTC (including leap seconds).
+  uint64 start_timestamp_microseconds = 5;
+
+  // The end timestamp in microseconds.
+  // It follows the GPS time convention, measuring time since start of Sunday
+  // Jan 6, 1980 UTC (including leap seconds).
+  uint64 end_timestamp_microseconds = 6;
+
+  // The row count, column count, and row_column_index below
+  // are only significant for a point cloud with implicit <row, column>
+  // semantics. E.g. TIMESTAMP_GLOBAL and TIMESTAMP_COLUMN above.
+
+  // The number of rows in a point cloud.
+  uint32 row_count = 7;
+
+  // The number of columns in a point cloud.
+  uint32 column_count = 8;
+
+  // With a rotating lidar, point clouds usually need to be motion compensated,
+  // to account for the different firing times while traveling, but our
+  // algorithms will apply unwinding internally. Note: For map creation, please
+  // DO NOT pass a compensated point cloud. We prefer an un-compensated point
+  // cloud.
+  bool is_motion_compensated = 9;
+
+  // The GPS timestamp the last packet used to construct this point cloud,
+  // reached the driver.
+  uint64 driver_receive_timestamp_microseconds = 10;
+  // The monototnic timestamp the last packet used to construct this point cloud,
+  // reached the driver.
+  uint64 driver_receive_monotonic_timestamp_microseconds = 11;
+}
+
+// The identity of a point cloud.
+message PointCloudId {
+  // The sensor_id assigned to the lidar.
+  uint32 sensor_id = 1;
+  // The end timestamp in microsections.
+  // This follows GPS time convention measuring time since start of Sunday Jan
+  // 6, 1980 UTC (including leap seconds).
+  uint64 end_timestamp_microseconds = 2;
+  // The sequence number from PointCloudMetaData.sequence_number.
+  uint32 sequence_number = 3;
+}
+
+// The point cloud has point cloud data with metadata.
+message PointCloud {
+  PointCloudMetaData meta_data = 1;  // The point cloud metadata.
+  PointCloudData data = 2;           // The point cloud data.
+}
+
+// PointCloudDiff represents the latest difference between the input point
+// clouds and our HDMap. This difference is from a particular lidar scan or all
+// merged lidar scans. The localization services return points that doesn't
+// exsists in our HDMap, based on our localization result. This information can
+// be used for object/obstacle detection/recognition. Usually point cloud
+// differences are merged, motion compensated, in the vehicle coordinate system,
+// and at a certain timestamp, with a pose.
+message PointCloudDiffMetaData {
+  // The sensor ID from which the point cloud diff is reported.
+  // If is_merged is set to true, this is the base sensor ID,
+  // which means other lidar scans will be transformed into its timestamp.
+  uint32 sensor_id = 1;
+
+  // The timestamp of the point cloud difference.
+  // Because the point cloud difference is always motion compensated, it can
+  // only have one timestamp. Usually it is the same as the end timestamp of the
+  // base lidar scan. It follows the GPS time convention measuring time since
+  // start of Sunday Jan 6, 1980 UTC (including leap seconds).
+  uint64 timestamp_microseconds = 2;
+
+  // The vehicle pose at the time of the point cloud.
+  WorldPose world_pose = 3;
+
+  // This indicates which coordinate system the point cloud points are in.
+  // Usually the point cloud difference is in the car coordinate system.
+  CoordinateSystem coordinate_system = 4;
+
+  // The sequence number of this point cloud difference from the specified
+  // sensor. This sequence number is from a base sensor (specified by a sensor
+  // ID), when is_merge set to true.
+  uint32 sequence_number = 5;
+
+  // The point cloud difference is usually merged from multiple lidars,
+  // In this case, the sequence number and timestamp are based on one sensor ID,
+  // as specified.
+  bool is_merged = 6;
+
+  // If is_merged is true, the scans (excluding scans from the base lidar)
+  // contribute to the difference. Unset this, if is_merged is false.
+  repeated PointCloudId other_point_cloud_id = 7;
+}
+
+// The point cloud difference is point cloud data with point cloud difference
+// metadata.
+message PointCloudDiff {
+  PointCloudDiffMetaData meta_data = 1;  // The metadata.
+
+  // The data. Only the x, y, z and intensities are set.
+  PointCloudData data = 2;
+}

@@ -23,6 +23,8 @@ pip install setuptools==59.5.0
 pip install opencv-python
 pip install scikit-image
 pip install 'git+https://github.com/facebookresearch/detectron2.git'
+pip install protobuf3-to-dict==0.1.5
+pip install pandas
 ```
 
 Install apex as 

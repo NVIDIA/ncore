@@ -1,21 +1,16 @@
 import setuptools
 import os
-import glob
 import re
 import sys
 import platform
 import subprocess
 import warnings
-import distutils
-import numpy as np
-from torch.utils.cpp_extension import BuildExtension
 
 from distutils.version import LooseVersion
 from setuptools.command.build_ext import build_ext
 
 def find_in_path(name, path):
     "Find a file in a search path"
-    #adapted fom http://code.activestate.com/recipes/52224-find-a-file-given-a-search-path/
     for dir in path.split(os.pathsep):
         binpath = os.path.join(dir, name)
         if os.path.exists(binpath):
@@ -87,19 +82,18 @@ def main():
     exclude_arch = False
     
     setuptools.setup(
-        name="nvidia_utils",
+        name="av_utils",
         version="0.1.0",
         author="Zan Gojcic",
         author_email="zan.gojcic@gmail.com  ",
-        description="Utility function for pairwise point cloud registration",
-        long_description="Utility function for pairwise point cloud registration",
+        description="Utility function for av data preprocessing",
+        long_description="Utility function for av data preprocessing",
         long_description_content_type="text/markdown",
         url="https://github.com/pointcloudregistration/pairwise_reg",
-        packages=['src'], #setuptools.find_packages(exclude=["tests"]),
+        packages=[''], #setuptools.find_packages(exclude=["tests"]),
         classifiers=[
             "Programming Language :: C++",
             "Programming Language :: Python :: 3",
-            "Programming Language :: Python :: 2.7",
             "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         ],
         ext_modules=[CMakeExtension('', cmake_args=cmake_args, exclude_arch=exclude_arch)],

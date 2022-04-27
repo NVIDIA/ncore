@@ -1,0 +1,2 @@
+/usr/bin/ar qc libnpe.a CMakeFiles/npe.dir/external/numpyeigen/src/npe_typedefs.cpp.o
+/usr/bin/ranlib libnpe.a

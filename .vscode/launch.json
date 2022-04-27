@@ -20,7 +20,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": ["--root_dir", "/scratch/data/nvidia/raw_data/", "--output_dir", "/scratch/data/nvidia/processed_data/",
-                "--dataset", "nvidia", "--n_process", "1"]
+                "--dataset", "nvidia", "--n_proc", "1"]
         },
         {
             "name": "waymo-open dataset",

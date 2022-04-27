@@ -1,0 +1,49 @@
+// Copyright © 2018 DeepMap Inc - All Rights Reserved
+//
+// DeepMap Confidential & Proprietary As Per Terms of Confidentiality Agreements
+//
+
+// This file defines the protobufs used to represent common math entities or
+// functions. E.g. A matrix with dimensions.
+//
+
+syntax = "proto3";
+
+option java_package = "ai.deepmap.api";
+option go_package = "codereview.deepmap.ai/deepmap-go/api/public/deepmap_api/protos";
+
+package deepmap.api;
+
+// A double precision matrix with row and column counts.
+// The data is stored in row-major order.
+message MatrixD {
+  // The MaxtrixD data in row-major format.
+  repeated double data = 1;
+  // The number of rows in the MatrixD.
+  uint32 row_count = 2;
+  // The number of columns in the MatrixD.
+  uint32 column_count = 3;
+}
+
+// A double precision 3d vector
+message Vector3D {
+  // First value of the 3d vector
+  double x = 1;
+  // Second value of the 3d vector
+  double y = 2;
+  // Third value of the 3d vector
+  double z = 3;
+}
+
+// A single precision sized symmetric matrix
+// Note: a symmetric matrix is square matrix that is equal to its transpose
+message SymmetricMatrixF {
+  // The upper triangle portion of the symmetric matrix in row-major format
+  // For example, for a 2x2 symmetric matrix [1,2; 2,3],
+  // its upper_triangle_row_major_data == [1,2,3], its size == 2
+  repeated float upper_triangle_row_major_data = 1;
+
+  // The size of the symmetric matrix, which equals to its rows or columns count
+  uint32 size = 2;
+}
+

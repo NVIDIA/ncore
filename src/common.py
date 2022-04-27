@@ -186,7 +186,7 @@ def is_within_3d_bbox(points, box, normals=None, return_points_in_bbox_frame=Fal
     rotation = R.from_rotvec(heading*np.array([0,0,1])).as_matrix()
 
     # [4, 4]
-    transform = rot_trans_to_se3(rotation, center)
+    transform = rot_trans_2_se3(rotation, center)
     # [4, 4]
     transform = np.linalg.inv(transform)
     # [3, 3]
@@ -219,7 +219,7 @@ def is_within_3d_bbox(points, box, normals=None, return_points_in_bbox_frame=Fal
         else:
             return points_in_box_frames[point_in_box,:]
 
-def rot_trans_to_se3(rot, trans):
+def rot_trans_2_se3(rot, trans):
 
     if rot.ndim > 2:
         T = np.eye(4)
@@ -233,3 +233,68 @@ def rot_trans_to_se3(rot, trans):
         T[0:3, 3] = trans.reshape(3,)
 
     return T
+
+def axis_angle_2_so3(axis, angle, degrees=True):
+    ''' Converts the axis angle representation of the so3 rotation matrix
+    Args:
+        axis (np.array): the rotation axes [n,3]
+        angle float/double: rotation angles either in degrees or radians [n]
+        degrees bool: True if angle is given in degrees else False
+
+    Out:
+        (np array): rotations given so3 matrix representation [n,3,3]
+    '''
+    # Treat angle (radians) below this as 0.
+    cutoff_angle = 1e-9 if not degrees else 1e-9*180/np.pi
+    angle[angle < cutoff_angle] = 0.0
+
+    # Scale the axis to have the norm representing the angle
+    axis_angle = (angle/np.linalg.norm(axis, axis=1, keepdims=True)) * axis
+
+    return R.from_rotvec(axis_angle, degrees=degrees).as_matrix()
+
+
+def so3_2_axis_angle(so3, degrees=True):
+    ''' Converts the so3 representation to axis_angle
+    Args:
+        so3 (np.array): the rotation matrices [n,3,3]
+        degrees bool: True if angle should be given in degrees
+
+    Out:
+        axis (np array): the rotation axis [n,3]
+        angle (np array): the rotation angles, either in degrees (if degrees=True) or radians [n,]
+    '''
+    rot_vec = R.from_matrix(so3).as_rotvec(degrees=degrees)
+
+    angle = np.linalg.norm(rot_vec, axis=-1, keepdims=True)
+    axis = rot_vec / angle
+
+    return axis, angle
+
+
+def euclidean_2_spherical_coords(coords):
+
+    r = np.linalg.norm(coords, axis=-1, keepdims=True)
+    el = np.arctan(coords[:,2]/np.linalg.norm(coords[:,:2], axis=-1)).reshape(-1,1)
+    az = np.arctan2(coords[:,1],coords[:,0]).reshape(-1,1)
+
+    return np.concatenate((r,az,el),axis=-1)
+
+def spherical_2_direction(spherical_coords):
+
+    dx = np.cos(spherical_coords[:,2]) * np.cos(spherical_coords[:,1])
+    dy = np.cos(spherical_coords[:,2]) * np.sin(spherical_coords[:,1])
+    dz = np.sin(spherical_coords[:,2])
+
+    return np.concatenate((dx[:,None],dy[:,None],dz[:,None]),axis=-1)
+
+def transform_point_cloud(pc, T):
+    ''' Transform the point cloud with the provided transformation matrix
+    Args:
+        pc (np.array): point cloud coordinates (x,y,z) [n,3]
+        T (np.array): se3 transformation matrix [4,4]
+
+    Out:
+        (np array): transformed point cloud coordinated [n,3]
+    '''
+    return (T[:3,:3] @ pc[:,:3].transpose() + T[:3,3:4]).transpose()
