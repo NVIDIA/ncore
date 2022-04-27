@@ -1,3 +1,8 @@
 *.pkl
 *.pth
 logs/
+__pycache__/
+lib/external/.cache/
+lib/build/
+lib/dist/
+.vscode/

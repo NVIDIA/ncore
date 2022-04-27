@@ -14,17 +14,10 @@ NOTE: This codebase is under active development and the APIs may thus still chan
 conda create -n drivesim_ai python=3.8
 conda activate drivesim_ai
 pip install --upgrade pip
-pip install waymo-open-dataset-tf-2-5-0 --user
+pip install -r requirements.txt
 pip install torch==1.10.1+cu111 torchvision==0.11.2+cu111 torchaudio==0.10.1 -f https://download.pytorch.org/whl/torch_stable.html
-pip install tqdm
-pip install scipy
-pip install runx
-pip install setuptools==59.5.0
-pip install opencv-python
-pip install scikit-image
 pip install 'git+https://github.com/facebookresearch/detectron2.git'
-pip install protobuf3-to-dict==0.1.5
-pip install pandas
+apt-get install python3-tk
 ```
 
 Install apex as 

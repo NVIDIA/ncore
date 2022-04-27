@@ -1,1 +1,0 @@
-/usr/bin/c++ -fPIC -DVERSION_INFO=\"0.1.0\" -O3 -DNDEBUG -shared  -o ../lib.linux-x86_64-3.8/av_utils.cpython-38-x86_64-linux-gnu.so CMakeFiles/av_utils.dir/av_utils.module.cpp.o CMakeFiles/av_utils.dir/utils.out.cpp.o  libnpe.a -lgomp -lpthread 

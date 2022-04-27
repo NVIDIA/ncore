@@ -1,6 +1,0 @@
-/home/zgojcic/code/DriveSim_AI/lib/build/temp.linux-x86_64-3.8/CMakeFiles/rebuild_cache.dir
-/home/zgojcic/code/DriveSim_AI/lib/build/temp.linux-x86_64-3.8/CMakeFiles/av_utils.dir
-/home/zgojcic/code/DriveSim_AI/lib/build/temp.linux-x86_64-3.8/CMakeFiles/edit_cache.dir
-/home/zgojcic/code/DriveSim_AI/lib/build/temp.linux-x86_64-3.8/CMakeFiles/npe.dir
-/home/zgojcic/code/DriveSim_AI/lib/build/temp.linux-x86_64-3.8/pybind11/CMakeFiles/rebuild_cache.dir
-/home/zgojcic/code/DriveSim_AI/lib/build/temp.linux-x86_64-3.8/pybind11/CMakeFiles/edit_cache.dir
