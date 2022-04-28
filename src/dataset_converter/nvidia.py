@@ -12,6 +12,7 @@ import struct
 from pyarrow.parquet import ParquetDataset
 from collections import defaultdict
 from src.common import save_pkl, load_pkl, points_in_bboxes
+import point_cloud_utils as pcu
 
 class NvidiaConverter(DataConverter):
     def __init__(self, args):
@@ -189,7 +190,7 @@ class NvidiaConverter(DataConverter):
                                                                     'global_accel': -1,}
             
                 # TODO: check if this user-defined threshold makes sense
-                if self.label_map[row['label_name']] not in [0,3] and np.max([row['velocity_x'], row['velocity_y']]) >= 0.75/3.6:
+                if self.label_map[row['label_name']] not in [0,3] and np.linalg.norm([row['velocity_x'], row['velocity_y']]) >= 0.75/3.6:
                         annotations['3d_labels'][track_id]['dynamic_flag'] = 1
 
         # Save the accumulated data
@@ -259,7 +260,7 @@ class NvidiaConverter(DataConverter):
                 T_lidar_globals = column_poses @ T_lidar_rig[None,:,:]
 
                 # Filter out points that are more than 1 m bellow ground (there are some spurious measurements there)
-                valid_idx_z = raw_pc[:,2] > -2.85
+                valid_idx_z = raw_pc[:,2] > -4.85
                 transformed_pc = unwind_lidar(raw_pc, T_lidar_globals.reshape(-1,4), np.array(data.data.column_indices).reshape(-1,1))
 
                 # Filter points with a distance smaller than 1.5m (points that lie on the ego car)
@@ -277,15 +278,19 @@ class NvidiaConverter(DataConverter):
                 transformed_pc = transformed_pc[valid_idx,:]
                 
                 # Use the bounding boxes to remove dynamic objects 
-                
+                dynamic_flag = np.zeros_like(transformed_pc[:,0])
                 for label in frame_annotations[fa_timestamps[new_frame_idx]]['lidar_labels']:
                     label_id = label['name']
-                    dynamic_state = annotations['3d_labels'][label_id]['dynamic_flag']
+                    # dynamic_state = annotations['3d_labels'][label_id]['dynamic_flag']
+                    # If the object is dynamic update the points that fall in that bounding box
+                    # if dynamic_state:
                     bbox = label['3D_bbox']
+                    bbox[3:6] = 3 + bbox[3:6] # Enlarge the bounding box
                     bbox_idxs = points_in_bboxes(raw_pc, bbox.reshape(1,-1))
 
                     dynamic_flag[bbox_idxs != -1] = 1
 
+                transformed_pc[:,-1] = dynamic_flag
 
                 transformed_pc_flat = transformed_pc.flatten()
                 lidar_save_path = os.path.join(self.output_dir, self.sequence_name, self.point_cloud_save_dir, str(frame_idx).zfill(4) + '.dat')
@@ -294,14 +299,13 @@ class NvidiaConverter(DataConverter):
                     f.write(struct.pack('>i', transformed_pc_flat.size))
                     f.write(struct.pack('=%sf' % transformed_pc_flat.size, *transformed_pc_flat))
 
-                pcu.save_triangle_mesh(lidar_save_path.replace('.dat', '.ply'), v=transformed_pc[:,3:6], vq=intensities)
-                # pcu.save_triangle_mesh(lidar_non_unwind_save_path.replace('.dat', '.ply'), v=pc_global, vq=intensities)
-
-                # pcu.save_mesh_v(lidar_save_path.replace('.dat', '_start.ply'), transformed_pc[:,:3])
+                # pcu.save_triangle_mesh(lidar_save_path.replace('.dat', '.ply'), v=transformed_pc[:,3:6], vq=transformed_pc[:,-1])
 
                 frame_idx += 1
-            except:
-                print("frame was not processed")
+
+            except Exception as e: # work on python 3.x
+                print('Failed to upload to ftp: '+ str(e))
+
         # # Save all lidar timestamps
         lidar_timestamp_save_path = os.path.join(self.output_dir, self.sequence_name, self.point_cloud_save_dir, 'timestamps.npz')
-        np.savez(lidar_timestamp_save_path, frame_t=lidar_timestamps)
+        np.savez(lidar_timestamp_save_path, frame_t=lidar_end_timestmap)

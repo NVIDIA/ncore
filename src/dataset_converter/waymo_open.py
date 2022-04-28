@@ -228,7 +228,8 @@ class WaymoConverter(DataConverter):
             calib = frame.context.camera_calibrations[image.name - 1]
 
             # Get the SDC car pose 
-            # TODO: Check github issues to confirm that this is correct: https://github.com/waymo-research/waymo-open-dataset/issues/464
+            # Confirmed in issue https://github.com/waymo-research/waymo-open-dataset/issues/464
+            # That this pose and timestamp are corresponding
             poses.append(np.array(tf.reshape(tf.constant(image.pose.transform, dtype=tf.float64), [4, 4])))
             poses_timestamps.append(image.pose_timestamp * 1e6) # Convert the poses to microseconds
 
@@ -289,7 +290,7 @@ class WaymoConverter(DataConverter):
 
         """
 
-        # Get the pose of the car at the start of the frame
+        # Get the pose of the car near the middle of the lidar frame
         sdc_pose = np.reshape(np.array(frame.pose.transform), [4, 4])
 
          # Extract lidar labels 
@@ -333,7 +334,7 @@ class WaymoConverter(DataConverter):
                                                                   'global_accel':np.array([label.metadata.accel_x, label.metadata.accel_y], dtype=np.float32)}
 
             # TODO: check if this user-defined threshold makes sense
-            if label.type in [1,2,4] and np.max([label.metadata.speed_x, label.metadata.speed_y]) >= 0.75/3.6:
+            if label.type in [1,2,4] and np.linalg.norm([label.metadata.speed_x, label.metadata.speed_y]) >= 0.75/3.6:
                     annotations['3d_labels'][label.id]['dynamic_flag'] = 1
 
         # Iterate over the 2D image labels and if not encountered yet, insert them into annotations otherwise ad the metadata
