@@ -69,6 +69,37 @@ def get_2d_bbox_corners(bbox):
     
     return bbox_corners
 
+
+def get_3d_bbox_coords(bbox3d):
+    x, y, z = bbox3d[0], bbox3d[1], bbox3d[2]
+    length, width, height = bbox3d[3], bbox3d[4], bbox3d[5]
+    heading = bbox3d[-1]
+    
+    # Computes the coordinates of the bbox corners
+    l2 = length/2
+    w2 = width/2
+    h2 = height/2
+    
+    translation = np.array([x,y,z]).reshape(1,3)
+    
+    P1 = np.array([-l2, -w2, -h2]) #BBR (back bottom right)
+    P2 = np.array([-l2, -w2, h2])  #BTR (back top right)
+    P3 = np.array([-l2, w2, h2])   #BTL (back top left)
+    P4 = np.array([-l2, w2, -h2])  #BBL (back bottom left)
+    P5 = np.array([l2, -w2, -h2])  #FBR (front bottom right)
+    P6 = np.array([l2, -w2, h2])   #FTR (front top right)
+    P7 = np.array([l2, w2, h2])    #FTL (front top left)
+    P8 = np.array([l2, w2, -h2])   #FBL (front bottom left)
+
+    # Get the rotation matrix from the heading angle
+    yaw_rotation = R.from_rotvec(heading*np.array([0,0,1])).as_matrix()
+    
+    corners = np.stack([P1,P2,P3,P4,P5,P6,P7,P8], axis=0)
+   
+    corners = np.matmul(yaw_rotation, corners.transpose()).transpose() + translation
+    
+    return corners
+
 def compute_optimal_assignments(corr_2d_3d, corr_3d_2d, cameras):
     optimal_assignments = {}
     # Iterate over the cameras 
