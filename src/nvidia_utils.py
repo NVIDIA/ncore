@@ -7,7 +7,7 @@ from scipy.optimize import curve_fit
 from protos import transform_pb2, camera_calibration_pb2
 from google.protobuf import text_format
 from numpy.polynomial.polynomial import Polynomial
-from src.common import so3_2_axis_angle, axis_angle_2_so3
+from src.common import so3_2_axis_angle, axis_angle_2_so3, PoseInterpolator
 
 def extract_sensor_2_sdc(file_path):
     ''' Extract the sensor to self driving car (SDC) rig transformation parameters 
@@ -442,6 +442,20 @@ def parse_rig_sensors_from_file(rig_fp):
         return transform.astype(np.float32)
 
 
+def rotation_from_eulers(rpy_deg):
+    """Create a 3x3 rigid transformation matrix given euler angles.
+
+    Args:
+        rpy_deg (typing.Sequence[float]): Euler angles as roll, pitch, yaw in degrees.
+
+    Returns:
+        np.array: the constructed transformation matrix.
+    """
+    transform = R.from_euler(
+        seq="xyz", angles=rpy_deg, degrees=True
+    ).as_matrix()
+    return transform.astype(np.float32)
+
 def sensor_to_rig(sensor):
 
     sensor_name = sensor["name"]
@@ -561,6 +575,41 @@ def backwards_polynomial(pixel_norms, intrinsic):
 
     return ret
 
+def pixel_2_camera_ray(pixel_coords, intrinsic, camera_model):
+    ''' Convert the pixel coordinates to a 3D ray in the camera coordinate system.
+
+    Args:
+        pixel_coords (np.array): pixel coordinates of the selected points [n,2]
+        intrinsic (np.array): camera intrinsic parameters (size depends on the camera model)
+        camera_model (string): camera model used for projection. Must be one of ['pinhole', 'f_theta']
+
+    Out:
+        camera_rays (np.array): rays in the camera coordinate system [n,3]
+    ''' 
+
+    camera_rays = np.ones((pixel_coords.shape[0],3))
+
+    if camera_model == 'pinhole':
+        camera_rays[:,0] = (pixel_coords[:,0] + 0.5 - intrinsic[2]) / intrinsic[0]
+        camera_rays[:,1] = (pixel_coords[:,1] + 0.5 - intrinsic[5]) / intrinsic[4]
+
+    elif camera_model == "f_theta":
+        centered_pix_coords = np.ones((pixel_coords.shape[0],2))
+        centered_pix_coords[:,0] = pixel_coords[:,0] + 0.5 - intrinsic[0]
+        centered_pix_coords[:,1] = pixel_coords[:,1] + 0.5 - intrinsic[1]         
+
+        pixel_norms = np.linalg.norm(centered_pix_coords, axis=1, keepdims=True)
+
+        alphas = backwards_polynomial(pixel_norms, intrinsic[4:9])
+        camera_rays[:,0:1] = (np.sin(alphas) * centered_pix_coords[:,0:1]) / pixel_norms 
+        camera_rays[:,1:2] = (np.sin(alphas) * centered_pix_coords[:,1:2]) / pixel_norms 
+        camera_rays[:,2:3] = np.cos(alphas)
+
+        # special case: ray is perpendicular to image plane normal
+        valid = (pixel_norms > np.finfo(np.float32).eps).squeeze()
+        camera_rays[~valid, :] = (0, 0, 1)  # This is what DW sets these rays to
+
+    return camera_rays
 
 def compute_fw_polynomial(intrinsic):
 
@@ -749,3 +798,262 @@ def cuboid_2_verts(cuboid):
     cuboid = rotation.apply(bv) + cuboid[:3]
 
     return cuboid
+
+
+
+
+def pixel_2_camera_ray(pixel_coords, intrinsic, camera_model):
+    ''' Convert the pixel coordinates to a 3D ray in the camera coordinate system.
+
+    Args:
+        pixel_coords (np.array): pixel coordinates of the selected points [n,2]
+        intrinsic (np.array): camera intrinsic parameters (size depends on the camera model)
+        camera_model (string): camera model used for projection. Must be one of ['pinhole', 'f_theta']
+
+    Out:
+        camera_rays (np.array): rays in the camera coordinate system [n,3]
+    ''' 
+
+    camera_rays = np.ones((pixel_coords.shape[0],3))
+
+    if camera_model == 'pinhole':
+        camera_rays[:,0] = (pixel_coords[:,0] + 0.5 - intrinsic[2]) / intrinsic[0]
+        camera_rays[:,1] = (pixel_coords[:,1] + 0.5 - intrinsic[5]) / intrinsic[4]
+
+    elif camera_model == "f_theta":
+        centered_pix_coords = np.ones((pixel_coords.shape[0],2))
+        centered_pix_coords[:,0] = pixel_coords[:,0] + 0.5 - intrinsic[0]
+        centered_pix_coords[:,1] = pixel_coords[:,1] + 0.5 - intrinsic[1]         
+
+        pixel_norms = np.linalg.norm(centered_pix_coords, axis=1, keepdims=True)
+
+        alphas = backwards_polynomial(pixel_norms, intrinsic[4:9])
+        camera_rays[:,0:1] = (np.sin(alphas) * centered_pix_coords[:,0:1]) / pixel_norms 
+        camera_rays[:,1:2] = (np.sin(alphas) * centered_pix_coords[:,1:2]) / pixel_norms 
+        camera_rays[:,2:3] = np.cos(alphas)
+
+        # special case: ray is perpendicular to image plane normal
+        valid = (pixel_norms > np.finfo(np.float32).eps).squeeze()
+        camera_rays[~valid, :] = (0, 0, 1)  # This is what DW sets these rays to
+
+    return camera_rays
+
+
+def pixel_2_world_ray_py(pixel_coords, intrinsic, camera_model, img_height, 
+                         roll_shutter_delay, pix_exp_t, eof_t, poses, pose_t):
+
+    ''' Convert the pixel coordinates to 3D rays in the global coordinate system by compensating for the
+    the rolling shutter.
+
+    Args:
+        pixel_coords (np.array): pixel coordinates of the selected points [n,2]
+        intrinsic (np.array): camera intrinsic parameters (size depends on the camera model)
+        camera_model (string): camera model used for projection. Must be one of ['pinhole', 'f_theta']
+        img_height (float): image hight in pixels
+        roll_shutter_delay (float): time offset between the first and the last row, due to the rolling shutter
+        pix_exp_t (float): exposure time of each row
+        eof_t (float): end of frame timestamp
+        poses (np.array): global to camera transformation matrices used for interpolation (one before and one after) [2,4,4]
+        pose_t (np.array): timestamp of the transformation matrixes [2,4,4]
+    
+    Out:
+        world_rays (np.array): 3d rays in the global coordinate system [n,3]
+    ''' 
+
+    camera_rays = pixel_2_camera_ray(pixel_coords, intrinsic, camera_model)
+
+    pose_interpolator = PoseInterpolator(poses, pose_t.flatten())
+
+    sof_t = eof_t - roll_shutter_delay
+    first_row_t = sof_t - pix_exp_t
+    last_row_t = eof_t - pix_exp_t
+    d_first_last_row  = last_row_t - first_row_t
+
+
+    world_rays = np.zeros((pixel_coords.shape[0], 6))
+    for i in range(camera_rays.shape[0]):
+
+        pix_t = first_row_t + pixel_coords[i,1] * d_first_last_row / (img_height - 1)
+
+        pix_pose = pose_interpolator.interpolate_to_timestamps(pix_t)
+
+        world_rays[i,:3] = pix_pose[0, :3,3, None].transpose()
+        world_rays[i,3:] = (pix_pose[0,:3,:3] @ camera_rays[i:i+1,:].transpose()).transpose()
+
+    world_rays[:,3:] /=  np.linalg.norm(world_rays[:,3:],axis=1, keepdims=True)
+    return world_rays
+
+
+def transform_point_cloud(pc, T):
+    ''' Transform the point cloud with the provided transformation matrix
+    Args:
+        pc (np.array): point cloud coordinates (x,y,z) [n,3]
+        T (np.array): se3 transformation matrix [4,4]
+
+    Out:
+        (np array): transformed point cloud coordinated [n,3]
+    '''
+    return (T[:3,:3] @ pc[:,:3].transpose() + T[:3,3:4]).transpose()
+
+
+def world_points_2_pixel(points, cam_metadata, iterate=False):
+
+    ''' Projects the points in the global coordinate system to the image plane by compensating for the rollign shutter effect 
+        See the https://docs.google.com/document/u/2/d/1hdzTpDlONoltAtvcUh7HFH7qWeyWaRut62H8-jdQ6o0/edit for more information
+        on the rolling shutter times, and its effect on point projection.
+
+    Args:
+        points (np.array): point coordinates in the global coordinate system [n,3]
+        camera_metadata (dict): camera metadata
+    
+    Out:
+        points_img (np.array): pixel coordinates of the image projections [m,2]
+        valid (np.array): array of boolean flags. True for point that project to the image plane
+    '''  
+
+
+    intrinsic = cam_metadata['intrinsic']
+    img_width = cam_metadata['img_width']
+    img_height = cam_metadata['img_height']
+    camera_model = cam_metadata['camera_model']
+    exposure_time = cam_metadata['exposure_time']
+
+    t_sof, t_eof = cam_metadata['ego_pose_timestamps'] 
+    T_global_cam_sof = np.linalg.inv(cam_metadata['T_cam_rig']) @ np.linalg.inv(cam_metadata['ego_pose_s'])
+    T_global_cam_eof = np.linalg.inv(cam_metadata['T_cam_rig']) @ np.linalg.inv(cam_metadata['ego_pose_e'])    
+    pose_interpolator = PoseInterpolator(np.stack([T_global_cam_sof,T_global_cam_eof]), np.array([t_sof, t_eof]))
+
+    # Transform the point cloud to the cam coordinate system based on the last pose
+    points_cam = transform_point_cloud(points, T_global_cam_eof)
+
+    # Preform an initial projection
+    initial_proj, valid_flag = project_camera_rays_2_img(points_cam, cam_metadata)
+    
+    initial_proj = initial_proj[valid_flag,:]
+    valid_pts = points[valid_flag,:]
+    initial_valid_idx = np.where(valid_flag == True)[0]
+
+    # Get the time of the acquisition of the first and last row
+    first_row_t = t_sof + exposure_time/2
+    last_row_t = t_eof - exposure_time/2
+    d_first_last_row  = last_row_t - first_row_t
+
+    optimized_proj = []
+    valid_idx = []
+    trans_matrices = []
+    
+    for pt_idx, point in enumerate(initial_proj):
+        # TODO: ADAPT THIS FOR ALL ROLLING SHUTTER DIRECTIONS
+        t_h = first_row_t + point[1] * d_first_last_row / (img_height - 1)
+
+        k_maxIterNum = 10 # Max 10 iterations
+        k_threshold = 300 # Threshold of 300 ms
+
+        iter_num = 0
+        residual = 5*k_threshold
+        valid = True
+
+        if iterate:
+            while abs(residual) > k_threshold and iter_num < k_maxIterNum and valid:
+                pix_pose = pose_interpolator.interpolate_to_timestamps(t_h)[0]
+
+                tmp_point = transform_point_cloud(valid_pts[pt_idx].reshape(1,-1), pix_pose)
+
+                new_proj, valid_pts = project_camera_rays_2_img(tmp_point, intrinsic, img_width, img_height, camera_model)
+                
+                if new_proj.shape[0] > 0:
+                    residual = t_h - (first_row_t + new_proj[0,1] * d_first_last_row / (img_height - 1))
+                    t_h -= residual/2
+                else:
+                    valid = False
+
+        else:
+            pix_pose = pose_interpolator.interpolate_to_timestamps(t_h)[0]
+            trans_matrices.append(pix_pose)
+            tmp_point = transform_point_cloud(valid_pts[pt_idx].reshape(1,-1), pix_pose)
+
+            # new_proj,_ = project_points_2_img(valid_pts[pt_idx].reshape(1,-1), pix_pose, intrinsic, img_width, img_height)
+            new_proj, _ = project_camera_rays_2_img(tmp_point, cam_metadata)
+
+        if new_proj.shape[0] > 0:
+            optimized_proj.append(new_proj[0])
+            valid_idx.append(initial_valid_idx[pt_idx])
+
+    return np.stack(optimized_proj), np.stack(trans_matrices), np.stack(valid_idx)
+
+
+
+def project_camera_rays_2_img(points, cam_metadata):
+    ''' Projects the points in the camera coordinate system to the image plane
+
+    Args:
+        points (np.array): point coordinates in the camera coordinate system [n,3]
+        intrinsic (np.array): camera intrinsic parameters (size depends on the camera model)
+        img_width (float): image width in pixels
+        img_height (float): image hight in pixels
+        camera_model (string): camera model used for projection. Must be one of ['pinhole', 'f_theta']
+    Out:
+        points_img (np.array): pixel coordinates of the image projections [m,2]
+        valid (np.array): array of boolean flags. True for point that project to the image plane
+    '''  
+
+    intrinsic = cam_metadata['intrinsic']
+    camera_model = cam_metadata['camera_model']
+    img_width = cam_metadata['img_width']
+    img_height = cam_metadata['img_height']
+
+    if camera_model == "pinhole":
+
+        intrinsic = intrinsic.reshape(3,3)
+        points_img = np.matmul(intrinsic, points.transpose()).transpose()
+
+        points_img /= points_img[:,2:]
+
+        x_ok = np.logical_and(0 <= points_img[:, 0], points_img[:, 0] < img_width)
+        y_ok = np.logical_and(0 <= points_img[:, 1], points_img[:, 1] < img_height)
+        valid = np.logical_and(x_ok, y_ok)
+
+        return points_img[valid,:2], valid
+
+    elif camera_model == "f_theta":
+
+        # Initialize the forward polynomial
+        fw_poly = Polynomial(intrinsic[9:14])
+
+        xy_norm = np.zeros((points.shape[0], 1))
+
+        for i, point in enumerate(points):
+            xy_norm[i] = numericallyStable2Norm2D(point[0], point[1])
+
+        cos_alpha = points[:, 2:] / np.linalg.norm(points, axis=1, keepdims=True)
+        alpha = np.arccos(np.clip(cos_alpha, -1 + 1e-7, 1 - 1e-7))
+        delta = np.zeros_like(cos_alpha)
+        valid = alpha <= intrinsic[16]
+
+
+        delta[valid] = fw_poly(alpha[valid])
+
+        # For outside the model (which need to do linear extrapolation)
+        delta[~valid] = (intrinsic[14] + (alpha[~valid] - intrinsic[16]) * intrinsic[15])
+
+        # Determine the bad points with a norm of zero, and avoid division by zero
+        bad_norm = xy_norm <= 0
+        xy_norm[bad_norm] = 1
+        delta[bad_norm] = 0
+
+        # compute pixel relative to center
+        scale = delta / xy_norm
+        pixel = scale * points
+
+        # Handle the edge cases (ray along image plane normal)
+        edge_case_cond = (xy_norm <= 0.0).squeeze()
+        pixel[edge_case_cond, :] = points[edge_case_cond, :]
+        points_img = pixel
+        points_img[:, :2] += intrinsic[0:2]
+
+        x_ok = np.logical_and(0 <= points_img[:, 0], points_img[:, 0] < img_width)
+        y_ok = np.logical_and(0 <= points_img[:, 1], points_img[:, 1] < img_height)
+        valid = np.logical_and(x_ok, y_ok)
+
+
+        return points_img, valid

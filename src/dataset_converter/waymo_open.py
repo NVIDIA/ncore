@@ -189,8 +189,8 @@ class WaymoConverter(DataConverter):
         points_flat = points.flatten()
 
         with open(lidar_save_path,'wb') as f:
-            f.write(struct.pack('>i', points_flat.size)) # Big endian integer number of floats
-            f.write(struct.pack('=%sf' % points_flat.size, *points_flat)) 
+            f.write(struct.pack('<i', points_flat.size)) # Big endian integer number of floats
+            f.write(struct.pack('<%sf' % points_flat.size, *points_flat)) 
 
         # Extract the metadata of the lidar frame
         metadata = {}
@@ -484,8 +484,8 @@ class WaymoConverter(DataConverter):
             with open(lidar_frame,'rb') as f:
                 # The first number denotes the number of points 
                 d = f.read(4)
-                n_pts = struct.unpack('>i', d)[0]
-                lidar_pc = np.array(struct.unpack('=%sf' % n_pts, f.read())).reshape(-1,9)
+                n_pts = struct.unpack('<i', d)[0]
+                lidar_pc = np.array(struct.unpack('<%sf' % n_pts, f.read())).reshape(-1,9)
 
             dynamic_flag = np.zeros(lidar_pc.shape[0])
 
@@ -504,8 +504,8 @@ class WaymoConverter(DataConverter):
             lidar_pc[:,-1] = dynamic_flag
             points_flat = lidar_pc.flatten()
             with open(lidar_frame,'wb') as f:
-                f.write(struct.pack('>i', points_flat.size))
-                f.write(struct.pack('=%sf' % points_flat.size, *points_flat))
+                f.write(struct.pack('<i', points_flat.size))
+                f.write(struct.pack('<%sf' % points_flat.size, *points_flat))
 
     
     def decode_metadata(self, frame, sequence_name):

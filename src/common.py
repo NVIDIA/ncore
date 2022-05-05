@@ -1,5 +1,6 @@
 import pickle 
 import re
+import struct
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 from scipy import spatial, interpolate
@@ -178,6 +179,19 @@ def compute_iou(bbox_1, bbox_2):
         print('wrong')
 
     return np.max([np.min([iou, 1.0]), 0.0])
+
+
+
+def read_pc_dat(file_path):
+
+    with open(file_path,'rb') as f:
+        # The first number denotes the number of points 
+        n_rows, n_columns = struct.unpack('<ii', f.read(8))
+        # The remaining data are floats saved in little endian
+        # Columns contain: x_s, y_s, z_s, x_e, y_e, z_e, d, intensity, dynamic_flag
+        lidar_data = np.array(struct.unpack('<%sf' % (n_rows*n_columns), f.read())).reshape(n_rows, n_columns)
+
+    return lidar_data
 
 
 def points_in_bboxes(points, bboxes):

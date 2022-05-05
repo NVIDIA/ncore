@@ -35,7 +35,7 @@ def run_instance_segmentation(img_folder):
     predictor = DefaultPredictor(cfg)
 
 
-    all_files = sorted(glob.glob(img_folder + '????.jpeg'))
+    all_files = sorted(glob.glob(img_folder + '????.jpg'))
 
 
     for img_name in tqdm(all_files):
