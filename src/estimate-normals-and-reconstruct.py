@@ -95,18 +95,51 @@ def load_fused_pc(path, max_dist=np.inf, start_idx=0, end_idx=-1, ignore_color=F
     return pts, dirs, clrs
 
 
+def trim_surface(points, mesh_v, mesh_f, mesh_n, mesh_c, trim_distance):
+    p = points
+    v, f, n, c = mesh_v, mesh_f, mesh_n, mesh_c
+
+    print("Trimming mesh...")
+    print("Finding nearest neighbor")
+    nn_dist, _ = pcu.k_nearest_neighbors(v, p, k=2)
+    nn_dist = nn_dist[:, 1]
+    print("Stacking faces")
+    f_mask = np.stack([nn_dist[f[:, i]] < trim_distance for i in range(f.shape[1])], axis=-1)
+    print("Filtering faces")
+    f_mask = np.all(f_mask, axis=-1)
+    f_trimmed = f[f_mask]
+
+    return f_trimmed
+
+
 def main():
     argparser = argparse.ArgumentParser()
     argparser.add_argument("lidar_dat_path", type=str)
-    argparser.add_argument("radius", type=int)
-    argparser.add_argument("--mode", type=str, default='knn', help="one of 'knn', 'ball' or 'ball-rbf'")
-    argparser.add_argument("--min-angle-thresh", type=float, default=90.0)
-    argparser.add_argument("--max-dist", type=float, default=np.inf)
-    argparser.add_argument("--start-at", type=int, default=0)
-    argparser.add_argument("--stop-at", type=int, default=-1)
-    argparser.add_argument("--ignore-color", action="store_true")
+    argparser.add_argument("radius", type=float,
+                           help="Number of nearest neighbors to use for normal estimation if --mode is set to 'knn', "
+                                "otherwise the radius to query neighboring points in if --mode is set to "
+                                "'ball' or 'ball-rbf'")
+    argparser.add_argument("--mode", type=str, default='knn',
+                           help="How to collect neighbors to estimate normals. "
+                                "One of: "
+                                "'knn' (use a fixed number of nearest neighbors), "
+                                "'ball' (use all points in a radius around a point), or "
+                                "'ball-rbf' (use all points in a radius around a point and weigh them by a "
+                                "decaying RBF)")
+    argparser.add_argument("--min-angle-thresh", type=float, default=90.0,
+                           help="Drop points whose normal and view direction exceed this value (degrees)")
+    argparser.add_argument("--max-dist", type=float, default=np.inf,
+                           help="Ignore fused points greater than this distance from the ego vehicle.")
+    argparser.add_argument("--start-at", type=int, default=0, help="Start fusing input points at this index")
+    argparser.add_argument("--stop-at", type=int, default=-1, help="Stop fusing input points after this index")
+    argparser.add_argument("--ignore-color", action="store_true",
+                           help="Don't store color information in the reconstruction")
     argparser.add_argument("--spsr-path", type=str, default="./external/AdaptiveSolvers/Bin/Linux/PoissonRecon",
                            help="Path to binary for Screened Poisson Reconstruction")
+    argparser.add_argument("--trim-distance", type=float, default=np.inf,
+                           help="Trim faces from the reconstructed mesh which have a vertex whose nearest neighbor in "
+                                "the input point cloud exceeds this distance "
+                                "(0.225 is a decent starting value for NV lidar data)")
     cmd_args = argparser.parse_args()
 
     if cmd_args.mode not in ['knn', 'ball', 'ball-rbf']:
@@ -126,7 +159,7 @@ def main():
 
     print("Estimating normals...")
     if cmd_args.mode == 'knn':
-        pid, nf = pcu.estimate_point_cloud_normals_knn(p, cmd_args.radius, view_directions=d,
+        pid, nf = pcu.estimate_point_cloud_normals_knn(p, int(cmd_args.radius), view_directions=d,
                                                        drop_angle_threshold=np.deg2rad(cmd_args.min_angle_thresh))
     elif cmd_args.mode == 'ball':
         pid, nf = pcu.estimate_point_cloud_normals_ball(p, cmd_args.radius, view_directions=d,
@@ -155,6 +188,11 @@ def main():
             os.system(f"{cmd_args.spsr_path} --in pc_full.ply --out recon.ply "
                       f"--width 0.1 --density --samplesPerNode 1.0 --colors")
     print("Done!")
+
+    v, f, n, c = pcu.load_mesh_vfnc("recon.ply")
+    f_trimmed = trim_surface(pf, v, f, n, c, cmd_args.trim_distance)
+
+    pcu.save_mesh_vfnc("recon.trimmed.ply", v, f_trimmed, n, c)
 
     
 if __name__ == "__main__":
