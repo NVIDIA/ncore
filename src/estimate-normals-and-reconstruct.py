@@ -49,7 +49,6 @@ def load_dat_rays(dat_file_path, split_arrays=True):
         return lidar_dat
 
 
-
 def read_rays(file_path, ignore_color=True, min_dist=2.75):
     ray_origin, ray_dir, ray_dist, intensity, dynamic_flag, rgb = load_dat_rays(file_path)
     dynamic_flag = dynamic_flag > 0.0
