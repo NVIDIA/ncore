@@ -7,7 +7,9 @@ from scipy.optimize import curve_fit
 from protos import transform_pb2, camera_calibration_pb2
 from google.protobuf import text_format
 from numpy.polynomial.polynomial import Polynomial
-from src.common import so3_2_axis_angle, axis_angle_2_so3, PoseInterpolator
+from src.common import  PoseInterpolator
+from src.transformations import  euler_2_so3, transform_point_cloud, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
+
 
 def extract_sensor_2_sdc(file_path):
     ''' Extract the sensor to self driving car (SDC) rig transformation parameters 
@@ -37,7 +39,8 @@ def extract_sensor_2_sdc(file_path):
     rot_angle = np.array(data.axis_angle.angle_degrees).reshape(-1,1)
 
 
-    return extract_se3_transformations(translation, rot_axis, rot_angle)[0]
+    
+    return axis_angle_trans_2_se3(rot_axis, rot_angle, translation, degrees=True)[0]
 
 
 def extract_camera_calibration(file_path):
@@ -88,228 +91,6 @@ def extract_pose(data, earth_model='WGS84'):
     return lat_lng_alt_2_ecef(lat_lng_alt, rot_axis, rot_angle, earth_model)[0]
 
 
-def local_ENU_2_ECEF_orientation(theta, phi):
-    ''' Computes the rotation matrix between the world_pose and ECEF coordinate system
-    Args:
-        theta (np.array): theta coordinates in radians [n,1]
-        phi (np.array): phi coordinates in radians [n,1]
-    Out:
-        (np.array): rotation from world pose to ECEF in so3 representation [n,3,3]
-    '''
-    z_dir = np.concatenate([(np.sin(theta)*np.cos(phi))[:,None], 
-                            (np.sin(theta)*np.sin(phi))[:,None], 
-                            (np.cos(theta))[:,None] ],axis=1)
-    z_dir = z_dir/np.linalg.norm(z_dir, axis=-1, keepdims=True)
-
-    y_dir = np.concatenate([-(np.cos(theta)*np.cos(phi))[:,None], 
-                            -(np.cos(theta)*np.sin(phi))[:,None], 
-                            (np.sin(theta))[:,None] ],axis=1)
-    y_dir = y_dir/np.linalg.norm(y_dir, axis=-1, keepdims=True)
-
-    x_dir = np.cross(y_dir, z_dir)
-
-    return np.concatenate([x_dir[:,:,None], y_dir[:,:,None], z_dir[:,:,None]], axis = -1)
-
-
-def lat_lng_alt_2_translation_ellipsoidal(lat_lng_alt, a, b):
-    ''' Computes the translation based on the ellipsoidal earth model
-    Args:
-        lat_lng_alt (np.array): latitude, longitude and altitude coordinate (in degrees and meters) [n,3]
-        a (float/double): Semi-major axis of the ellipsoid
-        b (float/double): Semi-minor axis of the ellipsoid
-    Out:
-        (np.array): translation from world pose to ECEF [n,3]
-    '''
-
-    phi =  lat_lng_alt[:, 0] * np.pi/180
-    gamma =  lat_lng_alt[:, 1] * np.pi/180
-
-    cos_phi = np.cos(phi)
-    sin_phi = np.sin(phi)
-    cos_gamma = np.cos(gamma)
-    sin_gamma = np.sin(gamma)
-    e_square = (a * a - b * b) / (a * a)
-
-    N = a / np.sqrt(1 - e_square * sin_phi * sin_phi)
-
-
-    x = (N + lat_lng_alt[:, 2]) * cos_phi * cos_gamma
-    y = (N + lat_lng_alt[:, 2]) * cos_phi * sin_gamma
-    z = (N *  (b*b)/(a*a) + lat_lng_alt[:, 2]) * sin_phi
-
-    return np.concatenate([x[:,None] ,y[:,None], z[:,None]], axis=1 )
-
-def translation_2_lat_lng_alt_spherical(translation, earth_radius):
-    ''' Computes the translation in the ECEF to latitude, longitude, altitude based on the spherical earth model
-    Args:
-        translation (np.array): translation in the ECEF coordinate frame (in meters) [n,3]
-        earth_radius (float/double): earth radius
-    Out:
-        (np.array): latitude, longitude and altitude [n,3]
-    '''
-    altitude = np.linalg.norm(translation, axis=-1) - earth_radius
-    latitude = 90 - np.arccos(translation[:,2] / np.linalg.norm(translation, axis=-1, keepdims=True)) * 180/np.pi
-    longitude =  np.arctan2(translation[:,1],translation[:,0]) * 180/np.pi
-
-    return np.concatenate([latitude[:,None], longitude[:,None], altitude[:,None]], axis=1)
-
-def translation_2_lat_lng_alt_ellipsoidal(translation, a, f):
-    ''' Computes the translation in the ECEF to latitude, longitude, altitude based on the ellipsoidal earth model
-    Args:
-        translation (np.array): translation in the ECEF coordinate frame (in meters) [n,3]
-        a (float/double): Semi-major axis of the ellipsoid
-        f (float/double): flattening factor of the earth
- radius
-    Out:
-        (np.array): latitude, longitude and altitude [n,3]
-    '''
-
-    # Compute support parameters
-    f0 = (1 - f) * (1 - f)
-    f1 = 1 - f0
-    f2 = 1 / f0 - 1
-
-    z_div_1_f =  translation[:,2] / (1 - f)
-    x2y2 = np.square(translation[:,0]) + np.square(translation[:,1])
-
-    x2y2z2 = x2y2 + z_div_1_f*z_div_1_f
-    x2y2z2_pow_3_2 = x2y2z2 * np.sqrt(x2y2z2)
-
-    gamma = (x2y2z2_pow_3_2 + a * f2 * z_div_1_f * z_div_1_f) / (x2y2z2_pow_3_2 - a * f1 * x2y2) *  translation[:,2] / np.sqrt(x2y2)
-
-    longitude = np.arctan2(translation[:,1], translation[:,0]) * 180/np.pi
-    latitude = np.arctan(gamma) * 180/np.pi
-    altitude = np.sqrt(1 + np.square(gamma)) * (np.sqrt(x2y2) - a / np.sqrt(1 + f0 * np.square(gamma)))
-
-    return np.concatenate([latitude[:,None], longitude[:,None], altitude[:,None]], axis=1)
-
-def lat_lng_alt_2_ecef(lat_lng_alt, orientation_axis, orientation_angle, earth_model='WGS84'):
-    ''' Computes the transformation from the world pose coordiante system to the earth centered earth fixed (ECEF) one
-    Args:
-        lat_lng_alt (np.array): latitude, longitude and altitude coordinate (in degrees and meters) [n,3]
-        orientation_axis (np.array): orientation in the local ENU coordinate system [n,3]
-        orientation_angle (np.array): orientation angle of the local ENU coordinate system in degrees [n,1]
-        earth_model (string): earth model used for conversion (spheric will be unaccurate when maps are large)
-    Out:
-        trans (np.array): transformation parameters from world pose to ECEF coordinate system in se3 form (n, 4, 4)
-    '''
-    n = lat_lng_alt.shape[0]
-    trans = np.tile(np.eye(4).reshape(1,4,4),[n,1,1])
-
-    theta = (90. - lat_lng_alt[:, 0]) * np.pi/180
-    phi = lat_lng_alt[:, 1] * np.pi/180
-
-    R_enu_ecef = local_ENU_2_ECEF_orientation(theta, phi)
-
-
-    if earth_model == 'WGS84':
-        a = 6378137.0
-        flattening = 1.0 / 298.257223563
-        b = a * (1.0 - flattening)
-        translation = lat_lng_alt_2_translation_ellipsoidal(lat_lng_alt, a, b)
-
-    elif earth_model == 'sphere':
-        earth_radius = 6378137.0 # Earth radius in meters
-        z_dir =  np.concatenate([(np.sin(theta)*np.cos(phi))[:,None], 
-                            (np.sin(theta)*np.sin(phi))[:,None], 
-                            (np.cos(theta))[:,None] ],axis=1)
-
-        translation = (earth_radius + lat_lng_alt[:, -1])[:,None] * z_dir
-    
-    else:
-        raise ValueError ("Selected ellipsoid not implemented!")
-
-    world_pose_orientation = axis_angle_2_so3(orientation_axis, orientation_angle)
-
-    trans[:,:3,:3] =  R_enu_ecef @ world_pose_orientation
-    trans[:,:3,3] =  translation 
-
-    return trans
-
-
-def ecef_2_lat_lng_alt(trans, earth_model='WGS84'):
-    ''' Converts the transformation from the earth centered earth fixed (ECEF) coordinate frame to the world pose
-    Args:
-        trans (np.array): transformation parameters in ECEF [n,4,4]
-        earth_model (string): earth model used for conversion (spheric will be unaccurate when maps are large)
-    Out:
-        lat_lng_alt (np.array): latitude, longitude and altitude coordinate (in degrees and meters) [n,3]
-        orientation_axis (np.array): orientation in the local ENU coordinate system [n,3]
-        orientation_angle (np.array): orientation angle of the local ENU coordinate system in degrees [n,1]
-    '''
-
-    translation = trans[:,:3,3]
-    rotation = trans[:,:3,:3]
-    
-    if earth_model == 'WGS84':
-        a = 6378137.0
-        flattening = 1.0 / 298.257223563
-        lat_lng_alt = translation_2_lat_lng_alt_ellipsoidal(translation, a, flattening)
-
-    elif earth_model == 'sphere':
-        earth_radius = 6378137.0 # Earth radius in meters
-        lat_lng_alt = translation_2_lat_lng_alt_spherical(translation, earth_radius)
-
-    else:
-        raise ValueError ("Selected ellipsoid not implemented!")
-
-
-    # Compute the orientation axis and angle
-    theta = (90. - lat_lng_alt[:, 0]) * np.pi/180
-    phi = lat_lng_alt[:, 1] * np.pi/180
-
-    R_ecef_enu = local_ENU_2_ECEF_orientation(theta, phi).transpose(0,2,1)
-
-    orientation = R_ecef_enu @ rotation
-    orientation_axis, orientation_angle = so3_2_axis_angle(orientation)
-
-
-    return lat_lng_alt, orientation_axis, orientation_angle
-
-
-def axis_angle_2_quaternion(axis, angle, degrees=True):
-    ''' Converts the axis angle representation of the rotation to a unit quaternion
-    Args:
-        axis (np.array): the rotation axis [n,3]
-        angle float/double: rotation angle either in degrees or radians [n,1]
-        degrees bool: True if angle is given in degrees else False
-
-    Out:
-        (np array): rotation given in unit quaternion [n,4]
-    '''
-    # Treat angle (radians) below this as 0.
-    cutoff_angle = 1e-9 if not degrees else 1e-9*180/np.pi
-    angle[angle < cutoff_angle] = 0.0
-
-    # Scale the axis to have the norm representing the angle
-    axis_angle = (angle/np.linalg.norm(axis, axis=-1, keepdims=True)) * axis
-
-    return R.from_rotvec(axis_angle, degrees=degrees).as_quat()
-
-def extract_se3_transformations(translation, rot_axis, rot_angle, degrees=True):
-    ''' Converts the axis/angle rotation and translation to a se3 transformation matrix
-    Args:
-        translation (np.array): translation vectors (x,y,z) [n,3]
-        axis (np.array): the rotation axes [n,3]
-        angle float/double: rotation angles either in degrees or radians [n,1]
-        degrees bool: True if angle is given in degrees else False
-
-    Out:
-        (np array): transformations in a se3 matrix representation [n,4,4]
-    '''
-
-    n = translation.shape[0]
-
-    # Initialize the matrices
-    trans = np.tile(np.eye(4).reshape(1,4,4),[n,1,1])
-
-    # Fill in with the so3 rotations an translation vectors
-    trans[:,:3,:3] = axis_angle_2_so3(rot_axis, rot_angle, degrees)
-    trans[:,:3,3] = translation
-
-    return trans
-
-
 def get_sensor_to_sensor_flu(sensor):
     """Compute a rotation transformation matrix that rotates sensor to Front-Left-Up format.
 
@@ -330,26 +111,6 @@ def get_sensor_to_sensor_flu(sensor):
         rot = np.eye(4, dtype=np.float32)
 
     return np.asarray(rot, dtype=np.float32)
-
-
-def transform_from_eulers(rpy_deg, translation):
-    """Create a 4x4 rigid transformation matrix given euler angles and translation.
-
-    Args:
-        rpy_deg (Sequence[float]): Euler angles as roll, pitch, yaw in degrees.
-        translation (Sequence[float]): x, y, z translation.
-
-    Returns:
-        np.ndarray: the constructed transformation matrix.
-    """
-    transform = np.eye(4)
-    transform[:3, :3] = R.from_euler(
-        seq="xyz", angles=rpy_deg, degrees=True
-    ).as_matrix()
-    transform[:3, 3] = translation
-
-    return transform.astype(np.float32)
-
 
 def parse_rig_sensors_from_dict(rig):
     """Parses the provided rig dictionary into a dictionary indexed by sensor name.
@@ -383,78 +144,7 @@ def parse_rig_sensors_from_file(rig_fp):
     return parse_rig_sensors_from_dict(rig)
 
 
-# def sensor_to_rig(sensor, ignore_correction_T):
-#     """Parses the provided rig-style transform dictionary into sensor to rig matrices.
 
-#     Args:
-#         sensor (Dict): the dictionary of the transformation values read from
-#             the rig file.
-#         ignore_correction_T (bool): if `True`, the correction translation values in the rig will
-#             be ignored and set to zero.
-
-#     Returns:
-#         sensor_to_rig (np.ndarray): the 4x4 sensor to rig transformation matrix with the correction
-#             factors applied.
-#         nominal_sensor_to_rig (np.ndarray) the nominal 4x4 sensor to rig transformation matrix
-#             without the correction factors.
-#     """
-#     sensor_name = sensor["name"]
-#     sensor_to_FLU = get_sensor_to_sensor_flu(sensor_name)
-
-#     nominal_FLU_to_rig = transform_from_eulers(
-#         sensor["nominalSensor2Rig_FLU"]["roll-pitch-yaw"],
-#         sensor["nominalSensor2Rig_FLU"]["t"],
-#     )
-
-#     # Use or ignore the correction for translation
-#     if "correction_rig_T" in sensor.keys() and not ignore_correction_T:
-#         correction_T = sensor["correction_rig_T"]
-#     else:
-#         correction_T = np.zeros(3, dtype=np.float32)
-
-#     if "correction_sensor_R_FLU" in sensor.keys():
-#         correction_R_FLU = sensor["correction_sensor_R_FLU"]["roll-pitch-yaw"]
-#     else:
-#         correction_R_FLU = [0.0, 0.0, 0.0]
-
-
-#     # Apply the correction 
-
-#     sensor_to_rig = nominal_FLU_to_rig @ correction_transform @ sensor_to_FLU
-#     nominal_sensor_to_rig = nominal_FLU_to_rig @ sensor_to_FLU
-
-#     return sensor_to_rig, nominal_sensor_to_rig
-
-
-    @staticmethod
-    def rotation_from_eulers(rpy_deg: typing.Sequence[float]):
-        """Create a 3x3 rigid transformation matrix given euler angles.
-
-        Args:
-            rpy_deg (typing.Sequence[float]): Euler angles as roll, pitch, yaw in degrees.
-
-        Returns:
-            np.array: the constructed transformation matrix.
-        """
-        transform = R.from_euler(
-            seq="xyz", angles=rpy_deg, degrees=True
-        ).as_matrix()
-        return transform.astype(np.float32)
-
-
-def rotation_from_eulers(rpy_deg):
-    """Create a 3x3 rigid transformation matrix given euler angles.
-
-    Args:
-        rpy_deg (typing.Sequence[float]): Euler angles as roll, pitch, yaw in degrees.
-
-    Returns:
-        np.array: the constructed transformation matrix.
-    """
-    transform = R.from_euler(
-        seq="xyz", angles=rpy_deg, degrees=True
-    ).as_matrix()
-    return transform.astype(np.float32)
 
 def sensor_to_rig(sensor):
 
@@ -475,8 +165,8 @@ def sensor_to_rig(sensor):
         assert "roll-pitch-yaw" in sensor["correction_sensor_R_FLU"].keys(), str(sensor["correction_sensor_R_FLU"])
         correction_R = sensor["correction_sensor_R_FLU"]["roll-pitch-yaw"]
 
-    nominal_R = rotation_from_eulers(nominal_R)
-    correction_R = rotation_from_eulers(correction_R)
+    nominal_R = euler_2_so3(nominal_R)
+    correction_R = euler_2_so3(correction_R)
 
     R = nominal_R @ correction_R
     T =  np.array(nominal_T) + np.array(correction_T)
@@ -779,29 +469,6 @@ def extract_cuboid(cuboid, enlarge_dim=0):
     return np.concatenate((center, dimensions, orientation))
 
 
-def cuboid_2_verts(cuboid):
-    """
-    Converts an ILF cuboid3d object into x,y,z vertex coordiantes.
-    """
-    rotation = R.from_euler('xyz', cuboid[-3:], degrees=False)
-
-    dimensions = cuboid[3:6]
-    bv = np.array([[-dimensions[0] / 2, -dimensions[1] / 2, -dimensions[2] / 2],
-                   [-dimensions[0] / 2, -dimensions[1] / 2, dimensions[2] / 2],
-                   [-dimensions[0] / 2, dimensions[1] / 2, dimensions[2] / 2],
-                   [-dimensions[0] / 2, dimensions[1] / 2, -dimensions[2] / 2],
-                   [dimensions[0] / 2, -dimensions[1] / 2, -dimensions[2] / 2],
-                   [dimensions[0] / 2, -dimensions[1] / 2, dimensions[2] / 2],
-                   [dimensions[0] / 2, dimensions[1] / 2, dimensions[2] / 2],
-                   [dimensions[0] / 2, dimensions[1] / 2, -dimensions[2] / 2]])
-
-    cuboid = rotation.apply(bv) + cuboid[:3]
-
-    return cuboid
-
-
-
-
 def pixel_2_camera_ray(pixel_coords, intrinsic, camera_model):
     ''' Convert the pixel coordinates to a 3D ray in the camera coordinate system.
 
@@ -882,19 +549,6 @@ def pixel_2_world_ray_py(pixel_coords, intrinsic, camera_model, img_height,
 
     world_rays[:,3:] /=  np.linalg.norm(world_rays[:,3:],axis=1, keepdims=True)
     return world_rays
-
-
-def transform_point_cloud(pc, T):
-    ''' Transform the point cloud with the provided transformation matrix
-    Args:
-        pc (np.array): point cloud coordinates (x,y,z) [n,3]
-        T (np.array): se3 transformation matrix [4,4]
-
-    Out:
-        (np array): transformed point cloud coordinated [n,3]
-    '''
-    return (T[:3,:3] @ pc[:,:3].transpose() + T[:3,3:4]).transpose()
-
 
 def world_points_2_pixel(points, cam_metadata, iterate=False):
 

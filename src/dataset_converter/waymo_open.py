@@ -115,6 +115,8 @@ class WaymoConverter(DataConverter):
         # Extract the dynamic masks
         self.extract_dynamic_masks(annotations, sequence_name)
         
+        if self.reconstruct_surface:
+            self.reconstruct_surface(sequence_name)
 
     def decode_poses_timestamps(self, poses, poses_timestamps, camera_timestamps, lidar_timestamps, sequence_name):
         # Stack all the poses
@@ -250,8 +252,7 @@ class WaymoConverter(DataConverter):
             assert metadata['rolling_shutter_direction'] in [1,2,3,4], "Weird rolling shutter direction, aborting"
 
             # Velocity and angular velocity of the SDC at camera pose timestamp.
-            # According to proto both are expressed in the global reference frame, but code hints that the ang. velocity is in SDC frame
-            # TODO: check that the angular velocity is indeed provided in the SDC frame: 
+            # Velocity is provided in the  global reference frame and the ang. velocity is in SDC frame
             # https://github.com/waymo-research/waymo-open-dataset/issues/462
             T_SDC_global = np.array(tf.reshape(tf.constant(image.pose.transform, dtype=tf.float64), [4, 4]))
             velocity_global = np.array([image.velocity.v_x, image.velocity.v_y, image.velocity.v_z]).reshape(3,1)
