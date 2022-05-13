@@ -1,5 +1,6 @@
 from __future__ import annotations
 from collections import defaultdict
+from dependencies.surface_reconstruction.run_surface_reconstruction import load_dat_rays
 from src.dataset_converter import DataConverter
 import tensorflow.compat.v1 as tf        
 tf.enable_eager_execution()
@@ -11,7 +12,7 @@ import struct
 import glob
 from src.waymo_utils import parse_range_image_and_camera_projection, convert_range_image_to_point_cloud, extrapolate_pose_based_on_velocity,\
                             global_vel_to_ref, extract_camera_labels, extract_lidar_labels, extract_projected_labels 
-from src.common import save_pkl, load_pkl, compute_iou, compute_optimal_assignments, get_2d_bbox_corners, points_in_bboxes
+from src.common import save_pkl, load_pkl, load_pc_dat, compute_iou, compute_optimal_assignments, get_2d_bbox_corners, points_in_bboxes
 from PIL import Image
 
 class WaymoConverter(DataConverter):  
@@ -115,8 +116,8 @@ class WaymoConverter(DataConverter):
         # Extract the dynamic masks
         self.extract_dynamic_masks(annotations, sequence_name)
         
-        if self.reconstruct_surface:
-            self.reconstruct_surface(sequence_name)
+        if self.surf_rec_flag:
+            self.run_surface_extraction(sequence_name)
 
     def decode_poses_timestamps(self, poses, poses_timestamps, camera_timestamps, lidar_timestamps, sequence_name):
         # Stack all the poses
@@ -188,11 +189,13 @@ class WaymoConverter(DataConverter):
         # Format; x_s, y_s, z_s, x_e, y_e, z_e, dist, intensity, dynamic flag
         # Dynamic flag is set to -1 if the information is not available, 0 static, 1 = dynamic
         points = np.concatenate((points[:,:6], dist, points[:,6:7], -1*np.ones_like(dist)),axis=1)
+        n_rows, n_columns =  points.shape[0], points.shape[1]
         points_flat = points.flatten()
 
         with open(lidar_save_path,'wb') as f:
-            f.write(struct.pack('<i', points_flat.size)) # Big endian integer number of floats
-            f.write(struct.pack('<%sf' % points_flat.size, *points_flat)) 
+            f.write(struct.pack('<i', n_rows))
+            f.write(struct.pack('<i', n_columns))
+            f.write(struct.pack('<%sf' % points_flat.size, *points_flat))
 
         # Extract the metadata of the lidar frame
         metadata = {}
@@ -482,11 +485,8 @@ class WaymoConverter(DataConverter):
         for lidar_frame in lidar_frames:
             f_idx = int(lidar_frame.split(os.sep)[-1].split('_')[0].split('.')[0])
             # Load the point clouds
-            with open(lidar_frame,'rb') as f:
-                # The first number denotes the number of points 
-                d = f.read(4)
-                n_pts = struct.unpack('<i', d)[0]
-                lidar_pc = np.array(struct.unpack('<%sf' % n_pts, f.read())).reshape(-1,9)
+
+            lidar_pc = load_pc_dat(lidar_frame)
 
             dynamic_flag = np.zeros(lidar_pc.shape[0])
 
@@ -503,9 +503,13 @@ class WaymoConverter(DataConverter):
                     dynamic_flag[bbox_idxs != -1] = 1
 
             lidar_pc[:,-1] = dynamic_flag
+
+            n_rows, n_columns =  lidar_pc.shape[0], lidar_pc.shape[1]
             points_flat = lidar_pc.flatten()
+
             with open(lidar_frame,'wb') as f:
-                f.write(struct.pack('<i', points_flat.size))
+                f.write(struct.pack('<i', n_rows))
+                f.write(struct.pack('<i', n_columns))
                 f.write(struct.pack('<%sf' % points_flat.size, *points_flat))
 
     

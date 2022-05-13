@@ -12,6 +12,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_proc', default=1, help='Number of processes to spawn')
     parser.add_argument('--semantic_seg', action='store_true', help="infer the semantic segmention for all camera images")
     parser.add_argument('--instance_seg', action='store_true', help="infer the instance segmention for all camera images")
+    parser.add_argument('--rec_surface', action='store_true', help="reconstruct the static background mesh")
 
     args = parser.parse_args()
 

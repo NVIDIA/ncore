@@ -7,7 +7,7 @@ from PIL import Image
 from src.nvidia_utils import transform_point_cloud, PoseInterpolator, world_points_2_pixel, project_camera_rays_2_img
 from matplotlib import pyplot as plt
 # from utils import cameraRay2Pixel, rollingShutterProjection
-from src.common import read_pc_dat
+from src.common import load_pc_dat
 import time
 
 def read_image_colors(image_path):
@@ -95,7 +95,7 @@ lidar_timestamps = np.load(os.path.join(root_dir, 'lidar/timestamps.npz'))['fram
 lidar_frame_idx = np.argmin(np.abs(lidar_timestamps - t_eof))
 
 
-pc = read_pc_dat(os.path.join(root_dir, 'lidar', f'{str(lidar_frame_idx).zfill(4)}.dat'))
+pc = load_pc_dat(os.path.join(root_dir, 'lidar', f'{str(lidar_frame_idx).zfill(4)}.dat'))
 pc = pc[:,3:6]
 
 # Project the points without considering rolling shutter

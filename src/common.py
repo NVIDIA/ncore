@@ -27,7 +27,7 @@ def save_pkl(obj, path ):
     with open(path, 'wb') as f:
         pickle.dump(obj, f)
 
-def read_pc_dat(file_path):
+def load_pc_dat(file_path):
 
     with open(file_path,'rb') as f:
         # The first number denotes the number of points 

@@ -7,6 +7,7 @@ from PIL import Image
 import subprocess
 import shutil
 from dependencies.instance_segmentation.run_instance_segmentation import run_instance_segmentation
+from dependencies.surface_reconstruction.run_surface_reconstruction import run_surface_reconstruction
 
 class DataConverter(ABC):
     '''
@@ -24,6 +25,7 @@ class DataConverter(ABC):
         self.image_save_dir       = 'images'
         self.point_cloud_save_dir = 'lidar'
         self.poses_save_dir = 'poses'
+        self.rec_save_dir = 'reconstructed_surface'
 
         self.root_dir = args.root_dir
         self.output_dir = args.output_dir
@@ -31,6 +33,7 @@ class DataConverter(ABC):
 
         self.sem_seg_flag = args.semantic_seg
         self.inst_seg_flag = args.instance_seg
+        self.surf_rec_flag = args.rec_surface
 
         if self.dataset == 'nvidia':        
             self.sequence_pathnames = sorted(glob.glob(os.path.join(self.root_dir, '*/')))
@@ -52,7 +55,7 @@ class DataConverter(ABC):
         if not os.path.isdir(seq_path):
             os.makedirs(seq_path)
 
-        for d in [self.label_save_dir,self.image_save_dir, self.poses_save_dir, self.point_cloud_save_dir]:
+        for d in [self.label_save_dir,self.image_save_dir, self.poses_save_dir, self.point_cloud_save_dir, self.rec_save_dir]:
             if not os.path.isdir(os.path.join(seq_path, d)):
                 os.makedirs(os.path.join(seq_path, d))
 
@@ -123,6 +126,10 @@ class DataConverter(ABC):
             run_instance_segmentation(img_folder)
 
 
+    def run_surface_extraction(self,sequence_name):
+        pc_folder = os.path.join(self.output_dir, sequence_name, self.point_cloud_save_dir)
+        
+        run_surface_reconstruction(pc_folder, self.rec_save_dir)
 
     @abstractmethod
     def convert_one(self, sequence_path):

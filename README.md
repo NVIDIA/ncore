@@ -39,6 +39,14 @@ protoc --python_out=. protos/*.proto
 
 If you do not have the compiler installed on your system please download it from [here](https://developers.google.com/protocol-buffers/docs/downloads).
 
+## Compile the Poissone surface reconstruction
+
+```
+cd dependencies/surface_reconstruction/PoissonRecon
+make -j 8
+cd ../../..
+```
+ 
 ## Download the pretrained weights 
 
 ### Semantic-segmentation
