@@ -170,7 +170,7 @@ def nvidia_2_ngp(args):
         if cam_idx == 0 and export_lidar:
             out_train['lidar'] = []
             # all_lidar = [os.path.join(root_dir, 'configs/lidar', '{}.dat'.format(str(idx).zfill(4)))]
-            camera_timestamps = pickle.load(open((os.path.join(root_dir, 'images//timestamps.pkl')),'rb'))['00']
+            camera_timestamps = pickle.load(open((os.path.join(root_dir, 'images/timestamps.pkl')),'rb'))['00']
             lidar_timestamps = np.load(os.path.join(root_dir, 'lidar/timestamps.npz'))['frame_t']
             start_timestamp = camera_timestamps[start_frame]
             end_timestamp = camera_timestamps[end_frame]

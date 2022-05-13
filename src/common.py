@@ -225,10 +225,10 @@ def is_within_3d_bbox(points, box, normals=None, return_points_in_bbox_frame=Fal
 
     center = box[0:3]
     dim = box[3:6]
-    heading = box[-1]
+    rotation_angles = box[6:9]
 
     # Get the rotation matrix from the heading angle
-    rotation = R.from_rotvec(heading*np.array([0,0,1])).as_matrix()
+    rotation = R.from_euler('xyz', rotation_angles, degrees=False).as_matrix()
 
     # [4, 4]
     transform = rot_trans_2_se3(rotation, center)

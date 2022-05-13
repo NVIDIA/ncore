@@ -73,7 +73,7 @@ class NvidiaConverter(DataConverter):
         self.sequence_name = sequence_path.split(os.sep)[-2]
         
         sequence_tracks = sorted(glob.glob(os.path.join(sequence_path,'tracks','*/')))
-        for track in sequence_tracks[1:]:
+        for track in sequence_tracks:
             
             self.track_name = track.split(os.sep)[-2]
 
@@ -102,9 +102,9 @@ class NvidiaConverter(DataConverter):
 
             self.decode_poses_timestamps() 
 
-            self.decode_labels(sequence_path, annotations, frame_annotations)
+            # self.decode_labels(sequence_path, annotations, frame_annotations)
 
-            self.decode_lidar(sequence_path)
+            # self.decode_lidar(sequence_path)
             
             self.decode_images(sequence_path)
 
@@ -115,17 +115,17 @@ class NvidiaConverter(DataConverter):
         # Extract poses and timestamps, which are converted to the nvidia convention
         if 'lidar_records' in self.track_data:
             for frame in self.track_data['lidar_records'][0]['records']:
-                self.lidar_timestamps.append(frame['timestamp_microseconds'] - 1319179530372780 )
+                self.lidar_timestamps.append(frame['timestamp_microseconds']) # - 1319179530372780 )
                 self.lidar_data_paths.append(frame['file_path'])
 
                 if 'pose' in frame:
-                    self.poses_timestamps.append(frame['timestamp_microseconds'] - 1319179530372780)
+                    self.poses_timestamps.append(frame['timestamp_microseconds']) # - 1319179530372780)
                     self.poses.append(extract_pose(frame['pose']))
 
         if 'camera_records' in self.track_data:
             for frame in self.track_data['camera_records'][0]['records']:
                 if 'pose' in frame:
-                    self.poses_timestamps.append(frame['timestamp_microseconds']  - 1319179530372780)
+                    self.poses_timestamps.append(frame['timestamp_microseconds']) # - 1319179530372780)
                     self.poses.append(extract_pose(frame['pose']))
 
 
@@ -176,16 +176,16 @@ class NvidiaConverter(DataConverter):
             count = 0
             save_frame = 0
             img_height, img_width,  = image.shape[0:2]
-            while success:
-                if frame_timestamps[0,0] <= count <= frame_timestamps[-1,0]:
-                    save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, self.image_save_dir, 'image_' + cam_id, str(save_frame).zfill(4) + '.jpeg')
-                    cv2.imwrite(save_path, image)     # save frame as JPEG file   
-                    save_frame += 1
+            # while success:
+            #     if frame_timestamps[0,0] <= count <= frame_timestamps[-1,0]:
+            #         save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, self.image_save_dir, 'image_' + cam_id, str(save_frame).zfill(4) + '.jpeg')
+            #         cv2.imwrite(save_path, image)     # save frame as JPEG file   
+            #         save_frame += 1
 
-                if count > frame_timestamps[-1,0]:
-                    break
-                success,image = vidcap.read()
-                count += 1
+            #     if count > frame_timestamps[-1,0]:
+            #         break
+            #     success,image = vidcap.read()
+            #     count += 1
 
             # Extract the metadata (get the relative transformation to the lidar sensor as the rig might change                
             T_cam_rig = sensor_to_rig(calibration_data[cam_id_rig])
