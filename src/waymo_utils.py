@@ -14,8 +14,6 @@ def global_vel_to_ref(vel, global_from_ref_rotation):
   return ref
 
 def extract_lidar_labels(frame):
-  """Extract objects."""
-
   pose = np.reshape(np.array(frame.pose.transform), [4, 4])
 
 
@@ -51,7 +49,7 @@ def extract_lidar_labels(frame):
         'label': category_label,
         '3D_bbox': np.array([box.center_x, box.center_y, box.center_z,
                          box.length, box.width, box.height, ref_velocity[0], 
-                         ref_velocity[1], box.heading, 0, 0], dtype=np.float32),
+                         ref_velocity[1], 0, 0, box.heading], dtype=np.float32),
         'num_points':
             num_lidar_points_in_box,
         'detection_difficulty_level':
@@ -400,27 +398,6 @@ def image_to_world_ray_python(image_points, camera_metadata):
 
     return np.vstack(rays)
 
-
-
-
-
-#   // Get normalized coordinate.
-#   if (!ComputeResidualAndJacobian(n_pos_f, t_h, &normalized_coord, &residual,
-#                                   /*jacobian=*/nullptr)) {
-#     return false;
-#   }
-
-#   if (!DirectionToImage(normalized_coord(0), normalized_coord(1), u_d, v_d)) {
-#     return false;
-#   }
-
-#   // If requested, check if the returned pixel is inside the image.
-#   if (check_image_bounds) {
-#     return InImage(*u_d, *v_d);
-#   }
-
-#   return true;
-# }
 
 
 
