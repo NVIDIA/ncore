@@ -414,7 +414,6 @@ class NvidiaConverter(DataConverter):
                     f.write(struct.pack('<i', n_columns))
                     f.write(struct.pack('<%sf' % transformed_pc_flat.size, *transformed_pc_flat))
 
-                # pcu.save_triangle_mesh(lidar_save_path.replace('.dat', '.ply'), v=transformed_pc[:,3:6], vq=transformed_pc[:,-1])
                 frame_idx += 1
 
             except Exception as e: # work on python 3.x
