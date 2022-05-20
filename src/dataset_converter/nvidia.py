@@ -102,30 +102,28 @@ class NvidiaConverter(DataConverter):
 
             self.decode_poses_timestamps() 
 
-            # self.decode_labels(sequence_path, annotations, frame_annotations)
+            self.decode_labels(sequence_path, annotations, frame_annotations)
 
-            # self.decode_lidar(sequence_path)
+            self.decode_lidar(sequence_path)
             
             self.decode_images(sequence_path)
-
-
         
 
     def decode_poses_timestamps(self):
         # Extract poses and timestamps, which are converted to the nvidia convention
         if 'lidar_records' in self.track_data:
             for frame in self.track_data['lidar_records'][0]['records']:
-                self.lidar_timestamps.append(frame['timestamp_microseconds']) # - 1319179530372780 )
+                self.lidar_timestamps.append(frame['timestamp_microseconds']) # - 1319179530439720 )
                 self.lidar_data_paths.append(frame['file_path'])
 
                 if 'pose' in frame:
-                    self.poses_timestamps.append(frame['timestamp_microseconds']) # - 1319179530372780)
+                    self.poses_timestamps.append(frame['timestamp_microseconds']) # - 1319179530439720)
                     self.poses.append(extract_pose(frame['pose']))
 
         if 'camera_records' in self.track_data:
             for frame in self.track_data['camera_records'][0]['records']:
                 if 'pose' in frame:
-                    self.poses_timestamps.append(frame['timestamp_microseconds']) # - 1319179530372780)
+                    self.poses_timestamps.append(frame['timestamp_microseconds']) # - 1319179530439720)
                     self.poses.append(extract_pose(frame['pose']))
 
 
@@ -176,16 +174,16 @@ class NvidiaConverter(DataConverter):
             count = 0
             save_frame = 0
             img_height, img_width,  = image.shape[0:2]
-            # while success:
-            #     if frame_timestamps[0,0] <= count <= frame_timestamps[-1,0]:
-            #         save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, self.image_save_dir, 'image_' + cam_id, str(save_frame).zfill(4) + '.jpeg')
-            #         cv2.imwrite(save_path, image)     # save frame as JPEG file   
-            #         save_frame += 1
+            while success:
+                if frame_timestamps[0,0] <= count <= frame_timestamps[-1,0]:
+                    save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, self.image_save_dir, 'image_' + cam_id, str(save_frame).zfill(4) + '.jpeg')
+                    cv2.imwrite(save_path, image)     # save frame as JPEG file   
+                    save_frame += 1
 
-            #     if count > frame_timestamps[-1,0]:
-            #         break
-            #     success,image = vidcap.read()
-            #     count += 1
+                if count > frame_timestamps[-1,0]:
+                    break
+                success,image = vidcap.read()
+                count += 1
 
             # Extract the metadata (get the relative transformation to the lidar sensor as the rig might change                
             T_cam_rig = sensor_to_rig(calibration_data[cam_id_rig])
@@ -337,10 +335,10 @@ class NvidiaConverter(DataConverter):
                 intensities = np.frombuffer(data.data.intensities, dtype=np.uint8)
 
                 # Save the end time stamp of the lidar spin
-                lidar_end_timestmap.append(data.meta_data.end_timestamp_microseconds - 1319179530372780)
+                lidar_end_timestmap.append(data.meta_data.end_timestamp_microseconds)
 
                 # Find the closest frame in the annotations 
-                time_diff = np.abs(fa_timestamps - (data.meta_data.end_timestamp_microseconds - 1319179530372780))
+                time_diff = np.abs(fa_timestamps - (data.meta_data.end_timestamp_microseconds))
                 annotation_frame_idx = np.argmin(time_diff)
 
                 if time_diff[annotation_frame_idx] > 10000:
@@ -348,7 +346,7 @@ class NvidiaConverter(DataConverter):
                     continue
 
                 #TODO: Talk with deepmap about removing this delta t here that needs to be hardcoded
-                column_timestamps = np.array(data.data.column_timestamps_microseconds) - 1319179530372780
+                column_timestamps = np.array(data.data.column_timestamps_microseconds) - 1319179530439720
                 column_poses = pose_interpolator.interpolate_to_timestamps(column_timestamps)
                 T_lidar_globals = column_poses @ T_lidar_rig[None,:,:]
 
@@ -416,11 +414,11 @@ class NvidiaConverter(DataConverter):
                     f.write(struct.pack('<i', n_columns))
                     f.write(struct.pack('<%sf' % transformed_pc_flat.size, *transformed_pc_flat))
 
-                pcu.save_triangle_mesh(lidar_save_path.replace('.dat', '.ply'), v=transformed_pc[:,3:6], vq=transformed_pc[:,-1])
+                # pcu.save_triangle_mesh(lidar_save_path.replace('.dat', '.ply'), v=transformed_pc[:,3:6], vq=transformed_pc[:,-1])
                 frame_idx += 1
 
             except Exception as e: # work on python 3.x
-                print('Failed to upload to ftp: '+ str(e))
+                print('Lidar frame conversion failed')
 
         # Save all lidar timestamps
         lidar_timestamp_save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, self.point_cloud_save_dir, 'timestamps.npz')
