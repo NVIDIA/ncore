@@ -67,7 +67,7 @@ class DataConverter(ABC):
     def convert(self):
         print("start converting ...")
         with Pool(self.num_proc) as p:
-             r = tqdm.tqdm(p.map(self.convert_one, self.sequence_pathnames[5:6]))
+             r = tqdm.tqdm(p.map(self.convert_one, self.sequence_pathnames))
         print("\nfinished ...")
 
     def run_semantic_segmentation(self, sequence_name):
