@@ -5,12 +5,18 @@ IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC <z
 
 NOTE: This codebase is under active development and the APIs may thus still change. If you build upon this repository, consider forking it to prevent such issues.
 
-
 # Installation 
+
+## Clone repo with submodules
+
+```
+git clone --recursive https://gitlab-master.nvidia.com/zgojcic/drivesim-ai.git
+```
 
 ## Create a virtual environment 
 
 ```
+cd drivesim-ai
 conda create -n drivesim_ai python=3.8
 conda activate drivesim_ai
 pip install --upgrade pip
@@ -20,15 +26,14 @@ pip install 'git+https://github.com/facebookresearch/detectron2.git'
 apt-get install python3-tk
 ```
 
-Install apex as 
+Install `apex` as 
 
 ```
-cd dependencies
-git clone https://github.com/NVIDIA/apex
-cd apex
+cd dependencies/apex
 pip install -v --disable-pip-version-check --no-cache-dir ./
 cd ../..
 ```
+
 ## Compile all the proto files 
 
 Protofiles can be compiled using:

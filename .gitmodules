@@ -1,3 +1,7 @@
-[submodule "dependencies/semantic-segmentation"]
-	path = dependencies/semantic-segmentation
-	url = https://github.com/NVIDIA/semantic-segmentation.git
+[submodule "dependencies/apex"]
+	path = dependencies/apex
+	url = https://github.com/NVIDIA/apex
+
+[submodule "lib/external/numpyeigen"]
+  path = lib/external/numpyeigen
+  url = https://github.com/fwilliams/numpyeigen
