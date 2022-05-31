@@ -23,7 +23,8 @@ pip install --upgrade pip
 pip install -r requirements.txt
 pip install torch==1.10.1+cu111 torchvision==0.11.2+cu111 torchaudio==0.10.1 -f https://download.pytorch.org/whl/torch_stable.html
 pip install 'git+https://github.com/facebookresearch/detectron2.git'
-apt-get install python3-tk
+sudo apt-get install python3-tk
+
 ```
 
 Install `apex` as 
@@ -34,7 +35,7 @@ pip install -v --disable-pip-version-check --no-cache-dir ./
 cd ../..
 ```
 
-## Compile all the proto files 
+## Compile all the `.proto` files 
 
 Protofiles can be compiled using:
 
@@ -44,19 +45,20 @@ protoc --python_out=. protos/*.proto
 
 If you do not have the compiler installed on your system please download it from [here](https://developers.google.com/protocol-buffers/docs/downloads).
 
-## Compile the Poissone surface reconstruction
+## Compile the Poisson surface reconstruction
 
 ```
+sudo apt-get install libpng-dev libjpeg-turbo8-dev
 cd dependencies/surface_reconstruction/PoissonRecon
 make -j 8
 cd ../../..
 ```
  
-## Download the pretrained weights 
+## Download the pre-trained weights 
 
 ### Semantic-segmentation
 
-Download the `cityscapes_ocrnet.HRNet_Mscale_outstanding-turtle.pth` and `hrnetv2_w48_imagenet_pretrained.pth` models from [here])(https://drive.google.com/drive/folders/1fs-uLzXvmsISbS635eRZCc5uzQdBIZ_U) and place them in the `dependencies/semantic-segmentation/pretrained_models/`.
+Download the `cityscapes_ocrnet.HRNet_Mscale_outstanding-turtle.pth` and `hrnetv2_w48_imagenet_pretrained.pth` models from [here])(https://drive.google.com/drive/folders/1fs-uLzXvmsISbS635eRZCc5uzQdBIZ_U) and place them in the `dependencies/semantic_segmentation/pretrained_models/`.
 
 ### Instance-segmentation
 
