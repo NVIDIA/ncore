@@ -1,3 +1,4 @@
+protobuf<4.0
 tensorflow
 waymo-open-dataset-tf-2-5-0
 tqdm
@@ -9,3 +10,4 @@ scikit-image
 protobuf3-to-dict==0.1.5
 pandas
 pyarrow
+point-cloud-utils
