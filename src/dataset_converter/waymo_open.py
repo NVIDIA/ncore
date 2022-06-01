@@ -12,7 +12,7 @@ import struct
 import glob
 from src.waymo_utils import parse_range_image_and_camera_projection, convert_range_image_to_point_cloud, extrapolate_pose_based_on_velocity,\
                             global_vel_to_ref, extract_camera_labels, extract_lidar_labels, extract_projected_labels 
-from src.common import save_pkl, load_pkl, load_pc_dat, compute_iou, compute_optimal_assignments, get_2d_bbox_corners, points_in_bboxes
+from src.common import save_pkl, load_pkl, load_pc_dat, compute_iou, compute_optimal_assignments, get_2d_bbox_corners, points_in_bboxes, MaskImage
 from PIL import Image
 
 class WaymoConverter(DataConverter):  
@@ -181,7 +181,7 @@ class WaymoConverter(DataConverter):
 
         # Initialize the lidar save path
         lidar_save_path =  os.path.join(self.output_dir, sequence_name, 
-                                        self.point_cloud_save_dir, str(f_idx).zfill(4) + '.dat')
+                                        self.point_cloud_save_dir, str(f_idx).zfill(self.INDEX_DIGITS) + '.dat')
         points = points[0]
         dist = np.linalg.norm(points[:,3:6] - points[:,:3],axis=1, keepdims=True)
 
@@ -274,7 +274,7 @@ class WaymoConverter(DataConverter):
     
             img_save_path =  os.path.join(self.output_dir, sequence_name, 
                              self.image_save_dir, 'image_{}'.format(self.CAMERA_2_IDTYPERIG[image.name][0]), 
-                             str(f_idx).zfill(4) + '.jpeg')
+                             str(f_idx).zfill(self.INDEX_DIGITS) + '.jpeg')
             im.save(img_save_path)
     
             save_pkl(metadata, img_save_path.replace('.jpeg','.pkl'))
@@ -313,7 +313,7 @@ class WaymoConverter(DataConverter):
         }
 
         anno_save_path =  os.path.join(self.output_dir, sequence_name, 
-                                self.label_save_dir, str(f_idx).zfill(4) + '.pkl')
+                                self.label_save_dir, str(f_idx).zfill(self.INDEX_DIGITS) + '.pkl')
 
         save_pkl(frame_annotations, anno_save_path)
 
@@ -440,7 +440,6 @@ class WaymoConverter(DataConverter):
         Args:
             annotations (dict): Dictionary of annotations for the whole sequence
             sequence_name (string): unique identifier of the sequence
-
         """
 
         # Extract the motion segmented images 
@@ -448,7 +447,8 @@ class WaymoConverter(DataConverter):
 
         for img_folder in img_folders:
             cam = 'cam_{}'.format(img_folder.split('_')[-1][:-1])
-            frames = sorted(glob.glob(os.path.join(img_folder, '????.jpeg')))
+            frames = sorted(glob.glob(os.path.join(
+                img_folder, f"{'?'*self.INDEX_DIGITS}.jpeg")))
 
             for frame_path in frames:
                 img = np.array(Image.open(frame_path))
@@ -467,12 +467,12 @@ class WaymoConverter(DataConverter):
                         bbox_corners = get_2d_bbox_corners(bbox)
                         cv2.fillPoly(mask, np.int32([bbox_corners]), (255,255,255) )
 
-
-                bool_mask = mask[:,:,0].astype(bool)
-                bool_img = Image.fromarray(bool_mask)
-                bool_img.save(os.path.join(img_folder, 'dynamic_mask_{}.jpeg'.format(str(f_idx).zfill(4))), bits=1,optimize=True)
-
-
+                # store mask image with masked dynamic objects 
+                # (we don't require other mask types like ego-masks as the ego-vehicle is not visible in waymo data)
+                bool_dynamic_mask = mask[:,:,0].astype(bool)
+                mask_image = MaskImage(bool_dynamic_mask.shape, 
+                                       initial_masks=[(bool_dynamic_mask, MaskImage.MaskType.DYNAMIC)])
+                mask_image.get_image().save(os.path.join(img_folder, f'mask_{str(f_idx).zfill(self.INDEX_DIGITS)}.png'), optimize=True)
 
         # Add the motion flag the to the lidar points
         dynamic_bbox = {}

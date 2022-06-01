@@ -1,7 +1,9 @@
 import pickle 
 import re
 import struct
+from enum import Enum
 import numpy as np
+from PIL import Image
 from scipy.spatial.transform import Rotation as R
 from scipy import spatial, interpolate
 from scipy.optimize import linear_sum_assignment
@@ -262,3 +264,78 @@ def is_within_3d_bbox(points, box, normals=None, return_points_in_bbox_frame=Fal
         else:
             return points_in_box_frames[point_in_box,:]
 
+
+class MaskImage:
+    """
+    Image encoding *per-pixel* annotation mask types:
+
+        - dynamic [255, 255, 255] - e.g., dynamic vehicles / objects
+        - ego     [0, 255, 0] - pixels corresponding to projections of the ego vehicle
+    
+    Properties can be set using binary input images. A pixel can only have a single property assigned.
+    Output images are represented using color pallets to reduce memory footprints.
+    """
+
+    class MaskType(Enum):
+        """ Enumerates supported mask types """
+        NONE = 0
+        DYNAMIC = 1
+        EGO = 2
+
+    # Define colors of mask types
+    mask_colors = {MaskType.NONE: [0, 0, 0],
+                   MaskType.DYNAMIC: [255, 255, 255],
+                   MaskType.EGO: [0, 0, 255]}
+    # Initialize color pallet with all color entries
+    palette = [] + mask_colors[MaskType.NONE] + \
+        mask_colors[MaskType.DYNAMIC] + \
+        mask_colors[MaskType.EGO]
+
+    def __init__(self,
+                 shape,
+                 initial_masks=None):
+        """
+        Initializes a MaskImage object to a given mask shape with optional initial masks
+        Args:
+            shape: array shape corresponding to image (height, width)
+            initial_masks:if provided, an iterable of [(binary_mask, MaskType), ...] tuples to initialize the mask image with in order
+        """
+        # initialize empty mask array corresponding to NONE type of appropriate type
+        self.mask_array = np.full(
+            shape, MaskImage.MaskType.NONE.value, dtype=np.uint8)
+
+        # apply initial masks if available
+        if initial_masks:
+            for initial_mask in initial_masks:
+                self.set(*initial_mask)
+
+    def set(self, binary_mask, mask_type):
+        """
+        Sets the mask type of all enabled pixels in the binary_mask to mask_type.
+        Args:
+            binary_mask: 2D binary array of same shape as underlying image.
+            mask_type: the MaskType to set the pixels to
+        """
+        assert isinstance(binary_mask, np.ndarray), "expecting array as input"
+        assert isinstance(
+            mask_type, MaskImage.MaskType), "expecting MaskType as input"
+        assert binary_mask.dtype is np.dtype(
+            'bool'), "expecting binary array as input"
+        assert binary_mask.shape == self.mask_array.shape, f"invalid array resolution, expecting shape {self.mask_array.shape}"
+
+        # set new values for masked pixels
+        self.mask_array[binary_mask] = mask_type.value
+
+    def get_image(self):
+        """
+        Returns the color-paletted mask image with all mask types set
+        Returns:
+            mask_image: mask image with all pixel colors set to the corresponding mask types
+        """
+        # convert mask array to image
+        mask_image = Image.fromarray(self.mask_array, mode='P')
+
+        # apply color palette
+        mask_image.putpalette(self.palette)
+
+        return mask_image

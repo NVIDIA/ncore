@@ -12,7 +12,7 @@ from copy import deepcopy
 import glob
 
 
-def run_instance_segmentation(img_folder):
+def run_instance_segmentation(all_files):
     cfg = get_cfg()
     best_model_config = 'dependencies/instance_segmentation/configs/InstanceSegmentation/pointrend_rcnn_X_101_32x8d_FPN_3x_coco.yaml'
     use_point_rend = True
@@ -34,10 +34,6 @@ def run_instance_segmentation(img_folder):
         
     predictor = DefaultPredictor(cfg)
 
-
-    all_files = sorted(glob.glob(img_folder + '????.jpg'))
-
-
     for img_name in tqdm(all_files):
         frame_num = img_name.split(os.sep)[-1].split('.')[0]
         input_image = cv2.imread(img_name)
@@ -45,4 +41,4 @@ def run_instance_segmentation(img_folder):
         car_bbox = output['instances'].pred_boxes.tensor[output['instances'].pred_classes==2].cpu().numpy()
         car_mask = output['instances'].pred_masks[output['instances'].pred_classes==2].cpu().numpy()
 
-        np.savez_compressed(os.path.join(img_folder, 'inst_seg_{}.npz'.format(frame_num)), car_bbox = car_bbox, car_mask = car_mask)
+        np.savez_compressed(os.path.join(os.path.dirname(img_name), 'inst_seg_{}.npz'.format(frame_num)), car_bbox = car_bbox, car_mask = car_mask)

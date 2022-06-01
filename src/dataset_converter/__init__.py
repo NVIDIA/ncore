@@ -19,6 +19,8 @@ class DataConverter(ABC):
     IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC zgojcic@nvidia.com. 
     '''  
 
+    INDEX_DIGITS = 6 # the number of integer digits to pad counters in output filenames to
+
     def __init__(self, args):
         self.dataset = args.dataset
         self.label_save_dir       = 'labels'
@@ -74,7 +76,7 @@ class DataConverter(ABC):
         img_folders = glob.glob(os.path.join(self.output_dir, sequence_name, self.image_save_dir) + '/*/')
         
         for img_folder in img_folders:
-            imgs = sorted(glob.glob(img_folder + '????.jpeg'))
+            imgs = sorted(glob.glob(img_folder + f"{'?'*self.INDEX_DIGITS}.jpeg"))
 
             # Create a temporary folder 
             if not os.path.exists(os.path.join(img_folder, 'tmp_img')):
@@ -101,7 +103,7 @@ class DataConverter(ABC):
             cmd = 'python dependencies/semantic-segmentation/train.py ' + args
             subprocess.Popen(cmd, shell=True).wait()
 
-            predictions = sorted(glob.glob(os.path.join(img_folder, 'tmp_img','semantic_seg','best_images', '????_prediction.png')))
+            predictions = sorted(glob.glob(os.path.join(img_folder, 'tmp_img','semantic_seg','best_images', f"{'?'*self.INDEX_DIGITS}_prediction.png")))
 
             assert len(predictions) == len(img_res), "Number of semantic segmentation predictions is not the same as the number of input images"
 
@@ -123,7 +125,7 @@ class DataConverter(ABC):
         img_folders = glob.glob(os.path.join(self.output_dir, sequence_name, self.image_save_dir) + '/*/')
         
         for img_folder in img_folders:
-            run_instance_segmentation(img_folder)
+            run_instance_segmentation(sorted(glob.glob(img_folder + f"{'?'*self.INDEX_DIGITS}.jpeg")))
 
 
     def run_surface_extraction(self,sequence_name):

@@ -5,8 +5,10 @@ import numpy as np
 import cv2
 from protos import track_data_pb2, pointcloud_pb2
 from protobuf_to_dict import protobuf_to_dict
-from src.nvidia_utils import compute_ftheta_parameters, extract_pose, extract_sensor_2_sdc, parse_rig_sensors_from_file, sensor_to_rig, camera_intrinsic_parameters, compute_fw_polynomial
-from src.common import PoseInterpolator
+from src.nvidia_utils import (compute_ftheta_parameters, extract_pose, extract_sensor_2_sdc,
+                              parse_rig_sensors_from_file, sensor_to_rig, camera_intrinsic_parameters, compute_fw_polynomial,
+                              camera_car_mask)
+from src.common import (PoseInterpolator, MaskImage)
 from lib import unwind_lidar
 import glob
 import struct
@@ -14,6 +16,7 @@ from pyarrow.parquet import ParquetDataset
 from collections import defaultdict
 from src.common import save_pkl, load_pkl, points_in_bboxes
 import point_cloud_utils as pcu
+
 
 class NvidiaConverter(DataConverter):
     def __init__(self, args):
@@ -74,7 +77,6 @@ class NvidiaConverter(DataConverter):
         
         sequence_tracks = sorted(glob.glob(os.path.join(sequence_path,'tracks','*/')))
         for track in sequence_tracks:
-            
             self.track_name = track.split(os.sep)[-2]
 
             # create all the folders
@@ -159,6 +161,10 @@ class NvidiaConverter(DataConverter):
         # Filter the images based on the pose timestamps
         for camera in self.CAMERA_2_IDTYPERIG.keys():
             cam_id, cam_type, cam_id_rig = self.CAMERA_2_IDTYPERIG[camera]
+
+            # Target folder for all camera-specific outputs
+            camera_base_save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, self.image_save_dir, 'image_' + cam_id)
+
             # Get the camera timestamps
             frame_timestamps = np.genfromtxt(os.path.join(sequence_path, 'camera_data/', camera + '.mp4.timestamps'), delimiter='\t', dtype=int)
 
@@ -176,7 +182,7 @@ class NvidiaConverter(DataConverter):
             img_height, img_width,  = image.shape[0:2]
             while success:
                 if frame_timestamps[0,0] <= count <= frame_timestamps[-1,0]:
-                    save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, self.image_save_dir, 'image_' + cam_id, str(save_frame).zfill(4) + '.jpeg')
+                    save_path = os.path.join(camera_base_save_path, str(save_frame).zfill(self.INDEX_DIGITS) + '.jpeg')
                     cv2.imwrite(save_path, image)     # save frame as JPEG file   
                     save_frame += 1
 
@@ -203,8 +209,13 @@ class NvidiaConverter(DataConverter):
 
             cam_pose_interpolator = PoseInterpolator(self.poses, self.poses_timestamps)
 
+            # Constant mask image, which currently only contains the ego car mask
+            # TODO: extend this with dynamic object masks
+            mask_image = camera_car_mask(calibration_data[cam_id_rig])
+
             for frame_idx, frame in enumerate(frame_timestamps):
-    
+                mask_image.get_image().save(os.path.join(camera_base_save_path, f'mask_{str(frame_idx).zfill(self.INDEX_DIGITS)}.png'), optimize=True)
+
                 metadata = {}
                 metadata['img_width'] = img_width
                 metadata['img_height'] = img_height
@@ -221,7 +232,7 @@ class NvidiaConverter(DataConverter):
                 metadata['ego_pose_s'] = cam_pose_interpolator.interpolate_to_timestamps(sofTimestamp)[0]
                 metadata['ego_pose_e'] = cam_pose_interpolator.interpolate_to_timestamps(eofTimestamp)[0]
     
-                metadata_save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, self.image_save_dir, 'image_' + cam_id, str(frame_idx).zfill(4) + '.pkl')
+                metadata_save_path = os.path.join(camera_base_save_path, str(frame_idx).zfill(self.INDEX_DIGITS) + '.pkl')
 
                 save_pkl(metadata, metadata_save_path)
 
@@ -370,7 +381,7 @@ class NvidiaConverter(DataConverter):
                 
                 # Save the per frame label 
                 anno_save_path =  os.path.join(self.output_dir, self.sequence_name, self.track_name,
-                        self.label_save_dir, str(frame_idx).zfill(4) + '.pkl')
+                        self.label_save_dir, str(frame_idx).zfill(self.INDEX_DIGITS) + '.pkl')
 
                 save_pkl(frame_annotations[fa_timestamps[annotation_frame_idx]], anno_save_path)
  
@@ -407,7 +418,7 @@ class NvidiaConverter(DataConverter):
                 n_rows, n_columns =  transformed_pc.shape[0], transformed_pc.shape[1]
                 transformed_pc_flat = transformed_pc.flatten()
                 
-                lidar_save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, self.point_cloud_save_dir, str(frame_idx).zfill(4) + '.dat')
+                lidar_save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, self.point_cloud_save_dir, str(frame_idx).zfill(self.INDEX_DIGITS) + '.dat')
                 
                 with open(lidar_save_path,'wb') as f:
                     f.write(struct.pack('<i', n_rows))
