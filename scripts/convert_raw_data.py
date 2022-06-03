@@ -8,6 +8,7 @@ sys.path.append('./')
 from src.dataset_converter import DataConverter
 from src.dataset_converter.waymo_open import WaymoConverter
 from src.dataset_converter.nvidia import NvidiaConverter
+from src.dataset_converter.nvidia_maglev import NvidiaMaglevConverter
 
 
 @click.group()
@@ -56,6 +57,15 @@ def nvidia(ctx, *_, **kwargs):
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
     NvidiaConverter(config).convert()
+
+
+@cli.command()
+@click.pass_context
+def nvidia_maglev(ctx, *_, **kwargs):
+    """NVIDIA-specific data conversion (based on Maglev data extraction)"""
+    config = ctx.obj  # Extend base config with command-specific options
+    config += kwargs
+    NvidiaMaglevConverter(config).convert()
 
 
 if __name__ == '__main__':

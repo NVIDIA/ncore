@@ -8,7 +8,7 @@ from protobuf_to_dict import protobuf_to_dict
 from src.nvidia_utils import (compute_ftheta_parameters, extract_pose, extract_sensor_2_sdc,
                               parse_rig_sensors_from_file, sensor_to_rig, camera_intrinsic_parameters, compute_fw_polynomial,
                               camera_car_mask)
-from src.common import (PoseInterpolator, MaskImage)
+from src.common import PoseInterpolator
 from lib import unwind_lidar
 import glob
 import struct
