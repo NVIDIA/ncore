@@ -129,7 +129,7 @@ class DataConverter(ABC):
     def run_surface_extraction(self,sequence_name):
         pc_folder = os.path.join(self.output_dir, sequence_name, self.point_cloud_save_dir)
         
-        run_surface_reconstruction(pc_folder, self.rec_save_dir)
+        run_surface_reconstruction(pc_folder, os.path.join(self.output_dir, sequence_name, self.rec_save_dir))
 
     @abstractmethod
     def convert_one(self, sequence_path):

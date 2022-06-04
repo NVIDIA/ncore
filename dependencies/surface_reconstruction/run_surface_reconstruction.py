@@ -160,7 +160,7 @@ def run_surface_reconstruction(lidar_dat_path, ouput_path, max_dist=60, start_at
     v, f, n, c = pcu.load_mesh_vfnc(temp_rec_path)
     f_trimmed = trim_surface(pf, v, f, n, c, trim_distance)
 
-    output_rec_path = os.path.join(output_rec_path, 'reconstructed_mesh.ply')
+    output_rec_path = os.path.join(ouput_path, 'reconstructed_mesh.ply')
     pcu.save_mesh_vfnc(output_rec_path, v, f_trimmed, n, c)
 
     # Clean up the temp files
