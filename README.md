@@ -27,6 +27,13 @@ sudo apt-get install python3-tk
 
 ```
 
+Build the `av_utils` package with: 
+```angular2html
+cd lib/
+python setup.py develop
+cd ..
+```
+
 Install `apex` as 
 
 ```
