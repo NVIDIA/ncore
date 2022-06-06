@@ -1,4 +1,5 @@
 import json
+import base64
 import numpy as np
 from protos import transform_pb2, camera_calibration_pb2
 from google.protobuf import text_format
@@ -7,9 +8,9 @@ from scipy.optimize import curve_fit
 from protos import transform_pb2, camera_calibration_pb2
 from google.protobuf import text_format
 from numpy.polynomial.polynomial import Polynomial
-from src.common import  PoseInterpolator
+from src.common import  PoseInterpolator, MaskImage
 from src.transformations import  euler_2_so3, transform_point_cloud, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
-
+from PIL import Image
 
 def extract_sensor_2_sdc(file_path):
     ''' Extract the sensor to self driving car (SDC) rig transformation parameters 
@@ -144,8 +145,6 @@ def parse_rig_sensors_from_file(rig_fp):
     return parse_rig_sensors_from_dict(rig)
 
 
-
-
 def sensor_to_rig(sensor):
 
     sensor_name = sensor["name"]
@@ -181,15 +180,17 @@ def sensor_to_rig(sensor):
 
 
 def camera_intrinsic_parameters(sensor):
-    """Parses the provided rig-style transform dictionary into camera intrinsic parameters.
+    """Parses the provided rig-style camera sensor dictionary into FTheta camera intrinsic parameters.
 
     Args:
         sensor (Dict): the dictionary of the transformation values read from
             the rig file.
     Returns:
-        intrinsic (np.ndarray): the 3x4 camera intrinsic matrix (last column contains width, height)
+        intrinsic (np.ndarray): array of FTheta intrinsics [cx, cy, width, height, [bwpoly]] 
     """
-    sensor_name = sensor['name']
+
+    assert sensor['properties']['Model'] == 'ftheta', "unsupported camera model (only supporting FTheta)"
+
     cx = float(sensor['properties']['cx'])
     cy = float(sensor['properties']['cy'])
     width = float(sensor['properties']['width'])
@@ -201,6 +202,89 @@ def camera_intrinsic_parameters(sensor):
     intrinsic = [cx, cy, width, height] + bwpoly
 
     return np.array(intrinsic, dtype=float)
+
+
+def camera_car_mask(sensor, scale_to_source_resolution=True):
+    """Parses a camera car-mask image from a rig-style camera sensor dictionary.
+
+       Supports car masks encoded in 
+         - 'data/rle16-base64' (base64 string encoding of a 16bit RLE compression)
+       formats
+
+    Args:
+        sensor (Dict): the dictionary of the camera sensor read from a rig file.
+        scale_to_source_resolution (Bool): whether to re-scale the mask to the original sensor resolution (default = True)
+    Returns:
+        car_mask_image (MaskImage): mask image encoding the ego-vehicle pixels
+    """
+
+    ## Make sure this is a camera sensor that has an associated car-mask
+    assert 'protocol' in sensor and sensor['protocol'].startswith(
+        'camera'), "provided sensor is not a camera sensor"
+    assert 'car-mask' in sensor, "provided camera sensor is missing an associated 'car-mask'"
+
+    ## Make sure we know how to load the data
+    car_mask_obj = sensor['car-mask']
+    assert 'data/rle16-base64' in car_mask_obj, "unsupported car-mask encoding"
+    assert 'resolution' in car_mask_obj, "car-mask is missing image resolution"
+
+    ## Load the data
+    resolution = np.array(car_mask_obj['resolution'])
+    rle16_base64 = car_mask_obj['data/rle16-base64']
+
+    # Decode base64 part
+    rle16 = np.frombuffer(base64.b64decode(rle16_base64), dtype=np.uint8)
+
+    # Decode rle-16 compression
+    RLE_COUNT_BYTES = 16 // 8
+    RLE_COUNT_TYPE = np.uint16
+    assert len(rle16) % (RLE_COUNT_BYTES +
+                         1) == 0, "decoded base64 string is not a valid rle16 compression"
+
+    # allocate raw output buffer
+    decoded_rle16 = np.empty(resolution[0]*resolution[1], dtype=np.uint8)
+
+    # undo run-length encoding
+    with np.nditer(rle16) as input_it:
+        decoded_rle16_position = 0
+        count_buffer = np.empty(RLE_COUNT_BYTES, dtype=np.uint8)
+        while not input_it.finished:
+            # parse count
+            for i in range(RLE_COUNT_BYTES):
+                count_buffer[i] = input_it.value
+                input_it.iternext()
+
+            count = count_buffer.view(dtype=RLE_COUNT_TYPE)[0]
+
+            # parse value
+            value = input_it.value
+            input_it.iternext()
+
+            # output 'value' for count times
+            decoded_rle16[decoded_rle16_position:
+                          decoded_rle16_position + count] = value
+            decoded_rle16_position += count
+
+        assert len(decoded_rle16) == decoded_rle16_position, "RLE decoding "
+        "resulted in non-consistent number of elements relative to expected buffer size"
+
+    # binary array in input mask resolution (True indicates pixels observing the ego-vehicle)
+    car_mask = decoded_rle16.reshape(resolution[1], resolution[0]) == 0
+
+    if scale_to_source_resolution:
+        # rescale to original resolution (DW makes sure that the downscaled mask 
+        # is an even subsampling of the original camera resolution)
+        width, height = camera_intrinsic_parameters(
+            sensor)[[2, 3]].astype(np.int32) # load original sensor resolution
+
+        car_mask_image = Image.fromarray(car_mask).resize((width, height)) # convert to image and perform nearest-neighor resampling
+
+        car_mask = np.array(car_mask_image) # convert back to binary array, now in original sensor resolution
+
+    # convert to mask image
+    car_mask_image = MaskImage(car_mask.shape, initial_masks=[(car_mask, MaskImage.MaskType.EGO)])
+
+    return car_mask_image
 
 
 def get_rig_info(json_path, camera_folder_list = None):
