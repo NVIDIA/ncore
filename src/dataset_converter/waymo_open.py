@@ -126,7 +126,7 @@ class WaymoConverter(DataConverter):
         # Stack all the poses
         poses = np.stack(poses)
         poses_timestamps = np.stack(poses_timestamps)
-        sort_idx = np.argsort(poses_timestamps)
+        sort_idx = np.argsort(poses_timestamps).astype(np.int64)
 
         # All the available poses
         poses = poses[sort_idx]
@@ -138,7 +138,7 @@ class WaymoConverter(DataConverter):
         np.savez(poses_save_path, ego_poses=poses, timestamps=poses_timestamps)
 
         # Stack the lidar timestamps
-        lidar_timestamps = np.stack(lidar_timestamps)
+        lidar_timestamps = np.stack(lidar_timestamps).astype(np.int64)
         lidar_t_save_path =  os.path.join(self.output_dir, sequence_name, 
                         self.point_cloud_save_dir, 'timestamps.npz')
         np.savez(lidar_t_save_path, timestamps=lidar_timestamps)
@@ -251,7 +251,7 @@ class WaymoConverter(DataConverter):
             metadata['img_width'] = calib.width
             metadata['img_height'] = calib.height
             # Timestamps of the ego_pose_s and ego_pose_e defined below
-            metadata['ego_pose_timestamps'] = np.array([image.camera_trigger_time, image.camera_readout_done_time])
+            metadata['ego_pose_timestamps'] = np.array([image.camera_trigger_time * 1e6, image.camera_readout_done_time * 1e6], dtype=np.int64)
             metadata['exposure_time'] = image.shutter
 
             # Rolling shutter directions expressed as an integer
@@ -272,8 +272,8 @@ class WaymoConverter(DataConverter):
             omega_global = np.matmul(T_SDC_global[:3,:3], omega_vehicle)
 
             # Extrapolate the pose to the start and end timestamp of the image frame considering the (angular) velocity at the time of the acquisition
-            metadata['ego_pose_s'] = extrapolate_pose_based_on_velocity(T_SDC_global,velocity_global, omega_global, metadata['ego_pose_timestamps'][0] - image.pose_timestamp)
-            metadata['ego_pose_e'] = extrapolate_pose_based_on_velocity(T_SDC_global,velocity_global, omega_global, metadata['ego_pose_timestamps'][1] - image.pose_timestamp)
+            metadata['ego_pose_s'] = extrapolate_pose_based_on_velocity(T_SDC_global,velocity_global, omega_global, image.camera_trigger_time - image.pose_timestamp)
+            metadata['ego_pose_e'] = extrapolate_pose_based_on_velocity(T_SDC_global,velocity_global, omega_global, image.camera_readout_done_time - image.pose_timestamp)
         
             # Save the camera pose timestamps, corresponds approximately to the timestamp of the principle point pixel
             camera_timestamps[self.CAMERA_2_IDTYPERIG[image.name][0]].append(image.pose_timestamp * 1e6)

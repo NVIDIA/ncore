@@ -41,7 +41,7 @@ def cameraRay2Pixel(cameraPoints, camera_metadata):
     return av_utils._cameraRay2Pixel(cameraPoints, intrinsic, img_width, img_height, camera_model)
 
 
-def rollingShutterProjection(points, camera_metadata, iterate=False):
+def rollingShutterProjection(points, camera_metadata, iter=1):
 
     # Initialize the parameters
     intrinsic   = np.array(camera_metadata['intrinsic']).reshape(1,-1)
@@ -49,9 +49,8 @@ def rollingShutterProjection(points, camera_metadata, iterate=False):
     img_height  = camera_metadata['img_height']
     img_width  = camera_metadata['img_width']
     exposure_time   = camera_metadata['exposure_time']
-    rolling_shutter_delay   = camera_metadata['rolling_shutter_delay']
-    pose_timestamps =  np.array(camera_metadata['ego_pose_timestamps']).reshape(1,-1)
-    t_eof = camera_metadata['t_eof']
+    rs_direction   = camera_metadata['rolling_shutter_direction']
+    ego_pose_timestamps =  np.array(camera_metadata['ego_pose_timestamps']).reshape(1,-1).astype(np.float64)
 
     # Extract the poses 
     ego_pose_s = camera_metadata['ego_pose_s'] # These are ego poses in the rig coordinate system
@@ -62,16 +61,11 @@ def rollingShutterProjection(points, camera_metadata, iterate=False):
                         np.linalg.inv(T_cam_rig) @ np.linalg.inv(ego_pose_e)], axis=0)
 
 
-    pixel_coords, trans_matrices, valid_idx = av_utils._rollingShutterProjection(points, intrinsic, img_height, img_width, 
-                        rolling_shutter_delay, exposure_time, t_eof, poses, pose_timestamps, camera_model, iterate)
+    pixel_coords, trans_matrices, valid_proj, initial_valid_idx = av_utils._rollingShutterProjection(points, intrinsic, img_height, img_width, 
+                        rs_direction, exposure_time, poses, ego_pose_timestamps, camera_model, iter)
 
-    # Filter out points behind the camera
-    frontIdx = np.where(pixel_coords[:,2] > 0.0)[0]
+    valid_idx = initial_valid_idx[valid_proj]
+    pixel_coords = pixel_coords[valid_proj,:]
+    trans_matrices = trans_matrices.reshape(-1,4,4)[valid_proj,:,:]
 
-    # Image coordinate check
-    pixelcoordIdx = np.where(np.logical_and(np.logical_and(0.0 < pixel_coords[:,0], pixel_coords[:,0] < img_width),
-                                            np.logical_and(0.0 < pixel_coords[:,1], pixel_coords[:,1] < img_height)))[0]
-
-    finalIdx = np.intersect1d(frontIdx,pixelcoordIdx)
-
-    return pixel_coords[finalIdx,:2], trans_matrices.reshape(-1,4,4)[finalIdx], valid_idx[finalIdx]
+    return pixel_coords, trans_matrices, valid_idx

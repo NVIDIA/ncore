@@ -219,7 +219,7 @@ class NvidiaConverter(DataConverter):
                 metadata = {}
                 metadata['img_width'] = img_width
                 metadata['img_height'] = img_height
-                metadata['rolling_shutter_direction'] = 1
+                metadata['rolling_shutter_direction'] = 1 # 1 = TOP_TO_BOTTOM, 2 = LEFT_TO_RIGHT, 3 = BOTTOM_TO_TOP, 4 = RIGHT_TO_LEFT
                 metadata['camera_model'] = 'f_theta' if cam_type in ['wide', 'fisheye'] else 'pinhole'
                 metadata['exposure_time'] = self.CAM2EXPOSURETIME[cam_type]
                 metadata['intrinsic'] = intrinsic

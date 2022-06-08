@@ -1,5 +1,6 @@
 *.pkl
 *.pth
+*.so
 logs/
 __pycache__/
 lib/external/.cache/

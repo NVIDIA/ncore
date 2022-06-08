@@ -1,5 +1,6 @@
 import json
 import base64
+from math import ceil
 import numpy as np
 from protos import transform_pb2, camera_calibration_pb2
 from google.protobuf import text_format
@@ -634,7 +635,7 @@ def pixel_2_world_ray_py(pixel_coords, intrinsic, camera_model, img_height,
     world_rays[:,3:] /=  np.linalg.norm(world_rays[:,3:],axis=1, keepdims=True)
     return world_rays
 
-def world_points_2_pixel(points, cam_metadata, iterate=False):
+def world_points_2_pixel_py(points, cam_metadata, iterate=False):
 
     ''' Projects the points in the global coordinate system to the image plane by compensating for the rollign shutter effect 
         See the https://docs.google.com/document/u/2/d/1hdzTpDlONoltAtvcUh7HFH7qWeyWaRut62H8-jdQ6o0/edit for more information
@@ -650,68 +651,52 @@ def world_points_2_pixel(points, cam_metadata, iterate=False):
     '''  
 
 
-    intrinsic = cam_metadata['intrinsic']
     img_width = cam_metadata['img_width']
     img_height = cam_metadata['img_height']
-    camera_model = cam_metadata['camera_model']
     exposure_time = cam_metadata['exposure_time']
+    rs_direction = cam_metadata['rolling_shutter_direction']
+
 
     t_sof, t_eof = cam_metadata['ego_pose_timestamps'] 
     T_global_cam_sof = np.linalg.inv(cam_metadata['T_cam_rig']) @ np.linalg.inv(cam_metadata['ego_pose_s'])
     T_global_cam_eof = np.linalg.inv(cam_metadata['T_cam_rig']) @ np.linalg.inv(cam_metadata['ego_pose_e'])    
-    pose_interpolator = PoseInterpolator(np.stack([T_global_cam_sof,T_global_cam_eof]), np.array([t_sof, t_eof]))
+    pose_interpolator = PoseInterpolator(np.stack([T_global_cam_sof, T_global_cam_eof]), np.array([t_sof, t_eof]))
 
     # Transform the point cloud to the cam coordinate system based on the last pose
-    points_cam = transform_point_cloud(points, T_global_cam_eof)
+    points_cam = transform_point_cloud(points, (T_global_cam_eof + T_global_cam_sof)/2)
 
     # Preform an initial projection
-    initial_proj, valid_flag = project_camera_rays_2_img(points_cam, cam_metadata)
+    initial_proj, initial_valid_idx = project_camera_rays_2_img(points_cam, cam_metadata)
     
-    initial_proj = initial_proj[valid_flag,:]
-    valid_pts = points[valid_flag,:]
-    initial_valid_idx = np.where(valid_flag == True)[0]
+    initial_proj = initial_proj[initial_valid_idx,:]
+    valid_pts = points[initial_valid_idx,:]
 
-    # Get the time of the acquisition of the first and last row
-    first_row_t = t_sof + exposure_time/2
-    last_row_t = t_eof - exposure_time/2
-    d_first_last_row  = last_row_t - first_row_t
+    # Get the time of the acquisition of the first and last row/column
+    first_t = t_sof + exposure_time/2
+    last_t = t_eof - exposure_time/2
+    dt_first_last  = last_t - first_t
 
     optimized_proj = []
     valid_idx = []
     trans_matrices = []
     
+    # TODO: IMPLEMENT ITERATIVE APPROACH ()
     for pt_idx, point in enumerate(initial_proj):
-        # TODO: ADAPT THIS FOR ALL ROLLING SHUTTER DIRECTIONS
-        t_h = first_row_t + point[1] * d_first_last_row / (img_height - 1)
-
-        k_maxIterNum = 10 # Max 10 iterations
-        k_threshold = 300 # Threshold of 300 ms
-
-        iter_num = 0
-        residual = 5*k_threshold
-        valid = True
-
-        if iterate:
-            while abs(residual) > k_threshold and iter_num < k_maxIterNum and valid:
-                pix_pose = pose_interpolator.interpolate_to_timestamps(t_h)[0]
-
-                tmp_point = transform_point_cloud(valid_pts[pt_idx].reshape(1,-1), pix_pose)
-
-                new_proj, valid_pts = project_camera_rays_2_img(tmp_point, intrinsic, img_width, img_height, camera_model)
-                
-                if new_proj.shape[0] > 0:
-                    residual = t_h - (first_row_t + new_proj[0,1] * d_first_last_row / (img_height - 1))
-                    t_h -= residual/2
-                else:
-                    valid = False
-
+        # TODO: ADAPT THIS FOR ALL ROLLING SHUTTER DIRECTIONS (not a priority as all datasets up to now have either 1 or 2)
+        if rs_direction == 1:
+            t_h = first_t + np.floor(point[1]) * dt_first_last / (img_height - 1)
+        elif rs_direction == 2:
+            t_h = first_t + np.floor(point[0]) * dt_first_last / (img_width - 1)
+        elif rs_direction == 4:
+            t_h = first_t + (img_width - np.ceil(point[0])) * dt_first_last / (img_width - 1)
         else:
-            pix_pose = pose_interpolator.interpolate_to_timestamps(t_h)[0]
-            trans_matrices.append(pix_pose)
-            tmp_point = transform_point_cloud(valid_pts[pt_idx].reshape(1,-1), pix_pose)
+            raise ValueError(f'Rolling shutter direction {rs_direction} not valid or not implemented.')
 
-            # new_proj,_ = project_points_2_img(valid_pts[pt_idx].reshape(1,-1), pix_pose, intrinsic, img_width, img_height)
-            new_proj, _ = project_camera_rays_2_img(tmp_point, cam_metadata)
+        pix_pose = pose_interpolator.interpolate_to_timestamps(t_h)[0]
+        trans_matrices.append(pix_pose)
+        tmp_point = transform_point_cloud(valid_pts[pt_idx].reshape(1,-1), pix_pose)
+
+        new_proj, _ = project_camera_rays_2_img(tmp_point, cam_metadata)
 
         if new_proj.shape[0] > 0:
             optimized_proj.append(new_proj[0])
@@ -742,16 +727,47 @@ def project_camera_rays_2_img(points, cam_metadata):
 
     if camera_model == "pinhole":
 
-        intrinsic = intrinsic.reshape(3,3)
-        points_img = np.matmul(intrinsic, points.transpose()).transpose()
+        # Camera coordinates system is FLU and image is RDF
+        normalized_points = -points[:,1:3] / points[:,0:1]
+        f_u, f_v, c_u, c_v, k1, k2, k3, k4, k5 = intrinsic
+        u_n = normalized_points[:,0]
+        v_n = normalized_points[:,1]
 
-        points_img /= points_img[:,2:]
+        r2 = np.square(u_n) + np.square(v_n)
+        r4 = r2 * r2
+        r6 = r4 * r2
 
-        x_ok = np.logical_and(0 <= points_img[:, 0], points_img[:, 0] < img_width)
-        y_ok = np.logical_and(0 <= points_img[:, 1], points_img[:, 1] < img_height)
-        valid = np.logical_and(x_ok, y_ok)
+        r_d = 1.0 + k1 * r2 + k2 * r4 + k5 * r6
 
-        return points_img[valid,:2], valid
+        # If the radial distortion is too large, the computed coordinates will be unreasonable
+        kMinRadialDistortion = 0.8
+        kMaxRadialDistortion = 1.2
+
+        invalid_idx = np.where(np.logical_or(np.less_equal(r_d,kMinRadialDistortion),np.greater_equal(r_d,kMaxRadialDistortion)))[0]
+
+        u_nd = u_n * r_d + 2.0 * k3 * u_n * v_n + k4 * (r2 + 2.0 * u_n * u_n)
+        v_nd = v_n * r_d + k3 * (r2 + 2.0 * v_n * v_n) + 2.0 * k4 * u_n * v_n
+
+        u_d = u_nd * f_u + c_u
+        v_d = v_nd * f_v + c_v
+
+        valid_flag = np.ones_like(u_d)
+        valid_flag[points[:,0] <0] = 0
+
+        # Replace the invalid ones
+        r2_sqrt_rcp = 1.0 / np.sqrt(r2)
+        clipping_radius = np.sqrt(img_width**2 + img_height**2)
+        u_d[invalid_idx] = u_n[invalid_idx] * r2_sqrt_rcp[invalid_idx] * clipping_radius + c_u
+        v_d[invalid_idx] = v_n[invalid_idx] * r2_sqrt_rcp[invalid_idx] * clipping_radius + c_v
+        valid_flag[invalid_idx] = 0
+
+        # Change the flags of the pixels that project outside of an image
+        valid_flag[u_d < 0 ] = 0
+        valid_flag[v_d < 0 ] = 0
+        valid_flag[u_d > img_width] = 0
+        valid_flag[v_d > img_height] = 0
+
+        return np.concatenate((u_d[:,None], v_d[:,None]),axis=1),  np.where(valid_flag == 1)[0]
 
     elif camera_model == "f_theta":
 
@@ -789,9 +805,10 @@ def project_camera_rays_2_img(points, cam_metadata):
         points_img = pixel
         points_img[:, :2] += intrinsic[0:2]
 
+        # Mark the points that do not fall on the camera plane as invalid
         x_ok = np.logical_and(0 <= points_img[:, 0], points_img[:, 0] < img_width)
         y_ok = np.logical_and(0 <= points_img[:, 1], points_img[:, 1] < img_height)
-        valid = np.logical_and(x_ok, y_ok)
+        z_ok = points_img[:,2] > 0.0
+        valid = np.logical_and(np.logical_and(x_ok, y_ok), z_ok)
 
-
-        return points_img, valid
+        return points_img, np.where(valid==True)[0]
