@@ -20,7 +20,8 @@ import point_cloud_utils as pcu
 
 class NvidiaConverter(DataConverter):
     def __init__(self, config):
-        self.CAM2EXPOSURETIME = {'wide': 1506.99, 'fisheye': 10987.00}
+        # TODO: the value for the 70FoV wide camera seems to be different, we need to clarify
+        self.CAM2EXPOSURETIME = {'wide': 1641.58, 'fisheye': 10987.00} 
 
         self.CAM2ROLLINGSHUTTERDELAY = {'wide': 31611.55, 'fisheye': 32561.63}
 
@@ -109,7 +110,15 @@ class NvidiaConverter(DataConverter):
             self.decode_lidar(sequence_path)
             
             self.decode_images(sequence_path)
-        
+
+            # Perform instance and semantic segmentation of all the images
+            if self.sem_seg_flag:
+                self.run_semantic_segmentation(os.path.join(self.sequence_name, self.track_name))   
+
+            # Tracks are far to big to do this for the whole track
+            # TODO: talk about the strategy here, do we want to maybe chunk this?
+            if self.surf_rec_flag:
+                self.run_surface_extraction(os.path.join(self.sequence_name, self.track_name))     
 
     def decode_poses_timestamps(self):
         # Extract poses and timestamps, which are converted to the nvidia convention
@@ -226,8 +235,8 @@ class NvidiaConverter(DataConverter):
                 metadata['T_cam_rig'] = T_cam_rig
 
                 # Interpolate the start and end pose to the timestamps of the first and last row
-                sofTimestamp = frame[1] - self.CAM2ROLLINGSHUTTERDELAY[cam_type] - self.CAM2EXPOSURETIME[cam_type]
-                eofTimestamp = frame[1]
+                sofTimestamp = frame[1] - self.CAM2ROLLINGSHUTTERDELAY[cam_type] - self.CAM2EXPOSURETIME[cam_type] / 2
+                eofTimestamp = frame[1] - self.CAM2EXPOSURETIME[cam_type] / 2
                 metadata['ego_pose_timestamps'] = np.array([sofTimestamp, eofTimestamp])
                 metadata['ego_pose_s'] = cam_pose_interpolator.interpolate_to_timestamps(sofTimestamp)[0]
                 metadata['ego_pose_e'] = cam_pose_interpolator.interpolate_to_timestamps(eofTimestamp)[0]
@@ -357,7 +366,7 @@ class NvidiaConverter(DataConverter):
                     continue
 
                 #TODO: Talk with deepmap about removing this delta t here that needs to be hardcoded
-                column_timestamps = np.array(data.data.column_timestamps_microseconds) - 1319179530439720
+                column_timestamps = np.array(data.data.column_timestamps_microseconds)
                 column_poses = pose_interpolator.interpolate_to_timestamps(column_timestamps)
                 T_lidar_globals = column_poses @ T_lidar_rig[None,:,:]
 
@@ -432,4 +441,4 @@ class NvidiaConverter(DataConverter):
 
         # Save all lidar timestamps
         lidar_timestamp_save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, self.point_cloud_save_dir, 'timestamps.npz')
-        np.savez(lidar_timestamp_save_path, frame_t=lidar_end_timestmap)
+        np.savez(lidar_timestamp_save_path, timestamps=lidar_end_timestmap)

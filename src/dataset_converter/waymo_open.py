@@ -251,7 +251,7 @@ class WaymoConverter(DataConverter):
             metadata['img_width'] = calib.width
             metadata['img_height'] = calib.height
             # Timestamps of the ego_pose_s and ego_pose_e defined below
-            metadata['ego_pose_timestamps'] = np.array([image.camera_trigger_time * 1e6, image.camera_readout_done_time * 1e6], dtype=np.int64)
+            metadata['ego_pose_timestamps'] = np.array([(image.camera_trigger_time + image.shutter/2) * 1e6 , (image.camera_readout_done_time - image.shutter/2) * 1e6], dtype=np.int64)
             metadata['exposure_time'] = image.shutter
 
             # Rolling shutter directions expressed as an integer
@@ -272,8 +272,8 @@ class WaymoConverter(DataConverter):
             omega_global = np.matmul(T_SDC_global[:3,:3], omega_vehicle)
 
             # Extrapolate the pose to the start and end timestamp of the image frame considering the (angular) velocity at the time of the acquisition
-            metadata['ego_pose_s'] = extrapolate_pose_based_on_velocity(T_SDC_global,velocity_global, omega_global, image.camera_trigger_time - image.pose_timestamp)
-            metadata['ego_pose_e'] = extrapolate_pose_based_on_velocity(T_SDC_global,velocity_global, omega_global, image.camera_readout_done_time - image.pose_timestamp)
+            metadata['ego_pose_s'] = extrapolate_pose_based_on_velocity(T_SDC_global,velocity_global, omega_global, (image.camera_trigger_time + image.shutter / 2) - image.pose_timestamp)
+            metadata['ego_pose_e'] = extrapolate_pose_based_on_velocity(T_SDC_global,velocity_global, omega_global, (image.camera_readout_done_time - image.shutter/2) - image.pose_timestamp)
         
             # Save the camera pose timestamps, corresponds approximately to the timestamp of the principle point pixel
             camera_timestamps[self.CAMERA_2_IDTYPERIG[image.name][0]].append(image.pose_timestamp * 1e6)
