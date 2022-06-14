@@ -3,26 +3,24 @@ import point_cloud_utils as pcu
 import numpy as np
 import struct
 import random
-from PIL import Image
 import os
 import pickle
+import glob
+from PIL import Image
+
+import sys
+sys.path.append('./')
 from lib import image_to_world_ray
 
 def generate_colored_pclouds(args, cam_id):
-
     vertices, faces = pcu.load_mesh_vf(os.path.join(args.root_dir,'reconstructed_surface', "reconstructed_mesh.ply" ))
     output_dir = os.path.join(args.root_dir, 'color_point_clouds', f'image_{cam_id}') if not args.output_dir else os.path.join(args.output_dir, f'image_{cam_id}')
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    for frame_idx in range(args.start_at, args.stop_at, args.step):
-
-        data_path = os.path.join(args.root_dir,f'images/image_{cam_id}', str(frame_idx).zfill(args.index_digits) +'.pkl')
-        if not os.path.exists(data_path):
-            print(f"Frame {frame_idx} does not exist. Skipping it.")
-            continue
-
+    for data_path in \
+            sorted(glob.glob(os.path.join(args.root_dir, f'images/image_{cam_id}', f"{'?'*args.index_digits}.pkl")))[args.start_at:args.stop_at:args.step]:
         # Load the image metadata and compute the world rays (considering rolling shutter parameters)
         with open(data_path, 'rb') as img_file:
             metadata = pickle.load(img_file)

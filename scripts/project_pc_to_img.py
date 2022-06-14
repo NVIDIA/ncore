@@ -3,16 +3,17 @@ import os
 import glob
 import random
 import numpy as np
+import argparse
+import time
 from PIL import Image
+from matplotlib import pyplot as plt 
+
+import sys
+sys.path.append('./')
 from src.nvidia_utils import (transform_point_cloud, PoseInterpolator, world_points_2_pixel_py, project_camera_rays_2_img)
 from src.visualization import plot_points_on_image
 from src.common import load_pc_dat
 from lib import rollingShutterProjection
-from matplotlib import pyplot as plt 
-import argparse
-
-import time
-
 
 NV_CAMERAS = ['00','01','02','03','04','05','10','11','12','13'] 
 WAYMO_CAMERAS = ['00','01','02','03','04']

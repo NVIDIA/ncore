@@ -1,6 +1,7 @@
 #include <npe.h>
 #include <Eigen/Dense>
 #include <iomanip>
+#include <array>
 
 const char* lidarUnwinding_doc = R"igl_Qu8mg5v7(
 Unwind the lidar point cloud
@@ -27,23 +28,37 @@ npe_begin_code()
         unwoundPC.template block(i,3,1,3) = transformedPoint.transpose();
     }
 
-
     return npe::move(unwoundPC); 
 
 npe_end_code()
 
 
+// Evaluates a polynomial (of degree DEGREE) given it's coefficients at a specific point)
+// using numerically stable Horner-scheme (https://en.wikipedia.org/wiki/Horner%27s_method)
+template<size_t DEGREE, typename Scalar>
+Scalar evaluatePolynomialHornerScheme(Scalar x,
+                                      std::array<Scalar, DEGREE+1> const& coefficients)
+{
+      auto ret = Scalar{0};
+      for(auto it = coefficients.rbegin(); it != coefficients.rend(); ++it)
+      {
+          ret = ret * x + *it;
+      }
+      return ret;
+}
+
 template <typename Derived, typename Derived1, typename Derived2>
 void computeBackwardsPolynomial(const Eigen::MatrixBase<Derived>& pixelNorms, 
                                 const Eigen::MatrixBase<Derived1>& cameraIntrinsic,
                                 Eigen::MatrixBase<Derived2>& alphas){
-
-    // Iterate over all the pixels and evaluate the polynomial
+    // Iterate over all the pixels and evaluate the backwards polynomial
     for (int i = 0; i < pixelNorms.rows(); i++)
     {
-        auto r = pixelNorms(i,0);
-        alphas(i,0) = cameraIntrinsic(0, 4) + cameraIntrinsic(0, 5) * r + cameraIntrinsic(0, 6) * r * r + 
-                        cameraIntrinsic(0, 7) * r * r * r  + cameraIntrinsic(0, 8) *r * r * r * r;
+        auto const r = pixelNorms(i,0);
+        alphas(i, 0) = evaluatePolynomialHornerScheme<4U>(
+            r, {cameraIntrinsic(0, 4), cameraIntrinsic(0, 5),
+                cameraIntrinsic(0, 6), cameraIntrinsic(0, 7),
+                cameraIntrinsic(0, 8)});
     }
 }
 
@@ -51,13 +66,14 @@ template <typename Derived, typename Derived1, typename Derived2>
 void computeForwardPolynomial(const Eigen::MatrixBase<Derived>& alphas, 
                               const Eigen::MatrixBase<Derived1>& cameraIntrinsic,
                               Eigen::MatrixBase<Derived2>& delta){
-
-    // Iterate over all the pixels and evaluate the polynomial
+    // Iterate over all the angles and evaluate the forward polynomial
     for (int i = 0; i < alphas.rows(); i++)
     {
-        auto r = alphas(i,0);
-        delta(i,0) = cameraIntrinsic(0, 9) + cameraIntrinsic(0, 10) * r + cameraIntrinsic(0, 11) * r * r +
-                        cameraIntrinsic(0, 12) * r * r * r  + cameraIntrinsic(0, 13) *r * r * r * r;
+        auto const r = alphas(i,0);
+        delta(i, 0)  = evaluatePolynomialHornerScheme<4U>(
+            r, {cameraIntrinsic(0, 9), cameraIntrinsic(0, 10),
+                cameraIntrinsic(0, 11), cameraIntrinsic(0, 12),
+                cameraIntrinsic(0, 13)});
     }
 }
 
@@ -68,7 +84,6 @@ static void iteraitiveUndistortPoints(const Eigen::MatrixBase<Derived>& src,
                                       const double eps = 1e-12)
 
 {
-    
     const double k_0 = cameraIntrinsic(0,4);
     const double k_1 = cameraIntrinsic(0,5);
     const double k_2 = cameraIntrinsic(0,6);
@@ -136,12 +151,9 @@ void cameraToWorldRay(const Eigen::MatrixBase<Derived>& pixelCoordinates,
         double endPoseTimestamp = poseTimestamps(0,1);
         double deltaTimeFirstLast  = endPoseTimestamp - startPoseTimestamp;
 
-
-
-        // Iterate over the pixels and transform the rats to the world coordinate system
+        // Iterate over the pixels and transform the rays to the world coordinate system
         for (int i = 0; i < cameraRays.rows(); i++)
         {
-        
             double projTimestamp;
             switch(rollingShutterDirection)
             {
@@ -161,7 +173,6 @@ void cameraToWorldRay(const Eigen::MatrixBase<Derived>& pixelCoordinates,
 
             double projDeltaT = (projTimestamp - startPoseTimestamp) / deltaTimeFirstLast;
 
-
             // Interpolate the pose
             Eigen::Matrix<double,3,1> translation = (1 - projDeltaT) * startTrans.array() + projDeltaT * endTrans.array();
             Eigen::Quaterniond Rot = startRot.slerp(projDeltaT,endRot);
@@ -177,7 +188,6 @@ void pixelToCameraRay(Eigen::MatrixBase<Derived>& pixelCoordinates,
                       Eigen::MatrixBase<Derived1>& cameraIntrinsic,
                       std::string cameraModel,
                       Eigen::MatrixBase<Derived2>& cameraRays){
-
     if (cameraModel == "pinhole") 
     {
         // Compute the x and y coordinate according to the pinhole camera model, z is already set to one
@@ -189,12 +199,9 @@ void pixelToCameraRay(Eigen::MatrixBase<Derived>& pixelCoordinates,
 
             cameraRays.row(i) << pixelCoordinates(i,2), -worldRay(0,0)*pixelCoordinates(i,2), -worldRay(0,1)*pixelCoordinates(i,2);
         }
-
-
     } 
     else if (cameraModel == "f_theta") 
     {
-
         // Compute the x and y coordinate according to the f_theta camera model, z is already set to one
         Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> centeredPixelCoordinates;
         centeredPixelCoordinates.resize(pixelCoordinates.rows(), pixelCoordinates.cols());
@@ -213,9 +220,10 @@ void pixelToCameraRay(Eigen::MatrixBase<Derived>& pixelCoordinates,
         computeBackwardsPolynomial(pixelNorms, cameraIntrinsic, alphas);
 
         // Compute the ray direction
-        cameraRays.col(0) = alphas.array().sin() * centeredPixelCoordinates.array().col(0) / pixelNorms.array();
-        cameraRays.col(1) = alphas.array().sin() * centeredPixelCoordinates.array().col(1) / pixelNorms.array();
-        cameraRays.col(2) = alphas.array().cos();
+        Eigen::Array<double, Eigen::Dynamic, 1> alphaSines = alphas.array().sin();
+        cameraRays.col(0) = alphaSines * centeredPixelCoordinates.array().col(0) / pixelNorms.array();
+        cameraRays.col(1) = alphaSines * centeredPixelCoordinates.array().col(1) / pixelNorms.array();
+        cameraRays.col(2) = (alphaSines.square() - 1.0).sqrt();
 
         // Handle the rays perpendicular to the image plane
         for(int i=0; i < cameraRays.rows(); i++){
@@ -253,7 +261,6 @@ void numericallyStable2Norm2D(const Eigen::MatrixBase<Derived>& camPoints,
     }
 }
 
-
 // Transform the camera rays to the world coordinate system by considering the rolling shutter effect
 template <typename Derived, typename Derived1, typename Derived2, typename Derived3>
 void cameraRayToPixel(const Eigen::MatrixBase<Derived>& cameraPoints,
@@ -266,16 +273,12 @@ void cameraRayToPixel(const Eigen::MatrixBase<Derived>& cameraPoints,
 
     if (cameraModel == "pinhole") 
     {
-
         Eigen::Array<double, Eigen::Dynamic, 1> uNormalized = -cameraPoints.col(1).array() / cameraPoints.col(0).array();
         Eigen::Array<double, Eigen::Dynamic, 1> vNormalized = -cameraPoints.col(2).array() / cameraPoints.col(0).array();
 
-
+        // Evaluate polynomial using robust Horner scheme (inside-out)
         Eigen::Array<double, Eigen::Dynamic, 1> r2 = uNormalized * uNormalized + vNormalized * vNormalized;
-        Eigen::Array<double, Eigen::Dynamic, 1> r4 = r2 * r2;
-        Eigen::Array<double, Eigen::Dynamic, 1> r6 = r4 * r2;
-
-        Eigen::Array<double, Eigen::Dynamic, 1> rD = 1.0 + cameraIntrinsic(0,4) * r2 + cameraIntrinsic(0,5)*r4 + cameraIntrinsic(0,8)*r6;
+        Eigen::Array<double, Eigen::Dynamic, 1> rD = 1.0 + r2 * (cameraIntrinsic(0,4) + r2 * (cameraIntrinsic(0,5) + r2 * cameraIntrinsic(0,8)));
 
         // If the radial distortion is too large, the computed coordinates will be unreasonable
         const double kMinRadialDistortion = 0.8;
@@ -331,10 +334,8 @@ void cameraRayToPixel(const Eigen::MatrixBase<Derived>& cameraPoints,
                 valid(i,0) = false;
         }
     }
-
     else if (cameraModel == "f_theta")
     {
-
         Eigen::Matrix<double, Eigen::Dynamic, 1> xyNorm;
         xyNorm.resize(cameraPoints.rows(),1);
         numericallyStable2Norm2D(cameraPoints, xyNorm);
@@ -375,7 +376,6 @@ void cameraRayToPixel(const Eigen::MatrixBase<Derived>& cameraPoints,
         offset.setZero();
         offset.template block(0,0,1,2) = cameraIntrinsic.template block(0,0,1,2);
 
-
         auto scale = delta.array() / xyNorm.array();
         imgPoints = scale.array().replicate(1,2) * cameraPoints.template block(0, 0, cameraPoints.rows(), 2).array();
         imgPoints.rowwise() += offset;
@@ -397,7 +397,7 @@ void cameraRayToPixel(const Eigen::MatrixBase<Derived>& cameraPoints,
 }
 
 const char* pixel2WorldRay_doc = R"igl_Qu8mg5v7(
-Compute the compact geometric features representation (binned density in the local patch)
+Compute unprojections of camera pixels to the world rays by considering the rolling shutter information
 )igl_Qu8mg5v7";
 npe_function(_pixel2WorldRay)
 npe_doc(pixel2WorldRay_doc)
@@ -422,7 +422,6 @@ npe_begin_code()
     npe_Matrix_pixelCoordinates worldRays(pixelCoordinates.rows(), 6);
     worldRays.setZero();
 
-
     cameraToWorldRay(pixelCoordinates, cameraRays, worldRays, poses, poseTimestamps, 
                       imageHeight, imageWidth, pixelExposureTime, rollingShutterDirection);
 
@@ -430,8 +429,9 @@ npe_begin_code()
 
 npe_end_code()
 
+
 const char* cameraRay2Pixel_doc = R"igl_Qu8mg5v7(
-Compute the compact geometric features representation (binned density in the local patch)
+Compute projections of camera rays to pixels in the camera image plane
 )igl_Qu8mg5v7";
 npe_function(_cameraRay2Pixel)
 npe_doc(cameraRay2Pixel_doc)
@@ -455,7 +455,7 @@ npe_end_code()
 
 
 const char* rollingShutterProjection_doc = R"igl_Qu8mg5v7(
-Compute projection of the world points to the camera image plane by considering the rolling shutter information.)
+Compute projections of the world points to the camera image plane by considering the rolling shutter information
 )igl_Qu8mg5v7";
 npe_function(_rollingShutterProjection)
 npe_doc(rollingShutterProjection_doc)
@@ -521,8 +521,6 @@ npe_begin_code()
     // Perform the rolling shutter compensation
     int runIdx = 0;
     std::vector<int> validProjections;
-
-
     
     // TODO: Implement iterative approach
     for (int i = 0; i < initialProjections.rows(); i++)
@@ -601,6 +599,5 @@ npe_begin_code()
     Eigen::VectorXi initialValidIdx = Eigen::Map<Eigen::VectorXi, Eigen::Unaligned>(initialValidIndices.data(), initialValidIndices.size());
 
     return std::make_tuple(npe::move(pixelCoordinates), npe::move(transformationMatrices), npe::move(validProjec), npe::move(initialValidIdx));
-
 
 npe_end_code()
