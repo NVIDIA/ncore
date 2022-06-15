@@ -369,15 +369,15 @@ def pixel_2_camera_ray(pixel_coords, intrinsic, camera_model):
         camera_rays[:,1] = (pixel_coords[:,1] + 0.5 - intrinsic[5]) / intrinsic[4]
 
     elif camera_model == "f_theta":
-        centered_pix_coords = np.ones((pixel_coords.shape[0],2))
-        centered_pix_coords[:,0] = pixel_coords[:,0] + 0.5 - intrinsic[0]
-        centered_pix_coords[:,1] = pixel_coords[:,1] + 0.5 - intrinsic[1]         
+        pixel_offsets = np.ones((pixel_coords.shape[0],2))
+        pixel_offsets[:,0] = pixel_coords[:,0] - intrinsic[0]
+        pixel_offsets[:,1] = pixel_coords[:,1] - intrinsic[1]   
 
-        pixel_norms = np.linalg.norm(centered_pix_coords, axis=1, keepdims=True)
+        pixel_norms = np.linalg.norm(pixel_offsets, axis=1, keepdims=True)
 
         alphas = backwards_polynomial(pixel_norms, intrinsic[4:9])
-        camera_rays[:,0:1] = (np.sin(alphas) * centered_pix_coords[:,0:1]) / pixel_norms 
-        camera_rays[:,1:2] = (np.sin(alphas) * centered_pix_coords[:,1:2]) / pixel_norms 
+        camera_rays[:,0:1] = (np.sin(alphas) * pixel_offsets[:,0:1]) / pixel_norms 
+        camera_rays[:,1:2] = (np.sin(alphas) * pixel_offsets[:,1:2]) / pixel_norms 
         camera_rays[:,2:3] = np.cos(alphas)
 
         # special case: ray is perpendicular to image plane normal
@@ -409,7 +409,7 @@ def compute_fw_polynomial(intrinsic):
     x = step
 
     for _ in range(0, SAMPLE_COUNT):
-        p = np.asarray([cxcy[0] + x - 0.5, cxcy[1] - 0.5], dtype=np.float64).reshape(-1,2)
+        p = np.asarray([cxcy[0] + x, cxcy[1]], dtype=np.float64).reshape(-1,2)
         ray = pixel_2_camera_ray(p, intrinsic, 'f_theta')
         xy_norm = np.linalg.norm(ray[0, :2])
         theta = np.arctan2(float(xy_norm), float(ray[0, 2]))
@@ -444,10 +444,10 @@ def compute_ftheta_fov(intrinsic):
     max_x = intrinsic[2] - 1
     max_y = intrinsic[3] - 1
 
-    point_left = np.asarray([0.0, intrinsic[1]]).reshape(-1,2) - 0.5
-    point_right = np.asarray([max_x, intrinsic[1]]).reshape(-1,2) - 0.5
-    point_top = np.asarray([intrinsic[0], 0.0]).reshape(-1,2) - 0.5
-    point_bottom = np.asarray([intrinsic[0], max_y]).reshape(-1,2) - 0.5
+    point_left = np.asarray([0.0, intrinsic[1]]).reshape(-1,2)
+    point_right = np.asarray([max_x, intrinsic[1]]).reshape(-1,2)
+    point_top = np.asarray([intrinsic[0], 0.0]).reshape(-1,2)
+    point_bottom = np.asarray([intrinsic[0], max_y]).reshape(-1,2)
 
     fov_left = _get_pixel_fov(point_left, intrinsic)
     fov_right = _get_pixel_fov(point_right, intrinsic)
@@ -479,7 +479,7 @@ def _compute_max_angle(intrinsic):
 
         p = np.asarray(
             [[0, 0], [intrinsic[2] - 1, 0], [0, intrinsic[3] - 1], [intrinsic[2] - 1, intrinsic[3] - 1]], dtype=np.float32
-        ) - 0.5
+        )
 
         return max(
             max(_get_pixel_fov(p[0:1, ...], intrinsic), _get_pixel_fov(p[1:2, ...], intrinsic)),
@@ -538,6 +538,7 @@ def dict2numpy_3d(dict_):
     """
     return np.array([dict_['x'], dict_['y'], dict_['z']])
 
+
 def extract_cuboid(cuboid, enlarge_dim=0):
     """ Extracts the center, dimensions and orientation of the 3D cuboid
 
@@ -552,43 +553,6 @@ def extract_cuboid(cuboid, enlarge_dim=0):
     dimensions = dict2numpy_3d(cuboid['dimensions']) * (1 + enlarge_dim)
     
     return np.concatenate((center, dimensions, orientation))
-
-
-def pixel_2_camera_ray(pixel_coords, intrinsic, camera_model):
-    ''' Convert the pixel coordinates to a 3D ray in the camera coordinate system.
-
-    Args:
-        pixel_coords (np.array): pixel coordinates of the selected points [n,2]
-        intrinsic (np.array): camera intrinsic parameters (size depends on the camera model)
-        camera_model (string): camera model used for projection. Must be one of ['pinhole', 'f_theta']
-
-    Out:
-        camera_rays (np.array): rays in the camera coordinate system [n,3]
-    ''' 
-
-    camera_rays = np.ones((pixel_coords.shape[0],3))
-
-    if camera_model == 'pinhole':
-        camera_rays[:,0] = (pixel_coords[:,0] + 0.5 - intrinsic[2]) / intrinsic[0]
-        camera_rays[:,1] = (pixel_coords[:,1] + 0.5 - intrinsic[5]) / intrinsic[4]
-
-    elif camera_model == "f_theta":
-        centered_pix_coords = np.ones((pixel_coords.shape[0],2))
-        centered_pix_coords[:,0] = pixel_coords[:,0] + 0.5 - intrinsic[0]
-        centered_pix_coords[:,1] = pixel_coords[:,1] + 0.5 - intrinsic[1]         
-
-        pixel_norms = np.linalg.norm(centered_pix_coords, axis=1, keepdims=True)
-
-        alphas = backwards_polynomial(pixel_norms, intrinsic[4:9])
-        camera_rays[:,0:1] = (np.sin(alphas) * centered_pix_coords[:,0:1]) / pixel_norms 
-        camera_rays[:,1:2] = (np.sin(alphas) * centered_pix_coords[:,1:2]) / pixel_norms 
-        camera_rays[:,2:3] = np.cos(alphas)
-
-        # special case: ray is perpendicular to image plane normal
-        valid = (pixel_norms > np.finfo(np.float32).eps).squeeze()
-        camera_rays[~valid, :] = (0, 0, 1)  # This is what DW sets these rays to
-
-    return camera_rays
 
 
 def pixel_2_world_ray_py(pixel_coords, intrinsic, camera_model, img_height, 
@@ -783,7 +747,6 @@ def project_camera_rays_2_img(points, cam_metadata):
         alpha = np.arccos(np.clip(cos_alpha, -1 + 1e-7, 1 - 1e-7))
         delta = np.zeros_like(cos_alpha)
         valid = alpha <= intrinsic[16]
-
 
         delta[valid] = fw_poly(alpha[valid])
 

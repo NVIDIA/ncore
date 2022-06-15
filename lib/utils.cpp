@@ -202,28 +202,27 @@ void pixelToCameraRay(Eigen::MatrixBase<Derived>& pixelCoordinates,
     } 
     else if (cameraModel == "f_theta") 
     {
-        // Compute the x and y coordinate according to the f_theta camera model, z is already set to one
-        Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> centeredPixelCoordinates;
-        centeredPixelCoordinates.resize(pixelCoordinates.rows(), pixelCoordinates.cols());
+        Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> pixelOffsets;
+        pixelOffsets.resize(pixelCoordinates.rows(), pixelCoordinates.cols());
 
-        centeredPixelCoordinates.col(0) = pixelCoordinates.col(0).array() + 0.5 - cameraIntrinsic(0,0);
-        centeredPixelCoordinates.col(1) = pixelCoordinates.col(1).array() + 0.5 - cameraIntrinsic(0,1);
+        pixelOffsets.col(0) = pixelCoordinates.col(0).array() - cameraIntrinsic(0,0);
+        pixelOffsets.col(1) = pixelCoordinates.col(1).array() - cameraIntrinsic(0,1);
 
-        // Compute the norm of the pixel coordinates
+        // Compute the norm of the pixel offsets
         Eigen::Matrix<double, Eigen::Dynamic, 1> pixelNorms;
-        pixelNorms.resize(pixelCoordinates.rows(), 1);
-        pixelNorms = centeredPixelCoordinates.rowwise().norm();
+        pixelNorms.resize(pixelOffsets.rows(), 1);
+        pixelNorms = pixelOffsets.rowwise().norm();
 
         // Evaluate the backward polynomial
         Eigen::Matrix<double, Eigen::Dynamic, 1> alphas;
-        alphas.resize(pixelCoordinates.rows(), 1);
+        alphas.resize(pixelOffsets.rows(), 1);
         computeBackwardsPolynomial(pixelNorms, cameraIntrinsic, alphas);
 
         // Compute the ray direction
         Eigen::Array<double, Eigen::Dynamic, 1> alphaSines = alphas.array().sin();
-        cameraRays.col(0) = alphaSines * centeredPixelCoordinates.array().col(0) / pixelNorms.array();
-        cameraRays.col(1) = alphaSines * centeredPixelCoordinates.array().col(1) / pixelNorms.array();
-        cameraRays.col(2) = (alphaSines.square() - 1.0).sqrt();
+        cameraRays.col(0) = alphaSines * pixelOffsets.array().col(0) / pixelNorms.array();
+        cameraRays.col(1) = alphaSines * pixelOffsets.array().col(1) / pixelNorms.array();
+        cameraRays.col(2) = alphas.array().cos();
 
         // Handle the rays perpendicular to the image plane
         for(int i=0; i < cameraRays.rows(); i++){
