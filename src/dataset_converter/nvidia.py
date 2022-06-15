@@ -19,11 +19,10 @@ import point_cloud_utils as pcu
 
 
 class NvidiaConverter(DataConverter):
-    def __init__(self, args):
+    def __init__(self, config):
         self.CAM2EXPOSURETIME = {'wide': 1506.99, 'fisheye': 10987.00}
 
         self.CAM2ROLLINGSHUTTERDELAY = {'wide': 31611.55, 'fisheye': 32561.63}
-
 
         self.CAMERA_2_IDTYPERIG = { 
                                 'camera_front_wide_120fov':       ['00', 'wide', 'camera:front:wide:120fov'],
@@ -61,8 +60,9 @@ class NvidiaConverter(DataConverter):
                 'motorcycle_with_rider': 9,
                 }
 
+        super().__init__(config)
 
-        super().__init__(args)
+        self.sequence_pathnames = sorted(glob.glob(os.path.join(self.root_dir, '*/')))
 
         
     def convert_one(self, sequence_path): 

@@ -21,27 +21,34 @@ class DataConverter(ABC):
 
     INDEX_DIGITS = 6 # the number of integer digits to pad counters in output filenames to
 
-    def __init__(self, args):
-        self.dataset = args.dataset
-        self.label_save_dir       = 'labels'
-        self.image_save_dir       = 'images'
+    class Config(object):
+        """ Simple dictionary holding all options as key/value pairs """
+
+        def __init__(self, kwargs):
+            self.__dict__ = kwargs
+
+        def __iadd__(self, other):
+            """ Extend with more key/value options """
+            for key, value in other.items():
+                self.__dict__[key] = value
+
+            return self
+
+
+    def __init__(self, config):
+        self.label_save_dir = 'labels'
+        self.image_save_dir = 'images'
         self.point_cloud_save_dir = 'lidar'
         self.poses_save_dir = 'poses'
         self.rec_save_dir = 'reconstructed_surface'
 
-        self.root_dir = args.root_dir
-        self.output_dir = args.output_dir
-        self.num_proc = int(args.n_proc)
+        self.root_dir = config.root_dir
+        self.output_dir = config.output_dir
+        self.num_proc = config.n_proc
 
-        self.sem_seg_flag = args.semantic_seg
-        self.inst_seg_flag = args.instance_seg
-        self.surf_rec_flag = args.rec_surface
-
-        if self.dataset == 'nvidia':        
-            self.sequence_pathnames = sorted(glob.glob(os.path.join(self.root_dir, '*/')))
-
-        elif self.dataset == 'waymo_open':
-            self.sequence_pathnames = sorted(glob.glob(os.path.join(self.root_dir, '*.tfrecord')))
+        self.sem_seg_flag = config.semantic_seg
+        self.inst_seg_flag = config.instance_seg
+        self.surf_rec_flag = config.rec_surface
 
 
     def create_folders(self, sequence_name):
