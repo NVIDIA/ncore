@@ -13,7 +13,6 @@ def image_to_world_ray(image_points, camera_metadata):
     camera_model   = camera_metadata['camera_model'] 
     img_height  = camera_metadata['img_height']
     img_width  = camera_metadata['img_width']
-    exposure_time   = camera_metadata['exposure_time']
     rs_direction   = camera_metadata['rolling_shutter_direction']
     ego_pose_timestamps =  np.array(camera_metadata['ego_pose_timestamps']).reshape(1,-1).astype(np.float64)
 
@@ -28,10 +27,10 @@ def image_to_world_ray(image_points, camera_metadata):
     if image_points.shape[0] == 1:
         image_points = np.tile(image_points, [2, 1])
         return av_utils._pixel2WorldRay(image_points, intrinsic, camera_model, img_height, img_width,
-                                        exposure_time, poses, ego_pose_timestamps, rs_direction)[0, :]
+                                        poses, ego_pose_timestamps, rs_direction)[0, :]
     else:
         return av_utils._pixel2WorldRay(image_points, intrinsic, camera_model, img_height, img_width, 
-                                        exposure_time, poses, ego_pose_timestamps, rs_direction)
+                                        poses, ego_pose_timestamps, rs_direction)
 
 
 def cameraRay2Pixel(cameraPoints, camera_metadata):
@@ -50,7 +49,6 @@ def rollingShutterProjection(points, camera_metadata, iter=1):
     camera_model   = camera_metadata['camera_model'] 
     img_height  = camera_metadata['img_height']
     img_width  = camera_metadata['img_width']
-    exposure_time   = camera_metadata['exposure_time']
     rs_direction   = camera_metadata['rolling_shutter_direction']
     ego_pose_timestamps =  np.array(camera_metadata['ego_pose_timestamps']).reshape(1,-1).astype(np.float64)
 
@@ -63,7 +61,7 @@ def rollingShutterProjection(points, camera_metadata, iter=1):
                         np.linalg.inv(T_cam_rig) @ np.linalg.inv(ego_pose_e)], axis=0)
 
     pixel_coords, trans_matrices, valid_proj, initial_valid_idx = av_utils._rollingShutterProjection(points, intrinsic, img_height, img_width, 
-                        rs_direction, exposure_time, poses, ego_pose_timestamps, camera_model, iter)
+                        rs_direction, poses, ego_pose_timestamps, camera_model, iter)
 
     valid_idx = initial_valid_idx[valid_proj]
     pixel_coords = pixel_coords[valid_proj,:]

@@ -131,7 +131,6 @@ void cameraToWorldRay(const Eigen::MatrixBase<Derived>& pixelCoordinates,
                       const Eigen::MatrixBase<Derived4>& poseTimestamps, 
                       double imgHeight,
                       double imgWidth,
-                      double exposureTime,
                       int rollingShutterDirection){
 
         // Start pose
@@ -405,7 +404,6 @@ npe_arg(cameraIntrinsic, dense_double)
 npe_arg(cameraModel, std::string)
 npe_arg(imageHeight, double)
 npe_arg(imageWidth, double)
-npe_arg(pixelExposureTime, double)
 npe_arg(poses, dense_double)
 npe_arg(poseTimestamps, dense_double)
 npe_arg(rollingShutterDirection, int)
@@ -422,7 +420,7 @@ npe_begin_code()
     worldRays.setZero();
 
     cameraToWorldRay(pixelCoordinates, cameraRays, worldRays, poses, poseTimestamps, 
-                      imageHeight, imageWidth, pixelExposureTime, rollingShutterDirection);
+                      imageHeight, imageWidth, rollingShutterDirection);
 
     return npe::move(worldRays); 
 
@@ -463,7 +461,6 @@ npe_arg(cameraIntrinsic, dense_double)
 npe_arg(imgHeight, double)
 npe_arg(imgWidth, double)
 npe_arg(rollingShutterDirection, int)
-npe_arg(exposureTime, double)
 npe_arg(poses, dense_double)
 npe_arg(poseTimestamps, dense_double)
 npe_arg(cameraModel, std::string)
