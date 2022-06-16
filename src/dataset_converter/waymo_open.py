@@ -25,8 +25,7 @@ class WaymoConverter(DataConverter):
     IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC zgojcic@nvidia.com. 
     """  
 
-    def __init__(self, args):
-
+    def __init__(self, config):
         # Cameras used in waymo-open
         self.camera_list = ['_FRONT', '_FRONT_LEFT', '_FRONT_RIGHT', '_SIDE_LEFT', '_SIDE_RIGHT']
        
@@ -46,7 +45,11 @@ class WaymoConverter(DataConverter):
                      4: 'CYCLIST'
                      }
 
-        super().__init__(args)
+        super().__init__(config)
+
+        self.ref_projections_flag = config.ref_projections
+
+        self.sequence_pathnames = sorted(glob.glob(os.path.join(self.root_dir, '*.tfrecord')))
 
     def convert_one(self, sequence_path): 
         """
@@ -166,7 +169,7 @@ class WaymoConverter(DataConverter):
         range_images, camera_projections, range_image_top_pose = parse_range_image_and_camera_projection(frame)
 
         # Convert the range image to a ego-motion compensated 3D rays in sequence coordinate frame
-        points, _ = convert_range_image_to_point_cloud(
+        points, cp_points = convert_range_image_to_point_cloud(
             frame,
             range_images,
             camera_projections,
@@ -184,6 +187,12 @@ class WaymoConverter(DataConverter):
                                         self.point_cloud_save_dir, str(f_idx).zfill(self.INDEX_DIGITS) + '.dat')
         points = points[0]
         dist = np.linalg.norm(points[:,3:6] - points[:,:3],axis=1, keepdims=True)
+
+        # Store reference camera point projections if enabled
+        if self.ref_projections_flag:
+            lidar_cp_save_path =  os.path.join(self.output_dir, sequence_name, 
+                                               self.point_cloud_save_dir, str(f_idx).zfill(self.INDEX_DIGITS) + '_cp.npz')
+            np.savez(lidar_cp_save_path, cp=cp_points[0])
 
         # 3D rays in space with accompanying metadata. 
         # Format; x_s, y_s, z_s, x_e, y_e, z_e, dist, intensity, dynamic flag
