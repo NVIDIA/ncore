@@ -48,7 +48,7 @@ class DataConverter(ABC):
 
         self.sem_seg_flag = config.semantic_seg
         self.inst_seg_flag = config.instance_seg
-        self.surf_rec_flag = config.rec_surface
+        self.surf_rec_flag = config.surface_rec
 
 
     def create_folders(self, sequence_name):

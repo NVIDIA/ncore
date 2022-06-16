@@ -16,7 +16,7 @@ from src.dataset_converter.nvidia import NvidiaConverter
 @click.option('--n-proc', default=1, type=int, help='Number of processes to spawn')
 @click.option('--semantic-seg', is_flag=True, default=False, help="Infer the semantic segmention for all camera images")
 @click.option('--instance-seg', is_flag=True, default=False, help="Infer the instance segmention for all camera images")
-@click.option('--rec-surface', is_flag=True, default=False, help="Reconstruct the static background mesh")
+@click.option('--surface-rec', is_flag=True, default=False, help="Reconstruct the static background mesh")
 @click.version_option('0.1')
 @click.pass_context
 def cli(ctx, *_, **kwargs):
