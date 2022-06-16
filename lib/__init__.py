@@ -21,16 +21,16 @@ def image_to_world_ray(image_points, camera_metadata):
     ego_pose_e = camera_metadata['ego_pose_e']
     T_cam_rig = camera_metadata['T_cam_rig'] # Transforms the points/rays from camera coordinate system to the rig
 
-    poses = np.concatenate(
+    T_cam_world = np.concatenate(
         [ego_pose_s @ T_cam_rig, ego_pose_e @ T_cam_rig], axis=0)
 
     if image_points.shape[0] == 1:
         image_points = np.tile(image_points, [2, 1])
         return av_utils._pixel2WorldRay(image_points, intrinsic, camera_model, img_height, img_width,
-                                        poses, ego_pose_timestamps, rs_direction)[0, :]
+                                        T_cam_world, ego_pose_timestamps, rs_direction)[0, :]
     else:
         return av_utils._pixel2WorldRay(image_points, intrinsic, camera_model, img_height, img_width, 
-                                        poses, ego_pose_timestamps, rs_direction)
+                                        T_cam_world, ego_pose_timestamps, rs_direction)
 
 
 def cameraRay2Pixel(cameraPoints, camera_metadata):
@@ -57,11 +57,11 @@ def rollingShutterProjection(points, camera_metadata, iter=1):
     ego_pose_e = camera_metadata['ego_pose_e']
     T_cam_rig = camera_metadata['T_cam_rig'] # Transforms the points/rays from camera coordinate system to the rig
 
-    poses = np.concatenate([np.linalg.inv(T_cam_rig) @ np.linalg.inv(ego_pose_s),
+    T_world_cam = np.concatenate([np.linalg.inv(T_cam_rig) @ np.linalg.inv(ego_pose_s),
                         np.linalg.inv(T_cam_rig) @ np.linalg.inv(ego_pose_e)], axis=0)
 
     pixel_coords, trans_matrices, valid_proj, initial_valid_idx = av_utils._rollingShutterProjection(points, intrinsic, img_height, img_width, 
-                        rs_direction, poses, ego_pose_timestamps, camera_model, iter)
+                        rs_direction, T_world_cam, ego_pose_timestamps, camera_model, iter)
 
     valid_idx = initial_valid_idx[valid_proj]
     pixel_coords = pixel_coords[valid_proj,:]

@@ -127,28 +127,28 @@ template <typename Derived, typename Derived1, typename Derived2, typename Deriv
 void cameraToWorldRay(const Eigen::MatrixBase<Derived>& pixelCoordinates,
                       const Eigen::MatrixBase<Derived1>& cameraRays, 
                       Eigen::MatrixBase<Derived2>& worldRays, 
-                      const Eigen::MatrixBase<Derived3>& poses, 
-                      const Eigen::MatrixBase<Derived4>& poseTimestamps, 
+                      const Eigen::MatrixBase<Derived3>& cameraToWorldTransform, 
+                      const Eigen::MatrixBase<Derived4>& cameraToWorldTransformTimestamps, 
                       double imgHeight,
                       double imgWidth,
                       int rollingShutterDirection){
 
         // Start pose
-        Eigen::Matrix<double,3,3> startRotMat = poses.template block(0,0,3,3);
+        Eigen::Matrix<double,3,3> startRotMat = cameraToWorldTransform.template block(0,0,3,3);
         Eigen::Quaterniond startRot(startRotMat);
-        Eigen::Matrix<double,3,1> startTrans(poses.template block(0,3,3,1));
-        double startTimestamp = poseTimestamps(0,0);
+        Eigen::Matrix<double,3,1> startTrans(cameraToWorldTransform.template block(0,3,3,1));
+        double startTimestamp = cameraToWorldTransformTimestamps(0,0);
 
         // End pose
-        Eigen::Matrix<double,3,3> endRotMat = poses.template block(4,0,3,3);
+        Eigen::Matrix<double,3,3> endRotMat = cameraToWorldTransform.template block(4,0,3,3);
         Eigen::Quaterniond endRot(endRotMat);
-        Eigen::Matrix<double,3,1> endTrans(poses.template block(4,3,3,1));
-        double endTimestamp = poseTimestamps(0,1);
+        Eigen::Matrix<double,3,1> endTrans(cameraToWorldTransform.template block(4,3,3,1));
+        double endTimestamp = cameraToWorldTransformTimestamps(0,1);
 
         // Get the required timestamps
-        double startPoseTimestamp = poseTimestamps(0,0);
-        double endPoseTimestamp = poseTimestamps(0,1);
-        double deltaTimeFirstLast  = endPoseTimestamp - startPoseTimestamp;
+        double startTransformTimestamp = cameraToWorldTransformTimestamps(0,0);
+        double endTransformTimestamp = cameraToWorldTransformTimestamps(0,1);
+        double deltaTimeStartEnd  = endTransformTimestamp - startTransformTimestamp;
 
         // Iterate over the pixels and transform the rays to the world coordinate system
         for (int i = 0; i < cameraRays.rows(); i++)
@@ -157,20 +157,20 @@ void cameraToWorldRay(const Eigen::MatrixBase<Derived>& pixelCoordinates,
             switch(rollingShutterDirection)
             {
                 case 1:
-                    projTimestamp = startPoseTimestamp + std::floor(pixelCoordinates(i,1)) * deltaTimeFirstLast / (imgHeight - 1);
+                    projTimestamp = startTransformTimestamp + std::floor(pixelCoordinates(i,1)) * deltaTimeStartEnd / (imgHeight - 1);
                     break;
                 case 2:
-                    projTimestamp = startPoseTimestamp + std::floor(pixelCoordinates(i,0)) * deltaTimeFirstLast / (imgWidth - 1);
+                    projTimestamp = startTransformTimestamp + std::floor(pixelCoordinates(i,0)) * deltaTimeStartEnd / (imgWidth - 1);
                     break;
                 case 3:
-                    projTimestamp = startPoseTimestamp + (imgHeight - std::ceil(pixelCoordinates(i,1))) * deltaTimeFirstLast / (imgHeight - 1);
+                    projTimestamp = startTransformTimestamp + (imgHeight - std::ceil(pixelCoordinates(i,1))) * deltaTimeStartEnd / (imgHeight - 1);
                     break;
                 case 4:
-                    projTimestamp = startPoseTimestamp + (imgWidth - std::ceil(pixelCoordinates(i,0))) * deltaTimeFirstLast / (imgWidth - 1);
+                    projTimestamp = startTransformTimestamp + (imgWidth - std::ceil(pixelCoordinates(i,0))) * deltaTimeStartEnd / (imgWidth - 1);
                     break;
             }
 
-            double projDeltaT = (projTimestamp - startPoseTimestamp) / deltaTimeFirstLast;
+            double projDeltaT = (projTimestamp - startTransformTimestamp) / deltaTimeStartEnd;
 
             // Interpolate the pose
             Eigen::Matrix<double,3,1> translation = (1 - projDeltaT) * startTrans.array() + projDeltaT * endTrans.array();
@@ -404,8 +404,8 @@ npe_arg(cameraIntrinsic, dense_double)
 npe_arg(cameraModel, std::string)
 npe_arg(imageHeight, double)
 npe_arg(imageWidth, double)
-npe_arg(poses, dense_double)
-npe_arg(poseTimestamps, dense_double)
+npe_arg(cameraToWorldTransform, dense_double)
+npe_arg(cameraToWorldTransformTimestamps, dense_double)
 npe_arg(rollingShutterDirection, int)
 npe_begin_code()
 
@@ -419,7 +419,7 @@ npe_begin_code()
     npe_Matrix_pixelCoordinates worldRays(pixelCoordinates.rows(), 6);
     worldRays.setZero();
 
-    cameraToWorldRay(pixelCoordinates, cameraRays, worldRays, poses, poseTimestamps, 
+    cameraToWorldRay(pixelCoordinates, cameraRays, worldRays, cameraToWorldTransform, cameraToWorldTransformTimestamps, 
                       imageHeight, imageWidth, rollingShutterDirection);
 
     return npe::move(worldRays); 
@@ -461,25 +461,25 @@ npe_arg(cameraIntrinsic, dense_double)
 npe_arg(imgHeight, double)
 npe_arg(imgWidth, double)
 npe_arg(rollingShutterDirection, int)
-npe_arg(poses, dense_double)
-npe_arg(poseTimestamps, dense_double)
+npe_arg(worldToCameraTransform, dense_double)
+npe_arg(worldToCameraTransformTimestamps, dense_double)
 npe_arg(cameraModel, std::string)
 npe_arg(maxIter, int)
 npe_begin_code()
 
     // Extract the start and end rotations and translation vectors
-    Eigen::Matrix<double,3,3> startRotMat = poses.template block(0,0,3,3);
+    Eigen::Matrix<double,3,3> startRotMat = worldToCameraTransform.template block(0,0,3,3);
     Eigen::Quaterniond startRot(startRotMat);
-    Eigen::Matrix<double,3,3> endRotMat = poses.template block(4,0,3,3);
+    Eigen::Matrix<double,3,3> endRotMat = worldToCameraTransform.template block(4,0,3,3);
     Eigen::Quaterniond endRot(endRotMat);
 
-    Eigen::Matrix<double,3,1> startTrans = poses.template block(0,3,3,1);
-    Eigen::Matrix<double,3,1> endTrans = poses.template block(4,3,3,1);
+    Eigen::Matrix<double,3,1> startTrans = worldToCameraTransform.template block(0,3,3,1);
+    Eigen::Matrix<double,3,1> endTrans = worldToCameraTransform.template block(4,3,3,1);
     
     // Get the required timestamps
-    double startPoseTimestamp = poseTimestamps(0,0);
-    double endPoseTimestamp = poseTimestamps(0,1);
-    double deltaTimeFirstLast  = endPoseTimestamp - startPoseTimestamp;
+    double startTransformTimestamp = worldToCameraTransformTimestamps(0,0);
+    double endTransformTimestamp = worldToCameraTransformTimestamps(0,1);
+    double deltaTimeStartEnd  = endTransformTimestamp - startTransformTimestamp;
 
     // Interpolate the pose to mof timestamp  
     Eigen::Matrix<double,3,1> mofTrans = (1 - 0.5) * startTrans.array() + 0.5 * endTrans.array();
@@ -542,21 +542,21 @@ npe_begin_code()
                 switch(rollingShutterDirection)
                 {
                     case 1:
-                        projTimestamp = startPoseTimestamp + std::floor(y) * deltaTimeFirstLast / (imgHeight - 1);
+                        projTimestamp = startTransformTimestamp + std::floor(y) * deltaTimeStartEnd / (imgHeight - 1);
                         break;
                     case 2:
-                        projTimestamp = startPoseTimestamp + std::floor(x) * deltaTimeFirstLast / (imgWidth - 1);
+                        projTimestamp = startTransformTimestamp + std::floor(x) * deltaTimeStartEnd / (imgWidth - 1);
                         break;
                     case 3:
-                        projTimestamp = startPoseTimestamp + (imgHeight - std::ceil(y)) * deltaTimeFirstLast / (imgHeight - 1);
+                        projTimestamp = startTransformTimestamp + (imgHeight - std::ceil(y)) * deltaTimeStartEnd / (imgHeight - 1);
                         break;
                     case 4:
-                        projTimestamp = startPoseTimestamp + (imgWidth - std::ceil(x)) * deltaTimeFirstLast / (imgWidth - 1);
+                        projTimestamp = startTransformTimestamp + (imgWidth - std::ceil(x)) * deltaTimeStartEnd / (imgWidth - 1);
                         break;
                 }
                 
                 // Interpolate the pose to the row index
-                double projDeltaT = (projTimestamp - startPoseTimestamp) / deltaTimeFirstLast;
+                double projDeltaT = (projTimestamp - startTransformTimestamp) / deltaTimeStartEnd;
                 projTrans = (1 - projDeltaT) * startTrans.array() + projDeltaT * endTrans.array();
                 projRot = startRot.slerp(projDeltaT, endRot);
 
