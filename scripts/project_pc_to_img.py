@@ -21,7 +21,7 @@ WAYMO_CAMERAS = ['00','01','02','03','04']
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--root_dir', type=str, help="Path to the raw data", required=True)
-    parser.add_argument("--dataset", type=str, help="Name of the dataset", choices=['nvidia', 'waymo'], required=True)
+    parser.add_argument("--dataset", type=str, help="Name of the dataset", choices=['nvidia', 'waymo', 'nvidia_maglev'], required=True)
     parser.add_argument("--cam_id", type=str, help="Camera ID to be used for projection. If not specified random camera will be used", default= '-1')
     parser.add_argument("--frame_num", type=int, help="Frame number to be used. If not specified random frame will be used", default=-1)
     parser.add_argument("--python", action='store_true', help="If true, rolling shutter projection will also be computed with python code")
@@ -30,7 +30,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Select the correct maps
-    CAM_IDS = NV_CAMERAS if args.dataset == 'nvidia' else WAYMO_CAMERAS
+    CAM_IDS = NV_CAMERAS if args.dataset.startswith('nvidia') else WAYMO_CAMERAS
     
     # Check the validity of the input parameters
     if args.cam_id != '-1':

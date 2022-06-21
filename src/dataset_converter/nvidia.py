@@ -14,7 +14,7 @@ import glob
 import struct
 from pyarrow.parquet import ParquetDataset
 from collections import defaultdict
-from src.common import save_pkl, load_pkl, points_in_bboxes
+from src.common import save_pkl, load_pkl, save_pc_dat, points_in_bboxes
 import point_cloud_utils as pcu
 
 
@@ -374,7 +374,7 @@ class NvidiaConverter(DataConverter):
                 valid_idx_z = raw_pc[:,2] > -4.85
                 transformed_pc = unwind_lidar(raw_pc, T_lidar_globals.reshape(-1,4), np.array(data.data.column_indices).reshape(-1,1))
 
-                # Filter points with a distance smaller than 1.5m (points that lie on the ego car)
+                # Filter points with a distance smaller than 3.5m (points that lie on the ego car)
                 dist = np.linalg.norm(transformed_pc[:,:3] - transformed_pc[:,3:6],axis=1)
                 transformed_pc = np.concatenate([transformed_pc, dist[:,None], intensities[:, None], -1*np.ones_like(dist[:,None])], axis=1)
 
@@ -423,16 +423,8 @@ class NvidiaConverter(DataConverter):
                 # dynamic_flag = dynamic_flag[:valid_idx.shape[0]]
                 # transformed_pc[:,-1] = dynamic_flag[valid_idx]
 
-
-                n_rows, n_columns =  transformed_pc.shape[0], transformed_pc.shape[1]
-                transformed_pc_flat = transformed_pc.flatten()
-                
                 lidar_save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, self.point_cloud_save_dir, str(frame_idx).zfill(self.INDEX_DIGITS) + '.dat')
-                
-                with open(lidar_save_path,'wb') as f:
-                    f.write(struct.pack('<i', n_rows))
-                    f.write(struct.pack('<i', n_columns))
-                    f.write(struct.pack('<%sf' % transformed_pc_flat.size, *transformed_pc_flat))
+                save_pc_dat(lidar_save_path, transformed_pc)
 
                 frame_idx += 1
 
