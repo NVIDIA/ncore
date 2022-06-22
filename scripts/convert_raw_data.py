@@ -60,6 +60,8 @@ def nvidia(ctx, *_, **kwargs):
 
 
 @cli.command()
+@click.option('--seek-sec', type=click.FloatRange(min=0.0, max_open=True), help="Time to skip for the dataset conversion (in seconds)")
+@click.option('--duration-sec', type=click.FloatRange(min=0.0, max_open=True), help="Restrict total duration of the dataset conversion (in seconds)")
 @click.pass_context
 def nvidia_maglev(ctx, *_, **kwargs):
     """NVIDIA-specific data conversion (based on Maglev data extraction)"""

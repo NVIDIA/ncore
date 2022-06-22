@@ -74,14 +74,43 @@ class NvidiaMaglevConverter(DataConverter):
     LIDAR_FILTER_MAX_DISTANCE = 100.0
     LIDAR_FILTER_MIN_RIG_HEIGHT = -1.0
 
-    DBG_MAX_FRAMES_ = 10  # REMOVE, for testing only
-
     def __init__(self, config):
         self.logger = logging.getLogger(__name__)
 
         super().__init__(config)
 
         self.sequence_pathnames = [self.root_dir]
+
+        self.seek_sec = config.seek_sec
+        self.duration_sec = config.duration_sec
+
+    @staticmethod
+    def time_bounds(timestamps_us, seek_sec, duration_sec):
+        """
+        Determine start and end timestamps given optional seek and duration times
+
+        Args:
+            timestamps_us (List[numeric]): list of all available timestamps (in microseconds)
+            seek_sec (float): Optional: if non-None, the time (in seconds)  to skip starting from the first timestamp
+            duration_sec (float): Optional: if non-None, the total time (in seconds) between the start and end time bounds
+
+        Return:
+            start_timestamp_us (float): first valid timestamp in restricted bounds (in microseconds)
+            end_timestamp_us (float): last valid timestamp in restricted bounds (in microseconds)
+        """
+
+        start_timestamp_us = timestamps_us[0]
+        end_timestamp_us = timestamps_us[-1]
+
+        if seek_sec:
+            start_timestamp_us += seek_sec * 1e6
+        
+        if duration_sec:
+            end_timestamp_us = start_timestamp_us + duration_sec * 1e6
+
+        assert start_timestamp_us < end_timestamp_us, "Arguments lead to invalid time bounds"
+
+        return start_timestamp_us, end_timestamp_us
 
     def convert_one(self, sequence_path):
         """
@@ -118,7 +147,7 @@ class NvidiaMaglevConverter(DataConverter):
         if self.sem_seg_flag:
             self.run_semantic_segmentation(os.path.join(self.session_id))   
 
-        # Tracks are far to big to do this for the whole track
+        # Tracks are far to big to do this for the whole session
         # TODO: talk about the strategy here, do we want to maybe chunk this?
         if self.surf_rec_flag:
             self.run_surface_extraction(os.path.join(self.session_id)) 
@@ -182,6 +211,11 @@ class NvidiaMaglevConverter(DataConverter):
         # Collect timestamps of individual cameras
         camera_timestamps = defaultdict(list)
 
+        # Determine time bounds from available egomotion poses
+        start_timestamp_us, end_timestamp_us = self.time_bounds(self.poses_timestamps,
+                                                                self.seek_sec,
+                                                                self.duration_sec)
+
         # Process all camera images based on the pose timestamps
         for camera in self.CAMERA_2_IDTYPERIG.keys():
             cam_id, cam_type, cam_id_rig = self.CAMERA_2_IDTYPERIG[camera]
@@ -204,18 +238,14 @@ class NvidiaMaglevConverter(DataConverter):
 
             # Get the frame range of the first and last frame relative to available egomotion poses and respecting exposure timings
             start_idx = np.argmax(
-                frame_timestamps - self.CAM2ROLLINGSHUTTERDELAY[cam_type] - self.CAM2EXPOSURETIME[cam_type] / 2 > self.poses_timestamps[0])
+                frame_timestamps - self.CAM2ROLLINGSHUTTERDELAY[cam_type] - self.CAM2EXPOSURETIME[cam_type] / 2 >= start_timestamp_us)
             # take all frames if all are within egomotion range, or determine last valid frame
-            end_idx = np.argmax(frame_timestamps - self.CAM2EXPOSURETIME[cam_type] / 2 >= self.poses_timestamps[-1]) \
-                if frame_timestamps[-1] - self.CAM2EXPOSURETIME[cam_type] / 2 > self.poses_timestamps[-1] else -1
+            end_idx = np.argmax(frame_timestamps - self.CAM2EXPOSURETIME[cam_type] / 2 > end_timestamp_us) \
+                if frame_timestamps[-1] - self.CAM2EXPOSURETIME[cam_type] / 2 > end_timestamp_us else -1
 
             # Subsample frames to valid range
             frame_numbers = frame_numbers[start_idx:end_idx]
             frame_timestamps = frame_timestamps[start_idx:end_idx]
-
-            # REMOVE, for testing only
-            frame_numbers = frame_numbers[:self.DBG_MAX_FRAMES_]
-            frame_timestamps = frame_timestamps[:self.DBG_MAX_FRAMES_]
 
             # Copy all valid images
             for continuos_frame_index, frame_number in enumerate(frame_numbers):
@@ -319,19 +349,20 @@ class NvidiaMaglevConverter(DataConverter):
             [frame_data['timestamp'] for frame_data in frames_metadata])
         del(frames_metadata)
 
-        # Get the frame range of the first and last frame relative to available egomotion poses and respecting exposure timings
-        start_idx = np.argmax(frame_timestamps > self.poses_timestamps[0])
+        # Determine time bounds from available egomotion poses
+        start_timestamp_us, end_timestamp_us = self.time_bounds(self.poses_timestamps,
+                                                                self.seek_sec,
+                                                                self.duration_sec)
+
+        # Get the frame range of the first and last frame relative to available egomotion poses
+        start_idx = np.argmax(frame_timestamps >= start_timestamp_us)
         # take all frames if all are within egomotion range, or determine last valid frame
-        end_idx = np.argmax(frame_timestamps >= self.poses_timestamps[-1]) \
-            if frame_timestamps[-1] > self.poses_timestamps[-1] else -1
+        end_idx = np.argmax(frame_timestamps > end_timestamp_us) \
+            if frame_timestamps[-1] > end_timestamp_us else -1
 
         # Subsample frames to valid range
         frame_numbers = frame_numbers[start_idx:end_idx]
         frame_timestamps = frame_timestamps[start_idx:end_idx]
-
-        # REMOVE, for testing only
-        frame_numbers = frame_numbers[:self.DBG_MAX_FRAMES_]
-        frame_timestamps = frame_timestamps[:self.DBG_MAX_FRAMES_]
 
         # Copy all valid point clouds
         for continuos_frame_index, (frame_number, frame_timestamp) in enumerate(zip(frame_numbers, frame_timestamps)):
