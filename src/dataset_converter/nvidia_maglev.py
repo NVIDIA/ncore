@@ -12,15 +12,13 @@ import os
 import logging
 import shutil
 
-import numpy as np
+from collections import defaultdict
 
-import point_cloud_utils as pcu
+import numpy as np
 
 from plyfile import PlyData
 
-from collections import defaultdict
-
-from src.dataset_converter import DataConverter
+from src.dataset_converter import BaseNvidiaDataConverter
 
 from src.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_dict,
                               camera_intrinsic_parameters, compute_fw_polynomial, compute_ftheta_parameters,
@@ -29,44 +27,10 @@ from src.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_dict,
 from src.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator)
 
 
-class NvidiaMaglevConverter(DataConverter):
+class NvidiaMaglevConverter(BaseNvidiaDataConverter):
     """
-    DataConverter consuming the preprocessed output of Maglev dsai-pp workflows
+    NVIDIA-specific data conversion (based on Maglev dsai-pp workflows data extraction)
     """
-
-    ## Constants defined for *Hyperion8* sensor-set
-
-    # TODO: the value for the 70FoV wide camera seems to be different, we need to clarify
-    CAM2EXPOSURETIME = {'wide': 1641.58, 'fisheye': 10987.00}
-
-    CAM2ROLLINGSHUTTERDELAY = {'wide': 31611.55, 'fisheye': 32561.63}
-
-    CAMERA_2_IDTYPERIG = {
-        'camera_front_wide_120fov': ['00', 'wide', 'camera:front:wide:120fov'],
-        'camera_cross_left_120fov': ['01', 'wide', 'camera:cross:left:120fov'],
-        'camera_cross_right_120fov': ['02', 'wide', 'camera:cross:right:120fov'],
-        'camera_rear_left_70fov': ['03', 'wide', 'camera:rear:left:70fov'],
-        'camera_rear_right_70fov': ['04', 'wide', 'camera:rear:right:70fov'],
-        'camera_rear_tele_30fov': ['05', 'wide', 'camera:rear:tele:30fov'],
-        'camera_front_fisheye_200fov': ['10', 'fisheye', 'camera:front:fisheye:200fov'],
-        'camera_left_fisheye_200fov': ['11', 'fisheye', 'camera:left:fisheye:200fov'],
-        'camera_right_fisheye_200fov': ['12', 'fisheye', 'camera:right:fisheye:200fov'],
-        'camera_rear_fisheye_200fov': ['13', 'fisheye', 'camera:rear:fisheye:200fov']
-    }
-
-    ID_TO_CAMERA = {'00': 'camera_front_wide_120fov',
-                    '01': 'camera_cross_left_120fov',
-                    '02': 'camera_cross_right_120fov',
-                    '03': 'camera_rear_left_70fov',
-                    '04': 'camera_rear_right_70fov',
-                    '05': 'camera_rear_tele_30fov',
-                    '10': 'camera_front_fisheye_200fov',
-                    '11': 'camera_left_fisheye_200fov',
-                    '12': 'camera_right_fisheye_200fov',
-                    '13': 'camera_rear_fisheye_200fov'
-                    }
-
-    LIDAR_SENSORNAME = 'lidar:gt:top:p128:v4p5'
 
     # Minimum / maximum distances (in meters) for point cloud measurements (to filter out invalid points, points on the ego-car),
     # as well as minimum height (there might be some spurious measurements bellow ground)
@@ -118,6 +82,9 @@ class NvidiaMaglevConverter(DataConverter):
 
         Args:
             sequence_path (string): path to Maglev dsai-pp workflow job output
+        
+        Return:
+            sub_sequence_names List[string]: names of the processed sub-sequences
         """
 
         self.sequence_path = sequence_path
@@ -134,7 +101,7 @@ class NvidiaMaglevConverter(DataConverter):
         self.logger.info(f'Converting session {self.session_id}')
 
         # Create all output folders
-        self.create_folders(os.path.join(self.session_id))
+        self.create_folders(self.session_id)
 
         # Decode data from maglev
         self.decode_poses_timestamps()
@@ -143,14 +110,7 @@ class NvidiaMaglevConverter(DataConverter):
 
         self.decode_lidar()
 
-        # Perform instance and semantic segmentation of all the images
-        if self.sem_seg_flag:
-            self.run_semantic_segmentation(os.path.join(self.session_id))   
-
-        # Tracks are far to big to do this for the whole session
-        # TODO: talk about the strategy here, do we want to maybe chunk this?
-        if self.surf_rec_flag:
-            self.run_surface_extraction(os.path.join(self.session_id)) 
+        return [self.session_id]
 
     def decode_poses_timestamps(self):
         logger = self.logger.getChild('decode_poses_timestamps')
@@ -432,6 +392,3 @@ class NvidiaMaglevConverter(DataConverter):
         np.savez(lidar_timestamp_save_path, timestamps=frame_timestamps.tolist())
 
         logger.info(f'> processed {len(frame_timestamps)} point clouds')
-
-    def decode_labels(self):
-        raise NotImplementedError("WIP")

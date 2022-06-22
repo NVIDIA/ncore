@@ -7,7 +7,7 @@ import sys
 sys.path.append('./')
 from src.dataset_converter import DataConverter
 from src.dataset_converter.waymo_open import WaymoConverter
-from src.dataset_converter.nvidia import NvidiaConverter
+from src.dataset_converter.nvidia_deepmap import NvidiaDeepMapConverter
 from src.dataset_converter.nvidia_maglev import NvidiaMaglevConverter
 
 
@@ -52,11 +52,11 @@ def waymo(ctx, *_, **kwargs):
 
 @cli.command()
 @click.pass_context
-def nvidia(ctx, *_, **kwargs):
+def nvidia_deepmap(ctx, *_, **kwargs):
     """NVIDIA-specific data conversion (based on DeepMap tracks)"""
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
-    NvidiaConverter(config).convert()
+    NvidiaDeepMapConverter(config).convert()
 
 
 @cli.command()
