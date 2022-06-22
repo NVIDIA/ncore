@@ -1,3 +1,5 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 import argparse
 import point_cloud_utils as pcu
 import numpy as np

@@ -1,3 +1,5 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 from tkinter import W
 import numpy as np
 import tensorflow as tf

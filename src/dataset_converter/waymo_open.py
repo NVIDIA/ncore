@@ -1,6 +1,7 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 from __future__ import annotations
 from collections import defaultdict
-from dependencies.surface_reconstruction.run_surface_reconstruction import load_dat_rays
 from src.dataset_converter import DataConverter
 import tensorflow.compat.v1 as tf        
 tf.enable_eager_execution()

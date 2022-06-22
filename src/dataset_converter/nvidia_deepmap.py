@@ -1,3 +1,5 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 import os
 from src.dataset_converter import BaseNvidiaDataConverter
 from google.protobuf import text_format

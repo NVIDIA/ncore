@@ -1,3 +1,5 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 from abc import ABC, abstractmethod
 from multiprocessing import Pool
 import tqdm 
@@ -9,6 +11,7 @@ import shutil
 import logging
 from dependencies.instance_segmentation.run_instance_segmentation import run_instance_segmentation
 from dependencies.surface_reconstruction.run_surface_reconstruction import run_surface_reconstruction
+
 
 class DataConverter(ABC):
     '''
