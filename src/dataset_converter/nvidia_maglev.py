@@ -14,7 +14,8 @@ from plyfile import PlyData
 from src.dataset_converter import BaseNvidiaDataConverter
 
 from src.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_dict,
-                              camera_intrinsic_parameters, compute_fw_polynomial, compute_ftheta_parameters,
+                              camera_intrinsic_parameters,
+                              compute_fw_polynomial, compute_ftheta_parameters,
                               camera_car_mask)
 
 from src.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator)
@@ -61,7 +62,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         if seek_sec:
             start_timestamp_us += seek_sec * 1e6
-        
+
         if duration_sec:
             end_timestamp_us = start_timestamp_us + duration_sec * 1e6
 
@@ -119,7 +120,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         T_rig_lidar = np.linalg.inv(T_lidar_rig)
 
         # Load egomotion trajectory
-        for egomotion_pose_entry in load_jsonl(os.path.join(self.sequence_path, 'egomotion/egomotion.json')):
+        for egomotion_pose_entry in load_jsonl(
+                os.path.join(self.sequence_path, 'egomotion/egomotion.json')):
             # Skip invalid poses
             if not egomotion_pose_entry['valid']:
                 continue
@@ -128,7 +130,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             #       which could be used in the future
             egomotion_pose_timestamp = egomotion_pose_entry['timestamp']
             egomotion_pose = np.asfarray(
-                egomotion_pose_entry['pose'].split(' ')).reshape((4, 4)).transpose()
+                egomotion_pose_entry['pose'].split(' ')).reshape(
+                    (4, 4)).transpose()
 
             # Make sure poses represent rigToWorld transformations
             # Note: there currently seems to be an inconsistency in the egomotion indexer output - keep
@@ -141,7 +144,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 egomotion_pose = egomotion_pose @ T_rig_lidar
             else:
                 raise ValueError(
-                    f"Unsupported source ego frame {egomotion_pose_entry['in_sensor_name_frame']}")
+                    f"Unsupported source ego frame {egomotion_pose_entry['in_sensor_name_frame']}"
+                )
 
             self.poses_timestamps.append(egomotion_pose_timestamp)
             self.poses.append(egomotion_pose)
@@ -152,7 +156,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Save the poses
         poses_save_path = os.path.join(self.output_dir, self.session_id,
                                        self.poses_save_dir, 'poses.npz')
-        np.savez(poses_save_path, ego_poses=self.poses,
+        np.savez(poses_save_path,
+                 ego_poses=self.poses,
                  timestamps=self.poses_timestamps)
 
         logger.info(f'> processed {len(self.poses_timestamps)} poses')
@@ -165,9 +170,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         camera_timestamps = defaultdict(list)
 
         # Determine time bounds from available egomotion poses
-        start_timestamp_us, end_timestamp_us = self.time_bounds(self.poses_timestamps,
-                                                                self.seek_sec,
-                                                                self.duration_sec)
+        start_timestamp_us, end_timestamp_us = self.time_bounds(
+            self.poses_timestamps, self.seek_sec, self.duration_sec)
 
         # Process all camera images based on the pose timestamps
         for camera in self.CAMERA_2_IDTYPERIG.keys():
@@ -177,36 +181,46 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             logger.info(f'Processing camera {cam_id_rig}')
 
             # Target folder for all camera-specific outputs
-            camera_base_save_path = os.path.join(
-                self.output_dir, self.session_id, self.image_save_dir, 'image_' + cam_id)
+            camera_base_save_path = os.path.join(self.output_dir,
+                                                 self.session_id,
+                                                 self.image_save_dir,
+                                                 'image_' + cam_id)
 
             # Load frame numbers and timestamps
-            frames_metadata = load_jsonl(os.path.join(
-                self.sequence_path, 'cameras', cam_id_rig, 'meta.json'))
+            frames_metadata = load_jsonl(
+                os.path.join(self.sequence_path, 'cameras', cam_id_rig,
+                             'meta.json'))
             frame_numbers = np.array(
                 [frame_data['frame_number'] for frame_data in frames_metadata])
             frame_timestamps = np.array(
                 [frame_data['timestamp'] for frame_data in frames_metadata])
-            del(frames_metadata)
+            del (frames_metadata)
 
             # Get the frame range of the first and last frame relative to available egomotion poses and respecting exposure timings
             start_idx = np.argmax(
-                frame_timestamps - self.CAM2ROLLINGSHUTTERDELAY[cam_type] - self.CAM2EXPOSURETIME[cam_type] / 2 >= start_timestamp_us)
-            # take all frames if all are within egomotion range, or determine last valid frame
-            end_idx = np.argmax(frame_timestamps - self.CAM2EXPOSURETIME[cam_type] / 2 > end_timestamp_us) \
-                if frame_timestamps[-1] - self.CAM2EXPOSURETIME[cam_type] / 2 > end_timestamp_us else -1
+                frame_timestamps - self.CAM2ROLLINGSHUTTERDELAY[cam_type] -
+                self.CAM2EXPOSURETIME[cam_type] / 2 >= start_timestamp_us)
+            end_idx = np.argmax(
+                frame_timestamps -
+                self.CAM2EXPOSURETIME[cam_type] / 2 > end_timestamp_us
+            ) if frame_timestamps[-1] - self.CAM2EXPOSURETIME[
+                cam_type] / 2 > end_timestamp_us else -1  # take all frames if all are within egomotion range, or determine last valid frame
 
             # Subsample frames to valid range
             frame_numbers = frame_numbers[start_idx:end_idx]
             frame_timestamps = frame_timestamps[start_idx:end_idx]
 
             # Copy all valid images
-            for continuos_frame_index, frame_number in enumerate(frame_numbers):
-                source_image_path = os.path.join(
-                    self.sequence_path, 'cameras', cam_id_rig, str(frame_number) + '.jpeg')
-                # store as *increasing* canonical frame IDs
-                target_image_path = os.path.join(camera_base_save_path, str(
-                    continuos_frame_index).zfill(self.INDEX_DIGITS) + '.jpeg')
+            for continuos_frame_index, frame_number in enumerate(
+                    frame_numbers):
+                source_image_path = os.path.join(self.sequence_path, 'cameras',
+                                                 cam_id_rig,
+                                                 str(frame_number) + '.jpeg')
+                target_image_path = os.path.join(
+                    camera_base_save_path,
+                    str(continuos_frame_index).zfill(self.INDEX_DIGITS) +
+                    '.jpeg')  # store as *increasing* canonical frame IDs
+
                 shutil.copy(source_image_path, target_image_path)
 
             # Extract the calibration metadata
@@ -221,43 +235,49 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 (intrinsic, fw_poly_coeff, max_ray_distortion, max_angle))
 
             # Pose interpolator to obtain start / end egomotion poses
-            pose_interpolator = PoseInterpolator(
-                self.poses, self.poses_timestamps)
+            pose_interpolator = PoseInterpolator(self.poses,
+                                                 self.poses_timestamps)
 
             # Constant mask image, which currently only contains the ego car mask
             # TODO: extend this with dynamic object masks
             mask_image = camera_car_mask(camera_calibration_data)
 
             for frame_idx, frame_timestamp in enumerate(frame_timestamps):
-                mask_image.get_image().save(os.path.join(camera_base_save_path,
-                                                         f'mask_{str(frame_idx).zfill(self.INDEX_DIGITS)}.png'), optimize=True)
+                mask_image.get_image().save(os.path.join(
+                    camera_base_save_path,
+                    f'mask_{str(frame_idx).zfill(self.INDEX_DIGITS)}.png'),
+                                            optimize=True)
 
                 metadata = {}
                 metadata['img_width'] = intrinsic[2]
                 metadata['img_height'] = intrinsic[3]
-                # 1 = TOP_TO_BOTTOM, 2 = LEFT_TO_RIGHT, 3 = BOTTOM_TO_TOP, 4 = RIGHT_TO_LEFT
-                metadata['rolling_shutter_direction'] = 1
+                metadata[
+                    'rolling_shutter_direction'] = 1  # 1 = TOP_TO_BOTTOM, 2 = LEFT_TO_RIGHT, 3 = BOTTOM_TO_TOP, 4 = RIGHT_TO_LEFT
+
                 metadata['camera_model'] = 'f_theta' if cam_type in [
-                    'wide', 'fisheye'] else 'pinhole'
+                    'wide', 'fisheye'
+                ] else 'pinhole'
                 metadata['exposure_time'] = self.CAM2EXPOSURETIME[cam_type]
                 metadata['intrinsic'] = intrinsic
                 metadata['T_cam_rig'] = T_cam_rig
 
                 # Interpolate the start and end pose to the timestamps of the first and last row
-                sofTimestamp = frame_timestamp - \
-                    self.CAM2ROLLINGSHUTTERDELAY[cam_type] - \
-                    self.CAM2EXPOSURETIME[cam_type] / 2
-                eofTimestamp = frame_timestamp - \
-                    self.CAM2EXPOSURETIME[cam_type] / 2
+                sofTimestamp = frame_timestamp - self.CAM2ROLLINGSHUTTERDELAY[
+                    cam_type] - self.CAM2EXPOSURETIME[cam_type] / 2
+                eofTimestamp = frame_timestamp - self.CAM2EXPOSURETIME[
+                    cam_type] / 2
                 metadata['ego_pose_timestamps'] = np.array(
                     [sofTimestamp, eofTimestamp])
-                metadata['ego_pose_s'] = pose_interpolator.interpolate_to_timestamps(sofTimestamp)[
-                    0]
-                metadata['ego_pose_e'] = pose_interpolator.interpolate_to_timestamps(eofTimestamp)[
-                    0]
+                metadata[
+                    'ego_pose_s'] = pose_interpolator.interpolate_to_timestamps(
+                        sofTimestamp)[0]
+                metadata[
+                    'ego_pose_e'] = pose_interpolator.interpolate_to_timestamps(
+                        eofTimestamp)[0]
 
-                metadata_save_path = os.path.join(camera_base_save_path, str(
-                    frame_idx).zfill(self.INDEX_DIGITS) + '.pkl')
+                metadata_save_path = os.path.join(
+                    camera_base_save_path,
+                    str(frame_idx).zfill(self.INDEX_DIGITS) + '.pkl')
                 save_pkl(metadata, metadata_save_path)
 
                 # Save the camera pose timestamps, corresponds approximately to the timestamp of the principle point pixel
@@ -272,8 +292,10 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             if len(camera_timestamps[cam]):
                 camera_timestamps[cam] = np.stack(camera_timestamps[cam])
 
-        image_timestamps_save_path = os.path.join(
-            self.output_dir, self.session_id, self.image_save_dir, 'timestamps.pkl')
+        image_timestamps_save_path = os.path.join(self.output_dir,
+                                                  self.session_id,
+                                                  self.image_save_dir,
+                                                  'timestamps.pkl')
         save_pkl(camera_timestamps, image_timestamps_save_path)
 
         logger.info(f'> processed {len(camera_timestamps)} cameras')
@@ -283,51 +305,58 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         logger.info(f'Loading lidar data')
 
         # Target folder for all lidar-specific outputs
-        lidar_base_save_path = os.path.join(
-            self.output_dir, self.session_id, self.point_cloud_save_dir)
+        lidar_base_save_path = os.path.join(self.output_dir, self.session_id,
+                                            self.point_cloud_save_dir)
 
         # Load extrinsics
-        lidar_calibration_data = self.sensors_calibration_data[self.LIDAR_SENSORNAME]
+        lidar_calibration_data = self.sensors_calibration_data[
+            self.LIDAR_SENSORNAME]
         T_lidar_rig = sensor_to_rig(lidar_calibration_data)
 
         # Initialize the pose interpolator object
         pose_interpolator = PoseInterpolator(self.poses, self.poses_timestamps)
 
         # Load frame numbers and timestamps
-        frames_metadata = load_jsonl(os.path.join(
-            self.sequence_path, 'lidars', self.LIDAR_SENSORNAME, 'meta.json'))
+        frames_metadata = load_jsonl(
+            os.path.join(self.sequence_path, 'lidars',
+                         self.LIDAR_SENSORNAME, 'meta.json'))
         frame_numbers = np.array(
             [frame_data['frame_number'] for frame_data in frames_metadata])
         frame_timestamps = np.array(
             [frame_data['timestamp'] for frame_data in frames_metadata])
-        del(frames_metadata)
+        del (frames_metadata)
 
         # Determine time bounds from available egomotion poses
-        start_timestamp_us, end_timestamp_us = self.time_bounds(self.poses_timestamps,
-                                                                self.seek_sec,
-                                                                self.duration_sec)
+        start_timestamp_us, end_timestamp_us = self.time_bounds(
+            self.poses_timestamps, self.seek_sec, self.duration_sec)
 
         # Get the frame range of the first and last frame relative to available egomotion poses
         start_idx = np.argmax(frame_timestamps >= start_timestamp_us)
-        # take all frames if all are within egomotion range, or determine last valid frame
-        end_idx = np.argmax(frame_timestamps > end_timestamp_us) \
-            if frame_timestamps[-1] > end_timestamp_us else -1
+        end_idx = np.argmax(
+            frame_timestamps > end_timestamp_us
+        ) if frame_timestamps[
+            -1] > end_timestamp_us else -1  # take all frames if all are within egomotion range, or determine last valid frame
 
         # Subsample frames to valid range
         frame_numbers = frame_numbers[start_idx:end_idx]
         frame_timestamps = frame_timestamps[start_idx:end_idx]
 
         # Copy all valid point clouds
-        for continuos_frame_index, (frame_number, frame_timestamp) in enumerate(zip(frame_numbers, frame_timestamps)):
-            source_pc_path = os.path.join(
-                self.sequence_path, 'lidars', self.LIDAR_SENSORNAME, str(frame_number) + '.ply')
-            # store as *increasing* canonical frame IDs
-            target_pc_path = os.path.join(lidar_base_save_path, str(
-                continuos_frame_index).zfill(self.INDEX_DIGITS) + '.dat')
+        for continuos_frame_index, (frame_number,
+                                    frame_timestamp) in enumerate(
+                                        zip(frame_numbers, frame_timestamps)):
+            source_pc_path = os.path.join(self.sequence_path,
+                                          'lidars',
+                                          self.LIDAR_SENSORNAME,
+                                          str(frame_number) + '.ply')
+            target_pc_path = os.path.join(
+                lidar_base_save_path,
+                str(continuos_frame_index).zfill(self.INDEX_DIGITS) +
+                '.dat')  # store as *increasing* canonical frame IDs
 
             # Interpolate egomotion at frame timestamp to obtain lidar start point
-            T_rig_world = pose_interpolator.interpolate_to_timestamps(frame_timestamp)[
-                0]
+            T_rig_world = pose_interpolator.interpolate_to_timestamps(
+                frame_timestamp)[0]
             T_lidar_world = T_rig_world @ T_lidar_rig
 
             # Load point cloud (already motion-compensated)
@@ -342,10 +371,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             xyz_s = np.full((point_count, 3), T_lidar_world[:3, -1])
 
             # Homogeneous points in lidar frame (4 x N)
-            xyz_e = np.row_stack([plydata.elements[0].data['x'],
-                                  plydata.elements[0].data['y'],
-                                  plydata.elements[0].data['z'],
-                                  np.ones(point_count)])
+            xyz_e = np.row_stack([
+                plydata.elements[0].data['x'], plydata.elements[0].data['y'],
+                plydata.elements[0].data['z'],
+                np.ones(point_count)
+            ])
 
             # Transform points from lidar to rig frame and remember minimum height filter condition
             xyz_e = T_lidar_rig @ xyz_e
@@ -381,7 +411,9 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             save_pc_dat(target_pc_path, point_cloud)
 
         # Save all lidar timestamps
-        lidar_timestamp_save_path = os.path.join(lidar_base_save_path, 'timestamps.npz')
-        np.savez(lidar_timestamp_save_path, timestamps=frame_timestamps.tolist())
+        lidar_timestamp_save_path = os.path.join(lidar_base_save_path,
+                                                 'timestamps.npz')
+        np.savez(lidar_timestamp_save_path,
+                 timestamps=frame_timestamps.tolist())
 
         logger.info(f'> processed {len(frame_timestamps)} point clouds')
