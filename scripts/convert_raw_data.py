@@ -51,6 +51,7 @@ def waymo(ctx, *_, **kwargs):
 
 
 @cli.command()
+# TODO(#9): add --seek-sec / --duration-sec options similar to nvidia_maglev subcommand
 @click.pass_context
 def nvidia_deepmap(ctx, *_, **kwargs):
     """NVIDIA-specific data conversion (based on DeepMap tracks)"""
