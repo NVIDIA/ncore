@@ -1,6 +1,7 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 import json
 import base64
-from math import ceil
 import numpy as np
 from protos import transform_pb2, camera_calibration_pb2
 from google.protobuf import text_format

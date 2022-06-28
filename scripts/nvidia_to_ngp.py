@@ -1,3 +1,5 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 import numpy as np
 import json
 import math

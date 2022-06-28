@@ -1,4 +1,7 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 from matplotlib import pyplot as plt
+
 
 def rgba(r):
 	"""Generates a color based on range.
@@ -13,11 +16,13 @@ def rgba(r):
 	c[-1] = 0.5  # alpha
 	return c
 
+
 def plot_image(camera_image):
 	"""Plot a cmaera image."""
 	plt.figure(figsize=(20, 12))
 	plt.imshow(camera_image)
 	plt.grid(visible=False)
+
 
 def plot_points_on_image(projected_points, camera_image, title, rgba_func =rgba, point_size=5.0):
     """Plots points on a camera image.

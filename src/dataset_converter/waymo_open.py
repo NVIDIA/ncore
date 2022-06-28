@@ -1,6 +1,7 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 from __future__ import annotations
 from collections import defaultdict
-from dependencies.surface_reconstruction.run_surface_reconstruction import load_dat_rays
 from src.dataset_converter import DataConverter
 import tensorflow.compat.v1 as tf        
 tf.enable_eager_execution()
@@ -57,6 +58,9 @@ class WaymoConverter(DataConverter):
         
         Args:
             sequence_path (string): path to the raw sequence data
+
+        Return:
+            sub_sequence_names List[string]: names of the processed sub-sequences
         """
 
         dataset = tf.data.TFRecordDataset(sequence_path, compression_type='')
@@ -103,13 +107,6 @@ class WaymoConverter(DataConverter):
         # Save the sequence metadata 
         self.decode_metadata(frame, sequence_name)
 
-        # Perform instance and semantic segmentation of all the images
-        if self.sem_seg_flag:
-            self.run_semantic_segmentation(sequence_name)
-        
-        if self.inst_seg_flag:
-            self.run_instance_segmentation(sequence_name)
-
         # Decode the pose of the current frame and it timestamp
         self.decode_poses_timestamps(poses, poses_timestamps, camera_timestamps, lidar_timestamps, sequence_name)
 
@@ -118,9 +115,8 @@ class WaymoConverter(DataConverter):
 
         # Extract the dynamic masks
         self.extract_dynamic_masks(annotations, sequence_name)
-        
-        if self.surf_rec_flag:
-            self.run_surface_extraction(sequence_name)
+
+        return [sequence_name]
 
     def decode_poses_timestamps(self, poses, poses_timestamps, camera_timestamps, lidar_timestamps, sequence_name):
         # Stack all the poses

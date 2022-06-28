@@ -1,7 +1,7 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 import numpy as np
 from scipy.spatial.transform import Rotation as R
-
-
 
 def so3_trans_2_se3(so3, trans):
     """Create a 4x4 rigid transformation matrix given so3 rotation and translation.

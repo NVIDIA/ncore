@@ -7,7 +7,8 @@ import sys
 sys.path.append('./')
 from src.dataset_converter import DataConverter
 from src.dataset_converter.waymo_open import WaymoConverter
-from src.dataset_converter.nvidia import NvidiaConverter
+from src.dataset_converter.nvidia_deepmap import NvidiaDeepMapConverter
+from src.dataset_converter.nvidia_maglev import NvidiaMaglevConverter
 
 
 @click.group()
@@ -50,12 +51,24 @@ def waymo(ctx, *_, **kwargs):
 
 
 @cli.command()
+# TODO(#9): add --seek-sec / --duration-sec options similar to nvidia_maglev subcommand
 @click.pass_context
-def nvidia(ctx, *_, **kwargs):
+def nvidia_deepmap(ctx, *_, **kwargs):
     """NVIDIA-specific data conversion (based on DeepMap tracks)"""
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
-    NvidiaConverter(config).convert()
+    NvidiaDeepMapConverter(config).convert()
+
+
+@cli.command()
+@click.option('--seek-sec', type=click.FloatRange(min=0.0, max_open=True), help="Time to skip for the dataset conversion (in seconds)")
+@click.option('--duration-sec', type=click.FloatRange(min=0.0, max_open=True), help="Restrict total duration of the dataset conversion (in seconds)")
+@click.pass_context
+def nvidia_maglev(ctx, *_, **kwargs):
+    """NVIDIA-specific data conversion (based on Maglev data extraction)"""
+    config = ctx.obj  # Extend base config with command-specific options
+    config += kwargs
+    NvidiaMaglevConverter(config).convert()
 
 
 if __name__ == '__main__':

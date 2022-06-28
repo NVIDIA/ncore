@@ -1,6 +1,9 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 import pickle 
 import re
 import struct
+import json
 from enum import Enum
 import numpy as np
 from PIL import Image
@@ -15,12 +18,14 @@ def natural_key(string_):
     """
     return [int(s) if s.isdigit() else s for s in re.split(r'(\d+)', string_)]
 
+
 def load_pkl(path):
     """
     Load a .pkl object
     """
     file = open(path ,'rb')
     return pickle.load(file)
+
 
 def save_pkl(obj, path ):
     """
@@ -29,16 +34,79 @@ def save_pkl(obj, path ):
     with open(path, 'wb') as f:
         pickle.dump(obj, f)
 
-def load_pc_dat(file_path):
 
-    with open(file_path,'rb') as f:
-        # The first number denotes the number of points 
+def load_pc_dat(file_path):
+    """
+    Loads binary .dat file representing a 2D double-precision array. Serialized 2D arrays
+    usually represent a point-clouds with columns defined as
+
+    [x_s, y_s, z_s, x_e, y_e, z_e, dist, intensity, dynamic_flag]
+    
+    - xys_s / xyz_e: the start / end point of world rays
+    - dist: the norm of the ray
+    - intensity: lidar intensity response value for this point
+    - dynamic_flag:
+      - -1: if the information is not available,
+      -  0: static
+      -  1: = dynamic
+
+    Args:
+        file_path (str): path to .dat file to load
+    Return:
+        lidar_data (np.array): loaded 2D double-precision array
+    """
+
+    with open(file_path, 'rb') as f:
+        # The first number denotes the number of points
         n_rows, n_columns = struct.unpack('<ii', f.read(8))
         # The remaining data are floats saved in little endian
-        # Columns contain: x_s, y_s, z_s, x_e, y_e, z_e, d, intensity, dynamic_flag
-        lidar_data = np.array(struct.unpack('<%sf' % (n_rows*n_columns), f.read())).reshape(n_rows, n_columns)
+        # Columns usually contain: x_s, y_s, z_s, x_e, y_e, z_e, d, intensity, dynamic_flag
+        # Dynamic flag is set to -1 if the information is not available, 0 static, 1 = dynamic
+        lidar_data = np.array(struct.unpack(
+            '<%sf' % (n_rows*n_columns), f.read())).reshape(n_rows, n_columns)
 
     return lidar_data
+
+
+def save_pc_dat(file_path, lidar_data):
+    """
+    Stores binary .dat file representing a 2D double-precision array, usually representing
+    a point-cloud (see load_pc_dat for format description).
+
+    Args:
+        file_path (str): path to .dat file to load
+        lidar_data (np.array): 2D double-precision array to serialize       
+    """
+
+    assert lidar_data.dtype is np.dtype(
+        'double'), "expecting double-precision array as input"
+
+    n_rows, n_columns = lidar_data.shape
+    lidar_data_flat = lidar_data.flatten()
+
+    with open(file_path, 'wb') as f:
+        f.write(struct.pack('<i', n_rows))
+        f.write(struct.pack('<i', n_columns))
+        f.write(struct.pack('<%sf' % lidar_data_flat.size, *lidar_data_flat))
+
+
+def load_jsonl(jsonl_path):
+    """
+    Loads a jsonl (json-lines) file (each line corresponds to a serialized json object) - see jsonlines.org
+
+    Args:
+        jsonl_path (str): json-lines file path
+    Return:
+        object_list (List[dict]): list of parsed objects
+    """
+
+    object_list = []
+    with open(jsonl_path, 'r') as fp:
+        for line in fp:
+            object_list.append(json.loads(line))
+
+    return object_list
+
 
 class PoseInterpolator:
     ''' 
@@ -114,6 +182,7 @@ def get_3d_bbox_coords(bbox3d):
     
     return corners
 
+
 def compute_optimal_assignments(corr_2d_3d, corr_3d_2d, cameras):
     optimal_assignments = {}
     # Iterate over the cameras 
@@ -153,6 +222,7 @@ def compute_optimal_assignments(corr_2d_3d, corr_3d_2d, cameras):
 
     return optimal_assignments
 
+
 def check_overlap(bbox_1, bbox_2):
 
     overlap_x = np.abs(bbox_1[0] - bbox_2[0]) <= 0.5 * (bbox_1[2] + bbox_2[2])
@@ -169,6 +239,7 @@ def computer_intersection_area(bbox_1, bbox_2):
     bottom = np.min([bbox_1[1] + bbox_1[3] * 0.5, bbox_2[1] + bbox_2[3] * 0.5])
 
     return  (left - right) * (top - bottom)
+
 
 def compute_iou(bbox_1, bbox_2):
 

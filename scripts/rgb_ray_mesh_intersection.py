@@ -1,3 +1,5 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 import argparse
 import point_cloud_utils as pcu
 import numpy as np
@@ -58,7 +60,7 @@ WAYMO_CAMERAS = ['00','01','02','03','04']
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--root_dir', type=str, help="Path to the raw data", required=True)
-    parser.add_argument("--dataset", type=str, help="Name of the dataset", choices=['nvidia', 'waymo'], required=True)
+    parser.add_argument("--dataset", type=str, help="Name of the dataset", choices=['nvidia-deepmap', 'waymo', 'nvidia-maglev'], required=True)
     parser.add_argument("--cam_id", type=str, help="Camera ID to be used for projection. If not specified random camera will be used", default= '-1')
     parser.add_argument('--output_dir', type=str, default = '', help="Output path. If not specified the default path 'root_dir/colored_point_clouds/' will be used")
     parser.add_argument("--start_at", type=int, default=0, help="Idx of the first RGB frame to be used (default 0 so all images will be used)")
@@ -71,7 +73,7 @@ if __name__ == "__main__":
     assert os.path.exists(os.path.join(args.root_dir,'reconstructed_surface', "reconstructed_mesh.ply")), "Mesh of the reconstructed surface does not exist!"
     
     # Select the correct maps
-    CAM_IDS = NV_CAMERAS if args.dataset == 'nvidia' else WAYMO_CAMERAS
+    CAM_IDS = NV_CAMERAS if args.dataset.startswith('nvidia') else WAYMO_CAMERAS
     if args.cam_id != '-1':
         if args.cam_id not in CAM_IDS:
             print(f'{args.cam_id} is not a valid cam id for dataset {args.dataset}. A random cam will be selected instead.')

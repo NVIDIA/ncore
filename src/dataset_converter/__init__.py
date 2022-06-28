@@ -1,3 +1,5 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 from abc import ABC, abstractmethod
 from multiprocessing import Pool
 import tqdm 
@@ -6,12 +8,14 @@ import glob
 from PIL import Image
 import subprocess
 import shutil
+import logging
 from dependencies.instance_segmentation.run_instance_segmentation import run_instance_segmentation
 from dependencies.surface_reconstruction.run_surface_reconstruction import run_surface_reconstruction
 
+
 class DataConverter(ABC):
     '''
-    Base preprossing class used to preprocess AV datasets in a canonical representation as used in the Nvidia DriveSim-AI project. For adding a new dataset,
+    Base preprocessing class used to preprocess AV datasets in a canonical representation as used in the Nvidia DriveSim-AI project. For adding a new dataset,
     please inherit this class and implement the required functions. The output data should follow the conventions defined in 
     https://gitlab-master.nvidia.com/zgojcic/drivesim-ai/-/blob/main/docs/data.md
 
@@ -36,6 +40,8 @@ class DataConverter(ABC):
 
 
     def __init__(self, config):
+        self.logger = logging.getLogger(__name__)
+
         self.label_save_dir = 'labels'
         self.image_save_dir = 'images'
         self.point_cloud_save_dir = 'lidar'
@@ -73,11 +79,27 @@ class DataConverter(ABC):
             if not os.path.isdir(os.path.join(seq_path, self.image_save_dir, 'image_' + cam_id)):
                 os.makedirs(os.path.join(seq_path, self.image_save_dir, 'image_' + cam_id))
 
+    def convert_sequence(self, sequence_pathname):
+        # Perform all data-specific conversions
+        for sub_sequence_name in self.convert_one(sequence_pathname):
+            ## Perform all generic conversions
+            
+            # Perform instance and semantic segmentation of all the images (if enabled)
+            if self.sem_seg_flag:
+                self.run_semantic_segmentation(sub_sequence_name)
+            
+            if self.inst_seg_flag:
+                self.run_instance_segmentation(sub_sequence_name)
+
+            # Perform surface reconstruction (if enabled)
+            if self.surf_rec_flag:
+                self.run_surface_extraction(sub_sequence_name)
+                
     def convert(self):
-        print("start converting ...")
+        self.logger.info("start converting ...")
         with Pool(self.num_proc) as p:
-             r = tqdm.tqdm(p.map(self.convert_one, self.sequence_pathnames))
-        print("\nfinished ...")
+            r = tqdm.tqdm(p.map(self.convert_sequence, self.sequence_pathnames))
+        self.logger.info("finished conversion ...")
 
     def run_semantic_segmentation(self, sequence_name):
         img_folders = glob.glob(os.path.join(self.output_dir, sequence_name, self.image_save_dir) + '/*/')
@@ -142,19 +164,60 @@ class DataConverter(ABC):
 
     @abstractmethod
     def convert_one(self, sequence_path):
-        pass
-    @abstractmethod
-    def decode_poses_timestamps(self):
+        """
+        Runs dataset-specific conversion
+
+        Args:
+            sequence_path (string): path to dataset-specific raw sequence data
+        
+        Return:
+            sub_sequence_names List[string]: names of all processed sub-sequences
+        """
         pass
 
-    @abstractmethod
-    def decode_lidar(self):
-        pass
 
-    @abstractmethod
-    def decode_images(self):
-        pass
-    
-    @abstractmethod
-    def decode_labels(self):
-        pass
+class BaseNvidiaDataConverter(DataConverter):
+    """
+    Base class for all Nvidia-specific data converters, maintaining common definitions and logic
+    """
+
+    ## Constants defined for *Hyperion8* sensor-set
+
+    # TODO: the value for the 70FoV wide camera seems to be different, we need to clarify
+    CAM2EXPOSURETIME = {'wide': 1641.58, 'fisheye': 10987.00}
+
+    CAM2ROLLINGSHUTTERDELAY = {'wide': 31611.55, 'fisheye': 32561.63}
+
+    CAMERA_2_IDTYPERIG = {
+        'camera_front_wide_120fov': ['00', 'wide', 'camera:front:wide:120fov'],
+        'camera_cross_left_120fov': ['01', 'wide', 'camera:cross:left:120fov'],
+        'camera_cross_right_120fov': ['02', 'wide', 'camera:cross:right:120fov'],
+        'camera_rear_left_70fov': ['03', 'wide', 'camera:rear:left:70fov'],
+        'camera_rear_right_70fov': ['04', 'wide', 'camera:rear:right:70fov'],
+        'camera_rear_tele_30fov': ['05', 'wide', 'camera:rear:tele:30fov'],
+        'camera_front_fisheye_200fov': ['10', 'fisheye', 'camera:front:fisheye:200fov'],
+        'camera_left_fisheye_200fov': ['11', 'fisheye', 'camera:left:fisheye:200fov'],
+        'camera_right_fisheye_200fov': ['12', 'fisheye', 'camera:right:fisheye:200fov'],
+        'camera_rear_fisheye_200fov': ['13', 'fisheye', 'camera:rear:fisheye:200fov']
+    }
+
+    ID_TO_CAMERA = {'00': 'camera_front_wide_120fov',
+                    '01': 'camera_cross_left_120fov',
+                    '02': 'camera_cross_right_120fov',
+                    '03': 'camera_rear_left_70fov',
+                    '04': 'camera_rear_right_70fov',
+                    '05': 'camera_rear_tele_30fov',
+                    '10': 'camera_front_fisheye_200fov',
+                    '11': 'camera_left_fisheye_200fov',
+                    '12': 'camera_right_fisheye_200fov',
+                    '13': 'camera_rear_fisheye_200fov'
+                    }
+
+    # Reference lidar sensor name
+    LIDAR_SENSORNAME = 'lidar:gt:top:p128:v4p5'
+
+    # Minimum / maximum distances (in meters) for point cloud measurements (to filter out invalid points, points on the ego-car),
+    # as well as minimum height (there might be some spurious measurements bellow ground)
+    LIDAR_FILTER_MIN_DISTANCE = 3.5
+    LIDAR_FILTER_MAX_DISTANCE = 100.0
+    LIDAR_FILTER_MIN_RIG_HEIGHT = -0.5
