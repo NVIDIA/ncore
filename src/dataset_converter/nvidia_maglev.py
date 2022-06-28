@@ -9,7 +9,7 @@ from collections import defaultdict
 
 import numpy as np
 
-from plyfile import PlyData
+import point_cloud_utils as pcu
 
 from src.dataset_converter import BaseNvidiaDataConverter
 
@@ -354,8 +354,9 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             T_lidar_world = T_rig_world @ T_lidar_rig
 
             # Load point cloud (already motion-compensated)
-            plydata = PlyData.read(source_pc_path)
-            point_count = plydata.elements[0].count
+            xyz, intensity = pcu.load_mesh_vc(source_pc_path)
+            point_count = xyz.shape[0]
+            intensity = intensity[:,0]
 
             # Create 3D ray structure of 3D rays in space with accompanying metadata.
             # Format; x_s, y_s, z_s, x_e, y_e, z_e, dist, intensity, dynamic_flag
@@ -365,11 +366,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             xyz_s = np.full((point_count, 3), T_lidar_world[:3, -1])
 
             # Homogeneous points in lidar frame (4 x N)
-            xyz_e = np.row_stack([
-                plydata.elements[0].data['x'], plydata.elements[0].data['y'],
-                plydata.elements[0].data['z'],
-                np.ones(point_count)
-            ])
+            xyz_e = np.row_stack([xyz.transpose(), np.ones(point_count)])
 
             # Transform points from lidar to rig frame and remember minimum height filter condition
             xyz_e = T_lidar_rig @ xyz_e
@@ -381,9 +378,6 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             # Compute distances
             dist = np.linalg.norm(xyz_s - xyz_e, axis=1)  # N x 1
-
-            # Load intensities
-            intensity = plydata.elements[0].data['intensity']  # N x 1
 
             # Dynamic flag
             # TODO: properly set dynamic flag of point cloud based on labels
@@ -399,7 +393,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             point_cloud = point_cloud[valid_idxs, :]
 
-            logger.debug(f'> filtered {valid_idxs.sum()} invalid points')
+            logger.debug(f'> filtered {point_count - valid_idxs.sum()} invalid points')
 
             # Serialize point cloud
             save_pc_dat(target_pc_path, point_cloud)

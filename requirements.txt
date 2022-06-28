@@ -12,4 +12,3 @@ pandas
 pyarrow
 point-cloud-utils
 click
-plyfile
