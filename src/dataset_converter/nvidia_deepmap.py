@@ -346,16 +346,16 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 column_poses = pose_interpolator.interpolate_to_timestamps(column_timestamps)
                 T_lidar_globals = column_poses @ T_lidar_rig[None,:,:]
 
-                # Filter out points that are more than 1 m bellow ground (there are some spurious measurements there)
-                valid_idx_z = raw_pc[:,2] > -4.85
+                # Filter out points that are more than LIDAR_FILTER_MIN_RIG_HEIGHT bellow ground (there are some spurious measurements there)
+                valid_idx_z = raw_pc[:,2] + T_lidar_rig[2,3] > self.LIDAR_FILTER_MIN_RIG_HEIGHT
                 transformed_pc = unwind_lidar(raw_pc, T_lidar_globals.reshape(-1,4), np.array(data.data.column_indices).reshape(-1,1))
 
-                # Filter points with a distance smaller than 3.5m (points that lie on the ego car)
+                # Filter points based on distances
                 dist = np.linalg.norm(transformed_pc[:,:3] - transformed_pc[:,3:6],axis=1)
                 transformed_pc = np.concatenate([transformed_pc, dist[:,None], intensities[:, None], -1*np.ones_like(dist[:,None])], axis=1)
 
-                # Filter points on the distance (remove points that are very far away and points that lie on the ego car)
-                valid_idx_dist = np.logical_and(np.greater_equal(dist,3.5),np.less_equal(dist,100))
+                # Filter points on the distances LIDAR_FILTER_MIN_DISTANCE / LIDAR_FILTER_MAX_DISTANCE (remove points that are very far away and points that lie on the ego car)
+                valid_idx_dist = np.logical_and(np.greater_equal(dist,self.LIDAR_FILTER_MIN_DISTANCE),np.less_equal(dist,self.LIDAR_FILTER_MAX_DISTANCE))
                 valid_idx = np.logical_and(valid_idx_z, valid_idx_dist)
 
                 # 3D rays in space with accompanying metadata. 

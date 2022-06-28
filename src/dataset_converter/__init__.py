@@ -215,3 +215,9 @@ class BaseNvidiaDataConverter(DataConverter):
 
     # Reference lidar sensor name
     LIDAR_SENSORNAME = 'lidar:gt:top:p128:v4p5'
+
+    # Minimum / maximum distances (in meters) for point cloud measurements (to filter out invalid points, points on the ego-car),
+    # as well as minimum height (there might be some spurious measurements bellow ground)
+    LIDAR_FILTER_MIN_DISTANCE = 3.5
+    LIDAR_FILTER_MAX_DISTANCE = 100.0
+    LIDAR_FILTER_MIN_RIG_HEIGHT = -0.5

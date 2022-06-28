@@ -26,12 +26,6 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
     NVIDIA-specific data conversion (based on Maglev dsai-pp workflows data extraction)
     """
 
-    # Minimum / maximum distances (in meters) for point cloud measurements (to filter out invalid points, points on the ego-car),
-    # as well as minimum height (there might be some spurious measurements bellow ground)
-    LIDAR_FILTER_MIN_DISTANCE = 3.5
-    LIDAR_FILTER_MAX_DISTANCE = 100.0
-    LIDAR_FILTER_MIN_RIG_HEIGHT = -1.0
-
     def __init__(self, config):
         self.logger = logging.getLogger(__name__)
 
