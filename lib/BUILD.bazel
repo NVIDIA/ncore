@@ -1,0 +1,29 @@
+load("//3rdparty/numpyeigen:npe_add_module.bzl", "npe_codegen_function", "npe_codegen_module")
+
+npe_codegen_function(
+    name = "av_utils_codegen_function",
+    src = ":utils.cpp",
+    out = ":utils_function.cpp",
+)
+
+npe_codegen_module(
+    name = "av_utils_codegen_module",
+    src = ":utils.cpp",
+    out = ":utils_module.cpp",
+    module = "libav_utils_cc",
+)
+
+cc_binary(
+    name = "av_utils_cc",
+    srcs = [
+        ":utils_function.cpp",
+        ":utils_module.cpp",
+    ],
+    copts = [
+        "-std=c++14",
+    ],
+    linkshared = True,
+    deps = [
+        "@numpyeigen//:npe",
+    ],
+)

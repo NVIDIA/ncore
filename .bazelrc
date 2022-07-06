@@ -1,5 +1,8 @@
 # Optimized mode by default
 build -c opt
 
+# Default CXX flags
+build --cxxopt="-Werror"
+
 # https://docs.bazel.build/versions/main/best-practices.html#using-the-bazelrc-file
 try-import %workspace%/user.bazelrc

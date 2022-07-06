@@ -22,7 +22,7 @@ python_register_toolchains(
 
 # Create a central repo that knows about the dependencies needed from requirements.txt.
 load("@python38//:defs.bzl", "interpreter")
-load("@rules_python//python:pip.bzl", "pip_parse")
+load("@rules_python//python:pip.bzl", "package_annotation", "pip_parse")
 
 pip_parse(
     name = "pip_deps",
@@ -80,14 +80,6 @@ load(
 )
 
 container_pull(
-    name = "pytorch_base",
-    registry = "nvcr.io",
-    repository = "nvidia/pytorch",
-    # digest = "sha256:e3470579ea78",  #
-    tag = "22.05-py3",
-)
-
-container_pull(
     name = "dsai_dev_container",
     digest = "sha256:bcd91ec75a4e71eb449cd2dcbf5b4207cb26a5fab4ce8cff634e13d0d5799386",
     registry = "gitlab-master.nvidia.com:5005",
@@ -115,4 +107,40 @@ new_git_repository(
     patches = ["//3rdparty/PoissonRecon:PoissonRecon.patch"],
     remote = "https://github.com/mkazhdan/PoissonRecon",
     shallow_since = "1650856848 -0400",
+)
+
+new_git_repository(
+    name = "numpyeigen",
+    build_file = "//3rdparty/numpyeigen:numpyeigen.BUILD",
+    commit = "4916d926aa2b939bd8f625c7537563a1575dafe9",
+    remote = "https://github.com/fwilliams/numpyeigen",
+    shallow_since = "1643644288 -0500",
+)
+
+new_git_repository(
+    name = "numpyeigen_pybind11",
+    build_file = "//3rdparty/numpyeigen_pybind11:numpyeigen_pybind11.BUILD",
+    commit = "d8c0a26b06b4d6901f6af4b1cbdc975bb160221b",
+    remote = "https://github.com/fwilliams/pybind11.git",
+    shallow_since = "1656512085 -0400",
+)
+
+http_archive(
+    name = "eigen",
+    build_file_content =
+        """
+# TODO(janickm): Replace this with a better version, like from TensorFlow.
+# See https://github.com/tensorflow/tensorflow/tree/master/third_party/eigen3
+cc_library(
+    name = 'eigen',
+    includes = ['.'],
+    hdrs = glob(['Eigen/**']),
+    visibility = ['//visibility:public'],
+)
+""",
+    sha256 = "685adf14bd8e9c015b78097c1dc22f2f01343756f196acdc76a678e1ae352e11",
+    strip_prefix = "eigen-3.3.7",
+    urls = [
+        "https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.tar.bz2",
+    ],
 )

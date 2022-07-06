@@ -137,13 +137,11 @@ void cameraToWorldRay(const Eigen::MatrixBase<Derived>& pixelCoordinates,
         Eigen::Matrix<double,3,3> startRotMat = cameraToWorldTransform.template block(0,0,3,3);
         Eigen::Quaterniond startRot(startRotMat);
         Eigen::Matrix<double,3,1> startTrans(cameraToWorldTransform.template block(0,3,3,1));
-        double startTimestamp = cameraToWorldTransformTimestamps(0,0);
 
         // End pose
         Eigen::Matrix<double,3,3> endRotMat = cameraToWorldTransform.template block(4,0,3,3);
         Eigen::Quaterniond endRot(endRotMat);
         Eigen::Matrix<double,3,1> endTrans(cameraToWorldTransform.template block(4,3,3,1));
-        double endTimestamp = cameraToWorldTransformTimestamps(0,1);
 
         // Get the required timestamps
         double startTransformTimestamp = cameraToWorldTransformTimestamps(0,0);
@@ -153,7 +151,7 @@ void cameraToWorldRay(const Eigen::MatrixBase<Derived>& pixelCoordinates,
         // Iterate over the pixels and transform the rays to the world coordinate system
         for (int i = 0; i < cameraRays.rows(); i++)
         {
-            double projTimestamp;
+            double projTimestamp{};
             switch(rollingShutterDirection)
             {
                 case 1:
@@ -538,7 +536,7 @@ npe_begin_code()
 
             for (int iter_idx = 0; (iter_idx < maxIter) && (error > eps); iter_idx++)
             {
-                double projTimestamp;
+                double projTimestamp{};
                 switch(rollingShutterDirection)
                 {
                     case 1:

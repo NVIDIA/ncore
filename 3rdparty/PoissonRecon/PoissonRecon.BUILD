@@ -99,7 +99,10 @@ cc_binary(
         "Src/Window.h",
         "Src/Window.inl",
     ],
-    copts = ["-std=c++14"],
+    copts = [
+        "-std=c++14",
+        "-Wno-error",
+    ],
     deps = [
         ":PNG",
     ],
