@@ -16,7 +16,6 @@ py_library(
         requirement("pillow"),
         requirement("protobuf3-to-dict"),
         requirement("pyarrow"),
-        requirement("plyfile"),
         "//dependencies/instance_segmentation:pylib",
         "//dependencies/surface_reconstruction:pylib"
     ],

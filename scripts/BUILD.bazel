@@ -19,6 +19,7 @@ py_binary(
     srcs = ["convert_raw_data.py"],
     deps = [
         requirement("click"),
+        requirement("debugpy"),
         "//src/dataset_converter:pylib",
     ],
 )
@@ -30,6 +31,7 @@ py3_image(
     main = "convert_raw_data.py",
     deps = [
         requirement("click"),
+        requirement("debugpy"),
         "//src/dataset_converter:pylib",
     ],
 )
