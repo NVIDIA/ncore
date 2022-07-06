@@ -8,3 +8,14 @@ py_binary(
         requirement("numpy"),
     ],
 )
+
+py_binary(
+    name = "project_pc_to_img",
+    srcs = ["project_pc_to_img.py"],
+    deps = [
+        requirement("numpy"),
+        requirement("pillow"),
+        requirement("matplotlib"),
+        "//src:pylib"
+    ],
+)

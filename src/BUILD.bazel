@@ -2,7 +2,7 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 load("@pip_deps//:requirements.bzl", "requirement")
 
 py_library(
-    name = "lib",
+    name = "pylib",
     srcs = [
         "common.py",
         "transformations.py",
@@ -15,6 +15,9 @@ py_library(
         requirement("numpy"),
         requirement("pillow"),
         requirement("scipy"),
+        requirement("matplotlib"),
+        requirement("tensorflow"),
+        requirement("waymo-open-dataset-tf-2-5-0"),
         "//protos:deepmap_py_proto"
     ],
 )
@@ -24,6 +27,6 @@ py_binary(
     name = "testbinary",
     srcs = ["testbinary.py"],
     deps = [
-        ":lib",
+        ":pylib",
     ],
 )

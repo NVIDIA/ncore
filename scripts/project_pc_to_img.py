@@ -10,8 +10,6 @@ import time
 from PIL import Image
 from matplotlib import pyplot as plt 
 
-import sys
-sys.path.append('./')
 from src.nvidia_utils import (transform_point_cloud, PoseInterpolator, world_points_2_pixel_py, project_camera_rays_2_img)
 from src.visualization import plot_points_on_image
 from src.common import load_pc_dat, NV_CAMERAS, WAYMO_CAMERAS
