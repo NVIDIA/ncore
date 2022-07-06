@@ -1,12 +1,23 @@
 load("@rules_python//python:defs.bzl", "py_library")
-# load("@pip_deps//:requirements.bzl", "requirement")
+load("@pip_deps//:requirements.bzl", "requirement")
+
+package(default_visibility = ["//visibility:public"])
 
 py_library(
-    name = "lib",
+    name = "pylib",
     srcs = [
         "__init__.py",
-        "nvidia.py",
+        "nvidia_deepmap.py",
+        "nvidia_maglev.py",
         "waymo_open.py",
     ],
-    visibility = ["//:__subpackages__"],
+    deps = [
+        requirement("tqdm"),
+        requirement("pillow"),
+        requirement("protobuf3-to-dict"),
+        requirement("pyarrow"),
+        requirement("plyfile"),
+        "//dependencies/instance_segmentation:pylib",
+        "//dependencies/surface_reconstruction:pylib"
+    ],
 )

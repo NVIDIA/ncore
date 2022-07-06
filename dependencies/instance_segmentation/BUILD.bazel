@@ -1,0 +1,18 @@
+load("@rules_python//python:defs.bzl", "py_library")
+load("@pip_deps//:requirements.bzl", "requirement")
+
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "pylib",
+    srcs = [
+        "run_instance_segmentation.py",
+    ],
+    deps = [
+        requirement("tqdm"),
+        requirement("opencv-python"),
+        requirement("detectron2"),
+        requirement("torch"),
+        requirement("torchvision"),
+    ],
+)

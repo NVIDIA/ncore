@@ -3,13 +3,10 @@
 
 import click
 
-import sys
-sys.path.append('./')
 from src.dataset_converter import DataConverter
 from src.dataset_converter.waymo_open import WaymoConverter
 from src.dataset_converter.nvidia_deepmap import NvidiaDeepMapConverter
 from src.dataset_converter.nvidia_maglev import NvidiaMaglevConverter
-
 
 @click.group()
 @click.option('--root-dir', type=str, help="Path to the raw data sequences", required=True)

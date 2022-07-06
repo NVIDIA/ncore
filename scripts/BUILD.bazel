@@ -10,6 +10,15 @@ py_binary(
 )
 
 py_binary(
+    name = "convert_raw_data",
+    srcs = ["convert_raw_data.py"],
+    deps = [
+        requirement("click"),
+        "//src/dataset_converter:pylib"
+    ],
+)
+
+py_binary(
     name = "project_pc_to_img",
     srcs = ["project_pc_to_img.py"],
     deps = [

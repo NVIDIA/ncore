@@ -1,0 +1,16 @@
+load("@rules_python//python:defs.bzl", "py_library")
+load("@pip_deps//:requirements.bzl", "requirement")
+
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "pylib",
+    srcs = [
+        "run_surface_reconstruction.py",
+    ],
+    deps = [
+        requirement("tqdm"),
+        requirement("point-cloud-utils"),
+        "//src:pylib"
+    ],
+)

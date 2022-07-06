@@ -11,7 +11,6 @@ from src.nvidia_utils import (compute_ftheta_parameters, extract_pose, extract_s
                               parse_rig_sensors_from_file, sensor_to_rig, camera_intrinsic_parameters, compute_fw_polynomial,
                               camera_car_mask)
 from src.common import PoseInterpolator
-from lib import unwind_lidar
 import glob
 import struct
 from pyarrow.parquet import ParquetDataset
@@ -296,6 +295,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             save_pkl(frame_annotations, frame_labels_save_path)
 
     def decode_lidar(self, sequence_path):
+        from lib import unwind_lidar
 
         annotations  = load_pkl(os.path.join(self.output_dir, self.sequence_name, 'labels.pkl'))
                         

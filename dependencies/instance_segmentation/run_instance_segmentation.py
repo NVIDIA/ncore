@@ -2,17 +2,13 @@ import cv2
 import os
 from tqdm import tqdm
 import numpy as np
-from detectron2 import model_zoo
-from detectron2.engine import DefaultPredictor
-from detectron2.config import get_cfg
-from detectron2.projects.point_rend import add_pointrend_config
-import sys
-#sys.path.append('/home/frshen/workspace/multiview/ganverse_3d/') # Jun's repo
-from copy import deepcopy
-import glob
-
 
 def run_instance_segmentation(all_files):
+    from detectron2 import model_zoo
+    from detectron2.engine import DefaultPredictor
+    from detectron2.config import get_cfg
+    from detectron2.projects.point_rend import add_pointrend_config
+
     cfg = get_cfg()
     best_model_config = 'dependencies/instance_segmentation/configs/InstanceSegmentation/pointrend_rcnn_X_101_32x8d_FPN_3x_coco.yaml'
     use_point_rend = True
