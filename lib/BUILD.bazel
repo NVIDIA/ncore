@@ -1,5 +1,4 @@
 load("//3rdparty/numpyeigen:npe_add_module.bzl", "npe_codegen_function", "npe_codegen_module")
-load("@rules_python//python:defs.bzl", "py_binary")
 load("@pip_deps//:requirements.bzl", "requirement")
 
 npe_codegen_function(

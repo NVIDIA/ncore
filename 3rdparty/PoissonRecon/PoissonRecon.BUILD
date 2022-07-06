@@ -4,8 +4,6 @@ package(default_visibility = ["//visibility:public"])
 
 cc_library(
     name = "ZLIB",
-    srcs = [
-    ],
     hdrs = ["ZLIB/zlib.h"],
 )
 
@@ -36,7 +34,77 @@ cc_library(
         "PNG/pngasmrd.h",
         "PNG/pngconf.h",
     ],
+    copts = ["-Wno-misleading-indentation"],
+    strip_include_prefix = "PNG",
     deps = [":ZLIB"],
+)
+
+cc_library(
+    name = "JPEG",
+    srcs = [
+        "JPEG/ckconfig.cpp",
+        "JPEG/jcapimin.cpp",
+        "JPEG/jcapistd.cpp",
+        "JPEG/jccoefct.cpp",
+        "JPEG/jccolor.cpp",
+        "JPEG/jcdctmgr.cpp",
+        "JPEG/jchuff.cpp",
+        "JPEG/jcinit.cpp",
+        "JPEG/jcmainct.cpp",
+        "JPEG/jcmarker.cpp",
+        "JPEG/jcmaster.cpp",
+        "JPEG/jcomapi.cpp",
+        "JPEG/jcparam.cpp",
+        "JPEG/jcphuff.cpp",
+        "JPEG/jcprepct.cpp",
+        "JPEG/jcsample.cpp",
+        "JPEG/jctrans.cpp",
+        "JPEG/jdapimin.cpp",
+        "JPEG/jdapistd.cpp",
+        "JPEG/jdatadst.cpp",
+        "JPEG/jdatasrc.cpp",
+        "JPEG/jdcoefct.cpp",
+        "JPEG/jdcolor.cpp",
+        "JPEG/jddctmgr.cpp",
+        "JPEG/jdhuff.cpp",
+        "JPEG/jdinput.cpp",
+        "JPEG/jdmainct.cpp",
+        "JPEG/jdmarker.cpp",
+        "JPEG/jdmaster.cpp",
+        "JPEG/jdmerge.cpp",
+        "JPEG/jdphuff.cpp",
+        "JPEG/jdpostct.cpp",
+        "JPEG/jdsample.cpp",
+        "JPEG/jdtrans.cpp",
+        "JPEG/jerror.cpp",
+        "JPEG/jfdctflt.cpp",
+        "JPEG/jfdctfst.cpp",
+        "JPEG/jfdctint.cpp",
+        "JPEG/jidctflt.cpp",
+        "JPEG/jidctfst.cpp",
+        "JPEG/jidctint.cpp",
+        "JPEG/jidctred.cpp",
+        "JPEG/jmemmgr.cpp",
+        "JPEG/jmemnobs.cpp",
+        "JPEG/jquant1.cpp",
+        "JPEG/jquant2.cpp",
+        "JPEG/jutils.cpp",
+    ],
+    hdrs = [
+        "JPEG/jchuff.h",
+        "JPEG/jconfig.h",
+        "JPEG/jdct.h",
+        "JPEG/jdhuff.h",
+        "JPEG/jerror.h",
+        "JPEG/jinclude.h",
+        "JPEG/jmemsys.h",
+        "JPEG/jmorecfg.h",
+        "JPEG/jpegint.h",
+        "JPEG/jpeglib.h",
+        "JPEG/jversion.h",
+    ],
+    copts = ["-Wno-misleading-indentation"],
+    strip_include_prefix = "JPEG",
 )
 
 cc_binary(
@@ -102,8 +170,14 @@ cc_binary(
     copts = [
         "-std=c++14",
         "-Wno-error",
+        "-fopenmp",
+    ],
+    linkopts = [
+        "-lgomp",
+        "-lpthread",
     ],
     deps = [
+        ":JPEG",
         ":PNG",
     ],
 )
