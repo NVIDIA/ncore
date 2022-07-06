@@ -12,7 +12,10 @@ import logging
 from dependencies.instance_segmentation.run_instance_segmentation import run_instance_segmentation
 from dependencies.surface_reconstruction.run_surface_reconstruction import run_surface_reconstruction
 
-
+# Initialize basic top-level logger configuration
+logging.basicConfig(level=logging.DEBUG,
+                    format='<%(asctime)s|%(levelname)s|%(filename)s:%(lineno)d|%(name)s> %(message)s')
+                    
 class DataConverter(ABC):
     '''
     Base preprocessing class used to preprocess AV datasets in a canonical representation as used in the Nvidia DriveSim-AI project. For adding a new dataset,
@@ -97,8 +100,15 @@ class DataConverter(ABC):
                 
     def convert(self):
         self.logger.info("start converting ...")
-        with Pool(self.num_proc) as p:
-            r = tqdm.tqdm(p.map(self.convert_sequence, self.sequence_pathnames))
+        if self.num_proc > 1:
+            # Perform multi-threaded conversion
+            with Pool(self.num_proc) as p:
+                r = tqdm.tqdm(p.map(self.convert_sequence,
+                              self.sequence_pathnames))
+        else:
+            # Perform single-threaded conversion in main thread
+            for sequence_pathname in self.sequence_pathnames:
+                self.convert_sequence(sequence_pathname)
         self.logger.info("finished conversion ...")
 
     def run_semantic_segmentation(self, sequence_name):
