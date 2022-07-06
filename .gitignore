@@ -4,4 +4,4 @@ __pycache__/
 
 # Bazel-specific ignores
 /bazel-*
-user.bazelrc
+.bazelrc.user

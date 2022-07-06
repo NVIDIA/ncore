@@ -1,61 +1,24 @@
 # BUILD: docker image build -t gitlab-master.nvidia.com:5005/zgojcic/drivesim-ai:dev -f docker/Dockerfile.build .
 # PUSH:  docker push gitlab-master.nvidia.com:5005/zgojcic/drivesim-ai:dev
 
-ARG CUDA_VERSION=11.4.0
-FROM nvidia/cuda:${CUDA_VERSION}-cudnn8-devel-ubuntu20.04
-
-ARG PYTHON_VERSION=3.8
+FROM nvidia/cuda:11.7.0-runtime-ubuntu22.04
 
 LABEL maintainer="Janick Martinez Esturo <janickm@nvidia.com>"
 
 # Needed for string substitution
-SHELL ["/bin/bash", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN \
-    # Add python
+    # Add additional system libraries
     apt-get update -qq --fix-missing && \
     apt-get install -y --no-install-recommends software-properties-common && \
-    add-apt-repository ppa:deadsnakes/ppa && \
-    apt-add-repository universe && \
-    apt-get -y update -qq --fix-missing && \
-    apt-get -y install --no-install-recommends \
-        python${PYTHON_VERSION} \
-        python${PYTHON_VERSION}-dev \
-        $( [ ${PYTHON_VERSION%%.*} -ge 3 ] && echo "python${PYTHON_VERSION}-distutils" ) \
-        wget \
-    && \
-    \
-    # Set the default python and install PIP packages
-    update-alternatives --install /usr/bin/python${PYTHON_VERSION%%.*} python${PYTHON_VERSION%%.*} /usr/bin/python${PYTHON_VERSION} 1 && \
-    update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 && \
-    \
-    # Install python dependencies
-    if [[ "$PYTHON_VERSION" == "2.7" || "$PYTHON_VERSION" == "3.6" ]]; then \
-        wget https://bootstrap.pypa.io/pip/$PYTHON_VERSION/get-pip.py --progress=bar:force:noscroll --no-check-certificate ; \
-    else \
-        apt-get -y install --no-install-recommends python${PYTHON_VERSION}-distutils ; \
-        wget https://bootstrap.pypa.io/get-pip.py --progress=bar:force:noscroll --no-check-certificate ; \
-    fi && \
-    python${PYTHON_VERSION} get-pip.py && \
-    rm get-pip.py && \
-    \
-    rm -rf /var/lib/apt/lists/*
-
-ENV PYTHONPATH="/usr/lib/python${PYTHON_VERSION}/site-packages:/usr/local/lib/python${PYTHON_VERSION}/site-packages"
-
-RUN \
-    # Add CUDA libs paths
-    CUDA_PATH=(/usr/local/cuda-*) && \
-    CUDA=`basename $CUDA_PATH` && \
-    echo "$CUDA_PATH/compat" >> /etc/ld.so.conf.d/${CUDA/./-}.conf && \
-    ldconfig
-
-RUN \
-    # Add additional system libraries
     add-apt-repository -y ppa:ubuntu-toolchain-r/test && \
     apt-get -y update -qq --fix-missing && \
     apt-get -y install --no-install-recommends \
-        g++-11 libgl1 \
+        gcc g++ libgl1 clang git wget xz-utils \
     && \
     rm -rf /var/lib/apt/lists/*
+
+RUN \
+   # Add python -> python3 symlink (required for bazel-build image entrypoints)
+   ln -s /usr/bin/python3 /usr/bin/python

@@ -1,0 +1,32 @@
+variables:
+  BAZELISK_VERSION: v1.12.0
+  GIT_CLEAN_FLAGS: -ffdx -e .keep
+
+default:
+  image:
+    name: gitlab-master.nvidia.com:5005/zgojcic/drivesim-ai:dev
+  tags:
+    - type/docker
+    - os/linux
+  before_script:
+    # Install bazelisk
+    - wget https://github.com/bazelbuild/bazelisk/releases/download/$BAZELISK_VERSION/bazelisk-linux-amd64 -O /usr/local/bin/bazelisk
+    - chmod +x /usr/local/bin/bazelisk
+
+    # Setup local disk-cache
+    - echo "build --disk_cache=$CI_PROJECT_DIR/.keep/cache" >> .bazelrc.user
+    - echo "test  --disk_cache=$CI_PROJECT_DIR/.keep/cache" >> .bazelrc.user
+
+    # - echo "startup --output_base $CI_PROJECT_DIR/.keep/output" >> .bazelrc.user
+
+build+test:
+  stage: build
+  script:
+    - bazelisk version
+
+    # Build memory-heavy PoissonRec in single-job mode
+    - bazelisk build --jobs=1 --local_ram_resources=200 @PoissonRecon//:PoissonRecon
+    
+    # Build+test all remaining targets
+    - bazelisk test ...
+  allow_failure: false

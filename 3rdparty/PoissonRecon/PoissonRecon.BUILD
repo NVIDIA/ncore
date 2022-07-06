@@ -4,7 +4,10 @@ package(default_visibility = ["//visibility:public"])
 
 cc_library(
     name = "ZLIB",
-    hdrs = ["ZLIB/zlib.h"],
+    hdrs = [
+        "ZLIB/zconf.h",
+        "ZLIB/zlib.h",
+    ],
 )
 
 cc_library(
@@ -170,8 +173,10 @@ cc_binary(
     copts = [
         "-std=c++14",
         "-Wno-error",
+        "-w",
         "-fopenmp",
     ],
+    defines = ["FAST_COMPILE"],
     linkopts = [
         "-lgomp",
         "-lpthread",

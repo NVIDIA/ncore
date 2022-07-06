@@ -527,8 +527,7 @@ npe_begin_code()
 
             Eigen::Matrix<bool, 1, 1> finalValidFlag;
             Eigen::Matrix<double,3,1> projTrans;
-            Eigen::Quaterniond projRot;
-            
+            Eigen::Quaterniond projRot = Eigen::Quaterniond::Identity();
             
             // Initialize the parameters
             double error = std::numeric_limits<double>::max();
