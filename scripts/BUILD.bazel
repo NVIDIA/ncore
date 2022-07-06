@@ -1,6 +1,10 @@
 load("@rules_python//python:defs.bzl", "py_binary")
 load("@pip_deps//:requirements.bzl", "requirement")
 load("@io_bazel_rules_docker//python3:image.bzl", "py3_image")
+load(
+    "@io_bazel_rules_docker//container:container.bzl",
+    "container_push",
+)
 
 py_binary(
     name = "nvidia_to_ngp",
@@ -28,6 +32,15 @@ py3_image(
         requirement("click"),
         "//src/dataset_converter:pylib",
     ],
+)
+
+container_push(
+    name = "push_convert_raw_data_image",
+    format = "Docker",
+    image = ":convert_raw_data_image",
+    registry = "nvcr.io",
+    repository = "nv-maglev/dlav/drivesim-ai",
+    tag = "convert-raw-data-dev",
 )
 
 py_binary(
