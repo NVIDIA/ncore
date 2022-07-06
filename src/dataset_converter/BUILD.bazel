@@ -1,0 +1,12 @@
+load("@rules_python//python:defs.bzl", "py_library")
+# load("@pip_deps//:requirements.bzl", "requirement")
+
+py_library(
+    name = "lib",
+    srcs = [
+        "__init__.py",
+        "nvidia.py",
+        "waymo_open.py",
+    ],
+    visibility = ["//:__subpackages__"],
+)

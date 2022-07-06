@@ -4,7 +4,6 @@ load("@pip_deps//:requirements.bzl", "requirement")
 py_library(
     name = "lib",
     srcs = [
-        "__init__.py",
         "common.py",
         "transformations.py",
         "visualization.py",
@@ -16,9 +15,11 @@ py_library(
         requirement("numpy"),
         requirement("pillow"),
         requirement("scipy"),
+        "//protos:deepmap_py_proto"
     ],
 )
 
+# REMOVE ME - testing only
 py_binary(
     name = "testbinary",
     srcs = ["testbinary.py"],

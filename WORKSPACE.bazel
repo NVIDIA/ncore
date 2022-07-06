@@ -1,7 +1,8 @@
 workspace(name = "drivesim-ai")
 
-# Load python rules
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+## Python rules
 
 http_archive(
     name = "rules_python",
@@ -34,3 +35,15 @@ pip_parse(
 load("@pip_deps//:requirements.bzl", "install_deps")
 
 install_deps()
+
+## Protobuf rules
+http_archive(
+    name = "com_google_protobuf",
+    strip_prefix = "protobuf-3.10.0",
+    urls = ["https://github.com/google/protobuf/archive/v3.10.0.zip"],
+    sha256 = "33cba8b89be6c81b1461f1c438424f7a1aa4e31998dbe9ed6f8319583daac8c7"
+)
+
+load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
+
+protobuf_deps()

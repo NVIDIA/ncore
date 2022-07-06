@@ -1,0 +1,15 @@
+load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
+
+py_proto_library(
+    name = "deepmap_py_proto",
+    srcs = [
+        ":camera_calibration.proto",
+        ":coordinate_systems.proto",
+        ":lat_lng_alt.proto",
+        ":math.proto",
+        ":pointcloud.proto",
+        ":track_data.proto",
+        ":transform.proto",
+    ],
+    visibility = ["//visibility:public"],
+)
