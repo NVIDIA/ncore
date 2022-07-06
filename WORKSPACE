@@ -1,6 +1,7 @@
 workspace(name = "drivesim-ai")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
 
 ## Python rules
 http_archive(
@@ -91,3 +92,14 @@ http_archive(
 load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
 
 protobuf_deps()
+
+## 3rdparty
+new_git_repository(
+    name = "PoissonRecon",
+    build_file = "//3rdparty/PoissonRecon:PoissonRecon.BUILD",
+    commit = "f1c71fe491828d00d34f95de9c264d4bf3481d61",  # v13.74
+    patch_args = ["-p1"],
+    patches = ["//3rdparty/PoissonRecon:PoissonRecon.patch"],
+    remote = "https://github.com/mkazhdan/PoissonRecon",
+    shallow_since = "1650856848 -0400",
+)

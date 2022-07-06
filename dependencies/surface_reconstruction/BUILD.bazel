@@ -1,6 +1,5 @@
 load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 load("@pip_deps//:requirements.bzl", "requirement")
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -9,7 +8,7 @@ py_library(
     srcs = [
         "run_surface_reconstruction.py",
     ],
-    data = [":PoissonRecon"],
+    data = ["@PoissonRecon"],
     deps = [
         requirement("tqdm"),
         requirement("point-cloud-utils"),
@@ -23,108 +22,5 @@ py_binary(
     deps = [
         requirement("numpy"),
         requirement("point-cloud-utils"),
-    ],
-)
-
-cc_library(
-    name = "PoissonRecon_ZLIB",
-    srcs = [
-    ],
-    hdrs = ["PoissonRecon/ZLIB/zlib.h"],
-)
-
-cc_library(
-    name = "PoissonRecon_PNG",
-    srcs = [
-        "PoissonRecon/PNG/png.c",
-        "PoissonRecon/PNG/pngerror.c",
-        "PoissonRecon/PNG/pnggccrd.c",
-        "PoissonRecon/PNG/pngget.c",
-        "PoissonRecon/PNG/pngmem.c",
-        "PoissonRecon/PNG/pngpread.c",
-        "PoissonRecon/PNG/pngread.c",
-        "PoissonRecon/PNG/pngrio.c",
-        "PoissonRecon/PNG/pngrtran.c",
-        "PoissonRecon/PNG/pngrutil.c",
-        "PoissonRecon/PNG/pngset.c",
-        "PoissonRecon/PNG/pngtest.c",
-        "PoissonRecon/PNG/pngtrans.c",
-        "PoissonRecon/PNG/pngvcrd.c",
-        "PoissonRecon/PNG/pngwio.c",
-        "PoissonRecon/PNG/pngwrite.c",
-        "PoissonRecon/PNG/pngwtran.c",
-        "PoissonRecon/PNG/pngwutil.c",
-    ],
-    hdrs = [
-        "PoissonRecon/PNG/png.h",
-        "PoissonRecon/PNG/pngasmrd.h",
-        "PoissonRecon/PNG/pngconf.h",
-    ],
-    deps = [":PoissonRecon_ZLIB"],
-)
-
-cc_binary(
-    name = "PoissonRecon",
-    srcs = [
-        "PoissonRecon/Src/Allocator.h",
-        "PoissonRecon/Src/Array.h",
-        "PoissonRecon/Src/BSplineData.h",
-        "PoissonRecon/Src/BSplineData.inl",
-        "PoissonRecon/Src/BinaryNode.h",
-        "PoissonRecon/Src/BlockedVector.h",
-        "PoissonRecon/Src/CmdLineParser.h",
-        "PoissonRecon/Src/CmdLineParser.inl",
-        "PoissonRecon/Src/CoredMesh.h",
-        "PoissonRecon/Src/CoredMesh.inl",
-        "PoissonRecon/Src/FEMTree.Evaluation.inl",
-        "PoissonRecon/Src/FEMTree.Initialize.inl",
-        "PoissonRecon/Src/FEMTree.IsoSurface.specialized.inl",
-        "PoissonRecon/Src/FEMTree.SortedTreeNodes.inl",
-        "PoissonRecon/Src/FEMTree.System.inl",
-        "PoissonRecon/Src/FEMTree.WeightedSamples.inl",
-        "PoissonRecon/Src/FEMTree.h",
-        "PoissonRecon/Src/FEMTree.inl",
-        "PoissonRecon/Src/Factor.h",
-        "PoissonRecon/Src/Geometry.h",
-        "PoissonRecon/Src/Geometry.inl",
-        "PoissonRecon/Src/Image.h",
-        "PoissonRecon/Src/JPEG.h",
-        "PoissonRecon/Src/JPEG.inl",
-        "PoissonRecon/Src/MAT.h",
-        "PoissonRecon/Src/MAT.inl",
-        "PoissonRecon/Src/MarchingCubes.h",
-        "PoissonRecon/Src/MyMiscellany.h",
-        "PoissonRecon/Src/PNG.h",
-        "PoissonRecon/Src/PNG.inl",
-        "PoissonRecon/Src/PPolynomial.h",
-        "PoissonRecon/Src/PPolynomial.inl",
-        "PoissonRecon/Src/Ply.h",
-        "PoissonRecon/Src/Ply.inl",
-        "PoissonRecon/Src/PlyFile.h",
-        "PoissonRecon/Src/PlyFile.inl",
-        "PoissonRecon/Src/PoissonRecon.cpp",
-        "PoissonRecon/Src/Polynomial.h",
-        "PoissonRecon/Src/Polynomial.inl",
-        "PoissonRecon/Src/PreProcessor.h",
-        "PoissonRecon/Src/Rasterizer.h",
-        "PoissonRecon/Src/Rasterizer.inl",
-        "PoissonRecon/Src/RegularGrid.h",
-        "PoissonRecon/Src/RegularGrid.inl",
-        "PoissonRecon/Src/RegularTree.h",
-        "PoissonRecon/Src/RegularTree.inl",
-        "PoissonRecon/Src/SparseMatrix.h",
-        "PoissonRecon/Src/SparseMatrix.inl",
-        "PoissonRecon/Src/SparseMatrixInterface.h",
-        "PoissonRecon/Src/SparseMatrixInterface.inl",
-        "PoissonRecon/Src/VertexFactory.h",
-        "PoissonRecon/Src/VertexFactory.inl",
-        "PoissonRecon/Src/VertexStream.h",
-        "PoissonRecon/Src/VertexStream.inl",
-        "PoissonRecon/Src/Window.h",
-        "PoissonRecon/Src/Window.inl",
-    ],
-    copts = ["-std=c++14"],
-    deps = [
-        ":PoissonRecon_PNG",
     ],
 )
