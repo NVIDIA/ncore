@@ -7,3 +7,7 @@ lib/external/.cache/
 lib/build/
 lib/dist/
 .vscode/
+
+# Bazel-specific ignores
+/bazel-*
+user.bazelrc
