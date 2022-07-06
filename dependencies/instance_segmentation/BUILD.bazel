@@ -8,6 +8,12 @@ py_library(
     srcs = [
         "run_instance_segmentation.py",
     ],
+    data = [
+        "configs/Base-RCNN-FPN.yaml",
+        "configs/InstanceSegmentation/Base-PointRend-RCNN-FPN.yaml",
+        "configs/InstanceSegmentation/pointrend_rcnn_X_101_32x8d_FPN_3x_coco.yaml",
+        "pretrained_models/model_final_ba17b9.pkl",
+    ],
     deps = [
         requirement("tqdm"),
         requirement("opencv-python"),
