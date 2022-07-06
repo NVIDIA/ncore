@@ -3,7 +3,6 @@ workspace(name = "drivesim-ai")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 ## Python rules
-
 http_archive(
     name = "rules_python",
     sha256 = "5fa3c738d33acca3b97622a13a741129f67ef43f5fdfcec63b29374cc0574c29",
@@ -36,14 +35,69 @@ load("@pip_deps//:requirements.bzl", "install_deps")
 
 install_deps()
 
+## Docker rules
+http_archive(
+    name = "io_bazel_rules_docker",
+    sha256 = "b1e80761a8a8243d03ebca8845e9cc1ba6c82ce7c5179ce2b295cd36f7e394bf",
+    urls = ["https://github.com/bazelbuild/rules_docker/releases/download/v0.25.0/rules_docker-v0.25.0.tar.gz"],
+)
+
+load(
+    "@io_bazel_rules_docker//repositories:repositories.bzl",
+    container_repositories = "repositories",
+)
+
+container_repositories()
+
+load("@io_bazel_rules_docker//repositories:deps.bzl", container_deps = "deps")
+
+container_deps()
+
+load(
+    "@io_bazel_rules_docker//python3:image.bzl",
+    _py_image_repos = "repositories",
+)
+
+_py_image_repos()
+
+load(
+    "@io_bazel_rules_docker//container:container.bzl",
+    "container_pull"
+)
+
+container_pull(
+    name = "pytorch_base",
+    # digest = "sha256:e3470579ea78",  # 
+    tag="22.05-py3",
+    registry = "nvcr.io",
+    repository = "nvidia/pytorch",
+)
+
+container_pull(
+    name = "dsai_dev_container",
+    digest="sha256:1fc750487421fc53380a8d8d17d66ef4b7205d485fde5e49d0dcde3d7f1d1a27",
+    registry = "gitlab-master.nvidia.com:5005",
+    repository = "zgojcic/drivesim-ai",
+)
+
+# container_import(
+#     name = "dsai_dev_container",
+#     tag="dev",
+#     registry = "gitlab-master.nvidia.com:5005",
+#     repository = "zgojcic/drivesim-ai",
+# )
+
 ## Protobuf rules
 http_archive(
     name = "com_google_protobuf",
+    sha256 = "33cba8b89be6c81b1461f1c438424f7a1aa4e31998dbe9ed6f8319583daac8c7",
     strip_prefix = "protobuf-3.10.0",
     urls = ["https://github.com/google/protobuf/archive/v3.10.0.zip"],
-    sha256 = "33cba8b89be6c81b1461f1c438424f7a1aa4e31998dbe9ed6f8319583daac8c7"
 )
 
 load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
 
 protobuf_deps()
+
+
+
