@@ -1,4 +1,7 @@
 load("//3rdparty/numpyeigen:npe_add_module.bzl", "npe_codegen_function", "npe_codegen_module")
+load("@rules_python//python:packaging.bzl", "py_wheel")
+load("@rules_python//python:defs.bzl", "py_binary")
+load("@pip_deps//:requirements.bzl", "requirement")
 
 npe_codegen_function(
     name = "av_utils_codegen_function",
@@ -27,3 +30,37 @@ cc_binary(
         "@numpyeigen//:npe",
     ],
 )
+
+py_library(
+    name = "av_utils",
+    srcs = [
+        "__init__.py",
+    ],
+    data = [
+        ":av_utils_cc",
+    ],
+    deps = [
+        requirement("numpy"),
+    ],
+)
+
+# REMOVE ME
+py_binary(
+    name = "test_av_utils",
+    srcs = ["test_av_utils.py"],
+    imports = ["."],
+    deps = [
+        ":av_utils",
+        requirement("debugpy"),
+    ],
+)
+
+# py_wheel(
+#     name = "av_utils",
+#     distribution = "av_utils",
+#     python_tag = "py3",
+#     version = "0.0.1",
+#     deps = [
+#         ":av_utils_cc",
+#     ],
+# )

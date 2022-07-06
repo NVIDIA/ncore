@@ -1,10 +1,10 @@
 __version__ = "1.0.0"
 
-import av_utils
+import libav_utils_cc
 import numpy as np
 
 def unwind_lidar(pc, transformation_matrices, column_idx):
-    return av_utils._lidarUnwinding(pc, transformation_matrices, column_idx)
+    return libav_utils_cc._lidarUnwinding(pc, transformation_matrices, column_idx)
 
 
 def image_to_world_ray(image_points, camera_metadata):
@@ -26,10 +26,10 @@ def image_to_world_ray(image_points, camera_metadata):
 
     if image_points.shape[0] == 1:
         image_points = np.tile(image_points, [2, 1])
-        return av_utils._pixel2WorldRay(image_points, intrinsic, camera_model, img_height, img_width,
+        return libav_utils_cc._pixel2WorldRay(image_points, intrinsic, camera_model, img_height, img_width,
                                         T_cam_world, ego_pose_timestamps, rs_direction)[0, :]
     else:
-        return av_utils._pixel2WorldRay(image_points, intrinsic, camera_model, img_height, img_width, 
+        return libav_utils_cc._pixel2WorldRay(image_points, intrinsic, camera_model, img_height, img_width, 
                                         T_cam_world, ego_pose_timestamps, rs_direction)
 
 
@@ -40,7 +40,7 @@ def cameraRay2Pixel(cameraPoints, camera_metadata):
     img_height   = camera_metadata['img_height']
     img_width   = camera_metadata['img_width']
 
-    return av_utils._cameraRay2Pixel(cameraPoints, intrinsic, img_width, img_height, camera_model)
+    return libav_utils_cc._cameraRay2Pixel(cameraPoints, intrinsic, img_width, img_height, camera_model)
 
 
 def rollingShutterProjection(points, camera_metadata, iter=1):
@@ -60,7 +60,7 @@ def rollingShutterProjection(points, camera_metadata, iter=1):
     T_world_cam = np.concatenate([np.linalg.inv(T_cam_rig) @ np.linalg.inv(ego_pose_s),
                         np.linalg.inv(T_cam_rig) @ np.linalg.inv(ego_pose_e)], axis=0)
 
-    pixel_coords, trans_matrices, valid_proj, initial_valid_idx = av_utils._rollingShutterProjection(points, intrinsic, img_height, img_width, 
+    pixel_coords, trans_matrices, valid_proj, initial_valid_idx = libav_utils_cc._rollingShutterProjection(points, intrinsic, img_height, img_width, 
                         rs_direction, T_world_cam, ego_pose_timestamps, camera_model, iter)
 
     valid_idx = initial_valid_idx[valid_proj]
