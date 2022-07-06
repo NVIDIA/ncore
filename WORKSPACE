@@ -6,9 +6,9 @@ load("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
 ## Python rules
 http_archive(
     name = "rules_python",
-    sha256 = "5fa3c738d33acca3b97622a13a741129f67ef43f5fdfcec63b29374cc0574c29",
-    strip_prefix = "rules_python-0.9.0",
-    url = "https://github.com/bazelbuild/rules_python/archive/refs/tags/0.9.0.tar.gz",
+    sha256 = "56dc7569e5dd149e576941bdb67a57e19cd2a7a63cc352b62ac047732008d7e1",
+    strip_prefix = "rules_python-0.10.0",
+    url = "https://github.com/bazelbuild/rules_python/archive/refs/tags/0.10.0.tar.gz",
 )
 
 # Register python toolchain
@@ -26,6 +26,19 @@ load("@rules_python//python:pip.bzl", "pip_parse")
 
 pip_parse(
     name = "pip_deps",
+    annotations = {
+        "numpy": package_annotation(
+            additive_build_content = """
+# Make numpy headers available to C++ rules
+cc_library(
+    name = 'numpy',
+    includes = ['site-packages/numpy/core/include'],
+    hdrs = glob(['site-packages/numpy/core/include/numpy/*.h']),
+    visibility = ['//visibility:public'],
+)
+""",
+        ),
+    },
     python_interpreter_target = interpreter,
     quiet = False,
     requirements_lock = "//:requirements.txt",
