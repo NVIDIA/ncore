@@ -4,5 +4,8 @@ build --compilation_mode=opt
 # Default CXX flags
 build --cxxopt="-Werror"
 
+# Enable local disk caching
+build --disk_cache=~/.cache/bazel/disk-cache/drivesim-ai
+
 # https://docs.bazel.build/versions/main/best-practices.html#using-the-bazelrc-file
 try-import %workspace%/user.bazelrc
