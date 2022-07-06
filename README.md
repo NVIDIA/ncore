@@ -7,6 +7,14 @@ NOTE: This codebase is under active development and the APIs may thus still chan
 
 # Installation 
 
+## Install git-lfs
+
+```
+sudo apt-get install git-lfs
+git lfs install
+```
+[one-time operation]
+
 ## Clone repo with submodules
 
 ```

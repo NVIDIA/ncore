@@ -1,5 +1,3 @@
-*.pkl
-*.pth
 logs/
 __pycache__/
 .vscode/
