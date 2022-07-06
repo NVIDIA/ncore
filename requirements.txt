@@ -4,7 +4,7 @@
 #
 #    bazel run //:requirements.update
 #
---extra-index-url https://download.pytorch.org/whl/torch_stable.html
+--find-links https://download.pytorch.org/whl/torch_stable.html
 --find-links https://dl.fbaipublicfiles.com/detectron2/wheels/cu111/torch1.10/index.html
 
 absl-py==0.15.0 \
@@ -886,25 +886,15 @@ toml==0.10.2 \
     --hash=sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b \
     --hash=sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f
     # via black
-torch==1.10.1 \
-    --hash=sha256:01f4ffdafbfbd7d106fb4e487feee2cf29cced9903df8cb0444b0e308f9c5e92 \
-    --hash=sha256:1c6c56178e5dacf7602ad00dc79c263d6c41c0f76261e9641e6bd2679678ceb3 \
-    --hash=sha256:26b6dfbe21e247e67c615bfab0017ec391ed1517f88bbeea6228a49edd24cd88 \
-    --hash=sha256:2ffa2db4ccb6466c59e3f95b7a582d47ae721e476468f4ffbcaa2832e0b92b9b \
-    --hash=sha256:40508d67288c46ff1fad301fa6e996e0e936a733f2401475fc92c21dc3ef702d \
-    --hash=sha256:50360868ad3f039cf99f0250300dbec51bf686a7b84dc6bbdb8dff4b1171c0f0 \
-    --hash=sha256:5644280d88c5b6de27eacc0d911f968aad41a4bab297af4df5e571bc0927d3e4 \
-    --hash=sha256:607eccb7d539a11877cd02d95f4b164b7941fcf538ac7ff087bfed19e3644283 \
-    --hash=sha256:6b327d7b4eb2461b16d46763d46df71e597235ccc428650538a2735a0898270d \
-    --hash=sha256:725d86e9809073eef868a3ddf4189878ee7af46fac71403834dd0925b3db9b82 \
-    --hash=sha256:8b47bd113c6cbd9a49669aaaa233ad5f25852d6ca3e640f9c71c808e65a1fdf4 \
-    --hash=sha256:ac8cae04458cc47555fa07a760496c2fdf687223bcc13df5fed56ea3aead37f5 \
-    --hash=sha256:adbb5f292e260e39715d67478823e03e3001db1af5b02c18caa34549dccb421e \
-    --hash=sha256:af577602e884c5e40fbd29ec978f052202355da93cd31e0a23251bd7aaff5a99 \
-    --hash=sha256:cca660b27a90dbbc0af06c859260f6b875aef37c0897bd353e5deed085d2c877 \
-    --hash=sha256:d9c495bcd5f00becff5b051b5e4be86b7eaa0433cd0fe57f77c02bc1b93ab5b1 \
-    --hash=sha256:e3d2154722189ed74747a494dce9588978dd55e43ca24c5bd307fb52620b232b \
-    --hash=sha256:fa197cfe047d0515bef238f42472721406609ebaceff2fd4e17f2ad4692ee51c
+torch==1.10.1+cu111 \
+    --hash=sha256:3d35d58cadb5abbfa25a474a33598a6bdc168c4306c3c20968159e6f3a4a2e46 \
+    --hash=sha256:4789aca7facaaced7bf515db47bef8026ffa4695483070b8fb924d20eca70616 \
+    --hash=sha256:5e568474fbf05d55cd90a4044ad5651aade8ab05f2784b7d8bd34dace0ef49a1 \
+    --hash=sha256:7cfb25f317cb43777b4e912aa23203476dd9bb0f4cb416ef75a2caca0bb5c547 \
+    --hash=sha256:cdcd68b7d66624ff727996181bf8a1d27960c86ce4116fab0b1c250a8fa227dc \
+    --hash=sha256:d17821a159ba8fc4d70751ac84d11e7bd33f9582e3ccd5bd11d18352b22a3435 \
+    --hash=sha256:e0b7e02e3da86716d2c615ad68513b99714b219479d0e215794867641889fd7f \
+    --hash=sha256:ffc5c834a2c053145093af583612ff15e7f6634b3648bfcc616b815daca3617e
     # via
     #   -r requirements.in
     #   torchaudio
@@ -929,25 +919,11 @@ torchaudio==0.10.1 \
     --hash=sha256:db2de232ee4125f9d5eab92ca9340b8cac69be3b8c321d4cf14fd87edf3e71cb \
     --hash=sha256:eb18ab86bea9790178ff4da30442cc5948f02c3388ff4d33d281440db1d1a797
     # via -r requirements.in
-torchvision==0.11.2 \
-    --hash=sha256:0f52745f652fe82e962e3399ac19f5ce7fe42e2b6bf73ef24f4aa1f222bbbfca \
-    --hash=sha256:12eb97a2b87661914c2a6743ec535b432194b3a17620217cab201733e63d0a8f \
-    --hash=sha256:27f0d9088c76edfa3c1f1dcaf965f102437c049f13b599ef02abe99f4d346cb6 \
-    --hash=sha256:3091e5d3131e0664ca817ef32eff0ec5f79e2f0d61b447ae63bdd2429aff179c \
-    --hash=sha256:32cca2b5e0696f59e03c1261444deb81c87c6967d444aaf2d156f3023e741ffe \
-    --hash=sha256:3315176f2ee887dcb9d4ada02d103bad837ba065c84d992dce0dbf9dae9ad43c \
-    --hash=sha256:3abcfab98dea4bc1e512e99c5b56e66e237bd65569e1c9b1c3c2d459ef50795c \
-    --hash=sha256:52b14ce23a6e0a5a1309970888a1febb12e93fe6aed78df8aa115f1cf2019cc6 \
-    --hash=sha256:63d6f46e083f00ad7ce09d355eb94f512bf41899630240c6c865ca0d9d00718c \
-    --hash=sha256:6d84490010761a34d6238987f88f8bccec06914431fc13c221902ea4f54ecb43 \
-    --hash=sha256:82431c4cf9cce36d6ec5f338b4cc5b96732a4becb359588bbc72fba282d3cfff \
-    --hash=sha256:a33c4e5c8456d3cdbb706636f209f318c8544be0f08179056296765db95b981b \
-    --hash=sha256:b78b753b01c19f60bf4df078d245609ed6df9265a127d9fbc2ca202409779cda \
-    --hash=sha256:bc6b125134278d8b59682a3693bbf99a1eac6306f0eb71314333010d28392a83 \
-    --hash=sha256:d2aa1e253c9ddcf728a2dc6e771ebaf3201798cf91304cd352795a34daefce51 \
-    --hash=sha256:eb479be61a28fcff71b1e3ec823641cd75d61229bedab1e83659e3df53ca0159 \
-    --hash=sha256:ecf3f8f8e548dd7b36c5abca03563a32a6d5cb7e97ceec012df1b6380ed5d4c3 \
-    --hash=sha256:fe1395b5fe3b5f2111312a8c75dd48176db7b9f129e1f4159bf1fb2aeec54778
+torchvision==0.11.2+cu111 \
+    --hash=sha256:75a393e214e68d147c82546b0b83397738c8089a1af14b2a181df1e8347a3119 \
+    --hash=sha256:9ecd35573632e7bec121d36f22cc5cd51015fff17fce34eb13e96ba3dbf465a8 \
+    --hash=sha256:b03737107727171f141ec819b1c4a9e62181ac144df26f4803338c55c854eea5 \
+    --hash=sha256:cffda6a692e98e859ea7504fe49577e22f110d4e52aff81211ec0f5cb8ed5b68
     # via -r requirements.in
 tqdm==4.64.0 \
     --hash=sha256:40be55d30e200777a307a7585aee69e4eabb46b4ec6a4b4a5f2d9f11e7d5408d \
