@@ -89,9 +89,9 @@ container_pull(
 ## Protobuf rules
 http_archive(
     name = "com_google_protobuf",
-    sha256 = "33cba8b89be6c81b1461f1c438424f7a1aa4e31998dbe9ed6f8319583daac8c7",
-    strip_prefix = "protobuf-3.10.0",
-    urls = ["https://github.com/google/protobuf/archive/v3.10.0.zip"],
+    sha256 = "25680843adf0c3302648d35f744e38cc3b6b05a6c77a927de5aea3e1c2e36106",
+    strip_prefix = "protobuf-3.19.4",
+    urls = ["https://github.com/google/protobuf/archive/v3.19.4.zip"],
 )
 
 load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
