@@ -81,7 +81,7 @@ load(
 
 container_pull(
     name = "dsai_dev_container",
-    digest = "sha256:bcd91ec75a4e71eb449cd2dcbf5b4207cb26a5fab4ce8cff634e13d0d5799386",
+    digest = "sha256:572192880eebe61ce5d570b755eeda3e820e1d66e392db66467733054212f2ed",
     registry = "gitlab-master.nvidia.com:5005",
     repository = "zgojcic/drivesim-ai",
 )
