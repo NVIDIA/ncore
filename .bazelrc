@@ -1,5 +1,5 @@
-# Optimized mode by default
-build -c opt
+# Default compilation mode and compiler version
+build --compilation_mode=opt
 
 # Default CXX flags
 build --cxxopt="-Werror"

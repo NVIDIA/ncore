@@ -1,6 +1,8 @@
+"""Rules for numpyeigen function / module codegeneration"""
+
 def _npe_codegen_function_impl(ctx):
     # The list of arguments we pass to the script.
-    args = [ctx.files.src[0].path] + ["/usr/bin/g++"] + ["-o="+ctx.outputs.out.path] + ["--c-preprocessor-args=-w -E"]
+    args = [ctx.files.src[0].path] + ["/usr/bin/g++"] + ["-o=" + ctx.outputs.out.path] + ["--c-preprocessor-args=-w -E"]
 
     # Action to call the script.
     ctx.actions.run(
@@ -26,7 +28,7 @@ npe_codegen_function = rule(
 
 def _npe_codegen_module_impl(ctx):
     # The list of arguments we pass to the script.
-    args = ["-m="+ctx.attr.module] + ["-f="+ctx.files.src[0].path] + ["-e"] + ["-o="+ctx.outputs.out.path]
+    args = ["-m=" + ctx.attr.module] + ["-f=" + ctx.files.src[0].path] + ["-e"] + ["-o=" + ctx.outputs.out.path]
 
     # Action to call the script.
     ctx.actions.run(
@@ -40,7 +42,7 @@ def _npe_codegen_module_impl(ctx):
 npe_codegen_module = rule(
     implementation = _npe_codegen_module_impl,
     attrs = {
-        "module": attr.string(mandatory=True),
+        "module": attr.string(mandatory = True),
         "src": attr.label(mandatory = True, allow_single_file = [".cpp"]),
         "out": attr.output(mandatory = True),
         "codegen_module": attr.label(

@@ -49,9 +49,33 @@ py_binary(
     name = "project_pc_to_img",
     srcs = ["project_pc_to_img.py"],
     deps = [
-        requirement("numpy"),
+        requirement("point-cloud-utils"),
         requirement("pillow"),
         requirement("matplotlib"),
+        requirement("numpy"),
+        "//lib:pylib",
         "//src:pylib",
+    ],
+)
+
+py_binary(
+    name = "rgb_ray_mesh_intersection",
+    srcs = ["rgb_ray_mesh_intersection.py"],
+    deps = [
+        requirement("point-cloud-utils"),
+        requirement("pillow"),
+        "//lib:pylib",
+    ],
+)
+
+py3_image(
+    name = "rgb_ray_mesh_intersection_image",
+    srcs = ["rgb_ray_mesh_intersection.py"],
+    base = "@dsai_dev_container//image",
+    main = "rgb_ray_mesh_intersection.py",
+    deps = [
+        requirement("point-cloud-utils"),
+        requirement("pillow"),
+        "//lib:pylib",
     ],
 )

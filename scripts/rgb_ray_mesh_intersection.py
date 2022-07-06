@@ -10,8 +10,6 @@ import pickle
 import glob
 from PIL import Image
 
-import sys
-sys.path.append('./')
 from lib import image_to_world_ray
 from src.common import NV_CAMERAS, WAYMO_CAMERAS
 
