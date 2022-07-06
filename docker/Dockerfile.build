@@ -13,7 +13,7 @@ SHELL ["/bin/bash", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN \
-    # Add sources for older pythons
+    # Add python
     apt-get update -qq --fix-missing && \
     apt-get install -y --no-install-recommends software-properties-common && \
     add-apt-repository ppa:deadsnakes/ppa && \
@@ -29,8 +29,6 @@ RUN \
     # Set the default python and install PIP packages
     update-alternatives --install /usr/bin/python${PYTHON_VERSION%%.*} python${PYTHON_VERSION%%.*} /usr/bin/python${PYTHON_VERSION} 1 && \
     update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 && \
-    \
-    # ln -s /usr/bin/python${PYTHON_VERSION} /usr/bin/python && \
     \
     # Install python dependencies
     if [[ "$PYTHON_VERSION" == "2.7" || "$PYTHON_VERSION" == "3.6" ]]; then \
@@ -52,3 +50,11 @@ RUN \
     CUDA=`basename $CUDA_PATH` && \
     echo "$CUDA_PATH/compat" >> /etc/ld.so.conf.d/${CUDA/./-}.conf && \
     ldconfig
+
+RUN \
+    # Add additional system libraries
+    apt-get -y update -qq --fix-missing && \
+    apt-get -y install --no-install-recommends \
+        libgl1 \
+    && \
+    rm -rf /var/lib/apt/lists/*

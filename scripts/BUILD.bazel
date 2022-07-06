@@ -1,9 +1,6 @@
 load("@rules_python//python:defs.bzl", "py_binary")
 load("@pip_deps//:requirements.bzl", "requirement")
 load("@io_bazel_rules_docker//python3:image.bzl", "py3_image")
-# load("@io_bazel_rules_docker//container:image.bzl", "container_image")
-# load("@io_bazel_rules_docker//docker/package_managers:download_pkgs.bzl", "download_pkgs")
-# load("@io_bazel_rules_docker//docker/package_managers:install_pkgs.bzl", "install_pkgs")
 
 py_binary(
     name = "nvidia_to_ngp",
@@ -26,37 +23,12 @@ py3_image(
     name = "convert_raw_data_image",
     srcs = ["convert_raw_data.py"],
     base = "@dsai_dev_container//image",
-    # base="@pytorch_base//image",
-    # base = ":python_base_image",
     main = "convert_raw_data.py",
     deps = [
         requirement("click"),
         "//src/dataset_converter:pylib",
     ],
 )
-
-# download_pkgs(
-#     name = "all_packages",
-#     image_tar = "@pytorch_base//image",
-#     packages = ["libgl1"],
-# )
-
-# install_pkgs(
-#     name = "install_all_packages",
-#     image_tar = "@pytorch_base//image",
-#     installables_tar = ":all_packages",
-#     output_image_name = "updated_pytorch"
-# )
-
-# container_image(
-#     name = "python_base_image",
-#     # base = "@pytorch_base//image",
-#     base = "@dsai_dev_container//image",
-#     symlinks = {
-#         # "/usr/bin/python": "/opt/conda/bin/python",
-#         "/usr/bin/python": "/usr/bin/python3.8",
-#     },
-# )
 
 py_binary(
     name = "project_pc_to_img",

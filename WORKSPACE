@@ -62,30 +62,23 @@ _py_image_repos()
 
 load(
     "@io_bazel_rules_docker//container:container.bzl",
-    "container_pull"
+    "container_pull",
 )
 
 container_pull(
     name = "pytorch_base",
-    # digest = "sha256:e3470579ea78",  # 
-    tag="22.05-py3",
     registry = "nvcr.io",
     repository = "nvidia/pytorch",
+    # digest = "sha256:e3470579ea78",  #
+    tag = "22.05-py3",
 )
 
 container_pull(
     name = "dsai_dev_container",
-    digest="sha256:1fc750487421fc53380a8d8d17d66ef4b7205d485fde5e49d0dcde3d7f1d1a27",
+    digest = "sha256:bcd91ec75a4e71eb449cd2dcbf5b4207cb26a5fab4ce8cff634e13d0d5799386",
     registry = "gitlab-master.nvidia.com:5005",
     repository = "zgojcic/drivesim-ai",
 )
-
-# container_import(
-#     name = "dsai_dev_container",
-#     tag="dev",
-#     registry = "gitlab-master.nvidia.com:5005",
-#     repository = "zgojcic/drivesim-ai",
-# )
 
 ## Protobuf rules
 http_archive(
@@ -98,6 +91,3 @@ http_archive(
 load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
 
 protobuf_deps()
-
-
-
