@@ -22,12 +22,3 @@ py_library(
         "//protos:deepmap_py_proto"
     ],
 )
-
-# REMOVE ME - testing only
-py_binary(
-    name = "testbinary",
-    srcs = ["testbinary.py"],
-    deps = [
-        ":pylib",
-    ],
-)
