@@ -92,7 +92,7 @@ def trim_surface(points, mesh_v, mesh_f, mesh_n, mesh_c, trim_distance):
 
     return f_trimmed
 
-def run_surface_reconstruction(lidar_dat_path, ouput_path, max_dist=60, start_at=0,stop_at=-1, ignore_color=True, mode='knn', radius=20, min_angle_thresh=90.0, trim_distance=0.225, spsr_path='./dependencies/surface_reconstruction/PoissonRecon/Bin/Linux/PoissonRecon'):
+def run_surface_reconstruction(lidar_dat_path, ouput_path, max_dist=60, start_at=0,stop_at=-1, ignore_color=True, mode='knn', radius=20, min_angle_thresh=90.0, trim_distance=0.225, spsr_path='./dependencies/surface_reconstruction/PoissonRecon'):
     ''' Given a set of 3D lidar rays in space runs surface reconstruction using SPSR surface reconstruction method (https://hhoppe.com/poissonrecon.pdf)
 
     Args:

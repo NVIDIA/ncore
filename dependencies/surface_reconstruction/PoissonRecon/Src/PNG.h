@@ -1,7 +1,7 @@
 #ifndef PNG_INCLUDED
 #define PNG_INCLUDED
 
-#include "PNG/png.h"
+#include "../PNG/png.h"
 
 struct PNGReader : public ImageReader
 {
