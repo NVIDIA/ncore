@@ -81,6 +81,7 @@ load(
 
 container_pull(
     name = "dsai_dev_container",
+    timeout = 7200,
     digest = "sha256:572192880eebe61ce5d570b755eeda3e820e1d66e392db66467733054212f2ed",
     registry = "gitlab-master.nvidia.com:5005",
     repository = "zgojcic/drivesim-ai",
