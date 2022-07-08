@@ -126,6 +126,16 @@ new_git_repository(
     shallow_since = "1656512085 -0400",
 )
 
+new_git_repository(
+    name = "semantic-segmentation",
+    build_file = "//3rdparty/semantic-segmentation:semantic-segmentation.BUILD",
+    commit = "7726b144c2cc0b8e09c67eabb78f027efdf3f0fa",
+    patch_args = ["-p1"],
+    patches = ["//3rdparty/semantic-segmentation:semantic-segmentation.patch"],
+    remote = "https://github.com/NVIDIA/semantic-segmentation.git",
+    shallow_since = "1614912803 -0800",
+)
+
 http_archive(
     name = "eigen",
     build_file_content =

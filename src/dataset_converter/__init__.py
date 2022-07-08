@@ -139,7 +139,7 @@ class DataConverter(ABC):
                     '--arch ocrnet.HRNet_Mscale --result_dir {}'.format(os.path.join(img_folder, 'tmp_img'),os.path.join(img_folder, 'tmp_img','semantic_seg'))
 
             # Run the semantic segmentation
-            cmd = 'python dependencies/semantic-segmentation/train.py ' + args
+            cmd = 'external/semantic-segmentation/train ' + args
             subprocess.Popen(cmd, shell=True).wait()
 
             predictions = sorted(glob.glob(os.path.join(img_folder, 'tmp_img','semantic_seg','best_images', f"{'?'*self.INDEX_DIGITS}_prediction.png")))
