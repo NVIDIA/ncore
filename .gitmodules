@@ -1,3 +1,0 @@
-[submodule "dependencies/apex"]
-	path = dependencies/apex
-	url = https://github.com/NVIDIA/apex
