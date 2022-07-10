@@ -6,7 +6,7 @@ import click
 import sys
 sys.path.append('./')
 
-
+                                                                                                                                    
 from src.common import NV_CAMERAS, WAYMO_CAMERAS, R_NVIDIA_NGP, R_WAYMO_NGP, RS_DIR_TO_NGP, average_camera_pose
 import numpy as np
 import json
@@ -286,7 +286,7 @@ def nvidia(ctx, *_, **kwargs):
     all_poses = np.concatenate(all_poses,axis=0)
 
     pose_avg, extent = average_camera_pose(all_poses)
-    scale_factor = 1/ ((extent/2 + max_dist) / 3.0) # so that the max far is scaled to 5
+    scale_factor = 1/ ((extent/2 + max_dist) / 8.0) # so that the max far is scaled to 5
     offset = -(pose_avg * scale_factor) + np.array([0.5,0.5,0.5]) # Instant NGP assumes that the scenes are centered at 0.5^3
     
     # Rescale and move the poses
@@ -301,6 +301,8 @@ def nvidia(ctx, *_, **kwargs):
                    "max_bound": max_dist, 
                    "w": float(camera_data[cam]['intrinsic'][2]), 
                    "h": float(camera_data[cam]['intrinsic'][3]), 
+                   "cx": float(camera_data[cam]['intrinsic'][0]), 
+                   "cy": float(camera_data[cam]['intrinsic'][1]), 
                    "ftheta_p0": float(camera_data[cam]['intrinsic'][4]),
                    "ftheta_p1": float(camera_data[cam]['intrinsic'][5]),
                    "ftheta_p2": float(camera_data[cam]['intrinsic'][6]),
@@ -336,12 +338,12 @@ def nvidia(ctx, *_, **kwargs):
 
             # Find the correspondign lidar frames based on their timestampes
             camera_timestamps = pickle.load(open((os.path.join(root_dir, 'images/timestamps.pkl')),'rb'))['00']
-            lidar_timestamps = np.load(os.path.join(root_dir, 'lidar/timestamps.npz'))['frame_t']
+            lidar_timestamps = np.load(os.path.join(root_dir, 'lidar/timestamps.npz'))['timestamps']
             start_timestamp = camera_timestamps[start_frame]
             end_timestamp = camera_timestamps[end_frame]
             lidar_start_idx  = np.where(lidar_timestamps > start_timestamp)[0][0] + 1
             lidar_end_idx   = np.where(lidar_timestamps < end_timestamp)[0][-1]  + 1
-            all_lidar = [os.path.join(root_dir, 'lidar', '{}.dat'.format(str(idx).zfill(6))) for idx in range(lidar_start_idx, lidar_end_idx + 30)] # add lidar at the end as cameras see further away
+            all_lidar = [os.path.join(root_dir, 'lidar', '{}.dat'.format(str(idx).zfill(6))) for idx in range(lidar_start_idx, lidar_end_idx + 50)] # add lidar at the end as cameras see further away
 
             for i, name in enumerate(all_lidar):
                 path =  os.sep.join(name.split(os.sep)[-2:])
