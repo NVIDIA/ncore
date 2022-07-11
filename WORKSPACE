@@ -41,10 +41,10 @@ cc_library(
     },
     python_interpreter_target = interpreter,
     quiet = False,
-    requirements_lock = "//:requirements.txt",
+    requirements_lock = "//3rdparty/python:requirements.txt",
 )
 
-# Initialize repositories for all packages in requirements.txt.
+# Initialize repositories for all packages in 3rdparty/python/requirements.txt.
 load("@pip_deps//:requirements.bzl", "install_deps")
 
 install_deps()
