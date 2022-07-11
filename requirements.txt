@@ -4,9 +4,9 @@
 #
 #    bazel run //:requirements.update
 #
+--extra-index-url https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple
 --find-links https://download.pytorch.org/whl/torch_stable.html
 --find-links https://dl.fbaipublicfiles.com/detectron2/wheels/cu111/torch1.10/index.html
---find-links https://gitlab-master.nvidia.com/zgojcic/drivesim-ai/-/packages/11196
 
 absl-py==0.15.0 \
     --hash=sha256:72d782fbeafba66ba3e525d46bccac949b9a174dbf66233e50ece09ee688dc81 \
@@ -20,7 +20,7 @@ antlr4-python3-runtime==4.9.3 \
     #   hydra-core
     #   omegaconf
 apex==0.1 \
-    --hash=sha256:09ed8bc5963a06a5f29d889fbfc68fabbbcf67b2756eb0117407bbd85062ee66
+    --hash=sha256:916a89615a2e273d57be43ba5a46f2142403459013add9d2a2f7cac3cf713841
     # via -r requirements.in
 appdirs==1.4.4 \
     --hash=sha256:7d5d0167b2b1ba821647616af46a749d1c653740dd0d2415100fe26e27afdf41 \
