@@ -1,24 +1,53 @@
 # DriveSim-AI
 
 DISCLAIMER: THIS REPOSITORY IS NVIDIA INTERNAL/CONFIDENTIAL. DO NOT SHARE EXTERNALLY.
-IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC <zgojcic@nvidia.com>/OR LITANY <olitany@nvidia.com>.
+IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC <zgojcic@nvidia.com> / JANICK MARTINEZ ESTURO <janickm@nvidia.com> / OR LITANY <olitany@nvidia.com>.
 
 NOTE: This codebase is under active development and the APIs may thus still change. If you build upon this repository, consider forking it to prevent such issues.
 
 # Installation 
 
-## Install git-lfs
+## Install system-packages
+
+In addition to nvidia drivers / cuda runtime (>11.1), the following system packages should be installed to build the project:
+
+```
+sudo apt-get install gcc g++ clang libgl1 xz-utils
+```
+
+Alternatively, builds can be executed within the `gitlab-master.nvidia.com:5005/zgojcic/drivesim-ai:dev` docker image, which has these packages pre-installed.
+
+## Install / setup git-lfs
+
+Large files within the repository are tracked via the `git-lfs` extension. To install the package and register git-lfs, execute
 
 ```
 sudo apt-get install git-lfs
 git lfs install
 ```
+
+before cloning the repository.
+
 [one-time operation]
 
-## Clone repo with submodules
+## Setup gitlab personal access token
+
+Create a gitlab-master personal access token with `api` scope at [link](https://gitlab-master.nvidia.com/-/profile/personal_access_tokens) and register the new toekn token in `~/.netrc` file as
 
 ```
-git clone --recursive https://gitlab-master.nvidia.com/zgojcic/drivesim-ai.git
+machine gitlab-master.nvidia.com
+login oauth2
+password <TOKEN>
+```
+
+by replacing `<TOKEN>` with the created token string.
+
+[one-time operation]
+
+## Cloning the repo
+
+```
+git clone https://gitlab-master.nvidia.com/zgojcic/drivesim-ai.git
 ```
 
 ## Install bazel
@@ -43,13 +72,3 @@ bazelisk run //scripts:convert_raw_data --
 ```
 
 In this command, `bazelisk` is the bazel driver, `run` is the bazel command to run (other common alternatives are `build` / `test`), `//scripts:convert_raw_data` is the label of the target `convert_raw_data` living in the `//scripts` package (corresponding to the `<repo-root>/scripts` folder), and `-- --help` are arguments passed to the executed target (not the intermediate `--` separator).
-
-## Create a virtual environment 
-
-Install `apex` as 
-
-```
-cd dependencies/apex
-pip install -v --disable-pip-version-check --no-cache-dir ./
-cd ../..
-```
