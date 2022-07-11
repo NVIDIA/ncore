@@ -14,7 +14,7 @@ option go_package = "codereview.deepmap.ai/deepmap-go/api/public/deepmap_api/pro
 
 package deepmap.api;
 
-import "protos/lat_lng_alt.proto";
+import "src/protos/deepmap/lat_lng_alt.proto";
 
 // The rotation axis and angle (in degrees).
 message AxisAngleDegree {

@@ -5,14 +5,13 @@ from src.dataset_converter import BaseNvidiaDataConverter
 from google.protobuf import text_format
 import numpy as np
 import cv2
-from protos import track_data_pb2, pointcloud_pb2
+from src.protos.deepmap import track_data_pb2, pointcloud_pb2
 from protobuf_to_dict import protobuf_to_dict
 from src.nvidia_utils import (compute_ftheta_parameters, extract_pose, extract_sensor_2_sdc,
                               parse_rig_sensors_from_file, sensor_to_rig, camera_intrinsic_parameters, compute_fw_polynomial,
                               camera_car_mask)
 from src.common import PoseInterpolator
 import glob
-import struct
 from pyarrow.parquet import ParquetDataset
 from collections import defaultdict
 from src.common import save_pkl, load_pkl, save_pc_dat, points_in_bboxes

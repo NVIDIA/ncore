@@ -3,11 +3,10 @@
 import json
 import base64
 import numpy as np
-from protos import transform_pb2, camera_calibration_pb2
+from src.protos.deepmap import transform_pb2, camera_calibration_pb2
 from google.protobuf import text_format
 from scipy.spatial.transform import Rotation as R
 from scipy.optimize import curve_fit
-from protos import transform_pb2, camera_calibration_pb2
 from google.protobuf import text_format
 from numpy.polynomial.polynomial import Polynomial
 from src.common import  PoseInterpolator, MaskImage

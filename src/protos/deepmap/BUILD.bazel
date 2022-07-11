@@ -1,7 +1,7 @@
 load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
 
 py_proto_library(
-    name = "deepmap_py_proto",
+    name = "py_proto",
     srcs = [
         ":camera_calibration.proto",
         ":coordinate_systems.proto",

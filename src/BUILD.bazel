@@ -19,6 +19,6 @@ py_library(
         requirement("matplotlib"),
         requirement("tensorflow"),
         requirement("waymo-open-dataset-tf-2-5-0"),
-        "//protos:deepmap_py_proto"
+        "//src/protos/deepmap:py_proto"
     ],
 )
