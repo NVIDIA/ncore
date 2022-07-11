@@ -7,10 +7,10 @@ py_library(
     name = "pylib",
     srcs = [
         "common.py",
+        "nvidia_utils.py",
         "transformations.py",
         "visualization.py",
         "waymo_utils.py",
-        "nvidia_utils.py"
     ],
     deps = [
         requirement("numpy"),
@@ -19,6 +19,6 @@ py_library(
         requirement("matplotlib"),
         requirement("tensorflow"),
         requirement("waymo-open-dataset-tf-2-5-0"),
-        "//src/protos/deepmap:py_proto"
+        "//src/protos/deepmap:py_proto",
     ],
 )

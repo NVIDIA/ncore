@@ -2,7 +2,7 @@ import os
 import numpy as np
 import point_cloud_utils as pcu
 import tqdm
-from src.common import load_pc_dat
+from src.py.common.common import load_pc_dat
 
 
 def load_dat_rays(dat_file_path, split_arrays=True):

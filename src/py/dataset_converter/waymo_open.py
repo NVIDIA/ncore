@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from collections import defaultdict
-from src.dataset_converter import DataConverter
+from src.py.dataset_converter import DataConverter
 import tensorflow.compat.v1 as tf        
 tf.enable_eager_execution()
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -15,9 +15,9 @@ import cv2
 import os 
 import struct
 import glob
-from src.waymo_utils import parse_range_image_and_camera_projection, convert_range_image_to_point_cloud, extrapolate_pose_based_on_velocity,\
+from src.py.common.waymo_utils import parse_range_image_and_camera_projection, convert_range_image_to_point_cloud, extrapolate_pose_based_on_velocity,\
                             global_vel_to_ref, extract_camera_labels, extract_lidar_labels, extract_projected_labels 
-from src.common import save_pkl, load_pkl, load_pc_dat, compute_iou, compute_optimal_assignments, get_2d_bbox_corners, points_in_bboxes, MaskImage
+from src.py.common.common import save_pkl, load_pkl, load_pc_dat, compute_iou, compute_optimal_assignments, get_2d_bbox_corners, points_in_bboxes, MaskImage
 from PIL import Image
 
 class WaymoConverter(DataConverter):  

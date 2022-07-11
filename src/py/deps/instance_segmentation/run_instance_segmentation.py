@@ -10,17 +10,17 @@ from detectron2.projects.point_rend import add_pointrend_config
 
 def run_instance_segmentation(all_files):
     cfg = get_cfg()
-    best_model_config = 'dependencies/instance_segmentation/configs/InstanceSegmentation/pointrend_rcnn_X_101_32x8d_FPN_3x_coco.yaml'
+    best_model_config = 'src/py/deps/instance_segmentation/configs/InstanceSegmentation/pointrend_rcnn_X_101_32x8d_FPN_3x_coco.yaml'
     use_point_rend = True
     if use_point_rend:
         # Download pretrained model here: https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_X_101_32x8d_FPN_3x_coco/28119989/model_final_ba17b9.pkl
         # clone the github repo to get the config file
-        best_model_config = 'dependencies/instance_segmentation/configs/InstanceSegmentation/pointrend_rcnn_X_101_32x8d_FPN_3x_coco.yaml'
+        best_model_config = 'src/py/deps/instance_segmentation/configs/InstanceSegmentation/pointrend_rcnn_X_101_32x8d_FPN_3x_coco.yaml'
         add_pointrend_config(cfg)
         cfg.merge_from_file(best_model_config)
         cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5  # set threshold for this model
         # Find a model from detectron2's model zoo. You can use the https://dl.fbaipublicfiles... url as well
-        cfg.MODEL.WEIGHTS = 'dependencies/instance_segmentation/pretrained_models/model_final_ba17b9.pkl'
+        cfg.MODEL.WEIGHTS = 'src/py/deps/instance_segmentation/pretrained_models/model_final_ba17b9.pkl'
 
     else:
         cfg.merge_from_file(model_zoo.get_config_file(best_model_config))

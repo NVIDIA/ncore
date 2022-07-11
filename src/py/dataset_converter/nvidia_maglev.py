@@ -11,14 +11,14 @@ import numpy as np
 
 import point_cloud_utils as pcu
 
-from src.dataset_converter import BaseNvidiaDataConverter
+from src.py.dataset_converter import BaseNvidiaDataConverter
 
-from src.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_dict,
+from src.py.common.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_dict,
                               camera_intrinsic_parameters,
                               compute_fw_polynomial, compute_ftheta_parameters,
                               camera_car_mask)
 
-from src.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator)
+from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator)
 
 
 class NvidiaMaglevConverter(BaseNvidiaDataConverter):
@@ -191,12 +191,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             del (frames_metadata)
 
             # Get the frame range of the first and last frame relative to available egomotion poses and respecting exposure timings
-            start_idx = np.argmax(
-                frame_timestamps - self.CAM2ROLLINGSHUTTERDELAY[cam_type] -
-                self.CAM2EXPOSURETIME[cam_type] / 2 >= start_timestamp_us)
-            end_idx = np.argmax(
-                frame_timestamps -
-                self.CAM2EXPOSURETIME[cam_type] / 2 > end_timestamp_us
+            start_idx = np.argmax(frame_timestamps - self.CAM2ROLLINGSHUTTERDELAY[cam_type] - self.CAM2EXPOSURETIME[cam_type] / 2 >= start_timestamp_us)
+            end_idx = np.argmax(frame_timestamps - self.CAM2EXPOSURETIME[cam_type] / 2 > end_timestamp_us
             ) if frame_timestamps[-1] - self.CAM2EXPOSURETIME[
                 cam_type] / 2 > end_timestamp_us else -1  # take all frames if all are within egomotion range, or determine last valid frame
 
@@ -256,18 +252,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 metadata['T_cam_rig'] = T_cam_rig
 
                 # Interpolate the start and end pose to the timestamps of the first and last row
-                sofTimestamp = frame_timestamp - self.CAM2ROLLINGSHUTTERDELAY[
-                    cam_type] - self.CAM2EXPOSURETIME[cam_type] / 2
-                eofTimestamp = frame_timestamp - self.CAM2EXPOSURETIME[
-                    cam_type] / 2
-                metadata['ego_pose_timestamps'] = np.array(
-                    [sofTimestamp, eofTimestamp])
-                metadata[
-                    'ego_pose_s'] = pose_interpolator.interpolate_to_timestamps(
-                        sofTimestamp)[0]
-                metadata[
-                    'ego_pose_e'] = pose_interpolator.interpolate_to_timestamps(
-                        eofTimestamp)[0]
+                sofTimestamp = frame_timestamp - self.CAM2ROLLINGSHUTTERDELAY[cam_type] - self.CAM2EXPOSURETIME[cam_type] / 2
+                eofTimestamp = frame_timestamp - self.CAM2EXPOSURETIME[cam_type] / 2
+                metadata['ego_pose_timestamps'] = np.array([sofTimestamp, eofTimestamp])
+                metadata['ego_pose_s'] = pose_interpolator.interpolate_to_timestamps(sofTimestamp)[0]
+                metadata['ego_pose_e'] = pose_interpolator.interpolate_to_timestamps(eofTimestamp)[0]
 
                 metadata_save_path = os.path.join(
                     camera_base_save_path,

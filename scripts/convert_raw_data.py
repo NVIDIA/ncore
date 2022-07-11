@@ -5,10 +5,10 @@ import click
 import debugpy
 import logging
 
-from src.dataset_converter import DataConverter
-from src.dataset_converter.waymo_open import WaymoConverter
-from src.dataset_converter.nvidia_deepmap import NvidiaDeepMapConverter
-from src.dataset_converter.nvidia_maglev import NvidiaMaglevConverter
+from src.py.dataset_converter import DataConverter
+from src.py.dataset_converter.waymo_open import WaymoConverter
+from src.py.dataset_converter.nvidia_deepmap import NvidiaDeepMapConverter
+from src.py.dataset_converter.nvidia_maglev import NvidiaMaglevConverter
 
 logger = logging.getLogger(__name__)
 

@@ -1,20 +1,22 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 import pickle
-import os 
+import os
 import glob
 import random
 import numpy as np
 import argparse
 import time
 from PIL import Image
-from matplotlib import pyplot as plt 
+from matplotlib import pyplot as plt
 
-from src.nvidia_utils import (transform_point_cloud, PoseInterpolator, world_points_2_pixel_py, project_camera_rays_2_img)
-from src.visualization import plot_points_on_image
-from src.common import load_pc_dat, NV_CAMERAS, WAYMO_CAMERAS
-from lib import rollingShutterProjection
-
+from src.py.common.nvidia_utils import (transform_point_cloud,
+                                        PoseInterpolator,
+                                        world_points_2_pixel_py,
+                                        project_camera_rays_2_img)
+from src.py.common.visualization import plot_points_on_image
+from src.py.common.common import load_pc_dat, NV_CAMERAS, WAYMO_CAMERAS
+from src.cpp.av_utils import rollingShutterProjection
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -29,7 +31,7 @@ if __name__ == "__main__":
 
     # Select the correct maps
     CAM_IDS = NV_CAMERAS if args.dataset.startswith('nvidia') else WAYMO_CAMERAS
-    
+
     # Check the validity of the input parameters
     if args.cam_id != '-1':
         if args.cam_id not in CAM_IDS:
@@ -57,14 +59,14 @@ if __name__ == "__main__":
         rgb_frame_path = random.choice(img_list)
 
 
-	# Load image
+# Load image
     img = np.array(Image.open(rgb_frame_path).convert('RGB'))
 
-	# Load metadata
+    # Load metadata
     with open(os.path.join(rgb_frame_path.replace('.jpeg','.pkl')), 'rb') as f:
         metadata = pickle.load(f)
 
-    # Load point cloud 
+    # Load point cloud
     # Find the closest lidar frame based on the timestamp
     t_sof = metadata['ego_pose_timestamps'][0]
     lidar_timestamps = np.load(os.path.join(args.root_dir, 'lidar/timestamps.npz'))['timestamps']
@@ -80,15 +82,15 @@ if __name__ == "__main__":
         gt_projections = np.load(os.path.join(args.root_dir, 'lidar', f'{str(lidar_frame_idx).zfill(args.index_digits)}_cp.npz'))['cp']
         gt_flag = True
 
-	# Project the points without considering rolling shutter
+# Project the points without considering rolling shutter
     pose_timestamps = metadata['ego_pose_timestamps']
     poses = np.stack((metadata['ego_pose_s'], metadata['ego_pose_e']))
-    t_mof = 0.5 * np.sum(pose_timestamps) 
+    t_mof = 0.5 * np.sum(pose_timestamps)
     pose_interpolator = PoseInterpolator(poses, pose_timestamps)
 
     cam_pose_global = pose_interpolator.interpolate_to_timestamps(t_mof)
 
-    single_pose = np.linalg.inv(metadata['T_cam_rig']) @ np.linalg.inv(cam_pose_global[0]) 
+    single_pose = np.linalg.inv(metadata['T_cam_rig']) @ np.linalg.inv(cam_pose_global[0])
     pc_cam = transform_point_cloud(pc, single_pose)
 
     pixel_coords, valid_idx = project_camera_rays_2_img(pc_cam, metadata)
@@ -97,7 +99,7 @@ if __name__ == "__main__":
 
     dist = np.linalg.norm(pc_cam,axis=1, keepdims=True)
 
-	# Project the points by considering rolling shutter
+    # Project the points by considering rolling shutter
     start_time = time.time()
     pixel_coords_rs, trans_matrices_rs, valid_idx_rs = rollingShutterProjection(pc, metadata, iter=10)
     print(f"C++ imp requires: {time.time() - start_time:0.3f} s for the rolling shutter projection of {pc.shape[0]} points")
@@ -110,7 +112,7 @@ if __name__ == "__main__":
     if gt_flag:
         assert gt_projections.shape[0] == pc.shape[0], "The number of lidar points doesn't match the number of GT projections"
         idx_first = np.where(gt_projections[:,0] == int(cam_id) + 1)[0]
-        idx_second = np.where(gt_projections[:,3] == int(cam_id) + 1)[0] 
+        idx_second = np.where(gt_projections[:,3] == int(cam_id) + 1)[0]
         all_gt_idx = np.concatenate((idx_first,idx_second))
         gt_pixel_values = np.concatenate((gt_projections[idx_first,1:3], gt_projections[idx_second,4:6]), axis=0)
         gt_dist = np.linalg.norm(pc_data[all_gt_idx,3:6] - pc_data[all_gt_idx,0:3], axis=1)

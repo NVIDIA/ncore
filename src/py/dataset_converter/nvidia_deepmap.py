@@ -1,20 +1,21 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 import os
-from src.dataset_converter import BaseNvidiaDataConverter
+from src.py.dataset_converter import BaseNvidiaDataConverter
 from google.protobuf import text_format
 import numpy as np
 import cv2
 from src.protos.deepmap import track_data_pb2, pointcloud_pb2
 from protobuf_to_dict import protobuf_to_dict
-from src.nvidia_utils import (compute_ftheta_parameters, extract_pose, extract_sensor_2_sdc,
+from src.py.common.nvidia_utils import (compute_ftheta_parameters, extract_pose, extract_sensor_2_sdc,
                               parse_rig_sensors_from_file, sensor_to_rig, camera_intrinsic_parameters, compute_fw_polynomial,
                               camera_car_mask)
-from src.common import PoseInterpolator
+from src.py.common.common import PoseInterpolator
 import glob
 from pyarrow.parquet import ParquetDataset
 from collections import defaultdict
-from src.common import save_pkl, load_pkl, save_pc_dat, points_in_bboxes
+from src.py.common.common import save_pkl, load_pkl, save_pc_dat, points_in_bboxes
+from src.cpp.av_utils import unwind_lidar
 
 
 class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
@@ -294,8 +295,6 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             save_pkl(frame_annotations, frame_labels_save_path)
 
     def decode_lidar(self, sequence_path):
-        from lib import unwind_lidar
-
         annotations  = load_pkl(os.path.join(self.output_dir, self.sequence_name, 'labels.pkl'))
                         
         frame_annotations  = load_pkl(os.path.join(self.output_dir, self.sequence_name, 'frame_labels.pkl'))

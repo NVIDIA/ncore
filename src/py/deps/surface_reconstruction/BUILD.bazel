@@ -12,7 +12,7 @@ py_library(
     deps = [
         requirement("tqdm"),
         requirement("point-cloud-utils"),
-        "//src:pylib",
+        "//src/py/common:pylib",
     ],
 )
 

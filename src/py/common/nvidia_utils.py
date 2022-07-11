@@ -9,8 +9,8 @@ from scipy.spatial.transform import Rotation as R
 from scipy.optimize import curve_fit
 from google.protobuf import text_format
 from numpy.polynomial.polynomial import Polynomial
-from src.common import  PoseInterpolator, MaskImage
-from src.transformations import  euler_2_so3, transform_point_cloud, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
+from src.py.common.common import  PoseInterpolator, MaskImage
+from src.py.common.transformations import  euler_2_so3, transform_point_cloud, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
 from PIL import Image
 
 def extract_sensor_2_sdc(file_path):

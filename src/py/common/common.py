@@ -10,7 +10,7 @@ from PIL import Image
 from scipy.spatial.transform import Rotation as R
 from scipy import spatial, interpolate
 from scipy.optimize import linear_sum_assignment
-from src.transformations import so3_trans_2_se3
+from src.py.common.transformations import so3_trans_2_se3
 
 
 NV_CAMERAS = ['00','01','02','03','04','05','10','11','12','13'] 

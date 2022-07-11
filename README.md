@@ -62,6 +62,8 @@ with
 
 (make sure to also add `$(go env GOPATH)/bin` to your local `PATH` environment variable).
 
+# Execution
+
 ## Example of building / running a target with bazel
 
 Build targets can be seamlessly build and executed using the bazel driver (either `bazel` or `bazelisk`) via, e.g.,

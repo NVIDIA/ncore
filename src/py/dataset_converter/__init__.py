@@ -9,8 +9,8 @@ from PIL import Image
 import subprocess
 import shutil
 import logging
-from dependencies.instance_segmentation.run_instance_segmentation import run_instance_segmentation
-from dependencies.surface_reconstruction.run_surface_reconstruction import run_surface_reconstruction
+from src.py.deps.instance_segmentation.run_instance_segmentation import run_instance_segmentation
+from src.py.deps.surface_reconstruction.run_surface_reconstruction import run_surface_reconstruction
 
 # Initialize basic top-level logger configuration
 logging.basicConfig(level=logging.DEBUG,
@@ -135,7 +135,7 @@ class DataConverter(ABC):
 
             args =  f'--dataset cityscapes --cv 0 --fp16 --bs_val 1 --eval folder ' \
                     '--eval_folder {} --n_scales 0.5,1.0,2.0 '\
-                    '--snapshot dependencies/semantic-segmentation/pretrained_models/cityscapes_ocrnet.HRNet_Mscale_outstanding-turtle.pth '\
+                    '--snapshot src/py/deps/semantic_segmentation/pretrained_models/cityscapes_ocrnet.HRNet_Mscale_outstanding-turtle.pth '\
                     '--arch ocrnet.HRNet_Mscale --result_dir {}'.format(os.path.join(img_folder, 'tmp_img'),os.path.join(img_folder, 'tmp_img','semantic_seg'))
 
             # Run the semantic segmentation
