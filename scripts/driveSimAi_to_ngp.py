@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-from email.policy import default
 import click
 import sys
 sys.path.append('./')
@@ -11,7 +10,6 @@ from src.common import NV_CAMERAS, WAYMO_CAMERAS, R_NVIDIA_NGP, R_WAYMO_NGP, RS_
 import numpy as np
 import json
 import math
-import argparse
 import os
 import pickle
 import copy
@@ -68,18 +66,19 @@ def waymo(ctx, *_, **kwargs):
         focal_length_x = camera_metadata['intrinsic'][0]
         focal_length_y = camera_metadata['intrinsic'][1]
         w, h = camera_metadata['img_width'],  camera_metadata['img_height']
-        camera_data[cam]['w'] = w
-        camera_data[cam]['h'] = h
         
         # Compute the angular field of view
         fov_angle_x = math.atan(w/(focal_length_x*2))*2
         fov_angle_y = math.atan(h/(focal_length_y*2))*2
         camera_data[cam]['angle_x'] = fov_angle_x
         camera_data[cam]['angle_y'] = fov_angle_y
-        
+        camera_data[cam]['w'] = w
+        camera_data[cam]['h'] = h
+
         # Set the UP vector (only used for visualization purposes withing NGP)
         camera_data[cam]['up'] = np.array([0, 0, 1])
 
+        # Load all the images and the corresponding metadata
         all_img = [os.path.join(root_dir, 'images', 'image_{}'.format(str(cam).zfill(2)), str(idx).zfill(index_digits) + '.jpeg') for idx in range(start_frame, end_frame)]
         all_metadata = [img.replace('.jpeg','.pkl') for img in all_img ]
 
@@ -111,9 +110,8 @@ def waymo(ctx, *_, **kwargs):
         camera_data[cam]['poses_end'] = poses_end
         camera_data[cam]['intrinsic'] =  camera_metadata['intrinsic']
 
-        # Extract the rolling shutter parameters such y = a + b*x + c*y (Waymo rolling shutter ) 
+        # Extract the rolling shutter parameters such y = a + b*x + c*y (Waymo rolling shutter is column wise) 
         a, b, c = RS_DIR_TO_NGP[camera_metadata['rolling_shutter_direction']]            
-        # a, b, c = RS_DIR_TO_NGP[2]            
         camera_data[cam]['rolling_shutter'] = np.array([a, b, c])
 
     # Combine all the poses and compute the scaling factor and centroid, use the start timestamp pose as approximation
@@ -123,10 +121,10 @@ def waymo(ctx, *_, **kwargs):
     all_poses = np.concatenate(all_poses,axis=0)
 
     pose_avg, extent = average_camera_pose(all_poses)
-    scale_factor = 1/ ((extent/2 + max_dist) / 3.0) 
-    offset = -(pose_avg * scale_factor) + np.array([0.5,0.5,0.5]) # Instant NGP assumes that the scenes are centered at 0.5^3
+    scale_factor = 1/ ((extent/2 + max_dist) / 8.0) 
+    offset = -(pose_avg * scale_factor) + np.array([0.5,0.5,0.5]) # Instant NGP assumes that the scenes are centered at 0.5^3 not at 0!
         
-    # Rescale and move the poses
+    # Generate a config file for each of the cameras
     for cam_idx, cam in enumerate(cameras): 
 
         out_train={"aabb_scale":16, 
@@ -163,7 +161,6 @@ def waymo(ctx, *_, **kwargs):
 
         for i, name in enumerate(all_img):
             path = os.sep.join(name.split(os.sep)[-3:])
-            # path = name
             frame={"file_path":os.path.join('..','..',path), 
             "transform_matrix_start": camera_data[cam]['poses_start'][i].tolist(), 
             "transform_matrix_end": camera_data[cam]['poses_end'][i].tolist(), 
@@ -172,15 +169,15 @@ def waymo(ctx, *_, **kwargs):
 
         if cam_idx == 0 and use_lidar:
             out_train['lidar'] = []
-            all_lidar = [os.path.join(root_dir, 'lidar', '{}.dat'.format(str(idx).zfill(6))) for idx in range(start_frame, end_frame + 10)] # add lidar at the end as cameras see further away
+            all_lidar = [os.path.join(root_dir, 'lidar', '{}.dat'.format(str(idx).zfill(6))) for idx in range(start_frame, end_frame + 10)] # add some lidar frames at the end as cameras see further
 
             for i, name in enumerate(all_lidar):
                 path =  os.sep.join(name.split(os.sep)[-2:])
-                # path = name
                 frame={"file_path": os.path.join('..','..',path)}
                 out_train['lidar'].append(frame)
 
 
+        print('writing train camera.json...')
         with open(os.path.join(output_dir, f'transforms_cam_{cam}_train.json'), 'w') as outfile:    
             json.dump(out_train, outfile, indent=2)
 
@@ -294,7 +291,6 @@ def nvidia(ctx, *_, **kwargs):
 
         out_train={"aabb_scale":16, 
                    "n_extra_learnable_dims" : 8, 
-                   "camera_angle_x":camera_data[cam]['angle'], 
                    "up":camera_data[cam]['up'].tolist(), 
                    "offset": offset.tolist(),
                    "scale": scale_factor,
@@ -319,8 +315,7 @@ def nvidia(ctx, *_, **kwargs):
             path = os.sep.join(name.split(os.sep)[-3:])
             frame={"file_path":os.path.join('..','..',path), 
             "transform_matrix_start": camera_data[cam]['poses_start'][step_frame * i].tolist(), 
-            "transform_matrix_end": camera_data[cam]['poses_end'][step_frame * i].tolist(), 
-            }
+            "transform_matrix_end": camera_data[cam]['poses_end'][step_frame * i].tolist()}
 
             out_train['frames'].append(frame)
 
@@ -329,8 +324,7 @@ def nvidia(ctx, *_, **kwargs):
             # path = name
             frame={"file_path":os.path.join('..','..',path), 
             "transform_matrix_start": camera_data[cam]['poses_start'][i].tolist(), 
-            "transform_matrix_end": camera_data[cam]['poses_end'][i].tolist(), 
-            }
+            "transform_matrix_end": camera_data[cam]['poses_end'][i].tolist()}
             out_test['frames'].append(frame)
 
         if cam_idx == 0 and use_lidar:
@@ -351,6 +345,7 @@ def nvidia(ctx, *_, **kwargs):
                 frame={"file_path": os.path.join('..','..',path)}
                 out_train['lidar'].append(frame)
 
+        print('writing train camera.json...')
         with open(os.path.join(output_dir, f'transforms_cam_{cam}_train.json'), 'w') as outfile:    
             json.dump(out_train, outfile, indent=2)
 
