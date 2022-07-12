@@ -25,7 +25,7 @@ import copy
 @click.option('--start-frame', type=click.IntRange(min=0, max_open=True), help='Initial camera frame to be use', required=True)
 @click.option('--end-frame', type=click.IntRange(min=1, max_open=True), help='End camera frame to be used', required=True)
 @click.option('--step-frame', type=click.IntRange(min=1, max_open=True), help='Step used to downsample the number of frames', default=1)
-@click.option('--cameras', '--c', multiple=True, type=int, help='Cameras to be used (Multiple value option.)', default=[1])    
+@click.option('--cameras', '-c', multiple=True, type=int, help='Cameras to be used (Multiple value option.)', default=[1])    
 @click.option('--max-dist', type=float, help='Maximum distance from each camera pose.', default=50.0)
 @click.option('--use-lidar', is_flag=True, default=False, help="Use also lidar point clouds")
 @click.option("--index_digits", type=int, help="The number of integer digits to pad counters in output filenames to", default=6)
