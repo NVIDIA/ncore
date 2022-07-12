@@ -26,10 +26,10 @@ Instant-NGP uses `*.json` config files to initialize the parameters and image/li
 
 ```
 python scripts/driveSimAi_to_ngp.py --root-dir /path/to/data/ --experiment-name dummy_experiment --start-frame 0 --end-frame 200 
-                                        --step-frame 2 --c 0 --c 1 --max-dist 200 --use-lidar nvidia
+                                        --step-frame 2 -c 0 -c 1 --max-dist 200 --use-lidar nvidia
 ```
 
-will generate config files for cameras (`--c`) `0` and `1` and save them in `/path/to/data/ngp_configs/dummy_experiment`. Runing Instan-NGP using the generated config files will fir a model using every ***third*** frame between ***0th*** and ***200th*** frame. Lidar data (`--use-lidar`) will also be included. Due to the memory constraints, currently only ~200 images of (4k x 2k - Nvidia resolution) can be used. 
+will generate config files for cameras (`-c`) `0` and `1` and save them in `/path/to/data/ngp_configs/dummy_experiment`. Runing Instan-NGP using the generated config files will fir a model using every ***third*** frame between ***0th*** and ***200th*** frame. Lidar data (`--use-lidar`) will also be included. Due to the memory constraints, currently only ~200 images of (4k x 2k - Nvidia resolution) can be used. 
 
 ### Running Instant-NGP
 
