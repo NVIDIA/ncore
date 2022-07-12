@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='alignment.data_wrapper',
   syntax='proto3',
   serialized_options=None,
-  serialized_pb=_b('\n\x17protos/track_data.proto\x12\x16\x61lignment.data_wrapper\x1a\x16protos/transform.proto\"q\n\tUnwinding\x12\x30\n\ttransform\x18\x01 \x01(\x0b\x32\x1d.deepmap.api.RigidTransform3d\x12\x19\n\x11start_nanoseconds\x18\x02 \x01(\x04\x12\x17\n\x0f\x65nd_nanoseconds\x18\x03 \x01(\x04\"\x87\x03\n\x0bLidarRecord\x12\x1e\n\x16timestamp_microseconds\x18\x01 \x01(\x04\x12\x37\n\x0b\x64\x61ta_format\x18\x02 \x01(\x0e\x32\".alignment.data_wrapper.DataFormat\x12\x11\n\tfile_path\x18\x03 \x01(\t\x12$\n\x04pose\x18\x04 \x01(\x0b\x32\x16.deepmap.api.WorldPose\x12\x34\n\tunwinding\x18\x05 \x01(\x0b\x32!.alignment.data_wrapper.Unwinding\x12%\n\x1d\x64ynamic_points_mask_file_path\x18\x06 \x01(\t\x12$\n\x1cground_points_mask_file_path\x18\x08 \x01(\t\x12%\n\x1dtimestamp_offset_microseconds\x18\x07 \x01(\x03\x12\x10\n\x08track_id\x18\t \x01(\x04\x12\x10\n\x08lidar_id\x18\n \x01(\x04\x12\x18\n\x10stream_sample_id\x18\x0b \x01(\x04\"\xa0\x01\n\x0c\x43\x61meraRecord\x12\x1e\n\x16timestamp_microseconds\x18\x01 \x01(\x04\x12\x37\n\x0b\x64\x61ta_format\x18\x02 \x01(\x0e\x32\".alignment.data_wrapper.DataFormat\x12\x11\n\tfile_path\x18\x03 \x01(\t\x12$\n\x04pose\x18\x04 \x01(\x0b\x32\x16.deepmap.api.WorldPose\"\xb1\x01\n\x0cLidarRecords\x12\x13\n\x0bsensor_name\x18\x01 \x01(\t\x12\x11\n\tsensor_id\x18\x02 \x01(\x05\x12\x34\n\x07records\x18\x03 \x03(\x0b\x32#.alignment.data_wrapper.LidarRecord\x12\'\n\x1flidar_to_vehicle_transform_path\x18\x04 \x01(\t\x12\x1a\n\x12unwind_point_cloud\x18\x05 \x01(\x08\"\xc2\x01\n\rCameraRecords\x12\x13\n\x0bsensor_name\x18\x01 \x01(\t\x12\x11\n\tsensor_id\x18\x02 \x01(\x05\x12\x35\n\x07records\x18\x03 \x03(\x0b\x32$.alignment.data_wrapper.CameraRecord\x12(\n camera_to_vehicle_transform_path\x18\x04 \x01(\t\x12(\n mono_calibration_parameters_path\x18\x05 \x01(\t\"\x91\x01\n\x13\x41lignedTrackRecords\x12=\n\x0e\x63\x61mera_records\x18\x01 \x03(\x0b\x32%.alignment.data_wrapper.CameraRecords\x12;\n\rlidar_records\x18\x02 \x03(\x0b\x32$.alignment.data_wrapper.LidarRecords*t\n\nDataFormat\x12\x12\n\x0e\x46ORMAT_UNKNOWN\x10\x00\x12\x08\n\x04JPEG\x10\x01\x12\x07\n\x03PNG\x10\x02\x12\x1b\n\x17UNCOMPRESSED_POINTCLOUD\x10\x03\x12\x07\n\x03PLY\x10\x04\x12\x19\n\x15\x43OMPRESSED_POINTCLOUD\x10\x05\x62\x06proto3')
+  serialized_pb=_b('\n\x17protos/track_data.proto\x12\x16\x61lignment.data_wrapper\x1a\x16protos/transform.proto\"q\n\tUnwinding\x12\x30\n\ttransform\x18\x01 \x01(\x0b\x32\x1d.deepmap.api.RigidTransform3d\x12\x19\n\x11start_nanoseconds\x18\x02 \x01(\x04\x12\x17\n\x0f\x65nd_nanoseconds\x18\x03 \x01(\x04\"\xfd\x01\n\x0cSensorRecord\x12\x1e\n\x16timestamp_microseconds\x18\x01 \x01(\x04\x12\x37\n\x0b\x64\x61ta_format\x18\x02 \x01(\x0e\x32\".alignment.data_wrapper.DataFormat\x12\x11\n\tfile_path\x18\x03 \x01(\t\x12$\n\x04pose\x18\x04 \x01(\x0b\x32\x16.deepmap.api.WorldPose\x12\x34\n\tunwinding\x18\x05 \x01(\x0b\x32!.alignment.data_wrapper.Unwinding\x12%\n\x1d\x64ynamic_points_mask_file_path\x18\x06 \x01(\t\"\xb2\x01\n\x0cLidarRecords\x12\x13\n\x0bsensor_name\x18\x01 \x01(\t\x12\x11\n\tsensor_id\x18\x02 \x01(\x05\x12\x35\n\x07records\x18\x03 \x03(\x0b\x32$.alignment.data_wrapper.SensorRecord\x12\'\n\x1flidar_to_vehicle_transform_path\x18\x04 \x01(\t\x12\x1a\n\x12unwind_point_cloud\x18\x05 \x01(\x08\"\xc2\x01\n\rCameraRecords\x12\x13\n\x0bsensor_name\x18\x01 \x01(\t\x12\x11\n\tsensor_id\x18\x02 \x01(\x05\x12\x35\n\x07records\x18\x03 \x03(\x0b\x32$.alignment.data_wrapper.SensorRecord\x12(\n camera_to_vehicle_transform_path\x18\x04 \x01(\t\x12(\n mono_calibration_parameters_path\x18\x05 \x01(\t\"\x91\x01\n\x13\x41lignedTrackRecords\x12=\n\x0e\x63\x61mera_records\x18\x01 \x03(\x0b\x32%.alignment.data_wrapper.CameraRecords\x12;\n\rlidar_records\x18\x02 \x03(\x0b\x32$.alignment.data_wrapper.LidarRecords*Y\n\nDataFormat\x12\x12\n\x0e\x46ORMAT_UNKNOWN\x10\x00\x12\x08\n\x04JPEG\x10\x01\x12\x07\n\x03PNG\x10\x02\x12\x1b\n\x17UNCOMPRESSED_POINTCLOUD\x10\x03\x12\x07\n\x03PLY\x10\x04\x62\x06proto3')
   ,
   dependencies=[protos_dot_transform__pb2.DESCRIPTOR,])
 
@@ -51,15 +51,11 @@ _DATAFORMAT = _descriptor.EnumDescriptor(
       name='PLY', index=4, number=4,
       serialized_options=None,
       type=None),
-    _descriptor.EnumValueDescriptor(
-      name='COMPRESSED_POINTCLOUD', index=5, number=5,
-      serialized_options=None,
-      type=None),
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=1272,
-  serialized_end=1388,
+  serialized_start=972,
+  serialized_end=1061,
 )
 _sym_db.RegisterEnumDescriptor(_DATAFORMAT)
 
@@ -69,7 +65,6 @@ JPEG = 1
 PNG = 2
 UNCOMPRESSED_POINTCLOUD = 3
 PLY = 4
-COMPRESSED_POINTCLOUD = 5
 
 
 
@@ -118,87 +113,52 @@ _UNWINDING = _descriptor.Descriptor(
 )
 
 
-_LIDARRECORD = _descriptor.Descriptor(
-  name='LidarRecord',
-  full_name='alignment.data_wrapper.LidarRecord',
+_SENSORRECORD = _descriptor.Descriptor(
+  name='SensorRecord',
+  full_name='alignment.data_wrapper.SensorRecord',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='timestamp_microseconds', full_name='alignment.data_wrapper.LidarRecord.timestamp_microseconds', index=0,
+      name='timestamp_microseconds', full_name='alignment.data_wrapper.SensorRecord.timestamp_microseconds', index=0,
       number=1, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='data_format', full_name='alignment.data_wrapper.LidarRecord.data_format', index=1,
+      name='data_format', full_name='alignment.data_wrapper.SensorRecord.data_format', index=1,
       number=2, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='file_path', full_name='alignment.data_wrapper.LidarRecord.file_path', index=2,
+      name='file_path', full_name='alignment.data_wrapper.SensorRecord.file_path', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='pose', full_name='alignment.data_wrapper.LidarRecord.pose', index=3,
+      name='pose', full_name='alignment.data_wrapper.SensorRecord.pose', index=3,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='unwinding', full_name='alignment.data_wrapper.LidarRecord.unwinding', index=4,
+      name='unwinding', full_name='alignment.data_wrapper.SensorRecord.unwinding', index=4,
       number=5, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dynamic_points_mask_file_path', full_name='alignment.data_wrapper.LidarRecord.dynamic_points_mask_file_path', index=5,
+      name='dynamic_points_mask_file_path', full_name='alignment.data_wrapper.SensorRecord.dynamic_points_mask_file_path', index=5,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='ground_points_mask_file_path', full_name='alignment.data_wrapper.LidarRecord.ground_points_mask_file_path', index=6,
-      number=8, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='timestamp_offset_microseconds', full_name='alignment.data_wrapper.LidarRecord.timestamp_offset_microseconds', index=7,
-      number=7, type=3, cpp_type=2, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='track_id', full_name='alignment.data_wrapper.LidarRecord.track_id', index=8,
-      number=9, type=4, cpp_type=4, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='lidar_id', full_name='alignment.data_wrapper.LidarRecord.lidar_id', index=9,
-      number=10, type=4, cpp_type=4, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='stream_sample_id', full_name='alignment.data_wrapper.LidarRecord.stream_sample_id', index=10,
-      number=11, type=4, cpp_type=4, label=1,
-      has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
@@ -215,59 +175,7 @@ _LIDARRECORD = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=191,
-  serialized_end=582,
-)
-
-
-_CAMERARECORD = _descriptor.Descriptor(
-  name='CameraRecord',
-  full_name='alignment.data_wrapper.CameraRecord',
-  filename=None,
-  file=DESCRIPTOR,
-  containing_type=None,
-  fields=[
-    _descriptor.FieldDescriptor(
-      name='timestamp_microseconds', full_name='alignment.data_wrapper.CameraRecord.timestamp_microseconds', index=0,
-      number=1, type=4, cpp_type=4, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='data_format', full_name='alignment.data_wrapper.CameraRecord.data_format', index=1,
-      number=2, type=14, cpp_type=8, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='file_path', full_name='alignment.data_wrapper.CameraRecord.file_path', index=2,
-      number=3, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='pose', full_name='alignment.data_wrapper.CameraRecord.pose', index=3,
-      number=4, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-  ],
-  extensions=[
-  ],
-  nested_types=[],
-  enum_types=[
-  ],
-  serialized_options=None,
-  is_extendable=False,
-  syntax='proto3',
-  extension_ranges=[],
-  oneofs=[
-  ],
-  serialized_start=585,
-  serialized_end=745,
+  serialized_end=444,
 )
 
 
@@ -325,8 +233,8 @@ _LIDARRECORDS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=748,
-  serialized_end=925,
+  serialized_start=447,
+  serialized_end=625,
 )
 
 
@@ -384,8 +292,8 @@ _CAMERARECORDS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=928,
-  serialized_end=1122,
+  serialized_start=628,
+  serialized_end=822,
 )
 
 
@@ -422,23 +330,20 @@ _ALIGNEDTRACKRECORDS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1125,
-  serialized_end=1270,
+  serialized_start=825,
+  serialized_end=970,
 )
 
 _UNWINDING.fields_by_name['transform'].message_type = protos_dot_transform__pb2._RIGIDTRANSFORM3D
-_LIDARRECORD.fields_by_name['data_format'].enum_type = _DATAFORMAT
-_LIDARRECORD.fields_by_name['pose'].message_type = protos_dot_transform__pb2._WORLDPOSE
-_LIDARRECORD.fields_by_name['unwinding'].message_type = _UNWINDING
-_CAMERARECORD.fields_by_name['data_format'].enum_type = _DATAFORMAT
-_CAMERARECORD.fields_by_name['pose'].message_type = protos_dot_transform__pb2._WORLDPOSE
-_LIDARRECORDS.fields_by_name['records'].message_type = _LIDARRECORD
-_CAMERARECORDS.fields_by_name['records'].message_type = _CAMERARECORD
+_SENSORRECORD.fields_by_name['data_format'].enum_type = _DATAFORMAT
+_SENSORRECORD.fields_by_name['pose'].message_type = protos_dot_transform__pb2._WORLDPOSE
+_SENSORRECORD.fields_by_name['unwinding'].message_type = _UNWINDING
+_LIDARRECORDS.fields_by_name['records'].message_type = _SENSORRECORD
+_CAMERARECORDS.fields_by_name['records'].message_type = _SENSORRECORD
 _ALIGNEDTRACKRECORDS.fields_by_name['camera_records'].message_type = _CAMERARECORDS
 _ALIGNEDTRACKRECORDS.fields_by_name['lidar_records'].message_type = _LIDARRECORDS
 DESCRIPTOR.message_types_by_name['Unwinding'] = _UNWINDING
-DESCRIPTOR.message_types_by_name['LidarRecord'] = _LIDARRECORD
-DESCRIPTOR.message_types_by_name['CameraRecord'] = _CAMERARECORD
+DESCRIPTOR.message_types_by_name['SensorRecord'] = _SENSORRECORD
 DESCRIPTOR.message_types_by_name['LidarRecords'] = _LIDARRECORDS
 DESCRIPTOR.message_types_by_name['CameraRecords'] = _CAMERARECORDS
 DESCRIPTOR.message_types_by_name['AlignedTrackRecords'] = _ALIGNEDTRACKRECORDS
@@ -452,19 +357,12 @@ Unwinding = _reflection.GeneratedProtocolMessageType('Unwinding', (_message.Mess
   ))
 _sym_db.RegisterMessage(Unwinding)
 
-LidarRecord = _reflection.GeneratedProtocolMessageType('LidarRecord', (_message.Message,), dict(
-  DESCRIPTOR = _LIDARRECORD,
+SensorRecord = _reflection.GeneratedProtocolMessageType('SensorRecord', (_message.Message,), dict(
+  DESCRIPTOR = _SENSORRECORD,
   __module__ = 'protos.track_data_pb2'
-  # @@protoc_insertion_point(class_scope:alignment.data_wrapper.LidarRecord)
+  # @@protoc_insertion_point(class_scope:alignment.data_wrapper.SensorRecord)
   ))
-_sym_db.RegisterMessage(LidarRecord)
-
-CameraRecord = _reflection.GeneratedProtocolMessageType('CameraRecord', (_message.Message,), dict(
-  DESCRIPTOR = _CAMERARECORD,
-  __module__ = 'protos.track_data_pb2'
-  # @@protoc_insertion_point(class_scope:alignment.data_wrapper.CameraRecord)
-  ))
-_sym_db.RegisterMessage(CameraRecord)
+_sym_db.RegisterMessage(SensorRecord)
 
 LidarRecords = _reflection.GeneratedProtocolMessageType('LidarRecords', (_message.Message,), dict(
   DESCRIPTOR = _LIDARRECORDS,

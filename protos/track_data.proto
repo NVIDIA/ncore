@@ -14,7 +14,6 @@ enum DataFormat {
   // See deepmap-base//public/deepmap_api/protos/pointcloud.proto.
   UNCOMPRESSED_POINTCLOUD = 3;
   PLY = 4;
-  COMPRESSED_POINTCLOUD = 5;
 }
 
 message Unwinding {
@@ -25,7 +24,7 @@ message Unwinding {
 }
 
 // SensorRecord includes alignment metadata and file path for a sensor sample.
-message LidarRecord {
+message SensorRecord {
   uint64 timestamp_microseconds = 1;
   DataFormat data_format = 2;
   string file_path = 3;
@@ -37,53 +36,25 @@ message LidarRecord {
   Unwinding unwinding = 5;
   // A boolean mask for each point in a Lidar scan that is 1 if a point belongs
   // to dynamic objects.
+  // NOTE: Dynamic mask should be a separate file. This message is for metadata.
+  // TODO(evgenytoropov): revisit after Stuttart data has shipped.
   // the total size of the bytes should be eqaul to
   // ceil(total_num_points / 8), where the last byte has 0 filled if size is
   // larger than the total number of points
   // to unpack the file into flag just do
-  // in C++:
   // one would need to read the file as string
   // then call _pdep_u64 intrinsic with mask 0x0101010101010101ULL
-  // ```
-  // void UnPackBooleanVecFromString(
-  //     const std::string& in_string, std::vector<uint8_t>& bool_vec) {
-  //   for (size_t i = 0; i < in_string.size(); ++i) {
-  //     uint64_t unpacked = _pdep_u64(in_string[i], 0x0101010101010101ULL);
-  //     uint8_t* unpacked_bool = reinterpret_cast<uint8_t*>(&unpacked);
-  //     for (int j = 0; j < 8; ++j) {
-  //       bool_vec.push_back(*unpacked_bool);
-  //       unpacked_bool++;
-  //     }
+  // for (size_t i = 0; i < file_content.size() / 8; ++i) {
+  //   uint64_t unpacked = _pdep_u64(
+  //       *(reinterpret_cast<const uint64_t*>(&file_content[i * 8])),
+  //       0x0101010101010101ULL);
+  //   uint8_t* unpacked_bool = reinterpret_cast<uint8_t*>(&unpacked);
+  //   for (int j = 0; j < 8; ++j) {
+  //     bool_vec.push_back(*unpacked_bool);
+  //     unpacked_bool++;
   //   }
   // }
-  // ```
-  // or in python:
-  // ```
-  // with open(args.input_file, "rb") as f:
-  // byte_array = np.fromfile(f, np.dtype('B'))
-  // bit_array = np.unpackbits(byte_array, bitorder="little")
-  // ```
   string dynamic_points_mask_file_path = 6;
-  // same as above mask, but for ground points
-  string ground_points_mask_file_path = 8;
-  //
-  // Disregard in the case when point clouds are exported.
-  // In the case when ONLY metadata is recorded, the user reads the original
-  // compressed point cloud. The user should add timestamp_offset_microseconds
-  // to all timestamps inside the point cloud proto before use.
-  int64 timestamp_offset_microseconds = 7;
-
-  uint64 track_id = 9;
-  uint64 lidar_id = 10;
-  uint64 stream_sample_id = 11;
-}
-
-// SensorRecord includes alignment metadata and file path for a sensor sample.
-message CameraRecord {
-  uint64 timestamp_microseconds = 1;
-  DataFormat data_format = 2;
-  string file_path = 3;
-  deepmap.api.WorldPose pose = 4;
 }
 
 // LidarRecords includes alignment metadata and file paths to point clouds in
@@ -91,7 +62,7 @@ message CameraRecord {
 message LidarRecords {
   string sensor_name = 1;
   int32 sensor_id = 2;
-  repeated LidarRecord records = 3;
+  repeated SensorRecord records = 3;
   //
   // deepmap.api.RigidTransform3d from transform.proto as txt.
   // See deepmap-base//public/deepmap_api/protos/transform.proto.
@@ -104,7 +75,7 @@ message LidarRecords {
 message CameraRecords {
   string sensor_name = 1;
   int32 sensor_id = 2;
-  repeated CameraRecord records = 3;
+  repeated SensorRecord records = 3;
   //
   // deepmap.api.RigidTransform3d from transform.proto as txt.
   // See deepmap-base//public/deepmap_api/protos/transform.proto.
