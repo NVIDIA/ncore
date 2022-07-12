@@ -234,12 +234,13 @@ def nvidia(ctx, *_, **kwargs):
             camera_metada = pickle.load(file)
 
         # Get the focal length, image width and height
-        focal_length = camera_metada['intrinsic'][10]
+        focal_length = camera_metada['intrinsic'][10] # This is not really the focal length, but NGP expects some value for fov (not used in training)
         w, h = camera_metada['img_width'],  camera_metada['img_height']
 
         # Compute the angular field of view
-        angle_x= math.atan(w/(focal_length*2))*2
-        camera_data[cam]['angle'] = angle_x
+        fov_angle_x= math.atan(w/(focal_length*2))*2
+        camera_data[cam]['angle_x'] = fov_angle_x
+        
         
         # Z is the up vector in the Nvidia coordinate system
         camera_data[cam]['up'] = np.array([0,0,1])
@@ -305,6 +306,7 @@ def nvidia(ctx, *_, **kwargs):
 
         out_train={"aabb_scale":16, 
                    "n_extra_learnable_dims" : 8, 
+                   "camera_angle_x": camera_data[cam]['angle_x'],
                    "up":camera_data[cam]['up'].tolist(), 
                    "offset": offset.tolist(),
                    "scale": scale_factor,
