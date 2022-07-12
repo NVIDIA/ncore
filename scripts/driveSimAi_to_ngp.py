@@ -5,9 +5,14 @@ import click
 import sys
 sys.path.append('./')
 
-                                                                                                                                    
+                                                                                                                                 
 from src.common import NV_CAMERAS, WAYMO_CAMERAS, R_NVIDIA_NGP, R_WAYMO_NGP, RS_DIR_TO_NGP, average_camera_pose
 import numpy as np
+from PIL import Image
+# PIL pollutes the CL output with debug messages
+# TODO: check for better solution
+import logging
+logging.getLogger('PIL').setLevel(logging.WARNING)
 import json
 import math
 import os
@@ -58,8 +63,7 @@ def waymo(ctx, *_, **kwargs):
     for cam in cameras: 
         camera_data[cam] = {}
         
-        with open(os.path.join(root_dir, 'images/image_{}'.format(str(cam).zfill(2)),
-                                     str(start_frame).zfill(6) + '.pkl'),'rb') as file:
+        with open(os.path.join(root_dir, f'images/image_{str(cam).zfill(2)}', f'{str(start_frame).zfill(6)}.pkl'),'rb') as file:
             camera_metadata = pickle.load(file)
 
         # Get the focal length, image width and height
@@ -78,9 +82,15 @@ def waymo(ctx, *_, **kwargs):
         # Set the UP vector (only used for visualization purposes withing NGP)
         camera_data[cam]['up'] = np.array([0, 0, 1])
 
-        # Load all the images and the corresponding metadata
-        all_img = [os.path.join(root_dir, 'images', 'image_{}'.format(str(cam).zfill(2)), str(idx).zfill(index_digits) + '.jpeg') for idx in range(start_frame, end_frame)]
+        # Load all the images and the corresponding metadata (to average the pose we neglect the selected step size as all images will be used for testing)
+        all_img = [os.path.join(root_dir, 'images', f'image_{str(cam).zfill(2)}', f'{str(idx).zfill(index_digits)}.jpeg') for idx in range(start_frame, end_frame)]
+        all_img_mask = [os.path.join(root_dir, 'images', f'image_{str(cam).zfill(2)}', f'mask_{str(idx).zfill(index_digits)}.png') for idx in range(start_frame, end_frame)]
         all_metadata = [img.replace('.jpeg','.pkl') for img in all_img ]
+
+        # Resave all image masks 
+        for img_mask_path in all_img_mask:
+            img = Image.open(img_mask_path)
+            img.save(img_mask_path.replace('mask_', 'dynamic_mask_'), bits=1,optimize=True)
 
         # Iterate over the poses 
         T_cam_rig = []
@@ -147,8 +157,8 @@ def waymo(ctx, *_, **kwargs):
                 "frames":[]}
 
         out_test = copy.deepcopy(out_train)
-        all_img = [os.path.join(root_dir, 'images', 'image_{}'.format(str(cam).zfill(2)), str(idx).zfill(6) + '.jpeg') for idx in range(start_frame, end_frame)]
-        all_img_train = [os.path.join(root_dir, 'images', 'image_{}'.format(str(cam).zfill(2)), str(idx).zfill(6) + '.jpeg') for idx in range(start_frame, end_frame, step_frame)]
+        all_img = [os.path.join(root_dir, 'images', f'image_{str(cam).zfill(2)}', f'{str(idx).zfill(6)}.jpeg') for idx in range(start_frame, end_frame)]
+        all_img_train = [os.path.join(root_dir, 'images', f'image_{str(cam).zfill(2)}', f'{str(idx).zfill(6)}.jpeg') for idx in range(start_frame, end_frame, step_frame)]
         
         for i, name in enumerate(all_img_train):
             path = os.sep.join(name.split(os.sep)[-3:])
@@ -169,7 +179,7 @@ def waymo(ctx, *_, **kwargs):
 
         if cam_idx == 0 and use_lidar:
             out_train['lidar'] = []
-            all_lidar = [os.path.join(root_dir, 'lidar', '{}.dat'.format(str(idx).zfill(6))) for idx in range(start_frame, end_frame + 10)] # add some lidar frames at the end as cameras see further
+            all_lidar = [os.path.join(root_dir, 'lidar', f'{str(idx).zfill(6)}.dat') for idx in range(start_frame, end_frame + 10)] # add some lidar frames at the end as cameras see further
 
             for i, name in enumerate(all_lidar):
                 path =  os.sep.join(name.split(os.sep)[-2:])
@@ -178,7 +188,7 @@ def waymo(ctx, *_, **kwargs):
 
 
         print('writing train camera.json...')
-        with open(os.path.join(output_dir, f'transforms_cam_{cam}_train.json'), 'w') as outfile:    
+        with open(os.path.join(output_dir, f'cam_{cam}_train.json'), 'w') as outfile:    
             json.dump(out_train, outfile, indent=2)
 
         print('writing test camera.json...')
@@ -189,10 +199,8 @@ def waymo(ctx, *_, **kwargs):
         for key in keys_to_delete:
             del out_test[key]
 
-        with open(os.path.join(output_dir, f'transforms_cam_{cam}_test.json'), 'w') as outfile:    
+        with open(os.path.join(output_dir, f'cam_{cam}_test.json'), 'w') as outfile:    
             json.dump(out_test, outfile, indent=2)
-
-
 
 
 @cli.command()
@@ -222,8 +230,7 @@ def nvidia(ctx, *_, **kwargs):
     for cam in cameras: 
         camera_data[cam] = {}
         
-        with open(os.path.join(root_dir, 'images/image_{}'.format(str(cam).zfill(2)),
-                                     str(start_frame).zfill(6) + '.pkl'),'rb') as file:
+        with open(os.path.join(root_dir, f'images/image_{str(cam).zfill(2)}', f'{str(start_frame).zfill(6)}.pkl'),'rb') as file:
             camera_metada = pickle.load(file)
 
         # Get the focal length, image width and height
@@ -237,8 +244,15 @@ def nvidia(ctx, *_, **kwargs):
         # Z is the up vector in the Nvidia coordinate system
         camera_data[cam]['up'] = np.array([0,0,1])
 
-        all_img = [os.path.join(root_dir, 'images', 'image_{}'.format(str(cam).zfill(2)), str(idx).zfill(index_digits) + '.jpeg') for idx in range(start_frame, end_frame)]
+        # Load all the images and the corresponding metadata (to average the pose we neglect the selected step size as all images will be used for testing)
+        all_img = [os.path.join(root_dir, 'images', f'image_{str(cam).zfill(2)}', f'{str(idx).zfill(index_digits)}.jpeg') for idx in range(start_frame, end_frame)]
+        all_img_mask = [os.path.join(root_dir, 'images', f'image_{str(cam).zfill(2)}', f'mask_{str(idx).zfill(index_digits)}.png') for idx in range(start_frame, end_frame)]
         all_metadata = [img.replace('.jpeg','.pkl') for img in all_img ]
+
+        # Resave all image masks 
+        for img_mask_path in all_img_mask:
+            img = Image.open(img_mask_path)
+            img.save(img_mask_path.replace('mask_', 'dynamic_mask_'), bits=1,optimize=True)
 
         # Iterate over the poses 
         T_cam_rig = []
@@ -308,8 +322,8 @@ def nvidia(ctx, *_, **kwargs):
                    "frames":[]}
 
         out_test = copy.deepcopy(out_train)
-        all_img = [os.path.join(root_dir, 'images', 'image_{}'.format(str(cam).zfill(2)), str(idx).zfill(6) + '.jpeg') for idx in range(start_frame, end_frame)]
-        all_img_train = [os.path.join(root_dir, 'images', 'image_{}'.format(str(cam).zfill(2)), str(idx).zfill(6) + '.jpeg') for idx in range(start_frame, end_frame, step_frame)]
+        all_img = [os.path.join(root_dir, 'images', f'image_{str(cam).zfill(2)}', f'{str(idx).zfill(6)}.jpeg') for idx in range(start_frame, end_frame)]
+        all_img_train = [os.path.join(root_dir, 'images', f'image_{str(cam).zfill(2)}', f'{str(idx).zfill(6)}.jpeg') for idx in range(start_frame, end_frame, step_frame)]
         
         for i, name in enumerate(all_img_train):
             path = os.sep.join(name.split(os.sep)[-3:])
@@ -337,7 +351,7 @@ def nvidia(ctx, *_, **kwargs):
             end_timestamp = camera_timestamps[end_frame]
             lidar_start_idx  = np.where(lidar_timestamps > start_timestamp)[0][0] + 1
             lidar_end_idx   = np.where(lidar_timestamps < end_timestamp)[0][-1]  + 1
-            all_lidar = [os.path.join(root_dir, 'lidar', '{}.dat'.format(str(idx).zfill(6))) for idx in range(lidar_start_idx, lidar_end_idx + 50)] # add lidar at the end as cameras see further away
+            all_lidar = [os.path.join(root_dir, 'lidar', f'{str(idx).zfill(6)}.dat') for idx in range(lidar_start_idx, lidar_end_idx + 50)] # add lidar at the end as cameras see further away
 
             for i, name in enumerate(all_lidar):
                 path =  os.sep.join(name.split(os.sep)[-2:])
@@ -346,7 +360,7 @@ def nvidia(ctx, *_, **kwargs):
                 out_train['lidar'].append(frame)
 
         print('writing train camera.json...')
-        with open(os.path.join(output_dir, f'transforms_cam_{cam}_train.json'), 'w') as outfile:    
+        with open(os.path.join(output_dir, f'cam_{cam}_train.json'), 'w') as outfile:    
             json.dump(out_train, outfile, indent=2)
 
         print('writing test camera.json...')
@@ -357,7 +371,7 @@ def nvidia(ctx, *_, **kwargs):
         for key in keys_to_delete:
             del out_test[key]
 
-        with open(os.path.join(output_dir, f'transforms_cam_{cam}_test.json'), 'w') as outfile:    
+        with open(os.path.join(output_dir, f'cam_{cam}_test.json'), 'w') as outfile:    
             json.dump(out_test, outfile, indent=2)
 
 if __name__ == '__main__':
