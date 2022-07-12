@@ -86,9 +86,9 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
             self.decode_poses_timestamps() 
 
-            # self.decode_labels(sequence_path, annotations, frame_annotations)
+            self.decode_labels(sequence_path, annotations, frame_annotations)
 
-            # self.decode_lidar(sequence_path)
+            self.decode_lidar(sequence_path)
             
             self.decode_images(sequence_path)
 
@@ -365,41 +365,41 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 transformed_pc = transformed_pc[valid_idx,:]
                 
                 # Save the per frame label 
-                # anno_save_path =  os.path.join(self.output_dir, self.sequence_name, self.track_name,
-                #         self.label_save_dir, str(frame_idx).zfill(self.INDEX_DIGITS) + '.pkl')
+                anno_save_path =  os.path.join(self.output_dir, self.sequence_name, self.track_name,
+                        self.label_save_dir, str(frame_idx).zfill(self.INDEX_DIGITS) + '.pkl')
 
-                # save_pkl(frame_annotations[fa_timestamps[annotation_frame_idx]], anno_save_path)
+                save_pkl(frame_annotations[fa_timestamps[annotation_frame_idx]], anno_save_path)
  
                 # Use the bounding boxes to remove dynamic objects 
-                # dynamic_flag = np.zeros_like(transformed_pc[:,0])
-                # for label in frame_annotations[fa_timestamps[annotation_frame_idx]]['lidar_labels']:
-                #     label_id = label['name']
-                #     dynamic_state = annotations['3d_labels'][label_id]['dynamic_flag']
-                #     # If the object is dynamic update the points that fall in that bounding box
-                #     if dynamic_state:
-                #         bbox = label['3D_bbox']
-                #         bbox[3:6] = 3 + bbox[3:6] # Enlarge the bounding box
-                #         bbox_idxs = points_in_bboxes(raw_pc, bbox.reshape(1,-1))
+                dynamic_flag = np.zeros_like(transformed_pc[:,0])
+                for label in frame_annotations[fa_timestamps[annotation_frame_idx]]['lidar_labels']:
+                    label_id = label['name']
+                    dynamic_state = annotations['3d_labels'][label_id]['dynamic_flag']
+                    # If the object is dynamic update the points that fall in that bounding box
+                    if dynamic_state:
+                        bbox = label['3D_bbox']
+                        bbox[3:6] = 3 + bbox[3:6] # Enlarge the bounding box
+                        bbox_idxs = points_in_bboxes(raw_pc, bbox.reshape(1,-1))
 
-                #         dynamic_flag[bbox_idxs != -1] = 1
+                        dynamic_flag[bbox_idxs != -1] = 1
 
-                # transformed_pc[:,-1] = dynamic_flag
+                transformed_pc[:,-1] = dynamic_flag
                 
                 # Use the dynamic masks to remove objects 
-                dynamic_flag = []
-                with open(os.path.join(sequence_path, 'tracks', frame_path.replace('lidar_00', 'lidar_00_dynamic_point_masks').replace('.ppb','.pb')), 'rb') as f:
-                    # while True:
-                    #     buf = f.read(8)
-                    #     if not buf:
-                    #         break
-                    #     dynamic_flag.append(np.unpackbits(np.array(struct.unpack('<Q', buf), dtype=np.uint8), bitorder='little'))
-                    byte_array = np.fromfile(f, np.dtype('B'))
-                    dynamic_flag = np.unpackbits(byte_array, bitorder="little")
+                # dynamic_flag = []
+                # with open(os.path.join(sequence_path, 'tracks', frame_path.replace('lidar_00', 'lidar_00_dynamic_point_masks').replace('.ppb','.pb')), 'rb') as f:
+                #     while True:
+                #         buf = f.read(8)
+                #         if not buf:
+                #             break
+                #         dynamic_flag.append(np.unpackbits(np.array(struct.unpack('<Q', buf), dtype=np.uint8), bitorder='little'))
+                #     byte_array = np.fromfile(f, np.dtype('B'))
+                #     dynamic_flag = np.unpackbits(byte_array, bitorder="little")
 
                 # dynamic_flag = np.stack(dynamic_flag).flatten()
 
-                dynamic_flag = dynamic_flag[:valid_idx.shape[0]]
-                transformed_pc[:,-1] = dynamic_flag[valid_idx]
+                # dynamic_flag = dynamic_flag[:valid_idx.shape[0]]
+                # transformed_pc[:,-1] = dynamic_flag[valid_idx]
 
                 lidar_save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, self.point_cloud_save_dir, str(frame_idx).zfill(self.INDEX_DIGITS) + '.dat')
                 save_pc_dat(lidar_save_path, transformed_pc)
