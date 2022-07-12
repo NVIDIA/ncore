@@ -8,7 +8,7 @@ To compile Instant-NGP start by cloning the repo from the [internal repository](
 
 ```
 git clone --recursive ssh://git@gitlab-master.nvidia.com:12051/tmueller/neural-graphics-primitives.git
-cd instant-ngp
+cd neural-graphics-primitives
 ```
 
 FAQ, compiliation problems, and other usefull information are available in the [public repository](https://github.com/NVlabs/instant-ngp).
@@ -16,8 +16,8 @@ FAQ, compiliation problems, and other usefull information are available in the [
 Then, use CMake to build the project:
 
 ```
-instant-ngp$ cmake . -B build -DCMAKE_CUDA_COMPILER=/usr/local/{cuda-version}/bin/nvcc   
-instant-ngp$ cmake --build build --config RelWithDebInfo -j 16
+neural-graphics-primitives$ cmake . -B build -DCMAKE_CUDA_COMPILER=/usr/local/{cuda-version}/bin/nvcc   
+neural-graphics-primitives$ cmake --build build --config RelWithDebInfo -j 16
 ```
 
 ### Generating config files
