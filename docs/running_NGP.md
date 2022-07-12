@@ -7,7 +7,7 @@ To reconstruct the radiance field of the static background we use the Instant-NG
 To compile Instant-NGP start by cloning the repo from the [internal repository](https://gitlab-master.nvidia.com/tmueller/neural-graphics-primitives) by running:
 
 ```
-git clone --recursive https://github.com/nvlabs/instant-ngp
+git clone --recursive ssh://git@gitlab-master.nvidia.com:12051/tmueller/neural-graphics-primitives.git
 cd instant-ngp
 ```
 
@@ -22,10 +22,10 @@ instant-ngp$ cmake --build build --config RelWithDebInfo -j 16
 
 ### Generating config files
 
-Instant-NGP uses `*.json` config files to initialize the parameters and image/lidar paths. The config files for DriveSimAi data can be generated using the `driveSimAi_to_ngp.py` script. For example, the command:
+Instant-NGP uses `*.json` config files to initialize the parameters and image/lidar paths. The config files for DriveSimAi data can be generated using the `dsai_to_ngp.py` script. For example, the command:
 
 ```
-python scripts/driveSimAi_to_ngp.py --root-dir /path/to/data/ --experiment-name dummy_experiment --start-frame 0 --end-frame 200 
+python scripts/dsai_to_ngp.py --root-dir /path/to/data/ --experiment-name dummy_experiment --start-frame 0 --end-frame 200 
                                         --step-frame 2 -c 0 -c 1 --max-dist 200 --use-lidar nvidia
 ```
 
