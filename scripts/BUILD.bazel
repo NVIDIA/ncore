@@ -29,7 +29,10 @@ py3_image(
     srcs = ["convert_raw_data.py"],
     base = "@dsai_dev_container//image",
     main = "convert_raw_data.py",
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
     deps = [
         requirement("click"),
         requirement("debugpy"),
@@ -44,7 +47,10 @@ container_push(
     registry = "nvcr.io",
     repository = "nv-maglev/dlav/drivesim-ai",
     tag = "convert-raw-data-dev",
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
 )
 
 py_binary(
@@ -76,7 +82,10 @@ py3_image(
     srcs = ["rgb_ray_mesh_intersection.py"],
     base = "@dsai_dev_container//image",
     main = "rgb_ray_mesh_intersection.py",
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
     deps = [
         requirement("point-cloud-utils"),
         requirement("pillow"),
