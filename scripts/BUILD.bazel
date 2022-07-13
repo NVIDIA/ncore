@@ -1,0 +1,99 @@
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load(
+    "@io_bazel_rules_docker//container:container.bzl",
+    "container_push",
+)
+load("@io_bazel_rules_docker//python3:image.bzl", "py3_image")
+load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_binary")
+
+py_binary(
+    name = "dsai_to_ngp",
+    srcs = ["dsai_to_ngp.py"],
+    deps = [
+        requirement("numpy"),
+        requirement("click"),
+        "//src/py/common:pylib",
+    ],
+)
+
+py_binary(
+    name = "convert_raw_data",
+    srcs = ["convert_raw_data.py"],
+    deps = [
+        requirement("click"),
+        requirement("debugpy"),
+        "//src/py/dataset_converter:pylib",
+    ],
+)
+
+py3_image(
+    name = "convert_raw_data_image",
+    srcs = ["convert_raw_data.py"],
+    base = "@dsai_dev_container//image",
+    main = "convert_raw_data.py",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = [
+        requirement("click"),
+        requirement("debugpy"),
+        "//src/py/dataset_converter:pylib",
+    ],
+)
+
+container_push(
+    name = "push_convert_raw_data_image",
+    format = "Docker",
+    image = ":convert_raw_data_image",
+    registry = "nvcr.io",
+    repository = "nv-maglev/dlav/drivesim-ai",
+    tag = "convert-raw-data-dev",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+)
+
+py_binary(
+    name = "project_pc_to_img",
+    srcs = ["project_pc_to_img.py"],
+    deps = [
+        requirement("point-cloud-utils"),
+        requirement("pillow"),
+        requirement("matplotlib"),
+        requirement("numpy"),
+        "//src/cpp/av_utils:pylib",
+        "//src/py/common:pylib",
+    ],
+)
+
+py_binary(
+    name = "rgb_ray_mesh_intersection",
+    srcs = ["rgb_ray_mesh_intersection.py"],
+    deps = [
+        requirement("point-cloud-utils"),
+        requirement("pillow"),
+        "//src/cpp/av_utils:pylib",
+        "//src/py/common:pylib",
+    ],
+)
+
+py3_image(
+    name = "rgb_ray_mesh_intersection_image",
+    srcs = ["rgb_ray_mesh_intersection.py"],
+    base = "@dsai_dev_container//image",
+    main = "rgb_ray_mesh_intersection.py",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = [
+        requirement("point-cloud-utils"),
+        requirement("pillow"),
+        "//src/cpp/av_utils:pylib",
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")

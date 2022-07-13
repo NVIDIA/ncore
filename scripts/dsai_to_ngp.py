@@ -2,11 +2,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 import click
-import sys
-sys.path.append('./')
-
-                                                                                                                                 
-from src.common import NV_CAMERAS, WAYMO_CAMERAS, R_NVIDIA_NGP, R_WAYMO_NGP, RS_DIR_TO_NGP, average_camera_pose
+from src.py.common.common import NV_CAMERAS, WAYMO_CAMERAS, R_NVIDIA_NGP, R_WAYMO_NGP, RS_DIR_TO_NGP, average_camera_pose
 import numpy as np
 from PIL import Image
 # PIL pollutes the CL output with debug messages

@@ -1,0 +1,27 @@
+protobuf<4.0
+tensorflow
+waymo-open-dataset-tf-2-5-0
+tqdm
+scipy
+matplotlib
+runx
+setuptools==59.5.0
+opencv-python
+scikit-image
+protobuf3-to-dict==0.1.5
+pandas
+pyarrow
+point-cloud-utils
+click
+debugpy
+
+--find-links https://download.pytorch.org/whl/torch_stable.html
+torch==1.10.1+cu111
+torchvision==0.11.2+cu111
+torchaudio==0.10.1
+
+--find-links https://dl.fbaipublicfiles.com/detectron2/wheels/cu111/torch1.10/index.html
+detectron2==0.6+cu111
+
+--extra-index-url https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple
+apex==0.1

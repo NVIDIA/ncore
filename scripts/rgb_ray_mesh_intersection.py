@@ -10,10 +10,8 @@ import pickle
 import glob
 from PIL import Image
 
-import sys
-sys.path.append('./')
-from lib import image_to_world_ray
-from src.common import NV_CAMERAS, WAYMO_CAMERAS
+from src.py.common.common import NV_CAMERAS, WAYMO_CAMERAS
+from src.cpp.av_utils import image_to_world_ray
 
 def generate_colored_pclouds(args, cam_id):
     vertices, faces = pcu.load_mesh_vf(os.path.join(args.root_dir,'reconstructed_surface', "reconstructed_mesh.ply" ))
@@ -51,7 +49,7 @@ def generate_colored_pclouds(args, cam_id):
         fid, bc, t = pcu.ray_mesh_intersection(vertices, faces, ray_o, ray_d)
         valid_rays = np.isfinite(t)
 
-        pcu.save_mesh_vc(os.path.join(output_dir, data_path.split(os.sep)[-1].replace('.pkl','.ply')), 
+        pcu.save_mesh_vc(os.path.join(output_dir, data_path.split(os.sep)[-1].replace('.pkl','.ply')),
                 pcu.interpolate_barycentric_coords(faces, fid[valid_rays], bc[valid_rays], vertices).astype(np.float32), rgb_values[valid_rays].astype(np.float32) / 255.0)
 
 
@@ -69,7 +67,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     assert os.path.exists(os.path.join(args.root_dir,'reconstructed_surface', "reconstructed_mesh.ply")), "Mesh of the reconstructed surface does not exist!"
-    
+
     # Select the correct maps
     CAM_IDS = NV_CAMERAS if args.dataset.startswith('nvidia') else WAYMO_CAMERAS
     if args.cam_id != '-1':

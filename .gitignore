@@ -1,9 +1,7 @@
-*.pkl
-*.pth
-*.so
 logs/
 __pycache__/
-lib/external/.cache/
-lib/build/
-lib/dist/
 .vscode/
+
+# Bazel-specific ignores
+/bazel-*
+.bazelrc.user

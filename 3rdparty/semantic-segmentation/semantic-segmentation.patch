@@ -1,0 +1,35 @@
+diff --git a/config.py b/config.py
+index caedfeb..70bbef6 100644
+--- a/config.py
++++ b/config.py
+@@ -49,7 +49,7 @@ cfg = __C
+ __C.GLOBAL_RANK = 0
+ __C.EPOCH = 0
+ # Absolute path to a location to keep some large files, not in this dir.
+-__C.ASSETS_PATH = '/home/dcg-adlr-atao-data.cosmos277/assets'
++__C.ASSETS_PATH = 'src/py/deps/semantic_segmentation/pretrained_models'
+ 
+ # Use class weighted loss per batch to increase loss for low pixel count classes per batch
+ __C.BATCH_WEIGHTING = False
+@@ -137,7 +137,7 @@ __C.MODEL.MSCALE_INIT = 0.5
+ __C.MODEL.ATTNSCALE_BN_HEAD = False
+ __C.MODEL.GRAD_CKPT = False
+ 
+-WEIGHTS_PATH = os.path.join(__C.ASSETS_PATH, 'seg_weights')
++WEIGHTS_PATH = os.path.join(__C.ASSETS_PATH)
+ __C.MODEL.WRN38_CHECKPOINT = \
+     os.path.join(WEIGHTS_PATH, 'wider_resnet38.pth.tar')
+ __C.MODEL.WRN41_CHECKPOINT = \
+diff --git a/datasets/utils.py b/datasets/utils.py
+index f9254f1..89d8b54 100644
+--- a/datasets/utils.py
++++ b/datasets/utils.py
+@@ -9,7 +9,7 @@ def make_dataset_folder(folder):
+     returns: items list with None filled for mask path
+     """
+     items = os.listdir(folder)
+-    items = [(os.path.join(folder, f), '') for f in items]
++    items = [(os.path.join(folder, f), '') for f in items if f.endswith(('.jpg','.jpeg','.png'))]
+     items = sorted(items)
+ 
+     print(f'Found {len(items)} folder imgs')

@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package alignment.data_wrapper;
+
+import "src/protos/deepmap/transform.proto";
+
+// All paths recorded in messages are relative to some base dir.
+
+enum DataFormat {
+  FORMAT_UNKNOWN = 0;
+  JPEG = 1;
+  PNG = 2;
+  // UNCOMPRESSED_POINTCLOUD:
+  // See deepmap-base//public/deepmap_api/protos/pointcloud.proto.
+  UNCOMPRESSED_POINTCLOUD = 3;
+  PLY = 4;
+}
+
+message Unwinding {
+  deepmap.api.RigidTransform3d transform = 1;
+  // Timestamps are Maglev session compatible.
+  uint64 start_nanoseconds = 2;
+  uint64 end_nanoseconds = 3;
+}
+
+// SensorRecord includes alignment metadata and file path for a sensor sample.
+message SensorRecord {
+  uint64 timestamp_microseconds = 1;
+  DataFormat data_format = 2;
+  string file_path = 3;
+  deepmap.api.WorldPose pose = 4;
+  //
+  // The following field only exists for LidarRecord.
+  //
+  // To be used for filtering dynamic objects.
+  Unwinding unwinding = 5;
+  // A boolean mask for each point in a Lidar scan that is 1 if a point belongs
+  // to dynamic objects.
+  // NOTE: Dynamic mask should be a separate file. This message is for metadata.
+  // TODO(evgenytoropov): revisit after Stuttart data has shipped.
+  // the total size of the bytes should be eqaul to
+  // ceil(total_num_points / 8), where the last byte has 0 filled if size is
+  // larger than the total number of points
+  // to unpack the file into flag just do
+  // one would need to read the file as string
+  // then call _pdep_u64 intrinsic with mask 0x0101010101010101ULL
+  // for (size_t i = 0; i < file_content.size() / 8; ++i) {
+  //   uint64_t unpacked = _pdep_u64(
+  //       *(reinterpret_cast<const uint64_t*>(&file_content[i * 8])),
+  //       0x0101010101010101ULL);
+  //   uint8_t* unpacked_bool = reinterpret_cast<uint8_t*>(&unpacked);
+  //   for (int j = 0; j < 8; ++j) {
+  //     bool_vec.push_back(*unpacked_bool);
+  //     unpacked_bool++;
+  //   }
+  // }
+  string dynamic_points_mask_file_path = 6;
+}
+
+// LidarRecords includes alignment metadata and file paths to point clouds in
+// format UNCOMPRESSED_POINTCLOUD.
+message LidarRecords {
+  string sensor_name = 1;
+  int32 sensor_id = 2;
+  repeated SensorRecord records = 3;
+  //
+  // deepmap.api.RigidTransform3d from transform.proto as txt.
+  // See deepmap-base//public/deepmap_api/protos/transform.proto.
+  string lidar_to_vehicle_transform_path = 4;
+  //
+  bool unwind_point_cloud = 5;
+}
+
+// CameraRecords includes alignment metadata and file paths to JPEG images.
+message CameraRecords {
+  string sensor_name = 1;
+  int32 sensor_id = 2;
+  repeated SensorRecord records = 3;
+  //
+  // deepmap.api.RigidTransform3d from transform.proto as txt.
+  // See deepmap-base//public/deepmap_api/protos/transform.proto.
+  string camera_to_vehicle_transform_path = 4;
+  //
+  // deepmap.api.MonoCalibrationParameters from camera_calibration.proto as txt.
+  // See deepmap-base//public/deepmap_api/protos/camera_calibration.proto.
+  string mono_calibration_parameters_path = 5;
+}
+
+message AlignedTrackRecords {
+  repeated CameraRecords camera_records = 1;  // One per camera, if any.
+  repeated LidarRecords lidar_records = 2;    // One per lidar, if any.
+}

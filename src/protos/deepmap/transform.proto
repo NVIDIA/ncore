@@ -1,0 +1,64 @@
+// Copyright © 2018 DeepMap Inc - All Rights Reserved
+//
+// DeepMap Confidential & Proprietary As Per Terms of Confidentiality Agreements
+//
+
+// This file defines protobufs related rigid body transformation
+//
+
+syntax = "proto3";
+
+option java_package = "ai.deepmap.api";
+option java_outer_classname = "TransformProto";
+option go_package = "codereview.deepmap.ai/deepmap-go/api/public/deepmap_api/protos";
+
+package deepmap.api;
+
+import "src/protos/deepmap/lat_lng_alt.proto";
+
+// The rotation axis and angle (in degrees).
+message AxisAngleDegree {
+  // (x, y, z) defines a rotation axis, normalized to a unit length.
+  double x = 1;  // The x angle value.
+  double y = 2;  // The y angle value.
+  double z = 3;  // The z angle value.
+  // The rotation angle, counterclockwise in [0, 180).
+  double angle_degrees = 4;
+}
+
+// The translation in 3D.
+message Translation3d {
+  double x = 1;  // The x translation value.
+  double y = 2;  // The y translation value.
+  double z = 3;  // The z translation value.
+}
+
+// The rigid transform in 3D.
+message RigidTransform3d {
+  // The axis angle.
+  AxisAngleDegree axis_angle = 1;
+
+  // The translation unit in meters.
+  Translation3d translation = 2;
+}
+
+// WorldPose defines the position and orientation of a vehicle with respect to
+// the Earth.
+//
+// The position is presented in latitutde and longitude in degrees, and altitude
+// in meters. Alt = 0 indicates a position on the surface of the WGS84 sphere.
+//
+// The orientation of the vehicle is specified by the axis angle rotation.
+// The default orientation [1, 0, 0, angle = 0] is due east in the local
+// ENU(East-North-Up) local coordinate system, from a given <lat, lng, alt>
+// position.
+message WorldPose {
+  // The vehicle position.
+  LatLngAlt lat_lng_alt = 1;
+
+  // The rotation of the vehicle coordinate system, from the default local
+  // coordinate system on the earth;s surface. X = East facing, Y = North
+  // facing, Z = Up facing.
+  AxisAngleDegree axis_angle = 2;
+}
+

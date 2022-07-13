@@ -1,0 +1,14 @@
+# Default compilation mode and compiler version
+build --compilation_mode=opt
+
+# Default CXX flags
+build --cxxopt="-Werror"
+
+# Enable local disk caching
+build --disk_cache=~/.cache/bazel/disk-cache/drivesim-ai
+
+# Ensure that user's own PATH/LD_LIBRARY_PATH doesn't propagate into the build/test sandbox.
+build --incompatible_strict_action_env
+
+# https://docs.bazel.build/versions/main/best-practices.html#using-the-bazelrc-file
+try-import %workspace%/.bazelrc.user

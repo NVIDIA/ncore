@@ -1,72 +1,99 @@
 # DriveSim-AI
 
 DISCLAIMER: THIS REPOSITORY IS NVIDIA INTERNAL/CONFIDENTIAL. DO NOT SHARE EXTERNALLY.
-IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC <zgojcic@nvidia.com>/OR LITANY <olitany@nvidia.com>.
+IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC <zgojcic@nvidia.com> / JANICK MARTINEZ ESTURO <janickm@nvidia.com> / OR LITANY <olitany@nvidia.com>.
 
 NOTE: This codebase is under active development and the APIs may thus still change. If you build upon this repository, consider forking it to prevent such issues.
 
 # Installation 
 
-## Clone repo with submodules
+## Install system-packages
+
+In addition to nvidia drivers / cuda runtime (>11.1), the following system packages should be installed to build the project:
 
 ```
-git clone --recursive https://gitlab-master.nvidia.com/zgojcic/drivesim-ai.git
+sudo apt-get install gcc g++ clang libgl1 xz-utils
 ```
 
-## Create a virtual environment 
+Alternatively, builds can be executed within the `gitlab-master.nvidia.com:5005/zgojcic/drivesim-ai:dev` docker image, which has these packages pre-installed.
+
+## Install / setup git-lfs
+
+Large files within the repository are tracked via the `git-lfs` extension. To install the package and register git-lfs, execute
 
 ```
-cd drivesim-ai
-conda create -n drivesim_ai python=3.8
-conda activate drivesim_ai
-pip install --upgrade pip
-pip install -r requirements.txt
-pip install torch==1.10.1+cu111 torchvision==0.11.2+cu111 torchaudio==0.10.1 -f https://download.pytorch.org/whl/torch_stable.html
-pip install 'git+https://github.com/facebookresearch/detectron2.git'
-sudo apt-get install python3-tk
-
+sudo apt-get install git-lfs
+git lfs install
 ```
 
-Build the `av_utils` package with: 
-```angular2html
-cd lib/
-python setup.py develop
-cd ..
-```
+before cloning the repository.
 
-Install `apex` as 
+[one-time operation]
 
-```
-cd dependencies/apex
-pip install -v --disable-pip-version-check --no-cache-dir ./
-cd ../..
-```
+## Setup gitlab personal access token
 
-## Compile all the `.proto` files 
-
-Protofiles can be compiled using:
+Create a gitlab-master personal access token with `api` scope at [link](https://gitlab-master.nvidia.com/-/profile/personal_access_tokens) and register the new toekn token in `~/.netrc` file as
 
 ```
-protoc --python_out=. protos/*.proto
+machine gitlab-master.nvidia.com
+login oauth2
+password <TOKEN>
 ```
 
-If you do not have the compiler installed on your system please download it from [here](https://developers.google.com/protocol-buffers/docs/downloads).
+by replacing `<TOKEN>` with the created token string.
 
-## Compile the Poisson surface reconstruction
+[one-time operation]
+
+## Cloning the repo
 
 ```
-sudo apt-get install libpng-dev libjpeg-turbo8-dev
-cd dependencies/surface_reconstruction/PoissonRecon
-make -j 8
-cd ../../..
+git clone https://gitlab-master.nvidia.com/zgojcic/drivesim-ai.git
 ```
- 
-## Download the pre-trained weights 
 
-### Semantic-segmentation
+## Install bazel
 
-Download the `cityscapes_ocrnet.HRNet_Mscale_outstanding-turtle.pth` and `hrnetv2_w48_imagenet_pretrained.pth` models from [here])(https://drive.google.com/drive/folders/1fs-uLzXvmsISbS635eRZCc5uzQdBIZ_U) and place them in the `dependencies/semantic_segmentation/pretrained_models/`.
+The repository is using `bazel` as the core build-system (see `.bazelversion` for the required version).
 
-### Instance-segmentation
+The correct `bazel` version can either be installed locally, or incorporated automatically with the [bazelisk](https://github.com/bazelbuild/bazelisk) wrapper 
 
-Download the `model_final_ba17b9.pkl` model from [here])(https://dl.fbaipublicfiles.com/detectron2/PointRend/InstanceSegmentation/pointrend_rcnn_X_101_32x8d_FPN_3x_coco/28119989/model_final_ba17b9.pkl) and place it in the `dependencies/instance-segmentation/pretrained_models/`.
+with 
+
+`go install github.com/bazelbuild/bazelisk@latest`
+
+(make sure to also add `$(go env GOPATH)/bin` to your local `PATH` environment variable).
+
+# Execution
+
+## Format all bazel files
+
+Execute
+
+```
+bazel run //:update_all
+```
+
+to format all bazel source files (`//:bzlformat_missing_pkgs_fix` can be used to register new files)
+
+## Example of building / running a target with bazel
+
+Build targets can be seamlessly build and executed using the bazel driver (either `bazel` or `bazelisk`) via, e.g.,
+
+```
+bazel run //scripts:convert_raw_data -- \
+  --help
+```
+
+In this command, `run` is the bazel command to run (other common alternatives are `build` / `test`), `//scripts:convert_raw_data` is the label of the target `convert_raw_data` living in the `//scripts` package (corresponding to the `<repo-root>/scripts` folder), and `-- --help` are arguments passed to the executed target (not the intermediate `--` separator).
+
+## Example of debugging a python target
+
+Python targets are executed within a sandbox and scripts can't be executed directly. To facilitate debugging of scripts `debugpy`-based remote debugging can be used. To enable a `debugpy` server, use the `--debug-wait-for-client` CLI argument for supported targets, e.g., 
+
+```
+bazel run //scripts:convert_raw_data -- \
+  ... \
+  --debug-wait-for-client \
+  ...
+```
+
+A remote debugger client can then be attached to this process. For instance, in vs-code, create a new `Python: Remote Attach` run configuration (usually using `localhost:5678` as the server to connect to).

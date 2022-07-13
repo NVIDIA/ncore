@@ -1,0 +1,126 @@
+// Copyright © 2018 DeepMap Inc - All Rights Reserved
+//
+// DeepMap Confidential & Proprietary As Per Terms of Confidentiality Agreements
+//
+
+// This file contains a protobuf definition for single camera calibration
+// parameters.
+//
+
+syntax = "proto3";
+
+package deepmap.api;
+
+option java_package = "ai.deepmap.api";
+option go_package = "codereview.deepmap.ai/deepmap-go/api/public/deepmap_api/protos";
+
+import "src/protos/deepmap/math.proto";
+
+// Calibration parameters for the mono view.
+// See OpenCV's documentation on a camera model:
+// http://docs.opencv.org/2.4/modules/calib3d/doc/camera_calibration_and_3d_reconstruction.html
+message MonoCalibrationParameters {
+  // The image size in pixels.
+  int32 image_width = 1;   // The image width.
+  int32 image_height = 2;  // The image height.
+
+  // The camera intrinsics: A 3-by-3 matrix stored in row-major order.
+  //   | fx  0   cx |
+  //   | 0   fy  cy |
+  //   | 0   0   1  |
+  // It specifies the focal lengths (fx, fy) and the principal point (cx, cy),
+  // expressed as pixel units. Theoretically we only need to store fx, fy and
+  // cx, cy, but having a general matrix makes it easier to convert to the
+  // OpenCV Mat. The camera matrix is used to project a 3D point onto the camera
+  // coordinate (x, y, z), with the origin at the optical focal point, into the
+  // 2D camera pixel coordinate (u, v) with the origion at the top left of the
+  // image plane.
+  MatrixD camera_matrix = 3;
+
+  // The distortion coefficients.
+  // This is a vector of 5, 8 or 14 elements, depending on the distortion model
+  // used during calibration. Basic model: [k1, k2, p1, p2, k3]. Rational model:
+  // [k1, k2, p1, p2, k3, k4, k5, k6]. With the s1 - s4 for a thin prism model
+  // and taux, and tauy for a tilted model. These are only available in OpenCV
+  // 3+. [k1, k2, p1, p2, k3, k4, k5, k6, s1, s2, s3, s4, taux, tauy] See
+  // http://docs.opencv.org/trunk/d9/d0c/group__calib3d.html for a detailed
+  // description of these parameters. The order of these parameters is aligned
+  // with OpenCV so it can be used directly after the conversion to Mat. The
+  // distortion coeffcients are used to convert a distorted (x, y) point, from
+  // the camera image plane into the corrected (x, y) point.
+  MatrixD distortion_coefficients = 4;
+
+  // The rectification transform: A 3-by-3 matrix stored in row-major order.
+  // For a mono camera, the rectification matrix is the identity matrix.
+  // For a stereo camera, it is the matrix to "rotate" mono cameras
+  // so that their optical axis becomes co-linear and their image planes become
+  // coplanar. The rectification matrix converts the coordinates from the camera
+  // coordinate into the "rectified" camera coordinate.
+  MatrixD rectification_matrix = 5;
+
+  // The projection: A 3-by-4 matrix stored in row-major order.
+  // The projection matrix is a product of the camera intrinsic matrix and
+  // extrinsic matrix(rotation and translation vector). Multiplying it with (X,
+  // Y, Z, 1) can project a 3D point in the world to pixel coordinate. For the
+  // definition of projection matrix, see
+  // http://docs.opencv.org/2.4/modules/calib3d/doc/camera_calibration_and_3d_reconstruction.html.
+  // It can also be used to project the corresponding image points from two
+  // views back to 3D, assuming both projection matrices are provided.
+  MatrixD projection_matrix = 6;
+
+  // The rolling shutter delay per frame, in micros.
+  // For global shutter cameras; this number should always be 0.
+  // For rolling shutter cameras; this number should be positive and constant
+  // from frame to frame. The value should be available from the camera's data
+  // sheet, and is usually related to the highest fps offered by the camera.
+  // E.g. For a 30 fps camera, this number should be a little less than 33
+  // milliseconds. If the value is positive, the rolling shutter correction will
+  // be applied when the projecting 3D points to the camera view or from the
+  // camera pixels to 3D, so the 3D and 2D coordinates are consistent in time.
+  // In the current implementation, the rolling shutter is assumed to go from
+  // top to bottom.
+  uint32 rolling_shutter_delay_microseconds = 7;
+}
+
+// This is used by the customer's software to indicate multiple (N >= 2) mono
+// cameras. The mono cameras are grouped together and calibrated as a stereo
+// camera.
+message StereoCalibrationParameters {
+  // The sensor IDs of the mono cameras.
+  repeated uint32 sensor_ids = 1;
+
+  // All the parameters below are measured between other cameras in reference to
+  // the first camera in the group. The order of these parameters must follow
+  // the same order as the sensor IDs above, excluding the first camera.
+
+  // The N-1 3-by-3 rotation matrices stored in row-major order.
+  // Each matrix measures the rotation between a camera and the first camera in
+  // the group. The order of the rotation_matrices must follow the same order as
+  // the sensor_ids above, excluding the first camera.
+  repeated MatrixD rotation_matrices = 3;
+
+  // The N-1 3-by-1 translation matrices.
+  // Each matrix measures the translation, in meters, between the centers of a
+  // camera and the first camera in the group. The order of translation_matrices
+  // must follow the same order as the sensor IDs above, excluding the first
+  // camera.
+  repeated MatrixD translation_matrices = 4;
+
+  // The N-1 4-by-4 disparity-to-depth matrices in row-major order.
+  // Each matrix describes the disparity-to-depth mapping between a camera and
+  // the first camera in the group. The order of disparity-to-depth_matrices
+  // must follow the same order as the sensor_ids above, excluding the first
+  // camera.
+  //   | 1  0  0      -cx           |
+  //   | 0  1  0      -cy           |
+  //   | 0  0  0      f             |
+  //   | 0  0  -1/tx  (cx - cx')/tx |
+  // This matrix is used by OpenCV to project a disparity image to 3D. See
+  // reprojectImageTo3D(). It can be derived from other fields of the proto, but
+  // is kept separate for convenience. Each value in the disparity image is the
+  // offset (in pixels) of that pixel between the left/right views. Applying
+  // this matrix to to the image will result in an image of 3D points - one for
+  // each pixel, in meters.
+  repeated MatrixD disparity_to_depth_matrices = 5;
+}
+

@@ -1,0 +1,24 @@
+# BUILD: docker image build -t gitlab-master.nvidia.com:5005/zgojcic/drivesim-ai:dev -f docker/Dockerfile.build .
+# PUSH:  docker push gitlab-master.nvidia.com:5005/zgojcic/drivesim-ai:dev
+
+FROM nvidia/cuda:11.7.0-runtime-ubuntu22.04
+
+LABEL maintainer="Janick Martinez Esturo <janickm@nvidia.com>"
+
+# Needed for string substitution
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN \
+    # Add additional system libraries
+    apt-get update -qq --fix-missing && \
+    apt-get install -y --no-install-recommends software-properties-common && \
+    add-apt-repository -y ppa:ubuntu-toolchain-r/test && \
+    apt-get -y update -qq --fix-missing && \
+    apt-get -y install --no-install-recommends \
+        gcc g++ libgl1 clang git wget xz-utils \
+    && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN \
+   # Add python -> python3 symlink (required for bazel-build image entrypoints)
+   ln -s /usr/bin/python3 /usr/bin/python
