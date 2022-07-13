@@ -1,5 +1,6 @@
-load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -24,3 +25,5 @@ py_binary(
         requirement("point-cloud-utils"),
     ],
 )
+
+bzlformat_pkg(name = "bzlformat")

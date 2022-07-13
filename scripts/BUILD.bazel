@@ -1,10 +1,11 @@
-load("@rules_python//python:defs.bzl", "py_binary")
-load("@pip_deps//:requirements.bzl", "requirement")
-load("@io_bazel_rules_docker//python3:image.bzl", "py3_image")
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load(
     "@io_bazel_rules_docker//container:container.bzl",
     "container_push",
 )
+load("@io_bazel_rules_docker//python3:image.bzl", "py3_image")
+load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_binary")
 
 py_binary(
     name = "nvidia_to_ngp",
@@ -92,3 +93,5 @@ py3_image(
         "//src/cpp/av_utils:pylib",
     ],
 )
+
+bzlformat_pkg(name = "bzlformat")

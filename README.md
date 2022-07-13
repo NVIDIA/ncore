@@ -64,13 +64,23 @@ with
 
 # Execution
 
+## Format all bazel files
+
+Execute
+
+```
+bazel run //:update_all
+```
+
+to format all bazel source files (`//:bzlformat_missing_pkgs_fix` can be used to register new files)
+
 ## Example of building / running a target with bazel
 
 Build targets can be seamlessly build and executed using the bazel driver (either `bazel` or `bazelisk`) via, e.g.,
 
 ```
-bazelisk run //scripts:convert_raw_data --
+bazel run //scripts:convert_raw_data --
   --help
 ```
 
-In this command, `bazelisk` is the bazel driver, `run` is the bazel command to run (other common alternatives are `build` / `test`), `//scripts:convert_raw_data` is the label of the target `convert_raw_data` living in the `//scripts` package (corresponding to the `<repo-root>/scripts` folder), and `-- --help` are arguments passed to the executed target (not the intermediate `--` separator).
+In this command, `run` is the bazel command to run (other common alternatives are `build` / `test`), `//scripts:convert_raw_data` is the label of the target `convert_raw_data` living in the `//scripts` package (corresponding to the `<repo-root>/scripts` folder), and `-- --help` are arguments passed to the executed target (not the intermediate `--` separator).

@@ -1,3 +1,4 @@
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
 # Check that our compiled pip requirements are up-to-date
@@ -6,3 +7,5 @@ compile_pip_requirements(
     timeout = "long",
     extra_args = ["--allow-unsafe"],
 )
+
+bzlformat_pkg(name = "bzlformat")

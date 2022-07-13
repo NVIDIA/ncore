@@ -1,5 +1,6 @@
-load("@rules_python//python:defs.bzl", "py_library")
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -20,9 +21,11 @@ py_library(
         requirement("pillow"),
         requirement("protobuf3-to-dict"),
         requirement("pyarrow"),
+        "//src/cpp/av_utils:pylib",
         "//src/py/deps/instance_segmentation:pylib",
         "//src/py/deps/surface_reconstruction:pylib",
-        "//src/cpp/av_utils:pylib",
         "@semantic-segmentation//:train",
     ],
 )
+
+bzlformat_pkg(name = "bzlformat")

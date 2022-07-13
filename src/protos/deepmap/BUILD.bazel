@@ -1,3 +1,4 @@
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
 
 py_proto_library(
@@ -13,3 +14,5 @@ py_proto_library(
     ],
     visibility = ["//visibility:public"],
 )
+
+bzlformat_pkg(name = "bzlformat")

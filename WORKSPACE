@@ -1,7 +1,7 @@
 workspace(name = "drivesim-ai")
 
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 ## Python rules
 http_archive(
@@ -155,3 +155,29 @@ cc_library(
         "https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.tar.bz2",
     ],
 )
+
+## bazel-starlib / buildifier
+http_archive(
+    name = "cgrindel_bazel_starlib",
+    sha256 = "c95de004f346cbcb51ba1185e8861227cd9ab248b53046f662aeda1095601bc9",
+    strip_prefix = "bazel-starlib-0.7.1",
+    urls = [
+        "http://github.com/cgrindel/bazel-starlib/archive/v0.7.1.tar.gz",
+    ],
+)
+
+load("@cgrindel_bazel_starlib//:deps.bzl", "bazel_starlib_dependencies")
+
+bazel_starlib_dependencies()
+
+load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
+
+bazel_skylib_workspace()
+
+load("@buildifier_prebuilt//:deps.bzl", "buildifier_prebuilt_deps")
+
+buildifier_prebuilt_deps()
+
+load("@buildifier_prebuilt//:defs.bzl", "buildifier_prebuilt_register_toolchains")
+
+buildifier_prebuilt_register_toolchains()

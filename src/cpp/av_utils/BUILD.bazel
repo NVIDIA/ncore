@@ -1,5 +1,8 @@
-load("//3rdparty/numpyeigen:npe_add_module.bzl", "npe_codegen_function", "npe_codegen_module")
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("@rules_python//python:defs.bzl", "py_library")
+load("//3rdparty/numpyeigen:npe_add_module.bzl", "npe_codegen_function", "npe_codegen_module")
 
 npe_codegen_function(
     name = "av_utils_codegen_function",
@@ -43,3 +46,5 @@ py_library(
         requirement("numpy"),
     ],
 )
+
+bzlformat_pkg(name = "bzlformat")

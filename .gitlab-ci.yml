@@ -24,6 +24,9 @@ build+test:
   script:
     - bazelisk version
 
+    # Check format declarations are not missing
+    - bazelisk run //:bzlformat_missing_pkgs_test
+
     # Build memory-heavy PoissonRec in single-job mode
     - bazelisk build --jobs=1 --local_ram_resources=200 @PoissonRecon//:PoissonRecon
     
