@@ -8,10 +8,12 @@ load("@pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary")
 
 py_binary(
-    name = "nvidia_to_ngp",
-    srcs = ["nvidia_to_ngp.py"],
+    name = "dsai_to_ngp",
+    srcs = ["dsai_to_ngp.py"],
     deps = [
         requirement("numpy"),
+        requirement("click"),
+        "//src/py/common:pylib",
     ],
 )
 
