@@ -13,6 +13,7 @@ from PIL import Image
 import sys
 sys.path.append('./')
 from lib import image_to_world_ray
+from src.common import NV_CAMERAS, WAYMO_CAMERAS
 
 def generate_colored_pclouds(args, cam_id):
     vertices, faces = pcu.load_mesh_vf(os.path.join(args.root_dir,'reconstructed_surface', "reconstructed_mesh.ply" ))
@@ -53,9 +54,6 @@ def generate_colored_pclouds(args, cam_id):
         pcu.save_mesh_vc(os.path.join(output_dir, data_path.split(os.sep)[-1].replace('.pkl','.ply')), 
                 pcu.interpolate_barycentric_coords(faces, fid[valid_rays], bc[valid_rays], vertices).astype(np.float32), rgb_values[valid_rays].astype(np.float32) / 255.0)
 
-
-NV_CAMERAS = ['00','01','02','03','04','05','10','11','12','13'] 
-WAYMO_CAMERAS = ['00','01','02','03','04']
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -5,6 +5,10 @@ from collections import defaultdict
 from src.dataset_converter import DataConverter
 import tensorflow.compat.v1 as tf        
 tf.enable_eager_execution()
+gpus = tf.config.experimental.list_physical_devices('GPU')
+for gpu in gpus:
+  tf.config.experimental.set_memory_growth(gpu, True)
+  
 from waymo_open_dataset import dataset_pb2 as open_dataset
 import numpy as np
 import cv2
