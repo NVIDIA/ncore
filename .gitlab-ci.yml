@@ -13,6 +13,14 @@ default:
     - wget https://github.com/bazelbuild/bazelisk/releases/download/$BAZELISK_VERSION/bazelisk-linux-amd64 -O /usr/local/bin/bazelisk
     - chmod +x /usr/local/bin/bazelisk
 
+    # Setup remote cache
+    - echo "machine $ARTIFACTORY_MACHINE" >> ~/.netrc
+    - echo "  login $ARTIFACTORY_LOGIN" >> ~/.netrc
+    - echo "  password $ARTIFACTORY_PASSWORD" >> ~/.netrc
+   
+    - echo "build --remote_cache=$REMOTE_CACHE_URL" >> .bazelrc.user
+    - echo "test  --remote_cache=$REMOTE_CACHE_URL" >> .bazelrc.user
+
     # Setup local disk-cache
     - echo "build --disk_cache=$CI_PROJECT_DIR/.keep/cache" >> .bazelrc.user
     - echo "test  --disk_cache=$CI_PROJECT_DIR/.keep/cache" >> .bazelrc.user
@@ -28,7 +36,7 @@ build+test:
     - bazelisk run //:bzlformat_missing_pkgs_test
 
     # Build memory-heavy PoissonRec in single-job mode
-    - bazelisk build --jobs=1 --local_ram_resources=200 @PoissonRecon//:PoissonRecon
+    - bazelisk build --jobs=1 @PoissonRecon//:PoissonRecon
     
     # Build+test all remaining targets
     - bazelisk test ...
