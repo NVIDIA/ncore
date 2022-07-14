@@ -343,7 +343,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             T_lidar_world = T_rig_world @ T_lidar_rig
 
             # Load point cloud (already motion-compensated)
-            xyz, intensity = pcu.load_mesh_vc(source_pc_path)
+            mesh = pcu.load_triangle_mesh(source_pc_path)
+            xyz, intensity = mesh.vertex_data.positions, mesh.vertex_data.custom_attributes["intensity"]
             point_count = xyz.shape[0]
             intensity = intensity[:,0]
 
