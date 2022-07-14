@@ -175,6 +175,8 @@ cc_binary(
         "-Wno-error",
         "-w",
         "-fopenmp",
+        "--param ggc-min-expand=10",
+        "--param ggc-min-heapsize=8192"
     ],
     defines = ["FAST_COMPILE"],
     linkopts = [
