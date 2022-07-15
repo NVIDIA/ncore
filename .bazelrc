@@ -10,5 +10,8 @@ build --disk_cache=~/.cache/bazel/disk-cache/drivesim-ai
 # Ensure that user's own PATH/LD_LIBRARY_PATH doesn't propagate into the build/test sandbox.
 build --incompatible_strict_action_env
 
+# This is needed to have tags=["no-cache"] propagate to action execution requirements.
+build --experimental_allow_tags_propagation
+
 # https://docs.bazel.build/versions/main/best-practices.html#using-the-bazelrc-file
 try-import %workspace%/.bazelrc.user
