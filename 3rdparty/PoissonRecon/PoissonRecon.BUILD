@@ -177,7 +177,7 @@ cc_binary(
         "-fopenmp",
     ] + select({
         "@//bazel/conditions:low_memory": [
-            "--param ggc-min-expand=1",
+            "--param ggc-min-expand=5",
             "--param ggc-min-heapsize=32768",
         ],
         "//conditions:default": [],
