@@ -175,9 +175,13 @@ cc_binary(
         "-Wno-error",
         "-w",
         "-fopenmp",
-        "--param ggc-min-expand=1",
-        "--param ggc-min-heapsize=32768"
-    ],
+    ] + select({
+        "@//bazel/conditions:low_memory": [
+            "--param ggc-min-expand=5",
+            "--param ggc-min-heapsize=32768",
+        ],
+        "//conditions:default": [],
+    }),
     defines = ["FAST_COMPILE"],
     linkopts = [
         "-lgomp",
