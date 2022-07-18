@@ -13,5 +13,11 @@ build --incompatible_strict_action_env
 # This is needed to have tags=["no-cache"] propagate to action execution requirements.
 build --experimental_allow_tags_propagation
 
+#? --config=low_memory            Low-memory builds (e.g., for memory-constrained CI machines)
+build:low_memory --@//bazel/flags:low_memory=True
+
+#? --config=ci_options            Common options used in CI
+build:ci_options --config=low_memory
+
 # https://docs.bazel.build/versions/main/best-practices.html#using-the-bazelrc-file
 try-import %workspace%/.bazelrc.user

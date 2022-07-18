@@ -1,6 +1,6 @@
 variables:
   BAZELISK_VERSION: v1.12.0
-  GIT_CLEAN_FLAGS: -ffdx -e .keep
+  # GIT_CLEAN_FLAGS: -ffdx -e .keep
 
 default:
   image:
@@ -18,13 +18,18 @@ default:
     - echo "  login $ARTIFACTORY_LOGIN" >> ~/.netrc
     - echo "  password $ARTIFACTORY_PASSWORD" >> ~/.netrc
    
+    # Enable all common ci options
+    - echo "build --config=ci_options" >> .bazelrc.user
+
+    # Enable remote-cache
     - echo "build --remote_cache=$REMOTE_CACHE_URL" >> .bazelrc.user
     - echo "test  --remote_cache=$REMOTE_CACHE_URL" >> .bazelrc.user
 
-    # Setup local disk-cache
-    - echo "build --disk_cache=$CI_PROJECT_DIR/.keep/cache" >> .bazelrc.user
-    - echo "test  --disk_cache=$CI_PROJECT_DIR/.keep/cache" >> .bazelrc.user
+    # Setup persistent local disk-cache
+    # - echo "build --disk_cache=$CI_PROJECT_DIR/.keep/cache" >> .bazelrc.user
+    # - echo "test  --disk_cache=$CI_PROJECT_DIR/.keep/cache" >> .bazelrc.user
 
+    # Setup persistent output folder
     # - echo "startup --output_base $CI_PROJECT_DIR/.keep/output" >> .bazelrc.user
 
 build+test:
@@ -36,7 +41,7 @@ build+test:
     - bazelisk run //:bzlformat_missing_pkgs_test
 
     # Build memory-heavy PoissonRec in single-job mode
-    - bazelisk build --jobs=1 @PoissonRecon//:PoissonRecon
+    - bazelisk build --jobs=1 @PoissonRecon//:PoissonRecon -s
     
     # Build+test all remaining targets
     - bazelisk test ...
