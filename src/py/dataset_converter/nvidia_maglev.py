@@ -55,9 +55,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         end_timestamp_us = timestamps_us[-1]
 
         if seek_sec:
+            assert seek_sec >= 0.0, "Require positive seek time"
             start_timestamp_us += seek_sec * 1e6
 
         if duration_sec:
+            assert duration_sec >= 0.0, "Require positive duration time"
             end_timestamp_us = start_timestamp_us + duration_sec * 1e6
 
         assert start_timestamp_us < end_timestamp_us, "Arguments lead to invalid time bounds"
@@ -301,8 +303,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         # Load frame numbers and timestamps
         frames_metadata = load_jsonl(
-            os.path.join(self.sequence_path, 'lidars',
-                         self.LIDAR_SENSORNAME, 'meta.json'))
+            os.path.join(self.sequence_path, 'lidars', self.LIDAR_SENSORNAME,
+                         'meta.json'))
         frame_numbers = np.array(
             [frame_data['frame_number'] for frame_data in frames_metadata])
         frame_timestamps = np.array(
@@ -328,8 +330,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         for continuos_frame_index, (frame_number,
                                     frame_timestamp) in enumerate(
                                         zip(frame_numbers, frame_timestamps)):
-            source_pc_path = os.path.join(self.sequence_path,
-                                          'lidars',
+            source_pc_path = os.path.join(self.sequence_path, 'lidars',
                                           self.LIDAR_SENSORNAME,
                                           str(frame_number) + '.ply')
             target_pc_path = os.path.join(
@@ -337,26 +338,68 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 str(continuos_frame_index).zfill(self.INDEX_DIGITS) +
                 '.dat')  # store as *increasing* canonical frame IDs
 
-            # Interpolate egomotion at frame timestamp to obtain lidar start point
+            # Interpolate egomotion at frame timestamp to obtain vehicle pose at lidar end-time
             T_rig_world = pose_interpolator.interpolate_to_timestamps(
                 frame_timestamp)[0]
-            T_lidar_world = T_rig_world @ T_lidar_rig
 
             # Load point cloud (already motion-compensated)
             mesh = pcu.load_triangle_mesh(source_pc_path)
-            xyz, intensity = mesh.vertex_data.positions, mesh.vertex_data.custom_attributes["intensity"]
+            xyz, intensity = mesh.vertex_data.positions, mesh.vertex_data.custom_attributes[
+                'intensity'].flatten()
             point_count = xyz.shape[0]
-            intensity = intensity[:,0]
 
             # Create 3D ray structure of 3D rays in space with accompanying metadata.
             # Format; x_s, y_s, z_s, x_e, y_e, z_e, dist, intensity, dynamic_flag
             # Dynamic flag is set to -1 if the information is not available, 0 static, 1 = dynamic
 
-            # Constant time-compensated lidar origin in world frame, N x 3
-            xyz_s = np.full((point_count, 3), T_lidar_world[:3, -1])
+            # Determine ray start-point by interpolating poses at per-point timestamps
+            if all(key in mesh.vertex_data.custom_attributes
+                   for key in ('timestamp_lo', 'timestamp_hi')):
+                # Perform time-dependente per sample start-point interpolation,
+                # stitching together uin64 timestamps from lo/hi parts
+                ts_lo = np.array(
+                    mesh.vertex_data.custom_attributes["timestamp_lo"]).astype(
+                        np.uint32, copy=False)
+                ts_hi = np.array(
+                    mesh.vertex_data.custom_attributes["timestamp_hi"]).astype(
+                        np.uint32, copy=False)
+                timestamps = (np.left_shift(ts_hi, 32, dtype=np.uint64) +
+                              ts_lo).flatten()
 
-            # Homogeneous points in lidar frame (4 x N)
-            xyz_e = np.row_stack([xyz.transpose(), np.ones(point_count)])
+                # Special case: allow snapping to end-of-frame timestamp for *initial* frames as
+                # valid egomotion (in particular lidar-based egomotion) might not have been
+                # evaluated in the past before the processed lidar frame's end-of-frame timestamp
+                # (usually at start of sequence)
+                if frame_timestamp - self.LIDAR_APPROX_SPIN_TIME < self.poses_timestamps[0]:
+                    past_idxs = timestamps < self.poses_timestamps[0]
+
+                    if np.any(past_idxs):
+                        logger.info("> snapping point timestamps of *initial* spins to start of egomotion")
+
+                    timestamps[past_idxs] = frame_timestamp
+
+                # Lidar to world poses for each point (will throw in case invalid timestamps are loaded)
+                xyz_s = pose_interpolator.interpolate_to_timestamps(
+                    timestamps) @ T_lidar_rig
+
+                # Pick lidar to world positions for each point
+                xyz_s = xyz_s[:, 0:3, -1]  # N x 3
+            else:
+                if continuos_frame_index == 0:  # Warn once in first iteration only
+                    logger.warn(
+                        '> no lidar point timestamps available (missing \'timestamp_lo\' / '
+                        ' \'timestamp_hi\' attributes), falling back to *constant* lidar start points'
+                    )
+
+                # No per-point timestamps available, fallback to using *constant*
+                # lidar origin in world frame as start point for all rays
+                T_lidar_world = T_rig_world @ T_lidar_rig
+                xyz_s = np.full((point_count, 3), T_lidar_world[:3,
+                                                                -1])  # N x 3
+
+            # Homogeneous ray end points in lidar frame
+            xyz_e = np.row_stack([xyz.transpose(),
+                                  np.ones(point_count)])  # 4 x N
 
             # Transform points from lidar to rig frame and remember minimum height filter condition
             xyz_e = T_lidar_rig @ xyz_e
@@ -383,7 +426,9 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             point_cloud = point_cloud[valid_idxs, :]
 
-            logger.debug(f'> filtered {point_count - valid_idxs.sum()} invalid points')
+            logger.debug(
+                f'> filtered {point_count - valid_idxs.sum()} invalid points for '
+                f'lidar spin {continuos_frame_index}/{len(frame_numbers)-1}')
 
             # Serialize point cloud
             save_pc_dat(target_pc_path, point_cloud)
