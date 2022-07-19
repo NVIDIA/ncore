@@ -1,6 +1,6 @@
 variables:
   BAZELISK_VERSION: v1.12.0
-  # GIT_CLEAN_FLAGS: -ffdx -e .keep
+  GIT_CLEAN_FLAGS: -ffdx -e .cache
 
 default:
   image:
@@ -26,8 +26,8 @@ default:
     - echo "test  --remote_cache=$REMOTE_CACHE_URL" >> .bazelrc.user
 
     # Setup persistent local disk-cache
-    # - echo "build --disk_cache=$CI_PROJECT_DIR/.keep/cache" >> .bazelrc.user
-    # - echo "test  --disk_cache=$CI_PROJECT_DIR/.keep/cache" >> .bazelrc.user
+    - echo "build --disk_cache=$CI_PROJECT_DIR/.cache" >> .bazelrc.user
+    - echo "test  --disk_cache=$CI_PROJECT_DIR/.cache" >> .bazelrc.user
 
     # Setup persistent output folder
     # - echo "startup --output_base $CI_PROJECT_DIR/.keep/output" >> .bazelrc.user
