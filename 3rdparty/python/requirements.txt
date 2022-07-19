@@ -31,6 +31,10 @@ astunparse==1.6.3 \
     --hash=sha256:5ad93a8456f0d084c3456d059fd9a92cce667963232cbf763eac3bc5b7940872 \
     --hash=sha256:c2652417f2c8b5bb325c885ae329bdf3f86424075c4fd1a128674bc6fba4b8e8
     # via tensorflow
+attrs==21.4.0 \
+    --hash=sha256:2d27e3784d7a565d36ab851fe94887c5eccd6a463168875832a1be79c82828b4 \
+    --hash=sha256:626ba8234211db98e869df76230a137c4c40a12d72445c45d5f5b716f076e2fd
+    # via pytest
 black==21.4b2 \
     --hash=sha256:bff7067d8bc25eb21dcfdbc8c72f2baafd9ec6de4663241a52fb904b304d391f \
     --hash=sha256:fc9bcf3b482b05c1f35f6a882c079dc01b9c7795827532f4cc43c0ec88067bbc
@@ -205,6 +209,10 @@ importlib-metadata==4.12.0 \
     --hash=sha256:637245b8bab2b6502fcbc752cc4b7a6f6243bb02b31c5c26156ad103d3d45670 \
     --hash=sha256:7401a975809ea1fdc658c3aa4f78cc2195a0e019c5cbc4c06122884e9ae80c23
     # via markdown
+iniconfig==1.1.1 \
+    --hash=sha256:011e24c64b7f47f6ebd835bb12a743f2fbe9a26d4cecaa7f53bc4f35ee9da8b3 \
+    --hash=sha256:bc3af051d7d14b2ee5ef9969666def0cd1a000e121eaea580d4a313df4b37f32
+    # via pytest
 iopath==0.1.9 \
     --hash=sha256:9058ac24f0328decdf8dbe209b33074b8702a3c4d9ba2f7801d46cb61a880b6e
     # via
@@ -398,6 +406,7 @@ packaging==21.3 \
     # via
     #   hydra-core
     #   matplotlib
+    #   pytest
     #   scikit-image
 pandas==1.4.3 \
     --hash=sha256:07238a58d7cbc8a004855ade7b75bbd22c0db4b0ffccc721556bab8a095515f6 \
@@ -492,6 +501,10 @@ pillow==9.2.0 \
     #   matplotlib
     #   scikit-image
     #   torchvision
+pluggy==1.0.0 \
+    --hash=sha256:4224373bacce55f955a878bf9cfa763c1e360858e330072059e10bad68531159 \
+    --hash=sha256:74134bbf457f031a36d68416e1509f34bd5ccc019f0bcc952c7b909d06b37bd3
+    # via pytest
 point-cloud-utils==0.24.0 \
     --hash=sha256:025e272f6c6a4cafcc3c5d56b9c38afa328ffea73fb0fcf294621ca4a5b78783 \
     --hash=sha256:08c4e39fc358cfb201f918c8363fa65e374f9df9b6183251c131eacade3d3596 \
@@ -550,6 +563,10 @@ protobuf==3.19.4 \
 protobuf3-to-dict==0.1.5 \
     --hash=sha256:1e42c25b5afb5868e3a9b1962811077e492c17557f9c66f0fe40d821375d2b5a
     # via -r 3rdparty/python/requirements.in
+py==1.11.0 \
+    --hash=sha256:51c75c4126074b472f746a24399ad32f6053d1b34b68d2fa41e558e6f4a98719 \
+    --hash=sha256:607c53218732647dff4acdfcd50cb62615cedf612e72d1724fb1a0cc6405b378
+    # via pytest
 pyarrow==8.0.0 \
     --hash=sha256:03a10daad957970e914920b793f6a49416699e791f4c827927fd4e4d892a5d16 \
     --hash=sha256:15511ce2f50343f3fd5e9f7c30e4d004da9134e9597e93e9c96c3985928cbe82 \
@@ -606,6 +623,10 @@ pyparsing==3.0.9 \
     #   matplotlib
     #   packaging
     #   pydot
+pytest==7.1.2 \
+    --hash=sha256:13d0e3ccfc2b6e26be000cb6568c832ba67ba32e719443bfe725814d3c42433c \
+    --hash=sha256:a06a0425453864a270bc45e71f783330a7428defb4230fb5e6a731fde06ecd45
+    # via -r 3rdparty/python/requirements.in
 python-dateutil==2.8.2 \
     --hash=sha256:0123cacc1627ae19ddf3c27a5de5bd67ee4586fbdd6440d9748f8abb483d3e86 \
     --hash=sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9
@@ -907,6 +928,10 @@ toml==0.10.2 \
     --hash=sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b \
     --hash=sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f
     # via black
+tomli==2.0.1 \
+    --hash=sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc \
+    --hash=sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f
+    # via pytest
 torch==1.10.1+cu111 \
     --hash=sha256:3d35d58cadb5abbfa25a474a33598a6bdc168c4306c3c20968159e6f3a4a2e46 \
     --hash=sha256:4789aca7facaaced7bf515db47bef8026ffa4695483070b8fb924d20eca70616 \
