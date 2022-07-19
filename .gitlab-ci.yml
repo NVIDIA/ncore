@@ -44,5 +44,6 @@ build+test:
     - bazelisk build --jobs=1 @PoissonRecon//:PoissonRecon -s
     
     # Build+test all remaining targets
+    - bazelisk build ...
     - bazelisk test ...
   allow_failure: false

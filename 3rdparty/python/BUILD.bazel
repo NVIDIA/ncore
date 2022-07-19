@@ -4,7 +4,7 @@ load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 # Check that our compiled pip requirements are up-to-date
 compile_pip_requirements(
     name = "requirements",
-    timeout = "long",
+    timeout = "eternal",
     extra_args = ["--allow-unsafe"],
 )
 
