@@ -126,7 +126,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             #       which could be used in the future
             egomotion_pose_timestamp = egomotion_pose_entry['timestamp']
             egomotion_pose = np.asfarray(
-                egomotion_pose_entry['pose'].split(' ')).reshape(
+                egomotion_pose_entry['pose'].split(' '), dtype=np.float64).reshape(
                     (4, 4)).transpose()
 
             # Make sure poses represent rigToWorld transformations
@@ -379,8 +379,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                     timestamps[past_idxs] = frame_timestamp
 
                 # Lidar to world poses for each point (will throw in case invalid timestamps are loaded)
-                xyz_s = pose_interpolator.interpolate_to_timestamps(
-                    timestamps) @ T_lidar_rig
+                xyz_s = (pose_interpolator.interpolate_to_timestamps(timestamps) @ T_lidar_rig).astype(np.float32)
 
                 # Pick lidar to world positions for each point
                 xyz_s = xyz_s[:, 0:3, -1]  # N x 3
@@ -393,20 +392,21 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
                 # No per-point timestamps available, fallback to using *constant*
                 # lidar origin in world frame as start point for all rays
-                T_lidar_world = T_rig_world @ T_lidar_rig
-                xyz_s = np.full((point_count, 3), T_lidar_world[:3,
-                                                                -1])  # N x 3
+                T_lidar_world = (T_rig_world @ T_lidar_rig).astype(np.float32)
+                xyz_s = np.full((point_count, 3),
+                                T_lidar_world[:3, -1])  # N x 3
 
             # Homogeneous ray end points in lidar frame
-            xyz_e = np.row_stack([xyz.transpose(),
-                                  np.ones(point_count)])  # 4 x N
+            xyz_e = np.row_stack(
+                [xyz.transpose(),
+                 np.ones(point_count, dtype=np.float32)])  # 4 x N
 
             # Transform points from lidar to rig frame and remember minimum height filter condition
             xyz_e = T_lidar_rig @ xyz_e
             valid_idxs = xyz_e[2, :] > self.LIDAR_FILTER_MIN_RIG_HEIGHT
 
             # Transform points from rig to world frame + drop homogenous dimension and transpose to match output dimension
-            xyz_e = T_rig_world @ xyz_e
+            xyz_e = (T_rig_world @ xyz_e).astype(np.float32)
             xyz_e = xyz_e[:-1, :].transpose()  # N x 3
 
             # Compute distances
@@ -414,7 +414,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             # Dynamic flag
             # TODO: properly set dynamic flag of point cloud based on labels
-            dynamic_flag = np.full(point_count, -1.)  # N x 1
+            dynamic_flag = np.full(point_count, -1., dtype=np.float32)  # N x 1
 
             # Assemble full point-cloud ray structure
             point_cloud = np.column_stack(

@@ -151,7 +151,6 @@ def sensor_to_rig(sensor):
     sensor_name = sensor["name"]
     sensor_to_FLU = get_sensor_to_sensor_flu(sensor_name)
 
-
     nominal_T = sensor["nominalSensor2Rig_FLU"]["t"]
     nominal_R = sensor["nominalSensor2Rig_FLU"]["roll-pitch-yaw"]
 
@@ -169,9 +168,9 @@ def sensor_to_rig(sensor):
     correction_R = euler_2_so3(correction_R)
 
     R = nominal_R @ correction_R
-    T =  np.array(nominal_T) + np.array(correction_T)
+    T =  np.array(nominal_T, dtype=np.float32) + np.array(correction_T, dtype=np.float32)
 
-    transform = np.eye(4)
+    transform = np.eye(4, dtype=np.float32)
     transform[:3, :3] = R
     transform[:3, 3] = T
 
@@ -202,7 +201,7 @@ def camera_intrinsic_parameters(sensor):
     
     intrinsic = [cx, cy, width, height] + bwpoly
 
-    return np.array(intrinsic, dtype=float)
+    return np.array(intrinsic, dtype=np.float32)
 
 
 def camera_car_mask(sensor, scale_to_source_resolution=True):
@@ -436,7 +435,7 @@ def compute_fw_polynomial(intrinsic):
         ),
     )
 
-    return np.array([np.float32(val) if i > 0 else 0 for i, val in enumerate(coeffs)])
+    return np.array([np.float32(val) if i > 0 else 0 for i, val in enumerate(coeffs)], dtype=np.float32)
 
 
 def compute_ftheta_fov(intrinsic):
@@ -492,7 +491,7 @@ def compute_ftheta_parameters(intrinsic):
     # Initialize the forward polynomial
     fw_poly = Polynomial(intrinsic[9:14])
 
-    v_fov, hz_fov, max_angle = compute_ftheta_fov(intrinsic)
+    _, _, max_angle = compute_ftheta_fov(intrinsic)
 
     is_fw_poly_slope_negative_in_domain = False
     ray_angle = max_angle.copy()
@@ -523,7 +522,7 @@ def compute_ftheta_parameters(intrinsic):
 
     max_ray_distortion = np.asarray([val, dval], dtype=np.float32)
 
-    return max_ray_distortion, max_angle
+    return max_ray_distortion, max_angle.astype(np.float32)
 
 
 ##### FUNCTIONS FOR OBJECT LABEL PARSING ##########

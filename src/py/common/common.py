@@ -45,7 +45,7 @@ def save_pkl(obj, path ):
 
 def load_pc_dat(file_path):
     """
-    Loads binary .dat file representing a 2D double-precision array. Serialized 2D arrays
+    Loads binary .dat file representing a 2D single-precision array. Serialized 2D arrays
     usually represent a point-clouds with columns defined as
 
     [x_s, y_s, z_s, x_e, y_e, z_e, dist, intensity, dynamic_flag]
@@ -61,7 +61,7 @@ def load_pc_dat(file_path):
     Args:
         file_path (str): path to .dat file to load
     Return:
-        lidar_data (np.array): loaded 2D double-precision array
+        lidar_data (np.array): loaded 2D single-precision array
     """
 
     with open(file_path, 'rb') as f:
@@ -71,23 +71,23 @@ def load_pc_dat(file_path):
         # Columns usually contain: x_s, y_s, z_s, x_e, y_e, z_e, d, intensity, dynamic_flag
         # Dynamic flag is set to -1 if the information is not available, 0 static, 1 = dynamic
         lidar_data = np.array(struct.unpack(
-            '<%sf' % (n_rows*n_columns), f.read())).reshape(n_rows, n_columns)
+            '<%sf' % (n_rows*n_columns), f.read()), dtype=np.float32).reshape(n_rows, n_columns)
 
     return lidar_data
 
 
 def save_pc_dat(file_path, lidar_data):
     """
-    Stores binary .dat file representing a 2D double-precision array, usually representing
+    Stores binary .dat file representing a 2D single-precision array, usually representing
     a point-cloud (see load_pc_dat for format description).
 
     Args:
         file_path (str): path to .dat file to load
-        lidar_data (np.array): 2D double-precision array to serialize       
+        lidar_data (np.array): 2D single-precision array to serialize       
     """
 
     assert lidar_data.dtype is np.dtype(
-        'double'), "expecting double-precision array as input"
+        'float32'), "expecting single-precision array as input"
 
     n_rows, n_columns = lidar_data.shape
     lidar_data_flat = lidar_data.flatten()

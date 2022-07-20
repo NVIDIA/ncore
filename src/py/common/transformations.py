@@ -91,7 +91,7 @@ def euler_2_so3(euler_angles, degrees=True, seq='xyz'):
         (np array): rotations given so3 matrix representation [n,3,3]
     '''
 
-    return R.from_euler(seq=seq, angles=euler_angles, degrees=degrees).as_matrix()
+    return R.from_euler(seq=seq, angles=euler_angles, degrees=degrees).as_matrix().astype(np.float32)
 
 
 def axis_angle_2_quaternion(axis, angle, degrees=True):
