@@ -5,7 +5,7 @@ build --compilation_mode=opt
 build --cxxopt="-Werror"
 
 # Enable local disk caching
-build --disk_cache=~/.cache/bazel/disk-cache/drivesim-ai
+build --disk_cache=~/.cache/bazel/disk-cache/dsai
 
 # Ensure that user's own PATH/LD_LIBRARY_PATH doesn't propagate into the build/test sandbox.
 build --incompatible_strict_action_env
@@ -15,9 +15,6 @@ build --experimental_allow_tags_propagation
 
 #? --config=low_memory            Low-memory builds (e.g., for memory-constrained CI machines)
 build:low_memory --@//bazel/flags:low_memory=True
-
-#? --config=ci_options            Common options used in CI
-build:ci_options --config=low_memory
 
 # https://docs.bazel.build/versions/main/best-practices.html#using-the-bazelrc-file
 try-import %workspace%/.bazelrc.user

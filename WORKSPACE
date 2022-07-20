@@ -1,4 +1,4 @@
-workspace(name = "drivesim-ai")
+workspace(name = "dsai")
 
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
@@ -84,7 +84,7 @@ container_pull(
     timeout = 7200,
     digest = "sha256:6aac4280c52b8bae76e6aa57c67c3964006f005785393290db028fb9ed3d0225",
     registry = "gitlab-master.nvidia.com:5005",
-    repository = "zgojcic/drivesim-ai",
+    repository = "toronto_dl_lab/dsai",
 )
 
 ## Protobuf rules

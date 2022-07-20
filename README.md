@@ -15,7 +15,7 @@ In addition to nvidia drivers / cuda runtime (>11.1), the following system packa
 sudo apt-get install gcc g++ clang libgl1 xz-utils
 ```
 
-Alternatively, builds can be executed within the `gitlab-master.nvidia.com:5005/zgojcic/drivesim-ai:dev` docker image, which has these packages pre-installed.
+Alternatively, builds can be executed within the `gitlab-master.nvidia.com:5005/toronto_dl_lab/dsai:dev` docker image, which has these packages pre-installed.
 
 ## Install / setup git-lfs
 
@@ -47,7 +47,7 @@ by replacing `<TOKEN>` with the created token string.
 ## Cloning the repo
 
 ```
-git clone https://gitlab-master.nvidia.com/zgojcic/drivesim-ai.git
+git clone https://gitlab-master.nvidia.com/toronto_dL_lab/dsai.git
 ```
 
 ## Install bazel
