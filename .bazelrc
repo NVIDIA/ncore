@@ -5,7 +5,7 @@ build --compilation_mode=opt
 build --cxxopt="-Werror"
 
 # Enable local disk caching
-build --disk_cache=~/.cache/bazel/disk-cache/drivesim-ai
+build --disk_cache=~/.cache/bazel/disk-cache/dsai
 
 # Ensure that user's own PATH/LD_LIBRARY_PATH doesn't propagate into the build/test sandbox.
 build --incompatible_strict_action_env
