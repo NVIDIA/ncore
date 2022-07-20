@@ -1,6 +1,7 @@
 load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_library")
+load("//bazel/pytest:defs.bzl", "pytest_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -21,6 +22,14 @@ py_library(
         requirement("tensorflow"),
         requirement("waymo-open-dataset-tf-2-5-0"),
         "//src/protos/deepmap:py_proto",
+    ],
+)
+
+pytest_test(
+    name = "test",
+    srcs = glob(["*test.py"]),
+    deps = [
+        ":pylib",
     ],
 )
 
