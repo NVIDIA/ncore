@@ -1,8 +1,6 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 from abc import ABC, abstractmethod
-from multiprocessing import Pool
-import tqdm 
 import os
 import glob 
 from PIL import Image
@@ -53,7 +51,6 @@ class DataConverter(ABC):
 
         self.root_dir = config.root_dir
         self.output_dir = config.output_dir
-        self.num_proc = config.n_proc
 
         self.sem_seg_flag = config.semantic_seg
         self.inst_seg_flag = config.instance_seg
@@ -100,15 +97,11 @@ class DataConverter(ABC):
                 
     def convert(self):
         self.logger.info("start converting ...")
-        if self.num_proc > 1:
-            # Perform multi-threaded conversion
-            with Pool(self.num_proc) as p:
-                r = tqdm.tqdm(p.map(self.convert_sequence,
-                              self.sequence_pathnames))
-        else:
-            # Perform single-threaded conversion in main thread
-            for sequence_pathname in self.sequence_pathnames:
-                self.convert_sequence(sequence_pathname)
+
+        # Perform single-threaded conversion in main thread
+        for sequence_pathname in self.sequence_pathnames:
+            self.convert_sequence(sequence_pathname)
+
         self.logger.info("finished conversion ...")
 
     def run_semantic_segmentation(self, sequence_name):
