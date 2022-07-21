@@ -433,6 +433,13 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             # Serialize point cloud
             save_pc_dat(target_pc_path, point_cloud)
 
+            # Store metadata of the lidar frame
+            metadata = {}
+            metadata['T_lidar_rig'] = T_lidar_rig  # Lidar extrinsic parameters (note: this can be assumed to be constant and could be stored only once)
+            metadata['T_rig_world'] = T_rig_world  # Pose of the rig at the end of the lidar spin, can be used to transform points into a local coordinate frame
+            metadata['elevation_angles'] = None    # [TODO: currently missing for NV sensors] Lidar elevation angles, can be used to simulate the lidar or recover points that did not return
+            save_pkl(metadata, target_pc_path.replace('.dat','.pkl'))
+
         # Save all lidar timestamps
         lidar_timestamp_save_path = os.path.join(lidar_base_save_path,
                                                  'timestamps.npz')
