@@ -126,7 +126,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             #       which could be used in the future
             egomotion_pose_timestamp = egomotion_pose_entry['timestamp']
             egomotion_pose = np.asfarray(
-                egomotion_pose_entry['pose'].split(' '), dtype=np.float64).reshape(
+                egomotion_pose_entry['pose'].split(' '), dtype=np.float32).reshape(
                     (4, 4)).transpose()
 
             # Make sure poses represent rigToWorld transformations

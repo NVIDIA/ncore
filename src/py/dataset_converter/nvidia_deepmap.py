@@ -114,7 +114,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
 
         # Stack and sort the poses
-        self.poses = np.stack(self.poses)
+        self.poses = np.stack(self.poses).astype(np.float32)
         self.poses_timestamps = np.stack(self.poses_timestamps).astype(np.float64)
         sort_idx = np.argsort(self.poses_timestamps)
 
