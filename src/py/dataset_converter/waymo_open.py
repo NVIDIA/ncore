@@ -244,7 +244,7 @@ class WaymoConverter(DataConverter):
             # Get the SDC car pose 
             # Confirmed in issue https://github.com/waymo-research/waymo-open-dataset/issues/464
             # That this pose and timestamp are corresponding
-            poses.append(np.array(tf.reshape(tf.constant(image.pose.transform, dtype=tf.float64), [4, 4])))
+            poses.append(np.array(tf.reshape(tf.constant(image.pose.transform, dtype=tf.float32), [4, 4])))
             poses_timestamps.append(image.pose_timestamp * 1e6) # Convert the poses to microseconds
 
             metadata = {}
@@ -259,14 +259,14 @@ class WaymoConverter(DataConverter):
             metadata['rolling_shutter_direction'] = calib.rolling_shutter_direction
             metadata['camera_model'] = self.CAMERA_2_IDTYPERIG[image.name][1]
             metadata['intrinsic'] = np.array(tf.constant(calib.intrinsic, dtype=tf.float64))
-            metadata['T_cam_rig'] = np.array(tf.reshape(tf.constant(calib.extrinsic.transform, dtype=tf.float64), [4, 4])) # Camera to sdc
+            metadata['T_cam_rig'] = np.array(tf.reshape(tf.constant(calib.extrinsic.transform, dtype=tf.float32), [4, 4])) # Camera to sdc
 
             assert metadata['rolling_shutter_direction'] in [1,2,3,4], "Weird rolling shutter direction, aborting"
 
             # Velocity and angular velocity of the SDC at camera pose timestamp.
             # Velocity is provided in the  global reference frame and the ang. velocity is in SDC frame
             # https://github.com/waymo-research/waymo-open-dataset/issues/462
-            T_SDC_global = np.array(tf.reshape(tf.constant(image.pose.transform, dtype=tf.float64), [4, 4]))
+            T_SDC_global = np.array(tf.reshape(tf.constant(image.pose.transform, dtype=tf.float32), [4, 4]))
             velocity_global = np.array([image.velocity.v_x, image.velocity.v_y, image.velocity.v_z]).reshape(3,1)
             omega_vehicle = np.array([image.velocity.w_x, image.velocity.w_y, image.velocity.w_z]).reshape(3,1)
             omega_global = np.matmul(T_SDC_global[:3,:3], omega_vehicle)

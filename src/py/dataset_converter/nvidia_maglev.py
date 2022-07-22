@@ -94,7 +94,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.create_folders(self.session_id)
 
         # Decode data from maglev
-        self.decode_poses_timestamps()
+        self.decode_poses()
 
         self.decode_images()
 
@@ -102,8 +102,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         return [self.session_id]
 
-    def decode_poses_timestamps(self):
-        logger = self.logger.getChild('decode_poses_timestamps')
+    def decode_poses(self):
+        logger = self.logger.getChild('decode_poses')
         logger.info(f'Loading poses')
 
         # Initialize pose / timestamp variables
@@ -126,7 +126,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             #       which could be used in the future
             egomotion_pose_timestamp = egomotion_pose_entry['timestamp']
             egomotion_pose = np.asfarray(
-                egomotion_pose_entry['pose'].split(' ')).reshape(
+                egomotion_pose_entry['pose'].split(' '), dtype=np.float32).reshape(
                     (4, 4)).transpose()
 
             # Make sure poses represent rigToWorld transformations
@@ -370,11 +370,14 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 # valid egomotion (in particular lidar-based egomotion) might not have been
                 # evaluated in the past before the processed lidar frame's end-of-frame timestamp
                 # (usually at start of sequence)
-                if frame_timestamp - self.LIDAR_APPROX_SPIN_TIME < self.poses_timestamps[0]:
+                if frame_timestamp - self.LIDAR_APPROX_SPIN_TIME < self.poses_timestamps[
+                        0]:
                     past_idxs = timestamps < self.poses_timestamps[0]
 
                     if np.any(past_idxs):
-                        logger.info("> snapping point timestamps of *initial* spins to start of egomotion")
+                        logger.info(
+                            "> snapping point timestamps of *initial* spins to start of egomotion"
+                        )
 
                     timestamps[past_idxs] = frame_timestamp
 
@@ -398,8 +401,9 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                                                                 -1])  # N x 3
 
             # Homogeneous ray end points in lidar frame
-            xyz_e = np.row_stack([xyz.transpose(),
-                                  np.ones(point_count)])  # 4 x N
+            xyz_e = np.row_stack(
+                [xyz.transpose(),
+                 np.ones(point_count, dtype=np.float32)])  # 4 x N
 
             # Transform points from lidar to rig frame and remember minimum height filter condition
             xyz_e = T_lidar_rig @ xyz_e
@@ -414,7 +418,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             # Dynamic flag
             # TODO: properly set dynamic flag of point cloud based on labels
-            dynamic_flag = np.full(point_count, -1.)  # N x 1
+            dynamic_flag = np.full(point_count, -1., dtype=np.float32)  # N x 1
 
             # Assemble full point-cloud ray structure
             point_cloud = np.column_stack(

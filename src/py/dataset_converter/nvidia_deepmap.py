@@ -114,7 +114,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
 
         # Stack and sort the poses
-        self.poses = np.stack(self.poses)
+        self.poses = np.stack(self.poses).astype(np.float32)
         self.poses_timestamps = np.stack(self.poses_timestamps).astype(np.float64)
         sort_idx = np.argsort(self.poses_timestamps)
 
@@ -400,7 +400,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 # transformed_pc[:,-1] = dynamic_flag[valid_idx]
 
                 lidar_save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, self.point_cloud_save_dir, str(frame_idx).zfill(self.INDEX_DIGITS) + '.dat')
-                save_pc_dat(lidar_save_path, transformed_pc)
+                save_pc_dat(lidar_save_path, transformed_pc.astype(np.float32))
 
                 # Store metadata of the lidar frame
                 metadata = {}
