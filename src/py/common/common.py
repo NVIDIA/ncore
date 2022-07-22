@@ -385,9 +385,7 @@ class MaskImage:
                    MaskType.DYNAMIC: [255, 255, 255],
                    MaskType.EGO: [0, 0, 255]}
     # Initialize color pallet with all color entries
-    palette = [] + mask_colors[MaskType.NONE] + \
-        mask_colors[MaskType.DYNAMIC] + \
-        mask_colors[MaskType.EGO]
+    palette = [mask_colors[MaskType.NONE], mask_colors[MaskType.DYNAMIC], mask_colors[MaskType.EGO]]
 
     def __init__(self,
                  shape,
