@@ -6,6 +6,9 @@ compile_pip_requirements(
     name = "requirements",
     timeout = "eternal",
     extra_args = ["--allow-unsafe"],
+    tags = [
+        "manual",
+    ],
 )
 
 bzlformat_pkg(name = "bzlformat")
