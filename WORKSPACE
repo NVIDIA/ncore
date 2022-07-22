@@ -16,11 +16,11 @@ load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 
 python_register_toolchains(
     name = "python39",
-    # Available versions are listed in @rules_python//python:versions.bzl.
+    # Available versions are listed in @rules_python//python:versions.bzl
     python_version = "3.9",
 )
 
-# Create a central repo that knows about the dependencies needed from requirements.txt.
+# Create a central repo that knows about the dependencies needed from requirements.txt
 load("@python39//:defs.bzl", "interpreter")
 load("@rules_python//python:pip.bzl", "package_annotation", "pip_parse")
 
@@ -44,10 +44,32 @@ cc_library(
     requirements_lock = "//3rdparty/python:requirements.txt",
 )
 
-# Initialize repositories for all packages in 3rdparty/python/requirements.txt.
+# Initialize repositories for all packages in 3rdparty/python/requirements.txt
 load("@pip_deps//:requirements.bzl", "install_deps")
 
 install_deps()
+
+# mypy-integration
+http_archive(
+    name = "mypy_integration",
+    sha256 = "cf94c102fbaccb587eea8de5cf1cb7f55c5c74396a2468932c3a2a4df989aa1d",
+    strip_prefix = "bazel-mypy-integration-0.4.0",
+    url = "https://github.com/thundergolfer/bazel-mypy-integration/archive/refs/tags/0.4.0.tar.gz",
+)
+
+load(
+    "@mypy_integration//repositories:repositories.bzl",
+    mypy_integration_repositories = "repositories",
+)
+
+mypy_integration_repositories()
+
+load("@mypy_integration//repositories:deps.bzl", mypy_integration_deps = "deps")
+
+mypy_integration_deps(
+    mypy_requirements_file = "//bazel/typing:mypy_version.txt",
+    python_interpreter_target = interpreter,
+)
 
 ## Docker rules
 http_archive(

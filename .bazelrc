@@ -19,5 +19,10 @@ build:low_memory --@//bazel/flags:low_memory=True
 # Show outputs of failing tests by default
 test --test_output=errors
 
+# Mypy aspect registration
+build --aspects @mypy_integration//:mypy.bzl%mypy_aspect
+build --output_groups=+mypy
+build --@mypy_integration//:mypy_config=//bazel/typing:mypy.ini
+
 # https://docs.bazel.build/versions/main/best-practices.html#using-the-bazelrc-file
 try-import %workspace%/.bazelrc.user
