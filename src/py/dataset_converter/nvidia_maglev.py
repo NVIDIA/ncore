@@ -94,7 +94,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.create_folders(self.session_id)
 
         # Decode data from maglev
-        self.decode_poses_timestamps()
+        self.decode_poses()
 
         self.decode_images()
 
@@ -102,8 +102,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         return [self.session_id]
 
-    def decode_poses_timestamps(self):
-        logger = self.logger.getChild('decode_poses_timestamps')
+    def decode_poses(self):
+        logger = self.logger.getChild('decode_poses')
         logger.info(f'Loading poses')
 
         # Initialize pose / timestamp variables
@@ -370,16 +370,20 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 # valid egomotion (in particular lidar-based egomotion) might not have been
                 # evaluated in the past before the processed lidar frame's end-of-frame timestamp
                 # (usually at start of sequence)
-                if frame_timestamp - self.LIDAR_APPROX_SPIN_TIME < self.poses_timestamps[0]:
+                if frame_timestamp - self.LIDAR_APPROX_SPIN_TIME < self.poses_timestamps[
+                        0]:
                     past_idxs = timestamps < self.poses_timestamps[0]
 
                     if np.any(past_idxs):
-                        logger.info("> snapping point timestamps of *initial* spins to start of egomotion")
+                        logger.info(
+                            "> snapping point timestamps of *initial* spins to start of egomotion"
+                        )
 
                     timestamps[past_idxs] = frame_timestamp
 
                 # Lidar to world poses for each point (will throw in case invalid timestamps are loaded)
-                xyz_s = (pose_interpolator.interpolate_to_timestamps(timestamps) @ T_lidar_rig).astype(np.float32)
+                xyz_s = pose_interpolator.interpolate_to_timestamps(
+                    timestamps) @ T_lidar_rig
 
                 # Pick lidar to world positions for each point
                 xyz_s = xyz_s[:, 0:3, -1]  # N x 3
@@ -392,9 +396,9 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
                 # No per-point timestamps available, fallback to using *constant*
                 # lidar origin in world frame as start point for all rays
-                T_lidar_world = (T_rig_world @ T_lidar_rig).astype(np.float32)
-                xyz_s = np.full((point_count, 3),
-                                T_lidar_world[:3, -1])  # N x 3
+                T_lidar_world = T_rig_world @ T_lidar_rig
+                xyz_s = np.full((point_count, 3), T_lidar_world[:3,
+                                                                -1])  # N x 3
 
             # Homogeneous ray end points in lidar frame
             xyz_e = np.row_stack(
@@ -406,7 +410,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             valid_idxs = xyz_e[2, :] > self.LIDAR_FILTER_MIN_RIG_HEIGHT
 
             # Transform points from rig to world frame + drop homogenous dimension and transpose to match output dimension
-            xyz_e = (T_rig_world @ xyz_e).astype(np.float32)
+            xyz_e = T_rig_world @ xyz_e
             xyz_e = xyz_e[:-1, :].transpose()  # N x 3
 
             # Compute distances

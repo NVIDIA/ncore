@@ -154,13 +154,13 @@ class PoseInterpolator:
         self.f_y = interpolate.interp1d(timestamps, poses[:,1,3])
         self.f_z = interpolate.interp1d(timestamps, poses[:,2,3])
 
-        self.last_row = np.array([0,0,0,1]).reshape(1,1,-1)
+        self.last_row = np.array([0,0,0,1], dtype=np.float32).reshape(1,1,-1)
 
     def interpolate_to_timestamps(self, ts_target):
-        x_interp = self.f_x(ts_target).reshape(-1,1,1)
-        y_interp = self.f_y(ts_target).reshape(-1,1,1)
-        z_interp = self.f_z(ts_target).reshape(-1,1,1)
-        R_interp = self.slerp(ts_target).as_matrix().reshape(-1,3,3)
+        x_interp = self.f_x(ts_target).reshape(-1,1,1).astype(np.float32)
+        y_interp = self.f_y(ts_target).reshape(-1,1,1).astype(np.float32)
+        z_interp = self.f_z(ts_target).reshape(-1,1,1).astype(np.float32)
+        R_interp = self.slerp(ts_target).as_matrix().reshape(-1,3,3).astype(np.float32)
 
         t_interp = np.concatenate([x_interp,y_interp,z_interp],axis=-2)
 
