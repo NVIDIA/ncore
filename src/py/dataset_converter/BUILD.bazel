@@ -23,7 +23,6 @@ py_library(
         requirement("pyarrow"),
         "//src/cpp/av_utils:pylib",
         "//src/py/deps/instance_segmentation:pylib",
-        "//src/py/deps/surface_reconstruction:pylib",
         "@semantic-segmentation//:train",
     ],
 )
