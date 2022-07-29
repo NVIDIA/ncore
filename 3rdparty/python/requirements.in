@@ -11,7 +11,7 @@ scikit-image
 protobuf3-to-dict==0.1.5
 pandas
 pyarrow
-point-cloud-utils
+point-cloud-utils>=0.25.0
 click
 debugpy
 pytest
