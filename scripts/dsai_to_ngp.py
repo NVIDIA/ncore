@@ -22,8 +22,10 @@ import copy
 @click.option('--end-frame', type=click.IntRange(min=1, max_open=True), help='End camera frame to be used', required=True)
 @click.option('--step-frame', type=click.IntRange(min=1, max_open=True), help='Step used to downsample the number of frames', default=1)
 @click.option('--cameras', '-c', multiple=True, type=int, help='Cameras to be used (Multiple value option.)', default=[1])    
-@click.option('--max-dist', type=float, help='Maximum distance from each camera pose.', default=50.0)
+@click.option('--max-dist', type=float, help='Maximum distance from each camera pose.', default=150.0)
+@click.option('--aabb-scale', type=float, help='The desired aabb scale.', default=16.0)
 @click.option('--use-lidar', is_flag=True, default=False, help="Use also lidar point clouds")
+@click.option('--save-test', is_flag=True, default=False, help="Save the test configs with the same parameters as train")
 @click.option("--index_digits", type=int, help="The number of integer digits to pad counters in output filenames to", default=6)
 @click.version_option('0.1')
 @click.pass_context
@@ -44,6 +46,8 @@ def waymo(ctx, *_, **kwargs):
     index_digits = ctx.obj['index_digits']
     max_dist = ctx.obj['max_dist']
     use_lidar = ctx.obj['use_lidar']
+    save_test = ctx.obj['save_test']
+    aabb_scale = ctx.obj['aabb_scale']
 
     # Check that the input arguments are valid
     assert start_frame < end_frame, "End frame index is smaller that start frame one."
@@ -127,14 +131,14 @@ def waymo(ctx, *_, **kwargs):
     all_poses = np.concatenate(all_poses,axis=0)
 
     pose_avg, extent = average_camera_pose(all_poses)
-    scale_factor = 1/ ((extent/2 + max_dist) / 8.0) 
+    scale_factor = 1/ ((extent/2 + max_dist) / (aabb_scale/2)) 
     offset = -(pose_avg * scale_factor) + np.array([0.5,0.5,0.5]) # Instant NGP assumes that the scenes are centered at 0.5^3 not at 0!
         
     # Generate a config file for each of the cameras
     for cam_idx, cam in enumerate(cameras): 
 
-        out_train={"aabb_scale":16, 
-                "n_extra_learnable_dims" : 8, 
+        out_train={"aabb_scale":aabb_scale, 
+                "n_extra_learnable_dims" : 32, 
                 "camera_angle_x":camera_data[cam]['angle_x'],
                 "camera_angle_y":camera_data[cam]['angle_y'], 
                 "up":camera_data[cam]['up'].tolist(), 
@@ -175,7 +179,7 @@ def waymo(ctx, *_, **kwargs):
 
         if cam_idx == 0 and use_lidar:
             out_train['lidar'] = []
-            all_lidar = [os.path.join(root_dir, 'lidar', f'{str(idx).zfill(6)}.dat') for idx in range(start_frame, end_frame + 10)] # add some lidar frames at the end as cameras see further
+            all_lidar = [os.path.join(root_dir, 'lidar', f'{str(idx).zfill(6)}.dat') for idx in range(start_frame, end_frame)] # add some lidar frames at the end as cameras see further
 
             for i, name in enumerate(all_lidar):
                 path =  os.sep.join(name.split(os.sep)[-2:])
@@ -187,16 +191,10 @@ def waymo(ctx, *_, **kwargs):
         with open(os.path.join(output_dir, f'cam_{cam}_train.json'), 'w') as outfile:    
             json.dump(out_train, outfile, indent=2)
 
-        print('writing test camera.json...')
-        keys_to_delete = []
-        for key in out_test.keys():
-            if 'ftheta' in key:
-                keys_to_delete.append(key)
-        for key in keys_to_delete:
-            del out_test[key]
-
-        with open(os.path.join(output_dir, f'cam_{cam}_test.json'), 'w') as outfile:    
-            json.dump(out_test, outfile, indent=2)
+        if save_test:
+            print('writing test camera.json...')
+            with open(os.path.join(output_dir, f'cam_{cam}_test.json'), 'w') as outfile:    
+                json.dump(out_test, outfile, indent=2)
 
 
 @cli.command()
@@ -212,6 +210,8 @@ def nvidia(ctx, *_, **kwargs):
     index_digits = ctx.obj['index_digits']
     max_dist = ctx.obj['max_dist']
     use_lidar = ctx.obj['use_lidar']
+    save_test = ctx.obj['save_test']
+    aabb_scale = ctx.obj['aabb_scale']
 
     # Check that the input arguments are valid
     assert start_frame < end_frame, "End frame index is smaller that start frame one."
@@ -248,8 +248,9 @@ def nvidia(ctx, *_, **kwargs):
 
         # Resave all image masks 
         for img_mask_path in all_img_mask:
-            img = Image.open(img_mask_path)
-            img.save(img_mask_path.replace('mask_', 'dynamic_mask_'), bits=1,optimize=True)
+            if os.path.exists(img_mask_path):
+                img = Image.open(img_mask_path)
+                img.save(img_mask_path.replace('mask_', 'dynamic_mask_'), bits=1,optimize=True)
 
         # Iterate over the poses 
         T_cam_rig = []
@@ -294,14 +295,14 @@ def nvidia(ctx, *_, **kwargs):
     all_poses = np.concatenate(all_poses,axis=0)
 
     pose_avg, extent = average_camera_pose(all_poses)
-    scale_factor = 1/ ((extent/2 + max_dist) / 8.0) # so that the max far is scaled to 5
+    scale_factor = 1/ ((extent/2 + max_dist) / (aabb_scale/2)) # so that the max far is scaled to 5
     offset = -(pose_avg * scale_factor) + np.array([0.5,0.5,0.5]) # Instant NGP assumes that the scenes are centered at 0.5^3
     
     # Rescale and move the poses
     for cam_idx, cam in enumerate(cameras): 
 
-        out_train={"aabb_scale":16, 
-                   "n_extra_learnable_dims" : 8, 
+        out_train={"aabb_scale":aabb_scale, 
+                   "n_extra_learnable_dims" : 32, 
                    "camera_angle_x": camera_data[cam]['angle_x'],
                    "up":camera_data[cam]['up'].tolist(), 
                    "offset": offset.tolist(),
@@ -349,7 +350,7 @@ def nvidia(ctx, *_, **kwargs):
             end_timestamp = camera_timestamps[end_frame]
             lidar_start_idx  = np.where(lidar_timestamps > start_timestamp)[0][0] + 1
             lidar_end_idx   = np.where(lidar_timestamps < end_timestamp)[0][-1]  + 1
-            all_lidar = [os.path.join(root_dir, 'lidar', f'{str(idx).zfill(6)}.dat') for idx in range(lidar_start_idx, lidar_end_idx + 50)] # add lidar at the end as cameras see further away
+            all_lidar = [os.path.join(root_dir, 'lidar', f'{str(idx).zfill(6)}.dat') for idx in range(lidar_start_idx, lidar_end_idx)] # add lidar at the end as cameras see further away
 
             for i, name in enumerate(all_lidar):
                 path =  os.sep.join(name.split(os.sep)[-2:])
@@ -361,16 +362,11 @@ def nvidia(ctx, *_, **kwargs):
         with open(os.path.join(output_dir, f'cam_{cam}_train.json'), 'w') as outfile:    
             json.dump(out_train, outfile, indent=2)
 
-        print('writing test camera.json...')
-        keys_to_delete = []
-        for key in out_test.keys():
-            if 'ftheta' in key:
-                keys_to_delete.append(key)
-        for key in keys_to_delete:
-            del out_test[key]
 
-        with open(os.path.join(output_dir, f'cam_{cam}_test.json'), 'w') as outfile:    
-            json.dump(out_test, outfile, indent=2)
+        if save_test:
+            print('writing test camera.json...')
+            with open(os.path.join(output_dir, f'cam_{cam}_test.json'), 'w') as outfile:    
+                json.dump(out_test, outfile, indent=2)
 
 if __name__ == '__main__':
     cli(show_default=True)
