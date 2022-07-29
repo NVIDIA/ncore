@@ -37,12 +37,13 @@ def run_surface_reconstruction(root_dir, output_filename, max_dist, start_frame,
     ''' 
 
     # Initialize the logger
+    logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
     # set up temp paths 
     if not os.path.exists(os.path.join(root_dir, 'reconstructed_surface')):
         os.makedirs(os.path.join(root_dir, 'reconstructed_surface'))
-        
+
     temp_fused_path = os.path.join(root_dir, 'reconstructed_surface', 'full_pc.ply')
     temp_rec_path = os.path.join(root_dir, 'reconstructed_surface', 'rec_pc.ply')
     
