@@ -1,6 +1,6 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-import pickle 
+import pickle
 import re
 import struct
 import json
@@ -13,7 +13,7 @@ from scipy.optimize import linear_sum_assignment
 from src.py.common.transformations import so3_trans_2_se3
 
 
-NV_CAMERAS = ['00','01','02','03','04','05','10','11','12','13'] 
+NV_CAMERAS = ['00','01','02','03','04','05','10','11','12','13']
 WAYMO_CAMERAS = ['00','01','02','03','04']
 R_WAYMO_NGP = np.array([[0,0,-1],[-1,0,0],[0,1,0]])
 R_NVIDIA_NGP = np.array([[1,0,0],[0,-1,0],[0,0,-1]])
@@ -129,7 +129,7 @@ def average_camera_pose(poses):
         pose_avg: (3, 4) the average pose
     """
 
-    average_cam_position = poses[:,:3, 3].mean(0) 
+    average_cam_position = poses[:,:3, 3].mean(0)
     pose_min, pose_max = np.min(poses[:,:3,3],axis=0), np.max(poses[:,:3,3],axis=0)
     extent_scene = np.max(pose_max - pose_min)
 
@@ -168,14 +168,14 @@ class PoseInterpolator:
 
 
 def get_2d_bbox_corners(bbox):
-    
+
     bbox_corners = np.zeros((4,2))
-    
+
     bbox_corners[0,:] =  np.array([bbox[0] - 0.5 * bbox[2], bbox[1] - 0.5 * bbox[3]]).astype(np.int32) # TL
     bbox_corners[1,:]  = np.array([bbox[0] - 0.5 * bbox[2], bbox[1] + 0.5 * bbox[3]]).astype(np.int32) # BL
     bbox_corners[2,:]  = np.array([bbox[0] + 0.5 * bbox[2], bbox[1] + 0.5 * bbox[3]]).astype(np.int32) # BR
     bbox_corners[3,:]  = np.array([bbox[0] + 0.5 * bbox[2], bbox[1] - 0.5 * bbox[3]]).astype(np.int32) # TR
-    
+
     return bbox_corners
 
 
@@ -183,14 +183,14 @@ def get_3d_bbox_coords(bbox3d):
     x, y, z = bbox3d[0], bbox3d[1], bbox3d[2]
     length, width, height = bbox3d[3], bbox3d[4], bbox3d[5]
     rotation_angles = bbox3d[6:9]
-    
+
     # Computes the coordinates of the bbox corners
     l2 = length/2
     w2 = width/2
     h2 = height/2
-    
+
     translation = np.array([x,y,z]).reshape(1,3)
-    
+
     P1 = np.array([-l2, -w2, -h2]) #BBR (back bottom right)
     P2 = np.array([-l2, -w2, h2])  #BTR (back top right)
     P3 = np.array([-l2, w2, h2])   #BTL (back top left)
@@ -202,17 +202,17 @@ def get_3d_bbox_coords(bbox3d):
 
     # Get the rotation matrix from the heading angle
     rotation = R.from_euler('xyz', rotation_angles, degrees=False).as_matrix()
-    
+
     corners = np.stack([P1,P2,P3,P4,P5,P6,P7,P8], axis=0)
-   
+
     corners = np.matmul(rotation, corners.transpose()).transpose() + translation
-    
+
     return corners
 
 
 def compute_optimal_assignments(corr_2d_3d, corr_3d_2d, cameras):
     optimal_assignments = {}
-    # Iterate over the cameras 
+    # Iterate over the cameras
     for cam in cameras:
         optimal_assignments[cam] = {}
         # Build the cost matrix
@@ -229,7 +229,7 @@ def compute_optimal_assignments(corr_2d_3d, corr_3d_2d, cameras):
                 C[idx_3d, tmp_labels_2d.index(all_2d_labels[0])] = 0.0
 
             else:
-                # Check what the ratios of the label 
+                # Check what the ratios of the label
                 ratios_3d = []
                 ratios_2d = []
                 median_IoU = []
@@ -241,7 +241,7 @@ def compute_optimal_assignments(corr_2d_3d, corr_3d_2d, cameras):
 
                     C[idx_3d, tmp_labels_2d.index(label)] = 200 - (10 * n_assignments * ratios_2d[-1]  * ratios_2d[-1]  * median_IoU[-1])
 
-        
+
         row_ind, col_ind = linear_sum_assignment(C)
 
         for i in range(len(row_ind)):
@@ -357,7 +357,7 @@ def is_within_3d_bbox(points, box, normals=None, return_points_in_bbox_frame=Fal
 
             normals_in_bbox_frame = np.matmul(T_normals[0:3, 0:3], normals[point_in_box,:].transpose()).transpose() + T_normals[0:3, 3]
 
-            
+
             return points_in_box_frames[point_in_box,:], normals_in_bbox_frame/np.linalg.norm(normals_in_bbox_frame,axis=1,keepdims=True)
         else:
             return points_in_box_frames[point_in_box,:]
@@ -384,8 +384,15 @@ class MaskImage:
     mask_colors = {MaskType.NONE: [0, 0, 0],
                    MaskType.DYNAMIC: [255, 255, 255],
                    MaskType.EGO: [0, 0, 255]}
-    # Initialize color pallet with all color entries
-    palette = [mask_colors[MaskType.NONE], mask_colors[MaskType.DYNAMIC], mask_colors[MaskType.EGO]]
+    # Initialize color pallet with all color entries (flattening all individual RBG colors into pallet)
+    palette = [
+        color_component for mask_color in [
+            # note: ordering is crucial as integer color indices map to mask types
+            mask_colors[MaskType.NONE],
+            mask_colors[MaskType.DYNAMIC],
+            mask_colors[MaskType.EGO]
+        ] for color_component in mask_color
+    ]
 
     def __init__(self,
                  shape,
