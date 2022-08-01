@@ -104,7 +104,6 @@ py_binary(
         requirement("numpy"),
         requirement("click"),
         requirement("tqdm"),
-        requirement("debugpy"),
         "//src/py/common:pylib",
     ],
 )
