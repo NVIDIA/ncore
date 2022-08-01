@@ -95,6 +95,19 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "dsai_surface_rec",
+    srcs = ["dsai_surface_rec.py"],
+    data = ["@PoissonRecon"],
+    deps = [
+        requirement("point-cloud-utils"),
+        requirement("numpy"),
+        requirement("click"),
+        requirement("tqdm"),
+        "//src/py/common:pylib",
+    ],
+)
+
 py3_image(
     name = "rgb_ray_mesh_intersection_image",
     srcs = ["rgb_ray_mesh_intersection.py"],
