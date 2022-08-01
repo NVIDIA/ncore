@@ -67,7 +67,7 @@ class DataConverter(ABC):
         if not os.path.isdir(seq_path):
             os.makedirs(seq_path)
 
-        for d in [self.label_save_dir,self.image_save_dir, self.poses_save_dir, self.point_cloud_save_dir, self.rec_save_dir]:
+        for d in [self.label_save_dir,self.image_save_dir, self.poses_save_dir, self.point_cloud_save_dir]:
             if not os.path.isdir(os.path.join(seq_path, d)):
                 os.makedirs(os.path.join(seq_path, d))
 
