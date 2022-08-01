@@ -43,13 +43,28 @@ py3_image(
     ],
 )
 
+# Push image to 'production' (prod) tag - use with *CAUTION* as referenced by default in workflows
 container_push(
-    name = "push_convert_raw_data_image",
+    name = "push_convert_raw_data_image_prod",
     format = "Docker",
     image = ":convert_raw_data_image",
     registry = "nvcr.io",
     repository = "nv-maglev/dlav/drivesim-ai",
-    tag = "convert-raw-data-dev",
+    tag = "convert-raw-data-prod",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+)
+
+# Push image to 'staging' (stage) tag - useful for experimentation
+container_push(
+    name = "push_convert_raw_data_image_stage",
+    format = "Docker",
+    image = ":convert_raw_data_image",
+    registry = "nvcr.io",
+    repository = "nv-maglev/dlav/drivesim-ai",
+    tag = "convert-raw-data-stage",
     tags = [
         "manual",
         "no-remote-cache",
