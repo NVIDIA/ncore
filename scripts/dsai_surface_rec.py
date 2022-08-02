@@ -99,7 +99,7 @@ def load_fused_pc(lidar_dir, max_dist=-1, start_frame=0, end_frame=-1, step_fram
     ''' 
 
     # Get all the files and filter them out based on the start, end, step
-    files = sorted([os.path.join(lidar_dir, fname) for fname in os.listdir(lidar_dir) if fname.endswith(".dat")])
+    files = sorted([os.path.join(lidar_dir, fname) for fname in os.listdir(lidar_dir) if (fname.endswith('.dat') or fname.endswith('.dat.xz'))])
 
     all_pts = []
     all_dirs = []

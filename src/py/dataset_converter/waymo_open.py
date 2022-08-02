@@ -184,7 +184,7 @@ class WaymoConverter(DataConverter):
 
         # Initialize the lidar save path
         lidar_save_path =  os.path.join(self.output_dir, sequence_name, 
-                                        self.point_cloud_save_dir, str(f_idx).zfill(self.INDEX_DIGITS) + '.dat')
+                                        self.point_cloud_save_dir, str(f_idx).zfill(self.INDEX_DIGITS) + '.dat.xz')
         points = points[0]
         dist = np.linalg.norm(points[:,3:6] - points[:,:3],axis=1, keepdims=True)
 
@@ -212,7 +212,7 @@ class WaymoConverter(DataConverter):
         # Pose of the SDC at the start of the lidar spin, can be used to transform points into a local coordinate frame
         metadata['ego_pose'] = np.reshape(np.array(frame.pose.transform), [4, 4])
 
-        save_pkl(metadata, lidar_save_path.replace('.dat','.pkl'))
+        save_pkl(metadata, lidar_save_path.replace('.dat.xz','.pkl'))
 
     def decode_images(self, frame, poses, poses_timestamps, camera_timestamps, f_idx, sequence_name):
         """
@@ -484,7 +484,7 @@ class WaymoConverter(DataConverter):
             if annotation['3d_labels'][label]['dynamic_flag'] == 1:
                 dynamic_bbox[label]= annotation['3d_labels'][label]
 
-        lidar_frames = sorted(glob.glob(os.path.join(self.output_dir, sequence_name, self.point_cloud_save_dir, '*.dat')))
+        lidar_frames = sorted(glob.glob(os.path.join(self.output_dir, sequence_name, self.point_cloud_save_dir, '*.dat.xz')))
 
         for lidar_frame in lidar_frames:
             f_idx = int(lidar_frame.split(os.sep)[-1].split('_')[0].split('.')[0])
@@ -494,7 +494,7 @@ class WaymoConverter(DataConverter):
 
             dynamic_flag = np.zeros(lidar_pc.shape[0])
 
-            metadata = load_pkl(lidar_frame.replace('.dat','.pkl'))
+            metadata = load_pkl(lidar_frame.replace('.dat.xz','.pkl'))
             ego_pose_inv = np.linalg.inv(metadata['ego_pose'])
             local_pc = (ego_pose_inv[:3,:3] @ lidar_pc[:,3:6].transpose() + ego_pose_inv[:3,3:4]).transpose()
 

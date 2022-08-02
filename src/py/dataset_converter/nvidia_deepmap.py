@@ -399,7 +399,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 # dynamic_flag = dynamic_flag[:valid_idx.shape[0]]
                 # transformed_pc[:,-1] = dynamic_flag[valid_idx]
 
-                lidar_save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, self.point_cloud_save_dir, str(frame_idx).zfill(self.INDEX_DIGITS) + '.dat')
+                lidar_save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, self.point_cloud_save_dir, str(frame_idx).zfill(self.INDEX_DIGITS) + '.dat.xz')
                 save_pc_dat(lidar_save_path, transformed_pc.astype(np.float32))
 
                 # Store metadata of the lidar frame
@@ -407,7 +407,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 metadata['T_lidar_rig'] = T_lidar_rig       # Lidar extrinsic parameters (note: this can be assumed to be constant and could be stored only once)
                 metadata['T_rig_world'] = column_poses[-1]  # Pose of the rig at the end of the lidar spin, can be used to transform points into a local coordinate frame
                 metadata['elevation_angles'] = None         # [TODO: currently missing for NV sensors] Lidar elevation angles, can be used to simulate the lidar or recover points that did not return
-                save_pkl(metadata, lidar_save_path.replace('.dat','.pkl'))
+                save_pkl(metadata, lidar_save_path.replace('.dat.xz','.pkl'))
 
                 frame_idx += 1
 

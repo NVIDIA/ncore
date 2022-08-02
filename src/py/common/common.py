@@ -44,7 +44,8 @@ def save_pkl(obj, path ):
         pickle.dump(obj, f)
 
 
-def load_pc_dat(file_path: str):
+def load_pc_dat(file_path: str,
+                allow_lookup_fallback: bool = True):
     """
     Loads binary .dat / .dat.xz file representing a 2D single-precision array.
     Serialized 2D arrays usually represent a point-clouds with columns defined as
@@ -60,7 +61,8 @@ def load_pc_dat(file_path: str):
       -  1: = dynamic
 
     Args:
-        file_path: path to .dat / .dat.xz file to load
+        file_path: path to .dat / .dat.xz file to load. 
+        allow_lookup_fallback: If enabled, will fall back to .dat.xz in case loading .dat fails (for backwards-compatibility)
     Return:
         lidar_data (np.array): loaded 2D single-precision array
     """
@@ -75,11 +77,25 @@ def load_pc_dat(file_path: str):
                         dtype=np.float32).reshape(n_rows, n_columns)
 
     if file_path.endswith('.dat'):
-        with open(file_path, 'rb') as file:
-            lidar_data = load(file)
+        try:
+            with open(file_path, 'rb') as file:
+                lidar_data = load(file)
+        except FileNotFoundError as e:
+            if allow_lookup_fallback:
+                with lzma.open(file_path + '.xz', 'rb') as lzma_file:
+                    lidar_data = load(lzma_file)
+            else:
+                raise e
     elif file_path.endswith('.dat.xz'):
-        with lzma.open(file_path, 'rb') as lzma_file:
-            lidar_data = load(lzma_file)
+        try:
+            with lzma.open(file_path, 'rb') as lzma_file:
+                lidar_data = load(lzma_file)
+        except FileNotFoundError as e:
+            if allow_lookup_fallback:
+                with open(file_path.replace('.dat.xz', '.dat'), 'rb') as file:
+                    lidar_data = load(file)
+            else:
+                raise e
     else:
         raise ValueError(
             "invalid file format provided, supporting .dat / .dat.xz files only"

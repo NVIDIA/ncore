@@ -73,7 +73,7 @@ if __name__ == "__main__":
     lidar_frame_idx = np.argmin(np.abs(lidar_timestamps - t_sof))
 
     # Load the PC dat file and extract the end point coordinates
-    pc_data = load_pc_dat(os.path.join(args.root_dir, 'lidar', f'{str(lidar_frame_idx).zfill(args.index_digits)}.dat'))
+    pc_data = load_pc_dat(os.path.join(args.root_dir, 'lidar', f'{str(lidar_frame_idx).zfill(args.index_digits)}.dat.xz'))
     pc = pc_data[:,3:6]
 
     # Check if the ground truth projections are available
