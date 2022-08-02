@@ -17,7 +17,7 @@ import struct
 import glob
 from src.py.common.waymo_utils import parse_range_image_and_camera_projection, convert_range_image_to_point_cloud, extrapolate_pose_based_on_velocity,\
                             global_vel_to_ref, extract_camera_labels, extract_lidar_labels, extract_projected_labels 
-from src.py.common.common import save_pkl, load_pkl, load_pc_dat, compute_iou, compute_optimal_assignments, get_2d_bbox_corners, points_in_bboxes, MaskImage
+from src.py.common.common import save_pkl, load_pkl, load_pc_dat, save_pc_dat, compute_iou, compute_optimal_assignments, get_2d_bbox_corners, points_in_bboxes, MaskImage
 from PIL import Image
 
 class WaymoConverter(DataConverter):  
@@ -198,13 +198,8 @@ class WaymoConverter(DataConverter):
         # Format; x_s, y_s, z_s, x_e, y_e, z_e, dist, intensity, dynamic flag
         # Dynamic flag is set to -1 if the information is not available, 0 static, 1 = dynamic
         points = np.concatenate((points[:,:6], dist, points[:,6:7], -1*np.ones_like(dist)),axis=1)
-        n_rows, n_columns =  points.shape[0], points.shape[1]
-        points_flat = points.flatten()
 
-        with open(lidar_save_path,'wb') as f:
-            f.write(struct.pack('<i', n_rows))
-            f.write(struct.pack('<i', n_columns))
-            f.write(struct.pack('<%sf' % points_flat.size, *points_flat))
+        save_pc_dat(lidar_save_path, points.astype(np.float32))
 
         # Extract the metadata of the lidar frame
         metadata = {}
@@ -513,13 +508,7 @@ class WaymoConverter(DataConverter):
 
             lidar_pc[:,-1] = dynamic_flag
 
-            n_rows, n_columns =  lidar_pc.shape[0], lidar_pc.shape[1]
-            points_flat = lidar_pc.flatten()
-
-            with open(lidar_frame,'wb') as f:
-                f.write(struct.pack('<i', n_rows))
-                f.write(struct.pack('<i', n_columns))
-                f.write(struct.pack('<%sf' % points_flat.size, *points_flat))
+            save_pc_dat(lidar_frame, lidar_pc.astype(np.float32))
 
     
     def decode_metadata(self, frame, sequence_name):
