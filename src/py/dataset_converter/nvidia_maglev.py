@@ -4,6 +4,7 @@ import json
 import os
 import logging
 import shutil
+import re
 
 from collections import defaultdict
 
@@ -85,8 +86,15 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         self.sensors_calibration_data = parse_rig_sensors_from_dict(self.rig)
 
-        # Sessions to be processed
-        self.session_id = self.rig['rig']['properties']['session_id']
+        # Determine session-id to be processed
+        # Note: session_id in loaded rig meta might not reflect the actual current session due to bugs
+        #       in the rig generation, prefer loading correct ID from rig used for egomotion for now
+        with open(os.path.join(sequence_path, 'egomotion', 'rig_egomotion_indexer.json'), 'r') as fp:
+            match = re.search(r'session_data/(\w{8}-\w{4}-\w{4}-\w{4}-\w{12})/', fp.read())
+            if match:
+                self.session_id = match[1]
+            else:
+                raise ValueError("Unable to determine trustable session_id")
 
         self.logger.info(f'Converting session {self.session_id}')
 
