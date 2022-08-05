@@ -108,20 +108,4 @@ py_binary(
     ],
 )
 
-py3_image(
-    name = "rgb_ray_mesh_intersection_image",
-    srcs = ["rgb_ray_mesh_intersection.py"],
-    base = "@dsai_dev_container//image",
-    main = "rgb_ray_mesh_intersection.py",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = [
-        requirement("point-cloud-utils"),
-        requirement("pillow"),
-        "//src/cpp/av_utils:pylib",
-    ],
-)
-
 bzlformat_pkg(name = "bzlformat")
