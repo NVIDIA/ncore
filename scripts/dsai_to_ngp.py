@@ -2,7 +2,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 import click
-from src.py.common.common import NV_CAMERAS, WAYMO_CAMERAS, R_NVIDIA_NGP, R_WAYMO_NGP, RS_DIR_TO_NGP, average_camera_pose
+from src.py.common.common import NV_CAMERAS, WAYMO_CAMERAS, R_NVIDIA_NGP, R_WAYMO_NGP, RS_DIR_TO_NGP, average_camera_pose, load_pc_dat, save_pc_dat
 import numpy as np
 from PIL import Image
 # PIL pollutes the CL output with debug messages
@@ -14,6 +14,38 @@ import math
 import os
 import pickle
 import copy
+
+
+def prepare_lidar_frames(root_dir, start_frame, end_frame):
+    """ Helper to conditionally uncompress lidar frame data if necessary """
+
+    outputlist = []
+
+    for idx in range(start_frame, end_frame):
+        # Use regular uncompressed lidar directly if available
+        pc_path_uncompressed = os.path.join(root_dir, 'lidar', f'{str(idx).zfill(6)}.dat')
+        
+        if not os.path.exists(pc_path_uncompressed):
+            # Handle compressed lidar frames by re-saving them uncompressed
+            pc_path_uncompressed_resave = os.path.join(root_dir, 'lidar_uncompressed', f'{str(idx).zfill(6)}.dat')
+
+            # Un-compress into new subfolder only if not existing yet
+            if not os.path.exists(pc_path_uncompressed_resave):
+                os.makedirs(os.path.join(root_dir, 'lidar_uncompressed'), exist_ok=True)
+                save_pc_dat(pc_path_uncompressed_resave, load_pc_dat(pc_path_uncompressed,
+                                                                        allow_lookup_fallback=True # transparently loads *compressed* point-cloud
+                                                                    ))
+            
+            pc_path = pc_path_uncompressed_resave
+        else:
+            pc_path = pc_path_uncompressed
+
+        # path = name
+        frame={"file_path": os.path.join('..','..',os.sep.join(pc_path.split(os.sep)[-2:]))}
+        outputlist.append(frame)
+
+    return outputlist
+
 
 @click.group()
 @click.option('--root-dir', type=str, help='Path to the preprocessed sequence.', required=True)
@@ -178,13 +210,7 @@ def waymo(ctx, *_, **kwargs):
             out_test['frames'].append(frame)
 
         if cam_idx == 0 and use_lidar:
-            out_train['lidar'] = []
-            all_lidar = [os.path.join(root_dir, 'lidar', f'{str(idx).zfill(6)}.dat') for idx in range(start_frame, end_frame)] # add some lidar frames at the end as cameras see further
-
-            for i, name in enumerate(all_lidar):
-                path =  os.sep.join(name.split(os.sep)[-2:])
-                frame={"file_path": os.path.join('..','..',path)}
-                out_train['lidar'].append(frame)
+            out_train['lidar'] = prepare_lidar_frames(root_dir, start_frame, end_frame) # add lidar at the end as cameras see further away
 
 
         print('writing train camera.json...')
@@ -341,22 +367,16 @@ def nvidia(ctx, *_, **kwargs):
             out_test['frames'].append(frame)
 
         if cam_idx == 0 and use_lidar:
-            out_train['lidar'] = []
-
             # Find the correspondign lidar frames based on their timestampes
             camera_timestamps = pickle.load(open((os.path.join(root_dir, 'images/timestamps.pkl')),'rb'))['00']
             lidar_timestamps = np.load(os.path.join(root_dir, 'lidar/timestamps.npz'))['timestamps']
             start_timestamp = camera_timestamps[start_frame]
             end_timestamp = camera_timestamps[end_frame]
             lidar_start_idx  = np.where(lidar_timestamps > start_timestamp)[0][0] + 1
-            lidar_end_idx   = np.where(lidar_timestamps < end_timestamp)[0][-1]  + 1
-            all_lidar = [os.path.join(root_dir, 'lidar', f'{str(idx).zfill(6)}.dat') for idx in range(lidar_start_idx, lidar_end_idx)] # add lidar at the end as cameras see further away
+            lidar_end_idx   = np.where(lidar_timestamps < end_timestamp)[0][-1]  + 1 # add lidar at the end as cameras see further away
 
-            for i, name in enumerate(all_lidar):
-                path =  os.sep.join(name.split(os.sep)[-2:])
-                # path = name
-                frame={"file_path": os.path.join('..','..',path)}
-                out_train['lidar'].append(frame)
+            out_train['lidar'] = prepare_lidar_frames(root_dir, lidar_start_idx, lidar_end_idx)
+
 
         print('writing train camera.json...')
         with open(os.path.join(output_dir, f'cam_{cam}_train.json'), 'w') as outfile:    

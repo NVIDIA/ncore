@@ -4,7 +4,10 @@ import pickle
 import re
 import struct
 import json
+import lzma
+import io
 from enum import Enum
+from typing import Union
 import numpy as np
 from PIL import Image
 from scipy.spatial.transform import Rotation as R
@@ -31,11 +34,11 @@ def load_pkl(path):
     """
     Load a .pkl object
     """
-    file = open(path ,'rb')
+    file = open(path, 'rb')
     return pickle.load(file)
 
 
-def save_pkl(obj, path ):
+def save_pkl(obj, path):
     """
     save a dictionary to a pickle file
     """
@@ -43,10 +46,11 @@ def save_pkl(obj, path ):
         pickle.dump(obj, f)
 
 
-def load_pc_dat(file_path):
+def load_pc_dat(file_path: str,
+                allow_lookup_fallback: bool = True) -> np.array:
     """
-    Loads binary .dat file representing a 2D single-precision array. Serialized 2D arrays
-    usually represent a point-clouds with columns defined as
+    Loads binary .dat / .dat.xz files representing a 2D single-precision array.
+    Serialized 2D arrays usually represent a point-clouds with columns defined as
 
     [x_s, y_s, z_s, x_e, y_e, z_e, dist, intensity, dynamic_flag]
     
@@ -59,43 +63,81 @@ def load_pc_dat(file_path):
       -  1: = dynamic
 
     Args:
-        file_path (str): path to .dat file to load
+        file_path: path to .dat / .dat.xz file to load. 
+        allow_lookup_fallback: If enabled, will fall back to .dat.xz/.dat, resp., in case loading .dat/.dat.xz fails (for backwards-compatibility).
     Return:
-        lidar_data (np.array): loaded 2D single-precision array
+        lidar_data: loaded 2D single-precision array
     """
-
-    with open(file_path, 'rb') as f:
+    def load(file: Union[io.BufferedReader, lzma.LZMAFile]) -> np.array:
         # The first number denotes the number of points
-        n_rows, n_columns = struct.unpack('<ii', f.read(8))
+        n_rows, n_columns = struct.unpack('<ii', file.read(8))
         # The remaining data are floats saved in little endian
         # Columns usually contain: x_s, y_s, z_s, x_e, y_e, z_e, d, intensity, dynamic_flag
         # Dynamic flag is set to -1 if the information is not available, 0 static, 1 = dynamic
-        lidar_data = np.array(struct.unpack(
-            '<%sf' % (n_rows*n_columns), f.read()), dtype=np.float32).reshape(n_rows, n_columns)
+        return np.array(struct.unpack('<%sf' % (n_rows * n_columns),
+                                      file.read()),
+                        dtype=np.float32).reshape(n_rows, n_columns)
+
+    if file_path.endswith('.dat'):
+        try:
+            with open(file_path, 'rb') as file:
+                lidar_data = load(file)
+        except FileNotFoundError as e:
+            if allow_lookup_fallback:
+                with lzma.open(file_path + '.xz', 'rb') as lzma_file:
+                    lidar_data = load(lzma_file)
+            else:
+                raise e
+    elif file_path.endswith('.dat.xz'):
+        try:
+            with lzma.open(file_path, 'rb') as lzma_file:
+                lidar_data = load(lzma_file)
+        except FileNotFoundError as e:
+            if allow_lookup_fallback:
+                with open(file_path.replace('.dat.xz', '.dat'), 'rb') as file:
+                    lidar_data = load(file)
+            else:
+                raise e
+    else:
+        raise ValueError(
+            "invalid file format provided, supporting .dat / .dat.xz files only"
+        )
 
     return lidar_data
 
 
-def save_pc_dat(file_path, lidar_data):
+def save_pc_dat(file_path: str, lidar_data: np.array) -> None:
     """
-    Stores binary .dat file representing a 2D single-precision array, usually representing
+    Stores binary .dat / .dat.xz file representing a 2D single-precision array, usually representing
     a point-cloud (see load_pc_dat for format description).
 
     Args:
-        file_path (str): path to .dat file to load
-        lidar_data (np.array): 2D single-precision array to serialize       
+        file_path: path to .dat / .dat.xz file to store
+        lidar_data: 2D single-precision array to serialize
     """
 
-    assert lidar_data.dtype is np.dtype(
-        'float32'), "expecting single-precision array as input"
+    if lidar_data.dtype is not np.dtype('float32'):
+        raise ValueError("expecting single-precision array as input")
 
-    n_rows, n_columns = lidar_data.shape
-    lidar_data_flat = lidar_data.flatten()
+    def save(file: Union[io.BufferedWriter, lzma.LZMAFile]) -> None:
+        n_rows, n_columns = lidar_data.shape
+        lidar_data_flat = lidar_data.flatten()
 
-    with open(file_path, 'wb') as f:
-        f.write(struct.pack('<i', n_rows))
-        f.write(struct.pack('<i', n_columns))
-        f.write(struct.pack('<%sf' % lidar_data_flat.size, *lidar_data_flat))
+        file.write(struct.pack('<i', n_rows))
+        file.write(struct.pack('<i', n_columns))
+        file.write(struct.pack('<%sf' % lidar_data_flat.size,
+                               *lidar_data_flat))
+
+    if file_path.endswith('.dat'):
+        with open(file_path, 'wb') as file:
+            save(file)
+    elif file_path.endswith('.dat.xz'):
+        with lzma.open(file_path, 'wb') as lzma_file:
+            save(lzma_file)
+    else:
+        raise ValueError(
+            "invalid file format provided, supporting .dat / .dat.xz files only"
+        )
 
 
 def load_jsonl(jsonl_path):
