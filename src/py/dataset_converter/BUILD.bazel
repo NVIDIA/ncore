@@ -20,6 +20,7 @@ py_library(
         requirement("pillow"),
         requirement("protobuf3-to-dict"),
         requirement("pyarrow"),
+        requirement("pandas"),  # for pyarrow::to_pandas()
         requirement("point-cloud-utils"),
         "//src/cpp/av_utils:pylib",
         "//src/py/common:pylib",
