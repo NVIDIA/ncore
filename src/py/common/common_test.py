@@ -39,6 +39,7 @@ class TestSaveLoadPCDat(unittest.TestCase):
         check(self.pc, '.dat.xz')
 
     def test_input_output_fallback(self):
+        """ Test to verify functionality of load_pc_dat file lookup fallback (.dat <-> .dat.xz) """
         with tempfile.NamedTemporaryFile(suffix='.dat') as tmp:
             save_pc_dat(tmp.name, self.pc)  # store .dat
 
