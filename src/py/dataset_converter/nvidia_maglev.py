@@ -20,7 +20,8 @@ from src.py.common.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_di
                               camera_intrinsic_parameters,
                               compute_fw_polynomial, compute_ftheta_parameters,
                               camera_car_mask)
-from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator)
+
+from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator, points_in_bboxes)
 
 
 class NvidiaMaglevConverter(BaseNvidiaDataConverter):
@@ -547,9 +548,22 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             # Compute distances
             dist = np.linalg.norm(xyz_s - xyz_e, axis=1)  # N x 1
 
-            # Dynamic flag
-            # TODO: properly set dynamic flag of point cloud based on labels
-            dynamic_flag = np.full(point_count, -1., dtype=np.float32)  # N x 1
+            # Initialize dynamic flag
+            dynamic_flag = np.full(point_count, 0., dtype=np.float32)  # N x 1
+
+            # Incorporate labels, if available
+            frame_labels = self.frame_labels.get(frame_timestamp, {})  # returns empty dict if no annotations available for this frame
+
+            # Use the bounding boxes to remove dynamic objects / set dynamic flag
+            for frame_label in frame_labels.get('lidar_labels', {}):
+                label_id = frame_label['name']
+                # If the object is dynamic update the points that fall in that bounding box
+                if self.labels['3d_labels'][label_id]['dynamic_flag']:
+                    bbox = frame_label['3D_bbox']
+                    bbox[3:6] = 3 + bbox[3:6] # Enlarge the bounding box (remark: verify this parameter)
+                    bbox_idxs = points_in_bboxes(xyz, bbox.reshape(1,-1))
+
+                    dynamic_flag[bbox_idxs != -1] = 1
 
             # Assemble full point-cloud ray structure
             point_cloud = np.column_stack(
@@ -567,6 +581,14 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             # Serialize point cloud
             save_pc_dat(target_pc_path, point_cloud)
+
+            # Serialize labels (remark: why serializing frame labels for this timestamp here, as they are not necessarily lidar-specific only / could contain camera data also?)
+            save_pkl(
+                frame_labels,
+                os.path.join(
+                    self.output_dir, self.session_id, self.label_save_dir,
+                    str(continuos_frame_index).zfill(self.INDEX_DIGITS) +
+                    '.pkl'))
 
             # Store metadata of the lidar frame
             metadata = {}
