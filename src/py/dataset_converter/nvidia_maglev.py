@@ -233,6 +233,9 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                     ],
                     dtype=np.float32)
 
+                # this is assuming velocity is not relative to the local sensor motion, but w.r.t. fixed scene / world
+                global_speed = np.linalg.norm([row['velocity_x'], row['velocity_y'], row['velocity_z']])
+
                 if label_timestamp_us not in self.frame_labels:
                     self.frame_labels[label_timestamp_us] = {}
                     self.frame_labels[label_timestamp_us]['lidar_labels'] = []
@@ -252,9 +255,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                     -1,
                     'combined_difficulty_level':
                     -1,
-                    # TODO: estimate with current lidar frame velocity obtained from egomotion?
                     'global_speed':
-                    -1,
+                    global_speed,
                     'global_accel':
                     -1
                 })
@@ -271,15 +273,12 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                     {
                     '3D_bbox': cuboid,
                     'num_point': -1,
-                    'global_speed': -1,
+                    'global_speed': global_speed,
                     'global_accel': -1,
                     }
 
                 # TODO: check if this user-defined velocity threshold makes sense
-                if row['label_name'] not in self.LABEL_STRINGS_UNCONDITIONALLY_STATIC and np.linalg.norm(
-                        # Note, this is not the global velocity, but the local velocity in the lidar frame
-                        # - we should better estimate the global velocity based on available egomotion trajectory
-                    [row['velocity_x'], row['velocity_y']]) >= 1 / 3.6:
+                if row['label_name'] not in self.LABEL_STRINGS_UNCONDITIONALLY_STATIC and global_speed >= 1 / 3.6:
                     self.labels['3d_labels'][track_id]['dynamic_flag'] = 1
             else:
                 logger.warn(f"> unhandled label type {row['label_name']}")
@@ -549,7 +548,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             dist = np.linalg.norm(xyz_s - xyz_e, axis=1)  # N x 1
 
             # Initialize dynamic flag
-            dynamic_flag = np.full(point_count, 0., dtype=np.float32)  # N x 1
+            dynamic_flag = np.full(
+                point_count,
+                # initialize dynamic_flag to -1 if there are no labels at all
+                0. if len(self.frame_labels) else -1.,
+                dtype=np.float32)  # N x 1
 
             # Incorporate labels, if available
             frame_labels = self.frame_labels.get(frame_timestamp, {})  # returns empty dict if no annotations available for this frame
