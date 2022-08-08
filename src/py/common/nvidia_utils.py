@@ -2,16 +2,25 @@
 
 import json
 import base64
+import logging
+
+from typing import Optional
+
 import numpy as np
+from numpy.polynomial.polynomial import Polynomial
+
 from src.protos.deepmap import transform_pb2, camera_calibration_pb2
+
 from google.protobuf import text_format
+
 from scipy.spatial.transform import Rotation as R
 from scipy.optimize import curve_fit
-from google.protobuf import text_format
-from numpy.polynomial.polynomial import Polynomial
+
+from PIL import Image
+
 from src.py.common.common import  PoseInterpolator, MaskImage
 from src.py.common.transformations import  euler_2_so3, transform_point_cloud, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
-from PIL import Image
+
 
 def extract_sensor_2_sdc(file_path):
     ''' Extract the sensor to self driving car (SDC) rig transformation parameters 
@@ -20,7 +29,7 @@ def extract_sensor_2_sdc(file_path):
         file_path (string): path to the calibration file
     Out:
         (np.array): transformation from the sensor to SDC in se3 representation [m,4,4]
-    '''  
+    '''
 
     # Initialize the Rigid Transform data structure
 
@@ -30,18 +39,18 @@ def extract_sensor_2_sdc(file_path):
         text_format.Parse(f.read(), data)
 
 
-    translation = np.array([data.translation.x, 
-                            data.translation.y, 
+    translation = np.array([data.translation.x,
+                            data.translation.y,
                             data.translation.z]).reshape(-1,3)
 
-    rot_axis = np.array([data.axis_angle.x, 
-                         data.axis_angle.y, 
+    rot_axis = np.array([data.axis_angle.x,
+                         data.axis_angle.y,
                          data.axis_angle.z]).reshape(-1,3)
 
     rot_angle = np.array(data.axis_angle.angle_degrees).reshape(-1,1)
 
 
-    
+
     return axis_angle_trans_2_se3(rot_axis, rot_angle, translation, degrees=True)[0]
 
 
@@ -55,7 +64,7 @@ def extract_camera_calibration(file_path):
         img_width (float): image width in pixels
         img_height (float): image height in pixels
         roll_shutter_delay (float): rolling shutter offset between the first and last row
-    '''  
+    '''
 
     # Initialize the Rigid Transform data structure
     data = camera_calibration_pb2.MonoCalibrationParameters()
@@ -77,15 +86,15 @@ def extract_pose(data, earth_model='WGS84'):
         data (dict): pose data
     Out:
         (np.array): transformation from lidar to SDC in se3 representation [m,4,4]
-    '''  
+    '''
 
 
-    lat_lng_alt = np.array([data['lat_lng_alt']['latitude_degrees'], 
-                            data['lat_lng_alt']['longitude_degrees'], 
+    lat_lng_alt = np.array([data['lat_lng_alt']['latitude_degrees'],
+                            data['lat_lng_alt']['longitude_degrees'],
                             data['lat_lng_alt']['altitude_meters']]).reshape(-1,3)
 
-    rot_axis = np.array([data['axis_angle']['x'], 
-                         data['axis_angle']['y'], 
+    rot_axis = np.array([data['axis_angle']['x'],
+                         data['axis_angle']['y'],
                          data['axis_angle']['z']]).reshape(-1,3)
 
     rot_angle = np.array(data['axis_angle']['angle_degrees']).reshape(-1,1)
@@ -179,26 +188,71 @@ def sensor_to_rig(sensor):
     return sensor_to_rig
 
 
-def camera_intrinsic_parameters(sensor):
-    """Parses the provided rig-style camera sensor dictionary into FTheta camera intrinsic parameters.
+def camera_intrinsic_parameters(sensor: dict,
+                                logger: Optional[logging.Logger] = None
+                                ) -> np.array:
+    """  Parses the provided rig-style camera sensor dictionary into FTheta camera intrinsic parameters.
+
+    Note: currenlty only 5th-order 'pixeldistance-to-angle' ("bw-poly") FTheta are supported, possibly
+          available 6th-order term will be dropped with a warning
 
     Args:
-        sensor (Dict): the dictionary of the transformation values read from
-            the rig file.
+        sensor: the dictionary of the sensor parameters read from the rig file
+        logger: if provided, the logger to issue warnings in (e.g., on not supported coeffiecients)
     Returns:
-        intrinsic (np.ndarray): array of FTheta intrinsics [cx, cy, width, height, [bwpoly]] 
+        intrinsic: array of FTheta intrinsics [cx, cy, width, height, [bwpoly]] 
     """
 
-    assert sensor['properties']['Model'] == 'ftheta', "unsupported camera model (only supporting FTheta)"
+    assert sensor['properties'][
+        'Model'] == 'ftheta', "unsupported camera model (only supporting FTheta)"
 
     cx = float(sensor['properties']['cx'])
     cy = float(sensor['properties']['cy'])
     width = float(sensor['properties']['width'])
     height = float(sensor['properties']['height'])
 
-    poly = 'polynomial' if 'polynomial' in sensor['properties'] else 'bw-poly'
-    bwpoly = [np.float32(val) for val in sensor['properties'][poly].split()]
-    
+    if 'bw-poly' in sensor['properties']:
+        # Legacy 5-th order backwards-polynomial
+        bwpoly = [
+            np.float32(val) for val in sensor['properties']['bw-poly'].split()
+        ]
+        assert len(
+            bwpoly
+        ) == 5, "expecting fifth-order coefficients for 'bw-poly / 'pixeldistance-to-angle' polynomial"
+    elif 'polynomial' in sensor['properties']:
+        # Two-way forward / backward polynomial encoding
+        assert sensor['properties']['polynomial-type'] == 'pixeldistance-to-angle', \
+            f"currently only supporting 'pixeldistance-to-angle' polynomial type, received '{sensor['properties']['polynomial-type']}'"
+
+        bwpoly = [
+            np.float32(val)
+            for val in sensor['properties']['polynomial'].split()
+        ]
+
+        if len(bwpoly) > 5:
+            # WAR: 6th-order polynomials are currently not supported in the software-stack, drop highest order coeffient for now
+            # TODO: extend internal camera model and NGP with support for 6th-order polynomials
+            if logger:
+                logger.warn(
+                    f"> encountered higher-order distortion polynomial for camera '{sensor['name']}', restricting to 5th-order, dropping coefficients '{bwpoly[5:]}' - parsed model might be inaccurate"
+                )
+
+            bwpoly = bwpoly[:5]
+
+        # Affine term is currently not supported, issue a warning if it differs from identity
+        # TODO: properly incorporate c,d,e coefficients of affine term [c, d; e, 1] into software stack (internal camera models + NGP)
+        A = np.matrix([[np.float32(sensor['properties'].get('c', 1.0)), np.float32(sensor['properties'].get('d', 0.0))], \
+                        [np.float32(sensor['properties'].get('e', 0.0)), np.float32(1.0)]])
+
+        if (A != np.identity(2, dtype=np.float32)).any():
+            if logger:
+                logger.warn(
+                    f"> *not* considering non-identity affine term '{A}' for '{sensor['name']}' - parsed model might be inaccurate"
+                )
+
+    else:
+        raise ValueError("unsupported distortion polynomial type")
+
     intrinsic = [cx, cy, width, height] + bwpoly
 
     return np.array(intrinsic, dtype=np.float32)
@@ -272,10 +326,10 @@ def camera_car_mask(sensor, scale_to_source_resolution=True):
     car_mask = decoded_rle16.reshape(resolution[1], resolution[0]) == 0
 
     if scale_to_source_resolution:
-        # rescale to original resolution (DW makes sure that the downscaled mask 
+        # rescale to original resolution (DW makes sure that the downscaled mask
         # is an even subsampling of the original camera resolution)
         width, height = camera_intrinsic_parameters(
-            sensor)[[2, 3]].astype(np.int32) # load original sensor resolution
+            sensor, None)[[2, 3]].astype(np.int32) # load original sensor resolution
 
         car_mask_image = Image.fromarray(car_mask).resize((width, height)) # convert to image and perform nearest-neighor resampling
 
@@ -299,7 +353,7 @@ def get_rig_info(json_path, camera_folder_list = None):
     """
     if not os.path.isfile(json_path):
         print('File path {} does not exist'.format(json_path))
-    
+
     print("Read json file {}". format(json_path))
     with open(json_path) as json_file:
         json_load = json.load(json_file)
@@ -359,7 +413,7 @@ def pixel_2_camera_ray(pixel_coords, intrinsic, camera_model):
 
     Out:
         camera_rays (np.array): rays in the camera coordinate system [n,3]
-    ''' 
+    '''
 
     camera_rays = np.ones((pixel_coords.shape[0],3))
 
@@ -370,13 +424,13 @@ def pixel_2_camera_ray(pixel_coords, intrinsic, camera_model):
     elif camera_model == "f_theta":
         pixel_offsets = np.ones((pixel_coords.shape[0],2))
         pixel_offsets[:,0] = pixel_coords[:,0] - intrinsic[0]
-        pixel_offsets[:,1] = pixel_coords[:,1] - intrinsic[1]   
+        pixel_offsets[:,1] = pixel_coords[:,1] - intrinsic[1]
 
         pixel_norms = np.linalg.norm(pixel_offsets, axis=1, keepdims=True)
 
         alphas = backwards_polynomial(pixel_norms, intrinsic[4:9])
-        camera_rays[:,0:1] = (np.sin(alphas) * pixel_offsets[:,0:1]) / pixel_norms 
-        camera_rays[:,1:2] = (np.sin(alphas) * pixel_offsets[:,1:2]) / pixel_norms 
+        camera_rays[:,0:1] = (np.sin(alphas) * pixel_offsets[:,0:1]) / pixel_norms
+        camera_rays[:,1:2] = (np.sin(alphas) * pixel_offsets[:,1:2]) / pixel_norms
         camera_rays[:,2:3] = np.cos(alphas)
 
         # special case: ray is perpendicular to image plane normal
@@ -476,14 +530,14 @@ def _get_pixel_fov(pt, intrinsic):
 
 def _compute_max_angle(intrinsic):
 
-        p = np.asarray(
-            [[0, 0], [intrinsic[2] - 1, 0], [0, intrinsic[3] - 1], [intrinsic[2] - 1, intrinsic[3] - 1]], dtype=np.float32
-        )
+    p = np.asarray(
+        [[0, 0], [intrinsic[2] - 1, 0], [0, intrinsic[3] - 1], [intrinsic[2] - 1, intrinsic[3] - 1]], dtype=np.float32
+    )
 
-        return max(
-            max(_get_pixel_fov(p[0:1, ...], intrinsic), _get_pixel_fov(p[1:2, ...], intrinsic)),
-            max(_get_pixel_fov(p[2:3, ...], intrinsic), _get_pixel_fov(p[3:4, ...], intrinsic)),
-        )
+    return max(
+        max(_get_pixel_fov(p[0:1, ...], intrinsic), _get_pixel_fov(p[1:2, ...], intrinsic)),
+        max(_get_pixel_fov(p[2:3, ...], intrinsic), _get_pixel_fov(p[3:4, ...], intrinsic)),
+    )
 
 
 def compute_ftheta_parameters(intrinsic):
@@ -550,11 +604,11 @@ def extract_cuboid(cuboid, enlarge_dim=0):
     center = dict2numpy_3d(cuboid['center'])
     orientation = dict2numpy_3d(cuboid['orientation'])
     dimensions = dict2numpy_3d(cuboid['dimensions']) * (1 + enlarge_dim)
-    
+
     return np.concatenate((center, dimensions, orientation))
 
 
-def pixel_2_world_ray_py(pixel_coords, intrinsic, camera_model, img_height, 
+def pixel_2_world_ray_py(pixel_coords, intrinsic, camera_model, img_height,
                          roll_shutter_delay, pix_exp_t, eof_t, poses, pose_t):
 
     ''' Convert the pixel coordinates to 3D rays in the global coordinate system by compensating for the
@@ -573,7 +627,7 @@ def pixel_2_world_ray_py(pixel_coords, intrinsic, camera_model, img_height,
     
     Out:
         world_rays (np.array): 3d rays in the global coordinate system [n,3]
-    ''' 
+    '''
 
     camera_rays = pixel_2_camera_ray(pixel_coords, intrinsic, camera_model)
 
@@ -611,7 +665,7 @@ def world_points_2_pixel_py(points, cam_metadata, iterate=False):
     Out:
         points_img (np.array): pixel coordinates of the image projections [m,2]
         valid (np.array): array of boolean flags. True for point that project to the image plane
-    '''  
+    '''
 
 
     img_width = cam_metadata['img_width']
@@ -620,9 +674,9 @@ def world_points_2_pixel_py(points, cam_metadata, iterate=False):
     rs_direction = cam_metadata['rolling_shutter_direction']
 
 
-    t_sof, t_eof = cam_metadata['ego_pose_timestamps'] 
+    t_sof, t_eof = cam_metadata['ego_pose_timestamps']
     T_global_cam_sof = np.linalg.inv(cam_metadata['T_cam_rig']) @ np.linalg.inv(cam_metadata['ego_pose_s'])
-    T_global_cam_eof = np.linalg.inv(cam_metadata['T_cam_rig']) @ np.linalg.inv(cam_metadata['ego_pose_e'])    
+    T_global_cam_eof = np.linalg.inv(cam_metadata['T_cam_rig']) @ np.linalg.inv(cam_metadata['ego_pose_e'])
     pose_interpolator = PoseInterpolator(np.stack([T_global_cam_sof, T_global_cam_eof]), np.array([t_sof, t_eof]))
 
     # Transform the point cloud to the cam coordinate system based on the last pose
@@ -630,7 +684,7 @@ def world_points_2_pixel_py(points, cam_metadata, iterate=False):
 
     # Preform an initial projection
     initial_proj, initial_valid_idx = project_camera_rays_2_img(points_cam, cam_metadata)
-    
+
     initial_proj = initial_proj[initial_valid_idx,:]
     valid_pts = points[initial_valid_idx,:]
 
@@ -642,7 +696,7 @@ def world_points_2_pixel_py(points, cam_metadata, iterate=False):
     optimized_proj = []
     valid_idx = []
     trans_matrices = []
-    
+
     # TODO: IMPLEMENT ITERATIVE APPROACH ()
     for pt_idx, point in enumerate(initial_proj):
         # TODO: ADAPT THIS FOR ALL ROLLING SHUTTER DIRECTIONS (not a priority as all datasets up to now have either 1 or 2)
@@ -681,7 +735,7 @@ def project_camera_rays_2_img(points, cam_metadata):
     Out:
         points_img (np.array): pixel coordinates of the image projections [m,2]
         valid (np.array): array of boolean flags. True for point that project to the image plane
-    '''  
+    '''
 
     intrinsic = cam_metadata['intrinsic']
     camera_model = cam_metadata['camera_model']
