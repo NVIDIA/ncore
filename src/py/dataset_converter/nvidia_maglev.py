@@ -225,7 +225,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             # Extract the calibration metadata
             T_cam_rig = sensor_to_rig(camera_calibration_data)
-            intrinsic = camera_intrinsic_parameters(camera_calibration_data)
+            intrinsic = camera_intrinsic_parameters(camera_calibration_data, logger)
 
             # Estimate the forward polynomial and other F-theta parameters
             fw_poly_coeff = compute_fw_polynomial(intrinsic)
