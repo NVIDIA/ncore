@@ -9,7 +9,7 @@ def unwind_lidar(pc, transformation_matrices, column_idx):
 
 def image_to_world_ray(image_points, camera_metadata):
     # Initialize the parameters
-    intrinsic   = np.array(camera_metadata['intrinsic']).reshape(1,-1)
+    intrinsic   = np.array(camera_metadata['intrinsic']).reshape(1,-1).astype(np.float64)
     camera_model   = camera_metadata['camera_model'] 
     img_height  = camera_metadata['img_height']
     img_width  = camera_metadata['img_width']

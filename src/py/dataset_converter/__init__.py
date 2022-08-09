@@ -1,12 +1,16 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-from abc import ABC, abstractmethod
+
 import os
 import glob 
-from PIL import Image
+import tempfile
 import subprocess
 import shutil
 import logging
+
+from PIL import Image
+from abc import ABC, abstractmethod
+
 from src.py.deps.instance_segmentation.run_instance_segmentation import run_instance_segmentation
 
 # Initialize basic top-level logger configuration
@@ -104,8 +108,7 @@ class DataConverter(ABC):
             imgs = sorted(glob.glob(img_folder + f"{'?'*self.INDEX_DIGITS}.jpeg"))
 
             # Create a temporary folder 
-            if not os.path.exists(os.path.join(img_folder, 'tmp_img')):
-                os.makedirs(os.path.join(img_folder, 'tmp_img'))
+            temp_dir = tempfile.TemporaryDirectory()
             
             # Save the target resolutions
             img_res = []
@@ -117,18 +120,18 @@ class DataConverter(ABC):
                 # Resize if the image is to large
                 if w > 1920 or h > 1280:
                     img = img.resize((w//2,h//2), Image.ANTIALIAS)
-                img.save(os.path.join(img_folder, 'tmp_img', file.split(os.sep)[-1]))
+                img.save(os.path.join(temp_dir.name, file.split(os.sep)[-1]))
 
             args =  f'--dataset cityscapes --cv 0 --fp16 --bs_val 1 --eval folder ' \
                     '--eval_folder {} --n_scales 0.5,1.0,2.0 '\
                     '--snapshot src/py/deps/semantic_segmentation/pretrained_models/cityscapes_ocrnet.HRNet_Mscale_outstanding-turtle.pth '\
-                    '--arch ocrnet.HRNet_Mscale --result_dir {}'.format(os.path.join(img_folder, 'tmp_img'),os.path.join(img_folder, 'tmp_img','semantic_seg'))
+                    '--arch ocrnet.HRNet_Mscale --result_dir {}'.format(temp_dir.name, os.path.join(temp_dir.name,'semantic_seg'))
 
             # Run the semantic segmentation
             cmd = 'external/semantic-segmentation/train ' + args
             subprocess.Popen(cmd, shell=True).wait()
 
-            predictions = sorted(glob.glob(os.path.join(img_folder, 'tmp_img','semantic_seg','best_images', f"{'?'*self.INDEX_DIGITS}_prediction.png")))
+            predictions = sorted(glob.glob(os.path.join(temp_dir.name,'semantic_seg','best_images', f"{'?'*self.INDEX_DIGITS}_prediction.png")))
 
             assert len(predictions) == len(img_res), "Number of semantic segmentation predictions is not the same as the number of input images"
 
@@ -142,9 +145,8 @@ class DataConverter(ABC):
                 frame_num = pred_img.split(os.sep)[-1].split('_')[0]
                 img.save(os.path.join(img_folder, 'sem_seg_{}.png'.format(frame_num)))
 
-            # Delete the temporary file
-            shutil.rmtree(os.path.join(img_folder, 'tmp_img'))
-
+            # Delete the temporary folder
+            temp_dir.cleanup()
 
     def run_instance_segmentation(self, sequence_name):
         img_folders = glob.glob(os.path.join(self.output_dir, sequence_name, self.image_save_dir) + '/*/')

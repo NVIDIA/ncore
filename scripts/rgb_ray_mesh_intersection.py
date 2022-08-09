@@ -14,7 +14,7 @@ from src.py.common.common import NV_CAMERAS, WAYMO_CAMERAS
 from src.cpp.av_utils import image_to_world_ray
 
 def generate_colored_pclouds(args, cam_id):
-    vertices, faces = pcu.load_mesh_vf(os.path.join(args.root_dir,'reconstructed_surface', "reconstructed_mesh.ply" ))
+    vertices, faces = pcu.load_mesh_vf(os.path.join(args.root_dir,'reconstructed_surface', f"{args.mesh_filename}.ply" ))
     output_dir = os.path.join(args.root_dir, 'color_point_clouds', f'image_{cam_id}') if not args.output_dir else os.path.join(args.output_dir, f'image_{cam_id}')
 
     if not os.path.exists(output_dir):
@@ -34,8 +34,8 @@ def generate_colored_pclouds(args, cam_id):
         v = np.repeat(np.arange(int(img_height)), int(img_width))
         image_points = np.concatenate([u.reshape(-1,1), v.reshape(-1,1)], axis=1).astype(np.float64)
         img_world_rays = image_to_world_ray(image_points, metadata) # Nx6 with columns denoting x_s, y_s, z_s, x_e, y_e, z_e
-        ray_o = np.ascontiguousarray(img_world_rays[:,:3])
-        ray_d = np.ascontiguousarray(img_world_rays[:,3:6])
+        ray_o = np.ascontiguousarray(img_world_rays[:,:3]).astype(np.float32)
+        ray_d = np.ascontiguousarray(img_world_rays[:,3:6]).astype(np.float32)
 
         # Save the rays in dat file if save_rays selected
         if args.save_rays:
@@ -57,6 +57,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--root_dir', type=str, help="Path to the raw data", required=True)
     parser.add_argument("--dataset", type=str, help="Name of the dataset", choices=['nvidia-deepmap', 'waymo', 'nvidia-maglev'], required=True)
+    parser.add_argument("--mesh-filename", type=str, help="File name of the reconstructed mesh", default="reconstructed_mesh")
     parser.add_argument("--cam_id", type=str, help="Camera ID to be used for projection. If not specified random camera will be used", default= '-1')
     parser.add_argument('--output_dir', type=str, default = '', help="Output path. If not specified the default path 'root_dir/colored_point_clouds/' will be used")
     parser.add_argument("--start_at", type=int, default=0, help="Idx of the first RGB frame to be used (default 0 so all images will be used)")

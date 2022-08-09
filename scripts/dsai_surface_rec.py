@@ -4,6 +4,7 @@ import click
 import os
 import logging
 import tqdm
+import tempfile
 
 import point_cloud_utils as pcu
 import numpy as np
@@ -43,9 +44,6 @@ def run_surface_reconstruction(root_dir, output_filename, max_dist, start_frame,
     # set up temp paths 
     if not os.path.exists(os.path.join(root_dir, 'reconstructed_surface')):
         os.makedirs(os.path.join(root_dir, 'reconstructed_surface'))
-
-    temp_fused_path = os.path.join(root_dir, 'reconstructed_surface', 'full_pc.ply')
-    temp_rec_path = os.path.join(root_dir, 'reconstructed_surface', 'rec_pc.ply')
     
     logger.info("Loading points and ray directions.")
 
@@ -63,14 +61,15 @@ def run_surface_reconstruction(root_dir, output_filename, max_dist, start_frame,
 
     pf = points[pid]
 
-    pcu.save_mesh_vn(temp_fused_path, pf, nf)
-    
-    # Initialize the logger
-    logger.info("Running Poisson surface reconstruction")
-    os.system(f"'external/PoissonRecon/PoissonRecon' --in {temp_fused_path} --out {temp_rec_path} " f"--width 0.1 --density --samplesPerNode 1.0 --colors")
+    with tempfile.NamedTemporaryFile(suffix= '.ply') as temp_fp, tempfile.NamedTemporaryFile(suffix= '.ply') as temp_rp : 
+        pcu.save_mesh_vn(temp_fp.name, pf, nf)
 
-    logger.info("Trimming the reconstructed mesh")
-    v, f, n, c = pcu.load_mesh_vfnc(temp_rec_path)
+        # Initialize the logger
+        logger.info("Running Poisson surface reconstruction")
+        os.system(f"'external/PoissonRecon/PoissonRecon' --in {temp_fp.name} --out {temp_rp.name} " f"--width 0.1 --density --samplesPerNode 1.0 --colors")
+
+        logger.info("Trimming the reconstructed mesh")
+        v, f, n, c = pcu.load_mesh_vfnc(temp_rp.name)
 
     nn_dist, _ = pcu.k_nearest_neighbors(v.astype(np.float32), pf.astype(np.float32), k=2)
     nn_dist = nn_dist[:, 1]
@@ -80,9 +79,6 @@ def run_surface_reconstruction(root_dir, output_filename, max_dist, start_frame,
     logger.info("Saving the reconstructed mesh and cleaning up the temp files.")
     output_rec_path =  os.path.join(root_dir, 'reconstructed_surface', f'{output_filename}.ply')
     pcu.save_mesh_vfnc(output_rec_path, v, f[f_mask], n, c)
-    # Clean up the temp files
-    os.remove(temp_rec_path)
-    os.remove(temp_fused_path)
 
 
 def load_fused_pc(lidar_dir, max_dist=-1, start_frame=0, end_frame=-1, step_frame=1):
