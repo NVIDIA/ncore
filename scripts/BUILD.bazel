@@ -3,6 +3,7 @@ load(
     "@io_bazel_rules_docker//container:container.bzl",
     "container_push",
 )
+load("@io_bazel_rules_docker//python:image.bzl", "py_layer")
 load("@io_bazel_rules_docker//python3:image.bzl", "py3_image")
 load("@pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary")
@@ -17,29 +18,66 @@ py_binary(
     ],
 )
 
+CONVERT_RAW_DATA_DEPS = [
+    requirement("click"),
+    requirement("debugpy"),
+    "//src/py/dataset_converter:pylib",
+]
+
 py_binary(
     name = "convert_raw_data",
     srcs = ["convert_raw_data.py"],
-    deps = [
-        requirement("click"),
-        requirement("debugpy"),
-        "//src/py/dataset_converter:pylib",
+    deps = CONVERT_RAW_DATA_DEPS,
+)
+
+# Image for 'convert_raw_data'
+
+# extract all transitive dependencies of dependencies under //src
+py_layer(
+    name = "convert_raw_data_common_deps_layer",
+    filter = "//src",
+    tags = [
+        "manual",
+        "no-remote-cache",
     ],
+    deps = CONVERT_RAW_DATA_DEPS,
+)
+
+# extract all external dependencies of the deps under //src
+py_layer(
+    name = "convert_raw_data_common_external_deps_layer",
+    filter = "@",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = [":convert_raw_data_common_deps_layer"],
+)
+
+# extract all external dependencies of CONVERT_RAW_DATA_DEPS, which is a superset of ":convert_raw_data_common_external_deps_layer".
+py_layer(
+    name = "convert_raw_data_external_deps_layer",
+    filter = "@",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = CONVERT_RAW_DATA_DEPS,
 )
 
 py3_image(
     name = "convert_raw_data_image",
     srcs = ["convert_raw_data.py"],
     base = "@dsai_dev_container//image",
+    layers = [
+        ":convert_raw_data_external_deps_layer",
+        ":convert_raw_data_common_external_deps_layer",
+        ":convert_raw_data_common_deps_layer",
+    ],
     main = "convert_raw_data.py",
     tags = [
         "manual",
         "no-remote-cache",
-    ],
-    deps = [
-        requirement("click"),
-        requirement("debugpy"),
-        "//src/py/dataset_converter:pylib",
     ],
 )
 
