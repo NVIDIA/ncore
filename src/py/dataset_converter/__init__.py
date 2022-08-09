@@ -142,7 +142,7 @@ class DataConverter(ABC):
                 frame_num = pred_img.split(os.sep)[-1].split('_')[0]
                 img.save(os.path.join(img_folder, 'sem_seg_{}.png'.format(frame_num)))
 
-            # Delete the temporary file
+            # Delete the temporary folder
             shutil.rmtree(os.path.join(img_folder, 'tmp_img'))
 
 
