@@ -232,7 +232,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             label_data = label_data.reset_index()  # make sure indexes pair with number of rows
 
             for _, row in label_data.iterrows():
-                if row['label_name'] in ['automobile', 'heavy_truck', 'bus', 'other_vehicle', 'motorcycle', 'motorcycle_with_rider']:
+                if row['label_name'] in self.LABEL_STRING_TO_LABEL_ID.keys():
                     
                     track_id = row['trackline_id']
                     label_timestamp = row['detection_timestamp']
@@ -261,7 +261,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
 
                     if track_id not in annotations['3d_labels']:
-                        annotations['3d_labels'][track_id]['dynamic_flag'] = 1 if self.LABEL_STRING_TO_LABEL_ID[row['label_name']] in [2,4,8,9] else 0 
+                        annotations['3d_labels'][track_id]['dynamic_flag'] = 1 if self.LABEL_STRING_TO_LABEL_ID[row['label_name']] in self.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else 0 
                         annotations['3d_labels'][track_id]['type'] = self.LABEL_STRING_TO_LABEL_ID[row['label_name']]
                         annotations['3d_labels'][track_id]['lidar'] = {}
 
@@ -272,7 +272,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                                                                         'global_accel': -1,}
                 
                     # TODO: check if this user-defined threshold makes sense
-                    if self.LABEL_STRING_TO_LABEL_ID[row['label_name']] not in [0,3] and np.linalg.norm([row['velocity_x'], row['velocity_y']]) >= 1/3.6:
+                    if self.LABEL_STRING_TO_LABEL_ID[row['label_name']] not in self.LABEL_STRINGS_UNCONDITIONALLY_STATIC and np.linalg.norm([row['velocity_x'], row['velocity_y']]) >= 1/3.6:
                             annotations['3d_labels'][track_id]['dynamic_flag'] = 1
 
             # Save the accumulated data
