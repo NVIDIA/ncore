@@ -1,7 +1,5 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-from __future__ import annotations
-
 import cv2
 import os 
 import glob
