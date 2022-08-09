@@ -1,12 +1,13 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
+from __future__ import annotations
+
 import cv2
 import os 
 import glob
 import numpy as np
 import tensorflow.compat.v1 as tf        
 
-from __future__ import annotations
 from collections import defaultdict
 from PIL import Image
 from waymo_open_dataset import dataset_pb2 as open_dataset
