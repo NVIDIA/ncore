@@ -3,21 +3,15 @@
 import json
 import base64
 import logging
+import numpy as np
 
 from typing import Optional
-
-import numpy as np
+from PIL import Image
+from google.protobuf import text_format
+from scipy.optimize import curve_fit
 from numpy.polynomial.polynomial import Polynomial
 
 from src.protos.deepmap import transform_pb2, camera_calibration_pb2
-
-from google.protobuf import text_format
-
-from scipy.spatial.transform import Rotation as R
-from scipy.optimize import curve_fit
-
-from PIL import Image
-
 from src.py.common.common import  PoseInterpolator, MaskImage
 from src.py.common.transformations import  euler_2_so3, transform_point_cloud, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
 

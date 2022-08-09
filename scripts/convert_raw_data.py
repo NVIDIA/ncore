@@ -6,9 +6,6 @@ import debugpy
 import logging
 
 from src.py.dataset_converter import DataConverter
-from src.py.dataset_converter.waymo_open import WaymoConverter
-from src.py.dataset_converter.nvidia_deepmap import NvidiaDeepMapConverter
-from src.py.dataset_converter.nvidia_maglev import NvidiaMaglevConverter
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +56,8 @@ def cli(ctx, *_, **kwargs):
 @click.option('--ref-projections', is_flag=True, default=False, help="Store reference point-cloud to image projections (explicitly available in waymo data)")
 @click.pass_context
 def waymo(ctx, *_, **kwargs):
+    from src.py.dataset_converter.waymo_open import WaymoConverter
+
     """Waymo-specific data conversion"""
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
@@ -69,6 +68,8 @@ def waymo(ctx, *_, **kwargs):
 # TODO(#9): add --seek-sec / --duration-sec options similar to nvidia_maglev subcommand
 @click.pass_context
 def nvidia_deepmap(ctx, *_, **kwargs):
+    from src.py.dataset_converter.nvidia_deepmap import NvidiaDeepMapConverter
+
     """NVIDIA-specific data conversion (based on DeepMap tracks)"""
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
@@ -80,6 +81,8 @@ def nvidia_deepmap(ctx, *_, **kwargs):
 @click.option('--duration-sec', type=click.FloatRange(min=0.0, max_open=True), help="Restrict total duration of the dataset conversion (in seconds)")
 @click.pass_context
 def nvidia_maglev(ctx, *_, **kwargs):
+    from src.py.dataset_converter.nvidia_maglev import NvidiaMaglevConverter
+    
     """NVIDIA-specific data conversion (based on Maglev data extraction)"""
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
