@@ -5,7 +5,6 @@ import os
 import glob 
 import tempfile
 import subprocess
-import shutil
 import logging
 
 from PIL import Image

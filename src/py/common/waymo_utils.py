@@ -1,8 +1,8 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-from tkinter import W
 import numpy as np
 import tensorflow as tf
+
 from waymo_open_dataset import dataset_pb2
 from collections import defaultdict
 

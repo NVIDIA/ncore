@@ -1,24 +1,27 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
+import cv2
+import os 
+import glob
+import numpy as np
+import tensorflow.compat.v1 as tf        
+
 from __future__ import annotations
 from collections import defaultdict
+from PIL import Image
+from waymo_open_dataset import dataset_pb2 as open_dataset
+
 from src.py.dataset_converter import DataConverter
-import tensorflow.compat.v1 as tf        
+from src.py.common.waymo_utils import parse_range_image_and_camera_projection, convert_range_image_to_point_cloud, extrapolate_pose_based_on_velocity,\
+                            global_vel_to_ref, extract_camera_labels, extract_lidar_labels, extract_projected_labels 
+from src.py.common.common import save_pkl, load_pkl, load_pc_dat, save_pc_dat, compute_iou, compute_optimal_assignments, get_2d_bbox_corners, points_in_bboxes, MaskImage
+
+# Prevent TF to block all the GPU memory
 tf.enable_eager_execution()
 gpus = tf.config.experimental.list_physical_devices('GPU')
 for gpu in gpus:
   tf.config.experimental.set_memory_growth(gpu, True)
-  
-from waymo_open_dataset import dataset_pb2 as open_dataset
-import numpy as np
-import cv2
-import os 
-import struct
-import glob
-from src.py.common.waymo_utils import parse_range_image_and_camera_projection, convert_range_image_to_point_cloud, extrapolate_pose_based_on_velocity,\
-                            global_vel_to_ref, extract_camera_labels, extract_lidar_labels, extract_projected_labels 
-from src.py.common.common import save_pkl, load_pkl, load_pc_dat, save_pc_dat, compute_iou, compute_optimal_assignments, get_2d_bbox_corners, points_in_bboxes, MaskImage
-from PIL import Image
+
 
 class WaymoConverter(DataConverter):  
     """

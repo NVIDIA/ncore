@@ -1,13 +1,14 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 import argparse
-import point_cloud_utils as pcu
-import numpy as np
 import struct
 import random
 import os
 import pickle
 import glob
+import numpy as np
+import point_cloud_utils as pcu
+
 from PIL import Image
 
 from src.py.common.common import NV_CAMERAS, WAYMO_CAMERAS

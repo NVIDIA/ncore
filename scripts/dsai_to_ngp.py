@@ -2,19 +2,21 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 import click
-from src.py.common.common import NV_CAMERAS, WAYMO_CAMERAS, R_NVIDIA_NGP, R_WAYMO_NGP, RS_DIR_TO_NGP, average_camera_pose, load_pc_dat, save_pc_dat
-import numpy as np
-from PIL import Image
-# PIL pollutes the CL output with debug messages
-# TODO: check for better solution
-import logging
-logging.getLogger('PIL').setLevel(logging.WARNING)
 import json
 import math
 import os
 import pickle
 import copy
+# PIL pollutes the CL output with debug messages
+# TODO: check for better solution
+import logging
+logging.getLogger('PIL').setLevel(logging.WARNING)
 
+import numpy as np
+
+from PIL import Image
+
+from src.py.common.common import NV_CAMERAS, WAYMO_CAMERAS, R_NVIDIA_NGP, R_WAYMO_NGP, RS_DIR_TO_NGP, average_camera_pose, load_pc_dat, save_pc_dat
 
 def prepare_lidar_frames(root_dir, start_frame, end_frame):
     """ Helper to conditionally uncompress lidar frame data if necessary """

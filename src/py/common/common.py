@@ -6,13 +6,14 @@ import struct
 import json
 import lzma
 import io
+import numpy as np
+
 from enum import Enum
 from typing import Union
-import numpy as np
 from PIL import Image
-from scipy.spatial.transform import Rotation as R
 from scipy import spatial, interpolate
 from scipy.optimize import linear_sum_assignment
+from scipy.spatial.transform import Rotation as R
 from src.py.common.transformations import so3_trans_2_se3
 
 
