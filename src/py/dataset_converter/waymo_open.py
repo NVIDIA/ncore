@@ -333,12 +333,9 @@ class WaymoConverter(DataConverter):
                 annotations['3d_labels'][label.id]['type'] = label.type
                 annotations['3d_labels'][label.id]['lidar'] = {}
 
-            ref_velocity = global_vel_to_ref([label.metadata.speed_x, label.metadata.speed_y], sdc_pose[0:3, 0:3])
-
             # Insert the data and change the dynamic flag if the object is in motion
             annotations['3d_labels'][label.id]['lidar'][f_idx] = {'3D_bbox': np.array([label.box.center_x, label.box.center_y, label.box.center_z,
-                                                                            label.box.length, label.box.width, label.box.height, ref_velocity[0], 
-                                                                            ref_velocity[1], 0,0, label.box.heading], dtype=np.float32), 
+                                                                            label.box.length, label.box.width, label.box.height, 0, 0, label.box.heading], dtype=np.float32), 
                                                                   'num_point': label.num_lidar_points_in_box, 
                                                                   'global_speed':np.array([label.metadata.speed_x, label.metadata.speed_y], dtype=np.float32), 
                                                                   'global_accel':np.array([label.metadata.accel_x, label.metadata.accel_y], dtype=np.float32)}
