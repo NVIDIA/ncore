@@ -1,8 +1,8 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-from tkinter import W
 import numpy as np
 import tensorflow as tf
+
 from waymo_open_dataset import dataset_pb2
 from collections import defaultdict
 
@@ -42,16 +42,12 @@ def extract_lidar_labels(frame):
     else:
       combined_difficulty_level = label.detection_difficulty_level
 
-    # Convert global velocity to the reference frame of the SDC
-    ref_velocity = global_vel_to_ref(speed, pose[0:3, 0:3])
-
     objects.append({
         'id': object_id,
         'name': label.id,
         'label': category_label,
         '3D_bbox': np.array([box.center_x, box.center_y, box.center_z,
-                         box.length, box.width, box.height, ref_velocity[0], 
-                         ref_velocity[1], 0, 0, box.heading], dtype=np.float32),
+                         box.length, box.width, box.height, 0, 0, box.heading], dtype=np.float32),
         'num_points':
             num_lidar_points_in_box,
         'detection_difficulty_level':

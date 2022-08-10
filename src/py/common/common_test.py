@@ -2,7 +2,6 @@
 
 import tempfile
 import unittest
-
 import numpy as np
 
 from src.py.common.common import load_pkl, save_pkl, load_pc_dat, save_pc_dat

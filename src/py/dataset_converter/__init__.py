@@ -5,7 +5,6 @@ import os
 import glob 
 import tempfile
 import subprocess
-import shutil
 import logging
 
 from PIL import Image
@@ -16,7 +15,7 @@ from src.py.deps.instance_segmentation.run_instance_segmentation import run_inst
 # Initialize basic top-level logger configuration
 logging.basicConfig(level=logging.DEBUG,
                     format='<%(asctime)s|%(levelname)s|%(filename)s:%(lineno)d|%(name)s> %(message)s')
-                    
+
 class DataConverter(ABC):
     '''
     Base preprocessing class used to preprocess AV datasets in a canonical representation as used in the Nvidia DriveSim-AI project. For adding a new dataset,
@@ -25,7 +24,7 @@ class DataConverter(ABC):
 
     DISCLAIMER: THIS SOURCE CODE IS NVIDIA INTERNAL/CONFIDENTIAL. DO NOT SHARE EXTERNALLY.
     IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC zgojcic@nvidia.com. 
-    '''  
+    '''
 
     INDEX_DIGITS = 6 # the number of integer digits to pad counters in output filenames to
 
@@ -65,7 +64,7 @@ class DataConverter(ABC):
         Args: 
             sequence_name (string): unique identifier of the sequence
         '''
-        
+
         seq_path = os.path.join(self.output_dir, sequence_name)
 
         if not os.path.isdir(seq_path):
@@ -84,14 +83,14 @@ class DataConverter(ABC):
         # Perform all data-specific conversions
         for sub_sequence_name in self.convert_one(sequence_pathname):
             ## Perform all generic conversions
-            
+
             # Perform instance and semantic segmentation of all the images (if enabled)
             if self.sem_seg_flag:
                 self.run_semantic_segmentation(sub_sequence_name)
-            
+
             if self.inst_seg_flag:
                 self.run_instance_segmentation(sub_sequence_name)
-                
+
     def convert(self):
         self.logger.info("start converting ...")
 
@@ -103,7 +102,7 @@ class DataConverter(ABC):
 
     def run_semantic_segmentation(self, sequence_name):
         img_folders = glob.glob(os.path.join(self.output_dir, sequence_name, self.image_save_dir) + '/*/')
-        
+
         for img_folder in img_folders:
             imgs = sorted(glob.glob(img_folder + f"{'?'*self.INDEX_DIGITS}.jpeg"))
 
@@ -138,10 +137,10 @@ class DataConverter(ABC):
             for idx, pred_img in enumerate(predictions):
                 img = Image.open(pred_img)
                 w,h = img.size[0], img.size[1]
-                
+
                 if w != img_res[idx][0] or h != img_res[idx][1]:
                     img = img.resize(img_res[idx], Image.ANTIALIAS)
-                
+
                 frame_num = pred_img.split(os.sep)[-1].split('_')[0]
                 img.save(os.path.join(img_folder, 'sem_seg_{}.png'.format(frame_num)))
 
@@ -150,7 +149,7 @@ class DataConverter(ABC):
 
     def run_instance_segmentation(self, sequence_name):
         img_folders = glob.glob(os.path.join(self.output_dir, sequence_name, self.image_save_dir) + '/*/')
-        
+
         for img_folder in img_folders:
             run_instance_segmentation(sorted(glob.glob(img_folder + f"{'?'*self.INDEX_DIGITS}.jpeg")))
 
@@ -217,3 +216,21 @@ class BaseNvidiaDataConverter(DataConverter):
     LIDAR_FILTER_MIN_DISTANCE = 3.5
     LIDAR_FILTER_MAX_DISTANCE = 100.0
     LIDAR_FILTER_MIN_RIG_HEIGHT = -0.5
+
+    LABEL_STRING_TO_LABEL_ID = {
+        'unknown': 0,
+        'automobile': 1,
+        'pedestrian': 2,
+        'sign': 3,
+        'CYCLIST': 4,
+        'heavy_truck': 5,
+        'bus': 6,
+        'other_vehicle': 7,
+        'motorcycle': 8,
+        'motorcycle_with_rider': 9,
+        'person': 10,
+        'rider': 11,
+        'bicycle_with_rider': 12
+    }
+    LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC = set(['pedestrian', 'person', 'rider', 'bicycle_with_rider', 'CYCLIST', 'motorcycle', 'motorcycle_with_rider'])
+    LABEL_STRINGS_UNCONDITIONALLY_STATIC = set(['unknown', 'sign'])

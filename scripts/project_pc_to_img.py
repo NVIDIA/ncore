@@ -4,9 +4,10 @@ import pickle
 import os
 import glob
 import random
-import numpy as np
 import argparse
 import time
+import numpy as np
+
 from PIL import Image
 from matplotlib import pyplot as plt
 

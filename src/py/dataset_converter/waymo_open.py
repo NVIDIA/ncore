@@ -1,24 +1,26 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-from __future__ import annotations
-from collections import defaultdict
-from src.py.dataset_converter import DataConverter
+import cv2
+import os 
+import glob
+import numpy as np
 import tensorflow.compat.v1 as tf        
+
+from collections import defaultdict
+from PIL import Image
+from waymo_open_dataset import dataset_pb2 as open_dataset
+
+from src.py.dataset_converter import DataConverter
+from src.py.common.waymo_utils import parse_range_image_and_camera_projection, convert_range_image_to_point_cloud, extrapolate_pose_based_on_velocity,\
+                            global_vel_to_ref, extract_camera_labels, extract_lidar_labels, extract_projected_labels 
+from src.py.common.common import save_pkl, load_pkl, load_pc_dat, save_pc_dat, compute_iou, compute_optimal_assignments, get_2d_bbox_corners, points_in_bboxes, MaskImage
+
+# Prevent TF to block all the GPU memory
 tf.enable_eager_execution()
 gpus = tf.config.experimental.list_physical_devices('GPU')
 for gpu in gpus:
   tf.config.experimental.set_memory_growth(gpu, True)
-  
-from waymo_open_dataset import dataset_pb2 as open_dataset
-import numpy as np
-import cv2
-import os 
-import struct
-import glob
-from src.py.common.waymo_utils import parse_range_image_and_camera_projection, convert_range_image_to_point_cloud, extrapolate_pose_based_on_velocity,\
-                            global_vel_to_ref, extract_camera_labels, extract_lidar_labels, extract_projected_labels 
-from src.py.common.common import save_pkl, load_pkl, load_pc_dat, save_pc_dat, compute_iou, compute_optimal_assignments, get_2d_bbox_corners, points_in_bboxes, MaskImage
-from PIL import Image
+
 
 class WaymoConverter(DataConverter):  
     """
@@ -331,12 +333,9 @@ class WaymoConverter(DataConverter):
                 annotations['3d_labels'][label.id]['type'] = label.type
                 annotations['3d_labels'][label.id]['lidar'] = {}
 
-            ref_velocity = global_vel_to_ref([label.metadata.speed_x, label.metadata.speed_y], sdc_pose[0:3, 0:3])
-
             # Insert the data and change the dynamic flag if the object is in motion
             annotations['3d_labels'][label.id]['lidar'][f_idx] = {'3D_bbox': np.array([label.box.center_x, label.box.center_y, label.box.center_z,
-                                                                            label.box.length, label.box.width, label.box.height, ref_velocity[0], 
-                                                                            ref_velocity[1], 0,0, label.box.heading], dtype=np.float32), 
+                                                                            label.box.length, label.box.width, label.box.height, 0, 0, label.box.heading], dtype=np.float32), 
                                                                   'num_point': label.num_lidar_points_in_box, 
                                                                   'global_speed':np.array([label.metadata.speed_x, label.metadata.speed_y], dtype=np.float32), 
                                                                   'global_accel':np.array([label.metadata.accel_x, label.metadata.accel_y], dtype=np.float32)}

@@ -1,21 +1,22 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 import os
-from src.py.dataset_converter import BaseNvidiaDataConverter
-from google.protobuf import text_format
-import numpy as np
+import glob
 import cv2
-from src.protos.deepmap import track_data_pb2, pointcloud_pb2
+import numpy as np
+
+from google.protobuf import text_format
+from pyarrow.parquet import ParquetDataset
+from collections import defaultdict
 from protobuf_to_dict import protobuf_to_dict
+
+from src.protos.deepmap import track_data_pb2, pointcloud_pb2
+from src.py.dataset_converter import BaseNvidiaDataConverter
+from src.py.common.common import (PoseInterpolator, save_pkl, load_pkl, save_pc_dat, points_in_bboxes)
+from src.cpp.av_utils import unwind_lidar
 from src.py.common.nvidia_utils import (compute_ftheta_parameters, extract_pose, extract_sensor_2_sdc,
                               parse_rig_sensors_from_file, sensor_to_rig, camera_intrinsic_parameters, compute_fw_polynomial,
                               camera_car_mask)
-from src.py.common.common import PoseInterpolator
-import glob
-from pyarrow.parquet import ParquetDataset
-from collections import defaultdict
-from src.py.common.common import save_pkl, load_pkl, save_pc_dat, points_in_bboxes
-from src.cpp.av_utils import unwind_lidar
 
 
 class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
@@ -24,18 +25,6 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
     """
     
     def __init__(self, config):
-        self.label_map = {'unknown': 0,
-                'automobile' : 1,
-                'pedestrian' : 2,
-                'sign' : 3,
-                'CYCLIST' : 4,
-                'heavy_truck': 5,
-                'bus': 6,
-                'other_vehicle': 7,
-                'motorcycle': 8,
-                'motorcycle_with_rider': 9,
-                }
-
         super().__init__(config)
 
         self.sequence_pathnames = sorted(glob.glob(os.path.join(self.root_dir, '*/')))
@@ -243,21 +232,21 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             label_data = label_data.reset_index()  # make sure indexes pair with number of rows
 
             for _, row in label_data.iterrows():
-                if row['label_name'] in ['automobile', 'heavy_truck', 'bus', 'other_vehicle', 'motorcycle', 'motorcycle_with_rider']:
+                if row['label_name'] in self.LABEL_STRING_TO_LABEL_ID.keys():
                     
                     track_id = row['trackline_id']
                     label_timestamp = row['detection_timestamp']
                     
-                    cuboid = np.array([row['centroid_x'], row['centroid_y'], row['centroid_z'], row['dim_x'],
-                                    row['dim_y'], row['dim_z'], row['velocity_x'], row['velocity_y'],
-                                    row['rot_x'], row['rot_y'], row['rot_z']], dtype=np.float32)
+                    cuboid = np.array([row['centroid_x'], row['centroid_y'], row['centroid_z'], 
+                                       row['dim_x'], row['dim_y'], row['dim_z'],
+                                       row['rot_x'], row['rot_y'], row['rot_z']], dtype=np.float32)
                     
                     if label_timestamp not in frame_annotations:
                         frame_annotations[label_timestamp]['lidar_labels'] = []
 
                     frame_annotations[label_timestamp]['lidar_labels'].append({'id': len(frame_annotations[label_timestamp]['lidar_labels']),
                                                                                 'name': track_id,
-                                                                                'label': self.label_map[row['label_name']],
+                                                                                'label': self.LABEL_STRING_TO_LABEL_ID[row['label_name']],
                                                                                 '3D_bbox': cuboid,
                                                                                 'num_points':
                                                                                     -1,
@@ -272,8 +261,8 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
 
                     if track_id not in annotations['3d_labels']:
-                        annotations['3d_labels'][track_id]['dynamic_flag'] = 1 if self.label_map[row['label_name']] in [2,4,8,9] else 0 
-                        annotations['3d_labels'][track_id]['type'] = self.label_map[row['label_name']]
+                        annotations['3d_labels'][track_id]['dynamic_flag'] = 1 if self.LABEL_STRING_TO_LABEL_ID[row['label_name']] in self.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else 0 
+                        annotations['3d_labels'][track_id]['type'] = self.LABEL_STRING_TO_LABEL_ID[row['label_name']]
                         annotations['3d_labels'][track_id]['lidar'] = {}
 
 
@@ -283,7 +272,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                                                                         'global_accel': -1,}
                 
                     # TODO: check if this user-defined threshold makes sense
-                    if self.label_map[row['label_name']] not in [0,3] and np.linalg.norm([row['velocity_x'], row['velocity_y']]) >= 1/3.6:
+                    if self.LABEL_STRING_TO_LABEL_ID[row['label_name']] not in self.LABEL_STRINGS_UNCONDITIONALLY_STATIC and np.linalg.norm([row['velocity_x'], row['velocity_y']]) >= 1/3.6:
                             annotations['3d_labels'][track_id]['dynamic_flag'] = 1
 
             # Save the accumulated data
