@@ -490,7 +490,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         # Load point cloud (already motion-compensated)
         mesh = pcu.load_triangle_mesh(source_pc_path)
-        xyz, intensity = mesh.vertex_data.positions, mesh.vertex_data.custom_attributes['intensity'].flatten()
+
+        # Remove all points with *duplicate* coordinates (these seem to be present in the input already)
+        # and remember the indices of the valid points to load other attributes
+        xyz, unique_input_idxs = np.unique(mesh.vertex_data.positions, axis=0, return_index=True) 
+        intensity = mesh.vertex_data.custom_attributes['intensity'][unique_input_idxs].flatten()
         point_count = xyz.shape[0]
 
         # Create 3D ray structure of 3D rays in space with accompanying metadata.
@@ -501,8 +505,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         if all(key in mesh.vertex_data.custom_attributes for key in ('timestamp_lo', 'timestamp_hi')):
             # Perform time-dependent per sample start-point interpolation,
             # stitching together uin64 timestamps from lo/hi parts
-            ts_lo = np.array(mesh.vertex_data.custom_attributes["timestamp_lo"]).astype(np.uint32, copy=False)
-            ts_hi = np.array(mesh.vertex_data.custom_attributes["timestamp_hi"]).astype(np.uint32, copy=False)
+            ts_lo = np.array(mesh.vertex_data.custom_attributes["timestamp_lo"])[unique_input_idxs].astype(np.uint32)
+            ts_hi = np.array(mesh.vertex_data.custom_attributes["timestamp_hi"])[unique_input_idxs].astype(np.uint32)
             timestamps = (np.left_shift(ts_hi, 32, dtype=np.uint64) + ts_lo).flatten()
 
             # Special case: allow snapping to end-of-frame timestamp for *initial* frames as
