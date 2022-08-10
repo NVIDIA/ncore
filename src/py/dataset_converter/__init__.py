@@ -211,9 +211,10 @@ class BaseNvidiaDataConverter(DataConverter):
     # Approximate spin time in microseconds
     LIDAR_APPROX_SPIN_TIME = 1e6 / 10 # based on 10Hz frequency
 
-    # Minimum / maximum distances (in meters) for point cloud measurements (to filter out invalid points, points on the ego-car),
+    # Vehicle BBOX padding distance and minimum / maximum distances (in meters) for point cloud measurements (to filter out invalid points, points on the ego-car),
     # as well as minimum height (there might be some spurious measurements bellow ground)
-    LIDAR_FILTER_MIN_DISTANCE = 3.5
+    LIDAR_FILTER_VEHICLE_BBOX_PADDING = 0.3
+    LIDAR_FILTER_MIN_DISTANCE = 3.5 # used by NV-deepmap
     LIDAR_FILTER_MAX_DISTANCE = 100.0
     LIDAR_FILTER_MIN_RIG_HEIGHT = -0.5
 
