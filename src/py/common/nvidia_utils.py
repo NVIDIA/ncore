@@ -252,6 +252,33 @@ def camera_intrinsic_parameters(sensor: dict,
     return np.array(intrinsic, dtype=np.float32)
 
 
+def vehicle_bbox(rig: dict) -> np.array:
+    """ Parses the vehicle's bounding-box from the 'vehicle' property
+        of a rig and converts it into DSAI bbox conventions.
+
+    Args:
+        rig: A parsed rig json file
+    Returns:
+        bbox: The vehicles bounding-box represented in the rig frame
+    """
+
+    body = rig['rig']['vehicle']['value']['body']
+
+    bbox_position = np.array(body['boundingBoxPosition'],
+                             dtype=np.float32)  # defined as 'midpoint of rear bottom edge' in rig frame
+
+    length = body['length']
+    width = body['width']
+    height = body['height']
+
+    # only offsets in x/z are required to determine centroid, as bbox_position is already centered laterally
+    centroid = bbox_position + np.array([length / 2, 0.0, height / 2], dtype=np.float32)
+    dimensions = np.array([length, width, height], dtype=np.float32)
+    orientation = np.zeros(3, dtype=np.float32)  # vehicle bbox is aligned with the rig, i.e., is an axis-aligned bbox
+
+    return np.hstack([centroid, dimensions, orientation])
+
+
 def camera_car_mask(sensor, scale_to_source_resolution=True):
     """Parses a camera car-mask image from a rig-style camera sensor dictionary.
 
