@@ -225,8 +225,6 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                         row['dim_x'],
                         row['dim_y'],
                         row['dim_z'],
-                        row['velocity_x'],
-                        row['velocity_y'],  # Note: `velocity_z` is currently unused
                         row['rot_x'],
                         row['rot_y'],
                         row['rot_z']

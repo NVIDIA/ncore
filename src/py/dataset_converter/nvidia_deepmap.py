@@ -237,9 +237,9 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                     track_id = row['trackline_id']
                     label_timestamp = row['detection_timestamp']
                     
-                    cuboid = np.array([row['centroid_x'], row['centroid_y'], row['centroid_z'], row['dim_x'],
-                                    row['dim_y'], row['dim_z'], row['velocity_x'], row['velocity_y'],
-                                    row['rot_x'], row['rot_y'], row['rot_z']], dtype=np.float32)
+                    cuboid = np.array([row['centroid_x'], row['centroid_y'], row['centroid_z'], 
+                                       row['dim_x'], row['dim_y'], row['dim_z'],
+                                       row['rot_x'], row['rot_y'], row['rot_z']], dtype=np.float32)
                     
                     if label_timestamp not in frame_annotations:
                         frame_annotations[label_timestamp]['lidar_labels'] = []

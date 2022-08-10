@@ -357,8 +357,8 @@ def is_within_3d_bbox(points, box, normals=None, return_points_in_bbox_frame=Fal
     """Checks whether a point is in a 3d box given a set of points and a box.
         Args:
             point: [N, 3] tensor. Inner dims are: [x, y, z].
-            box: [7] tensor. Inner dims are: [center_x, center_y, center_z, length,
-            width, height, heading].
+            box: [9,] tensor. Inner dims are: [center_x, center_y, center_z, length, width, height, roll, pitch, yaw].
+                              roll/pitch/yaw are in radians.
             name: tf name scope.
         Returns:
             point_in_box; [N,] boolean array.
