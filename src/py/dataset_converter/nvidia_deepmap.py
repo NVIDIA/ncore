@@ -2,6 +2,7 @@
 
 import os
 import glob
+import json
 import cv2
 import numpy as np
 
@@ -12,25 +13,25 @@ from protobuf_to_dict import protobuf_to_dict
 
 from src.protos.deepmap import track_data_pb2, pointcloud_pb2
 from src.py.dataset_converter import BaseNvidiaDataConverter
-from src.py.common.common import (PoseInterpolator, save_pkl, load_pkl, save_pc_dat, points_in_bboxes)
+from src.py.common.common import (PoseInterpolator, save_pkl, load_pkl, save_pc_dat, points_in_bboxes, is_within_3d_bbox)
 from src.cpp.av_utils import unwind_lidar
 from src.py.common.nvidia_utils import (compute_ftheta_parameters, extract_pose, extract_sensor_2_sdc,
-                              parse_rig_sensors_from_file, sensor_to_rig, camera_intrinsic_parameters, compute_fw_polynomial,
-                              camera_car_mask)
+                              parse_rig_sensors_from_dict, sensor_to_rig, camera_intrinsic_parameters, compute_fw_polynomial,
+                              camera_car_mask, vehicle_bbox)
 
 
 class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
     """
     NVIDIA-specific data converter (based on DeepMap tracks)
     """
-    
+
     def __init__(self, config):
         super().__init__(config)
 
         self.sequence_pathnames = sorted(glob.glob(os.path.join(self.root_dir, '*/')))
 
-        
-    def convert_one(self, sequence_path): 
+
+    def convert_one(self, sequence_path):
         """
         Runs the conversion of a single sequence
         
@@ -42,7 +43,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
         """
 
         self.sequence_name = sequence_path.split(os.sep)[-2]
-        
+
         sequence_tracks = sorted(glob.glob(os.path.join(sequence_path,'tracks','*/')))
 
         sub_sequence_names = []
@@ -60,7 +61,11 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             annotations = {}
             annotations['3d_labels'] = defaultdict(dict)
             frame_annotations = defaultdict(dict)
-            
+
+            # Read rig json file
+            with open(os.path.join(sequence_path, 'rig.json'), 'r') as fp:
+                self.rig = json.load(fp)
+
             # Initialize the track aligned track record structure
             self.track_data = track_data_pb2.AlignedTrackRecords()
 
@@ -72,18 +77,18 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             # Extract all the lidar paths, timestamps and poses from the track record
             self.track_data = protobuf_to_dict(self.track_data)
 
-            self.decode_poses_timestamps() 
+            self.decode_poses_timestamps()
 
             self.decode_labels(sequence_path, annotations, frame_annotations)
 
             self.decode_lidar(sequence_path)
-            
+
             self.decode_images(sequence_path)
 
             sub_sequence_names.append(os.path.join(self.sequence_name, self.track_name))
 
         return sub_sequence_names
-            
+
     def decode_poses_timestamps(self):
         # Extract poses and timestamps, which are converted to the nvidia convention
         if 'lidar_records' in self.track_data:
@@ -113,22 +118,22 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
         if os.path.exists(os.path.join(self.output_dir, self.sequence_name, 'base_pose.npz')):
             self.base_pose = np.load(os.path.join(self.output_dir, self.sequence_name, 'base_pose.npz'))['base_pose']
-        else:   
+        else:
             self.base_pose = self.poses[0]
             np.savez(os.path.join(self.output_dir, self.sequence_name, 'base_pose.npz'), base_pose=self.base_pose)
-        
+
         # Convert the poses to the sequence coordinate frame
         self.poses = np.linalg.inv(self.base_pose) @ self.poses
 
         # Save the poses
-        poses_save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, 
+        poses_save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name,
                         self.poses_save_dir, 'poses.npz')
 
         np.savez(poses_save_path, base_pose=self.base_pose, ego_poses=self.poses, timestamps=self.poses_timestamps)
 
     def decode_images(self, sequence_path):
-        # Parse the rig calibration file 
-        calibration_data = parse_rig_sensors_from_file(os.path.join(sequence_path,'rig.json'))
+        # Parse the rig calibration file
+        calibration_data = parse_rig_sensors_from_dict(self.rig)
         camera_timestamps = defaultdict(list)
 
         # Filter the images based on the pose timestamps
@@ -156,7 +161,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             while success:
                 if frame_timestamps[0,0] <= count <= frame_timestamps[-1,0]:
                     save_path = os.path.join(camera_base_save_path, str(save_frame).zfill(self.INDEX_DIGITS) + '.jpeg')
-                    cv2.imwrite(save_path, image)     # save frame as JPEG file   
+                    cv2.imwrite(save_path, image)     # save frame as JPEG file
                     save_frame += 1
 
                 if count > frame_timestamps[-1,0]:
@@ -164,7 +169,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 success,image = vidcap.read()
                 count += 1
 
-            # Extract the metadata (get the relative transformation to the lidar sensor as the rig might change                
+            # Extract the metadata (get the relative transformation to the lidar sensor as the rig might change
             T_cam_rig = sensor_to_rig(calibration_data[cam_id_rig])
             T_lidar_rig = sensor_to_rig(calibration_data[self.LIDAR_SENSORNAME])
             lidar_calib_path = os.path.join(sequence_path, 'to_vehicle_transform_lidar00.pb.txt')
@@ -174,7 +179,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             T_cam_rig = T_lidar_sdc @ np.linalg.inv(T_lidar_rig) @ T_cam_rig
 
             intrinsic = camera_intrinsic_parameters(calibration_data[cam_id_rig])
-            
+
             # Estimate the forward polynomial and other F-theta parameters
             fw_poly_coeff = compute_fw_polynomial(intrinsic)
             max_ray_distortion, max_angle = compute_ftheta_parameters(np.concatenate((intrinsic, fw_poly_coeff)))
@@ -204,7 +209,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 metadata['ego_pose_timestamps'] = np.array([sofTimestamp, eofTimestamp])
                 metadata['ego_pose_s'] = cam_pose_interpolator.interpolate_to_timestamps(sofTimestamp)[0]
                 metadata['ego_pose_e'] = cam_pose_interpolator.interpolate_to_timestamps(eofTimestamp)[0]
-    
+
                 metadata_save_path = os.path.join(camera_base_save_path, str(frame_idx).zfill(self.INDEX_DIGITS) + '.pkl')
 
                 save_pkl(metadata, metadata_save_path)
@@ -216,16 +221,16 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
         for cam in camera_timestamps.keys():
             camera_timestamps[cam] = np.stack(camera_timestamps[cam])
 
-        image_t_save_path =  os.path.join(self.output_dir, self.sequence_name, self.track_name, 
+        image_t_save_path =  os.path.join(self.output_dir, self.sequence_name, self.track_name,
                         self.image_save_dir, 'timestamps.pkl')
 
         save_pkl(camera_timestamps, image_t_save_path)
 
     def decode_labels(self, sequence_path, annotations, frame_annotations):
-        
+
         # Check if the labels for this sequence were already extracted (done only once, not for each track)
         if not os.path.exists(os.path.join(self.output_dir, self.sequence_name, 'frame_labels.pkl')):
-            # Read the pandas file 
+            # Read the pandas file
             dataset = ParquetDataset(os.path.join(sequence_path, 'labels', 'autolabels.parquet'))
             table = dataset.read()
             label_data = table.to_pandas()
@@ -233,14 +238,14 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
             for _, row in label_data.iterrows():
                 if row['label_name'] in self.LABEL_STRING_TO_LABEL_ID.keys():
-                    
+
                     track_id = row['trackline_id']
                     label_timestamp = row['detection_timestamp']
-                    
-                    cuboid = np.array([row['centroid_x'], row['centroid_y'], row['centroid_z'], 
+
+                    cuboid = np.array([row['centroid_x'], row['centroid_y'], row['centroid_z'],
                                        row['dim_x'], row['dim_y'], row['dim_z'],
                                        row['rot_x'], row['rot_y'], row['rot_z']], dtype=np.float32)
-                    
+
                     if label_timestamp not in frame_annotations:
                         frame_annotations[label_timestamp]['lidar_labels'] = []
 
@@ -261,19 +266,19 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
 
                     if track_id not in annotations['3d_labels']:
-                        annotations['3d_labels'][track_id]['dynamic_flag'] = 1 if self.LABEL_STRING_TO_LABEL_ID[row['label_name']] in self.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else 0 
+                        annotations['3d_labels'][track_id]['dynamic_flag'] = 1 if self.LABEL_STRING_TO_LABEL_ID[row['label_name']] in self.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else 0
                         annotations['3d_labels'][track_id]['type'] = self.LABEL_STRING_TO_LABEL_ID[row['label_name']]
                         annotations['3d_labels'][track_id]['lidar'] = {}
 
 
-                    annotations['3d_labels'][track_id]['lidar'][label_timestamp] = {'3D_bbox': cuboid, 
+                    annotations['3d_labels'][track_id]['lidar'][label_timestamp] = {'3D_bbox': cuboid,
                                                                         'num_point': -1,
-                                                                        'global_speed': -1, 
+                                                                        'global_speed': -1,
                                                                         'global_accel': -1,}
-                
+
                     # TODO: check if this user-defined threshold makes sense
                     if self.LABEL_STRING_TO_LABEL_ID[row['label_name']] not in self.LABEL_STRINGS_UNCONDITIONALLY_STATIC and np.linalg.norm([row['velocity_x'], row['velocity_y']]) >= 1/3.6:
-                            annotations['3d_labels'][track_id]['dynamic_flag'] = 1
+                        annotations['3d_labels'][track_id]['dynamic_flag'] = 1
 
             # Save the accumulated data
             labels_save_path =  os.path.join(self.output_dir, self.sequence_name, 'labels.pkl')
@@ -285,15 +290,19 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
     def decode_lidar(self, sequence_path):
         annotations  = load_pkl(os.path.join(self.output_dir, self.sequence_name, 'labels.pkl'))
-                        
+
         frame_annotations  = load_pkl(os.path.join(self.output_dir, self.sequence_name, 'frame_labels.pkl'))
 
-        fa_timestamps = np.array(sorted(list(frame_annotations.keys())))                        
+        fa_timestamps = np.array(sorted(list(frame_annotations.keys())))
 
         lidar_calib_path = os.path.join(sequence_path, 'to_vehicle_transform_lidar00.pb.txt')
         T_lidar_rig = extract_sensor_2_sdc(lidar_calib_path)
 
-        # Initialize the pose interpolator object 
+        # Load vehicle bounding box (defined in rig frame)
+        vehicle_bbox_rig = vehicle_bbox(self.rig)
+        vehicle_bbox_rig[3:6] += self.LIDAR_FILTER_VEHICLE_BBOX_PADDING  # pad the bounding box slightly
+
+        # Initialize the pose interpolator object
         pose_interpolator = PoseInterpolator(self.poses, self.poses_timestamps)
 
         lidar_end_timestmap = []
@@ -308,19 +317,17 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 with open(os.path.join(sequence_path, 'tracks', frame_path), 'rb') as f:
                     data.ParseFromString(f.read())
 
-
                 raw_pc = np.concatenate([np.array(data.data.points_x)[:,None],
-                                        np.array(data.data.points_y)[:,None],
-                                        np.array(data.data.points_z)[:,None]], axis=1)
+                                         np.array(data.data.points_y)[:,None],
+                                         np.array(data.data.points_z)[:,None]], axis=1)
 
-                
-                # spherical_coordinates = euclidean_2_spherical_coords(raw_pc)           
+                # spherical_coordinates = euclidean_2_spherical_coords(raw_pc)
                 intensities = np.frombuffer(data.data.intensities, dtype=np.uint8)
 
                 # Save the end time stamp of the lidar spin
                 lidar_end_timestmap.append(data.meta_data.end_timestamp_microseconds)
 
-                # Find the closest frame in the annotations 
+                # Find the closest frame in the annotations
                 time_diff = np.abs(fa_timestamps - (data.meta_data.end_timestamp_microseconds))
                 annotation_frame_idx = np.argmin(time_diff)
 
@@ -328,36 +335,45 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                     print("no corresponding frame found")
                     continue
 
-                #TODO: Talk with deepmap about removing this delta t here that needs to be hardcoded
-                column_timestamps = np.array(data.data.column_timestamps_microseconds)
-                column_poses = pose_interpolator.interpolate_to_timestamps(column_timestamps)
-                T_lidar_globals = column_poses @ T_lidar_rig[None,:,:]
+                # Transform points to rig frame to perform filtering
+                raw_pc_homogeneous = np.row_stack([raw_pc.transpose(), np.ones(raw_pc.shape[0], dtype=np.float32)])  # 4 x N
+                raw_pc_homogeneous_rig = T_lidar_rig @ raw_pc_homogeneous  # 4 x N
 
                 # Filter out points that are more than LIDAR_FILTER_MIN_RIG_HEIGHT bellow ground (there are some spurious measurements there)
-                valid_idx_z = raw_pc[:,2] + T_lidar_rig[2,3] > self.LIDAR_FILTER_MIN_RIG_HEIGHT
-                transformed_pc = unwind_lidar(raw_pc, T_lidar_globals.reshape(-1,4), np.array(data.data.column_indices).reshape(-1,1))
+                valid_idx_z = raw_pc_homogeneous_rig[2, :] > self.LIDAR_FILTER_MIN_RIG_HEIGHT
+
+                # Filter outs points that are inside the vehicles bounding-box
+                valid_idxs_vehicle_bbox = np.logical_not(is_within_3d_bbox(raw_pc_homogeneous_rig[0:3, :].transpose(), vehicle_bbox_rig))
+
+                # Determine per-column rig-to-world pose and compute per-column lidar-to-world transformations
+                column_timestamps = np.array(data.data.column_timestamps_microseconds)
+                column_poses = pose_interpolator.interpolate_to_timestamps(column_timestamps)
+                T_column_lidar_worlds = column_poses @ T_lidar_rig[None,:,:]
+
+                # Perform per-column unwinding, transforming from lidar to world coordinates
+                transformed_pc = unwind_lidar(raw_pc, T_column_lidar_worlds.reshape(-1,4), np.array(data.data.column_indices).reshape(-1,1))
 
                 # Filter points based on distances
-                dist = np.linalg.norm(transformed_pc[:,:3] - transformed_pc[:,3:6],axis=1)
+                dist = np.linalg.norm(transformed_pc[:,:3] - transformed_pc[:,3:6], axis=1)
                 transformed_pc = np.concatenate([transformed_pc, dist[:,None], intensities[:, None], -1*np.ones_like(dist[:,None])], axis=1)
 
-                # Filter points on the distances LIDAR_FILTER_MIN_DISTANCE / LIDAR_FILTER_MAX_DISTANCE (remove points that are very far away and points that lie on the ego car)
-                valid_idx_dist = np.logical_and(np.greater_equal(dist,self.LIDAR_FILTER_MIN_DISTANCE),np.less_equal(dist,self.LIDAR_FILTER_MAX_DISTANCE))
-                valid_idx = np.logical_and(valid_idx_z, valid_idx_dist)
+                # Filter points on the distances LIDAR_FILTER_MAX_DISTANCE (remove points that are very far away)
+                valid_idx_dist = np.less_equal(dist, self.LIDAR_FILTER_MAX_DISTANCE)
+                valid_idx = np.logical_and(np.logical_and(valid_idx_z, valid_idxs_vehicle_bbox), valid_idx_dist)
 
-                # 3D rays in space with accompanying metadata. 
+                # 3D rays in space with accompanying metadata.
                 # Format; x_s, y_s, z_s, x_e, y_e, z_e, dist, intensity, dynamic flag
                 # Dynamic flag is set to -1 if the information is not available, 0 static, 1 = dynamic
                 raw_pc = raw_pc[valid_idx,:]
                 transformed_pc = transformed_pc[valid_idx,:]
-                
-                # Save the per frame label 
+
+                # Save the per frame label
                 anno_save_path =  os.path.join(self.output_dir, self.sequence_name, self.track_name,
                         self.label_save_dir, str(frame_idx).zfill(self.INDEX_DIGITS) + '.pkl')
 
                 save_pkl(frame_annotations[fa_timestamps[annotation_frame_idx]], anno_save_path)
- 
-                # Use the bounding boxes to remove dynamic objects 
+
+                # Use the bounding boxes to remove dynamic objects
                 dynamic_flag = np.zeros_like(transformed_pc[:,0])
                 for label in frame_annotations[fa_timestamps[annotation_frame_idx]]['lidar_labels']:
                     label_id = label['name']
@@ -371,8 +387,8 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                         dynamic_flag[bbox_idxs != -1] = 1
 
                 transformed_pc[:,-1] = dynamic_flag
-                
-                # Use the dynamic masks to remove objects 
+
+                # Use the dynamic masks to remove objects
                 # dynamic_flag = []
                 # with open(os.path.join(sequence_path, 'tracks', frame_path.replace('lidar_00', 'lidar_00_dynamic_point_masks').replace('.ppb','.pb')), 'rb') as f:
                 #     while True:
