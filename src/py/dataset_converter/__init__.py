@@ -219,6 +219,9 @@ class BaseNvidiaDataConverter(DataConverter):
     LIDAR_FILTER_MAX_DISTANCE = 100.0
     LIDAR_FILTER_MIN_RIG_HEIGHT = -0.5
 
+    # Label BBOX padding distance (in meters) to enlarge bounding boxes for per-point dynamic-flag assignment
+    LIDAR_DYNAMIC_FLAG_BBOX_PADDING = 3.0
+
     LABEL_STRING_TO_LABEL_ID = {
         'unknown': 0,
         'automobile': 1,

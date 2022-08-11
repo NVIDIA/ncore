@@ -13,7 +13,7 @@ from protobuf_to_dict import protobuf_to_dict
 
 from src.protos.deepmap import track_data_pb2, pointcloud_pb2
 from src.py.dataset_converter import BaseNvidiaDataConverter
-from src.py.common.common import (PoseInterpolator, save_pkl, load_pkl, save_pc_dat, points_in_bboxes, is_within_3d_bbox)
+from src.py.common.common import (PoseInterpolator, save_pkl, load_pkl, save_pc_dat, is_within_3d_bbox)
 from src.cpp.av_utils import unwind_lidar
 from src.py.common.nvidia_utils import (compute_ftheta_parameters, extract_pose, extract_sensor_2_sdc,
                               parse_rig_sensors_from_dict, sensor_to_rig, camera_intrinsic_parameters, compute_fw_polynomial,
@@ -381,10 +381,8 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                     # If the object is dynamic update the points that fall in that bounding box
                     if dynamic_state:
                         bbox = label['3D_bbox']
-                        bbox[3:6] = 3 + bbox[3:6] # Enlarge the bounding box
-                        bbox_idxs = points_in_bboxes(raw_pc, bbox.reshape(1,-1))
-
-                        dynamic_flag[bbox_idxs != -1] = 1
+                        bbox[3:6] += self.LIDAR_DYNAMIC_FLAG_BBOX_PADDING # enlarge the bounding box
+                        dynamic_flag[is_within_3d_bbox(raw_pc, bbox)] = 1
 
                 transformed_pc[:,-1] = dynamic_flag
 

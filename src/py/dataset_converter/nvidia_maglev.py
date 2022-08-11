@@ -19,7 +19,7 @@ from functools import partial
 from src.py.dataset_converter import BaseNvidiaDataConverter
 from src.py.common.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_dict, camera_intrinsic_parameters,
                                         compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask, vehicle_bbox)
-from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator, points_in_bboxes, is_within_3d_bbox)
+from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator, is_within_3d_bbox)
 
 
 class NvidiaMaglevConverter(BaseNvidiaDataConverter):
@@ -579,10 +579,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             # If the object is dynamic update the points that fall in that bounding box
             if self.labels['3d_labels'][label_id]['dynamic_flag']:
                 bbox = frame_label['3D_bbox']
-                bbox[3:6] = 3 + bbox[3:6]  # Enlarge the bounding box (remark: verify this parameter)
-                bbox_idxs = points_in_bboxes(xyz, bbox.reshape(1, -1))
-
-                dynamic_flag[bbox_idxs != -1] = 1
+                bbox[3:6] += self.LIDAR_DYNAMIC_FLAG_BBOX_PADDING # enlarge the bounding box
+                dynamic_flag[is_within_3d_bbox(xyz, bbox)] = 1
 
         # Assemble full point-cloud ray structure
         point_cloud = np.column_stack((xyz_s, xyz_e, dist, intensity, dynamic_flag))
