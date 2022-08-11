@@ -7,6 +7,8 @@ import tempfile
 import subprocess
 import logging
 
+import numpy as np
+
 from PIL import Image
 from abc import ABC, abstractmethod
 
@@ -92,13 +94,13 @@ class DataConverter(ABC):
                 self.run_instance_segmentation(sub_sequence_name)
 
     def convert(self):
-        self.logger.info("start converting ...")
+        self.logger.info(f"Start converting {self.sequence_pathnames} ...")
 
         # Perform single-threaded conversion in main thread
         for sequence_pathname in self.sequence_pathnames:
             self.convert_sequence(sequence_pathname)
 
-        self.logger.info("finished conversion ...")
+        self.logger.info("Finished conversion ...")
 
     def run_semantic_segmentation(self, sequence_name):
         img_folders = glob.glob(os.path.join(self.output_dir, sequence_name, self.image_save_dir) + '/*/')
@@ -211,11 +213,14 @@ class BaseNvidiaDataConverter(DataConverter):
     # Approximate spin time in microseconds
     LIDAR_APPROX_SPIN_TIME = 1e6 / 10 # based on 10Hz frequency
 
-    # Minimum / maximum distances (in meters) for point cloud measurements (to filter out invalid points, points on the ego-car),
+    # Vehicle BBOX padding distances (for each axis) and maximum distances (in meters) for point cloud measurements (to filter points on the ego-car / out invalid points),
     # as well as minimum height (there might be some spurious measurements bellow ground)
-    LIDAR_FILTER_MIN_DISTANCE = 3.5
+    LIDAR_FILTER_VEHICLE_BBOX_PADDING = np.array([0.4, 0.2, 1.0], dtype=np.float32)
     LIDAR_FILTER_MAX_DISTANCE = 100.0
     LIDAR_FILTER_MIN_RIG_HEIGHT = -0.5
+
+    # Label BBOX padding distance (in meters) to enlarge bounding boxes for per-point dynamic-flag assignment
+    LIDAR_DYNAMIC_FLAG_BBOX_PADDING = 3.0
 
     LABEL_STRING_TO_LABEL_ID = {
         'unknown': 0,

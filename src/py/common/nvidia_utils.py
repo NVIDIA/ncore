@@ -252,6 +252,33 @@ def camera_intrinsic_parameters(sensor: dict,
     return np.array(intrinsic, dtype=np.float32)
 
 
+def vehicle_bbox(rig: dict) -> np.array:
+    """ Parses the vehicle's bounding-box from the 'vehicle' property
+        of a rig and converts it into DSAI bbox conventions.
+
+    Args:
+        rig: A parsed rig json file
+    Returns:
+        bbox: The vehicles bounding-box represented in the rig frame
+    """
+
+    body = rig['rig']['vehicle']['value']['body']
+
+    bbox_position = np.array(body['boundingBoxPosition'],
+                             dtype=np.float32)  # defined as 'midpoint of rear bottom edge' in rig frame
+
+    length = body['length']
+    width = body['width']
+    height = body['height']
+
+    # only offsets in x/z are required to determine centroid, as bbox_position is already centered laterally
+    centroid = bbox_position + np.array([length / 2, 0.0, height / 2], dtype=np.float32)
+    dimensions = np.array([length, width, height], dtype=np.float32)
+    orientation = np.zeros(3, dtype=np.float32)  # vehicle bbox is aligned with the rig, i.e., is an axis-aligned bbox
+
+    return np.hstack([centroid, dimensions, orientation])
+
+
 def camera_car_mask(sensor, scale_to_source_resolution=True):
     """Parses a camera car-mask image from a rig-style camera sensor dictionary.
 
@@ -335,46 +362,7 @@ def camera_car_mask(sensor, scale_to_source_resolution=True):
     return car_mask_image
 
 
-def get_rig_info(json_path, camera_folder_list = None):
-    """
-    Get data information from rig json file
-
-    Args:
-        json_path (string): json file path
-        camera_folder_list (list): list of camera folders
-    Return:
-        rig_info (struct): data information from rig json
-    """
-    if not os.path.isfile(json_path):
-        print('File path {} does not exist'.format(json_path))
-
-    print("Read json file {}". format(json_path))
-    with open(json_path) as json_file:
-        json_load = json.load(json_file)
-
-    rig_info = {}
-    sensor_data = json_load['rig']['sensors']
-    for data in sensor_data:
-        sensor_name = data['name']
-        cx = float(data['properties']['cx'])
-        cy = float(data['properties']['cy'])
-        bwpoly = data['properties']['bw-poly']
-        bwpoly_data = bwpoly.split('\"')[0].split(' ')
-        bwpoly_vec = np.array([float(bwpoly_data[0]), float(bwpoly_data[1]), float(bwpoly_data[2]),
-                               float(bwpoly_data[3]), float(bwpoly_data[4])], dtype=float)
-
-        rpy = data['nominalSensor2Rig_FLU']['roll-pitch-yaw']
-        rpy_vec = np.array([float(rpy[0]), float(rpy[1]), float(rpy[2])], dtype=float)
-        t = data['nominalSensor2Rig_FLU']['t']
-        t_vec = np.array([float(t[0]), float(t[1]), float(t[2])], dtype=float)
-
-        sensor = Sensor_rig(name=sensor_name, rpy=rpy_vec, t=t_vec, cx=cx, cy=cy, bwpoly=bwpoly_vec)
-        rig_info[sensor_name] = sensor
-
-    return rig_info
-
-
-# Functions realted to the F-THeta camera model
+# Functions related to the F-THeta camera model
 def numericallyStable2Norm2D(x, y):
     absX = abs(x)
     absY = abs(y)

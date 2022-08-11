@@ -17,11 +17,9 @@ from collections import defaultdict
 from functools import partial
 
 from src.py.dataset_converter import BaseNvidiaDataConverter
-from src.py.common.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_dict,
-                              camera_intrinsic_parameters,
-                              compute_fw_polynomial, compute_ftheta_parameters,
-                              camera_car_mask)
-from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator, points_in_bboxes)
+from src.py.common.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_dict, camera_intrinsic_parameters,
+                                        compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask, vehicle_bbox)
+from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator, is_within_3d_bbox)
 
 
 class NvidiaMaglevConverter(BaseNvidiaDataConverter):
@@ -424,6 +422,10 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Load extrinsics
         T_lidar_rig = sensor_to_rig(self.sensors_calibration_data[self.LIDAR_SENSORNAME])
 
+        # Load vehicle bounding box (defined in rig frame)
+        vehicle_bbox_rig = vehicle_bbox(self.rig)
+        vehicle_bbox_rig[3:6] += self.LIDAR_FILTER_VEHICLE_BBOX_PADDING  # pad the bounding box slightly
+
         # Initialize the pose interpolator object
         pose_interpolator = PoseInterpolator(self.poses, self.poses_timestamps)
 
@@ -459,6 +461,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                         lidar_base_save_path=lidar_base_save_path,
                         T_lidar_rig=T_lidar_rig,
                         pose_interpolator=pose_interpolator,
+                        vehicle_bbox_rig=vehicle_bbox_rig,
                         num_frames=len(frame_numbers)),
                 zip(range(len(frame_numbers)), frame_numbers, frame_timestamps))
 
@@ -468,7 +471,13 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         logger.info(f'> processed {len(frame_timestamps)} point clouds')
 
-    def decode_lidar_process(self, args, logger, lidar_base_save_path, T_lidar_rig, pose_interpolator,
+    def decode_lidar_process(self,
+                             args,
+                             logger,
+                             lidar_base_save_path,
+                             T_lidar_rig,
+                             pose_interpolator,
+                             vehicle_bbox_rig,
                              num_frames):
         """ Process a single lidar frame executed by a dedicated process """
         # Add PID to logger
@@ -490,7 +499,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         # Load point cloud (already motion-compensated)
         mesh = pcu.load_triangle_mesh(source_pc_path)
-        xyz, intensity = mesh.vertex_data.positions, mesh.vertex_data.custom_attributes['intensity'].flatten()
+
+        # Remove all points with *duplicate* coordinates (these seem to be present in the input already)
+        # and remember the indices of the valid points to load other attributes
+        xyz, unique_input_idxs = np.unique(mesh.vertex_data.positions, axis=0, return_index=True) 
+        intensity = mesh.vertex_data.custom_attributes['intensity'][unique_input_idxs].flatten()
         point_count = xyz.shape[0]
 
         # Create 3D ray structure of 3D rays in space with accompanying metadata.
@@ -501,8 +514,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         if all(key in mesh.vertex_data.custom_attributes for key in ('timestamp_lo', 'timestamp_hi')):
             # Perform time-dependent per sample start-point interpolation,
             # stitching together uin64 timestamps from lo/hi parts
-            ts_lo = np.array(mesh.vertex_data.custom_attributes["timestamp_lo"]).astype(np.uint32, copy=False)
-            ts_hi = np.array(mesh.vertex_data.custom_attributes["timestamp_hi"]).astype(np.uint32, copy=False)
+            ts_lo = np.array(mesh.vertex_data.custom_attributes["timestamp_lo"])[unique_input_idxs].astype(np.uint32)
+            ts_hi = np.array(mesh.vertex_data.custom_attributes["timestamp_hi"])[unique_input_idxs].astype(np.uint32)
             timestamps = (np.left_shift(ts_hi, 32, dtype=np.uint64) + ts_lo).flatten()
 
             # Special case: allow snapping to end-of-frame timestamp for *initial* frames as
@@ -539,6 +552,9 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         xyz_e = T_lidar_rig @ xyz_e
         valid_idxs = xyz_e[2, :] > self.LIDAR_FILTER_MIN_RIG_HEIGHT
 
+        # Filter points inside the vehicles bounding-box
+        valid_idxs &= np.logical_not(is_within_3d_bbox(xyz_e[0:3, :].transpose(), vehicle_bbox_rig))
+
         # Transform points from rig to world frame + drop homogenous dimension and transpose to match output dimension
         xyz_e = T_rig_world @ xyz_e
         xyz_e = xyz_e[:-1, :].transpose()  # N x 3
@@ -563,16 +579,13 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             # If the object is dynamic update the points that fall in that bounding box
             if self.labels['3d_labels'][label_id]['dynamic_flag']:
                 bbox = frame_label['3D_bbox']
-                bbox[3:6] = 3 + bbox[3:6]  # Enlarge the bounding box (remark: verify this parameter)
-                bbox_idxs = points_in_bboxes(xyz, bbox.reshape(1, -1))
-
-                dynamic_flag[bbox_idxs != -1] = 1
+                bbox[3:6] += self.LIDAR_DYNAMIC_FLAG_BBOX_PADDING # enlarge the bounding box
+                dynamic_flag[is_within_3d_bbox(xyz, bbox)] = 1
 
         # Assemble full point-cloud ray structure
         point_cloud = np.column_stack((xyz_s, xyz_e, dist, intensity, dynamic_flag))
 
-        # Filter points based on minimal / max distance and minimal height
-        valid_idxs &= point_cloud[:, 6] > self.LIDAR_FILTER_MIN_DISTANCE
+        # Filter points based on max distance
         valid_idxs &= point_cloud[:, 6] < self.LIDAR_FILTER_MAX_DISTANCE
 
         point_cloud = point_cloud[valid_idxs, :]
