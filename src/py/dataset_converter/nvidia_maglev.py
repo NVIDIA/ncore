@@ -424,6 +424,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         # Load vehicle bounding box (defined in rig frame)
         vehicle_bbox_rig = vehicle_bbox(self.rig)
+        vehicle_bbox_rig[3:6] += self.LIDAR_FILTER_VEHICLE_BBOX_PADDING  # pad the bounding box slightly
 
         # Initialize the pose interpolator object
         pose_interpolator = PoseInterpolator(self.poses, self.poses_timestamps)
@@ -552,9 +553,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         valid_idxs = xyz_e[2, :] > self.LIDAR_FILTER_MIN_RIG_HEIGHT
 
         # Filter points inside the vehicles bounding-box
-        padded_vehicle_bbox_rig = np.copy(vehicle_bbox_rig)
-        padded_vehicle_bbox_rig[3:6] += self.LIDAR_FILTER_VEHICLE_BBOX_PADDING  # pad the bounding box slightly
-        valid_idxs &= ~ is_within_3d_bbox(xyz_e[0:3, :].transpose(), padded_vehicle_bbox_rig)
+        valid_idxs &= np.logical_not(is_within_3d_bbox(xyz_e[0:3, :].transpose(), vehicle_bbox_rig))
 
         # Transform points from rig to world frame + drop homogenous dimension and transpose to match output dimension
         xyz_e = T_rig_world @ xyz_e
