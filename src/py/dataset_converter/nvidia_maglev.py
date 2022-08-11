@@ -199,8 +199,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             self.poses_timestamps, self.seek_sec, self.duration_sec)
 
         # Filter data range based on time bounds, to speed up processing in case of restricted seek / duration data ranges
-        label_data = label_data[label_data['timestamp'].isin(
-            range(start_timestamp_us, end_timestamp_us))]
+        label_data = label_data[label_data['timestamp'].le(end_timestamp_us)]   # all of the rows with timestamp <= end-timestamp
+        label_data = label_data[label_data['timestamp'].ge(start_timestamp_us)] # all of the rows with start-timestamp <= timestamp <= end-timestamp
 
         for ridx in tqdm.tqdm(range(len(label_data))):
             row = label_data.iloc[ridx]
