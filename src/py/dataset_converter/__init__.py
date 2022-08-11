@@ -94,13 +94,13 @@ class DataConverter(ABC):
                 self.run_instance_segmentation(sub_sequence_name)
 
     def convert(self):
-        self.logger.info("start converting ...")
+        self.logger.info(f"Start converting {self.sequence_pathnames} ...")
 
         # Perform single-threaded conversion in main thread
         for sequence_pathname in self.sequence_pathnames:
             self.convert_sequence(sequence_pathname)
 
-        self.logger.info("finished conversion ...")
+        self.logger.info("Finished conversion ...")
 
     def run_semantic_segmentation(self, sequence_name):
         img_folders = glob.glob(os.path.join(self.output_dir, sequence_name, self.image_save_dir) + '/*/')
