@@ -37,7 +37,7 @@ def export_ply_files(root_dir, output_dir, max_dist, start_frame, end_frame, ste
 
     # Get all the files and filter them out based on the start, end, step
     lidar_dir = os.path.join(root_dir, 'lidar')
-    assert os.path.exists(lidar_dir), f"Lidar folder {lidar_dir} doesn't exsist."
+    assert os.path.exists(lidar_dir), f"Lidar folder {lidar_dir} doesn't exist."
 
     files = sorted([os.path.join(lidar_dir, fname) for fname in os.listdir(lidar_dir) if (fname.endswith('.dat') or fname.endswith('.dat.xz'))])
     if end_frame < 0:

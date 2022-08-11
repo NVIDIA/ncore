@@ -60,7 +60,7 @@ def prepare_lidar_frames(root_dir, start_frame, end_frame):
 @click.option('--aabb-scale', type=float, help='The desired aabb scale.', default=16.0)
 @click.option('--use-lidar', is_flag=True, default=False, help="Use also lidar point clouds")
 @click.option('--save-test', is_flag=True, default=False, help="Save the test configs with the same parameters as train")
-@click.option("--index_digits", type=int, help="The number of integer digits to pad counters in output filenames to", default=6)
+@click.option("--index-digits", type=int, help="The number of integer digits to pad counters in output filenames to", default=6)
 @click.version_option('0.1')
 @click.pass_context
 def cli(ctx, *_, **kwargs):

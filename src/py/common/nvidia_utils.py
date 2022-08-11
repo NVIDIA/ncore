@@ -3,17 +3,21 @@
 import json
 import base64
 import logging
-import numpy as np
 
-from typing import Optional
+import tqdm
+
+import numpy as np
+import pyarrow.parquet as pq
+
+from typing import Optional, Tuple
 from PIL import Image
 from google.protobuf import text_format
 from scipy.optimize import curve_fit
 from numpy.polynomial.polynomial import Polynomial
 
 from src.protos.deepmap import transform_pb2, camera_calibration_pb2
-from src.py.common.common import  PoseInterpolator, MaskImage
-from src.py.common.transformations import  euler_2_so3, transform_point_cloud, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
+from src.py.common.common import PoseInterpolator, MaskImage
+from src.py.common.transformations import euler_2_so3, transform_point_cloud, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
 
 
 def extract_sensor_2_sdc(file_path):
@@ -360,6 +364,127 @@ def camera_car_mask(sensor, scale_to_source_resolution=True):
     car_mask_image = MaskImage(car_mask.shape, initial_masks=[(car_mask, MaskImage.MaskType.EGO)])
 
     return car_mask_image
+
+
+def parse_labels(
+    labels_path: str,
+    start_timestamp_us: int,
+    end_timestamp_us: int,
+    label_string_to_label_id: dict[str, int],
+    label_strings_unconditionally_dynamic: set[str],
+    label_strings_unconditionally_static: set[str],
+    logger: logging.Logger,
+
+    # TODO: check if this user-defined velocity threshold makes sense
+    global_speed_dynamic_threshold: float = 1.0 / 3.6
+) -> Tuple[dict, dict]:
+    """Parses a labels file for label tracks and per-frame labels.
+
+       Supports labels in
+         - .parquet (lidar-associated autolabel 4D cuboids)
+       formats
+
+    Args:
+        labels_path: path to labels file
+        start_timestamp_us / end_timestamp_us: start / end timestamp bounds
+        label_string_to_label_id: label strings to label ID map
+        label_strings_unconditionally_dynamic: set of label string identifiers that are unconditionally considered dynamic
+        label_strings_unconditionally_static: set of label string identifiers that are unconditionally considered static
+        logger: logger to use
+    Returns:
+        labels: all tracked labels
+        frame_labels: all per-frame labels
+    """
+
+    # Initialize labels structs
+    labels: dict[str, dict] = {'3d_labels': {}}
+    frame_labels: dict[int, dict] = {}
+
+    # TODO: add format selection once multiple different formats need to be supported (not required currently for single-format)
+
+    # Load parquet file and convert to pandas dataframe
+    label_data = pq.ParquetDataset(labels_path).read().to_pandas()
+
+    # Fix float -> integer datatypes of track IDs / timestamps
+    label_data = label_data.astype({'gt_trackline_id': 'int64', 'timestamp': 'int64'})
+
+    # Filter data range based on time bounds, to speed up processing in case of restricted seek / duration data ranges
+    label_data = label_data[label_data['timestamp'].le(end_timestamp_us)]  # all of the rows with timestamp <= end-timestamp | yapf: disable
+    label_data = label_data[label_data['timestamp'].ge(start_timestamp_us)]  # all of the rows with start-timestamp <= timestamp <= end-timestamp | yapf: disable
+
+    for ridx in tqdm.tqdm(range(len(label_data))):
+        row = label_data.iloc[ridx]
+
+        if row['label_name'] in label_string_to_label_id.keys():
+
+            track_id = row['gt_trackline_id']
+            label_timestamp_us = row['timestamp']
+
+            # Validate time-bounds filter
+            assert label_timestamp_us >= start_timestamp_us and \
+                    label_timestamp_us <= end_timestamp_us, \
+                    f"Unexpected timestamp {label_timestamp_us} of label not in time-ranges [{start_timestamp_us}, {end_timestamp_us}]"
+
+            cuboid = np.array([
+                row['centroid_x'],
+                row['centroid_y'],
+                row['centroid_z'],
+                row['dim_x'],
+                row['dim_y'],
+                row['dim_z'],
+                row['rot_x'],
+                row['rot_y'],
+                row['rot_z'],
+            ], dtype=np.float32) # yapf: disable
+
+            # this is assuming velocity is not relative to the local sensor motion, but w.r.t. fixed scene / world
+            global_speed = np.linalg.norm([row['velocity_x'], row['velocity_y'], row['velocity_z']])
+
+            if label_timestamp_us not in frame_labels:
+                frame_labels[label_timestamp_us] = {}
+                frame_labels[label_timestamp_us]['lidar_labels'] = []
+
+            frame_labels[label_timestamp_us]['lidar_labels'].append({
+                'id':
+                len(frame_labels[label_timestamp_us]['lidar_labels']),
+                'name':
+                track_id,
+                'label':
+                label_string_to_label_id[row['label_name']],
+                '3D_bbox':
+                cuboid,
+                'num_points':
+                -1,
+                'detection_difficulty_level':
+                -1,
+                'combined_difficulty_level':
+                -1,
+                'global_speed':
+                global_speed,
+                'global_accel':
+                -1
+            })
+
+            if track_id not in labels['3d_labels']:
+                labels['3d_labels'][track_id] = {}
+                labels['3d_labels'][track_id][
+                    'dynamic_flag'] = 1 if row['label_name'] in label_strings_unconditionally_dynamic else 0
+                labels['3d_labels'][track_id]['type'] = label_string_to_label_id[row['label_name']]
+                labels['3d_labels'][track_id]['lidar'] = {}
+
+            labels['3d_labels'][track_id]['lidar'][label_timestamp_us] = {
+                '3D_bbox': cuboid,
+                'num_point': -1,
+                'global_speed': global_speed,
+                'global_accel': -1,
+            }
+
+            if row['label_name'] not in label_strings_unconditionally_static and global_speed >= global_speed_dynamic_threshold:
+                labels['3d_labels'][track_id]['dynamic_flag'] = 1
+        else:
+            logger.warn(f"> unhandled label type {row['label_name']}")
+
+    return labels, frame_labels
 
 
 # Functions related to the F-THeta camera model

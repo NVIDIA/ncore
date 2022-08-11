@@ -17,6 +17,8 @@ py_library(
     deps = [
         requirement("numpy"),
         requirement("pillow"),
+        requirement("pyarrow"),
+        requirement("pandas"),  # for pyarrow::to_pandas()
         requirement("scipy"),
         requirement("matplotlib"),
         requirement("tensorflow"),

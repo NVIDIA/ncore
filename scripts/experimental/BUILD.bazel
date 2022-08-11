@@ -7,7 +7,10 @@ py_binary(
     srcs = ["dsai_import_labels.py"],
     deps = [
         requirement("click"),
+        requirement("numpy"),
+        requirement("tqdm"),
         "//src/py/common:pylib",
+        "//src/py/dataset_converter:pylib",
     ],
 )
 

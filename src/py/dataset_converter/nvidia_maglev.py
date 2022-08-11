@@ -7,11 +7,9 @@ import shutil
 import re
 import gc
 import multiprocessing
-import tqdm
 
 import numpy as np
 import point_cloud_utils as pcu
-import pyarrow.parquet as pq
 
 from typing import Optional
 from collections import defaultdict
@@ -19,7 +17,7 @@ from functools import partial
 
 from src.py.dataset_converter import BaseNvidiaDataConverter
 from src.py.common.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_dict, camera_intrinsic_parameters,
-                                        compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask, vehicle_bbox)
+                                        compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask, vehicle_bbox, parse_labels)
 from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator, is_within_3d_bbox)
 
 
@@ -173,112 +171,24 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         logger = self.logger.getChild('decode_labels')
         logger.info(f'Loading labels')
 
-        # Initialize annotation structs
+        # Initialize annotation structs (defaults in case no labels are available loaded)
         self.labels = {'3d_labels': {}}
         self.frame_labels = {}
 
         # Process autolabels, if available
-        labels_path = os.path.join(self.sequence_path, 'cuboids_tracked',
-                                   'labels_lidar.parquet')
+        labels_path = os.path.join(self.sequence_path, 'cuboids_tracked', 'labels_lidar.parquet')
         if not os.path.exists(labels_path):
-            logger.warn(
-                f'> no {labels_path} file available, skipping label generation'
-            )
+            logger.warn(f'> no {labels_path} file available, skipping label generation')
             return
 
-        # Load parquet file and convert to pandas dataframe
-        label_data = pq.ParquetDataset(labels_path).read().to_pandas()
+        # Determine time bounds from available egomotion poses and user-provided restrictions
+        start_timestamp_us, end_timestamp_us = self.time_bounds(self.poses_timestamps, self.seek_sec, self.duration_sec)
 
-        # Fix float -> integer datatypes of track IDs / timestamps
-        label_data = label_data.astype({
-            'gt_trackline_id': 'int64',
-            'timestamp': 'int64'
-        })
-
-        # Determine time bounds from available egomotion poses
-        start_timestamp_us, end_timestamp_us = self.time_bounds(
-            self.poses_timestamps, self.seek_sec, self.duration_sec)
-
-        # Filter data range based on time bounds, to speed up processing in case of restricted seek / duration data ranges
-        label_data = label_data[label_data['timestamp'].le(end_timestamp_us)]   # all of the rows with timestamp <= end-timestamp
-        label_data = label_data[label_data['timestamp'].ge(start_timestamp_us)] # all of the rows with start-timestamp <= timestamp <= end-timestamp
-
-        for ridx in tqdm.tqdm(range(len(label_data))):
-            row = label_data.iloc[ridx]
-
-            if row['label_name'] in self.LABEL_STRING_TO_LABEL_ID.keys():
-
-                track_id = row['gt_trackline_id']
-                label_timestamp_us = row['timestamp']
-
-                # Validate time-bounds filter
-                assert label_timestamp_us >= start_timestamp_us and \
-                       label_timestamp_us <= end_timestamp_us, \
-                       f"Unexpected timestamp {label_timestamp_us} of label not in time-ranges [{start_timestamp_us}{end_timestamp_us}]"
-
-                cuboid = np.array(
-                    [
-                        row['centroid_x'],
-                        row['centroid_y'],
-                        row['centroid_z'],
-                        row['dim_x'],
-                        row['dim_y'],
-                        row['dim_z'],
-                        row['rot_x'],
-                        row['rot_y'],
-                        row['rot_z']
-                    ],
-                    dtype=np.float32)
-
-                # this is assuming velocity is not relative to the local sensor motion, but w.r.t. fixed scene / world
-                global_speed = np.linalg.norm([row['velocity_x'], row['velocity_y'], row['velocity_z']])
-
-                if label_timestamp_us not in self.frame_labels:
-                    self.frame_labels[label_timestamp_us] = {}
-                    self.frame_labels[label_timestamp_us]['lidar_labels'] = []
-
-                self.frame_labels[label_timestamp_us]['lidar_labels'].append({
-                    'id':
-                    len(self.frame_labels[label_timestamp_us]['lidar_labels']),
-                    'name':
-                    track_id,
-                    'label':
-                    self.LABEL_STRING_TO_LABEL_ID[row['label_name']],
-                    '3D_bbox':
-                    cuboid,
-                    'num_points':
-                    -1,
-                    'detection_difficulty_level':
-                    -1,
-                    'combined_difficulty_level':
-                    -1,
-                    'global_speed':
-                    global_speed,
-                    'global_accel':
-                    -1
-                })
-
-                if track_id not in self.labels['3d_labels']:
-                    self.labels['3d_labels'][track_id] = {}
-                    self.labels['3d_labels'][track_id]['dynamic_flag'] = \
-                        1 if row['label_name'] in self.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else 0
-                    self.labels['3d_labels'][track_id]['type']  = \
-                        self.LABEL_STRING_TO_LABEL_ID[row['label_name']]
-                    self.labels['3d_labels'][track_id]['lidar'] = {}
-
-                self.labels['3d_labels'][track_id]['lidar'][label_timestamp_us] = \
-                    {
-                    '3D_bbox': cuboid,
-                    'num_point': -1,
-                    'global_speed': global_speed,
-                    'global_accel': -1,
-                    }
-
-                # TODO: check if this user-defined velocity threshold makes sense
-                if row['label_name'] not in self.LABEL_STRINGS_UNCONDITIONALLY_STATIC and global_speed >= 1 / 3.6:
-                    self.labels['3d_labels'][track_id]['dynamic_flag'] = 1
-            else:
-                logger.warn(f"> unhandled label type {row['label_name']}")
+        # Perform label parsing
+        self.labels, self.frame_labels = parse_labels(labels_path, start_timestamp_us, end_timestamp_us,
+                                                      self.LABEL_STRING_TO_LABEL_ID,
+                                                      self.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC,
+                                                      self.LABEL_STRINGS_UNCONDITIONALLY_STATIC, logger)
 
         # Save the accumulated data
         save_pkl(self.labels, os.path.join(self.output_dir, self.session_id, 'labels.pkl'))
