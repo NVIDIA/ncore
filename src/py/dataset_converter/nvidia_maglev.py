@@ -17,7 +17,7 @@ from functools import partial
 
 from src.py.dataset_converter import BaseNvidiaDataConverter
 from src.py.common.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_dict, camera_intrinsic_parameters,
-                                        compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask, vehicle_bbox, LabelParser)
+                                        compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask, vehicle_bbox, LabelProcessor)
 from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator, is_within_3d_bbox)
 
 
@@ -185,7 +185,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         start_timestamp_us, end_timestamp_us = self.time_bounds(self.poses_timestamps, self.seek_sec, self.duration_sec)
 
         # Perform label parsing
-        self.labels, self.frame_labels = LabelParser.parse(labels_path, start_timestamp_us, end_timestamp_us, logger)
+        self.labels, self.frame_labels = LabelProcessor.parse(labels_path, start_timestamp_us, end_timestamp_us, logger)
 
         # Save the accumulated data
         save_pkl(self.labels, os.path.join(self.output_dir, self.session_id, 'labels.pkl'))
@@ -484,25 +484,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Compute distances
         dist = np.linalg.norm(xyz_s - xyz_e, axis=1)  # N x 1
 
-        # Initialize dynamic flag
-        dynamic_flag = np.full(
-            point_count,
-            # initialize dynamic_flag to -1 if there are no labels at all
-            0. if len(self.frame_labels) else -1.,
-            dtype=np.float32)  # N x 1
-
-        # Incorporate labels, if available
-        frame_labels = self.frame_labels.get(
-            frame_timestamp, {})  # returns empty dict if no annotations available for this frame
-
-        # Use the bounding boxes to remove dynamic objects / set dynamic flag
-        for frame_label in frame_labels.get('lidar_labels', {}):
-            label_id = frame_label['name']
-            # If the object is dynamic update the points that fall in that bounding box
-            if self.labels['3d_labels'][label_id]['dynamic_flag']:
-                bbox = frame_label['3D_bbox']
-                bbox[3:6] += self.LIDAR_DYNAMIC_FLAG_BBOX_PADDING # enlarge the bounding box
-                dynamic_flag[is_within_3d_bbox(xyz, bbox)] = 1
+        # Compute dynamic flag / load current frame labels
+        dynamic_flag, current_frame_labels = LabelProcessor.lidar_dynamic_flag(xyz, frame_timestamp, self.labels, self.frame_labels)
 
         # Assemble full point-cloud ray structure
         point_cloud = np.column_stack((xyz_s, xyz_e, dist, intensity, dynamic_flag))
@@ -522,7 +505,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Remark: it's currently simpler to serialize per lidar-frame labels for this timestamp here, as we perform frame subsampling as part of lidar processing.
         # However, in the future we might also incorporate camera data also, and this serialization might need to be relocated.
         save_pkl(
-            frame_labels,
+            current_frame_labels,
             os.path.join(self.output_dir, self.session_id, self.label_save_dir,
                          str(continuos_frame_index).zfill(self.INDEX_DIGITS) + '.pkl'))
 
@@ -533,5 +516,5 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         metadata['elevation_angles'] = None  # [TODO: currently missing for NV sensors] Lidar elevation angles, can be used to simulate the lidar or recover points that did not return
         save_pkl(metadata, target_pc_path.replace('.dat.xz', '.pkl'))
 
-        # Explicitly collect garbadge to free up resources
+        # Explicitly collect garbage to free up resources
         gc.collect()

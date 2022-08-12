@@ -16,7 +16,7 @@ from scipy.optimize import curve_fit
 from numpy.polynomial.polynomial import Polynomial
 
 from src.protos.deepmap import transform_pb2, camera_calibration_pb2
-from src.py.common.common import PoseInterpolator, MaskImage
+from src.py.common.common import PoseInterpolator, MaskImage, is_within_3d_bbox
 from src.py.common.transformations import euler_2_so3, transform_point_cloud, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
 
 
@@ -366,8 +366,8 @@ def camera_car_mask(sensor, scale_to_source_resolution=True):
     return car_mask_image
 
 
-class LabelParser:
-    """ Provides facilities to parse NV labels into common DSAI format """
+class LabelProcessor:
+    """ Provides facilities to parse / process NV labels into common DSAI format """
 
     LABEL_STRING_TO_LABEL_ID: dict[str, int] = {
         'unknown': 0,
@@ -387,6 +387,9 @@ class LabelParser:
     LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC: set[str] = set(
         ['pedestrian', 'person', 'rider', 'bicycle_with_rider', 'CYCLIST', 'motorcycle', 'motorcycle_with_rider'])
     LABEL_STRINGS_UNCONDITIONALLY_STATIC: set[str] = set(['unknown', 'sign'])
+
+    # Label BBOX padding distance (in meters) to enlarge bounding boxes for per-point dynamic-flag assignment
+    LIDAR_DYNAMIC_FLAG_BBOX_PADDING = 3.0
 
     @classmethod
     def parse(
@@ -504,6 +507,35 @@ class LabelParser:
 
         return labels, frame_labels
 
+    @classmethod
+    def lidar_dynamic_flag(cls, xyz: np.array, frame_timestamp: int, labels: dict[str, dict],
+                           frame_labels: dict[int, dict]) -> Tuple[np.array, dict]:
+        """ Computes per-point lidar dynamic flag by intersecting frame-associated bounding boxes of dynamic objects"""
+
+        assert xyz.shape[1] == 3, "wrong point cloud shape"
+
+        point_count = xyz.shape[0]
+
+        # Initialize dynamic flag
+        dynamic_flag = np.full(
+            point_count,
+            # initialize dynamic_flag to -1 if there are no labels at all
+            0. if len(frame_labels) else -1.,
+            dtype=np.float32)  # N x 1
+
+        # Incorporate labels, if available
+        current_frame_labels = frame_labels.get(frame_timestamp, {})  # returns empty dict if no annotations available for this frame
+
+        # Use the bounding boxes to remove dynamic objects / set dynamic flag
+        for frame_label in current_frame_labels.get('lidar_labels', {}):
+            label_id = frame_label['name']
+            # If the object is dynamic update the points that fall in that bounding box
+            if labels['3d_labels'][label_id]['dynamic_flag']:
+                bbox = frame_label['3D_bbox']
+                bbox[3:6] += cls.LIDAR_DYNAMIC_FLAG_BBOX_PADDING # enlarge the bounding box
+                dynamic_flag[is_within_3d_bbox(xyz, bbox)] = 1
+
+        return dynamic_flag, current_frame_labels
 
 # Functions related to the F-THeta camera model
 def numericallyStable2Norm2D(x, y):
