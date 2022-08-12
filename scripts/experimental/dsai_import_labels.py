@@ -8,7 +8,7 @@ import tqdm
 
 import numpy as np
 
-from src.py.common.nvidia_utils import parse_labels
+from src.py.common.nvidia_utils import LabelParser
 from src.py.common.common import load_pc_dat, save_pkl
 from src.py.dataset_converter import BaseNvidiaDataConverter
 
@@ -40,10 +40,7 @@ def dsai_import_labels(root_dir: str, parquet_file: str, output_dir: str, index_
     lidar_timestamps = np.load(os.path.join(lidar_dir, 'timestamps.npz'))['timestamps']
 
     # Parse the labels
-    labels, frame_labels = parse_labels(parquet_file, lidar_timestamps[0], lidar_timestamps[-1],
-                                        BaseNvidiaDataConverter.LABEL_STRING_TO_LABEL_ID,
-                                        BaseNvidiaDataConverter.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC,
-                                        BaseNvidiaDataConverter.LABEL_STRINGS_UNCONDITIONALLY_STATIC, logger)
+    labels, frame_labels = LabelParser.parse(parquet_file, lidar_timestamps[0], lidar_timestamps[-1], logger)
 
     if not output_dir:
         output_dir = root_dir

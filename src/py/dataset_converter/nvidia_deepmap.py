@@ -17,7 +17,7 @@ from src.py.common.common import (PoseInterpolator, save_pkl, load_pkl, save_pc_
 from src.cpp.av_utils import unwind_lidar
 from src.py.common.nvidia_utils import (compute_ftheta_parameters, extract_pose, extract_sensor_2_sdc,
                               parse_rig_sensors_from_dict, sensor_to_rig, camera_intrinsic_parameters, compute_fw_polynomial,
-                              camera_car_mask, vehicle_bbox)
+                              camera_car_mask, vehicle_bbox, LabelParser)
 
 
 class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
@@ -237,7 +237,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             label_data = label_data.reset_index()  # make sure indexes pair with number of rows
 
             for _, row in label_data.iterrows():
-                if row['label_name'] in self.LABEL_STRING_TO_LABEL_ID.keys():
+                if row['label_name'] in LabelParser.LABEL_STRING_TO_LABEL_ID.keys():
 
                     track_id = row['trackline_id']
                     label_timestamp = row['detection_timestamp']
@@ -251,7 +251,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
                     frame_annotations[label_timestamp]['lidar_labels'].append({'id': len(frame_annotations[label_timestamp]['lidar_labels']),
                                                                                 'name': track_id,
-                                                                                'label': self.LABEL_STRING_TO_LABEL_ID[row['label_name']],
+                                                                                'label': LabelParser.LABEL_STRING_TO_LABEL_ID[row['label_name']],
                                                                                 '3D_bbox': cuboid,
                                                                                 'num_points':
                                                                                     -1,
@@ -266,8 +266,8 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
 
                     if track_id not in annotations['3d_labels']:
-                        annotations['3d_labels'][track_id]['dynamic_flag'] = 1 if self.LABEL_STRING_TO_LABEL_ID[row['label_name']] in self.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else 0
-                        annotations['3d_labels'][track_id]['type'] = self.LABEL_STRING_TO_LABEL_ID[row['label_name']]
+                        annotations['3d_labels'][track_id]['dynamic_flag'] = 1 if LabelParser.LABEL_STRING_TO_LABEL_ID[row['label_name']] in LabelParser.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else 0
+                        annotations['3d_labels'][track_id]['type'] = LabelParser.LABEL_STRING_TO_LABEL_ID[row['label_name']]
                         annotations['3d_labels'][track_id]['lidar'] = {}
 
 
@@ -277,7 +277,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                                                                         'global_accel': -1,}
 
                     # TODO: check if this user-defined threshold makes sense
-                    if self.LABEL_STRING_TO_LABEL_ID[row['label_name']] not in self.LABEL_STRINGS_UNCONDITIONALLY_STATIC and np.linalg.norm([row['velocity_x'], row['velocity_y']]) >= 1/3.6:
+                    if LabelParser.LABEL_STRING_TO_LABEL_ID[row['label_name']] not in LabelParser.LABEL_STRINGS_UNCONDITIONALLY_STATIC and np.linalg.norm([row['velocity_x'], row['velocity_y']]) >= 1/3.6:
                         annotations['3d_labels'][track_id]['dynamic_flag'] = 1
 
             # Save the accumulated data

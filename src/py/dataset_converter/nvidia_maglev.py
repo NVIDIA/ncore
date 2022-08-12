@@ -17,7 +17,7 @@ from functools import partial
 
 from src.py.dataset_converter import BaseNvidiaDataConverter
 from src.py.common.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_dict, camera_intrinsic_parameters,
-                                        compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask, vehicle_bbox, parse_labels)
+                                        compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask, vehicle_bbox, LabelParser)
 from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator, is_within_3d_bbox)
 
 
@@ -185,10 +185,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         start_timestamp_us, end_timestamp_us = self.time_bounds(self.poses_timestamps, self.seek_sec, self.duration_sec)
 
         # Perform label parsing
-        self.labels, self.frame_labels = parse_labels(labels_path, start_timestamp_us, end_timestamp_us,
-                                                      self.LABEL_STRING_TO_LABEL_ID,
-                                                      self.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC,
-                                                      self.LABEL_STRINGS_UNCONDITIONALLY_STATIC, logger)
+        self.labels, self.frame_labels = LabelParser.parse(labels_path, start_timestamp_us, end_timestamp_us, logger)
 
         # Save the accumulated data
         save_pkl(self.labels, os.path.join(self.output_dir, self.session_id, 'labels.pkl'))
