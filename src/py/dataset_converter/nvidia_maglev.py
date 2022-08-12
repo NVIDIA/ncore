@@ -298,6 +298,9 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             self.poses_timestamps, self.seek_sec, self.duration_sec)
 
         # Process all camera images based on the pose timestamps
+        pool = multiprocessing.Pool(
+            # restart processes after this number of frames to free up potentially piled up resources
+            maxtasksperchild=5)
         for camera in self.CAMERA_2_IDTYPERIG.keys():
             cam_id, cam_type, cam_id_rig = self.CAMERA_2_IDTYPERIG[camera]
             camera_calibration_data = self.sensors_calibration_data[cam_id_rig]
@@ -330,18 +333,12 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             frame_numbers = frame_numbers[start_idx:end_idx]
             frame_timestamps = frame_timestamps[start_idx:end_idx]
 
-            # Copy all valid images
-            for continuos_frame_index, frame_number in enumerate(
-                    frame_numbers):
-                source_image_path = os.path.join(self.sequence_path, 'cameras',
-                                                 cam_id_rig,
-                                                 str(frame_number) + '.jpeg')
-                target_image_path = os.path.join(
-                    camera_base_save_path,
-                    str(continuos_frame_index).zfill(self.INDEX_DIGITS) +
-                    '.jpeg')  # store as *increasing* canonical frame IDs
-
-                shutil.copy(source_image_path, target_image_path)
+            # Copy all valid images (use multiprocessing to speed up IO)
+            logger.info(f'> copying {len(frame_timestamps)} images using {pool._processes} worker processes')
+            pool.map(
+                partial(self._copy_image_process,
+                        camera_base_save_path=camera_base_save_path,
+                        cam_id_rig=cam_id_rig), enumerate(frame_numbers))
 
             # Extract the calibration metadata
             T_cam_rig = sensor_to_rig(camera_calibration_data)
@@ -411,7 +408,25 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                                                   'timestamps.pkl')
         save_pkl(camera_timestamps, image_timestamps_save_path)
 
+        # Terminate pool's processes explicitly
+        pool.close()
+        pool.terminate()
+
         logger.info(f'> processed {len(camera_timestamps)} cameras')
+
+    def _copy_image_process(self, args, camera_base_save_path, cam_id_rig):
+        """ Copies a single image """
+
+        # Decode current frame data to process
+        continuos_frame_index, frame_number = args[0], args[1]
+
+        # Copy image from source to target
+        source_image_path = os.path.join(self.sequence_path, 'cameras', cam_id_rig, str(frame_number) + '.jpeg')
+        target_image_path = os.path.join(camera_base_save_path,
+                                         str(continuos_frame_index).zfill(self.INDEX_DIGITS) +
+                                         '.jpeg')  # store as *increasing* canonical frame IDs
+
+        shutil.copy(source_image_path, target_image_path)
 
     def decode_lidar(self):
         logger = self.logger.getChild('decode_lidar')
@@ -457,14 +472,15 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             logger.info(
                 f'> processing {len(frame_timestamps)} point clouds using {pool._processes} worker processes')
             pool.map(
-                partial(self.decode_lidar_process,
-                        logger=logger,
-                        lidar_base_save_path=lidar_base_save_path,
-                        T_lidar_rig=T_lidar_rig,
-                        pose_interpolator=pose_interpolator,
-                        vehicle_bbox_rig=vehicle_bbox_rig,
-                        num_frames=len(frame_numbers)),
-                zip(range(len(frame_numbers)), frame_numbers, frame_timestamps))
+                partial(
+                    self._decode_lidar_process,
+                    lidar_base_save_path=lidar_base_save_path,
+                    T_lidar_rig=T_lidar_rig,
+                    pose_interpolator=pose_interpolator,
+                    vehicle_bbox_rig=vehicle_bbox_rig,
+                    num_frames=len(frame_numbers),
+                    logger=logger,
+                ), zip(range(len(frame_numbers)), frame_numbers, frame_timestamps))
 
         # Save all lidar timestamps
         lidar_timestamp_save_path = os.path.join(lidar_base_save_path, 'timestamps.npz')
@@ -472,14 +488,16 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         logger.info(f'> processed {len(frame_timestamps)} point clouds')
 
-    def decode_lidar_process(self,
-                             args,
-                             logger,
-                             lidar_base_save_path,
-                             T_lidar_rig,
-                             pose_interpolator,
-                             vehicle_bbox_rig,
-                             num_frames):
+    def _decode_lidar_process(
+        self,
+        args,
+        lidar_base_save_path,
+        T_lidar_rig,
+        pose_interpolator,
+        vehicle_bbox_rig,
+        num_frames,
+        logger,
+    ):
         """ Process a single lidar frame executed by a dedicated process """
         # Add PID to logger
         logger = logger.getChild(f'PID={os.getpid()}')
@@ -503,7 +521,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         # Remove all points with *duplicate* coordinates (these seem to be present in the input already)
         # and remember the indices of the valid points to load other attributes
-        xyz, unique_input_idxs = np.unique(mesh.vertex_data.positions, axis=0, return_index=True) 
+        xyz, unique_input_idxs = np.unique(mesh.vertex_data.positions, axis=0, return_index=True)
         intensity = mesh.vertex_data.custom_attributes['intensity'][unique_input_idxs].flatten()
         point_count = xyz.shape[0]
 
