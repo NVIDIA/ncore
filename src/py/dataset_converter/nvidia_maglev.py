@@ -5,6 +5,7 @@ import os
 import logging
 import shutil
 import re
+import gc
 import multiprocessing
 import tqdm
 
@@ -451,8 +452,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         # Process all valid point clouds using multi-processing
         with multiprocessing.Pool(
-                # restart processes after this number of frames to free up piled up resources
-                maxtasksperchild=100) as pool:
+                # restart processes after this number of frames to free up potentially piled up resources
+                maxtasksperchild=5) as pool:
             logger.info(
                 f'> processing {len(frame_timestamps)} point clouds using {pool._processes} worker processes')
             pool.map(
@@ -610,3 +611,6 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         metadata['T_rig_world'] = T_rig_world  # Pose of the rig at the end of the lidar spin, can be used to transform points into a local coordinate frame
         metadata['elevation_angles'] = None  # [TODO: currently missing for NV sensors] Lidar elevation angles, can be used to simulate the lidar or recover points that did not return
         save_pkl(metadata, target_pc_path.replace('.dat.xz', '.pkl'))
+
+        # Explicitly collect garbadge to free up resources
+        gc.collect()
