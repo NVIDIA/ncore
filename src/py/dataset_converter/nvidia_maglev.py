@@ -206,6 +206,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         # Process all valid camera images (incorporating multiprocessing to speed up IO)
         with multiprocessing.Pool(
+                # limit the number of processes to not allocate too many resources concurrently
+                processes=min(24, os.cpu_count()),
                 # restart processes after this number of frames to free up potentially piled up resources
                 maxtasksperchild=5) as pool:
             for camera in self.CAMERA_2_IDTYPERIG.keys():
@@ -242,10 +244,12 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
                 # Copy all valid images (use multiprocessing to speed up IO)
                 logger.info(f'> copying {len(frame_timestamps)} images using {pool._processes} worker processes')
-                pool.map(
-                    partial(self._copy_image_process,
-                            camera_base_save_path=camera_base_save_path,
-                            cam_id_rig=cam_id_rig), enumerate(frame_numbers))
+                pool.map(func=partial(self._copy_image_process,
+                                      camera_base_save_path=camera_base_save_path,
+                                      cam_id_rig=cam_id_rig),
+                         iterable=enumerate(frame_numbers),
+                         chunksize=1)
+                logger.info(f'> finished copying {len(frame_timestamps)} images')
 
                 # Extract the calibration metadata
                 T_cam_rig = sensor_to_rig(camera_calibration_data)
@@ -370,20 +374,23 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         # Process all valid point clouds using multi-processing
         with multiprocessing.Pool(
+                # limit the number of processes to not allocate too many resources concurrently
+                processes=min(24, os.cpu_count()),
                 # restart processes after this number of frames to free up potentially piled up resources
                 maxtasksperchild=5) as pool:
             logger.info(
                 f'> processing {len(frame_timestamps)} point clouds using {pool._processes} worker processes')
-            pool.map(
-                partial(
-                    self._decode_lidar_process,
-                    lidar_base_save_path=lidar_base_save_path,
-                    T_lidar_rig=T_lidar_rig,
-                    pose_interpolator=pose_interpolator,
-                    vehicle_bbox_rig=vehicle_bbox_rig,
-                    num_frames=len(frame_numbers),
-                    logger=logger,
-                ), zip(range(len(frame_numbers)), frame_numbers, frame_timestamps))
+            pool.map(func=partial(
+                self._decode_lidar_process,
+                lidar_base_save_path=lidar_base_save_path,
+                T_lidar_rig=T_lidar_rig,
+                pose_interpolator=pose_interpolator,
+                vehicle_bbox_rig=vehicle_bbox_rig,
+                num_frames=len(frame_numbers),
+                logger=logger,
+            ),
+                     iterable=zip(range(len(frame_numbers)), frame_numbers, frame_timestamps),
+                     chunksize=1)
 
         # Save all lidar timestamps
         lidar_timestamp_save_path = os.path.join(lidar_base_save_path, 'timestamps.npz')
