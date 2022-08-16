@@ -218,24 +218,3 @@ class BaseNvidiaDataConverter(DataConverter):
     LIDAR_FILTER_VEHICLE_BBOX_PADDING = np.array([0.4, 0.2, 1.0], dtype=np.float32)
     LIDAR_FILTER_MAX_DISTANCE = 100.0
     LIDAR_FILTER_MIN_RIG_HEIGHT = -0.5
-
-    # Label BBOX padding distance (in meters) to enlarge bounding boxes for per-point dynamic-flag assignment
-    LIDAR_DYNAMIC_FLAG_BBOX_PADDING = 3.0
-
-    LABEL_STRING_TO_LABEL_ID = {
-        'unknown': 0,
-        'automobile': 1,
-        'pedestrian': 2,
-        'sign': 3,
-        'CYCLIST': 4,
-        'heavy_truck': 5,
-        'bus': 6,
-        'other_vehicle': 7,
-        'motorcycle': 8,
-        'motorcycle_with_rider': 9,
-        'person': 10,
-        'rider': 11,
-        'bicycle_with_rider': 12
-    }
-    LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC = set(['pedestrian', 'person', 'rider', 'bicycle_with_rider', 'CYCLIST', 'motorcycle', 'motorcycle_with_rider'])
-    LABEL_STRINGS_UNCONDITIONALLY_STATIC = set(['unknown', 'sign'])

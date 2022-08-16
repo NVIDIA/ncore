@@ -1,0 +1,17 @@
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_binary")
+
+py_binary(
+    name = "dsai_import_labels",
+    srcs = ["dsai_import_labels.py"],
+    deps = [
+        requirement("click"),
+        requirement("numpy"),
+        requirement("tqdm"),
+        "//src/py/common:pylib",
+        "//src/py/dataset_converter:pylib",
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")
