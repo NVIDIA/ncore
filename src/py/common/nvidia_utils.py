@@ -534,8 +534,8 @@ class LabelProcessor:
             label_id = frame_label['name']
             # If the object is dynamic update the points that fall in that bounding box
             if labels['3d_labels'][label_id]['dynamic_flag']:
-                bbox = frame_label['3D_bbox']
-                bbox[3:6] += cls.LIDAR_DYNAMIC_FLAG_BBOX_PADDING # enlarge the bounding box
+                bbox = np.copy(frame_label['3D_bbox']) # enlarge the bounding box for the check *only*
+                bbox[3:6] += cls.LIDAR_DYNAMIC_FLAG_BBOX_PADDING # TODO: make sure this parameter is tuned sensibly
                 dynamic_flag[is_within_3d_bbox(xyz, bbox)] = 1
 
         return dynamic_flag, current_frame_labels
