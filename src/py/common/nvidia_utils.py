@@ -384,9 +384,11 @@ class LabelProcessor:
         'rider': 11,
         'bicycle_with_rider': 12,
         'bicycle': 13,
+        'stroller': 14,
+        'person_group': 15,
     }
     LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC: set[str] = set(
-        ['pedestrian', 'person', 'rider', 'bicycle_with_rider', 'bicycle', 'CYCLIST', 'motorcycle', 'motorcycle_with_rider'])
+        ['pedestrian', 'stroller', 'person', 'person_group', 'rider', 'bicycle_with_rider', 'bicycle', 'CYCLIST', 'motorcycle', 'motorcycle_with_rider'])
     LABEL_STRINGS_UNCONDITIONALLY_STATIC: set[str] = set(['unknown', 'sign'])
 
     # Label BBOX padding distance (in meters) to enlarge bounding boxes for per-point dynamic-flag assignment
