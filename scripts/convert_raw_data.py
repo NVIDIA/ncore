@@ -79,6 +79,8 @@ def nvidia_deepmap(ctx, *_, **kwargs):
 @cli.command()
 @click.option('--seek-sec', type=click.FloatRange(min=0.0, max_open=True), help="Time to skip for the dataset conversion (in seconds)")
 @click.option('--duration-sec', type=click.FloatRange(min=0.0, max_open=True), help="Restrict total duration of the dataset conversion (in seconds)")
+@click.option('--multiprocessing-camera', is_flag=True, default=False, help="Perform camera data conversion with multiprocessing enabled")
+@click.option('--multiprocessing-lidar', is_flag=True, default=False, help="Perform lidar data conversion with multiprocessing enabled")
 @click.pass_context
 def nvidia_maglev(ctx, *_, **kwargs):
     from src.py.dataset_converter.nvidia_maglev import NvidiaMaglevConverter
