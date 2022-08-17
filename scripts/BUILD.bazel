@@ -166,7 +166,6 @@ py_binary(
         requirement("numpy"),
         requirement("click"),
         requirement("tqdm"),
-        requirement("torch"),
         "//src/py/common:pylib",
     ],
 )

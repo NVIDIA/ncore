@@ -5,7 +5,6 @@ tqdm
 scipy
 matplotlib
 runx
-setuptools==60.2.0
 opencv-python
 scikit-image
 protobuf3-to-dict==0.1.5
@@ -15,7 +14,7 @@ point-cloud-utils>=0.25.0
 click
 debugpy
 pytest
-open3d==0.15.2
+open3d
 
 --find-links https://download.pytorch.org/whl/torch_stable.html
 torch==1.10.1+cu111
