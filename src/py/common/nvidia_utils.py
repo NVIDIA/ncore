@@ -19,7 +19,6 @@ from src.protos.deepmap import transform_pb2, camera_calibration_pb2
 from src.py.common.common import PoseInterpolator, MaskImage, is_within_3d_bbox
 from src.py.common.transformations import euler_2_so3, transform_point_cloud, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
 
-
 def extract_sensor_2_sdc(file_path):
     ''' Extract the sensor to self driving car (SDC) rig transformation parameters 
 
@@ -387,6 +386,9 @@ class LabelProcessor:
         'stroller': 14,
         'person_group': 15,
     }
+
+    LABEL_ID_TO_LABEL_STRING: dict[int, str] = {v: k for k, v in LABEL_STRING_TO_LABEL_ID.items()}
+
     LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC: set[str] = set(
         ['pedestrian', 'stroller', 'person', 'person_group', 'rider', 'bicycle_with_rider', 'bicycle', 'CYCLIST', 'motorcycle', 'motorcycle_with_rider'])
     LABEL_STRINGS_UNCONDITIONALLY_STATIC: set[str] = set(['unknown', 'sign'])
