@@ -1,13 +1,11 @@
-#!/usr/bin/env python3
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 import click
-import pickle
 import os 
 import tqdm 
 
 import numpy as np
-from src.py.common.common import load_pc_dat
+from src.py.common.common import load_pc_dat, load_pkl
 from src.py.common.visualization import LabelVisualizer
 
 @click.command()
@@ -15,7 +13,6 @@ from src.py.common.visualization import LabelVisualizer
 @click.option('--start-frame', type=click.IntRange(min=0, max_open=True), help='Initial camera frame to be use', default=0)
 @click.option('--end-frame', type=click.IntRange(min=-1, max_open=True), help='End camera frame to be used', default=-1)
 @click.option('--step-frame', type=click.IntRange(min=1, max_open=True), help='Step used to downsample the number of frames', default=1)
-
 def visualize_labels(root_dir, start_frame, end_frame, step_frame):
 
     lidar_dir = os.path.join(root_dir, 'lidar')
@@ -26,7 +23,6 @@ def visualize_labels(root_dir, start_frame, end_frame, step_frame):
     metadata_files = sorted([os.path.join(lidar_dir, fname) for fname in os.listdir(labels_dir) if fname.endswith('.pkl')])
     label_files = sorted([os.path.join(labels_dir, fname) for fname in os.listdir(labels_dir) if fname.endswith('.pkl')])
     
-
     assert (len(lidar_files) == len(label_files) == len(metadata_files)), "Number of lidar frames, metadata and label frames is not the same."
 
     if end_frame < 0:
@@ -44,7 +40,7 @@ def visualize_labels(root_dir, start_frame, end_frame, step_frame):
         frame_id = os.path.basename(lidar_file)
 
         # Load the metadata 
-        meta_data = pickle.load(open(metadata_file, 'rb'))
+        meta_data = load_pkl(metadata_file)
         
         # Construct world -> lidar transformation
         T_lidar_rig = meta_data['T_lidar_rig']
@@ -59,7 +55,8 @@ def visualize_labels(root_dir, start_frame, end_frame, step_frame):
         viz.add_pc(pc_data, T_world_lidar, frame_id=frame_id)
 
         # Import the labels and add them to the viz
-        labels = pickle.load(open(label_file, 'rb'))
+        labels = load_pkl(label_file)
+
         viz.add_labels(labels)
 
         # Show the point clouds
