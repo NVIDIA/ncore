@@ -7,27 +7,27 @@ from matplotlib import pyplot as plt
 from matplotlib import cm
 from scipy.spatial.transform import Rotation as R
 
-from src.py.common.nvidia_utils import LABEL_STRING_TO_LABEL_ID, LABEL_ID_TO_LABEL_STRING  
+from src.py.common.nvidia_utils import LabelProcessor as NvidiaLabelProcessor
 
 def rgba(r):
-	"""Generates a color based on range.
+    """Generates a color based on range.
 
 	Args:
 		r: the range value of a given point.
 	Returns:
 		The color for a given range
 	"""
-	c = plt.get_cmap('jet')((r % 50.0) / 50.0)
-	c = list(c)
-	c[-1] = 0.5  # alpha
-	return c
+    c = plt.get_cmap('jet')((r % 50.0) / 50.0)
+    c = list(c)
+    c[-1] = 0.5  # alpha
+    return c
 
 
 def plot_image(camera_image):
-	"""Plot a cmaera image."""
-	plt.figure(figsize=(20, 12))
-	plt.imshow(camera_image)
-	plt.grid(visible=False)
+    """Plot a cmaera image."""
+    plt.figure(figsize=(20, 12))
+    plt.imshow(camera_image)
+    plt.grid(visible=False)
 
 
 def plot_points_on_image(projected_points, camera_image, title, rgba_func =rgba, point_size=5.0):
@@ -62,12 +62,12 @@ class LabelVisualizer:
     COLOR_MAP_LABELS = cm.get_cmap('tab20')
 
     # TODO: currently only works for NVIDIA classes, we should add Waymo support
-    LABEL_STRING_TO_LABEL_ID = LABEL_STRING_TO_LABEL_ID 
-    LABEL_ID_TO_LABEL_STRING = LABEL_ID_TO_LABEL_STRING  
+    LABEL_STRING_TO_LABEL_ID = NvidiaLabelProcessor.LABEL_STRING_TO_LABEL_ID
+    LABEL_ID_TO_LABEL_STRING = NvidiaLabelProcessor.LABEL_ID_TO_LABEL_STRING
 
     def __init__(self) -> None:
-        """ Visualizes the point cloud together with the labels. Currently only supports NVIDIA (classes)
-
+        """ 
+        Visualizes the point cloud together with the labels. Currently only supports NVIDIA (classes)
         """
 
         # Initialize the visualizer and the data variables
@@ -79,7 +79,7 @@ class LabelVisualizer:
         self.lut = ml3d.vis.LabelLUT()
         for id, (key, value) in enumerate(self.LABEL_STRING_TO_LABEL_ID.items()):
             self.lut.add_label(value, key, self.COLOR_MAP_LABELS(id)[:3])
-        
+
         # Set the BBOX line thickness
         # TODO: on my computer this doesn't work check why (ZAN)
         mat = o3d.visualization.rendering.MaterialRecord()
@@ -101,7 +101,7 @@ class LabelVisualizer:
                                             np.ones(pc.shape[0], dtype=np.float32)])  # 4 x N
         xyz_lidar_homogeneous = T_world_lidar @ xyz_world_homogeneous  # 4 x N
 
-        xyz = xyz_lidar_homogeneous[:3, :].transpose()  # N x 3 
+        xyz = xyz_lidar_homogeneous[:3, :].transpose()  # N x 3
 
         self.data.append(
             {
