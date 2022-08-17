@@ -19,6 +19,28 @@ from src.protos.deepmap import transform_pb2, camera_calibration_pb2
 from src.py.common.common import PoseInterpolator, MaskImage, is_within_3d_bbox
 from src.py.common.transformations import euler_2_so3, transform_point_cloud, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
 
+LABEL_STRING_TO_LABEL_ID: dict[str, int] = {
+        'unknown': 0,
+        'automobile': 1,
+        'pedestrian': 2,
+        'sign': 3,
+        'CYCLIST': 4,
+        'heavy_truck': 5,
+        'bus': 6,
+        'other_vehicle': 7,
+        'motorcycle': 8,
+        'motorcycle_with_rider': 9,
+        'person': 10,
+        'rider': 11,
+        'bicycle_with_rider': 12,
+        'bicycle': 13,
+        'stroller': 14,
+        'person_group': 15,
+    }
+
+LABEL_ID_TO_LABEL_STRING: dict[int, str] = {}
+for key, value in LABEL_STRING_TO_LABEL_ID.items():
+    LABEL_ID_TO_LABEL_STRING[value] = key
 
 def extract_sensor_2_sdc(file_path):
     ''' Extract the sensor to self driving car (SDC) rig transformation parameters 
@@ -368,25 +390,8 @@ def camera_car_mask(sensor, scale_to_source_resolution=True):
 
 class LabelProcessor:
     """ Provides facilities to parse / process NV labels into common DSAI format """
-
-    LABEL_STRING_TO_LABEL_ID: dict[str, int] = {
-        'unknown': 0,
-        'automobile': 1,
-        'pedestrian': 2,
-        'sign': 3,
-        'CYCLIST': 4,
-        'heavy_truck': 5,
-        'bus': 6,
-        'other_vehicle': 7,
-        'motorcycle': 8,
-        'motorcycle_with_rider': 9,
-        'person': 10,
-        'rider': 11,
-        'bicycle_with_rider': 12,
-        'bicycle': 13,
-        'stroller': 14,
-        'person_group': 15,
-    }
+    LABEL_STRING_TO_LABEL_ID = LABEL_STRING_TO_LABEL_ID
+    
     LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC: set[str] = set(
         ['pedestrian', 'stroller', 'person', 'person_group', 'rider', 'bicycle_with_rider', 'bicycle', 'CYCLIST', 'motorcycle', 'motorcycle_with_rider'])
     LABEL_STRINGS_UNCONDITIONALLY_STATIC: set[str] = set(['unknown', 'sign'])

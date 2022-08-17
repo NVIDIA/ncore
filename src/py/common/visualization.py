@@ -1,7 +1,13 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+import numpy as np
+import open3d as o3d
+import open3d.ml.tf as ml3d
 
 from matplotlib import pyplot as plt
+from matplotlib import cm
+from scipy.spatial.transform import Rotation as R
 
+from src.py.common.nvidia_utils import LABEL_STRING_TO_LABEL_ID, LABEL_ID_TO_LABEL_STRING  
 
 def rgba(r):
 	"""Generates a color based on range.
@@ -50,3 +56,93 @@ def plot_points_on_image(projected_points, camera_image, title, rgba_func =rgba,
     plt.scatter(xs, ys, c=colors, s=point_size, edgecolors="none")
     plt.axis('off')
     plt.grid(visible=False)
+
+class LabelVisualizer:
+    # Get the color map for the NVIDIA labels
+    COLOR_MAP_LABELS = cm.get_cmap('tab20')
+
+    # TODO: currently only works for NVIDIA classes, we should add Waymo support
+    LABEL_STRING_TO_LABEL_ID = LABEL_STRING_TO_LABEL_ID 
+    LABEL_ID_TO_LABEL_STRING = LABEL_ID_TO_LABEL_STRING  
+
+    def __init__(self) -> None:
+        """ Visualizes the point cloud together with the labels. Currently only supports NVIDIA (classes)
+
+        """
+
+        # Initialize the visualizer and the data variables
+        self.vis = ml3d.vis.Visualizer()
+        self.data: list = []
+        self.bounding_boxes: list = []
+
+        # Initialize the classes
+        self.lut = ml3d.vis.LabelLUT()
+        for id, (key, value) in enumerate(self.LABEL_STRING_TO_LABEL_ID.items()):
+            self.lut.add_label(value, key, self.COLOR_MAP_LABELS(id)[:3])
+        
+        # Set the BBOX line thickness
+        # TODO: on my computer this doesn't work check why (ZAN)
+        mat = o3d.visualization.rendering.MaterialRecord()
+        mat.shader = "unlitLine"
+        mat.line_width = 10000
+
+    def add_pc(self, pc: np.ndarray, T_world_lidar: np.ndarray, frame_id: int) -> None:
+        """ Adds a single Lidar spin to the visualizer
+
+        Args:
+            pc: point cloud together with 
+            T_world_lidar: transformation from the world frame to the lidar 
+            frame_id: id of the lidar spin
+
+        """
+
+        # Transform points from world to lidar
+        xyz_world_homogeneous = np.row_stack([pc[:, 3:6].transpose(),
+                                            np.ones(pc.shape[0], dtype=np.float32)])  # 4 x N
+        xyz_lidar_homogeneous = T_world_lidar @ xyz_world_homogeneous  # 4 x N
+
+        xyz = xyz_lidar_homogeneous[:3, :].transpose()  # N x 3 
+
+        self.data.append(
+            {
+                'name': str(frame_id),
+                'points': xyz,
+                'intensity': pc[:,-2],
+                'dynamic_flag': pc[:,-1]
+            }
+        )
+
+    def add_labels(self, labels: dict[str,list]) -> None:
+        """ Iterates over the labels of the given lidar spin and adds the bboxes to the visualizer
+
+        Args:
+            labels: 3D bbox labels and the accompanying attributes
+
+        """
+
+        # Iterate over the labels and add them to the visualizer
+        for label in labels['lidar_labels']:
+            class_label = label['label']
+            bbox = label['3D_bbox']
+            identifier = str(label['name'])
+
+            self._add_bbox(bbox, class_label, identifier)
+
+    def _add_bbox(self, bbox: np.ndarray, class_label: int, identifier: str) -> None:
+        # TODO: This orientation seems correct to me, but we should double check it as the definition is weird
+        # TODO: We are currently transforming the point cloud into the local coordinate frame, but actually we should be transforming the labels into the world frame
+
+        orientation = R.from_euler('xyz', bbox[6:9], degrees=False).as_matrix()
+        self.bounding_boxes.append(
+            ml3d.vis.BoundingBox3D(center=bbox[:3],
+                front=orientation[:,0],
+                up=orientation[:,2],
+                left=orientation[:,1],
+                size= np.array([bbox[4], bbox[5], bbox[3]]),
+                label_class=self.LABEL_ID_TO_LABEL_STRING[class_label],
+                confidence=1.0,
+                identifier=identifier)
+        )
+
+    def show(self) -> None:
+        self.vis.visualize(self.data, self.lut, self.bounding_boxes)

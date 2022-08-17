@@ -158,4 +158,17 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "dsai_visualize_labels",
+    srcs = ["dsai_visualize_labels.py"],
+    deps = [
+        requirement("open3d"),
+        requirement("numpy"),
+        requirement("click"),
+        requirement("tqdm"),
+        requirement("torch"),
+        "//src/py/common:pylib",
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")
