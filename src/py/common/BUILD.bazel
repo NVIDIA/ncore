@@ -20,6 +20,7 @@ py_library(
         requirement("pyarrow"),
         requirement("pandas"),  # for pyarrow::to_pandas()
         requirement("scipy"),
+        requirement("tqdm"),
         requirement("matplotlib"),
         requirement("tensorflow"),
         requirement("waymo-open-dataset-tf-2-5-0"),
