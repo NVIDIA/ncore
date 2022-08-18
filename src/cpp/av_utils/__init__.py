@@ -10,13 +10,13 @@ def unwind_lidar(pc, transformation_matrices, column_idx):
 def image_to_world_ray(image_points, camera_metadata):
     # Initialize the parameters
     intrinsic   = np.array(camera_metadata['intrinsic']).reshape(1,-1).astype(np.float64)
-    camera_model   = camera_metadata['camera_model'] 
+    camera_model   = camera_metadata['camera_model']
     img_height  = camera_metadata['img_height']
     img_width  = camera_metadata['img_width']
     rs_direction   = camera_metadata['rolling_shutter_direction']
     ego_pose_timestamps =  np.array(camera_metadata['ego_pose_timestamps']).reshape(1,-1).astype(np.float64)
 
-    # Extract the poses 
+    # Extract the poses
     ego_pose_s = camera_metadata['ego_pose_s'] # These are ego poses in the rig coordinate system
     ego_pose_e = camera_metadata['ego_pose_e']
     T_cam_rig = camera_metadata['T_cam_rig'] # Transforms the points/rays from camera coordinate system to the rig
@@ -29,14 +29,14 @@ def image_to_world_ray(image_points, camera_metadata):
         return libav_utils_cc._pixel2WorldRay(image_points, intrinsic, camera_model, img_height, img_width,
                                         T_cam_world, ego_pose_timestamps, rs_direction)[0, :]
     else:
-        return libav_utils_cc._pixel2WorldRay(image_points, intrinsic, camera_model, img_height, img_width, 
+        return libav_utils_cc._pixel2WorldRay(image_points, intrinsic, camera_model, img_height, img_width,
                                         T_cam_world, ego_pose_timestamps, rs_direction)
 
 
 def cameraRay2Pixel(cameraPoints, camera_metadata):
     # Initialize the parameters
     intrinsic   = np.array(camera_metadata['intrinsic']).reshape(1,-1)
-    camera_model   = camera_metadata['camera_model'] 
+    camera_model   = camera_metadata['camera_model']
     img_height   = camera_metadata['img_height']
     img_width   = camera_metadata['img_width']
 
@@ -46,13 +46,13 @@ def cameraRay2Pixel(cameraPoints, camera_metadata):
 def rollingShutterProjection(points, camera_metadata, iter=1):
     # Initialize the parameters
     intrinsic   = np.array(camera_metadata['intrinsic']).reshape(1,-1)
-    camera_model   = camera_metadata['camera_model'] 
+    camera_model   = camera_metadata['camera_model']
     img_height  = camera_metadata['img_height']
     img_width  = camera_metadata['img_width']
     rs_direction   = camera_metadata['rolling_shutter_direction']
     ego_pose_timestamps =  np.array(camera_metadata['ego_pose_timestamps']).reshape(1,-1).astype(np.float64)
 
-    # Extract the poses 
+    # Extract the poses
     ego_pose_s = camera_metadata['ego_pose_s'] # These are ego poses in the rig coordinate system
     ego_pose_e = camera_metadata['ego_pose_e']
     T_cam_rig = camera_metadata['T_cam_rig'] # Transforms the points/rays from camera coordinate system to the rig
@@ -60,8 +60,9 @@ def rollingShutterProjection(points, camera_metadata, iter=1):
     T_world_cam = np.concatenate([np.linalg.inv(T_cam_rig) @ np.linalg.inv(ego_pose_s),
                         np.linalg.inv(T_cam_rig) @ np.linalg.inv(ego_pose_e)], axis=0)
 
-    pixel_coords, trans_matrices, valid_proj, initial_valid_idx = libav_utils_cc._rollingShutterProjection(points, intrinsic, img_height, img_width, 
-                        rs_direction, T_world_cam, ego_pose_timestamps, camera_model, iter)
+    pixel_coords, trans_matrices, valid_proj, initial_valid_idx = libav_utils_cc._rollingShutterProjection(
+        points.astype(np.float64), intrinsic.astype(np.float64), img_height, img_width, rs_direction,
+        T_world_cam.astype(np.float64), ego_pose_timestamps, camera_model, iter)
 
     valid_idx = initial_valid_idx[valid_proj]
     pixel_coords = pixel_coords[valid_proj,:]

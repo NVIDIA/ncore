@@ -21,12 +21,12 @@ from src.cpp.av_utils import rollingShutterProjection
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--root_dir', type=str, help="Path to the raw data", required=True)
+    parser.add_argument('--root-dir', type=str, help="Path to the raw data", required=True)
     parser.add_argument("--dataset", type=str, help="Name of the dataset", choices=['nvidia-deepmap', 'waymo', 'nvidia-maglev'], required=True)
-    parser.add_argument("--cam_id", type=str, help="Camera ID to be used for projection. If not specified random camera will be used", default= '-1')
-    parser.add_argument("--frame_num", type=int, help="Frame number to be used. If not specified random frame will be used", default=-1)
+    parser.add_argument("--cam-id", type=str, help="Camera ID to be used for projection. If not specified random camera will be used", default= '-1')
+    parser.add_argument("--frame-num", type=int, help="Frame number to be used. If not specified random frame will be used", default=-1)
     parser.add_argument("--python", action='store_true', help="If true, rolling shutter projection will also be computed with python code")
-    parser.add_argument("--index_digits", type=int, help="The number of integer digits to pad counters in output filenames to", default=6)
+    parser.add_argument("--index-digits", type=int, help="The number of integer digits to pad counters in output filenames to", default=6)
 
     args = parser.parse_args()
 
