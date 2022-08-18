@@ -385,6 +385,7 @@ class LabelProcessor:
         'bicycle': 13,
         'stroller': 14,
         'person_group': 15,
+        'unclassifiable_vehicle': 16,
     }
 
     LABEL_ID_TO_LABEL_STRING: dict[int, str] = {v: k for k, v in LABEL_STRING_TO_LABEL_ID.items()}
