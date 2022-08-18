@@ -405,12 +405,10 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             # Use multiprocessing to speed up IO
             with multiprocessing.Pool(
                     # limit the number of processes to not allocate too many resources concurrently
-                    processes=min(12, os.cpu_count()),
-                    # restart processes after this number of frames to free up potentially piled up resources
-                    maxtasksperchild=5) as pool:
+                    processes=min(12, os.cpu_count())) as pool:
                 logger.info(
                     f'> processing {len(frame_timestamps)} point clouds using {pool._processes} worker processes')
-                pool.map(func=process_function, iterable=process_iterable, chunksize=1)
+                pool.map(func=process_function, iterable=process_iterable)
         else:
             # Use single process
             for arg in tqdm.tqdm(process_iterable, total=len(frame_numbers)):
