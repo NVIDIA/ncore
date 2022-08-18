@@ -78,6 +78,9 @@ class TestSaveLoadPCDat(unittest.TestCase):
 
 class TestIsWithin3DBBox(unittest.TestCase):
     def setUp(self):
+        
+        # Set the random seed 
+        np.random.seed(41)
 
         # create some test point-cloud
         self.pc = np.random.rand(100000,3).astype(np.float32) * 3.0 # increase it to [0,3] range
