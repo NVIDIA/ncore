@@ -16,7 +16,8 @@ from scipy.optimize import curve_fit
 from numpy.polynomial.polynomial import Polynomial
 
 from src.protos.deepmap import transform_pb2, camera_calibration_pb2
-from src.py.common.common import PoseInterpolator, MaskImage, is_within_3d_bbox
+from src.py.common.common import PoseInterpolator, MaskImage
+from src.cpp.av_utils import isWithin3DBBox
 from src.py.common.transformations import euler_2_so3, transform_point_cloud, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
 
 def extract_sensor_2_sdc(file_path):
@@ -539,7 +540,7 @@ class LabelProcessor:
             if labels['3d_labels'][label_id]['dynamic_flag']:
                 bbox = np.copy(frame_label['3D_bbox']) # enlarge the bounding box for the check *only*
                 bbox[3:6] += cls.LIDAR_DYNAMIC_FLAG_BBOX_PADDING # TODO: make sure this parameter is tuned sensibly
-                dynamic_flag[is_within_3d_bbox(xyz, bbox)] = 1
+                dynamic_flag[isWithin3DBBox(xyz, bbox.reshape(1,-1))] = 1
 
         return dynamic_flag, current_frame_labels
 

@@ -19,8 +19,8 @@ from functools import partial
 from src.py.dataset_converter import BaseNvidiaDataConverter
 from src.py.common.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_dict, camera_intrinsic_parameters,
                                         compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask, vehicle_bbox, LabelProcessor)
-from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator, is_within_3d_bbox)
-
+from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator)
+from src.cpp.av_utils import isWithin3DBBox
 
 class NvidiaMaglevConverter(BaseNvidiaDataConverter):
     """
@@ -504,7 +504,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         valid_idxs = xyz_e[2, :] > self.LIDAR_FILTER_MIN_RIG_HEIGHT
 
         # Filter points inside the vehicles bounding-box
-        valid_idxs &= np.logical_not(is_within_3d_bbox(xyz_e[0:3, :].transpose(), vehicle_bbox_rig))
+        valid_idxs &= np.logical_not(isWithin3DBBox(xyz_e[0:3, :].transpose(), vehicle_bbox_rig.reshape(1,-1)))
 
         # Transform points from rig to world frame + drop homogenous dimension and transpose to match output dimension
         xyz_e = T_rig_world @ xyz_e
