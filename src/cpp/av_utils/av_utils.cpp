@@ -594,3 +594,119 @@ npe_begin_code()
     return std::make_tuple(npe::move(pixelCoordinates), npe::move(transformationMatrices), npe::move(validProjec), npe::move(initialValidIdx));
 
 npe_end_code()
+
+
+Eigen::Quaternionf euler2Quaternion(const float roll, const float pitch, const float yaw )
+{
+    Eigen::AngleAxisf rollAngle(roll, Eigen::Vector3f::UnitX());
+    Eigen::AngleAxisf pitchAngle(pitch, Eigen::Vector3f::UnitY());
+    Eigen::AngleAxisf yawAngle(yaw, Eigen::Vector3f::UnitZ());
+
+    Eigen::Quaternionf q = yawAngle * pitchAngle * rollAngle;
+    return q;
+}
+
+
+const char* isWithin3DBoundingBox_doc = R"igl_Qu8mg5v7(
+Compute projections of the world points to the camera image plane by considering the rolling shutter information
+)igl_Qu8mg5v7";
+npe_function(_isWithin3DBoundingBox)
+npe_doc(isWithin3DBoundingBox_doc)
+npe_arg(points, dense_float)
+npe_arg(bboxes, dense_float)
+npe_begin_code()
+
+    // Initialize the buffer and set it to false
+    Eigen::Array<bool, Eigen::Dynamic, Eigen::Dynamic> inBBox;
+    inBBox.setConstant(points.rows(), bboxes.rows(), false);
+
+    // Iterate over the bounding boxes and check if the point is within the bbox
+    Eigen::Matrix<float, Eigen::Dynamic, 3> transformedPoints;
+    transformedPoints.resize(points.rows(), 3);
+
+    for (int i =0; i < bboxes.rows(); i++)
+    {
+        Eigen::Vector3f center = {bboxes(i,0), bboxes(i,1), bboxes(i,2)};
+        Eigen::Vector3f dim = {bboxes(i,3), bboxes(i,4), bboxes(i,5)}; 
+        Eigen::Vector3f halfDim = 0.5 * dim;
+
+        // Get the rotation matrix from the euler angles and compute its inverse (we need the inverse transform)
+        Eigen::Quaternionf rotQuat = euler2Quaternion(bboxes(i,6), bboxes(i,7), bboxes(i,8));
+        Eigen::Matrix3f rotMatrix = rotQuat.normalized().toRotationMatrix().transpose();
+
+        // Compute the inverse translation
+        Eigen::Vector3f translation = -rotMatrix * center;
+
+        // Transform the points in the bbox frame
+        transformedPoints = (rotMatrix * points.transpose()).transpose().rowwise() + translation.transpose();
+
+        for (int j=0; j < transformedPoints.rows(); j++)
+        {
+            if(transformedPoints(j,0) <= halfDim.x() && transformedPoints(j,0) >= -halfDim.x() && transformedPoints(j,1) <= halfDim.y() && transformedPoints(j,1) >= -halfDim.y() && transformedPoints(j,2) <= halfDim.z() && transformedPoints(j,2) >= -halfDim.z())
+            {
+                inBBox(j,i) = true;
+            }
+        }
+    }
+
+    return npe::move(inBBox);
+npe_end_code()
+
+
+
+
+
+
+
+
+
+// def is_within_3d_bbox(points, box, normals=None, return_points_in_bbox_frame=False):
+//     """Checks whether a point is in a 3d box given a set of points and a box.
+//         Args:
+//             point: [N, 3] tensor. Inner dims are: [x, y, z].
+//             box: [9,] tensor. Inner dims are: [center_x, center_y, center_z, length, width, height, roll, pitch, yaw].
+//                               roll/pitch/yaw are in radians.
+//         Returns:
+//             point_in_box; [N,] boolean array.
+//     """
+
+//     center = box[0:3]
+//     dim = box[3:6]
+//     rotation_angles = box[6:9]
+
+//     # Get the rotation matrix from the heading angle
+//     rotation = R.from_euler('xyz', rotation_angles, degrees=False).as_matrix()
+
+//     # [4, 4]
+//     transform = so3_trans_2_se3(rotation, center)
+//     # [4, 4]
+//     transform = np.linalg.inv(transform)
+//     # [3, 3]
+//     rotation = transform[0:3, 0:3]
+//     # [3]
+//     translation = transform[0:3, 3]
+
+//     # [M, 3]
+//     points_in_box_frames = np.matmul(rotation, points.transpose()).transpose() + translation
+
+//     # [M, 3]
+//     point_in_box = np.logical_and(
+//         np.logical_and(points_in_box_frames <= dim * 0.5,
+//                        points_in_box_frames >= -dim * 0.5),
+//         np.all(np.not_equal(dim, 0), axis=-1, keepdims=True))
+
+//     # [N, M]
+//     point_in_box = np.prod(point_in_box, axis=-1).astype(bool)
+
+//     if not return_points_in_bbox_frame:
+//         return point_in_box
+//     else:
+//         if normals is not None:
+//             T_normals = np.linalg.inv(transform).transpose()
+
+//             normals_in_bbox_frame = np.matmul(T_normals[0:3, 0:3], normals[point_in_box,:].transpose()).transpose() + T_normals[0:3, 3]
+
+
+//             return points_in_box_frames[point_in_box,:], normals_in_bbox_frame/np.linalg.norm(normals_in_bbox_frame,axis=1,keepdims=True)
+//         else:
+//             return points_in_box_frames[point_in_box,:]
