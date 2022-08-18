@@ -41,7 +41,7 @@ build+test:
 
     # Check format declarations are not missing
     - bazelisk run //:bzlformat_missing_pkgs_test
-    
+
     # Build+test all remaining targets
     - bazelisk build ...
     - bazelisk test ...
