@@ -26,6 +26,7 @@ load("@rules_python//python:pip.bzl", "package_annotation", "pip_parse")
 
 pip_parse(
     name = "pip_deps",
+    timeout = 3600,
     annotations = {
         "numpy": package_annotation(
             additive_build_content = """
