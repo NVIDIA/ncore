@@ -339,9 +339,6 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 raw_pc_homogeneous = np.row_stack([raw_pc.transpose(), np.ones(raw_pc.shape[0], dtype=np.float32)])  # 4 x N
                 raw_pc_homogeneous_rig = T_lidar_rig @ raw_pc_homogeneous  # 4 x N
 
-                # Filter out points that are more than LIDAR_FILTER_MIN_RIG_HEIGHT bellow ground (there are some spurious measurements there)
-                valid_idx_z = raw_pc_homogeneous_rig[2, :] > self.LIDAR_FILTER_MIN_RIG_HEIGHT
-
                 # Filter outs points that are inside the vehicles bounding-box
                 valid_idxs_vehicle_bbox = np.logical_not(isWithin3DBBox(raw_pc_homogeneous_rig[0:3, :].transpose(), vehicle_bbox_rig.reshape(1,-1)))
 
@@ -359,7 +356,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
                 # Filter points on the distances LIDAR_FILTER_MAX_DISTANCE (remove points that are very far away)
                 valid_idx_dist = np.less_equal(dist, self.LIDAR_FILTER_MAX_DISTANCE)
-                valid_idx = np.logical_and(np.logical_and(valid_idx_z, valid_idxs_vehicle_bbox), valid_idx_dist)
+                valid_idx = np.logical_and(valid_idxs_vehicle_bbox, valid_idx_dist)
 
                 # 3D rays in space with accompanying metadata.
                 # Format; x_s, y_s, z_s, x_e, y_e, z_e, dist, intensity, dynamic flag
