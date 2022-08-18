@@ -14,4 +14,17 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "convert_deepmap_egomotion",
+    srcs = ["convert_deepmap_egomotion.py"],
+    deps = [
+        requirement("click"),
+        requirement("protobuf3-to-dict"),
+        requirement("numpy"),
+        "//src/protos/deepmap:py_proto",
+        "//src/py/common:pylib",
+        "//src/py/dataset_converter:pylib",
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")

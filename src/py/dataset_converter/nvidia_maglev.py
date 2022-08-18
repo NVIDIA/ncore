@@ -40,6 +40,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.multiprocessing_camera = config.multiprocessing_camera
         self.multiprocessing_lidar = config.multiprocessing_lidar
 
+        self.egomotion_file = config.egomotion_file
+
     @staticmethod
     def time_bounds(timestamps_us: list[int], seek_sec: Optional[float], duration_sec: Optional[float]) -> tuple[int, int]:
         """
@@ -129,8 +131,14 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         T_rig_lidar = np.linalg.inv(T_lidar_rig)
 
         # Load egomotion trajectory
-        for egomotion_pose_entry in load_jsonl(
-                os.path.join(self.sequence_path, 'egomotion/egomotion.json')):
+        if not self.egomotion_file:
+            # Use default egomotion jsonl location
+            egomotion_file = os.path.join(self.sequence_path, 'egomotion/egomotion.json')
+        else:
+            # Use overwrite file
+            egomotion_file = self.egomotion_file 
+
+        for egomotion_pose_entry in load_jsonl(egomotion_file):
             # Skip invalid poses
             if not egomotion_pose_entry['valid']:
                 continue

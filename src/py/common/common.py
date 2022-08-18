@@ -141,14 +141,14 @@ def save_pc_dat(file_path: str, lidar_data: np.array) -> None:
         )
 
 
-def load_jsonl(jsonl_path):
+def load_jsonl(jsonl_path: str) -> list[dict]:
     """
     Loads a jsonl (json-lines) file (each line corresponds to a serialized json object) - see jsonlines.org
 
     Args:
-        jsonl_path (str): json-lines file path
+        jsonl_path: json-lines file path
     Return:
-        object_list (List[dict]): list of parsed objects
+        object_list: list of parsed objects
     """
 
     object_list = []
@@ -157,6 +157,19 @@ def load_jsonl(jsonl_path):
             object_list.append(json.loads(line))
 
     return object_list
+
+
+def save_jsonl(file_path: str, object_list: list[dict]) -> None:
+    """
+    Saves a list of json-serializable objects into a jsonl (json-lines) file (each line corresponds to a serialized json object) - see jsonlines.org
+
+    Args:
+        jsonl_path: json-lines output file path
+        object_list: list of json-serializable objects to save
+    """
+
+    with open(file_path, 'w') as fp:
+        fp.writelines([json.dumps(object) + '\n' for object in object_list])
 
 
 def average_camera_pose(poses):
