@@ -25,6 +25,7 @@ py_library(
         requirement("tensorflow"),
         requirement("waymo-open-dataset-tf-2-5-0"),
         requirement("open3d"),
+        "//src/cpp/av_utils:pylib",
         "//src/protos/deepmap:py_proto",
     ],
 )
@@ -34,6 +35,7 @@ pytest_test(
     srcs = glob(["*test.py"]),
     deps = [
         ":pylib",
+        "//src/cpp/av_utils:pylib",
     ],
 )
 

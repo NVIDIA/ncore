@@ -213,8 +213,6 @@ class BaseNvidiaDataConverter(DataConverter):
     # Approximate spin time in microseconds
     LIDAR_APPROX_SPIN_TIME = 1e6 / 10 # based on 10Hz frequency
 
-    # Vehicle BBOX padding distances (for each axis) and maximum distances (in meters) for point cloud measurements (to filter points on the ego-car / out invalid points),
-    # as well as minimum height (there might be some spurious measurements bellow ground)
+    # Vehicle BBOX padding distances (for each axis) and maximum distances (in meters) for point cloud measurements (to filter points on the ego-car / out invalid points)
     LIDAR_FILTER_VEHICLE_BBOX_PADDING = np.array([0.4, 0.2, 1.0], dtype=np.float32)
     LIDAR_FILTER_MAX_DISTANCE = 100.0
-    LIDAR_FILTER_MIN_RIG_HEIGHT = -0.5

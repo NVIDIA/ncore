@@ -69,3 +69,12 @@ def rollingShutterProjection(points, camera_metadata, iter=1):
     trans_matrices = trans_matrices.reshape(-1,4,4)[valid_proj,:,:]
 
     return pixel_coords, trans_matrices, valid_idx
+
+
+def isWithin3DBBox(pc, bboxes):
+    # Chech the validity of the input
+    assert pc.shape[1] == 3, "Wrong PC input size"
+    assert len(bboxes.shape) == 2, "bboxes need to be a 2D numpy array"
+    assert bboxes.shape[1] == 9, "bboxes need to be a 2D numpy array"
+
+    return libav_utils_cc._isWithin3DBoundingBox(pc, bboxes)

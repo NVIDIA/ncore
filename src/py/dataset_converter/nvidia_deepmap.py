@@ -13,8 +13,8 @@ from protobuf_to_dict import protobuf_to_dict
 
 from src.protos.deepmap import track_data_pb2, pointcloud_pb2
 from src.py.dataset_converter import BaseNvidiaDataConverter
-from src.py.common.common import (PoseInterpolator, save_pkl, load_pkl, save_pc_dat, is_within_3d_bbox)
-from src.cpp.av_utils import unwind_lidar
+from src.py.common.common import (PoseInterpolator, save_pkl, load_pkl, save_pc_dat)
+from src.cpp.av_utils import unwind_lidar, isWithin3DBBox
 from src.py.common.nvidia_utils import (compute_ftheta_parameters, extract_pose, extract_sensor_2_sdc,
                               parse_rig_sensors_from_dict, sensor_to_rig, camera_intrinsic_parameters, compute_fw_polynomial,
                               camera_car_mask, vehicle_bbox, LabelProcessor)
@@ -339,11 +339,8 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 raw_pc_homogeneous = np.row_stack([raw_pc.transpose(), np.ones(raw_pc.shape[0], dtype=np.float32)])  # 4 x N
                 raw_pc_homogeneous_rig = T_lidar_rig @ raw_pc_homogeneous  # 4 x N
 
-                # Filter out points that are more than LIDAR_FILTER_MIN_RIG_HEIGHT bellow ground (there are some spurious measurements there)
-                valid_idx_z = raw_pc_homogeneous_rig[2, :] > self.LIDAR_FILTER_MIN_RIG_HEIGHT
-
                 # Filter outs points that are inside the vehicles bounding-box
-                valid_idxs_vehicle_bbox = np.logical_not(is_within_3d_bbox(raw_pc_homogeneous_rig[0:3, :].transpose(), vehicle_bbox_rig))
+                valid_idxs_vehicle_bbox = np.logical_not(isWithin3DBBox(raw_pc_homogeneous_rig[0:3, :].transpose(), vehicle_bbox_rig.reshape(1,-1)))
 
                 # Determine per-column rig-to-world pose and compute per-column lidar-to-world transformations
                 column_timestamps = np.array(data.data.column_timestamps_microseconds)
@@ -359,7 +356,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
                 # Filter points on the distances LIDAR_FILTER_MAX_DISTANCE (remove points that are very far away)
                 valid_idx_dist = np.less_equal(dist, self.LIDAR_FILTER_MAX_DISTANCE)
-                valid_idx = np.logical_and(np.logical_and(valid_idx_z, valid_idxs_vehicle_bbox), valid_idx_dist)
+                valid_idx = np.logical_and(valid_idxs_vehicle_bbox, valid_idx_dist)
 
                 # 3D rays in space with accompanying metadata.
                 # Format; x_s, y_s, z_s, x_e, y_e, z_e, dist, intensity, dynamic flag
@@ -382,7 +379,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                     if dynamic_state:
                         bbox = label['3D_bbox']
                         bbox[3:6] += LabelProcessor.LIDAR_DYNAMIC_FLAG_BBOX_PADDING # enlarge the bounding box
-                        dynamic_flag[is_within_3d_bbox(raw_pc, bbox)] = 1
+                        dynamic_flag[isWithin3DBBox(raw_pc, bbox.reshape(1,-1))] = 1
 
                 transformed_pc[:,-1] = dynamic_flag
 
