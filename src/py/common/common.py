@@ -6,6 +6,7 @@ import struct
 import json
 import lzma
 import io
+import os
 import time
 import numpy as np
 
@@ -174,6 +175,12 @@ def save_jsonl(file_path: str, object_list: list[dict]) -> None:
     with open(file_path, 'w') as fp:
         fp.writelines([json.dumps(object) + '\n' for object in object_list])
 
+
+def platform_cpu_count() -> int:
+    """ Determines CPU count in MagLev-compatible way """
+    
+    # Check if we are running in a MagLev workflow and return it's CPU limits, otherwise fall back to regular CPU count
+    return int(os.environ.get('WORKFLOW_CPU_LIMITS', str(os.cpu_count())))
 
 def average_camera_pose(poses):
     """

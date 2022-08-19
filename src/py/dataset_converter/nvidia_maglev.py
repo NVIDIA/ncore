@@ -19,7 +19,7 @@ from functools import partial
 from src.py.dataset_converter import BaseNvidiaDataConverter
 from src.py.common.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_dict, camera_intrinsic_parameters,
                                         compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask, vehicle_bbox, LabelProcessor)
-from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator, SimpleTimer)
+from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, platform_cpu_count, PoseInterpolator, SimpleTimer)
 from src.cpp.av_utils import isWithin3DBBox
 
 class NvidiaMaglevConverter(BaseNvidiaDataConverter):
@@ -259,8 +259,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             if self.multiprocessing_camera:
                 # Use multiprocessing to speed up IO
                 with multiprocessing.Pool(
-                        # limit the number of processes to not allocate too many resources concurrently
-                        processes=min(12, os.cpu_count())) as pool:
+                        # limit the number of processes to what is available in the current system / MagLev workflow
+                        processes=platform_cpu_count()) as pool:
                     logger.info(f'> copying {len(frame_timestamps)} images using {pool._processes} worker processes')
                     pool.map(func=process_function, iterable=process_iterable)
             else:
@@ -404,8 +404,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         if self.multiprocessing_lidar:
             # Use multiprocessing to speed up IO
             with multiprocessing.Pool(
-                    # limit the number of processes to not allocate too many resources concurrently
-                    processes=min(12, os.cpu_count())) as pool:
+                    # limit the number of processes to what is available in the current system / MagLev workflow
+                    processes=platform_cpu_count()) as pool:
                 logger.info(
                     f'> processing {len(frame_timestamps)} point clouds using {pool._processes} worker processes')
                 pool.map(func=process_function, iterable=process_iterable)
