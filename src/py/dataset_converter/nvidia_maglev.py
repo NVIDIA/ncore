@@ -262,7 +262,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                         # limit the number of processes to what is available in the current system / MagLev workflow
                         processes=platform_cpu_count()) as pool:
                     logger.info(f'> copying {len(frame_timestamps)} images using {pool._processes} worker processes')
-                    pool.map(func=process_function, iterable=process_iterable)
+                    for _ in tqdm.tqdm(pool.imap_unordered(func=process_function, iterable=process_iterable), total=len(frame_numbers)):
+                        pass
             else:
                 # Use single process
                 for arg in tqdm.tqdm(process_iterable, total=len(frame_numbers)):
@@ -408,7 +409,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                     processes=platform_cpu_count()) as pool:
                 logger.info(
                     f'> processing {len(frame_timestamps)} point clouds using {pool._processes} worker processes')
-                pool.map(func=process_function, iterable=process_iterable)
+                for _ in tqdm.tqdm(pool.imap_unordered(func=process_function, iterable=process_iterable), total=len(frame_numbers)):
+                    pass
         else:
             # Use single process
             for arg in tqdm.tqdm(process_iterable, total=len(frame_numbers)):
@@ -557,4 +559,4 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         time_gc = timer.elapsed_sec(restart = True)
 
-        logger.debug(f'> spin {continuos_frame_index}/{num_frames-1} | load/process/dynflag/store/gc {time_load:.2f}/{time_process:.2f}/{time_dynflag:.2f}/{time_store:.2f}/{time_gc:.2f}sec')
+        logger.debug(f'> spin {continuos_frame_index+1}/{num_frames} | load/process/dynflag/store/gc {time_load:.2f}/{time_process:.2f}/{time_dynflag:.2f}/{time_store:.2f}/{time_gc:.2f}sec')
