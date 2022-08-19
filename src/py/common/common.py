@@ -6,6 +6,7 @@ import struct
 import json
 import lzma
 import io
+import time
 import numpy as np
 
 from enum import Enum
@@ -497,3 +498,26 @@ class MaskImage:
         mask_image.putpalette(self.palette)
 
         return mask_image
+
+
+class SimpleTimer:
+    """ Simple Timer to track runtimes """
+    def __init__(self):
+        """ Starts timer immediately """
+        
+        self.start()
+
+    def start(self) -> None:
+        """ (Re-)start the timer """
+
+        self._start_time = time.perf_counter()
+
+    def elapsed_sec(self, restart: bool = False) -> float:
+        """ Returns elapsed time (in seconds) since start, optionally restarting the timer """
+
+        elapsed = time.perf_counter() - self._start_time
+
+        if restart:
+            self.start()
+
+        return elapsed

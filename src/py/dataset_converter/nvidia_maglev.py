@@ -448,8 +448,12 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Interpolate egomotion at frame timestamp to obtain vehicle pose at lidar end-time
         T_rig_world = pose_interpolator.interpolate_to_timestamps(frame_timestamp)[0]
 
+        # Start timer
+        timer = SimpleTimer()
+
         # Load point cloud (already motion-compensated)
         mesh = pcu.load_triangle_mesh(source_pc_path)
+        time_load = timer.elapsed_sec(restart = True)
 
         # Remove all points with *duplicate* coordinates (these seem to be present in the input already)
         # and remember the indices of the valid points to load other attributes
@@ -512,8 +516,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Compute distances
         dist = np.linalg.norm(xyz_s - xyz_e, axis=1)  # N x 1
 
+        time_process = timer.elapsed_sec(restart = True)
+
         # Compute dynamic flag / load current frame labels
         dynamic_flag, current_frame_labels = LabelProcessor.lidar_dynamic_flag(xyz, frame_timestamp, self.labels, self.frame_labels, skip_dynamic_flag=self.skip_dynamic_flag)
+        time_dynflag = timer.elapsed_sec(restart = True)
 
         # Assemble full point-cloud ray structure
         point_cloud = np.column_stack((xyz_s, xyz_e, dist, intensity, dynamic_flag))
@@ -523,8 +530,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         point_cloud = point_cloud[valid_idxs, :]
 
-        logger.debug(f'> filtered {point_count - valid_idxs.sum()} invalid points for '
-                     f'lidar spin {continuos_frame_index}/{num_frames-1}')
+        time_process += timer.elapsed_sec(restart = True)
 
         # Serialize point cloud
         save_pc_dat(target_pc_path, point_cloud)
@@ -542,7 +548,12 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         metadata['T_lidar_rig'] = T_lidar_rig  # Lidar extrinsic parameters (note: this can be assumed to be constant and could be stored only once)
         metadata['T_rig_world'] = T_rig_world  # Pose of the rig at the end of the lidar spin, can be used to transform points into a local coordinate frame
         metadata['elevation_angles'] = None  # [TODO: currently missing for NV sensors] Lidar elevation angles, can be used to simulate the lidar or recover points that did not return
-        save_pkl(metadata, target_pc_path.replace('.dat.xz', '.pkl'))
+
+        time_store = timer.elapsed_sec(restart = True)
 
         # Explicitly collect garbage to free up resources
         gc.collect()
+
+        time_gc = timer.elapsed_sec(restart = True)
+
+        logger.debug(f'> spin {continuos_frame_index}/{num_frames-1} | load/process/dynflag/store/gc {time_load:.2f}/{time_process:.2f}/{time_dynflag:.2f}/{time_store:.2f}/{time_gc:.2f}sec')
