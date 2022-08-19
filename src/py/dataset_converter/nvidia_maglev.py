@@ -19,7 +19,7 @@ from functools import partial
 from src.py.dataset_converter import BaseNvidiaDataConverter
 from src.py.common.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_dict, camera_intrinsic_parameters,
                                         compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask, vehicle_bbox, LabelProcessor)
-from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator)
+from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, platform_cpu_count, PoseInterpolator, SimpleTimer)
 from src.cpp.av_utils import isWithin3DBBox
 
 class NvidiaMaglevConverter(BaseNvidiaDataConverter):
@@ -39,6 +39,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         self.multiprocessing_camera = config.multiprocessing_camera
         self.multiprocessing_lidar = config.multiprocessing_lidar
+        self.max_processes : Optional[int] = config.max_processes
 
         self.egomotion_file = config.egomotion_file
 
@@ -138,7 +139,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             egomotion_file = os.path.join(self.sequence_path, 'egomotion/egomotion.json')
         else:
             # Use overwrite file
-            egomotion_file = self.egomotion_file 
+            egomotion_file = self.egomotion_file
 
         for egomotion_pose_entry in load_jsonl(egomotion_file):
             # Skip invalid poses
@@ -259,10 +260,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             if self.multiprocessing_camera:
                 # Use multiprocessing to speed up IO
                 with multiprocessing.Pool(
-                        # limit the number of processes to not allocate too many resources concurrently
-                        processes=min(12, os.cpu_count())) as pool:
+                        # limit the number of processes to what is available in the current system / MagLev workflow
+                        processes=platform_cpu_count(upper_limit=self.max_processes)) as pool:
                     logger.info(f'> copying {len(frame_timestamps)} images using {pool._processes} worker processes')
-                    pool.map(func=process_function, iterable=process_iterable)
+                    for _ in tqdm.tqdm(pool.imap_unordered(func=process_function, iterable=process_iterable), total=len(frame_numbers)):
+                        pass
             else:
                 # Use single process
                 for arg in tqdm.tqdm(process_iterable, total=len(frame_numbers)):
@@ -404,13 +406,12 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         if self.multiprocessing_lidar:
             # Use multiprocessing to speed up IO
             with multiprocessing.Pool(
-                    # limit the number of processes to not allocate too many resources concurrently
-                    processes=min(12, os.cpu_count()),
-                    # restart processes after this number of frames to free up potentially piled up resources
-                    maxtasksperchild=5) as pool:
+                    # limit the number of processes to what is available in the current system / MagLev workflow
+                    processes=platform_cpu_count(upper_limit=self.max_processes)) as pool:
                 logger.info(
                     f'> processing {len(frame_timestamps)} point clouds using {pool._processes} worker processes')
-                pool.map(func=process_function, iterable=process_iterable, chunksize=1)
+                for _ in tqdm.tqdm(pool.imap_unordered(func=process_function, iterable=process_iterable), total=len(frame_numbers)):
+                    pass
         else:
             # Use single process
             for arg in tqdm.tqdm(process_iterable, total=len(frame_numbers)):
@@ -450,8 +451,12 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Interpolate egomotion at frame timestamp to obtain vehicle pose at lidar end-time
         T_rig_world = pose_interpolator.interpolate_to_timestamps(frame_timestamp)[0]
 
+        # Start timer
+        timer = SimpleTimer()
+
         # Load point cloud (already motion-compensated)
         mesh = pcu.load_triangle_mesh(source_pc_path)
+        time_load = timer.elapsed_sec(restart = True)
 
         # Remove all points with *duplicate* coordinates (these seem to be present in the input already)
         # and remember the indices of the valid points to load other attributes
@@ -514,8 +519,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Compute distances
         dist = np.linalg.norm(xyz_s - xyz_e, axis=1)  # N x 1
 
+        time_process = timer.elapsed_sec(restart = True)
+
         # Compute dynamic flag / load current frame labels
         dynamic_flag, current_frame_labels = LabelProcessor.lidar_dynamic_flag(xyz, frame_timestamp, self.labels, self.frame_labels, skip_dynamic_flag=self.skip_dynamic_flag)
+        time_dynflag = timer.elapsed_sec(restart = True)
 
         # Assemble full point-cloud ray structure
         point_cloud = np.column_stack((xyz_s, xyz_e, dist, intensity, dynamic_flag))
@@ -525,8 +533,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         point_cloud = point_cloud[valid_idxs, :]
 
-        logger.debug(f'> filtered {point_count - valid_idxs.sum()} invalid points for '
-                     f'lidar spin {continuos_frame_index}/{num_frames-1}')
+        time_process += timer.elapsed_sec(restart = True)
 
         # Serialize point cloud
         save_pc_dat(target_pc_path, point_cloud)
@@ -546,5 +553,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         metadata['elevation_angles'] = None  # [TODO: currently missing for NV sensors] Lidar elevation angles, can be used to simulate the lidar or recover points that did not return
         save_pkl(metadata, target_pc_path.replace('.dat.xz', '.pkl'))
 
+        time_store = timer.elapsed_sec(restart = True)
+
         # Explicitly collect garbage to free up resources
         gc.collect()
+
+        time_gc = timer.elapsed_sec(restart = True)
+
+        logger.debug(f'> spin {continuos_frame_index+1}/{num_frames} | load/process/dynflag/store/gc {time_load:.2f}/{time_process:.2f}/{time_dynflag:.2f}/{time_store:.2f}/{time_gc:.2f}sec')

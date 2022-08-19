@@ -6,10 +6,12 @@ import struct
 import json
 import lzma
 import io
+import os
+import time
 import numpy as np
 
 from enum import Enum
-from typing import Union
+from typing import Optional, Union
 from PIL import Image
 from scipy import spatial, interpolate
 from scipy.optimize import linear_sum_assignment
@@ -133,7 +135,9 @@ def save_pc_dat(file_path: str, lidar_data: np.array) -> None:
         with open(file_path, 'wb') as file:
             save(file)
     elif file_path.endswith('.dat.xz'):
-        with lzma.open(file_path, 'wb') as lzma_file:
+        with lzma.open(file_path, 'wb',
+                       # Use fastest possible compression mode which still gives acceptable compression rates
+                       preset=0) as lzma_file:
             save(lzma_file)
     else:
         raise ValueError(
@@ -170,6 +174,18 @@ def save_jsonl(file_path: str, object_list: list[dict]) -> None:
 
     with open(file_path, 'w') as fp:
         fp.writelines([json.dumps(object) + '\n' for object in object_list])
+
+
+def platform_cpu_count(upper_limit: Optional[int] = None) -> int:
+    """ Determines CPU count in MagLev-compatible way (with an optional upper limit) """
+    
+    # Check if we are running in a MagLev workflow and return it's CPU limits, otherwise fall back to regular CPU count
+    cpu_count = int(os.environ.get('WORKFLOW_CPU_LIMITS', str(os.cpu_count())))
+    
+    if upper_limit:
+        cpu_count = min(upper_limit, cpu_count)
+    
+    return cpu_count
 
 
 def average_camera_pose(poses):
@@ -497,3 +513,26 @@ class MaskImage:
         mask_image.putpalette(self.palette)
 
         return mask_image
+
+
+class SimpleTimer:
+    """ Simple Timer to track runtimes """
+    def __init__(self):
+        """ Starts timer immediately """
+        
+        self.start()
+
+    def start(self) -> None:
+        """ (Re-)start the timer """
+
+        self._start_time = time.perf_counter()
+
+    def elapsed_sec(self, restart: bool = False) -> float:
+        """ Returns elapsed time (in seconds) since start, optionally restarting the timer """
+
+        elapsed = time.perf_counter() - self._start_time
+
+        if restart:
+            self.start()
+
+        return elapsed

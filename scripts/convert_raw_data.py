@@ -81,6 +81,7 @@ def nvidia_deepmap(ctx, *_, **kwargs):
 @click.option('--duration-sec', type=click.FloatRange(min=0.0, max_open=True), help="Restrict total duration of the dataset conversion (in seconds)")
 @click.option('--multiprocessing-camera', is_flag=True, default=False, help="Perform camera data conversion with multiprocessing enabled")
 @click.option('--multiprocessing-lidar', is_flag=True, default=False, help="Perform lidar data conversion with multiprocessing enabled")
+@click.option('--max-processes', default=None, type=int, help="If provided, the upper bound for processes to start")
 @click.option('--egomotion-file', type=str, help="If provided, overwrite default egomotion file location", default=None)
 @click.option('--skip-dynamic-flag', is_flag=True, default=False, help="Skip lidar dynamic flag computation to improve performance")
 @click.pass_context
