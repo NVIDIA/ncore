@@ -105,7 +105,7 @@ def update_lidar_frame_label_data_process(args, lidar_dir, output_dir_lidar, out
     xyz = xyz_lidar_homogeneous[:3, :].transpose()  # N x 3
 
     # Compute dynamic flag / load current frame labels
-    dynamic_flag, current_frame_labels = LabelProcessor.lidar_dynamic_flag(xyz, frame_timestamp, labels, frame_labels)
+    dynamic_flag, current_frame_labels = LabelProcessor.lidar_dynamic_flag(xyz, frame_timestamp, labels, frame_labels, skip_dynamic_flag=False)
 
     # Set point-cloud dynamic flag and serialize updated point-cloud
     pc_data[:, 8] = dynamic_flag

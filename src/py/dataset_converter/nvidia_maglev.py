@@ -42,6 +42,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         self.egomotion_file = config.egomotion_file
 
+        self.skip_dynamic_flag = config.skip_dynamic_flag
+
     @staticmethod
     def time_bounds(timestamps_us: list[int], seek_sec: Optional[float], duration_sec: Optional[float]) -> tuple[int, int]:
         """
@@ -513,7 +515,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         dist = np.linalg.norm(xyz_s - xyz_e, axis=1)  # N x 1
 
         # Compute dynamic flag / load current frame labels
-        dynamic_flag, current_frame_labels = LabelProcessor.lidar_dynamic_flag(xyz, frame_timestamp, self.labels, self.frame_labels)
+        dynamic_flag, current_frame_labels = LabelProcessor.lidar_dynamic_flag(xyz, frame_timestamp, self.labels, self.frame_labels, skip_dynamic_flag=self.skip_dynamic_flag)
 
         # Assemble full point-cloud ray structure
         point_cloud = np.column_stack((xyz_s, xyz_e, dist, intensity, dynamic_flag))
