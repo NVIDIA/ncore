@@ -19,7 +19,7 @@ from functools import partial
 from src.py.dataset_converter import BaseNvidiaDataConverter
 from src.py.common.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_dict, camera_intrinsic_parameters,
                                         compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask, vehicle_bbox, LabelProcessor)
-from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator)
+from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, PoseInterpolator, SimpleTimer)
 from src.cpp.av_utils import isWithin3DBBox
 
 class NvidiaMaglevConverter(BaseNvidiaDataConverter):
@@ -548,6 +548,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         metadata['T_lidar_rig'] = T_lidar_rig  # Lidar extrinsic parameters (note: this can be assumed to be constant and could be stored only once)
         metadata['T_rig_world'] = T_rig_world  # Pose of the rig at the end of the lidar spin, can be used to transform points into a local coordinate frame
         metadata['elevation_angles'] = None  # [TODO: currently missing for NV sensors] Lidar elevation angles, can be used to simulate the lidar or recover points that did not return
+        save_pkl(metadata, target_pc_path.replace('.dat.xz', '.pkl'))
 
         time_store = timer.elapsed_sec(restart = True)
 

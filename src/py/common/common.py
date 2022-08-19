@@ -134,7 +134,9 @@ def save_pc_dat(file_path: str, lidar_data: np.array) -> None:
         with open(file_path, 'wb') as file:
             save(file)
     elif file_path.endswith('.dat.xz'):
-        with lzma.open(file_path, 'wb') as lzma_file:
+        with lzma.open(file_path, 'wb',
+                       # Use fastest possible compression mode which still gives acceptable compression rates
+                       preset=0) as lzma_file:
             save(lzma_file)
     else:
         raise ValueError(
