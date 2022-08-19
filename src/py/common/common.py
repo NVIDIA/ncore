@@ -11,7 +11,7 @@ import time
 import numpy as np
 
 from enum import Enum
-from typing import Union
+from typing import Optional, Union
 from PIL import Image
 from scipy import spatial, interpolate
 from scipy.optimize import linear_sum_assignment
@@ -176,11 +176,17 @@ def save_jsonl(file_path: str, object_list: list[dict]) -> None:
         fp.writelines([json.dumps(object) + '\n' for object in object_list])
 
 
-def platform_cpu_count() -> int:
-    """ Determines CPU count in MagLev-compatible way """
+def platform_cpu_count(upper_limit: Optional[int] = None) -> int:
+    """ Determines CPU count in MagLev-compatible way (with an optional upper limit) """
     
     # Check if we are running in a MagLev workflow and return it's CPU limits, otherwise fall back to regular CPU count
-    return int(os.environ.get('WORKFLOW_CPU_LIMITS', str(os.cpu_count())))
+    cpu_count = int(os.environ.get('WORKFLOW_CPU_LIMITS', str(os.cpu_count())))
+    
+    if upper_limit:
+        cpu_count = min(upper_limit, cpu_count)
+    
+    return cpu_count
+
 
 def average_camera_pose(poses):
     """

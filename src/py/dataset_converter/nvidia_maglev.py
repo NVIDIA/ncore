@@ -39,6 +39,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         self.multiprocessing_camera = config.multiprocessing_camera
         self.multiprocessing_lidar = config.multiprocessing_lidar
+        self.max_processes : Optional[int] = config.max_processes
 
         self.egomotion_file = config.egomotion_file
 
@@ -260,7 +261,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 # Use multiprocessing to speed up IO
                 with multiprocessing.Pool(
                         # limit the number of processes to what is available in the current system / MagLev workflow
-                        processes=min(16, platform_cpu_count())) as pool:
+                        processes=platform_cpu_count(upper_limit=self.max_processes)) as pool:
                     logger.info(f'> copying {len(frame_timestamps)} images using {pool._processes} worker processes')
                     for _ in tqdm.tqdm(pool.imap_unordered(func=process_function, iterable=process_iterable), total=len(frame_numbers)):
                         pass
@@ -406,7 +407,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             # Use multiprocessing to speed up IO
             with multiprocessing.Pool(
                     # limit the number of processes to what is available in the current system / MagLev workflow
-                    processes=min(16, platform_cpu_count())) as pool:
+                    processes=platform_cpu_count(upper_limit=self.max_processes)) as pool:
                 logger.info(
                     f'> processing {len(frame_timestamps)} point clouds using {pool._processes} worker processes')
                 for _ in tqdm.tqdm(pool.imap_unordered(func=process_function, iterable=process_iterable), total=len(frame_numbers)):
