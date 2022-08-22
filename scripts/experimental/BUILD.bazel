@@ -27,4 +27,13 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "dsai_to_map_transform",
+    srcs = ["dsai_to_map_transform.py"],
+    deps = [
+        requirement("click"),
+        "//src/py/common:pylib",
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")

@@ -178,14 +178,14 @@ def local_ENU_2_ECEF_orientation(theta, phi):
     return np.concatenate([x_dir[:,:,None], y_dir[:,:,None], z_dir[:,:,None]], axis = -1)
 
 
-def lat_lng_alt_2_translation_ellipsoidal(lat_lng_alt, a, b):
-    ''' Computes the translation based on the ellipsoidal earth model
+def lat_lng_alt_2_ECEF_elipsoidal(lat_lng_alt, a, b):
+    ''' Converts the GPS (lat,long, alt) coordinates to the ECEF ones based on the ellipsoidal earth model
     Args:
         lat_lng_alt (np.array): latitude, longitude and altitude coordinate (in degrees and meters) [n,3]
         a (float/double): Semi-major axis of the ellipsoid
         b (float/double): Semi-minor axis of the ellipsoid
     Out:
-        (np.array): translation from world pose to ECEF [n,3]
+        (np.array): ECEF coordinates[n,3]
     '''
 
     phi =  lat_lng_alt[:, 0] * np.pi/180
@@ -273,7 +273,7 @@ def lat_lng_alt_2_ecef(lat_lng_alt, orientation_axis, orientation_angle, earth_m
         a = 6378137.0
         flattening = 1.0 / 298.257223563
         b = a * (1.0 - flattening)
-        translation = lat_lng_alt_2_translation_ellipsoidal(lat_lng_alt, a, b)
+        translation = lat_lng_alt_2_ECEF_elipsoidal(lat_lng_alt, a, b)
 
     elif earth_model == 'sphere':
         earth_radius = 6378137.0 # Earth radius in meters
@@ -332,3 +332,43 @@ def ecef_2_lat_lng_alt(trans, earth_model='WGS84'):
 
 
     return lat_lng_alt, orientation_axis, orientation_angle
+
+def ecef_2_ENU(loc_ref_point: np.ndarray, earth_model: str ='WGS84'):
+    ''' 
+    Compute the transformation matrix that transforms points from the ECEF to a local ENU coordinate frame
+    Args:
+        loc_ref_point: GPS coordinates of the local reference point of the map [1,3]
+        earth_model: earth model used for conversion (spheric will be unaccurate when maps are large)
+    Out:
+        T_ecef_enu: transformation matrix from ECEF to ENU [4,4]
+    '''
+
+    # initialize the transformation to identity
+    T_ecef_enu = np.eye(4)
+    
+    if earth_model == 'WGS84':
+        a = 6378137.0
+        flattening = 1.0 / 298.257223563
+        b = a * (1.0 - flattening)
+        translation = lat_lng_alt_2_ECEF_elipsoidal(loc_ref_point, a, b).reshape(3,1)
+
+    elif earth_model == 'sphere':
+        earth_radius = 6378137.0 # Earth radius in meters
+        z_dir =  np.concatenate([(np.sin(loc_ref_point[1])*np.cos(loc_ref_point[0]))[:,None], 
+                            (np.sin(loc_ref_point[1])*np.sin(loc_ref_point[0]))[:,None], 
+                            (np.cos(loc_ref_point[0]))[:,None] ],axis=1)
+
+        translation = ((earth_radius + loc_ref_point[:, -1])[:,None] * z_dir).reshape(3,1)
+    
+    else:
+        raise ValueError ("Selected ellipsoid not implemented!")
+
+    rad_lat = loc_ref_point[:, 0] * np.pi/180
+    rad_lon = loc_ref_point[:, 1] * np.pi/180
+    T_ecef_enu[:3,:3] = np.array([[-np.sin(rad_lon), np.cos(rad_lon), 0],
+                  [ -np.sin(rad_lat)*np.cos(rad_lon), -np.sin(rad_lat)*np.sin(rad_lon),  np.cos(rad_lat)],
+                  [  np.cos(rad_lat)*np.cos(rad_lon), np.cos(rad_lat)*np.sin(rad_lon),  np.sin(rad_lat)]])
+
+    T_ecef_enu[:3,3:4] = -T_ecef_enu[:3,:3] @ translation
+
+    return T_ecef_enu
