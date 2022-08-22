@@ -27,4 +27,24 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "dsai_to_map_transform",
+    srcs = ["dsai_to_map_transform.py"],
+    deps = [
+        requirement("click"),
+        requirement("numpy"),
+        "//src/py/common:pylib",
+    ],
+)
+
+py_binary(
+    name = "dsai_ngp_360_novel_views",
+    srcs = ["dsai_ngp_360_novel_views.py"],
+    deps = [
+        requirement("click"),
+        requirement("numpy"),
+        requirement("scipy"),
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")
