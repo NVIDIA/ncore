@@ -72,7 +72,7 @@ def axis_angle_2_so3(axis, angle, degrees=True):
         (np array): rotations given so3 matrix representation [n,3,3]
     '''
     # Treat angle (radians) below this as 0.
-    cutoff_angle = 1e-9 if not degrees else 1e-9*180/np.pi
+    cutoff_angle = 1e-9 if not degrees else np.rad2deg(1e-9)
     angle[angle < cutoff_angle] = 0.0
 
     # Scale the axis to have the norm representing the angle
@@ -188,8 +188,8 @@ def lat_lng_alt_2_ECEF_elipsoidal(lat_lng_alt, a, b):
         (np.array): ECEF coordinates[n,3]
     '''
 
-    phi =  lat_lng_alt[:, 0] * np.pi/180
-    gamma =  lat_lng_alt[:, 1] * np.pi/180
+    phi =  np.deg2rad(lat_lng_alt[:, 0])
+    gamma =  np.deg2rad(lat_lng_alt[:, 1])
 
     cos_phi = np.cos(phi)
     sin_phi = np.sin(phi)
@@ -215,8 +215,8 @@ def translation_2_lat_lng_alt_spherical(translation, earth_radius):
         (np.array): latitude, longitude and altitude [n,3]
     '''
     altitude = np.linalg.norm(translation, axis=-1) - earth_radius
-    latitude = 90 - np.arccos(translation[:,2] / np.linalg.norm(translation, axis=-1, keepdims=True)) * 180/np.pi
-    longitude =  np.arctan2(translation[:,1],translation[:,0]) * 180/np.pi
+    latitude = np.rad2deg(90 - np.arccos(translation[:,2] / np.linalg.norm(translation, axis=-1, keepdims=True)))
+    longitude =  np.rad2deg(np.arctan2(translation[:,1],translation[:,0]))
 
     return np.concatenate([latitude[:,None], longitude[:,None], altitude[:,None]], axis=1)
 
@@ -244,8 +244,8 @@ def translation_2_lat_lng_alt_ellipsoidal(translation, a, f):
 
     gamma = (x2y2z2_pow_3_2 + a * f2 * z_div_1_f * z_div_1_f) / (x2y2z2_pow_3_2 - a * f1 * x2y2) *  translation[:,2] / np.sqrt(x2y2)
 
-    longitude = np.arctan2(translation[:,1], translation[:,0]) * 180/np.pi
-    latitude = np.arctan(gamma) * 180/np.pi
+    longitude = np.rad2deg(np.arctan2(translation[:,1], translation[:,0]))
+    latitude = np.rad2deg(np.arctan(gamma))
     altitude = np.sqrt(1 + np.square(gamma)) * (np.sqrt(x2y2) - a / np.sqrt(1 + f0 * np.square(gamma)))
 
     return np.concatenate([latitude[:,None], longitude[:,None], altitude[:,None]], axis=1)
@@ -263,8 +263,8 @@ def lat_lng_alt_2_ecef(lat_lng_alt, orientation_axis, orientation_angle, earth_m
     n = lat_lng_alt.shape[0]
     trans = np.tile(np.eye(4).reshape(1,4,4),[n,1,1])
 
-    theta = (90. - lat_lng_alt[:, 0]) * np.pi/180
-    phi = lat_lng_alt[:, 1] * np.pi/180
+    theta = np.deg2rad(90. - lat_lng_alt[:, 0])
+    phi = np.deg2rad(lat_lng_alt[:, 1])
 
     R_enu_ecef = local_ENU_2_ECEF_orientation(theta, phi)
 
@@ -322,8 +322,8 @@ def ecef_2_lat_lng_alt(trans, earth_model='WGS84'):
 
 
     # Compute the orientation axis and angle
-    theta = (90. - lat_lng_alt[:, 0]) * np.pi/180
-    phi = lat_lng_alt[:, 1] * np.pi/180
+    theta = np.deg2rad((90. - lat_lng_alt[:, 0]))
+    phi = np.deg2rad(lat_lng_alt[:, 1])
 
     R_ecef_enu = local_ENU_2_ECEF_orientation(theta, phi).transpose(0,2,1)
 
@@ -363,8 +363,8 @@ def ecef_2_ENU(loc_ref_point: np.ndarray, earth_model: str ='WGS84'):
     else:
         raise ValueError ("Selected ellipsoid not implemented!")
 
-    rad_lat = loc_ref_point[:, 0] * np.pi/180
-    rad_lon = loc_ref_point[:, 1] * np.pi/180
+    rad_lat = np.deg2rad(loc_ref_point[:, 0])
+    rad_lon = np.deg2rad(loc_ref_point[:, 1])
     T_ecef_enu[:3,:3] = np.array([[-np.sin(rad_lon), np.cos(rad_lon), 0],
                   [ -np.sin(rad_lat)*np.cos(rad_lon), -np.sin(rad_lat)*np.sin(rad_lon),  np.cos(rad_lat)],
                   [  np.cos(rad_lat)*np.cos(rad_lon), np.cos(rad_lat)*np.sin(rad_lon),  np.sin(rad_lat)]])
