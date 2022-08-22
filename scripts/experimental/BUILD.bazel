@@ -37,4 +37,14 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "dsai_ngp_360_novel_views",
+    srcs = ["dsai_ngp_360_novel_views.py"],
+    deps = [
+        requirement("click"),
+        requirement("numpy"),
+        requirement("scipy"),
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")
