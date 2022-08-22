@@ -32,6 +32,7 @@ py_binary(
     srcs = ["dsai_to_map_transform.py"],
     deps = [
         requirement("click"),
+        requirement("numpy"),
         "//src/py/common:pylib",
     ],
 )
