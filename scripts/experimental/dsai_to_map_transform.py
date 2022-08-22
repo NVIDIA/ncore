@@ -13,7 +13,7 @@ from src.py.common.transformations import ecef_2_ENU
 @click.option('--ngp-config', type=str, help='Path to ngp config file with scale and translation', required=True)
 @click.option('--map-ref-lat', type=float, help='Latitude coordinate of the reference point used for the map ENU coordinate system in degrees!', required=True)
 @click.option('--map-ref-lon', type=float, help='Longitude coordinate of the reference point used for the map ENU coordinate system in degrees!', required=True)
-@click.option('--map-ref-alt', type=float, help='Altitude coordinate of the reference point used for the map ENU coordinate system in degrees!', required=True)
+@click.option('--map-ref-alt', type=float, help='Altitude coordinate of the reference point used for the map ENU coordinate system in meters!', required=True)
 
 def dsai_to_map_transform(root_dir: str, ngp_config: str, map_ref_lat: float, map_ref_lon: float, map_ref_alt: float):
 
