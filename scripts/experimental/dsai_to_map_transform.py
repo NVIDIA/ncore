@@ -30,6 +30,11 @@ def dsai_to_map_transform(root_dir: str, ngp_config: str, map_ref_lat: float, ma
     # Extract the base pose 
     T_dsai_ecef = np.load(os.path.join(root_dir, 'poses/poses.npz'))['base_pose']
 
+    # Check if the base pose is valid 
+    dsai_ecef_trans_norm = np.linalg.norm(T_dsai_ecef[:,3])
+    if dsai_ecef_trans_norm < 100: # 100 is just a random number that is small enough to make this suspicious
+        logging.warning(f"The norm of the DSAI to ECEF translation is suspiciously low ({dsai_ecef_trans_norm} m). Please check that you are using the global poses!")
+
     # Read the NGP config file and extract the scale and offset
     ngp_config_dict = json.load(open(ngp_config))
     scale = ngp_config_dict['scale']
