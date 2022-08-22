@@ -17,7 +17,7 @@ from src.py.common.transformations import ecef_2_ENU
 
 def dsai_to_map_transform(root_dir: str, ngp_config: str, map_ref_lat: float, map_ref_lon: float, map_ref_alt: float):
 
-    assert os.path.exists(ngp_config), "Procided NGP config file doesn't exist."
+    assert os.path.exists(ngp_config), "Provided NGP config file doesn't exist."
     assert os.path.exists(root_dir), "Provided root_dir path doesn't exist."
 
     # Initialize the logger
