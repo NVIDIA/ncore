@@ -58,8 +58,8 @@ def dsai_to_map_transform(root_dir: str, ngp_config: str, map_ref_lat: float, ma
 
 
     # Save the transformations
-    os.makedirs(os.path.join(root_dir, 'poses', experiment_name), exist_ok=True)
-    np.savez(os.path.join(root_dir, 'poses', experiment_name, 'T_dsai_ds.npz'), T_ngp_ecef=T_ngp_ecef, 
+    ngp_config_dir = ngp_config.split()[0]
+    np.savez(os.path.join(ngp_config_dir, 'T_dsai_ds.npz'), T_ngp_ecef=T_ngp_ecef, 
                                                               T_ecef_enu=T_ecef_enu,
                                                               base_pose=base_pose)
 
