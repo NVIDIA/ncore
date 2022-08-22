@@ -148,12 +148,15 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             # Note: there is additional data like lat/long and sensor-related information
             #       which could be used in the future
+            # Note: make sure all poses information is represented as f64 to have sufficient
+            #       precision in case poses are representing global / map-associated coordinates
             egomotion_pose_timestamp = int(egomotion_pose_entry['timestamp'])
             egomotion_pose = np.asfarray(
                 egomotion_pose_entry['pose'].split(' '), dtype=np.float64).reshape(
                     (4, 4)).transpose()
 
-            # Make sure poses represent rigToWorld transformations
+            # Make sure poses represent *rigToWorld* transformations
+            # (actually *rigToGlobal* as they include the base pose also - this is the case for non-identity initial poses)
             # Note: there currently seems to be an inconsistency in the egomotion indexer output - keep
             #       this verified workaround logic for now (might need to be adapted if egomotion indexer
             #       is fixed)
@@ -167,20 +170,37 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                     f"Unsupported source ego frame {egomotion_pose_entry['in_sensor_name_frame']}"
                 )
 
+            # Sanity check on data-type
+            assert egomotion_pose.dtype is np.dtype('float64'), \
+                "Require pose to be double-precision (to suppoglobally aligned / map-associated)"
+
             self.poses_timestamps.append(egomotion_pose_timestamp)
             self.poses.append(egomotion_pose)
 
+        assert len(self.poses), "No valid egomotion poses loaded"
+
         # Stack all poses (common canonical format convention)
         self.poses = np.stack(self.poses)
+
+        # Select refence base pose and convert all poses relative to this reference.
+        # The base pose represents a worldToGlobal transformation and the first pose
+        # of the trajectory defines the global frame of reference
+        # (all other world poses are enconded relative to this global frame from here one,
+        # allowing to represent, e.g., point world-coordinates in single f32 precision)
+        self.base_pose = self.poses[0]
+        self.poses = np.linalg.inv(self.base_pose) @ self.poses
 
         # Save the poses
         poses_save_path = os.path.join(self.output_dir, self.session_id,
                                        self.poses_save_dir, 'poses.npz')
         np.savez(poses_save_path,
+                 base_pose=self.base_pose,
                  ego_poses=self.poses,
                  timestamps=self.poses_timestamps)
 
-        logger.info(f'> processed {len(self.poses_timestamps)} poses')
+        # Log base pose to share it more easily with downstream teams (it's serialized also explicitly)
+        with np.printoptions(floatmode='unique', linewidth=200): # print in highest precision
+            logger.info(f'> processed {len(self.poses_timestamps)} poses, using base pose:\n{self.base_pose}')
 
     def decode_labels(self):
         logger = self.logger.getChild('decode_labels')
