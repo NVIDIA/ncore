@@ -35,6 +35,8 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
         self.sequence_pathnames = sorted(glob.glob(os.path.join(self.root_dir, '*/')))
 
+        self.start_timestamp_us = config.start_timestamp_us
+        self.end_timestamp_us = config.end_timestamp_us
 
     def convert_one(self, sequence_path):
         """
@@ -118,7 +120,6 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                     self.poses_timestamps.append(frame['timestamp_microseconds'])
                     self.poses.append(extract_pose(frame['pose']) @ T_rig_sdc)
 
-
         # Stack and sort the poses
         self.poses = np.stack(self.poses)
         self.poses_timestamps = np.stack(self.poses_timestamps).astype(np.float64)
@@ -163,8 +164,11 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             frame_timestamps = np.genfromtxt(os.path.join(sequence_path, 'camera_data/', camera + '.mp4.timestamps'), delimiter='\t', dtype=int)
 
             # Get the frame index of the first and last frame
-            start_idx = np.where(frame_timestamps[:,1] > self.poses_timestamps[0] + self.CAM2ROLLINGSHUTTERDELAY[cam_type] + self.CAM2EXPOSURETIME[cam_type])[0][0]
-            end_idx = np.where(frame_timestamps[:,1] >= self.poses_timestamps[-1])[0][0]
+            start_timestamp_us = self.start_timestamp_us if self.start_timestamp_us else self.poses_timestamps[0]
+            end_timestamp_us = self.end_timestamp_us if self.end_timestamp_us else self.poses_timestamps[-1]
+
+            start_idx = np.where(frame_timestamps[:,1] > start_timestamp_us + self.CAM2ROLLINGSHUTTERDELAY[cam_type] + self.CAM2EXPOSURETIME[cam_type])[0][0]
+            end_idx = np.where(frame_timestamps[:,1] >= end_timestamp_us)[0][0]
 
             frame_timestamps = frame_timestamps[start_idx:end_idx, :]
 
@@ -288,12 +292,10 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 with open(os.path.join(sequence_path, 'tracks', frame_path), 'rb') as f:
                     data.ParseFromString(f.read())
 
-                raw_pc = np.concatenate([np.array(data.data.points_x)[:,None],
-                                         np.array(data.data.points_y)[:,None],
-                                         np.array(data.data.points_z)[:,None]], axis=1)
-
-                # spherical_coordinates = euclidean_2_spherical_coords(raw_pc)
-                intensities = np.frombuffer(data.data.intensities, dtype=np.uint8)
+                if self.start_timestamp_us and data.meta_data.end_timestamp_microseconds < self.start_timestamp_us:
+                    continue
+                if self.end_timestamp_us and data.meta_data.end_timestamp_microseconds > self.end_timestamp_us:
+                    continue
 
                 # Find the closest frame in the annotations
                 time_diff = np.abs(fa_timestamps - (data.meta_data.end_timestamp_microseconds))
@@ -304,6 +306,13 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 else:
                     self.logger.debug(f'no annotated frame found for lidar frame {frame_idx}')
                     fa_timestamp = None
+
+                raw_pc = np.concatenate([np.array(data.data.points_x)[:,None],
+                                         np.array(data.data.points_y)[:,None],
+                                         np.array(data.data.points_z)[:,None]], axis=1)
+
+                # spherical_coordinates = euclidean_2_spherical_coords(raw_pc)
+                intensities = np.frombuffer(data.data.intensities, dtype=np.uint8)
 
                 # Determine per-column rig-to-world pose and compute per-column lidar-to-world transformations
                 column_timestamps = np.array(data.data.column_timestamps_microseconds)

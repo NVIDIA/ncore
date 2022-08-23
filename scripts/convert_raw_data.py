@@ -65,7 +65,8 @@ def waymo(ctx, *_, **kwargs):
 
 
 @cli.command()
-# TODO(#9): add --seek-sec / --duration-sec options similar to nvidia_maglev subcommand
+@click.option('--start-timestamp-us', type=int, default=None, help="If provided, the start timestamp to restrict processing to")
+@click.option('--end-timestamp-us', type=int, default=None, help="If provided, the end timestamp to restrict processing to")
 @click.pass_context
 def nvidia_deepmap(ctx, *_, **kwargs):
     from src.py.dataset_converter.nvidia_deepmap import NvidiaDeepMapConverter
