@@ -301,20 +301,23 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                     self.logger.debug(f'no annotated frame found for lidar frame {frame_idx}')
                     fa_timestamp = None
 
-                # Transform points to rig frame to perform filtering
-                raw_pc_homogeneous = np.row_stack([raw_pc.transpose(), np.ones(raw_pc.shape[0], dtype=np.float32)])  # 4 x N
-                raw_pc_homogeneous_rig = T_lidar_rig @ raw_pc_homogeneous  # 4 x N
-
-                # Filter outs points that are inside the vehicles bounding-box
-                valid_idxs_vehicle_bbox = np.logical_not(isWithin3DBBox(raw_pc_homogeneous_rig[0:3, :].astype(np.float32).transpose(), vehicle_bbox_rig.reshape(1,-1)))
-
                 # Determine per-column rig-to-world pose and compute per-column lidar-to-world transformations
                 column_timestamps = np.array(data.data.column_timestamps_microseconds)
                 column_poses = pose_interpolator.interpolate_to_timestamps(column_timestamps)
                 T_column_lidar_worlds = column_poses @ T_lidar_rig[None,:,:]
+                T_rig_world = column_poses[-1]  # Pose of the rig at the end of the lidar spin, can be used to transform points into a local coordinate frame
+                T_world_rig = np.linalg.inv(T_rig_world)
+                T_world_lidar = np.linalg.inv(T_lidar_rig) @ T_world_rig
 
                 # Perform per-column unwinding, transforming from lidar to world coordinates
                 transformed_pc = unwind_lidar(raw_pc, T_column_lidar_worlds.astype(np.float64).reshape(-1,4), np.array(data.data.column_indices).reshape(-1,1))
+
+                pc_world_homogeneous = np.row_stack([transformed_pc[:,3:6].transpose(), np.ones(transformed_pc.shape[0], dtype=np.float32)])  # 4 x N
+                pc_rig = (T_world_rig @ pc_world_homogeneous)[:-1, :].transpose()  # N x 3
+                pc_lidar = (T_world_lidar @ pc_world_homogeneous)[:-1, :].transpose()  # N x 3
+
+                # Filter outs points that are inside the vehicles bounding-box
+                valid_idxs_vehicle_bbox = np.logical_not(isWithin3DBBox(pc_rig.astype(np.float32), vehicle_bbox_rig.reshape(1,-1)))
 
                 # Filter points based on distances
                 dist = np.linalg.norm(transformed_pc[:,:3] - transformed_pc[:,3:6], axis=1)
@@ -327,11 +330,11 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 # 3D rays in space with accompanying metadata.
                 # Format; x_s, y_s, z_s, x_e, y_e, z_e, dist, intensity, dynamic flag
                 # Dynamic flag is set to -1 if the information is not available, 0 static, 1 = dynamic
-                raw_pc = raw_pc[valid_idx,:].astype(np.float32)
+                pc_lidar = pc_lidar[valid_idx,:].astype(np.float32)
                 transformed_pc = transformed_pc[valid_idx,:]
 
                 # Use the bounding boxes to remove dynamic objects
-                dynamic_flag, current_frame_labels = LabelProcessor.lidar_dynamic_flag(raw_pc,
+                dynamic_flag, current_frame_labels = LabelProcessor.lidar_dynamic_flag(pc_lidar,
                                                                                        fa_timestamp if fa_timestamp else -1,
                                                                                        annotations,
                                                                                        frame_annotations)
@@ -365,7 +368,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 # Store metadata of the lidar frame
                 metadata = {}
                 metadata['T_lidar_rig'] = T_lidar_rig       # Lidar extrinsic parameters (note: this can be assumed to be constant and could be stored only once)
-                metadata['T_rig_world'] = column_poses[-1]  # Pose of the rig at the end of the lidar spin, can be used to transform points into a local coordinate frame
+                metadata['T_rig_world'] = T_rig_world
                 metadata['elevation_angles'] = None         # [TODO: currently missing for NV sensors] Lidar elevation angles, can be used to simulate the lidar or recover points that did not return
                 save_pkl(metadata, lidar_save_path.replace('.dat.xz','.pkl'))
 
