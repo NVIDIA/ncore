@@ -329,7 +329,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
         lidar_end_timestmap = []
         # We remove the first and the last lidar frame such that the poses do not have to be extrapolated
         frame_idx = 0
-        for frame_path in self.lidar_data_paths:
+        for frame_path in tqdm.tqdm(self.lidar_data_paths):
 
             # First frame might not work as the pose is available only at the middle of the frame
             try:
@@ -361,7 +361,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 raw_pc_homogeneous_rig = T_lidar_rig @ raw_pc_homogeneous  # 4 x N
 
                 # Filter outs points that are inside the vehicles bounding-box
-                valid_idxs_vehicle_bbox = np.logical_not(isWithin3DBBox(raw_pc_homogeneous_rig[0:3, :].transpose(), vehicle_bbox_rig.reshape(1,-1)))
+                valid_idxs_vehicle_bbox = np.logical_not(isWithin3DBBox(raw_pc_homogeneous_rig[0:3, :].astype(np.float32).transpose(), vehicle_bbox_rig.reshape(1,-1)))
 
                 # Determine per-column rig-to-world pose and compute per-column lidar-to-world transformations
                 column_timestamps = np.array(data.data.column_timestamps_microseconds)
@@ -382,7 +382,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 # 3D rays in space with accompanying metadata.
                 # Format; x_s, y_s, z_s, x_e, y_e, z_e, dist, intensity, dynamic flag
                 # Dynamic flag is set to -1 if the information is not available, 0 static, 1 = dynamic
-                raw_pc = raw_pc[valid_idx,:]
+                raw_pc = raw_pc[valid_idx,:].astype(np.float32)
                 transformed_pc = transformed_pc[valid_idx,:]
 
                 # Save the per frame label
@@ -398,8 +398,8 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                     dynamic_state = annotations['3d_labels'][label_id]['dynamic_flag']
                     # If the object is dynamic update the points that fall in that bounding box
                     if dynamic_state:
-                        bbox = label['3D_bbox']
-                        bbox[3:6] += LabelProcessor.LIDAR_DYNAMIC_FLAG_BBOX_PADDING # enlarge the bounding box
+                        bbox = np.copy(label['3D_bbox']) # enlarge the bounding box for the check *only*
+                        bbox[3:6] += LabelProcessor.LIDAR_DYNAMIC_FLAG_BBOX_PADDING # TODO: make sure this parameter is tuned sensibly
                         dynamic_flag[isWithin3DBBox(raw_pc, bbox.reshape(1,-1))] = 1
 
                 transformed_pc[:,-1] = dynamic_flag
