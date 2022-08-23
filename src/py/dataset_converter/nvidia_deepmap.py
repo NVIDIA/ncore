@@ -134,6 +134,10 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             base_pose = self.poses[0]
             np.savez(os.path.join(self.output_dir, self.sequence_name, 'base_pose.npz'), base_pose=base_pose)
 
+        # Log base pose to share it more easily with downstream teams (it's serialized also explicitly)
+        with np.printoptions(floatmode='unique', linewidth=200): # print in highest precision
+            self.logger.info(f'> processed {len(self.poses_timestamps)} poses, using base pose:\n{base_pose}')
+
         # Convert the poses to the sequence coordinate frame
         self.poses = np.linalg.inv(base_pose) @ self.poses
 
