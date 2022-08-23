@@ -6,6 +6,8 @@ import json
 import cv2
 import numpy as np
 
+import tqdm
+
 from google.protobuf import text_format
 from pyarrow.parquet import ParquetDataset
 from collections import defaultdict
@@ -236,15 +238,18 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             label_data = table.to_pandas()
             label_data = label_data.reset_index()  # make sure indexes pair with number of rows
 
-            for _, row in label_data.iterrows():
+            for _, row in tqdm.tqdm(label_data.iterrows(), total=len(label_data)):
                 if row['label_name'] in LabelProcessor.LABEL_STRING_TO_LABEL_ID.keys():
 
-                    track_id = row['trackline_id']
-                    label_timestamp = row['detection_timestamp']
+                    track_id = row['gt_trackline_id']
+                    label_timestamp = row['timestamp']
 
                     cuboid = np.array([row['centroid_x'], row['centroid_y'], row['centroid_z'],
                                        row['dim_x'], row['dim_y'], row['dim_z'],
                                        row['rot_x'], row['rot_y'], row['rot_z']], dtype=np.float32)
+
+                    # this is assuming velocity is not relative to the local sensor motion, but w.r.t. fixed scene / world
+                    global_speed = np.linalg.norm([row['velocity_x'], row['velocity_y'], row['velocity_z']])
 
                     if label_timestamp not in frame_annotations:
                         frame_annotations[label_timestamp]['lidar_labels'] = []
@@ -260,7 +265,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                                                                                 'combined_difficulty_level':
                                                                                     -1,
                                                                                 'global_speed':
-                                                                                    -1,
+                                                                                    global_speed,
                                                                                 'global_accel':
                                                                                     -1})
 
@@ -273,11 +278,11 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
                     annotations['3d_labels'][track_id]['lidar'][label_timestamp] = {'3D_bbox': cuboid,
                                                                         'num_point': -1,
-                                                                        'global_speed': -1,
+                                                                        'global_speed': global_speed,
                                                                         'global_accel': -1,}
 
                     # TODO: check if this user-defined threshold makes sense
-                    if LabelProcessor.LABEL_STRING_TO_LABEL_ID[row['label_name']] not in LabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_STATIC and np.linalg.norm([row['velocity_x'], row['velocity_y']]) >= 1/3.6:
+                    if LabelProcessor.LABEL_STRING_TO_LABEL_ID[row['label_name']] not in LabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_STATIC and global_speed >= LabelProcessor.GLOBAL_SPEED_DYNAMIC_THRESHOLD:
                         annotations['3d_labels'][track_id]['dynamic_flag'] = 1
 
             # Save the accumulated data

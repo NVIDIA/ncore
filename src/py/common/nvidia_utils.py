@@ -398,6 +398,9 @@ class LabelProcessor:
     # Label BBOX padding distance (in meters) to enlarge bounding boxes for per-point dynamic-flag assignment
     LIDAR_DYNAMIC_FLAG_BBOX_PADDING = 3.0
 
+    # TODO: check if this user-defined velocity threshold makes sense
+    GLOBAL_SPEED_DYNAMIC_THRESHOLD = 1.0 / 3.6
+
     @classmethod
     def parse(
         cls,
@@ -407,7 +410,7 @@ class LabelProcessor:
         logger: logging.Logger,
 
         # TODO: check if this user-defined velocity threshold makes sense
-        global_speed_dynamic_threshold: float = 1.0 / 3.6
+        global_speed_dynamic_threshold: float = GLOBAL_SPEED_DYNAMIC_THRESHOLD
     ) -> Tuple[dict, dict]:
         """Parses a labels file for label tracks and per-frame labels.
 
