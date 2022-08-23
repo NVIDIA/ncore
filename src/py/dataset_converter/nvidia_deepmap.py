@@ -181,14 +181,8 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 success,image = vidcap.read()
                 count += 1
 
-            # Extract the metadata (get the relative transformation to the lidar sensor as the rig might change
+            # Extract camera extrinsics
             T_cam_rig = sensor_to_rig(calibration_data[cam_id_rig])
-            # T_lidar_rig = sensor_to_rig(calibration_data[self.LIDAR_SENSORNAME])
-            # lidar_calib_path = os.path.join(sequence_path, 'to_vehicle_transform_lidar00.pb.txt')
-            # T_lidar_sdc = extract_sensor_2_sdc(lidar_calib_path)
-
-            # Recompute T_cam_rig
-            # T_cam_rig = T_lidar_sdc @ np.linalg.inv(T_lidar_rig) @ T_cam_rig
 
             intrinsic = camera_intrinsic_parameters(calibration_data[cam_id_rig])
 
@@ -310,14 +304,9 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
         fa_timestamps = np.array(sorted(list(frame_annotations.keys())))
 
-        lidar_calib_path = os.path.join(sequence_path, 'to_vehicle_transform_lidar00.pb.txt')
-        
         # Load lidar extrinsics to compute poses of the rig frame if egomotion is represented in lidar frame
-        T_lidar_rig = sensor_to_rig(
-            self.sensors_calibration_data[self.LIDAR_SENSORNAME])
-        T_rig_lidar = np.linalg.inv(T_lidar_rig)
-
-        # T_lidar_rig = extract_sensor_2_sdc(lidar_calib_path)
+        calibration_data = parse_rig_sensors_from_dict(self.rig)
+        T_lidar_rig = sensor_to_rig(calibration_data[self.LIDAR_SENSORNAME])
 
         # Load vehicle bounding box (defined in rig frame)
         vehicle_bbox_rig = vehicle_bbox(self.rig)
@@ -345,9 +334,6 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 # spherical_coordinates = euclidean_2_spherical_coords(raw_pc)
                 intensities = np.frombuffer(data.data.intensities, dtype=np.uint8)
 
-                # Save the end time stamp of the lidar spin
-                lidar_end_timestmap.append(data.meta_data.end_timestamp_microseconds)
-
                 # Find the closest frame in the annotations
                 time_diff = np.abs(fa_timestamps - (data.meta_data.end_timestamp_microseconds))
                 annotation_frame_idx = np.argmin(time_diff)
@@ -369,7 +355,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 T_column_lidar_worlds = column_poses @ T_lidar_rig[None,:,:]
 
                 # Perform per-column unwinding, transforming from lidar to world coordinates
-                transformed_pc = unwind_lidar(raw_pc, T_column_lidar_worlds.reshape(-1,4), np.array(data.data.column_indices).reshape(-1,1))
+                transformed_pc = unwind_lidar(raw_pc, T_column_lidar_worlds.astype(np.float64).reshape(-1,4), np.array(data.data.column_indices).reshape(-1,1))
 
                 # Filter points based on distances
                 dist = np.linalg.norm(transformed_pc[:,:3] - transformed_pc[:,3:6], axis=1)
@@ -429,6 +415,9 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 metadata['T_rig_world'] = column_poses[-1]  # Pose of the rig at the end of the lidar spin, can be used to transform points into a local coordinate frame
                 metadata['elevation_angles'] = None         # [TODO: currently missing for NV sensors] Lidar elevation angles, can be used to simulate the lidar or recover points that did not return
                 save_pkl(metadata, lidar_save_path.replace('.dat.xz','.pkl'))
+
+                # Save the end time stamp of the lidar spin
+                lidar_end_timestmap.append(data.meta_data.end_timestamp_microseconds)
 
                 frame_idx += 1
 
