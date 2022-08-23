@@ -79,7 +79,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             # Extract all the lidar paths, timestamps and poses from the track record
             self.track_data = protobuf_to_dict(self.track_data)
 
-            self.decode_poses_timestamps()
+            self.decode_poses_timestamps(sequence_path)
 
             self.decode_labels(sequence_path, annotations, frame_annotations)
 
@@ -91,8 +91,18 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
         return sub_sequence_names
 
-    def decode_poses_timestamps(self):
+    def decode_poses_timestamps(self, sequence_path):
+
+        # Compute the transformation from the SDC (deepmap rig) to the NV rig definition
+        calibration_data = parse_rig_sensors_from_dict(self.rig)
+        T_lidar_rig = sensor_to_rig(calibration_data[self.LIDAR_SENSORNAME])
+        lidar_calib_path = os.path.join(sequence_path, 'to_vehicle_transform_lidar00.pb.txt')
+        T_lidar_sdc = extract_sensor_2_sdc(lidar_calib_path)
+        T_rig_sdc = T_lidar_sdc @ np.linalg.inv(T_lidar_rig)
+
         # Extract poses and timestamps, which are converted to the nvidia convention
+        # extract_pose() extracts the T_sdc_world transformation and we want to get T_rig_world
+        # the poses hence have to be right-multiplied with T_rig_sdc
         if 'lidar_records' in self.track_data:
             for frame in self.track_data['lidar_records'][0]['records']:
                 self.lidar_timestamps.append(frame['timestamp_microseconds'])
@@ -100,13 +110,13 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
                 if 'pose' in frame:
                     self.poses_timestamps.append(frame['timestamp_microseconds'])
-                    self.poses.append(extract_pose(frame['pose']))
+                    self.poses.append(extract_pose(frame['pose']) @ T_rig_sdc)
 
         if 'camera_records' in self.track_data:
             for frame in self.track_data['camera_records'][0]['records']:
                 if 'pose' in frame:
                     self.poses_timestamps.append(frame['timestamp_microseconds'])
-                    self.poses.append(extract_pose(frame['pose']))
+                    self.poses.append(extract_pose(frame['pose']) @ T_rig_sdc)
 
 
         # Stack and sort the poses
@@ -173,12 +183,12 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
             # Extract the metadata (get the relative transformation to the lidar sensor as the rig might change
             T_cam_rig = sensor_to_rig(calibration_data[cam_id_rig])
-            T_lidar_rig = sensor_to_rig(calibration_data[self.LIDAR_SENSORNAME])
-            lidar_calib_path = os.path.join(sequence_path, 'to_vehicle_transform_lidar00.pb.txt')
-            T_lidar_sdc = extract_sensor_2_sdc(lidar_calib_path)
+            # T_lidar_rig = sensor_to_rig(calibration_data[self.LIDAR_SENSORNAME])
+            # lidar_calib_path = os.path.join(sequence_path, 'to_vehicle_transform_lidar00.pb.txt')
+            # T_lidar_sdc = extract_sensor_2_sdc(lidar_calib_path)
 
             # Recompute T_cam_rig
-            T_cam_rig = T_lidar_sdc @ np.linalg.inv(T_lidar_rig) @ T_cam_rig
+            # T_cam_rig = T_lidar_sdc @ np.linalg.inv(T_lidar_rig) @ T_cam_rig
 
             intrinsic = camera_intrinsic_parameters(calibration_data[cam_id_rig])
 
@@ -301,7 +311,13 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
         fa_timestamps = np.array(sorted(list(frame_annotations.keys())))
 
         lidar_calib_path = os.path.join(sequence_path, 'to_vehicle_transform_lidar00.pb.txt')
-        T_lidar_rig = extract_sensor_2_sdc(lidar_calib_path)
+        
+        # Load lidar extrinsics to compute poses of the rig frame if egomotion is represented in lidar frame
+        T_lidar_rig = sensor_to_rig(
+            self.sensors_calibration_data[self.LIDAR_SENSORNAME])
+        T_rig_lidar = np.linalg.inv(T_lidar_rig)
+
+        # T_lidar_rig = extract_sensor_2_sdc(lidar_calib_path)
 
         # Load vehicle bounding box (defined in rig frame)
         vehicle_bbox_rig = vehicle_bbox(self.rig)

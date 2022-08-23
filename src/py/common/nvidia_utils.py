@@ -83,7 +83,7 @@ def extract_pose(data, earth_model='WGS84'):
     Args:
         data (dict): pose data
     Out:
-        (np.array): transformation from lidar to SDC in se3 representation [m,4,4]
+        (np.array): Transformation from SDC to ECEF coordinate system [m,4,4]
     '''
 
 
