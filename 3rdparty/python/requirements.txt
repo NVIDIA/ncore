@@ -457,6 +457,7 @@ jupyter-server==1.18.1 \
     --hash=sha256:022759b09c96a4e2feb95de59ce4283e04e17782efe197b91d23a47521609b77 \
     --hash=sha256:2b72fc595bccae292260aad8157a0ead8da2c703ec6ae1bb7b36dbad0e267ea7
     # via
+    #   -r 3rdparty/python/requirements.in
     #   jupyterlab
     #   jupyterlab-server
     #   nbclassic
@@ -1536,7 +1537,6 @@ six==1.15.0 \
     --hash=sha256:8b74bedcbbbaca38ff6d7491d76f2b06b3592611af620f8426e82dddb04a5ced
     # via
     #   absl-py
-    #   asttokens
     #   astunparse
     #   bleach
     #   google-auth
