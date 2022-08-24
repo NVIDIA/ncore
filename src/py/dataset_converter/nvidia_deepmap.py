@@ -3,7 +3,9 @@
 import os
 import glob
 import json
+import logging
 import cv2
+import tqdm
 import numpy as np
 
 from google.protobuf import text_format
@@ -26,10 +28,14 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
     """
 
     def __init__(self, config):
+        self.logger = logging.getLogger(__name__)
+
         super().__init__(config)
 
         self.sequence_pathnames = sorted(glob.glob(os.path.join(self.root_dir, '*/')))
 
+        self.start_timestamp_us = config.start_timestamp_us
+        self.end_timestamp_us = config.end_timestamp_us
 
     def convert_one(self, sequence_path):
         """
@@ -58,9 +64,6 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             self.poses_timestamps = []
             self.lidar_timestamps = []
             self.lidar_data_paths = []
-            annotations = {}
-            annotations['3d_labels'] = defaultdict(dict)
-            frame_annotations = defaultdict(dict)
 
             # Read rig json file
             with open(os.path.join(sequence_path, 'rig.json'), 'r') as fp:
@@ -77,9 +80,9 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             # Extract all the lidar paths, timestamps and poses from the track record
             self.track_data = protobuf_to_dict(self.track_data)
 
-            self.decode_poses_timestamps()
+            self.decode_poses_timestamps(sequence_path)
 
-            self.decode_labels(sequence_path, annotations, frame_annotations)
+            self.decode_labels(sequence_path)
 
             self.decode_lidar(sequence_path)
 
@@ -89,8 +92,18 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
         return sub_sequence_names
 
-    def decode_poses_timestamps(self):
+    def decode_poses_timestamps(self, sequence_path):
+
+        # Compute the transformation from the SDC (deepmap rig) to the NV rig definition
+        calibration_data = parse_rig_sensors_from_dict(self.rig)
+        T_lidar_rig = sensor_to_rig(calibration_data[self.LIDAR_SENSORNAME])
+        lidar_calib_path = os.path.join(sequence_path, 'to_vehicle_transform_lidar00.pb.txt')
+        T_lidar_sdc = extract_sensor_2_sdc(lidar_calib_path)
+        T_rig_sdc = T_lidar_sdc @ np.linalg.inv(T_lidar_rig)
+
         # Extract poses and timestamps, which are converted to the nvidia convention
+        # extract_pose() extracts the T_sdc_world transformation and we want to get T_rig_world
+        # the poses hence have to be right-multiplied with T_rig_sdc
         if 'lidar_records' in self.track_data:
             for frame in self.track_data['lidar_records'][0]['records']:
                 self.lidar_timestamps.append(frame['timestamp_microseconds'])
@@ -98,14 +111,13 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
                 if 'pose' in frame:
                     self.poses_timestamps.append(frame['timestamp_microseconds'])
-                    self.poses.append(extract_pose(frame['pose']))
+                    self.poses.append(extract_pose(frame['pose']) @ T_rig_sdc)
 
         if 'camera_records' in self.track_data:
             for frame in self.track_data['camera_records'][0]['records']:
                 if 'pose' in frame:
                     self.poses_timestamps.append(frame['timestamp_microseconds'])
-                    self.poses.append(extract_pose(frame['pose']))
-
+                    self.poses.append(extract_pose(frame['pose']) @ T_rig_sdc)
 
         # Stack and sort the poses
         self.poses = np.stack(self.poses)
@@ -117,19 +129,23 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
         self.poses_timestamps = self.poses_timestamps[sort_idx]
 
         if os.path.exists(os.path.join(self.output_dir, self.sequence_name, 'base_pose.npz')):
-            self.base_pose = np.load(os.path.join(self.output_dir, self.sequence_name, 'base_pose.npz'))['base_pose']
+            base_pose = np.load(os.path.join(self.output_dir, self.sequence_name, 'base_pose.npz'))['base_pose']
         else:
-            self.base_pose = self.poses[0]
-            np.savez(os.path.join(self.output_dir, self.sequence_name, 'base_pose.npz'), base_pose=self.base_pose)
+            base_pose = self.poses[0]
+            np.savez(os.path.join(self.output_dir, self.sequence_name, 'base_pose.npz'), base_pose=base_pose)
+
+        # Log base pose to share it more easily with downstream teams (it's serialized also explicitly)
+        with np.printoptions(floatmode='unique', linewidth=200): # print in highest precision
+            self.logger.info(f'> processed {len(self.poses_timestamps)} poses, using base pose:\n{base_pose}')
 
         # Convert the poses to the sequence coordinate frame
-        self.poses = np.linalg.inv(self.base_pose) @ self.poses
+        self.poses = np.linalg.inv(base_pose) @ self.poses
 
         # Save the poses
         poses_save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name,
                         self.poses_save_dir, 'poses.npz')
 
-        np.savez(poses_save_path, base_pose=self.base_pose, ego_poses=self.poses, timestamps=self.poses_timestamps)
+        np.savez(poses_save_path, base_pose=base_pose, ego_poses=self.poses, timestamps=self.poses_timestamps)
 
     def decode_images(self, sequence_path):
         # Parse the rig calibration file
@@ -147,8 +163,11 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             frame_timestamps = np.genfromtxt(os.path.join(sequence_path, 'camera_data/', camera + '.mp4.timestamps'), delimiter='\t', dtype=int)
 
             # Get the frame index of the first and last frame
-            start_idx = np.where(frame_timestamps[:,1] > self.poses_timestamps[0] + self.CAM2ROLLINGSHUTTERDELAY[cam_type] + self.CAM2EXPOSURETIME[cam_type])[0][0]
-            end_idx = np.where(frame_timestamps[:,1] >= self.poses_timestamps[-1])[0][0]
+            start_timestamp_us = self.start_timestamp_us if self.start_timestamp_us else self.poses_timestamps[0]
+            end_timestamp_us = self.end_timestamp_us if self.end_timestamp_us else self.poses_timestamps[-1]
+
+            start_idx = np.where(frame_timestamps[:,1] > start_timestamp_us + self.CAM2ROLLINGSHUTTERDELAY[cam_type] + self.CAM2EXPOSURETIME[cam_type])[0][0]
+            end_idx = np.where(frame_timestamps[:,1] >= end_timestamp_us)[0][0]
 
             frame_timestamps = frame_timestamps[start_idx:end_idx, :]
 
@@ -169,14 +188,8 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 success,image = vidcap.read()
                 count += 1
 
-            # Extract the metadata (get the relative transformation to the lidar sensor as the rig might change
+            # Extract camera extrinsics
             T_cam_rig = sensor_to_rig(calibration_data[cam_id_rig])
-            T_lidar_rig = sensor_to_rig(calibration_data[self.LIDAR_SENSORNAME])
-            lidar_calib_path = os.path.join(sequence_path, 'to_vehicle_transform_lidar00.pb.txt')
-            T_lidar_sdc = extract_sensor_2_sdc(lidar_calib_path)
-
-            # Recompute T_cam_rig
-            T_cam_rig = T_lidar_sdc @ np.linalg.inv(T_lidar_rig) @ T_cam_rig
 
             intrinsic = camera_intrinsic_parameters(calibration_data[cam_id_rig])
 
@@ -226,59 +239,18 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
         save_pkl(camera_timestamps, image_t_save_path)
 
-    def decode_labels(self, sequence_path, annotations, frame_annotations):
+
+    def decode_labels(self, sequence_path):
 
         # Check if the labels for this sequence were already extracted (done only once, not for each track)
         if not os.path.exists(os.path.join(self.output_dir, self.sequence_name, 'frame_labels.pkl')):
-            # Read the pandas file
-            dataset = ParquetDataset(os.path.join(sequence_path, 'labels', 'autolabels.parquet'))
-            table = dataset.read()
-            label_data = table.to_pandas()
-            label_data = label_data.reset_index()  # make sure indexes pair with number of rows
 
-            for _, row in label_data.iterrows():
-                if row['label_name'] in LabelProcessor.LABEL_STRING_TO_LABEL_ID.keys():
-
-                    track_id = row['trackline_id']
-                    label_timestamp = row['detection_timestamp']
-
-                    cuboid = np.array([row['centroid_x'], row['centroid_y'], row['centroid_z'],
-                                       row['dim_x'], row['dim_y'], row['dim_z'],
-                                       row['rot_x'], row['rot_y'], row['rot_z']], dtype=np.float32)
-
-                    if label_timestamp not in frame_annotations:
-                        frame_annotations[label_timestamp]['lidar_labels'] = []
-
-                    frame_annotations[label_timestamp]['lidar_labels'].append({'id': len(frame_annotations[label_timestamp]['lidar_labels']),
-                                                                                'name': track_id,
-                                                                                'label': LabelProcessor.LABEL_STRING_TO_LABEL_ID[row['label_name']],
-                                                                                '3D_bbox': cuboid,
-                                                                                'num_points':
-                                                                                    -1,
-                                                                                'detection_difficulty_level':
-                                                                                    -1,
-                                                                                'combined_difficulty_level':
-                                                                                    -1,
-                                                                                'global_speed':
-                                                                                    -1,
-                                                                                'global_accel':
-                                                                                    -1})
-
-
-                    if track_id not in annotations['3d_labels']:
-                        annotations['3d_labels'][track_id]['dynamic_flag'] = 1 if LabelProcessor.LABEL_STRING_TO_LABEL_ID[row['label_name']] in LabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else 0
-                        annotations['3d_labels'][track_id]['type'] = LabelProcessor.LABEL_STRING_TO_LABEL_ID[row['label_name']]
-                        annotations['3d_labels'][track_id]['lidar'] = {}
-
-
-                    annotations['3d_labels'][track_id]['lidar'][label_timestamp] = {'3D_bbox': cuboid,
-                                                                        'num_point': -1,
-                                                                        'global_speed': -1,
-                                                                        'global_accel': -1,}
-
-                    # TODO: check if this user-defined threshold makes sense
-                    if LabelProcessor.LABEL_STRING_TO_LABEL_ID[row['label_name']] not in LabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_STATIC and np.linalg.norm([row['velocity_x'], row['velocity_y']]) >= 1/3.6:
-                        annotations['3d_labels'][track_id]['dynamic_flag'] = 1
+            # Perform label parsing
+            annotations, frame_annotations = LabelProcessor.parse(
+                os.path.join(sequence_path, 'labels', 'autolabels.parquet'),
+                None, # make sure to parse *all* labels (as these apply to other tracks also)
+                None,
+                self.logger)
 
             # Save the accumulated data
             labels_save_path =  os.path.join(self.output_dir, self.sequence_name, 'labels.pkl')
@@ -288,6 +260,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             frame_labels_save_path =  os.path.join(self.output_dir, self.sequence_name, 'frame_labels.pkl')
             save_pkl(frame_annotations, frame_labels_save_path)
 
+
     def decode_lidar(self, sequence_path):
         annotations  = load_pkl(os.path.join(self.output_dir, self.sequence_name, 'labels.pkl'))
 
@@ -295,8 +268,9 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
         fa_timestamps = np.array(sorted(list(frame_annotations.keys())))
 
-        lidar_calib_path = os.path.join(sequence_path, 'to_vehicle_transform_lidar00.pb.txt')
-        T_lidar_rig = extract_sensor_2_sdc(lidar_calib_path)
+        # Load lidar extrinsics to compute poses of the rig frame if egomotion is represented in lidar frame
+        calibration_data = parse_rig_sensors_from_dict(self.rig)
+        T_lidar_rig = sensor_to_rig(calibration_data[self.LIDAR_SENSORNAME])
 
         # Load vehicle bounding box (defined in rig frame)
         vehicle_bbox_rig = vehicle_bbox(self.rig)
@@ -308,7 +282,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
         lidar_end_timestmap = []
         # We remove the first and the last lidar frame such that the poses do not have to be extrapolated
         frame_idx = 0
-        for frame_path in self.lidar_data_paths:
+        for frame_path in tqdm.tqdm(self.lidar_data_paths):
 
             # First frame might not work as the pose is available only at the middle of the frame
             try:
@@ -317,6 +291,21 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 with open(os.path.join(sequence_path, 'tracks', frame_path), 'rb') as f:
                     data.ParseFromString(f.read())
 
+                if self.start_timestamp_us and data.meta_data.end_timestamp_microseconds < self.start_timestamp_us:
+                    continue
+                if self.end_timestamp_us and data.meta_data.end_timestamp_microseconds > self.end_timestamp_us:
+                    continue
+
+                # Find the closest frame in the annotations
+                time_diff = np.abs(fa_timestamps - (data.meta_data.end_timestamp_microseconds))
+                annotation_frame_idx = np.argmin(time_diff)
+
+                if time_diff[annotation_frame_idx] <= 10000:
+                    fa_timestamp = fa_timestamps[annotation_frame_idx]
+                else:
+                    self.logger.debug(f'no annotated frame found for lidar frame {frame_idx}')
+                    fa_timestamp = None
+
                 raw_pc = np.concatenate([np.array(data.data.points_x)[:,None],
                                          np.array(data.data.points_y)[:,None],
                                          np.array(data.data.points_z)[:,None]], axis=1)
@@ -324,31 +313,23 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 # spherical_coordinates = euclidean_2_spherical_coords(raw_pc)
                 intensities = np.frombuffer(data.data.intensities, dtype=np.uint8)
 
-                # Save the end time stamp of the lidar spin
-                lidar_end_timestmap.append(data.meta_data.end_timestamp_microseconds)
-
-                # Find the closest frame in the annotations
-                time_diff = np.abs(fa_timestamps - (data.meta_data.end_timestamp_microseconds))
-                annotation_frame_idx = np.argmin(time_diff)
-
-                if time_diff[annotation_frame_idx] > 10000:
-                    print("no corresponding frame found")
-                    continue
-
-                # Transform points to rig frame to perform filtering
-                raw_pc_homogeneous = np.row_stack([raw_pc.transpose(), np.ones(raw_pc.shape[0], dtype=np.float32)])  # 4 x N
-                raw_pc_homogeneous_rig = T_lidar_rig @ raw_pc_homogeneous  # 4 x N
-
-                # Filter outs points that are inside the vehicles bounding-box
-                valid_idxs_vehicle_bbox = np.logical_not(isWithin3DBBox(raw_pc_homogeneous_rig[0:3, :].transpose(), vehicle_bbox_rig.reshape(1,-1)))
-
                 # Determine per-column rig-to-world pose and compute per-column lidar-to-world transformations
                 column_timestamps = np.array(data.data.column_timestamps_microseconds)
                 column_poses = pose_interpolator.interpolate_to_timestamps(column_timestamps)
                 T_column_lidar_worlds = column_poses @ T_lidar_rig[None,:,:]
+                T_rig_world = column_poses[-1]  # Pose of the rig at the end of the lidar spin, can be used to transform points into a local coordinate frame
+                T_world_rig = np.linalg.inv(T_rig_world)
+                T_world_lidar = np.linalg.inv(T_lidar_rig) @ T_world_rig
 
                 # Perform per-column unwinding, transforming from lidar to world coordinates
-                transformed_pc = unwind_lidar(raw_pc, T_column_lidar_worlds.reshape(-1,4), np.array(data.data.column_indices).reshape(-1,1))
+                transformed_pc = unwind_lidar(raw_pc, T_column_lidar_worlds.astype(np.float64).reshape(-1,4), np.array(data.data.column_indices).reshape(-1,1))
+
+                pc_world_homogeneous = np.row_stack([transformed_pc[:,3:6].transpose(), np.ones(transformed_pc.shape[0], dtype=np.float32)])  # 4 x N
+                pc_rig = (T_world_rig @ pc_world_homogeneous)[:-1, :].transpose()  # N x 3
+                pc_lidar = (T_world_lidar @ pc_world_homogeneous)[:-1, :].transpose()  # N x 3
+
+                # Filter outs points that are inside the vehicles bounding-box
+                valid_idxs_vehicle_bbox = np.logical_not(isWithin3DBBox(pc_rig.astype(np.float32), vehicle_bbox_rig.reshape(1,-1)))
 
                 # Filter points based on distances
                 dist = np.linalg.norm(transformed_pc[:,:3] - transformed_pc[:,3:6], axis=1)
@@ -361,27 +342,21 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 # 3D rays in space with accompanying metadata.
                 # Format; x_s, y_s, z_s, x_e, y_e, z_e, dist, intensity, dynamic flag
                 # Dynamic flag is set to -1 if the information is not available, 0 static, 1 = dynamic
-                raw_pc = raw_pc[valid_idx,:]
+                pc_lidar = pc_lidar[valid_idx,:].astype(np.float32)
                 transformed_pc = transformed_pc[valid_idx,:]
+
+                # Use the bounding boxes to remove dynamic objects
+                dynamic_flag, current_frame_labels = LabelProcessor.lidar_dynamic_flag(pc_lidar,
+                                                                                       fa_timestamp if fa_timestamp else -1,
+                                                                                       annotations,
+                                                                                       frame_annotations)
+                transformed_pc[:,-1] = dynamic_flag
 
                 # Save the per frame label
                 anno_save_path =  os.path.join(self.output_dir, self.sequence_name, self.track_name,
                         self.label_save_dir, str(frame_idx).zfill(self.INDEX_DIGITS) + '.pkl')
 
-                save_pkl(frame_annotations[fa_timestamps[annotation_frame_idx]], anno_save_path)
-
-                # Use the bounding boxes to remove dynamic objects
-                dynamic_flag = np.zeros_like(transformed_pc[:,0])
-                for label in frame_annotations[fa_timestamps[annotation_frame_idx]]['lidar_labels']:
-                    label_id = label['name']
-                    dynamic_state = annotations['3d_labels'][label_id]['dynamic_flag']
-                    # If the object is dynamic update the points that fall in that bounding box
-                    if dynamic_state:
-                        bbox = label['3D_bbox']
-                        bbox[3:6] += LabelProcessor.LIDAR_DYNAMIC_FLAG_BBOX_PADDING # enlarge the bounding box
-                        dynamic_flag[isWithin3DBBox(raw_pc, bbox.reshape(1,-1))] = 1
-
-                transformed_pc[:,-1] = dynamic_flag
+                save_pkl(current_frame_labels, anno_save_path)
 
                 # Use the dynamic masks to remove objects
                 # dynamic_flag = []
@@ -405,14 +380,17 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 # Store metadata of the lidar frame
                 metadata = {}
                 metadata['T_lidar_rig'] = T_lidar_rig       # Lidar extrinsic parameters (note: this can be assumed to be constant and could be stored only once)
-                metadata['T_rig_world'] = column_poses[-1]  # Pose of the rig at the end of the lidar spin, can be used to transform points into a local coordinate frame
+                metadata['T_rig_world'] = T_rig_world
                 metadata['elevation_angles'] = None         # [TODO: currently missing for NV sensors] Lidar elevation angles, can be used to simulate the lidar or recover points that did not return
                 save_pkl(metadata, lidar_save_path.replace('.dat.xz','.pkl'))
+
+                # Save the end time stamp of the lidar spin
+                lidar_end_timestmap.append(data.meta_data.end_timestamp_microseconds)
 
                 frame_idx += 1
 
             except Exception as e: # work on python 3.x
-                print('Lidar frame conversion failed')
+                self.logger.warn(f'Lidar frame conversion failed for lidar frame {frame_idx}: {e}')
 
         # Save all lidar timestamps
         lidar_timestamp_save_path = os.path.join(self.output_dir, self.sequence_name, self.track_name, self.point_cloud_save_dir, 'timestamps.npz')

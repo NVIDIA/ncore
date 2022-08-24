@@ -83,7 +83,7 @@ def extract_pose(data, earth_model='WGS84'):
     Args:
         data (dict): pose data
     Out:
-        (np.array): transformation from lidar to SDC in se3 representation [m,4,4]
+        (np.array): Transformation from SDC to ECEF coordinate system [m,4,4]
     '''
 
 
@@ -398,16 +398,19 @@ class LabelProcessor:
     # Label BBOX padding distance (in meters) to enlarge bounding boxes for per-point dynamic-flag assignment
     LIDAR_DYNAMIC_FLAG_BBOX_PADDING = 3.0
 
+    # TODO: check if this user-defined velocity threshold makes sense
+    GLOBAL_SPEED_DYNAMIC_THRESHOLD = 1.0 / 3.6
+
     @classmethod
     def parse(
         cls,
         labels_path: str,
-        start_timestamp_us: int,
-        end_timestamp_us: int,
+        start_timestamp_us: Optional[int],
+        end_timestamp_us: Optional[int],
         logger: logging.Logger,
 
         # TODO: check if this user-defined velocity threshold makes sense
-        global_speed_dynamic_threshold: float = 1.0 / 3.6
+        global_speed_dynamic_threshold: float = GLOBAL_SPEED_DYNAMIC_THRESHOLD
     ) -> Tuple[dict, dict]:
         """Parses a labels file for label tracks and per-frame labels.
 
@@ -437,8 +440,10 @@ class LabelProcessor:
         label_data = label_data.astype({'gt_trackline_id': 'int64', 'timestamp': 'int64'})
 
         # Filter data range based on time bounds, to speed up processing in case of restricted seek / duration data ranges
-        label_data = label_data[label_data['timestamp'].le(end_timestamp_us)]  # all of the rows with timestamp <= end-timestamp | yapf: disable
-        label_data = label_data[label_data['timestamp'].ge(start_timestamp_us)]  # all of the rows with start-timestamp <= timestamp <= end-timestamp | yapf: disable
+        if end_timestamp_us:
+            label_data = label_data[label_data['timestamp'].le(end_timestamp_us)]  # all of the rows with timestamp <= end-timestamp | yapf: disable
+        if start_timestamp_us:
+            label_data = label_data[label_data['timestamp'].ge(start_timestamp_us)]  # all of the rows with start-timestamp <= timestamp <= end-timestamp | yapf: disable
 
         for ridx in tqdm.tqdm(range(len(label_data))):
             row = label_data.iloc[ridx]
@@ -447,11 +452,6 @@ class LabelProcessor:
 
                 track_id = row['gt_trackline_id']
                 label_timestamp_us = row['timestamp']
-
-                # Validate time-bounds filter
-                assert label_timestamp_us >= start_timestamp_us and \
-                        label_timestamp_us <= end_timestamp_us, \
-                        f"Unexpected timestamp {label_timestamp_us} of label not in time-ranges [{start_timestamp_us}, {end_timestamp_us}]"
 
                 cuboid = np.array([
                     row['centroid_x'],
