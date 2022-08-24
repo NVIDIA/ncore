@@ -32,6 +32,16 @@ def image_to_world_ray(image_points, camera_metadata):
         return libav_utils_cc._pixel2WorldRay(image_points, intrinsic, camera_model, img_height, img_width,
                                         T_cam_world, ego_pose_timestamps, rs_direction)
 
+def pixel2CameraRay(image_points, camera_metadata):
+    assert len(image_points.shape) == 2, "image points need to be a 2D numpy array"
+    assert image_points.shape[1] == 2, "image points need to be a N x 2 array"
+
+    # Initialize the parameters
+    intrinsic = np.array(camera_metadata['intrinsic']).reshape(1,-1).astype(np.float64)
+    camera_model  = camera_metadata['camera_model']
+
+    return libav_utils_cc._pixel2CameraRay(image_points, intrinsic, camera_model)
+
 
 def cameraRay2Pixel(cameraPoints, camera_metadata):
     # Initialize the parameters
