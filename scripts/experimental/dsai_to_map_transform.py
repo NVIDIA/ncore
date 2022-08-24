@@ -51,18 +51,20 @@ def dsai_to_map_transform(root_dir: str, ngp_config: str, map_ref_lat: float, ma
     T_ecef_enu = ecef_2_ENU(lat_long_alt, earth_model='WGS84')
 
     # Print out the transformation matrices
-    np.set_printoptions(suppress=True)
-    logger.info(f"T_ngp_ecef:\n {T_ngp_ecef}")
-    logger.info(f"T_ecef_enu:\n {T_ecef_enu}")
-    logger.info(f"T_dsai_ecef:\n {T_dsai_ecef}")
-    logger.info(f"T_ngp_enu:\n {T_ecef_enu @ T_ngp_ecef}")
-
+    with np.printoptions(floatmode='unique', linewidth=200, suppress=True): # print in highest precision
+        logger.info(f"T_ngp_ecef:\n{T_ngp_ecef}")
+        logger.info(f"T_ecef_enu:\n{T_ecef_enu}")
+        logger.info(f"T_dsai_ecef:\n{T_dsai_ecef}")
+        logger.info(f"T_ngp_enu:\n{T_ecef_enu @ T_ngp_ecef}")   # should be used to transform a NeRF
+        logger.info(f"T_dsai_enu:\n{T_ecef_enu @ T_dsai_ecef}") # should be used to transform a mesh / "local" world coordinates
 
     # Save the transformations
-    ngp_config_dir = ngp_config.split()[0]
-    np.savez(os.path.join(ngp_config_dir, 'T_dsai_ds.npz'), T_ngp_ecef=T_ngp_ecef, 
-                                                              T_ecef_enu=T_ecef_enu,
-                                                              T_dsai_ecef=T_dsai_ecef)
+    ngp_config_dir = os.path.dirname(ngp_config)
+    dsai_ds_path = os.path.join(ngp_config_dir, 'T_dsai_ds.npz')
+    np.savez(dsai_ds_path, T_ngp_ecef=T_ngp_ecef, 
+                           T_ecef_enu=T_ecef_enu,
+                           T_dsai_ecef=T_dsai_ecef)
+    logger.info(f'outputted {dsai_ds_path}')
 
 if __name__ == '__main__':
     dsai_to_map_transform()
