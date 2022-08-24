@@ -5,9 +5,8 @@ import glob
 import json
 import logging
 import cv2
-import numpy as np
-
 import tqdm
+import numpy as np
 
 from google.protobuf import text_format
 from pyarrow.parquet import ParquetDataset

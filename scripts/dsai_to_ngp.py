@@ -123,8 +123,9 @@ def waymo(ctx, *_, **kwargs):
 
         # Resave all image masks 
         for img_mask_path in all_img_mask:
-            img = Image.open(img_mask_path)
-            img.save(img_mask_path.replace('mask_', 'dynamic_mask_'), bits=1,optimize=True)
+            if not os.path.exists(img_mask_path.replace('mask_', 'dynamic_mask_')):
+                img = Image.open(img_mask_path)
+                img.save(img_mask_path.replace('mask_', 'dynamic_mask_'), bits=1,optimize=True)
 
         # Iterate over the poses 
         T_cam_rig = []
@@ -276,7 +277,7 @@ def nvidia(ctx, *_, **kwargs):
 
         # Resave all image masks 
         for img_mask_path in all_img_mask:
-            if os.path.exists(img_mask_path):
+            if os.path.exists(img_mask_path) and not os.path.exists(img_mask_path.replace('mask_', 'dynamic_mask_')):
                 img = Image.open(img_mask_path)
                 img.save(img_mask_path.replace('mask_', 'dynamic_mask_'), bits=1,optimize=True)
 
@@ -329,13 +330,7 @@ def nvidia(ctx, *_, **kwargs):
     # Rescale and move the poses
     for cam_idx, cam in enumerate(cameras): 
 
-        out_train={"aabb_scale":aabb_scale, 
-                   "n_extra_learnable_dims" : 32, 
-                   "camera_angle_x": camera_data[cam]['angle_x'],
-                   "up":camera_data[cam]['up'].tolist(), 
-                   "offset": offset.tolist(),
-                   "scale": scale_factor,
-                   "max_bound": max_dist, 
+        camera_parameters = {
                    "w": float(camera_data[cam]['intrinsic'][2]), 
                    "h": float(camera_data[cam]['intrinsic'][3]), 
                    "cx": float(camera_data[cam]['intrinsic'][0]), 
@@ -346,7 +341,20 @@ def nvidia(ctx, *_, **kwargs):
                    "ftheta_p3": float(camera_data[cam]['intrinsic'][7]),
                    "ftheta_p4": float(camera_data[cam]['intrinsic'][8]),
                    "rolling_shutter":camera_data[cam]['rolling_shutter'].tolist(),
+                   "camera_angle_x": camera_data[cam]['angle_x'],
+                   } 
+
+        out_train={"aabb_scale":aabb_scale, 
+                   "n_extra_learnable_dims" : 32, 
+                   "up":camera_data[cam]['up'].tolist(), 
+                   "offset": offset.tolist(),
+                   "scale": scale_factor,
+                   "max_bound": max_dist, 
                    "frames":[]}
+
+        # Add the camera parameters to the frame
+        for k, v in camera_parameters.items():
+            out_train[k] = v
 
         out_test = copy.deepcopy(out_train)
         all_img = [os.path.join(root_dir, 'images', f'image_{str(cam).zfill(2)}', f'{str(idx).zfill(6)}.jpeg') for idx in range(start_frame, end_frame)]
@@ -358,6 +366,10 @@ def nvidia(ctx, *_, **kwargs):
             "transform_matrix_start": camera_data[cam]['poses_start'][step_frame * i].tolist(), 
             "transform_matrix_end": camera_data[cam]['poses_end'][step_frame * i].tolist()}
 
+            # Add the camera parameters to the frame
+            for k, v in camera_parameters.items():
+                frame[k] = v
+                
             out_train['frames'].append(frame)
 
         for i, name in enumerate(all_img):
