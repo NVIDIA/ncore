@@ -3,6 +3,7 @@
 import json
 import base64
 import logging
+import os
 
 import tqdm
 
@@ -445,6 +446,9 @@ class LabelProcessor:
         if start_timestamp_us:
             label_data = label_data[label_data['timestamp'].ge(start_timestamp_us)]  # all of the rows with start-timestamp <= timestamp <= end-timestamp | yapf: disable
 
+        # Load overwrites from environment variable DSAI_LABEL_TRACKIDS_FORCE_STATIC in the format DSAI_LABEL_TRACKIDS_FORCE_STATIC='10064 10100 10114' (white-space separated IDs)
+        trackids_force_static = set([int(id) for id in os.environ.get('DSAI_LABEL_TRACKIDS_FORCE_STATIC','').split()])
+
         for ridx in tqdm.tqdm(range(len(label_data))):
             row = label_data.iloc[ridx]
 
@@ -509,6 +513,11 @@ class LabelProcessor:
 
                 if row['label_name'] not in cls.LABEL_STRINGS_UNCONDITIONALLY_STATIC and global_speed >= global_speed_dynamic_threshold:
                     labels['3d_labels'][track_id]['dynamic_flag'] = 1
+
+                if track_id in trackids_force_static:
+                    logger.debug(f'> forcing track_id={track_id} to be static (timestamp={label_timestamp_us}, estimated global_speed={global_speed})')
+                    labels['3d_labels'][track_id]['dynamic_flag'] = 0
+
             else:
                 logger.warn(f"> unhandled label type {row['label_name']}")
 
