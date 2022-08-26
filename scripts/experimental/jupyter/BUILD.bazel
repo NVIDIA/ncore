@@ -1,0 +1,14 @@
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_binary")
+
+py_binary(
+    name = "jupyter",
+    srcs = ["jupyter.py"],
+    deps = [
+        requirement("jupyter_server"),
+        "//src/py/common:pylib",
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")

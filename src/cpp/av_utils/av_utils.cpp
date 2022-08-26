@@ -215,19 +215,30 @@ void pixelToCameraRay(Eigen::MatrixBase<Derived>& pixelCoordinates,
         alphas.resize(pixelOffsets.rows(), 1);
         computeBackwardsPolynomial(pixelNorms, cameraIntrinsic, alphas);
 
-        // Compute the ray direction
-        Eigen::Array<double, Eigen::Dynamic, 1> alphaSines = alphas.array().sin();
-        cameraRays.col(0) = alphaSines * pixelOffsets.array().col(0) / pixelNorms.array();
-        cameraRays.col(1) = alphaSines * pixelOffsets.array().col(1) / pixelNorms.array();
-        cameraRays.col(2) = alphas.array().cos();
-
-        // Handle the rays perpendicular to the image plane
-        for(int i=0; i < cameraRays.rows(); i++){
-            if (pixelNorms(i,0) < std::numeric_limits<double>::min())
-                cameraRays.row(i) = {0,0,1};
+        // Compute the ray direction and handle the rays perpendicular to the
+        // image plane
+        for (auto i = 0U; i < cameraRays.rows(); ++i)
+        {
+            auto const pixelNorm = pixelNorms(i, 0);
+            if (pixelNorm < std::numeric_limits<double>::min())
+            {
+                cameraRays(i, 0)  = 0.f;
+                cameraRays(i, 1)  = 0.f;
+                cameraRays(i, 2)  = 1.f;
+            } 
+            else
+            {
+                auto const alpha  = alphas(i);
+                auto const alphaSinePerPixelNorm = std::sin(alpha) / pixelNorm;
+                auto const alphaCos = std::cos(alpha);
+                cameraRays(i, 0)  = alphaSinePerPixelNorm * pixelOffsets(i, 0);
+                cameraRays(i, 1)  = alphaSinePerPixelNorm * pixelOffsets(i, 1);
+                cameraRays(i, 2)  = alphaCos;
+          }
         }
-
-    } else {
+    } 
+    else
+    {
 		std::cout << "Invalid camera model selected (must be one of [pinhole, f_theta]).\n"; 
     }
 }
@@ -421,6 +432,27 @@ npe_begin_code()
                       imageHeight, imageWidth, rollingShutterDirection);
 
     return npe::move(worldRays); 
+
+npe_end_code()
+
+
+const char* pixel2CameraRay_doc = R"igl_Qu8mg5v7(
+Compute unprojections of pixels in the camera image plane to camera rays
+)igl_Qu8mg5v7";
+npe_function(_pixel2CameraRay)
+npe_doc(pixel2CameraRay_doc)
+npe_arg(pixelCoordinates, dense_double)
+npe_arg(cameraIntrinsic, dense_double)
+npe_arg(cameraModel, std::string)
+npe_begin_code()
+
+    // Convert the pixel coordinates to a ray in camera space
+    npe_Matrix_pixelCoordinates cameraRays(pixelCoordinates.rows(), 3);
+    cameraRays.setOnes();
+
+    pixelToCameraRay(pixelCoordinates, cameraIntrinsic, cameraModel, cameraRays);
+
+    return npe::move(cameraRays); 
 
 npe_end_code()
 

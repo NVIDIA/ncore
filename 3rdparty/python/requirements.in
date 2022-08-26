@@ -29,3 +29,5 @@ apex==0.1
 
 # v2.0.4 py3.9 wheel from internal package repo (dist package fails to build)
 pycocotools --hash=sha256:31a6c2d2e0c75f76e23fb300f7b5421b6c1b244f7d5757c4ad21fd6c994ee2aa
+
+jupyter_server
