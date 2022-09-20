@@ -15,6 +15,7 @@ import point_cloud_utils as pcu
 from typing import Optional
 from collections import defaultdict
 from functools import partial
+from pathlib import Path
 
 from src.py.dataset_converter import BaseNvidiaDataConverter
 from src.py.common.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_dict, camera_intrinsic_parameters,
@@ -40,6 +41,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.multiprocessing_camera = config.multiprocessing_camera
         self.multiprocessing_lidar = config.multiprocessing_lidar
         self.max_processes : Optional[int] = config.max_processes
+
+        self.symlink_camera_frames : bool = config.symlink_camera_frames
 
         self.egomotion_file = config.egomotion_file
 
@@ -344,14 +347,19 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         frame_number = args[1]
         frame_timestamp = args[2]
 
-        # Copy image from source to target
+        # Copy / symlink image from source to target
         source_image_path = os.path.join(self.sequence_path, 'cameras', cam_id_rig, str(frame_number) + '.jpeg')
         target_image_path = os.path.join(camera_base_save_path,
                                          str(continuos_frame_index).zfill(self.INDEX_DIGITS) +
                                          '.jpeg')  # store as *increasing* canonical frame IDs
 
-        shutil.copy(source_image_path, target_image_path)
-
+        if self.symlink_camera_frames:
+            # Create symlink target -> source
+            Path(target_image_path).symlink_to(source_image_path)
+        else:
+            # Perform explicit frame file copy
+            shutil.copy(source_image_path, target_image_path)
+        
         # Create frame meta-data
         mask_image.get_image().save(os.path.join(
                     camera_base_save_path,
