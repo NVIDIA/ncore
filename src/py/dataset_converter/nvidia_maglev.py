@@ -114,7 +114,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         self.decode_labels()
 
-        self.decode_images()
+        self.decode_cameras()
 
         self.decode_lidar()
 
@@ -228,16 +228,15 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Save the per frame data
         save_pkl(self.frame_labels, os.path.join(self.output_dir, self.session_id, 'frame_labels.pkl'))
 
-    def decode_images(self):
-        logger = self.logger.getChild('decode_images')
+    def decode_cameras(self):
+        logger = self.logger.getChild('decode_cameras')
         logger.info(f'Loading camera data')
 
         # Collect timestamps of individual cameras
         camera_timestamps = defaultdict(list)
 
         # Determine time bounds from available egomotion poses
-        start_timestamp_us, end_timestamp_us = self.time_bounds(
-            self.poses_timestamps, self.seek_sec, self.duration_sec)
+        start_timestamp_us, end_timestamp_us = self.time_bounds(self.poses_timestamps, self.seek_sec, self.duration_sec)
 
         # Process all valid camera images
         for camera in self.CAMERA_2_IDTYPERIG.keys():
@@ -247,49 +246,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             logger.info(f'Processing camera {cam_id_rig}')
 
             # Target folder for all camera-specific outputs
-            camera_base_save_path = os.path.join(self.output_dir,
-                                                self.session_id,
-                                                self.image_save_dir,
-                                                'image_' + cam_id)
-
-            # Load frame numbers and timestamps
-            frames_metadata = load_jsonl(
-                os.path.join(self.sequence_path, 'cameras', cam_id_rig,
-                            'meta.json'))
-            frame_numbers = np.array(
-                [frame_data['frame_number'] for frame_data in frames_metadata])
-            frame_timestamps = np.array(
-                [frame_data['timestamp'] for frame_data in frames_metadata])
-            del (frames_metadata)
-
-            # Get the frame range of the first and last frame relative to available egomotion poses and respecting exposure timings
-            start_idx = np.argmax(frame_timestamps - self.CAM2ROLLINGSHUTTERDELAY[cam_type] - self.CAM2EXPOSURETIME[cam_type] / 2 >= start_timestamp_us)
-            end_idx = np.argmax(frame_timestamps - self.CAM2EXPOSURETIME[cam_type] / 2 > end_timestamp_us
-            ) if frame_timestamps[-1] - self.CAM2EXPOSURETIME[
-                cam_type] / 2 > end_timestamp_us else -1  # take all frames if all are within egomotion range, or determine last valid frame
-
-            # Subsample frames to valid range
-            frame_numbers = frame_numbers[start_idx:end_idx]
-            frame_timestamps = frame_timestamps[start_idx:end_idx]
-
-            # Copy all valid images
-            process_function = partial(self._copy_image_process,
-                                       camera_base_save_path=camera_base_save_path,
-                                       cam_id_rig=cam_id_rig)
-            process_iterable = enumerate(frame_numbers)
-            if self.multiprocessing_camera:
-                # Use multiprocessing to speed up IO
-                with multiprocessing.Pool(
-                        # limit the number of processes to what is available in the current system / MagLev workflow
-                        processes=platform_cpu_count(upper_limit=self.max_processes)) as pool:
-                    logger.info(f'> copying {len(frame_timestamps)} images using {pool._processes} worker processes')
-                    for _ in tqdm.tqdm(pool.imap_unordered(func=process_function, iterable=process_iterable), total=len(frame_numbers)):
-                        pass
-            else:
-                # Use single process
-                for arg in tqdm.tqdm(process_iterable, total=len(frame_numbers)):
-                    process_function(arg)
-            logger.info(f'> finished copying {len(frame_timestamps)} images')
+            camera_base_save_path = os.path.join(self.output_dir, self.session_id, self.image_save_dir,
+                                                 'image_' + cam_id)
 
             # Extract the calibration metadata
             T_cam_rig = sensor_to_rig(camera_calibration_data)
@@ -297,55 +255,60 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             # Estimate the forward polynomial and other F-theta parameters
             fw_poly_coeff = compute_fw_polynomial(intrinsic)
-            max_ray_distortion, max_angle = compute_ftheta_parameters(
-                np.concatenate((intrinsic, fw_poly_coeff)))
-            intrinsic = np.concatenate(
-                (intrinsic, fw_poly_coeff, max_ray_distortion, max_angle))
+            max_ray_distortion, max_angle = compute_ftheta_parameters(np.concatenate((intrinsic, fw_poly_coeff)))
+            intrinsic = np.concatenate((intrinsic, fw_poly_coeff, max_ray_distortion, max_angle))
 
             # Pose interpolator to obtain start / end egomotion poses
-            pose_interpolator = PoseInterpolator(self.poses,
-                                                self.poses_timestamps)
+            pose_interpolator = PoseInterpolator(self.poses, self.poses_timestamps)
 
             # Constant mask image, which currently only contains the ego car mask
             # TODO: extend this with dynamic object masks
             mask_image = camera_car_mask(camera_calibration_data)
 
-            for frame_idx, frame_timestamp in enumerate(frame_timestamps):
-                mask_image.get_image().save(os.path.join(
-                    camera_base_save_path,
-                    f'mask_{str(frame_idx).zfill(self.INDEX_DIGITS)}.png'),
-                                            optimize=True)
+            # Load frame numbers and timestamps
+            frames_metadata = load_jsonl(os.path.join(self.sequence_path, 'cameras', cam_id_rig, 'meta.json'))
+            frame_numbers = np.array([frame_data['frame_number'] for frame_data in frames_metadata])
+            frame_timestamps = np.array([frame_data['timestamp'] for frame_data in frames_metadata])
+            del (frames_metadata)
 
-                metadata = {}
-                metadata['img_width'] = intrinsic[2]
-                metadata['img_height'] = intrinsic[3]
-                metadata[
-                    'rolling_shutter_direction'] = 1  # 1 = TOP_TO_BOTTOM, 2 = LEFT_TO_RIGHT, 3 = BOTTOM_TO_TOP, 4 = RIGHT_TO_LEFT
+            # Get the frame range of the first and last frame relative to available egomotion poses and respecting exposure timings
+            start_idx = np.argmax(frame_timestamps - self.CAM2ROLLINGSHUTTERDELAY[cam_type] -
+                                  self.CAM2EXPOSURETIME[cam_type] / 2 >= start_timestamp_us)
+            end_idx = np.argmax(frame_timestamps - self.CAM2EXPOSURETIME[cam_type] / 2 > end_timestamp_us) \
+            if frame_timestamps[-1] - self.CAM2EXPOSURETIME[cam_type] / 2 > end_timestamp_us else -1  # take all frames if all are within egomotion range, or determine last valid frame
 
-                metadata['camera_model'] = 'f_theta' if cam_type in [
-                    'wide', 'fisheye'
-                ] else 'pinhole'
-                metadata['exposure_time'] = self.CAM2EXPOSURETIME[cam_type]
-                metadata['intrinsic'] = intrinsic
-                metadata['T_cam_rig'] = T_cam_rig
+            # Subsample frames to valid range
+            frame_numbers = frame_numbers[start_idx:end_idx]
+            frame_timestamps = frame_timestamps[start_idx:end_idx]
 
-                # Interpolate the start and end pose to the timestamps of the first and last row
-                sofTimestamp = frame_timestamp - self.CAM2ROLLINGSHUTTERDELAY[cam_type] - self.CAM2EXPOSURETIME[cam_type] / 2
-                eofTimestamp = frame_timestamp - self.CAM2EXPOSURETIME[cam_type] / 2
-                metadata['ego_pose_timestamps'] = np.array([sofTimestamp, eofTimestamp])
-                metadata['ego_pose_s'] = pose_interpolator.interpolate_to_timestamps(sofTimestamp)[0]
-                metadata['ego_pose_e'] = pose_interpolator.interpolate_to_timestamps(eofTimestamp)[0]
+            # Reserve output timestamp buffer
+            camera_timestamps[cam_id] = [0]*len(frame_numbers)
 
-                metadata_save_path = os.path.join(
-                    camera_base_save_path,
-                    str(frame_idx).zfill(self.INDEX_DIGITS) + '.pkl')
-                save_pkl(metadata, metadata_save_path)
-
-                # Save the camera pose timestamps, corresponds approximately to the timestamp of the principle point pixel
-                camera_timestamps[cam_id].append(
-                    (eofTimestamp + sofTimestamp) / 2)
-
-            logger.info(f'> processed {len(camera_timestamps[cam_id])} frames')
+            # Process all valid images
+            process_function = partial(self._decode_camera_process,
+                                       camera_base_save_path=camera_base_save_path,
+                                       cam_id_rig=cam_id_rig,
+                                       cam_type=cam_type,
+                                       T_cam_rig=T_cam_rig,
+                                       intrinsic=intrinsic,
+                                       pose_interpolator=pose_interpolator,
+                                       mask_image=mask_image,
+                                       logger=logger)
+            process_iterable = zip(range(len(frame_numbers)), frame_numbers, frame_timestamps)
+            if self.multiprocessing_camera:
+                # Use multiprocessing to speed up IO
+                with multiprocessing.Pool(
+                        # limit the number of processes to what is available in the current system / MagLev workflow
+                        processes=platform_cpu_count(upper_limit=self.max_processes)) as pool:
+                    logger.info(f'> processing {len(frame_timestamps)} images using {pool._processes} worker processes')
+                    for continuos_frame_index, frame_center_timestamp in tqdm.tqdm(pool.imap_unordered(func=process_function, iterable=process_iterable), total=len(frame_numbers)):
+                        camera_timestamps[cam_id][continuos_frame_index] = frame_center_timestamp
+            else:
+                # Use single process
+                for arg in tqdm.tqdm(process_iterable, total=len(frame_numbers)):
+                    continuos_frame_index, frame_center_timestamp = process_function(arg)
+                    camera_timestamps[cam_id][continuos_frame_index] = frame_center_timestamp
+            logger.info(f'> processed {len(frame_numbers)} images')
 
         # Save timestamps of all cameras
         for cam in camera_timestamps.keys():
@@ -361,11 +324,25 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         logger.info(f'> processed {len(camera_timestamps)} cameras')
 
-    def _copy_image_process(self, args, camera_base_save_path, cam_id_rig):
-        """ Copies a single image """
+    def _decode_camera_process(self,
+                               args,
+                               camera_base_save_path,
+                               cam_id_rig,
+                               cam_type,
+                               T_cam_rig,
+                               intrinsic,
+                               pose_interpolator,
+                               mask_image,
+                               logger,
+                               ):
+        """ Process a single image executed by a dedicated process """
+        # Add PID to logger
+        logger = logger.getChild(f'PID={os.getpid()}')
 
         # Decode current frame data to process
-        continuos_frame_index, frame_number = args[0], args[1]
+        continuos_frame_index = args[0]
+        frame_number = args[1]
+        frame_timestamp = args[2]
 
         # Copy image from source to target
         source_image_path = os.path.join(self.sequence_path, 'cameras', cam_id_rig, str(frame_number) + '.jpeg')
@@ -374,6 +351,38 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                                          '.jpeg')  # store as *increasing* canonical frame IDs
 
         shutil.copy(source_image_path, target_image_path)
+
+        # Create frame meta-data
+        mask_image.get_image().save(os.path.join(
+                    camera_base_save_path,
+                    f'mask_{str(continuos_frame_index).zfill(self.INDEX_DIGITS)}.png'),
+                                            optimize=True)
+
+        metadata = {}
+        metadata['img_width'] = intrinsic[2]
+        metadata['img_height'] = intrinsic[3]
+        metadata['rolling_shutter_direction'] = 1  # 1 = TOP_TO_BOTTOM, 2 = LEFT_TO_RIGHT, 3 = BOTTOM_TO_TOP, 4 = RIGHT_TO_LEFT
+
+        metadata['camera_model'] = 'f_theta' if cam_type in ['wide', 'fisheye'] else 'pinhole'
+        metadata['exposure_time'] = self.CAM2EXPOSURETIME[cam_type]
+        metadata['intrinsic'] = intrinsic
+        metadata['T_cam_rig'] = T_cam_rig
+
+        # Interpolate the start and end pose to the timestamps of the first and last row
+        sofTimestamp = frame_timestamp - self.CAM2ROLLINGSHUTTERDELAY[cam_type] - self.CAM2EXPOSURETIME[cam_type] / 2
+        eofTimestamp = frame_timestamp - self.CAM2EXPOSURETIME[cam_type] / 2
+        metadata['ego_pose_timestamps'] = np.array([sofTimestamp, eofTimestamp])
+        metadata['ego_pose_s'] = pose_interpolator.interpolate_to_timestamps(sofTimestamp)[0]
+        metadata['ego_pose_e'] = pose_interpolator.interpolate_to_timestamps(eofTimestamp)[0]
+
+        metadata_save_path = os.path.join(camera_base_save_path,
+                                          str(continuos_frame_index).zfill(self.INDEX_DIGITS) + '.pkl')
+        save_pkl(metadata, metadata_save_path)
+
+        # Return the camera's pose timestamp of the current frame,
+        # corresponds approximately to the timestamp of the principle point pixel
+        # (continous-frame-index is also returned as function might be called out-of-order in multiprocessing settings)
+        return continuos_frame_index, (eofTimestamp + sofTimestamp) / 2
 
     def decode_lidar(self):
         logger = self.logger.getChild('decode_lidar')
