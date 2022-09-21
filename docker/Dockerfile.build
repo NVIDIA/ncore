@@ -15,7 +15,7 @@ RUN \
     add-apt-repository -y ppa:ubuntu-toolchain-r/test && \
     apt-get -y update -qq --fix-missing && \
     apt-get -y install --no-install-recommends \
-        gcc g++ libgl1 clang git wget xz-utils \
+        gcc g++ libgl1 clang git wget xz-utils jq \
     && \
     rm -rf /var/lib/apt/lists/*
 
