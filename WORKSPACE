@@ -105,7 +105,7 @@ load(
 container_pull(
     name = "dsai_dev_container",
     timeout = 7200,
-    digest = "sha256:6aac4280c52b8bae76e6aa57c67c3964006f005785393290db028fb9ed3d0225",
+    digest = "sha256:bd6a0d9ae9a9df131c372e5eb749556e14dc31fdcdf50365dd9548d29dd28ed0",
     registry = "gitlab-master.nvidia.com:5005",
     repository = "toronto_dl_lab/dsai",
 )
