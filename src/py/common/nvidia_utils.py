@@ -388,12 +388,13 @@ class LabelProcessor:
         'stroller': 14,
         'person_group': 15,
         'unclassifiable_vehicle': 16,
+        'cycle': 17,
     }
 
     LABEL_ID_TO_LABEL_STRING: dict[int, str] = {v: k for k, v in LABEL_STRING_TO_LABEL_ID.items()}
 
     LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC: set[str] = set(
-        ['pedestrian', 'stroller', 'person', 'person_group', 'rider', 'bicycle_with_rider', 'bicycle', 'CYCLIST', 'motorcycle', 'motorcycle_with_rider'])
+        ['pedestrian', 'stroller', 'person', 'person_group', 'rider', 'bicycle_with_rider', 'bicycle', 'CYCLIST', 'motorcycle', 'motorcycle_with_rider', 'cycle'])
     LABEL_STRINGS_UNCONDITIONALLY_STATIC: set[str] = set(['unknown', 'sign'])
 
     # Label BBOX padding distance (in meters) to enlarge bounding boxes for per-point dynamic-flag assignment
