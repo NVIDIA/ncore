@@ -449,28 +449,26 @@ class LabelProcessor:
         # Load overwrites from environment variable DSAI_LABEL_TRACKIDS_FORCE_STATIC in the format DSAI_LABEL_TRACKIDS_FORCE_STATIC='10064 10100 10114' (white-space separated IDs)
         trackids_force_static = set([int(id) for id in os.environ.get('DSAI_LABEL_TRACKIDS_FORCE_STATIC','').split()])
 
-        for ridx in tqdm.tqdm(range(len(label_data))):
-            row = label_data.iloc[ridx]
+        for row in tqdm.tqdm(label_data.itertuples(), total=len(label_data)):
+            if row.label_name in cls.LABEL_STRING_TO_LABEL_ID.keys():
 
-            if row['label_name'] in cls.LABEL_STRING_TO_LABEL_ID.keys():
-
-                track_id = row['gt_trackline_id']
-                label_timestamp_us = row['timestamp']
+                track_id = row.gt_trackline_id
+                label_timestamp_us = row.timestamp
 
                 cuboid = np.array([
-                    row['centroid_x'],
-                    row['centroid_y'],
-                    row['centroid_z'],
-                    row['dim_x'],
-                    row['dim_y'],
-                    row['dim_z'],
-                    row['rot_x'],
-                    row['rot_y'],
-                    row['rot_z'],
+                    row.centroid_x,
+                    row.centroid_y,
+                    row.centroid_z,
+                    row.dim_x,
+                    row.dim_y,
+                    row.dim_z,
+                    row.rot_x,
+                    row.rot_y,
+                    row.rot_z,
                 ], dtype=np.float32) # yapf: disable
 
                 # this is assuming velocity is not relative to the local sensor motion, but w.r.t. fixed scene / world
-                global_speed = np.linalg.norm([row['velocity_x'], row['velocity_y'], row['velocity_z']])
+                global_speed = np.linalg.norm([row.velocity_x, row.velocity_y, row.velocity_z])
 
                 if label_timestamp_us not in frame_labels:
                     frame_labels[label_timestamp_us] = {}
@@ -482,7 +480,7 @@ class LabelProcessor:
                     'name':
                     track_id,
                     'label':
-                    cls.LABEL_STRING_TO_LABEL_ID[row['label_name']],
+                    cls.LABEL_STRING_TO_LABEL_ID[row.label_name],
                     '3D_bbox':
                     cuboid,
                     'num_points':
@@ -500,8 +498,8 @@ class LabelProcessor:
                 if track_id not in labels['3d_labels']:
                     labels['3d_labels'][track_id] = {}
                     labels['3d_labels'][track_id][
-                        'dynamic_flag'] = 1 if row['label_name'] in cls.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else 0
-                    labels['3d_labels'][track_id]['type'] = cls.LABEL_STRING_TO_LABEL_ID[row['label_name']]
+                        'dynamic_flag'] = 1 if row.label_name in cls.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else 0
+                    labels['3d_labels'][track_id]['type'] = cls.LABEL_STRING_TO_LABEL_ID[row.label_name]
                     labels['3d_labels'][track_id]['lidar'] = {}
 
                 labels['3d_labels'][track_id]['lidar'][label_timestamp_us] = {
@@ -511,7 +509,7 @@ class LabelProcessor:
                     'global_accel': -1,
                 }
 
-                if row['label_name'] not in cls.LABEL_STRINGS_UNCONDITIONALLY_STATIC and global_speed >= global_speed_dynamic_threshold:
+                if row.label_name not in cls.LABEL_STRINGS_UNCONDITIONALLY_STATIC and global_speed >= global_speed_dynamic_threshold:
                     labels['3d_labels'][track_id]['dynamic_flag'] = 1
 
                 if track_id in trackids_force_static:
@@ -519,7 +517,7 @@ class LabelProcessor:
                     labels['3d_labels'][track_id]['dynamic_flag'] = 0
 
             else:
-                logger.warn(f"> unhandled label type {row['label_name']}")
+                logger.warn(f"> unhandled label type {row.label_name}")
 
         return labels, frame_labels
 
