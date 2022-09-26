@@ -1,0 +1,15 @@
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_binary")
+
+py_binary(
+    name = "sphinx_wrapper",
+    srcs = ["sphinx_wrapper.py"],
+    visibility = ["//visibility:public"],
+    deps = [
+        requirement("sphinx"),
+        requirement("sphinx_rtd_theme"),
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")
