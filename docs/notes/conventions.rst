@@ -61,6 +61,10 @@ The data processed using DSAI library on Maglev will be made available in the fo
     │ │ ├-000000.hdf5
     │ │ ├-000000.json
     │ │ ├-000000_labels.json
+    │ │ ├-000001.hdf5
+    │ │ ├-000001.json
+    │ │ ├-000001_labels.json
+
     │ │ ├─...
     │ │ └-meta.json
     │ │
@@ -127,15 +131,15 @@ Lidar and radar point clouds are saved in the `*.hdf5` files, in the tabular for
 
 Lidar data contains the following columns:
 
-* ``xyz_s`` - 3D coordinate of the start of the ray (float32, [n,3])
-* ``xyz_e`` - 3D coordinate of the end of the ray (float32, [n,3])
+* ``xyz_s`` - 3D coordinate of the start of the ray in the sensor reference frame (float32, [n,3])
+* ``xyz_e`` - 3D coordinate of the end of the ray in the sensor reference frame (float32, [n,3])
 * ``intensity`` - measured intensity (uint8, [n])
 * ``dynamic_flag`` - dynamic flag (bool, [n])
 
 Radar data contains the following columns:
 
-* ``xyz_s`` - 3D coordinate of the start of the ray (float32, [n,3])
-* ``xyz_e`` - 3D coordinate of the end of the ray (float32, [n,3]) 
+* ``xyz_s`` - 3D coordinate of the start of the ray in the sensor reference frame (float32, [n,3])
+* ``xyz_e`` - 3D coordinate of the end of the ray in the sensor reference frame (float32, [n,3]) 
 
 
 **Metadata**
@@ -159,12 +163,22 @@ For individual sensors we also save session wise metadata:
 * ``camera_model`` - camera model type (str)
 * ``exposure_time`` - exposure time of the camera (float32)
 * ``principal_point`` - x and y coordinate of the principal point (np.array, [2,], float32)
+
+If ``camera_model` = 'f_theta'`` the following intrinsic parameters will be available: 
+
 * ``bw_poly`` - coefficients of the backward polynomial (np.array, [6,], float32)
 * ``fw_poly`` - coefficients of the forward polynomial (np.array, [6,], float32)
 
+If ``camera_model` = 'pinhole'`` the following intrinsic parameters will be available: 
+
+* ``fl_u`` - focal length in u direction (float32)
+* ``fl_v`` - focal length in v direction (float32)
+* ``distortion_coefficients`` - p1, p2, k1, k2, k3 distortion coefficients (np.array, [5,], float32)
+
+
 *Lidars*: 
 
-* ``sampling_pattern`` - sampling pattern of the lidar sensor in terms of elevation and azimuth angles (np.array, [n,m], float32)
+* ``{sampling_pattern}`` - sampling pattern of the lidar sensor in terms of elevation and azimuth angles (np.array, [n,m], float32)
 * 
 
 Finally, we also save general metadata related to the session (input data and versioning):
