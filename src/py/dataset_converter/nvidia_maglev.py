@@ -45,6 +45,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.shard_count : int = config.shard_count
 
         self.symlink_camera_frames : bool = config.symlink_camera_frames
+        self.compress_lidar : bool = config.compress_lidar
 
         self.egomotion_file = config.egomotion_file
 
@@ -503,7 +504,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                                       str(frame_number) + '.ply')
         target_pc_path = os.path.join(lidar_base_save_path,
                                       str(continuos_frame_index).zfill(self.INDEX_DIGITS) +
-                                      '.dat.xz')  # store as *increasing* canonical frame IDs
+                                      ('.dat.xz' if self.compress_lidar else '.dat'))  # store as *increasing* canonical frame IDs
 
         # Interpolate egomotion at frame timestamp to obtain vehicle pose at lidar end-time
         T_rig_world = pose_interpolator.interpolate_to_timestamps(frame_timestamp)[0]
@@ -608,7 +609,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         metadata['T_lidar_rig'] = T_lidar_rig  # Lidar extrinsic parameters (note: this can be assumed to be constant and could be stored only once)
         metadata['T_rig_world'] = T_rig_world  # Pose of the rig at the end of the lidar spin, can be used to transform points into a local coordinate frame
         metadata['elevation_angles'] = None  # [TODO: currently missing for NV sensors] Lidar elevation angles, can be used to simulate the lidar or recover points that did not return
-        save_pkl(metadata, target_pc_path.replace('.dat.xz', '.pkl'))
+        save_pkl(metadata, target_pc_path.replace('.dat.xz' if self.compress_lidar else '.dat', '.pkl'))
 
         time_store = timer.elapsed_sec(restart = True)
 
