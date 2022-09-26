@@ -41,8 +41,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.multiprocessing_lidar = config.multiprocessing_lidar
         self.max_processes : Optional[int] = config.max_processes
 
-        self.shard_id : bool = config.shard_id
-        self.shard_count : bool = config.shard_count
+        self.shard_id : int = config.shard_id
+        self.shard_count : int = config.shard_count
 
         self.symlink_camera_frames : bool = config.symlink_camera_frames
 
@@ -286,15 +286,17 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             global_range_end = np.argmax(raw_frame_timestamps - self.CAM2EXPOSURETIME[cam_type] / 2 > end_timestamp_us) \
                 if raw_frame_timestamps[-1] - self.CAM2EXPOSURETIME[cam_type] / 2 > end_timestamp_us else len(raw_frame_timestamps
             )  # take all frames if all are within egomotion range, or determine last valid frame
+            num_global_frames = global_range_end - global_range_start
 
-            # Compute start-of-frame and end-of-frame timestamps for *all* frames in all shards
-            global_frame_timestamps = raw_frame_timestamps[global_range_start:global_range_end]
-            global_sof_timestamps = global_frame_timestamps - self.CAM2ROLLINGSHUTTERDELAY[cam_type] - self.CAM2EXPOSURETIME[cam_type] / 2
-            global_eof_timestamps = global_frame_timestamps - self.CAM2EXPOSURETIME[cam_type] / 2
+            # Compute start-of-frame and end-of-frame timestamps for *all* frames in all shards [only by main shard]
+            if self.shard_id == 0:
+                global_frame_timestamps = raw_frame_timestamps[global_range_start:global_range_end]
+                global_sof_timestamps = global_frame_timestamps - self.CAM2ROLLINGSHUTTERDELAY[cam_type] - self.CAM2EXPOSURETIME[cam_type] / 2
+                global_eof_timestamps = global_frame_timestamps - self.CAM2EXPOSURETIME[cam_type] / 2
 
-            # Remember the global camera pose timestamps, corresponds approximately to the timestamp of the principle point pixel (will be serialized later by main shard)
-            global_camera_timestamps[cam_id] = np.stack((global_eof_timestamps + global_sof_timestamps) / 2) \
-                if global_frame_timestamps.size != 0 else np.empty_like(global_frame_timestamps) # check that at least a single frame was processed
+                # Remember the global camera pose timestamps, corresponds approximately to the timestamp of the principle point pixel (will be serialized later by main shard)
+                global_camera_timestamps[cam_id] = np.stack((global_eof_timestamps + global_sof_timestamps) / 2) \
+                    if global_frame_timestamps.size != 0 else np.empty_like(global_frame_timestamps) # check that at least a single frame was processed
 
             # Apply uniform subdivision of current shard to get local data range
             local_range, local_offset = uniform_subdivide_range(self.shard_id, self.shard_count, global_range_start, global_range_end)
@@ -326,15 +328,15 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 # Use single process
                 for arg in tqdm.tqdm(process_iterable, total=len(local_frame_numbers)):
                     process_function(arg)
-            logger.info(f'> processed {len(local_frame_timestamps)}/{len(global_frame_timestamps)} local/global'
+            logger.info(f'> processed {len(local_frame_timestamps)}/{num_global_frames} local/global'
                         f' images [shard {self.shard_id + 1}/{self.shard_count}]')
 
         # Save timestamps of all cameras [only by main shard]
         if self.shard_id == 0:
             image_timestamps_save_path = os.path.join(self.output_dir,
-                                                    self.session_id,
-                                                    self.image_save_dir,
-                                                    'timestamps.pkl')
+                                                      self.session_id,
+                                                      self.image_save_dir,
+                                                      'timestamps.pkl')
             save_pkl(global_camera_timestamps, image_timestamps_save_path)
 
         logger.info(f'> processed {len(global_camera_timestamps)} cameras')
@@ -432,6 +434,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         global_range_end = np.argmax(raw_frame_timestamps > end_timestamp_us) \
            if raw_frame_timestamps[-1] > end_timestamp_us else len(raw_frame_timestamps
            )  # take all frames if all are within egomotion range, or determine last valid frame
+        num_frames_global = global_range_end - global_range_start
 
         # Apply uniform subdivision of current shard to get local data range
         local_range, local_offset = uniform_subdivide_range(self.shard_id, self.shard_count, global_range_start, global_range_end)
@@ -440,8 +443,9 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         local_frame_numbers = raw_frame_numbers[local_range]
         local_frame_timestamps = raw_frame_timestamps[local_range]
 
-        # Compute end-of-frame timestamps for all frames (will be serialized later by main shard)
-        global_frame_timestamps = raw_frame_timestamps[global_range_start:global_range_end]
+        # Compute end-of-frame timestamps for all frames [only by main shard]
+        if self.shard_id == 0:
+            global_frame_timestamps = raw_frame_timestamps[global_range_start:global_range_end]
 
         # Process all valid point clouds using multi-processing
         process_function = partial(
@@ -450,7 +454,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             T_lidar_rig=T_lidar_rig,
             pose_interpolator=pose_interpolator,
             vehicle_bbox_rig=vehicle_bbox_rig,
-            num_frames_global=len(global_frame_timestamps),
+            num_frames_global=num_frames_global,
             logger=logger,
         )
         process_iterable = zip(range(local_offset, len(local_frame_numbers) + local_offset), local_frame_numbers, local_frame_timestamps)
@@ -473,7 +477,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             lidar_timestamp_save_path = os.path.join(lidar_base_save_path, 'timestamps.npz')
             np.savez(lidar_timestamp_save_path, timestamps=global_frame_timestamps.tolist())
 
-        logger.info(f'> processed {len(local_frame_timestamps)}/{len(global_frame_timestamps)} local/global'
+        logger.info(f'> processed {len(local_frame_timestamps)}/{num_frames_global} local/global'
                     f' point clouds [shard {self.shard_id + 1}/{self.shard_count}]')
 
     def _decode_lidar_process(
