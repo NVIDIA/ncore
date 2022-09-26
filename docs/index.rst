@@ -14,11 +14,15 @@ Take a look at the Installation guide, :ref:`conventions` and Tutorials to get s
 
 .. toctree::
    :maxdepth: 1
-   :numbered:
    :caption: Introduction:
 
    notes/conventions
 
+.. toctree::
+   :maxdepth: 1
+   :caption: Applications:
+
+   notes/running_NGP
 
 .. note:: 
    This project is under active development.

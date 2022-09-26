@@ -44,7 +44,7 @@ Both camera and image coordinate systems are right-handed coordinate systems. Th
 All the transformations are saved in the form of ``SE3`` matrices, where the top left 3x3 elements represent the rotation matrix ``R`` and the first three rows of the last column denote the translation ``t`` in meters. They are saved using the convention ``T_a_b``, which denotes the transformation matrix that transforms the points from the coordinate system ``a`` to the coordinate system ``b``. For example a point :math:`\mathbf{p}_a` in coordinate system ``a`` can be transformed to point :math:`\mathbf{p}_b` as
 
 .. math::
-    \mathbf{p}_b = \mathbf{R\_a\_b}_b * \mathbf{p}_a + \mathbf{t\_a\_b}
+    \mathbf{p}_b = \mathbf{R}_a^b * \mathbf{p}_a + \mathbf{t}_a^b
 
 
 
