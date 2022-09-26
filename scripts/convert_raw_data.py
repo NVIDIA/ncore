@@ -83,6 +83,8 @@ def nvidia_deepmap(ctx, *_, **kwargs):
 @click.option('--multiprocessing-camera', is_flag=True, default=False, help="Perform camera data conversion with multiprocessing if enabled")
 @click.option('--multiprocessing-lidar', is_flag=True, default=False, help="Perform lidar data conversion with multiprocessing if enabled")
 @click.option('--max-processes', default=None, type=int, help="If provided, the upper bound for processes to start")
+@click.option('--shard-id', type=click.IntRange(min=0, max_open=True), default=0, help="Shard id in [0,N-1] controlling uniform dataset subset processing")
+@click.option('--shard-count', type=click.IntRange(min=1, max_open=True), default=1, help="Total number of shards N to performing full dataset processing")
 @click.option('--symlink-camera-frames', is_flag=True, default=False, help="Symlink camera frames instead of copying files if enabled")
 @click.option('--egomotion-file', type=str, help="If provided, overwrite default egomotion file location", default=None)
 @click.option('--skip-dynamic-flag', is_flag=True, default=False, help="Skip lidar dynamic flag computation to improve performance")

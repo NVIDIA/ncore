@@ -11,7 +11,7 @@ import time
 import numpy as np
 
 from enum import Enum
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 from PIL import Image
 from scipy import spatial, interpolate
 from scipy.optimize import linear_sum_assignment
@@ -178,13 +178,13 @@ def save_jsonl(file_path: str, object_list: list[dict]) -> None:
 
 def platform_cpu_count(upper_limit: Optional[int] = None) -> int:
     """ Determines CPU count in MagLev-compatible way (with an optional upper limit) """
-    
+
     # Check if we are running in a MagLev workflow and return it's CPU limits, otherwise fall back to regular CPU count
     cpu_count = int(os.environ.get('WORKFLOW_CPU_LIMITS', str(os.cpu_count())))
-    
+
     if upper_limit:
         cpu_count = min(upper_limit, cpu_count)
-    
+
     return cpu_count
 
 
@@ -472,7 +472,7 @@ class MaskImage:
         Initializes a MaskImage object to a given mask shape with optional initial masks
         Args:
             shape: array shape corresponding to image (height, width)
-            initial_masks:if provided, an iterable of [(binary_mask, MaskType), ...] tuples to initialize the mask image with in order
+            initial_masks: if provided, an iterable of [(binary_mask, MaskType), ...] tuples to initialize the mask image with in order
         """
         # initialize empty mask array corresponding to NONE type of appropriate type
         self.mask_array = np.full(
@@ -519,7 +519,7 @@ class SimpleTimer:
     """ Simple Timer to track runtimes """
     def __init__(self):
         """ Starts timer immediately """
-        
+
         self.start()
 
     def start(self) -> None:
@@ -536,3 +536,37 @@ class SimpleTimer:
             self.start()
 
         return elapsed
+
+
+def uniform_subdivide_range(subdiv_id: int, subdiv_count: int, range_start: int,
+                            range_end: int) -> Tuple[np.array, np.int64]:
+    """
+    Splits the index range range_start:range_end into (approximately) uniform intervals
+    based on the requested number of subvisions.
+
+    Args:
+        subdiv_id (int): Subdivision id, with subdiv_id < subdiv_count
+        subdiv_count (int): Number of subdivisions to compute
+        range_start (int): Full range's start index
+        range_end (int): Full range's past-the-end index
+
+    Return:
+        local_range array[int]: The subdivided interval's index range
+        local_offset int: If local range is nonempty, the offset of the
+                         subdivided interval's start from the original start, otherwise
+                         -1
+    """
+
+    assert subdiv_count > 0 and subdiv_id < subdiv_count, \
+         f'Invalid subdivision specification id={subdiv_id} count={subdiv_count}'
+
+    assert range_start >= 0 and range_end >= range_start, \
+        f'Range specification {range_start}:{range_end} invalid / not providing *absolute* range'
+
+    # Create full index range and split according to subdiv-count
+    split_range = np.array_split(np.arange(range_start, range_end), subdiv_count)
+
+    # Grab local range
+    local_range = split_range[subdiv_id]
+
+    return local_range, local_range[0] - range_start if len(local_range) else -1

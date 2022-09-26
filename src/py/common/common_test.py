@@ -5,7 +5,7 @@ import tempfile
 import unittest
 import numpy as np
 
-from src.py.common.common import load_pkl, save_pkl, load_pc_dat, save_pc_dat, is_within_3d_bbox
+from src.py.common.common import load_pkl, save_pkl, load_pc_dat, save_pc_dat, is_within_3d_bbox, uniform_subdivide_range
 from src.cpp.av_utils import isWithin3DBBox
 
 
@@ -142,3 +142,24 @@ class TestIsWithin3DBBox(unittest.TestCase):
 
         with self.assertRaises(AssertionError):
             isWithin3DBBox(self.pc, self.bboxes[:,:6])
+
+
+def test_uniform_subdivide_range():
+    def check(actual, expected):
+        range_equal = (actual[0] == expected[0]).all()
+        offset_equal = actual[1] == expected[1]
+        assert range_equal and offset_equal
+
+    # range [0,9]
+    check(uniform_subdivide_range(subdiv_id=0, subdiv_count=1, range_start=0, range_end=10), (np.arange(0, 10), 0))
+    check(uniform_subdivide_range(subdiv_id=0, subdiv_count=2, range_start=0, range_end=10), (np.arange(0, 5), 0))
+    check(uniform_subdivide_range(subdiv_id=1, subdiv_count=2, range_start=0, range_end=10), (np.arange(5, 10), 5))
+
+    # range [5,14]
+    check(uniform_subdivide_range(subdiv_id=0, subdiv_count=1, range_start=5, range_end=15), (np.arange(5, 15), 0))
+    check(uniform_subdivide_range(subdiv_id=0, subdiv_count=2, range_start=5, range_end=15), (np.arange(5, 10), 0))
+    check(uniform_subdivide_range(subdiv_id=1, subdiv_count=2, range_start=5, range_end=15), (np.arange(10, 15), 5))
+
+    # empty range
+    check(uniform_subdivide_range(subdiv_id=0, subdiv_count=1, range_start=0, range_end=0),
+          (np.empty_like(np.arange(0, 0)), -1))
