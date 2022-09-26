@@ -5,3 +5,7 @@ __pycache__/
 # Bazel-specific ignores
 /bazel-*
 .bazelrc.user
+
+# Sphing files 
+/docs/build/doctrees
+/docs/build/html
