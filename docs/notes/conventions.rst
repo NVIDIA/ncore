@@ -27,7 +27,7 @@ To avoid very large coordinates, we set the first pose of the ego car in the seq
    :width: 50%
    :align: right
 
-The rig coordinate system is defined as a right-handed coordinate system with the x-axis pointing to the front of the car, y is pointing left, and z up. The origin of the coordinate system is located in the middle of the rear axis.
+The rig coordinate system is defined as a right-handed coordinate system with the x-axis pointing to the front of the car, y is pointing left, and z up. The origin of the coordinate system is located in the middle of the rear axis on the nominal ground.
 
 **Camera and image coordinate system**
 
@@ -145,7 +145,7 @@ Metadata is available per frame, but also for individual sensors and for the gen
 Per-frame metadata contains the following entries for all sensors: 
 
 * ``T_sensor_rig`` - SE3 transformation matrix from the sensor to the rig coordinate system (np.array, [4,4], float32)
-* ``timestamps`` - timestamp of the frames start and end point  (np.array, [2,], uint64)
+* ``timestamps`` - timestamp of the frame's start and end point in microseconds (np.array, [2,], uint64)
 * ``T_rig_world`` - SE3 transformation matrices from the rig to the world coordinate system at the start and end timestamp of the frame (np.array, [2,4,4], float32)
 
 
