@@ -5,7 +5,6 @@ import os
 import logging
 import shutil
 import re
-import gc
 import multiprocessing
 import tqdm
 
@@ -613,9 +612,4 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         time_store = timer.elapsed_sec(restart = True)
 
-        # Explicitly collect garbage to free up resources
-        gc.collect()
-
-        time_gc = timer.elapsed_sec(restart = True)
-
-        logger.debug(f'> spin {continuos_frame_index+1}/{num_frames_global} | load/process/dynflag/store/gc {time_load:.2f}/{time_process:.2f}/{time_dynflag:.2f}/{time_store:.2f}/{time_gc:.2f}sec')
+        logger.debug(f'> spin {continuos_frame_index+1}/{num_frames_global} | load/process/dynflag/store {time_load:.2f}/{time_process:.2f}/{time_dynflag:.2f}/{time_store:.2f}sec')
