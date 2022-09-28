@@ -12,6 +12,7 @@ CONVERT_RAW_DATA_DEPS = [
     requirement("click"),
     requirement("debugpy"),
     "//src/py/data_converter/v1:pylib",
+    "//src/py/data_converter/v2:pylib",
 ]
 
 py_binary(
