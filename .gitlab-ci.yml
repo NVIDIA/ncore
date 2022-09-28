@@ -46,3 +46,19 @@ build+test:
     - bazelisk build ...
     - bazelisk test ...
   allow_failure: false
+
+pages:
+  stage: build
+  script:
+  - bazelisk version
+
+  # Build the HTML documentation
+  - bazelisk build //docs:dsai
+
+  # Move it to the output artifact for upload
+  - mv bazel-bin/docs/dsai_html/ public/
+  artifacts:
+    paths:
+    - public
+  rules:
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
