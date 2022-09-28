@@ -11,7 +11,7 @@ load("@rules_python//python:defs.bzl", "py_binary")
 CONVERT_RAW_DATA_DEPS = [
     requirement("click"),
     requirement("debugpy"),
-    "//src/py/dataset_converter:pylib",
+    "//src/py/data_converter/v1:pylib",
 ]
 
 py_binary(

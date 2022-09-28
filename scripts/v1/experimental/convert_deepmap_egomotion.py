@@ -11,7 +11,7 @@ from protobuf_to_dict import protobuf_to_dict
 from src.protos.deepmap import track_data_pb2
 from src.py.common.nvidia_utils import extract_pose, extract_sensor_2_sdc
 from src.py.common.common import save_jsonl
-from src.py.dataset_converter import BaseNvidiaDataConverter
+from src.py.data_converter.v1 import BaseNvidiaDataConverter
 
 
 @click.command()

@@ -5,13 +5,14 @@ import click
 import debugpy
 import logging
 
-from src.py.dataset_converter import DataConverter
+from src.py.common.common import Config
 
 logger = logging.getLogger(__name__)
 
 @click.group()
 @click.option('--root-dir', type=str, help="Path to the raw data sequences", required=True)
 @click.option('--output-dir', type=str, help="Path where the converted data will be saved", required=True)
+@click.option('--version-major', type=click.IntRange(min=1, max=2), default=1, help="Major version of the data format (not all converters support all versions)")
 @click.option("--debug", is_flag=True, default=False, help="Enables a debugpy client to connect to the port specified by --debug-port")
 @click.option("--debug-wait-for-client", is_flag=True, default=False, help="Enables a debugpy client to connect to the port specified by --debug-port and waits for a client to connect on start-up")
 @click.option("--debug-port", default=5678, type=int, help="Configure the TCP port to use for debugging")
@@ -31,10 +32,10 @@ def cli(ctx, *_, **kwargs):
       waymo
       --ref-projections
     """
-    # Create a DataConverter config object and remember it as the context object. From
+    # Create a config object and remember it as the context object. From
     # this point onwards other commands can refer to it by using the
     # @click.pass_context decorator.
-    ctx.obj = DataConverter.Config(kwargs)
+    ctx.obj = Config(kwargs)
 
     # Conditionally enable debugging
     if ctx.obj.debug or ctx.obj.debug_wait_for_client:
@@ -54,11 +55,15 @@ def cli(ctx, *_, **kwargs):
 @click.option('--ref-projections', is_flag=True, default=False, help="Store reference point-cloud to image projections (explicitly available in waymo data)")
 @click.pass_context
 def waymo(ctx, *_, **kwargs):
-    from src.py.dataset_converter.waymo_open import WaymoConverter
-
     """Waymo-specific data conversion"""
+
+    from src.py.data_converter.v1.waymo_open import WaymoConverter
+
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
+
+    if not config.version_major == 1: raise ValueError('Currently only supported for V1 data')
+
     WaymoConverter(config).convert()
 
 
@@ -67,11 +72,15 @@ def waymo(ctx, *_, **kwargs):
 @click.option('--end-timestamp-us', type=int, default=None, help="If provided, the end timestamp to restrict processing to")
 @click.pass_context
 def nvidia_deepmap(ctx, *_, **kwargs):
-    from src.py.dataset_converter.nvidia_deepmap import NvidiaDeepMapConverter
-
     """NVIDIA-specific data conversion (based on DeepMap tracks)"""
+
+    from src.py.data_converter.v1.nvidia_deepmap import NvidiaDeepMapConverter
+
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
+
+    if not config.version_major == 1: raise ValueError('Currently only supported for V1 data')
+
     NvidiaDeepMapConverter(config).convert()
 
 
@@ -89,11 +98,15 @@ def nvidia_deepmap(ctx, *_, **kwargs):
 @click.option('--skip-dynamic-flag', is_flag=True, default=False, help="Skip lidar dynamic flag computation to improve performance")
 @click.pass_context
 def nvidia_maglev(ctx, *_, **kwargs):
-    from src.py.dataset_converter.nvidia_maglev import NvidiaMaglevConverter
-    
     """NVIDIA-specific data conversion (based on Maglev data extraction)"""
+
+    from src.py.data_converter.v1.nvidia_maglev import NvidiaMaglevConverter
+    
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
+
+    if not config.version_major == 1: raise ValueError('Currently only supported for V1 data')
+
     NvidiaMaglevConverter(config).convert()
 
 
