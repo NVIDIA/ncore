@@ -135,12 +135,13 @@ Lidar data contains the following columns:
 * ``xyz_e`` - 3D coordinate of the end of the ray in the sensor reference frame (float32, [n,3])
 * ``intensity`` - measured intensity (uint8, [n])
 * ``dynamic_flag`` - dynamic flag (bool, [n])
+* ``timestamp`` - point timestamp (uint64, [n])
 
 Radar data contains the following columns:
 
 * ``xyz_s`` - 3D coordinate of the start of the ray in the sensor reference frame (float32, [n,3])
-* ``xyz_e`` - 3D coordinate of the end of the ray in the sensor reference frame (float32, [n,3]) 
-
+* ``xyz_e`` - 3D coordinate of the end of the ray in the sensor reference frame (float32, [n,3])
+* ``timestamp`` - point timestamp (uint64, [n])
 
 **Metadata**
 
@@ -184,7 +185,7 @@ If ``camera_model` = 'pinhole'`` the following intrinsic parameters will be avai
 Finally, we also save general metadata related to the session (input data and versioning):
 
 * ``version`` - version of the dataset (str)
-* ``ego_motion_type`` - type of ego-motion that was used to generate the data (str) 
+* ``egomotion_type`` - type of ego-motion that was used to generate the data (str) 
 * ``calibration_type`` - type of sensor calibration that was used to generate the data (str)
   
 
