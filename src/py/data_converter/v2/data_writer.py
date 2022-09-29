@@ -2,8 +2,7 @@
 
 import json
 
-import aiofiles
-
+import h5py
 import numpy as np
 
 from pathlib import Path
@@ -39,19 +38,26 @@ class DataWriter():
             (self.sequence_output_dir / self.RADARS_BASE_DIR / radar_id).mkdir(parents=True, exist_ok=True)
 
     # Individual 'store*' methods performing data sanity checks and serialize consistent output formats
-    def store_poses(self, base_pose: np.array, poses: np.array, poses_timestamps: list[int]) -> None:
+    def store_poses(self, T_rig_world_base: np.array, T_rig_worlds: np.array, T_rig_world_timestamps_ms: list[int]) -> None:
         # sanity / consistency checks
-        assert base_pose.shape == (4,4)
-        assert base_pose.dtype == np.dtype('float64')
-        assert poses.shape[0] == len(poses_timestamps)
-        assert poses.shape[1:3] == (4,4)
+        assert T_rig_world_base.shape == (4, 4)
+        assert T_rig_world_base.dtype == np.dtype('float64')
+        assert T_rig_worlds.shape[0] == len(T_rig_world_timestamps_ms)
+        assert T_rig_worlds.shape[1:3] == (4, 4)
+        assert T_rig_worlds.dtype == np.dtype('float64')
 
-        output = {}
-        output ['base_pose'] = base_pose.tolist()
-        output ['poses'] = poses.tolist()
-        output ['timestamps_ms'] = poses_timestamps
+        with h5py.File(self.sequence_output_dir / 'poses.hdf5', "w") as f:
+            f.create_dataset('T_rig_world_base', data=T_rig_world_base)
+            f.create_dataset('T_rig_worlds', data=T_rig_worlds)
+            f.create_dataset('T_rig_world_timestamps_ms', data=T_rig_world_timestamps_ms)
 
-        with open(self.sequence_output_dir / 'poses.json', "w") as outfile:
+
+    def store_labels(self, labels : dict, frame_labels: dict) -> None:
+        output = {'labels': labels, 'frame_labels': frame_labels}
+
+        # TODO: add sanity checks on the final label structure before output
+
+        with open(self.sequence_output_dir / 'labels.json', "w") as outfile:
             outfile.write(json.dumps(output))
 
 
@@ -60,5 +66,3 @@ class DataWriter():
 
         with open(self.sequence_output_dir / 'meta.json', "w") as outfile:
             outfile.write(json.dumps(output))
-
-    

@@ -1,5 +1,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
+from __future__ import annotations
+
 import logging
 import re
 import json
@@ -7,14 +9,15 @@ import json
 import numpy as np
 
 from pathlib import Path
-from typing import Optional, Type
+from typing import Optional
 
 from src.py.common.common import Config
 from src.py.data_converter.v2.data_converter import BaseNvidiaDataConverter
 from src.py.data_converter.v2.data_writer import DataWriter
 
-from src.py.common.nvidia_utils import (parse_rig_sensors_from_dict, sensor_to_rig)
+from src.py.common.nvidia_utils import (parse_rig_sensors_from_dict, sensor_to_rig, LabelProcessor)
 from src.py.common.common import load_jsonl
+
 
 class NvidiaMaglevConverter(BaseNvidiaDataConverter):
     """
@@ -34,7 +37,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.multiprocessing_camera = config.multiprocessing_camera
         self.multiprocessing_lidar = config.multiprocessing_lidar
         self.max_processes : Optional[int] = config.max_processes
-        
+
         self.shard_id : int = config.shard_id
         self.shard_count : int = config.shard_count
 
@@ -52,8 +55,39 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
 
     @staticmethod
-    def from_config(config):
+    def from_config(config) -> NvidiaMaglevConverter:
         return NvidiaMaglevConverter(config)
+
+
+    @staticmethod
+    def time_bounds(timestamps_us: list[int], seek_sec: Optional[float], duration_sec: Optional[float]) -> tuple[int, int]:
+        """
+        Determine start and end timestamps given optional seek and duration times
+
+        Args:
+            timestamps_us : list of all available timestamps (in microseconds)
+            seek_sec: Optional: if non-None, the time (in seconds)  to skip starting from the first timestamp
+            duration_sec: Optional: if non-None, the total time (in seconds) between the start and end time bounds
+
+        Return:
+            start_timestamp_us: first valid timestamp in restricted bounds (in microseconds)
+            end_timestamp_us: last valid timestamp in restricted bounds (in microseconds)
+        """
+
+        start_timestamp_us = timestamps_us[0]
+        end_timestamp_us = timestamps_us[-1]
+
+        if seek_sec:
+            assert seek_sec >= 0.0, "Require positive seek time"
+            start_timestamp_us += int(seek_sec * 1e6)
+
+        if duration_sec:
+            assert duration_sec >= 0.0, "Require positive duration time"
+            end_timestamp_us = start_timestamp_us + int(duration_sec * 1e6)
+
+        assert start_timestamp_us < end_timestamp_us, "Arguments lead to invalid time bounds"
+
+        return start_timestamp_us, end_timestamp_us
 
 
     def convert_sequence(self, sequence_path: Path) -> None:
@@ -91,10 +125,10 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Decode data from maglev
         self.decode_poses()
 
-        # self.decode_labels()
+        self.decode_labels()
 
         if self.shard_id == 0:
-            self.data_writer.store_meta(self.VERSION, 
+            self.data_writer.store_meta(self.VERSION,
                                         # TODO: parse these from the data
                                         'scene-calib', 'lidar-egomotion')
 
@@ -103,8 +137,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         logger.info(f'Loading poses')
 
         # Initialize pose / timestamp variables
-        self.poses = []
-        self.poses_timestamps = []
+        self.T_rig_worlds = []
+        self.T_rig_world_timestamps_ms = []
 
         # Load sensor extrinsics to compute poses of the rig frame if egomotion is represented in a sensor frame
         T_rig_sensors = {
@@ -129,8 +163,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             #       which could be used in the future
             # Note: make sure all poses information is represented as f64 to have sufficient
             #       precision in case poses are representing global / map-associated coordinates
-            egomotion_pose_timestamp = int(egomotion_pose_entry['timestamp'])
-            egomotion_pose = np.asfarray(
+            T_rig_world_timestamp_ms = int(egomotion_pose_entry['timestamp'])
+            T_rig_world = np.asfarray(
                 egomotion_pose_entry['pose'].split(' '), dtype=np.float64).reshape(
                     (4, 4)).transpose()
 
@@ -143,36 +177,61 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 pass
             elif egomotion_pose_entry['sensor_name'] in T_rig_sensors:
                 # Convert pose in lidar frame to pose in rig frame
-                egomotion_pose = egomotion_pose @ T_rig_sensors[egomotion_pose_entry['sensor_name']]
+                T_rig_world = T_rig_world @ T_rig_sensors[egomotion_pose_entry['sensor_name']]
             else:
                 raise ValueError(
                     f"Unsupported source ego frame {egomotion_pose_entry['in_sensor_name_frame']}"
                 )
 
             # Sanity check on data-type
-            assert egomotion_pose.dtype is np.dtype('float64'), \
+            assert T_rig_world.dtype is np.dtype('float64'), \
                 "Require pose to be double-precision (to suppoglobally aligned / map-associated)"
 
-            self.poses_timestamps.append(egomotion_pose_timestamp)
-            self.poses.append(egomotion_pose)
+            self.T_rig_world_timestamps_ms.append(T_rig_world_timestamp_ms)
+            self.T_rig_worlds.append(T_rig_world)
 
-        assert len(self.poses), "No valid egomotion poses loaded"
+        assert len(self.T_rig_worlds), "No valid egomotion poses loaded"
 
         # Stack all poses (common canonical format convention)
-        self.poses = np.stack(self.poses)
+        self.T_rig_worlds = np.stack(self.T_rig_worlds)
 
         # Select refence base pose and convert all poses relative to this reference.
         # The base pose represents a worldToGlobal transformation and the first pose
         # of the trajectory defines the global frame of reference
         # (all other world poses are enconded relative to this global frame from here one,
         # allowing to represent, e.g., point world-coordinates in single f32 precision)
-        self.base_pose = self.poses[0]
-        self.poses = np.linalg.inv(self.base_pose) @ self.poses
+        self.T_rig_world_base = self.T_rig_worlds[0]
+        self.T_rig_worlds = np.linalg.inv(self.T_rig_world_base) @ self.T_rig_worlds
 
         # Save the poses [only by main shard]
         if self.shard_id == 0:
-            self.data_writer.store_poses(self.base_pose, self.poses, self.poses_timestamps)
+            self.data_writer.store_poses(self.T_rig_world_base, self.T_rig_worlds, self.T_rig_world_timestamps_ms)
 
         # Log base pose to share it more easily with downstream teams (it's serialized also explicitly)
         with np.printoptions(floatmode='unique', linewidth=200): # print in highest precision
-            logger.info(f'> processed {len(self.poses_timestamps)} poses, using base pose:\n{self.base_pose}')
+            logger.info(f'> processed {len(self.T_rig_world_timestamps_ms)} poses, using base pose:\n{self.T_rig_world_base}')
+
+
+    def decode_labels(self):
+        logger = self.logger.getChild('decode_labels')
+        logger.info(f'Loading labels')
+
+        # Initialize annotation structs (defaults in case no labels are available loaded)
+        self.labels = {'3d_labels': {}}
+        self.frame_labels = {}
+
+        # Process autolabels, if available
+        labels_path = self.sequence_path / 'cuboids_tracked' / 'labels_lidar.parquet'
+        if not labels_path.exists():
+            logger.warn(f'> file {labels_path} doesn\'t exist, skipping label generation')
+            return
+
+        # Determine time bounds from available egomotion poses and user-provided restrictions
+        start_timestamp_us, end_timestamp_us = self.time_bounds(self.T_rig_world_timestamps_ms, self.seek_sec, self.duration_sec)
+
+        # Perform label parsing
+        self.labels, self.frame_labels = LabelProcessor.parse(labels_path, start_timestamp_us, end_timestamp_us, logger)
+
+        # Save the accumulated data / per frame data [only by main shard]
+        if self.shard_id == 0:
+            self.data_writer.store_labels(self.labels, self.frame_labels)

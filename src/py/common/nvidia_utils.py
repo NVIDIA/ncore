@@ -453,10 +453,10 @@ class LabelProcessor:
         for row in tqdm.tqdm(label_data.itertuples(), total=len(label_data)):
             if row.label_name in cls.LABEL_STRING_TO_LABEL_ID.keys():
 
-                track_id = row.gt_trackline_id
-                label_timestamp_us = row.timestamp
+                track_id = int(row.gt_trackline_id)
+                label_timestamp_us = int(row.timestamp)
 
-                cuboid = np.array([
+                cuboid = [
                     row.centroid_x,
                     row.centroid_y,
                     row.centroid_z,
@@ -466,7 +466,7 @@ class LabelProcessor:
                     row.rot_x,
                     row.rot_y,
                     row.rot_z,
-                ], dtype=np.float32) # yapf: disable
+                ] # yapf: disable
 
                 # this is assuming velocity is not relative to the local sensor motion, but w.r.t. fixed scene / world
                 global_speed = np.linalg.norm([row.velocity_x, row.velocity_y, row.velocity_z])
@@ -478,7 +478,7 @@ class LabelProcessor:
                 frame_labels[label_timestamp_us]['lidar_labels'].append({
                     'id':
                     len(frame_labels[label_timestamp_us]['lidar_labels']),
-                    'name':
+                    'track_id':
                     track_id,
                     'label':
                     cls.LABEL_STRING_TO_LABEL_ID[row.label_name],
@@ -543,13 +543,13 @@ class LabelProcessor:
 
         # Use the bounding boxes to remove dynamic objects / set dynamic flag
         for frame_label in current_frame_labels.get('lidar_labels', {}):
-            label_id = frame_label['name']
+            track_id = frame_label['track_id']
             # If the object is dynamic update the points that fall in that bounding box
-            if labels['3d_labels'][label_id]['dynamic_flag']:
+            if labels['3d_labels'][track_id]['dynamic_flag']:
                 if skip_dynamic_flag:
                     # skip dynamic flag computation (but still execute loop for potential statistics)
                     continue
-                bbox = np.copy(frame_label['3D_bbox']) # enlarge the bounding box for the check *only*
+                bbox = np.copy(frame_label['3D_bbox']).astype(np.float32) # enlarge the bounding box for the check *only*
                 bbox[3:6] += cls.LIDAR_DYNAMIC_FLAG_BBOX_PADDING # TODO: make sure this parameter is tuned sensibly
                 dynamic_flag[isWithin3DBBox(xyz, bbox.reshape(1,-1))] = 1
 

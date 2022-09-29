@@ -1,5 +1,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
+from __future__ import annotations
+
 import logging
 import asyncio
 
@@ -7,7 +9,6 @@ import numpy as np
 
 from pathlib import Path
 from abc import ABC, abstractmethod
-
 
 # Initialize basic top-level logger configuration
 logging.basicConfig(level=logging.DEBUG,
@@ -63,7 +64,7 @@ class DataConverter(ABC):
 
     @staticmethod
     @abstractmethod
-    def from_config(config):
+    def from_config(config) -> DataConverter:
         '''
         Return an instance of the data converter
         '''

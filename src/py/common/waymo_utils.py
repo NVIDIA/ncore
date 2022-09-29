@@ -44,7 +44,7 @@ def extract_lidar_labels(frame):
 
     objects.append({
         'id': object_id,
-        'name': label.id,
+        'track_id': label.id,
         'label': category_label,
         '3D_bbox': np.array([box.center_x, box.center_y, box.center_z,
                          box.length, box.width, box.height, 0, 0, box.heading], dtype=np.float32),
