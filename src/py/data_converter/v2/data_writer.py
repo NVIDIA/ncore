@@ -15,31 +15,31 @@ class DataWriter():
 
     CAMERAS_BASE_DIR = 'cameras'
     LIDARS_BASE_DIR = 'lidars'
+    RADARS_BASE_DIR = 'lidars'
 
-    def __init__(self, sequence_output_dir: Path, camera_ids: list[str], lidar_ids: list[str]):
+    def __init__(self, sequence_output_dir: Path, camera_ids: list[str], lidar_ids: list[str], radar_ids: list[str]):
         ''' 
         Instantiate data writer and initialize the default folder structure for a given sequence and sensor IDs
         '''
 
         self.camera_ids = camera_ids
         self.lidar_ids = lidar_ids
+        self.radar_ids = radar_ids
 
         self.sequence_output_dir = sequence_output_dir
 
         # Create output folder structure
-        self.sequence_output_dir.mkdir(parents=True, exist_ok=True)
-
-        for d in [self.CAMERAS_BASE_DIR, self.LIDARS_BASE_DIR]:
-            (self.sequence_output_dir / d).mkdir(exist_ok=True)
-
         for camera_id in self.camera_ids:
-            (self.sequence_output_dir / self.CAMERAS_BASE_DIR / camera_id).mkdir(exist_ok=True)
+            (self.sequence_output_dir / self.CAMERAS_BASE_DIR / camera_id).mkdir(parents=True, exist_ok=True)
 
         for lidar_id in self.lidar_ids:
-            (self.sequence_output_dir / self.LIDARS_BASE_DIR / lidar_id).mkdir(exist_ok=True)
+            (self.sequence_output_dir / self.LIDARS_BASE_DIR / lidar_id).mkdir(parents=True, exist_ok=True)
 
-    # Individual store methods performing data sanity checks and serialize consistent output formats
-    async def store_poses(self, base_pose: np.array, poses: np.array, poses_timestamps: list[int]) -> None:
+        for radar_id in self.radar_ids:
+            (self.sequence_output_dir / self.RADARS_BASE_DIR / radar_id).mkdir(parents=True, exist_ok=True)
+
+    # Individual 'store*' methods performing data sanity checks and serialize consistent output formats
+    def store_poses(self, base_pose: np.array, poses: np.array, poses_timestamps: list[int]) -> None:
         # sanity / consistency checks
         assert base_pose.shape == (4,4)
         assert base_pose.dtype == np.dtype('float64')
@@ -51,13 +51,14 @@ class DataWriter():
         output ['poses'] = poses.tolist()
         output ['timestamps_ms'] = poses_timestamps
 
-        async with aiofiles.open(self.sequence_output_dir / 'poses.json', "w") as outfile:
-            await outfile.write(json.dumps(output))
+        with open(self.sequence_output_dir / 'poses.json', "w") as outfile:
+            outfile.write(json.dumps(output))
 
-    async def store_meta(self, version: str, calibration_type: str, egomotion_type: str) -> None:
+
+    def store_meta(self, version: str, calibration_type: str, egomotion_type: str) -> None:
         output = {'version': version, 'egomotion_type': egomotion_type, 'calibration_type': calibration_type}
 
-        async with aiofiles.open(self.sequence_output_dir / 'meta.json', "w") as outfile:
-            await outfile.write(json.dumps(output))
+        with open(self.sequence_output_dir / 'meta.json', "w") as outfile:
+            outfile.write(json.dumps(output))
 
     

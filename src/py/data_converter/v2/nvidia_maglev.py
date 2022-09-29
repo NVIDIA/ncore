@@ -7,7 +7,7 @@ import json
 import numpy as np
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Type
 
 from src.py.common.common import Config
 from src.py.data_converter.v2.data_converter import BaseNvidiaDataConverter
@@ -31,6 +31,10 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.seek_sec = config.seek_sec
         self.duration_sec = config.duration_sec
 
+        self.multiprocessing_camera = config.multiprocessing_camera
+        self.multiprocessing_lidar = config.multiprocessing_lidar
+        self.max_processes : Optional[int] = config.max_processes
+        
         self.shard_id : int = config.shard_id
         self.shard_count : int = config.shard_count
 
@@ -42,11 +46,17 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.skip_dynamic_flag = config.skip_dynamic_flag
 
 
-    def get_sequence_dirs(self) -> list[Path]:
-        return [self.root_dir]
+    @staticmethod
+    def get_sequence_dirs(config) -> list[Path]:
+        return [Path(config.root_dir)]
 
 
-    async def convert_sequence(self, sequence_path: Path) -> None:
+    @staticmethod
+    def from_config(config):
+        return NvidiaMaglevConverter(config)
+
+
+    def convert_sequence(self, sequence_path: Path) -> None:
         """
         Runs the conversion of a single session (single job output of Maglev dsai-pp workflow)
         """
@@ -74,19 +84,21 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # DataWriter for all outputs
         self.data_writer = DataWriter(self.output_dir / session_id,
                                       list(self.CAMERAID_TO_RIGNAME.keys()),
-                                      list(self.LIDARID_TO_RIGNAME.keys()))
+                                      list(self.LIDARID_TO_RIGNAME.keys()),
+                                      [] # no radars yet
+                                      )
 
         # Decode data from maglev
-        await self.decode_poses()
+        self.decode_poses()
 
         # self.decode_labels()
 
         if self.shard_id == 0:
-            await self.data_writer.store_meta(self.VERSION, 
-                                              # TODO: parse these from the data
-                                              'scene-calib', 'lidar-egomotion')
+            self.data_writer.store_meta(self.VERSION, 
+                                        # TODO: parse these from the data
+                                        'scene-calib', 'lidar-egomotion')
 
-    async def decode_poses(self):
+    def decode_poses(self):
         logger = self.logger.getChild('decode_poses')
         logger.info(f'Loading poses')
 
@@ -159,7 +171,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         # Save the poses [only by main shard]
         if self.shard_id == 0:
-            await self.data_writer.store_poses(self.base_pose, self.poses, self.poses_timestamps)
+            self.data_writer.store_poses(self.base_pose, self.poses, self.poses_timestamps)
 
         # Log base pose to share it more easily with downstream teams (it's serialized also explicitly)
         with np.printoptions(floatmode='unique', linewidth=200): # print in highest precision

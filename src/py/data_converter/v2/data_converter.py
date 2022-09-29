@@ -1,11 +1,13 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 import logging
+import asyncio
 
 import numpy as np
 
 from pathlib import Path
 from abc import ABC, abstractmethod
+
 
 # Initialize basic top-level logger configuration
 logging.basicConfig(level=logging.DEBUG,
@@ -30,33 +32,46 @@ class DataConverter(ABC):
         self.output_dir = Path(config.output_dir)
 
 
-    async def convert(self) -> None:
+    @classmethod
+    def convert(cls, config) -> None:
         '''
         Main entry-point to perform conversion of all sequences
         '''
 
-        sequence_dirs = self.get_sequence_dirs()
+        logger = logging.getLogger(__name__)
 
-        self.logger.info(f"Start converting {sequence_dirs} ...")
+        sequence_dirs = cls.get_sequence_dirs(config)
 
-        # Note: perform conversion in main thread *sequentially* until individual converters are thread-safe
-        # (require separate states or instances)
+        logger.info(f'Start converting {sequence_dirs} ...')
+
+        # create new instance of converter for each task and execute synchonously
         for sequence_dir in sequence_dirs:
-            await self.convert_sequence(sequence_dir)
+            converter = cls.from_config(config)
+            converter.convert_sequence(sequence_dir)
+        
+        logger.info(f'Finished converting {sequence_dirs} in {config.output_dir} ...')
 
-        self.logger.info("Finished conversion ...")
 
-
+    @staticmethod
     @abstractmethod
-    def get_sequence_dirs(self) -> list[Path]:
+    def get_sequence_dirs(config) -> list[Path]:
         '''
         Return sequence pathnames to process
         '''
         pass
 
 
+    @staticmethod
     @abstractmethod
-    async def convert_sequence(self, sequence_dir: Path) -> None:
+    def from_config(config):
+        '''
+        Return an instance of the data converter
+        '''
+        pass
+
+
+    @abstractmethod
+    def convert_sequence(self, sequence_dir: Path) -> None:
         '''
         Runs dataset-specific conversion for a sequence
         '''

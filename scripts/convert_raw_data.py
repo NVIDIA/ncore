@@ -4,9 +4,6 @@
 import click
 import debugpy
 import logging
-import asyncio
-
-from functools import wraps
 
 from src.py.common.common import Config
 
@@ -105,17 +102,12 @@ def nvidia_maglev(ctx, *_, **kwargs):
 
     NvidiaMaglevConverter(config).convert()
 
-# Coroutine decorator to execute a command as a co-routine
-def exec_coroutine(f):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        return asyncio.run(f(*args, **kwargs))
-
-    return wrapper
-
 @cli.command()
 @click.option('--seek-sec', type=click.FloatRange(min=0.0, max_open=True), help="Time to skip for the dataset conversion (in seconds)")
 @click.option('--duration-sec', type=click.FloatRange(min=0.0, max_open=True), help="Restrict total duration of the dataset conversion (in seconds)")
+@click.option('--multiprocessing-camera', is_flag=True, default=False, help="Perform camera data conversion with multiprocessing if enabled")
+@click.option('--multiprocessing-lidar', is_flag=True, default=False, help="Perform lidar data conversion with multiprocessing if enabled")
+@click.option('--max-processes', default=None, type=int, help="If provided, the upper bound for processes to start")
 @click.option('--shard-id', type=click.IntRange(min=0, max_open=True), default=0, help="Shard id in [0,N-1] controlling uniform dataset subset processing")
 @click.option('--shard-count', type=click.IntRange(min=1, max_open=True), default=1, help="Total number of shards N to performing full dataset processing")
 @click.option('--symlink-camera-frames', is_flag=True, default=False, help="Symlink camera frames instead of copying files if enabled")
@@ -123,8 +115,7 @@ def exec_coroutine(f):
 @click.option('--egomotion-file', type=str, help="If provided, overwrite default egomotion file location", default=None)
 @click.option('--skip-dynamic-flag', is_flag=True, default=False, help="Skip lidar dynamic flag computation to improve performance")
 @click.pass_context
-@exec_coroutine
-async def nvidia_maglev_v2(ctx, *_, **kwargs):
+def nvidia_maglev_v2(ctx, *_, **kwargs):
     """NVIDIA-specific data conversion (V2 format, based on Maglev data extraction)"""
     
     from src.py.data_converter.v2.nvidia_maglev import NvidiaMaglevConverter
@@ -132,7 +123,7 @@ async def nvidia_maglev_v2(ctx, *_, **kwargs):
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
 
-    await NvidiaMaglevConverter(config).convert()
+    NvidiaMaglevConverter.convert(config)
 
 
 if __name__ == '__main__':
