@@ -158,8 +158,7 @@ For individual sensors we also save session-wise metadata:
 *All Sensors*:
 
 * ``T_sensor_rig``- SE3 transformation matrix from the sensor to the rig coordinate system (np.array, [4,4], float32)
-* ``frame_timestamps_us`` - timestamps of the all sensor frames in microseconds. Their interpretation is sensor-specific, e.g., for lidar frames these are end-of-spin timestamps,
-                            whereas for cameras these represent the timestamp the center of the image was exposed (np.array, [n,], uint64)
+* ``frame_timestamps_us`` - end-of-frame timestamps of the all sensor frames in microseconds (np.array, [n,], uint64)
 
 *Cameras*: 
 

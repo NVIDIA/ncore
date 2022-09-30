@@ -279,12 +279,10 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             # Compute sensor-specific data (timestamps *all* frames in all shards, meta data) [only by main shard]
             if self.shard_id == 0:
                 global_frame_timestamps_us = raw_frame_timestamps_us[global_range_start:global_range_end]
-                global_sof_timestamps_us = global_frame_timestamps_us - self.CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US[camera_type] \
-                    - self.CAMERATYPE_TO_EXPOSURETIME_HALF_US[camera_type]
                 global_eof_timestamps_us = global_frame_timestamps_us - self.CAMERATYPE_TO_EXPOSURETIME_HALF_US[camera_type] \
 
-                # global camera pose timestamps, corresponds approximately to the timestamp of the principle point pixel
-                global_camera_timestamps_us = np.stack((global_eof_timestamps_us + global_sof_timestamps_us) // 2) \
+                # global camera pose timestamps, corresponding to end-of-frame timestamps
+                global_camera_timestamps_us = np.stack(global_eof_timestamps_us) \
                     if global_frame_timestamps_us.size != 0 else np.empty_like(global_frame_timestamps_us) # check that at least a single frame was processed
 
                 # Extract the calibration metadata
