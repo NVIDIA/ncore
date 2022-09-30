@@ -17,7 +17,7 @@ All data should be saved/exported in the correct format, if some modules use a d
    :align: right
 
 The position and orientation of the ego car, as well as other objects in the scene, are expressed in the earth-centered-earth-fixed (ECEF) coordinate system in the form of SE3 matrices. 
-To avoid very large coordinates, we set the first pose of the ego car in the sequence to an identity matrix ``base_pose`` and express all other poses relative to it. [#f1]_
+To avoid very large coordinates, we set the first pose of the ego car in the sequence to an identity matrix and express all other poses relative to it. This reference pose is available as ``T_rig_world_base`` [#f1]_
 
 
 **Rig coordinate frame**
@@ -28,6 +28,7 @@ To avoid very large coordinates, we set the first pose of the ego car in the seq
    :align: right
 
 The rig coordinate system is defined as a right-handed coordinate system with the x-axis pointing to the front of the car, y is pointing left, and z up. The origin of the coordinate system is located in the middle of the rear axis on the nominal ground.
+
 
 **Camera and image coordinate system**
 
@@ -81,19 +82,19 @@ The data processed using DSAI library on Maglev will be made available in the fo
     │ ├─camera_front_wide_120fov/
     │ │ ├-000000.jpg
     │ │ ├-000000.json
-    │ │ ├-000000_mask.png
     │ │ ├-000000_sem.png
     │ │ ├-000000_inst.hdf5
     │ │ ├─...
+    | | ├-mask.png
     │ │ └-meta.json
     │ │
     │ ├─camera_front_fisheye_200fov/
     │ │ ├-000000.jpg
     │ │ ├-000000.json
-    │ │ ├-000000_mask.png
     │ │ ├-000000_sem.png
     │ │ ├-000000_inst.hdf5
     │ │ ├─...
+    | | ├-mask.png
     │ │ └-meta.json
     │ │
     │ └─...
@@ -113,17 +114,17 @@ The data processed using DSAI library on Maglev will be made available in the fo
     │ │
     │ └─...
     │
-    ├-poses.json
+    ├-poses.hdf5
     ├-labels.json
     └-meta.json
 
 
-Sensor data
+Sensor Data
 -----------
 
 **Images**
 
-The images are saved either in the `*.jpg` (raw sensor data) or in the `*.png` format (mask, semantic or instance labels).
+The images are saved either in the `*.jpg` (raw sensor data) or in the `*.png` format (masks, semantic or instance labels).
 
 **Point clouds**
 
@@ -135,13 +136,13 @@ Lidar data contains the following columns:
 * ``xyz_e`` - 3D coordinate of the end of the ray in the sensor reference frame (float32, [n,3])
 * ``intensity`` - measured intensity (uint8, [n])
 * ``dynamic_flag`` - dynamic flag (bool, [n])
-* ``timestamp`` - point timestamp (uint64, [n])
+* ``timestamp_us`` - point timestamp in microseconds (uint64, [n])
 
 Radar data contains the following columns:
 
 * ``xyz_s`` - 3D coordinate of the start of the ray in the sensor reference frame (float32, [n,3])
 * ``xyz_e`` - 3D coordinate of the end of the ray in the sensor reference frame (float32, [n,3])
-* ``timestamp`` - point timestamp (uint64, [n])
+* ``timestamp_us`` - point timestamp in microseconds (uint64, [n])
 
 **Metadata**
 
@@ -149,45 +150,47 @@ Metadata is available per frame, but also for individual sensors and for the gen
 
 Per-frame metadata contains the following entries for all sensors: 
 
-* ``T_sensor_rig`` - SE3 transformation matrix from the sensor to the rig coordinate system (np.array, [4,4], float32)
-* ``timestamps`` - timestamp of the frame's start and end point in microseconds (np.array, [2,], uint64)
-* ``T_rig_world`` - SE3 transformation matrices from the rig to the world coordinate system at the start and end timestamp of the frame (np.array, [2,4,4], float32)
+* ``timestamps_us`` - timestamps of the frame's start and end point in microseconds (np.array, [2,], uint64)
+* ``T_rig_worlds`` - SE3 transformation matrices from the rig to the world coordinate system at the start and end timestamp of the frame (np.array, [2,4,4], float32)
 
+For individual sensors we also save session-wise metadata:
 
+*All Sensors*:
 
-For individual sensors we also save session wise metadata:
+* ``T_sensor_rig``- SE3 transformation matrix from the sensor to the rig coordinate system (np.array, [4,4], float32)
+* ``frame_timestamps_us`` - timestamps of the all sensor frames in microseconds. Their interpretation is sensor-specific, e.g., for lidar frames these are end-of-spin timestamps,
+                            whereas for cameras these represent the timestamp the center of the image was exposed (np.array, [n,], uint64)
 
 *Cameras*: 
 
-* ``img_resolution`` - width and height of the image in pixels (np.array, [2,], int)
-* ``rolling_shutter_direction`` - direction of the rolling shutter (int, 1 = TOP_TO_BOTTOM, 2 = LEFT_TO_RIGHT, 3 = BOTTOM_TO_TOP, 4 = RIGHT_TO_LEFT )
-* ``camera_model`` - camera model type (str)
-* ``exposure_time`` - exposure time of the camera (float32)
-* ``principal_point`` - x and y coordinate of the principal point (np.array, [2,], float32)
+* ``camera_model_type`` - camera model type (str, one of [ftheta, pinhole])
 
-If ``camera_model` = 'f_theta'`` the following intrinsic parameters will be available: 
+The field ``camera_model`` will unconditionally contain:
+
+* ``resolution`` - width and height of the image in pixels (np.array, [2,], uint32)
+* ``exposure_time_us`` - exposure time of the camera in microseconds (uint64)
+* ``rolling_shutter_direction`` - direction of the rolling shutter (str, one of [TOP_TO_BOTTOM, LEFT_TO_RIGHT, BOTTOM_TO_TOP, RIGHT_TO_LEFT])
+
+If ``camera_model_type = 'f_theta'`` the following intrinsic parameters will additionally be available in ``camera_model``:
 
 * ``bw_poly`` - coefficients of the backward polynomial (np.array, [6,], float32)
 * ``fw_poly`` - coefficients of the forward polynomial (np.array, [6,], float32)
 
-If ``camera_model` = 'pinhole'`` the following intrinsic parameters will be available: 
+If ``camera_model` = 'pinhole'`` the following intrinsic parameters will additionally be available in ``camera_model``:
 
-* ``fl_u`` - focal length in u direction (float32)
-* ``fl_v`` - focal length in v direction (float32)
-* ``distortion_coefficients`` - p1, p2, k1, k2, k3 distortion coefficients (np.array, [5,], float32)
-
+* ``principal_point`` - x and y coordinate of the principal point (np.array, [2,], float32)
+* ``focal_length_u`` / ``focal_length_v`` - focal length in u and v direction, resp. (float32)
+* ``p1``, ``p2``, ``k1``, ``k2``, ``k3`` - distortion coefficients (float32)
 
 *Lidars*: 
 
 * ``{sampling_pattern}`` - sampling pattern of the lidar sensor in terms of elevation and azimuth angles (np.array, [n,m], float32)
-* 
 
 Finally, we also save general metadata related to the session (input data and versioning):
 
 * ``version`` - version of the dataset (str)
 * ``egomotion_type`` - type of ego-motion that was used to generate the data (str) 
 * ``calibration_type`` - type of sensor calibration that was used to generate the data (str)
-  
 
 Labels
 ------
@@ -197,5 +200,5 @@ Labels
 
 .. rubric:: Footnotes
 
-.. [#f1] The ``base_pose`` of the Maglev processed datasets will by default be an identity matrix if DeepMap poses are not used. The coordinate system is hence a local 3D cartesian system and not ECEF.
+.. [#f1] The ``T_rig_world_base`` of the Maglev processed datasets will by default be an identity matrix if DeepMap poses are not used. The coordinate system is hence a local 3D cartesian system and not ECEF.
 .. [#f2] Curly brackets denote optional data.

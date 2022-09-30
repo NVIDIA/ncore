@@ -32,3 +32,5 @@ pycocotools --hash=sha256:31a6c2d2e0c75f76e23fb300f7b5421b6c1b244f7d5757c4ad21fd
 jupyter_server
 sphinx
 sphinx_rtd_theme
+
+dataclasses_json

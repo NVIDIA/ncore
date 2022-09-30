@@ -14,6 +14,7 @@ py_library(
     deps = [
         "//src/py/common:pylib",
         requirement("h5py"),
+        requirement("dataclasses-json"),
     ],
 )
 

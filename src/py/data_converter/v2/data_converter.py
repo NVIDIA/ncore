@@ -86,10 +86,10 @@ class BaseNvidiaDataConverter(DataConverter):
 
     ## Constants defined for *Hyperion8* sensor-set
 
-    # TODO: the value for the 70FoV wide camera seems to be different, we need to clarify
-    CAMERATYPE_TO_EXPOSURETIME = {'wide': 1641.58, 'fisheye': 10987.00}
-
-    CAMERATYPE_TO_ROLLINGSHUTTERDELAY = {'wide': 31611.55, 'fisheye': 32561.63}
+    # Camera exposure times (rounded to integer US)
+    CAMERATYPE_TO_EXPOSURETIME_US = {'wide': np.uint64(1641.58), 'fisheye': np.uint64(10987.00)} # rounded to integer US
+    CAMERATYPE_TO_EXPOSURETIME_HALF_US = {'wide': np.uint64(1641.58 / 2), 'fisheye': np.uint64(10987.00 / 2)} # rounded to integer US
+    CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US = {'wide': np.uint64(31611.55), 'fisheye': np.uint64(32561.63)} # rounded to integer US
 
     CAMERAID_TO_RIGNAME = {
         'camera_front_wide_120fov': 'camera:front:wide:120fov',
@@ -123,7 +123,7 @@ class BaseNvidiaDataConverter(DataConverter):
     }
 
     # Approximate spin time in microseconds
-    LIDARID_TO_APPROX_SPIN_TIME_MS = {
+    LIDARID_TO_APPROX_SPIN_TIME_US = {
         'lidar_gt_top_p128_v4p5': 1e6 / 10  # based on 10Hz frequency
     }
 

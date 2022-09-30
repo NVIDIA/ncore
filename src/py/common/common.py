@@ -500,7 +500,7 @@ class MaskImage:
         # set new values for masked pixels
         self.mask_array[binary_mask] = mask_type.value
 
-    def get_image(self):
+    def get_image(self) -> Image:
         """
         Returns the color-paletted mask image with all mask types set
         Returns:
