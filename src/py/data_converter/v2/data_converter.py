@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import asyncio
 
 import numpy as np
 
@@ -18,12 +17,16 @@ logging.basicConfig(level=logging.DEBUG,
 class DataConverter(ABC):
     '''
     Base preprocessing class used to preprocess AV datasets in a canonical representation (V2) as used in the Nvidia DriveSim-AI project.
+    
     For adding a new dataset, please inherit this class and implement the required functions. 
+    
     The output data should follow the conventions defined in 
-    https://gitlab-master.nvidia.com/zgojcic/drivesim-ai/-/blob/main/docs/data.md
+    https://toronto_dl_lab.gitlab-master-pages.nvidia.com/dsai/notes/conventions.html
+
+    Please also use the facilities of the 'data_writer' module, which simplifies adding new datasets.
 
     DISCLAIMER: THIS SOURCE CODE IS NVIDIA INTERNAL/CONFIDENTIAL. DO NOT SHARE EXTERNALLY.
-    IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC zgojcic@nvidia.com. 
+    IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC zgojcic@nvidia.com / JANICK MARTINEZ ESTURO janickm@nvidia.com. 
     '''
 
     def __init__(self, config):
