@@ -18,6 +18,18 @@ py_binary(
     ],
 )
 
+DSAI_EXTRACT_SEGMENTATION_DEPS = [
+    requirement("click"),
+    requirement("debugpy"),
+    "//src/py/dataset_converter:pylib",
+]
+
+py_binary(
+    name = "dsai_extract_segmentation",
+    srcs = ["dsai_extract_segmentation.py"],
+    deps = DSAI_EXTRACT_SEGMENTATION_DEPS,
+)
+
 CONVERT_RAW_DATA_DEPS = [
     requirement("click"),
     requirement("debugpy"),
