@@ -18,18 +18,18 @@ from PIL import Image
 
 from src.py.common.common import NV_CAMERAS, WAYMO_CAMERAS, R_NVIDIA_NGP, R_WAYMO_NGP, RS_DIR_TO_NGP, average_camera_pose, load_pc_dat, save_pc_dat
 
-def prepare_lidar_frames(root_dir, start_frame, end_frame):
+def prepare_lidar_frames(root_dir, start_frame, end_frame, index_digits=6):
     """ Helper to conditionally uncompress lidar frame data if necessary """
 
     outputlist = []
 
     for idx in range(start_frame, end_frame):
         # Use regular uncompressed lidar directly if available
-        pc_path_uncompressed = os.path.join(root_dir, 'lidar', f'{str(idx).zfill(6)}.dat')
+        pc_path_uncompressed = os.path.join(root_dir, 'lidar', f'{str(idx).zfill(index_digits)}.dat')
         
         if not os.path.exists(pc_path_uncompressed):
             # Handle compressed lidar frames by re-saving them uncompressed
-            pc_path_uncompressed_resave = os.path.join(root_dir, 'lidar_uncompressed', f'{str(idx).zfill(6)}.dat')
+            pc_path_uncompressed_resave = os.path.join(root_dir, 'lidar_uncompressed', f'{str(idx).zfill(index_digits)}.dat')
 
             # Un-compress into new subfolder only if not existing yet
             if not os.path.exists(pc_path_uncompressed_resave):
@@ -97,7 +97,7 @@ def waymo(ctx, *_, **kwargs):
     for cam in cameras: 
         camera_data[cam] = {}
         
-        with open(os.path.join(root_dir, f'images/image_{str(cam).zfill(2)}', f'{str(start_frame).zfill(6)}.pkl'),'rb') as file:
+        with open(os.path.join(root_dir, f'images/image_{str(cam).zfill(2)}', f'{str(start_frame).zfill(index_digits)}.pkl'),'rb') as file:
             camera_metadata = pickle.load(file)
 
         # Get the focal length, image width and height
@@ -123,7 +123,7 @@ def waymo(ctx, *_, **kwargs):
 
         # Resave all image masks 
         for img_mask_path in all_img_mask:
-            if not os.path.exists(img_mask_path.replace('mask_', 'dynamic_mask_')):
+            if os.path.exists(img_mask_path) and not os.path.exists(img_mask_path.replace('mask_', 'dynamic_mask_')):
                 img = Image.open(img_mask_path)
                 img.save(img_mask_path.replace('mask_', 'dynamic_mask_'), bits=1,optimize=True)
 
@@ -192,8 +192,8 @@ def waymo(ctx, *_, **kwargs):
                 "frames":[]}
 
         out_test = copy.deepcopy(out_train)
-        all_img = [os.path.join(root_dir, 'images', f'image_{str(cam).zfill(2)}', f'{str(idx).zfill(6)}.jpeg') for idx in range(start_frame, end_frame)]
-        all_img_train = [os.path.join(root_dir, 'images', f'image_{str(cam).zfill(2)}', f'{str(idx).zfill(6)}.jpeg') for idx in range(start_frame, end_frame, step_frame)]
+        all_img = [os.path.join(root_dir, 'images', f'image_{str(cam).zfill(2)}', f'{str(idx).zfill(index_digits)}.jpeg') for idx in range(start_frame, end_frame)]
+        all_img_train = [os.path.join(root_dir, 'images', f'image_{str(cam).zfill(2)}', f'{str(idx).zfill(index_digits)}.jpeg') for idx in range(start_frame, end_frame, step_frame)]
         
         for i, name in enumerate(all_img_train):
             path = os.sep.join(name.split(os.sep)[-3:])
@@ -213,7 +213,7 @@ def waymo(ctx, *_, **kwargs):
             out_test['frames'].append(frame)
 
         if cam_idx == 0 and use_lidar:
-            out_train['lidar'] = prepare_lidar_frames(root_dir, start_frame, end_frame) # add lidar at the end as cameras see further away
+            out_train['lidar'] = prepare_lidar_frames(root_dir, start_frame, end_frame, index_digits) # add lidar at the end as cameras see further away
 
 
         print('writing train camera.json...')
@@ -255,7 +255,7 @@ def nvidia(ctx, *_, **kwargs):
     for cam in cameras: 
         camera_data[cam] = {}
         
-        with open(os.path.join(root_dir, f'images/image_{str(cam).zfill(2)}', f'{str(start_frame).zfill(6)}.pkl'),'rb') as file:
+        with open(os.path.join(root_dir, f'images/image_{str(cam).zfill(2)}', f'{str(start_frame).zfill(index_digits)}.pkl'),'rb') as file:
             camera_metada = pickle.load(file)
 
         # Get the focal length, image width and height
@@ -357,8 +357,8 @@ def nvidia(ctx, *_, **kwargs):
             out_train[k] = v
 
         out_test = copy.deepcopy(out_train)
-        all_img = [os.path.join(root_dir, 'images', f'image_{str(cam).zfill(2)}', f'{str(idx).zfill(6)}.jpeg') for idx in range(start_frame, end_frame)]
-        all_img_train = [os.path.join(root_dir, 'images', f'image_{str(cam).zfill(2)}', f'{str(idx).zfill(6)}.jpeg') for idx in range(start_frame, end_frame, step_frame)]
+        all_img = [os.path.join(root_dir, 'images', f'image_{str(cam).zfill(2)}', f'{str(idx).zfill(index_digits)}.jpeg') for idx in range(start_frame, end_frame)]
+        all_img_train = [os.path.join(root_dir, 'images', f'image_{str(cam).zfill(2)}', f'{str(idx).zfill(index_digits)}.jpeg') for idx in range(start_frame, end_frame, step_frame)]
         
         for i, name in enumerate(all_img_train):
             path = os.sep.join(name.split(os.sep)[-3:])
@@ -389,7 +389,7 @@ def nvidia(ctx, *_, **kwargs):
             lidar_start_idx  = np.where(lidar_timestamps > start_timestamp)[0][0] + 1
             lidar_end_idx   = np.where(lidar_timestamps < end_timestamp)[0][-1]  + 1 # add lidar at the end as cameras see further away
 
-            out_train['lidar'] = prepare_lidar_frames(root_dir, lidar_start_idx, lidar_end_idx)
+            out_train['lidar'] = prepare_lidar_frames(root_dir, lidar_start_idx, lidar_end_idx, index_digits)
 
 
         print('writing train camera.json...')
