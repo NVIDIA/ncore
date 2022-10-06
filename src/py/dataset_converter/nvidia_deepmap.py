@@ -171,21 +171,38 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
 
             frame_timestamps = frame_timestamps[start_idx:end_idx, :]
 
-            # Extract all the images
-            vidcap = cv2.VideoCapture(os.path.join(sequence_path, 'camera_data/', camera + '.mp4'))
+            # Extract all relevant images
+            path = os.path.join(sequence_path, 'camera_data/', camera + '.mp4')
+            self.logger.info(f'Loading video {camera} @ {path}')
+            vidcap = cv2.VideoCapture(
+                path,
+                cv2.CAP_FFMPEG,
+                # set high timeout values to open video / read frames in case IO bandwith is low
+                [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 25 * 60000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 25 * 60000])
+            
+            if not vidcap.isOpened():
+                self.logger.warn(f'skipping {camera} - can\'t open video')
+                continue
+            
             success, image = vidcap.read()
+            
+            if not success:
+                self.logger.warn(f'skipping {camera} - can\'t read frame')
+                continue
+            
             count = 0
             save_frame = 0
-            img_height, img_width,  = image.shape[0:2]
+            img_height, img_width = image.shape[0:2]
             while success:
                 if frame_timestamps[0,0] <= count <= frame_timestamps[-1,0]:
                     save_path = os.path.join(camera_base_save_path, str(save_frame).zfill(self.INDEX_DIGITS) + '.jpeg')
-                    cv2.imwrite(save_path, image)     # save frame as JPEG file
+                    cv2.imwrite(save_path, image) # save frame as JPEG file
                     save_frame += 1
 
                 if count > frame_timestamps[-1,0]:
                     break
-                success,image = vidcap.read()
+
+                success, image = vidcap.read()
                 count += 1
 
             # Extract camera extrinsics
@@ -292,9 +309,9 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                     data.ParseFromString(f.read())
 
                 if self.start_timestamp_us and data.meta_data.end_timestamp_microseconds < self.start_timestamp_us:
-                    continue
+                    continue # not there yet
                 if self.end_timestamp_us and data.meta_data.end_timestamp_microseconds > self.end_timestamp_us:
-                    continue
+                    break # already passed end - no need to keep on processing
 
                 # Find the closest frame in the annotations
                 time_diff = np.abs(fa_timestamps - (data.meta_data.end_timestamp_microseconds))
