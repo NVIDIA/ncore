@@ -167,7 +167,8 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
             end_timestamp_us = self.end_timestamp_us if self.end_timestamp_us else self.poses_timestamps[-1]
 
             start_idx = np.where(frame_timestamps[:,1] > start_timestamp_us + self.CAM2ROLLINGSHUTTERDELAY[cam_type] + self.CAM2EXPOSURETIME[cam_type])[0][0]
-            end_idx = np.where(frame_timestamps[:,1] >= end_timestamp_us)[0][0]
+            end_idx = np.where(frame_timestamps[:,1] >= end_timestamp_us)[0]
+            end_idx = end_idx[0] if len(end_idx) else len(frame_timestamps[:,1])
 
             frame_timestamps = frame_timestamps[start_idx:end_idx, :]
 
