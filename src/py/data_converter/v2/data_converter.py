@@ -132,4 +132,6 @@ class BaseNvidiaDataConverter(DataConverter):
 
     # Vehicle BBOX padding distances (for each axis) and maximum distances (in meters) for point cloud measurements (to filter points on the ego-car / out invalid points)
     LIDAR_FILTER_VEHICLE_BBOX_PADDING_METERS = np.array([0.4, 0.2, 1.0], dtype=np.float32)
-    LIDAR_FILTER_MAX_DISTANCE_METERS = 100.0
+    LIDARID_TO_FILTER_MAX_DISTANCE_METERS = {
+        'lidar_gt_top_p128_v4p5': 100.0 
+    }

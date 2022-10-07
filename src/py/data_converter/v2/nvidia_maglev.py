@@ -10,6 +10,7 @@ import multiprocessing
 
 import numpy as np
 import tqdm
+import point_cloud_utils as pcu
 
 from pathlib import Path
 from typing import Optional, Tuple
@@ -20,9 +21,9 @@ from src.py.data_converter.v2.data_writer import DataWriter, FThetaCameraModel
 
 from src.py.common.nvidia_utils import (parse_rig_sensors_from_dict, sensor_to_rig, LabelProcessor,
                                         camera_intrinsic_parameters, compute_fw_polynomial,
-                                        camera_car_mask)
-from src.py.common.common import load_jsonl, PoseInterpolator, uniform_subdivide_range, platform_cpu_count
-
+                                        camera_car_mask, vehicle_bbox)
+from src.py.common.common import load_jsonl, PoseInterpolator, uniform_subdivide_range, platform_cpu_count, SimpleTimer
+from src.cpp.av_utils import isWithin3DBBox
 
 class NvidiaMaglevConverter(BaseNvidiaDataConverter):
     """
@@ -132,6 +133,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         self.decode_cameras()
 
+        self.decode_lidars()
+
         if self.shard_id == 0:
             self.data_writer.store_meta(
                 self.VERSION,
@@ -217,6 +220,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             logger.info(
                 f'> processed {len(self.T_rig_world_timestamps_us)} poses, using base pose:\n{self.T_rig_world_base}')
 
+
     def decode_labels(self):
         logger = self.logger.getChild('decode_labels')
         logger.info(f'Loading labels')
@@ -242,6 +246,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         if self.shard_id == 0:
             self.data_writer.store_labels(self.labels, self.frame_labels)
 
+
     def decode_cameras(self):
         logger = self.logger.getChild('decode_cameras')
         logger.info(f'Loading camera data [shard {self.shard_id + 1}/{self.shard_count}]')
@@ -250,18 +255,19 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         start_timestamp_us, end_timestamp_us = self.time_bounds(self.T_rig_world_timestamps_us, self.seek_sec,
                                                                 self.duration_sec)
 
-        # Process all valid camera images
-        for camera_id, camera_rig_name in self.CAMERAID_TO_RIGNAME.items():
-            camera_type = self.CAMERAID_TO_CAMERATYPE[camera_id]
+        # Pose interpolator to obtain start / end egomotion poses
+        pose_interpolator = PoseInterpolator(self.T_rig_worlds, self.T_rig_world_timestamps_us)
 
+        # Process all camera sensors
+        for camera_id, camera_rig_name in self.CAMERAID_TO_RIGNAME.items():
             logger.info(f'Processing camera {camera_rig_name}')
 
-            # Pose interpolator to obtain start / end egomotion poses
-            pose_interpolator = PoseInterpolator(self.T_rig_worlds, self.T_rig_world_timestamps_us)
+            camera_type = self.CAMERAID_TO_CAMERATYPE[camera_id]
 
             # Load frame numbers and timestamps
             frames_metadata = load_jsonl(self.sequence_path / 'cameras' / camera_rig_name / 'meta.json')
-            raw_frame_numbers = np.array([frame_data['frame_number'] for frame_data in frames_metadata])
+            raw_frame_numbers = np.array([frame_data['frame_number'] for frame_data in frames_metadata],
+                                         dtype=np.uint64)
             raw_frame_timestamps_us = np.array([frame_data['timestamp'] for frame_data in frames_metadata],
                                                dtype=np.uint64)
             del (frames_metadata)
@@ -291,8 +297,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
                 # Estimate the forward polynomial
                 intrinsic = camera_intrinsic_parameters(
-                    camera_calibration_data, logger)  # TODO: make sure we return 6th-order polynomial unconditionally.
-                #       Ideally also cleanup clumpsy single-array representation for intrinsics
+                    camera_calibration_data, logger
+                )  # TODO: make sure we return 6th-order polynomial unconditionally. Ideally also cleanup clumpsy single-array representation for intrinsics
 
                 bw_poly = intrinsic[4:]
                 fw_poly = compute_fw_polynomial(intrinsic)
@@ -343,6 +349,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         logger.info(f'> processed {len(self.CAMERAID_TO_RIGNAME)} cameras')
 
+
     def _decode_camera_process(
         self,
         args: Tuple[int, int, int],
@@ -370,3 +377,226 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         self.data_writer.store_camera_frame(camera_id, continous_frame_index, source_image_path,
                                             self.symlink_camera_frames, T_rig_worlds, timestamps_us)
+
+
+    def decode_lidars(self):
+        logger = self.logger.getChild('decode_lidars')
+        logger.info(f'Loading lidar data [shard {self.shard_id + 1}/{self.shard_count}]')
+
+        # Determine time bounds from available egomotion poses
+        start_timestamp_us, end_timestamp_us = self.time_bounds(self.T_rig_world_timestamps_us, self.seek_sec,
+                                                                self.duration_sec)
+
+        # Pose interpolator to obtain start / end egomotion poses
+        pose_interpolator = PoseInterpolator(self.T_rig_worlds, self.T_rig_world_timestamps_us)
+
+        # Load vehicle bounding box (defined in rig frame)
+        vehicle_bbox_rig = vehicle_bbox(self.rig)
+        vehicle_bbox_rig[3:6] += self.LIDAR_FILTER_VEHICLE_BBOX_PADDING_METERS  # pad the bounding box slightly
+
+        # Process all lidar sensors
+        for lidar_id, lidar_rig_name in self.LIDARID_TO_RIGNAME.items():
+            logger.info(f'Processing lidar {lidar_rig_name}')
+
+            # Load extrinsics
+            T_sensor_rig = sensor_to_rig(self.sensors_calibration_data[lidar_rig_name])
+
+            # Load frame numbers and timestamps
+            frames_metadata = load_jsonl(self.sequence_path / 'lidars' / lidar_rig_name / 'meta.json')
+            raw_frame_numbers = np.array([frame_data['frame_number'] for frame_data in frames_metadata],
+                                         dtype=np.uint64)
+            raw_frame_timestamps_us = np.array([frame_data['timestamp'] for frame_data in frames_metadata],
+                                               dtype=np.uint64)
+            del (frames_metadata)
+
+            assert len(raw_frame_numbers) == len(raw_frame_timestamps_us)
+
+            # Get the frame range of the first and last frame relative to available egomotion poses
+            global_range_start = np.argmax(raw_frame_timestamps_us >= start_timestamp_us)
+            global_range_end = np.argmax(raw_frame_timestamps_us > end_timestamp_us) \
+            if raw_frame_timestamps_us[-1] > end_timestamp_us else len(raw_frame_timestamps_us
+            )  # take all frames if all are within egomotion range, or determine last valid frame
+            num_global_frames = global_range_end - global_range_start
+
+            # Store all static sensor data [only by main shard]
+            if self.shard_id == 0:
+                global_frame_timestamps_us = raw_frame_timestamps_us[global_range_start:global_range_end]
+
+                self.data_writer.store_lidar_meta(lidar_id, global_frame_timestamps_us, T_sensor_rig)
+
+            # Apply uniform subdivision of current shard to get local data range
+            local_range, local_offset = uniform_subdivide_range(self.shard_id, self.shard_count, global_range_start, global_range_end)
+
+            # Subsample frames to valid local ranges
+            local_frame_numbers = raw_frame_numbers[local_range]
+            local_frame_timestamps = raw_frame_timestamps_us[local_range]
+
+            # Process all valid point clouds using multi-processing
+            process_function = partial(
+                self._decode_lidar_process,
+                lidar_id=lidar_id,
+                lidar_rig_name=lidar_rig_name,
+                T_sensor_rig=T_sensor_rig,
+                pose_interpolator=pose_interpolator,
+                vehicle_bbox_rig=vehicle_bbox_rig,
+                num_global_frames=num_global_frames,
+                logger=logger,
+            )
+            process_iterable = zip(range(local_offset, len(local_frame_numbers) + local_offset), local_frame_numbers, local_frame_timestamps)
+            if self.multiprocessing_lidar:
+                # Use multiprocessing to speed up IO
+                with multiprocessing.Pool(
+                        # limit the number of processes to what is available in the current system / MagLev workflow
+                        processes=platform_cpu_count(upper_limit=self.max_processes)) as pool:
+                    logger.info(
+                        f'> processing {len(local_frame_numbers)} point clouds using {pool._processes} worker processes')
+                    for _ in tqdm.tqdm(pool.imap_unordered(func=process_function, iterable=process_iterable), total=len(local_frame_numbers)):
+                        pass
+            else:
+                # Use single process
+                for arg in tqdm.tqdm(process_iterable, total=len(local_frame_numbers)):
+                    process_function(arg)
+
+            logger.info(f'> processed {len(local_frame_timestamps)}/{num_global_frames} local/global'
+                        f' point clouds [shard {self.shard_id + 1}/{self.shard_count}]')
+
+        logger.info(f'> processed {len(self.LIDARID_TO_RIGNAME)} lidars')
+
+
+    def _decode_lidar_process(
+        self,
+        args,
+        lidar_id,
+        lidar_rig_name,
+        T_sensor_rig,
+        pose_interpolator,
+        vehicle_bbox_rig,
+        num_global_frames,
+        logger,
+    ):
+        """ Process a single lidar frame executed by a dedicated process """
+        # Add PID to logger
+        logger = logger.getChild(f'PID={os.getpid()}')
+
+        # Decode current frame data to process
+        continuos_frame_index = args[0]
+        frame_number = args[1]
+        frame_end_timestamp = args[2]
+
+        source_pc_path = os.path.join(self.sequence_path, 'lidars', lidar_rig_name, str(frame_number) + '.ply')
+
+        # Interpolate egomotion at frame end timestamp for sensor reference pose at end-of-spin time
+        T_sensor_world = pose_interpolator.interpolate_to_timestamps(frame_end_timestamp)[0] @ T_sensor_rig
+        T_world_sensor = np.linalg.inv(T_sensor_world)
+
+        # Start timer
+        timer = SimpleTimer()
+
+        # Load point cloud (already motion-compensated)
+        mesh = pcu.load_triangle_mesh(source_pc_path)
+        time_load = timer.elapsed_sec(restart = True)
+
+        # Remove all points with *duplicate* coordinates (these seem to be present in the input already)
+        # and remember the indices of the valid points to load other attributes
+        xyz, unique_input_idxs = np.unique(mesh.vertex_data.positions, axis=0, return_index=True) # Motion-compensated end-points in end-of-spin frame
+        intensity = mesh.vertex_data.custom_attributes['intensity'][unique_input_idxs].flatten()
+        point_count = xyz.shape[0]
+
+        # Create 3D ray structure of 3D rays in sensor space with accompanying metadata.
+        # Colums; xyz_s, xyz_e, intensity, dynamic_flag, timestamp
+        # Dynamic flag is set to 'True' if if the points are classified to be dynamic, and 'False' otherwise (not-availabel or static)
+
+        # Determine ray start-point by interpolating poses at per-point timestamps
+        if all(key in mesh.vertex_data.custom_attributes for key in ('timestamp_lo', 'timestamp_hi')):
+            # Perform time-dependent per sample start-point interpolation,
+            # stitching together uin64 timestamps from lo/hi parts
+            ts_lo = np.array(mesh.vertex_data.custom_attributes["timestamp_lo"])[unique_input_idxs].astype(np.uint32)
+            ts_hi = np.array(mesh.vertex_data.custom_attributes["timestamp_hi"])[unique_input_idxs].astype(np.uint32)
+            timestamp = (np.left_shift(ts_hi, 32, dtype=np.uint64) + ts_lo).flatten()
+            del(ts_lo, ts_hi)
+
+            # Special case: allow snapping to end-of-frame timestamp for *initial* frames as
+            # valid egomotion (in particular lidar-based egomotion) might not have been
+            # evaluated in the past before the processed lidar frame's end-of-frame timestamp
+            # (usually at start of sequence)
+            if frame_end_timestamp - self.LIDARID_TO_APPROX_SPIN_TIME_US[lidar_id] < self.T_rig_world_timestamps_us[0]:
+                past_idxs = timestamp < self.T_rig_world_timestamps_us[0]
+
+                if np.any(past_idxs):
+                    logger.info("> snapping point timestamps of *initial* spins to start of egomotion")
+
+                    timestamp[past_idxs] = frame_end_timestamp
+
+            # Determine unique timestamps to only perform actually required pose interpolations (a lot of points share the same timestamp)
+            timestamp_unique, unique_timestamp_reverse_idxs = np.unique(timestamp, return_inverse=True)
+
+            # Lidar frame poses for each point (will throw in case invalid timestamps are loaded) expressed in the reference sensor's frame
+            # sensor_sensorRef = world_sensorRef * sensor_world = world_sensorRef * (rig_world * sensor_rig)
+            xyz_s_unique = T_world_sensor @ pose_interpolator.interpolate_to_timestamps(timestamp_unique) @ T_sensor_rig
+            del(timestamp_unique)
+
+            # Pick sensor positions (in end-of-spin pose) for each start point (blow up to original potentially non-unique timestamp range)
+            xyz_s = xyz_s_unique[unique_timestamp_reverse_idxs, 0:3, -1]  # N x 3
+            del(unique_timestamp_reverse_idxs)
+
+        else:
+            if continuos_frame_index == 0:  # Warn once in first iteration only
+                logger.warn('> no lidar point timestamps available (missing \'timestamp_lo\' / '
+                            ' \'timestamp_hi\' attributes), falling back to *constant* lidar start points')
+
+            # No per-point timestamps available, fallback to using *constant*
+            # lidar origin as start point for all rays
+            timestamp = np.full((point_count), frame_end_timestamp, dtype=np.uint64)
+            xyz_s = np.full((point_count, 3), [0, 0, 0])  # N x 3
+
+        del(mesh)
+
+        # Homogeneous ray end points in sensor frame
+        xyz_e = np.row_stack([xyz.transpose(), np.ones(point_count, dtype=np.float32)])  # 4 x N
+
+        # Transform points from sensor to rig frame
+        xyz_e_rig = T_sensor_rig @ xyz_e
+
+        # Filter points inside the vehicles bounding-box
+        valid_idxs = np.logical_not(isWithin3DBBox(xyz_e_rig[0:3, :].transpose(), vehicle_bbox_rig.reshape(1,-1)))
+
+        # Drop homogenous dimension and transpose to match output dimension
+        xyz_e = xyz_e[:-1, :].transpose()  # N x 3
+
+        # Compute distances and filter points based on max distance
+        valid_idxs &= np.linalg.norm(xyz_s - xyz_e, axis=1) < self.LIDARID_TO_FILTER_MAX_DISTANCE_METERS[lidar_id]
+
+        time_process = timer.elapsed_sec(restart = True)
+
+        # Compute dynamic flag / load current frame labels
+        dynamic_flag, _ = LabelProcessor.lidar_dynamic_flag(xyz, frame_end_timestamp, self.labels, self.frame_labels, skip_dynamic_flag=self.skip_dynamic_flag)
+        dynamic_flag = dynamic_flag == 1. # map float to bools
+        time_dynflag = timer.elapsed_sec(restart = True)
+
+        # Subselect to valid points
+        xyz_s = xyz_s[valid_idxs, :]
+        xyz_e = xyz_e[valid_idxs, :]
+        intensity = intensity[valid_idxs]
+        dynamic_flag = dynamic_flag[valid_idxs]
+        timestamp = timestamp[valid_idxs]
+
+        # Interpolate start / end pose
+        timestamps_us = np.array([np.min(timestamp), frame_end_timestamp])
+        T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
+
+        time_process += timer.elapsed_sec(restart = True)
+
+        # Serialize lidar frame
+        self.data_writer.store_lidar_frame(lidar_id, continuos_frame_index, xyz_s, xyz_e, intensity, timestamp, dynamic_flag, T_rig_worlds, timestamps_us)
+
+        # # Serialize per-frame labels
+        # # Remark: it's currently simpler to serialize per lidar-frame labels for this timestamp here, as we perform frame subsampling as part of lidar processing.
+        # # However, in the future we might also incorporate camera data also, and this serialization might need to be relocated.
+        # save_pkl(
+        #     current_frame_labels,
+        #     os.path.join(self.output_dir, self.session_id, self.label_save_dir,
+        #                  str(continuos_frame_index).zfill(self.INDEX_DIGITS) + '.pkl'))
+
+        time_store = timer.elapsed_sec(restart = True)
+
+        logger.debug(f'> spin {continuos_frame_index+1}/{num_global_frames} | load/process/dynflag/store {time_load:.2f}/{time_process:.2f}/{time_dynflag:.2f}/{time_store:.2f}sec')

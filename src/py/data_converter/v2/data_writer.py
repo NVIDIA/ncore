@@ -108,7 +108,9 @@ class DataWriter():
         for radar_id in self.radar_ids:
             (self.sequence_output_dir / self.RADARS_BASE_DIR / radar_id).mkdir(parents=True, exist_ok=True)
 
+
     # Individual 'store*' methods performing data sanity checks and serialize consistent output formats
+
     def store_poses(self, T_rig_world_base: np.array, T_rig_worlds: np.array,
                     T_rig_world_timestamps_us: np.array) -> None:
         # sanity / consistency checks
@@ -118,7 +120,7 @@ class DataWriter():
         assert T_rig_worlds.shape[1:] == (4, 4)
         assert T_rig_worlds.dtype == np.dtype('float64')
 
-        assert T_rig_world_timestamps_us.shape[1:] == ()
+        assert T_rig_world_timestamps_us.ndim == 1
         assert T_rig_world_timestamps_us.dtype == np.dtype('uint64')
 
         assert T_rig_worlds.shape[0] == T_rig_world_timestamps_us.shape[0]
@@ -128,6 +130,7 @@ class DataWriter():
             f.create_dataset('T_rig_worlds', data=T_rig_worlds)
             f.create_dataset('T_rig_world_timestamps_us', data=T_rig_world_timestamps_us)
 
+
     def store_labels(self, labels: dict, frame_labels: dict) -> None:
         output = {'labels': labels, 'frame_labels': frame_labels}
 
@@ -136,14 +139,19 @@ class DataWriter():
         with open(self.sequence_output_dir / 'labels.json', "w") as outfile:
             outfile.write(json.dumps(output))
 
+
     def store_camera_frame(
             self,
+
+            # data indexing
             camera_id: str,
             continous_frame_index: int,
+
+            # image data
             source_image_path: Path,
             symlink_frame: bool,
 
-            # Poses
+            # poses
             T_rig_worlds: np.array,
             timestamps_us: np.array) -> None:
         # sanity / consistency checks
@@ -171,6 +179,7 @@ class DataWriter():
         with open(sensor_output_dir / (continous_frame_index_string + '.json'), 'w') as outfile:
             outfile.write(json.dumps(output))
 
+
     def store_camera_meta(
             self,
             camera_id: str,
@@ -188,7 +197,7 @@ class DataWriter():
             mask_image: Optional[Image]) -> None:
         assert T_sensor_rig.shape == (4, 4)
         assert T_sensor_rig.dtype == np.dtype('float32')
-        assert frame_timestamps_us.shape[1:] == ()
+        assert frame_timestamps_us.ndim == 1
         assert frame_timestamps_us.dtype == np.dtype('uint64')
 
         sensor_output_dir = self.sequence_output_dir / self.CAMERAS_BASE_DIR / camera_id
@@ -206,6 +215,88 @@ class DataWriter():
         # Output mask if available
         if mask_image:
             mask_image.save(sensor_output_dir / 'mask.png', optimize=True)
+
+
+    def store_lidar_frame(
+            self,
+
+            # data indexing
+            lidar_id: str,
+            continous_frame_index: int,
+
+            # point-cloud data
+            xyz_s: np.array,
+            xyz_e: np.array,
+            intensity: np.array,
+            timestamp: np.array,
+            dynamic_flag: np.array,
+
+            # poses
+            T_rig_worlds: np.array,
+            timestamps_us: np.array) -> None:
+        # sanity / consistency checks
+        assert xyz_s.shape[1] == 3
+        assert xyz_s.dtype == np.dtype('float32')
+        assert xyz_e.shape[1] == 3
+        assert xyz_e.dtype == np.dtype('float32')
+        assert intensity.ndim == 1
+        assert intensity.dtype == np.dtype('float32')
+        assert timestamp.ndim == 1
+        assert timestamp.dtype == np.dtype('uint64')
+        assert dynamic_flag.ndim == 1
+        assert dynamic_flag.dtype == np.dtype('bool')
+        num_points = xyz_s.shape[0]
+        assert all((xyz_s.shape[0] == num_points, xyz_e.shape[0] == num_points, intensity.shape[0] == num_points, timestamp.shape[0] == num_points, dynamic_flag.shape[0] == num_points))
+
+        assert T_rig_worlds.shape == (2, 4, 4)
+        assert T_rig_worlds.dtype == np.dtype('float32')
+        assert timestamps_us.shape == (2, )
+        assert timestamps_us.dtype == np.dtype('uint64')
+
+        sensor_output_dir = self.sequence_output_dir / self.LIDARS_BASE_DIR / lidar_id
+        continous_frame_index_string = str(continous_frame_index).zfill(self.INDEX_DIGITS)
+
+        # Store frame data
+        target_frame_path = sensor_output_dir / (continous_frame_index_string + '.hdf5')
+        with h5py.File(target_frame_path, "w") as f:
+            COMPRESSION = 'lzf'
+            f.create_dataset('xyz_s', data=xyz_s, compression=COMPRESSION)
+            f.create_dataset('xyz_e', data=xyz_e, compression=COMPRESSION)
+            f.create_dataset('intensity', data=intensity, compression=COMPRESSION)
+            f.create_dataset('timestamp', data=timestamp, compression=COMPRESSION)
+            f.create_dataset('dynamic_flag', data=dynamic_flag, compression=COMPRESSION)
+
+        # Output frame meta data
+        output = {'T_rig_worlds': T_rig_worlds.tolist(), 'timestamps_us': timestamps_us.tolist()}
+
+        with open(sensor_output_dir / (continous_frame_index_string + '.json'), 'w') as outfile:
+            outfile.write(json.dumps(output))
+
+
+    def store_lidar_meta(
+            self,
+            lidar_id: str,
+
+            # all frame timestamps
+            frame_timestamps_us: np.array,
+
+            # extrinsics
+            T_sensor_rig: np.array) -> None:
+        assert T_sensor_rig.shape == (4, 4)
+        assert T_sensor_rig.dtype == np.dtype('float32')
+        assert frame_timestamps_us.shape[1:] == ()
+        assert frame_timestamps_us.dtype == np.dtype('uint64')
+
+        sensor_output_dir = self.sequence_output_dir / self.LIDARS_BASE_DIR / lidar_id
+
+        output = {
+            'frame_timestamps_us': frame_timestamps_us.tolist(),
+            'T_sensor_rig': T_sensor_rig.tolist()
+        }
+
+        with open(sensor_output_dir / 'meta.json', 'w') as outfile:
+            outfile.write(json.dumps(output))
+
 
     def store_meta(self, version: str, calibration_type: str, egomotion_type: str) -> None:
         # Store dataset associated meta-data
