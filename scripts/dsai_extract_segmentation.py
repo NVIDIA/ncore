@@ -41,7 +41,7 @@ def waymo(ctx, *_, **kwargs):
 
 
     for cam in ctx.obj['cameras']:
-        imgs = sorted(glob.glob(os.path.join(ctx.obj['root_dir'], f'images/image_{str(cam).zfill(2)}', '*.jpeg')))
+        imgs = sorted(glob.glob(os.path.join(ctx.obj['root_dir'], f'images/image_{str(cam).zfill(2)}', f"{'?'*ctx.obj['index_digits']}.jpeg")))
 
         start_frame = ctx.obj['start_frame']
         stop_frame = ctx.obj['stop_frame']
@@ -78,7 +78,7 @@ def nvidia(ctx, *_, **kwargs):
             assert str(cam).zfill(2) in NV_CAMERAS, "Invalid camera selected for Nvidia dataset."
 
     for cam in ctx.obj['cameras']:
-        imgs = sorted(glob.glob(os.path.join(ctx.obj['root_dir'], f'images/image_{str(cam).zfill(2)}', '*.jpeg')))
+        imgs = sorted(glob.glob(os.path.join(ctx.obj['root_dir'], f'images/image_{str(cam).zfill(2)}', f"{'?'*ctx.obj['index_digits']}.jpeg")))
 
         start_frame = ctx.obj['start_frame']
         stop_frame = ctx.obj['stop_frame']
