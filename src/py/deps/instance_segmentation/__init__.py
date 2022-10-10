@@ -1,7 +1,10 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 import cv2
 import os
 import h5py
 from tqdm import tqdm
+from pathlib import Path
 
 from detectron2 import model_zoo
 from detectron2.engine import DefaultPredictor
@@ -38,7 +41,7 @@ def run_instance_segmentation(imgs: list):
         car_bbox = output['instances'].pred_boxes.tensor[output['instances'].pred_classes==2].cpu().numpy()
         car_mask = output['instances'].pred_masks[output['instances'].pred_classes==2].cpu().numpy()
 
-        with h5py.File(image_path.replace(img_name, f"{img_name}_inst").replace('.jpg','.hdf5').replace('.jpeg','.hdf5'), "w") as f:
+        with h5py.File(Path(image_path.replace(img_name, f"{img_name}_inst")).with_suffix('.hdf5'), "w") as f:
             COMPRESSION = 'lzf'
             f.create_dataset('car_bbox', data=car_bbox, compression=COMPRESSION)
             f.create_dataset('car_mask', data=car_mask, compression=COMPRESSION)
