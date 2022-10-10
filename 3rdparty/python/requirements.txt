@@ -31,8 +31,7 @@ anyio==3.6.1 \
     --hash=sha256:cb29b9c70620506a9a8f87a309591713446953302d7d995344d0d7c6c0c9a7be
     # via jupyter-server
 apex==0.1 \
-    --hash=sha256:55c65453ae735f6b20ca41d6a216cffab49554ee7bef7f6a0d25a6a113155d83 \
-    --hash=sha256:916a89615a2e273d57be43ba5a46f2142403459013add9d2a2f7cac3cf713841
+    --hash=sha256:d57cc154e4366dcb2f044baf2b978d816c8e2cc7f97536c25c61442218a94985
     # via -r 3rdparty/python/requirements.in
 appdirs==1.4.4 \
     --hash=sha256:7d5d0167b2b1ba821647616af46a749d1c653740dd0d2415100fe26e27afdf41 \
@@ -861,6 +860,7 @@ packaging==21.3 \
     --hash=sha256:dd47c42927d89ab911e606518907cc2d3a1f38bbd026385970643f9c5b8ecfeb \
     --hash=sha256:ef103e05f519cdc783ae24ea4e2e0f508a9c99b2d4969652eed6a2e1ea5bd522
     # via
+    #   apex
     #   deprecation
     #   ipykernel
     #   jupyter-packaging

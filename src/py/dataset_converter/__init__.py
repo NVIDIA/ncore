@@ -2,17 +2,11 @@
 
 
 import os
-import glob 
-import tempfile
-import subprocess
 import logging
 
 import numpy as np
 
-from PIL import Image
 from abc import ABC, abstractmethod
-
-from src.py.deps.instance_segmentation.run_instance_segmentation import run_instance_segmentation
 
 # Initialize basic top-level logger configuration
 logging.basicConfig(level=logging.DEBUG,
@@ -55,10 +49,6 @@ class DataConverter(ABC):
         self.root_dir = config.root_dir
         self.output_dir = config.output_dir
 
-        self.sem_seg_flag = config.semantic_seg
-        self.inst_seg_flag = config.instance_seg
-
-
     def create_folders(self, sequence_name):
         ''' 
         Creates the default folder structure for a given sequence
@@ -81,80 +71,14 @@ class DataConverter(ABC):
             if not os.path.isdir(os.path.join(seq_path, self.image_save_dir, 'image_' + cam_id)):
                 os.makedirs(os.path.join(seq_path, self.image_save_dir, 'image_' + cam_id))
 
-    def convert_sequence(self, sequence_pathname):
-        # Perform all data-specific conversions
-        for sub_sequence_name in self.convert_one(sequence_pathname):
-            ## Perform all generic conversions
-
-            # Perform instance and semantic segmentation of all the images (if enabled)
-            if self.sem_seg_flag:
-                self.run_semantic_segmentation(sub_sequence_name)
-
-            if self.inst_seg_flag:
-                self.run_instance_segmentation(sub_sequence_name)
-
     def convert(self):
         self.logger.info(f"Start converting {self.sequence_pathnames} ...")
 
         # Perform single-threaded conversion in main thread
         for sequence_pathname in self.sequence_pathnames:
-            self.convert_sequence(sequence_pathname)
+            self.convert_one(sequence_pathname)
 
         self.logger.info("Finished conversion ...")
-
-    def run_semantic_segmentation(self, sequence_name):
-        img_folders = glob.glob(os.path.join(self.output_dir, sequence_name, self.image_save_dir) + '/*/')
-
-        for img_folder in img_folders:
-            imgs = sorted(glob.glob(img_folder + f"{'?'*self.INDEX_DIGITS}.jpeg"))
-
-            # Create a temporary folder 
-            temp_dir = tempfile.TemporaryDirectory()
-            
-            # Save the target resolutions
-            img_res = []
-            for file in imgs:
-                img = Image.open(file)
-                w,h = img.size[0], img.size[1]
-                img_res.append((w,h))
-
-                # Resize if the image is to large
-                if w > 1920 or h > 1280:
-                    img = img.resize((w//2,h//2), Image.ANTIALIAS)
-                img.save(os.path.join(temp_dir.name, file.split(os.sep)[-1]))
-
-            args =  f'--dataset cityscapes --cv 0 --fp16 --bs_val 1 --eval folder ' \
-                    '--eval_folder {} --n_scales 0.5,1.0,2.0 '\
-                    '--snapshot src/py/deps/semantic_segmentation/pretrained_models/cityscapes_ocrnet.HRNet_Mscale_outstanding-turtle.pth '\
-                    '--arch ocrnet.HRNet_Mscale --result_dir {}'.format(temp_dir.name, os.path.join(temp_dir.name,'semantic_seg'))
-
-            # Run the semantic segmentation
-            cmd = 'external/semantic-segmentation/train ' + args
-            subprocess.Popen(cmd, shell=True).wait()
-
-            predictions = sorted(glob.glob(os.path.join(temp_dir.name,'semantic_seg','best_images', f"{'?'*self.INDEX_DIGITS}_prediction.png")))
-
-            assert len(predictions) == len(img_res), "Number of semantic segmentation predictions is not the same as the number of input images"
-
-            for idx, pred_img in enumerate(predictions):
-                img = Image.open(pred_img)
-                w,h = img.size[0], img.size[1]
-
-                if w != img_res[idx][0] or h != img_res[idx][1]:
-                    img = img.resize(img_res[idx], Image.ANTIALIAS)
-
-                frame_num = pred_img.split(os.sep)[-1].split('_')[0]
-                img.save(os.path.join(img_folder, 'sem_seg_{}.png'.format(frame_num)))
-
-            # Delete the temporary folder
-            temp_dir.cleanup()
-
-    def run_instance_segmentation(self, sequence_name):
-        img_folders = glob.glob(os.path.join(self.output_dir, sequence_name, self.image_save_dir) + '/*/')
-
-        for img_folder in img_folders:
-            run_instance_segmentation(sorted(glob.glob(img_folder + f"{'?'*self.INDEX_DIGITS}.jpeg")))
-
 
     @abstractmethod
     def convert_one(self, sequence_path):

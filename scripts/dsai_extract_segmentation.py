@@ -1,84 +1,104 @@
-#!/usr/bin/env python3
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-from asyncio.proactor_events import _ProactorBasePipeTransport
 import click
-import debugpy
 import logging
 import os
 import glob
 
-from src.py.dataset_converter import DataConverter
-
-class SegmentationConverter(DataConverter):  
-    """
-    DISCLAIMER: THIS SOURCE CODE IS NVIDIA INTERNAL/CONFIDENTIAL. DO NOT SHARE EXTERNALLY.
-    IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC zgojcic@nvidia.com. 
-    """  
-
-    def __init__(self, config):
-        
-        config.output_dir = config.root_dir
-        config.root_dir = None
-        super().__init__(config)
-
-        self.sequence_pathnames = sorted(glob.glob(os.path.join(self.output_dir, '*')))
-
-    def convert_one(self, sequence_path):
-        sequence_name = sequence_path.split('/')[-1]
-        return [sequence_name] 
+from src.py.common.common import NV_CAMERAS, WAYMO_CAMERAS
+from src.py.deps.instance_segmentation import run_instance_segmentation
+from src.py.deps.semantic_segmentation import run_semantic_segmentation
 
 logger = logging.getLogger(__name__)
 
-@click.command()
+@click.group()
 @click.option('--root-dir', type=str, help="Path to the raw data sequences", required=True)
-@click.option('--semantic-seg', is_flag=True, default=False, help="Infer the semantic segmention for all camera images")
-@click.option('--instance-seg', is_flag=True, default=False, help="Infer the instance segmention for all camera images")
-@click.option("--debug", is_flag=True, default=False, help="Enables a debugpy client to connect to the port specified by --debug-port")
-@click.option("--debug-wait-for-client", is_flag=True, default=False, help="Enables a debugpy client to connect to the port specified by --debug-port and waits for a client to connect on start-up")
-@click.option("--debug-port", default=5678, type=int, help="Configure the TCP port to use for debugging")
+@click.option('--cameras', '-c', multiple=True, type=int, help='Cameras to be used (Multiple value option, -1 denotes all)', default=[-1])  
+@click.option('--semantic-seg', is_flag=True, default=False, help="Perform semantic segmentation")
+@click.option('--instance-seg', is_flag=True, default=False, help="Perform instance segmentation") 
+@click.option('--start-frame', type=int, help="The starting frame of the sequence", default=0)
+@click.option('--stop-frame', type=int, help="The end frame of the sequence", default=-1)
+@click.option("--index-digits", type=int, help="The number of integer digits to pad counters in output filenames to", default=6)
 @click.version_option('0.1')
 @click.pass_context
-def extract_segmentation(ctx, *_, **kwargs):
-    """Semantic/Instance Segmentation Extraction for Processed Data
+def cli(ctx, *_, **kwargs):
+    ctx.obj = kwargs
 
-    Example invocation
-    
-    \b
-    bazel run //scripts:dsai_extract_segmentation -- 
-    --root-dir <FOLDER WITH PROCESSED DATASETS> 
-    --semantic-seg
-    --instance-seg
-    """
-    # Create a DataConverter config object and remember it as the context object. From
-    # this point onwards other commands can refer to it by using the
-    # @click.pass_context decorator.
-    ctx.obj = DataConverter.Config(kwargs)
+@cli.command()
+@click.pass_context
+def waymo(ctx, *_, **kwargs):
 
-    # Conditionally enable debugging
-    if ctx.obj.debug or ctx.obj.debug_wait_for_client:
-        # Note: enabling debug impacts the performance of system calls and Python code execution.
-        logger.info("Listening for incoming debug connection on port {}".format(
-            ctx.obj.debug_port))
-        debugpy.listen(("0.0.0.0", ctx.obj.debug_port))
+    assert os.path.exists(ctx.obj['root_dir']), "Provided root_dir path doesn't exist."
+    assert (ctx.obj['start_frame'] < ctx.obj['stop_frame'] or ctx.obj['stop_frame'] == -1), "stop frame must be larger than start frame"
 
-        if ctx.obj.debug_wait_for_client:
-            logger.info("Waiting for incoming debug connection on port {}".format(
-                ctx.obj.debug_port))
-            # Block until a client connects
-            debugpy.wait_for_client()
+    # Check if the selected cameras are valid
+    if len(ctx.obj['cameras']) == 1 and ctx.obj['cameras'][0] == -1: 
+        ctx.obj['cameras'] = WAYMO_CAMERAS
+    else:
+        for cam in ctx.obj['cameras']:
+            assert str(cam).zfill(2) in WAYMO_CAMERAS, "Invalid camera selected for Waymo dataset."
 
-    extractor = SegmentationConverter(ctx.obj)
-    
-    for sequence_pathname in extractor.sequence_pathnames:
-        sequence_name = sequence_pathname.split('/')[-1]
+
+    for cam in ctx.obj['cameras']:
+        imgs = sorted(glob.glob(os.path.join(ctx.obj['root_dir'], f'images/image_{str(cam).zfill(2)}', '*.jpeg')))
+
+        start_frame = ctx.obj['start_frame']
+        stop_frame = ctx.obj['stop_frame']
+        if ctx.obj['start_frame']  > len(imgs):
+            logging.warning(f"The start frame is larger than the number of images. All images will be processed")
+            start_frame = 0
+            stop_frame = len(imgs)
+
+        elif ctx.obj['stop_frame'] != -1 and ctx.obj['stop_frame'] > len(imgs):
+            logging.warning(f"The stop frame is larger than the number of images. All images will be processed")
+            stop_frame = len(imgs)
         
-        if ctx.obj.semantic_seg:
-            extractor.run_semantic_segmentation(sequence_name)
-        if ctx.obj.instance_seg:
-            extractor.run_instance_segmentation(sequence_name)
+        elif ctx.obj['stop_frame'] == -1:
+            stop_frame = len(imgs)
+            
+        if ctx.obj['semantic_seg']:
+            run_semantic_segmentation(imgs[start_frame:stop_frame], ctx.obj['index_digits'])
 
-if __name__ == '__main__':
-    extract_segmentation(show_default=True)
+        if ctx.obj['instance_seg']:
+            run_instance_segmentation(imgs[start_frame:stop_frame])
+
+@cli.command()
+@click.pass_context
+def nvidia(ctx, *_, **kwargs):
+
+    assert os.path.exists(ctx.obj['root_dir']), "Provided root_dir path doesn't exist."
+    assert (ctx.obj['start_frame'] < ctx.obj['stop_frame'] or ctx.obj['stop_frame'] == -1), "stop frame must be larger than start frame"
+
+    # Check if the selected cameras are valid
+    if len(ctx.obj['cameras']) == 1 and ctx.obj['cameras'][0] == -1: 
+        ctx.obj['cameras'] = NV_CAMERAS
+    else:
+        for cam in ctx.obj['cameras']:
+            assert str(cam).zfill(2) in NV_CAMERAS, "Invalid camera selected for Nvidia dataset."
 
 
+    for cam in ctx.obj['cameras']:
+        imgs = sorted(glob.glob(os.path.join(ctx.obj['root_dir'], f'images/image_{str(cam).zfill(2)}', '*.jpg')))
+
+        start_frame = ctx.obj['start_frame']
+        stop_frame = ctx.obj['stop_frame']
+        if ctx.obj['start_frame']  > len(imgs):
+            logging.warning(f"The start frame is larger than the number of images. All images will be processed")
+            start_frame = 0
+            stop_frame = len(imgs)
+
+        elif ctx.obj['stop_frame'] != -1 and ctx.obj['stop_frame'] > len(imgs):
+            logging.warning(f"The stop frame is larger than the number of images. All images will be processed")
+            stop_frame = len(imgs)
+         
+        elif ctx.obj['stop_frame'] == -1:
+            stop_frame = len(imgs)
+
+        if ctx.obj['semantic_seg']:
+            run_semantic_segmentation(imgs[start_frame:stop_frame], ctx.obj['index_digits'])
+
+        if ctx.obj['instance_seg']:
+            run_instance_segmentation(imgs[start_frame:stop_frame])
+
+if __name__ == "__main__":
+    cli(show_default=True)

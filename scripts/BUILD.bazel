@@ -21,7 +21,9 @@ py_binary(
 DSAI_EXTRACT_SEGMENTATION_DEPS = [
     requirement("click"),
     requirement("debugpy"),
-    "//src/py/dataset_converter:pylib",
+    "//src/py/common:pylib",
+    "//src/py/deps/instance_segmentation:pylib",
+    "//src/py/deps/semantic_segmentation:pylib",
 ]
 
 py_binary(

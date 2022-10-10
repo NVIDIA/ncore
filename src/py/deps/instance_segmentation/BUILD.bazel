@@ -7,7 +7,7 @@ package(default_visibility = ["//visibility:public"])
 py_library(
     name = "pylib",
     srcs = [
-        "run_instance_segmentation.py",
+        "__init__.py",
     ],
     data = [
         "configs/Base-RCNN-FPN.yaml",

@@ -8,17 +8,18 @@ py_library(
     name = "pylib",
     srcs = [
         "__init__.py",
-        "nvidia_deepmap.py",
-        "nvidia_maglev.py",
-        "waymo_open.py",
     ],
     deps = [
-        requirement("pillow"),
-        requirement("protobuf3-to-dict"),
-        requirement("point-cloud-utils"),
-        "//src/cpp/av_utils:pylib",
-        "//src/py/common:pylib",
+        requirement("pycocotools"),
+        "@semantic-segmentation//:train",
+            
+    ],        
+    data = [
+        "//src/py/deps/semantic_segmentation/pretrained_models:cityscapes_ocrnet.HRNet_Mscale_outstanding-turtle.pth",
+        "//src/py/deps/semantic_segmentation/pretrained_models:hrnetv2_w48_imagenet_pretrained.pth",
     ],
+
+    
 )
 
 bzlformat_pkg(name = "bzlformat")
