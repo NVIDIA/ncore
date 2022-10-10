@@ -13,7 +13,7 @@ from src.py.deps.semantic_segmentation import run_semantic_segmentation
 logger = logging.getLogger(__name__)
 
 @click.group()
-@click.option('--root-dir', type=str, help="Path to the raw data sequences", required=True)
+@click.option('--root-dir', type=str, help="Path to the folder containing preprocessed data", required=True)
 @click.option('--cameras', '-c', multiple=True, type=int, help='Cameras to be used (Multiple value option, -1 denotes all)', default=[-1])  
 @click.option('--semantic-seg', is_flag=True, default=False, help="Perform semantic segmentation")
 @click.option('--instance-seg', is_flag=True, default=False, help="Perform instance segmentation") 
