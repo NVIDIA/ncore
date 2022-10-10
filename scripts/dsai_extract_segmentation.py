@@ -1,5 +1,6 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
+from socket import PF_RDS
 import click
 import logging
 import os
@@ -50,17 +51,17 @@ def waymo(ctx, *_, **kwargs):
             stop_frame = len(imgs)
 
         elif ctx.obj['stop_frame'] != -1 and ctx.obj['stop_frame'] > len(imgs):
-            logging.warning(f"The stop frame is larger than the number of images. All images will be processed")
+            logging.warning(f"The stop frame is larger than the number of images. All frames larger than start frame will be processed")
             stop_frame = len(imgs)
         
         elif ctx.obj['stop_frame'] == -1:
             stop_frame = len(imgs)
             
         if ctx.obj['semantic_seg']:
-            run_semantic_segmentation(imgs[start_frame:stop_frame], ctx.obj['index_digits'])
+            run_semantic_segmentation(imgs[start_frame:stop_frame + 1], ctx.obj['index_digits'])
 
         if ctx.obj['instance_seg']:
-            run_instance_segmentation(imgs[start_frame:stop_frame])
+            run_instance_segmentation(imgs[start_frame:stop_frame + 1])
 
 @cli.command()
 @click.pass_context
@@ -76,9 +77,8 @@ def nvidia(ctx, *_, **kwargs):
         for cam in ctx.obj['cameras']:
             assert str(cam).zfill(2) in NV_CAMERAS, "Invalid camera selected for Nvidia dataset."
 
-
     for cam in ctx.obj['cameras']:
-        imgs = sorted(glob.glob(os.path.join(ctx.obj['root_dir'], f'images/image_{str(cam).zfill(2)}', '*.jpg')))
+        imgs = sorted(glob.glob(os.path.join(ctx.obj['root_dir'], f'images/image_{str(cam).zfill(2)}', '*.jpeg')))
 
         start_frame = ctx.obj['start_frame']
         stop_frame = ctx.obj['stop_frame']
@@ -88,17 +88,17 @@ def nvidia(ctx, *_, **kwargs):
             stop_frame = len(imgs)
 
         elif ctx.obj['stop_frame'] != -1 and ctx.obj['stop_frame'] > len(imgs):
-            logging.warning(f"The stop frame is larger than the number of images. All images will be processed")
+            logging.warning(f"The stop frame is larger than the number of images. All frames larger than start frame will be processed")
             stop_frame = len(imgs)
          
         elif ctx.obj['stop_frame'] == -1:
             stop_frame = len(imgs)
 
         if ctx.obj['semantic_seg']:
-            run_semantic_segmentation(imgs[start_frame:stop_frame], ctx.obj['index_digits'])
+            run_semantic_segmentation(imgs[start_frame:stop_frame + 1], ctx.obj['index_digits'])
 
         if ctx.obj['instance_seg']:
-            run_instance_segmentation(imgs[start_frame:stop_frame])
+            run_instance_segmentation(imgs[start_frame:stop_frame + 1])
 
 if __name__ == "__main__":
     cli(show_default=True)
