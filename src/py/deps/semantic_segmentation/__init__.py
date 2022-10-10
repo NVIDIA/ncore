@@ -11,7 +11,7 @@ from pathlib import Path
 def run_semantic_segmentation(imgs: list, index_digits: int):
 
     # Create a temporary folder 
-    with tempfile.TemporaryDirectory() as temp_dir: 
+    with tempfile.TemporaryDirectory() as temp_dir:
     
         # Save the target resolutions
         img_res = []
@@ -23,18 +23,18 @@ def run_semantic_segmentation(imgs: list, index_digits: int):
             # Resize if the image is to large
             if w > 1920 or h > 1280:
                 img = img.resize((w//2,h//2), Image.LANCZOS)
-            img.save(os.path.join(temp_dir.name, file.split(os.sep)[-1]))
+            img.save(os.path.join(temp_dir, file.split(os.sep)[-1]))
 
         args =  f'--dataset cityscapes --cv 0 --fp16 --bs_val 1 --eval folder ' \
                 '--eval_folder {} --n_scales 0.5,1.0,2.0 '\
                 '--snapshot src/py/deps/semantic_segmentation/pretrained_models/cityscapes_ocrnet.HRNet_Mscale_outstanding-turtle.pth '\
-                '--arch ocrnet.HRNet_Mscale --result_dir {}'.format(temp_dir.name, os.path.join(temp_dir.name,'semantic_seg'))
+                '--arch ocrnet.HRNet_Mscale --result_dir {}'.format(temp_dir, os.path.join(temp_dir,'semantic_seg'))
 
         # Run the semantic segmentation
         cmd = 'external/semantic-segmentation/train ' + args
         subprocess.Popen(cmd, shell=True).wait()
 
-        predictions = sorted(glob.glob(os.path.join(temp_dir.name,'semantic_seg','best_images', f"{'?'*index_digits}_prediction.png")))
+        predictions = sorted(glob.glob(os.path.join(temp_dir,'semantic_seg','best_images', f"{'?'*index_digits}_prediction.png")))
 
         assert len(predictions) == len(img_res), "Number of semantic segmentation predictions is not the same as the number of input images"
 
