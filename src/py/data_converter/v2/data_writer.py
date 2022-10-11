@@ -131,8 +131,8 @@ class DataWriter():
             f.create_dataset('T_rig_world_timestamps_us', data=T_rig_world_timestamps_us)
 
 
-    def store_labels(self, labels: dict, frame_labels: dict) -> None:
-        output = {'labels': labels, 'frame_labels': frame_labels}
+    def store_labels(self, track_labels: dict[str, dict]) -> None:
+        output = {'track_labels': track_labels}
 
         # TODO: add sanity checks on the final label structure before output
 
@@ -231,6 +231,9 @@ class DataWriter():
             timestamp: np.array,
             dynamic_flag: np.array,
 
+            # label data
+            frame_labels: dict[str, dict],
+
             # poses
             T_rig_worlds: np.array,
             timestamps_us: np.array) -> None:
@@ -244,7 +247,7 @@ class DataWriter():
         assert timestamp.ndim == 1
         assert timestamp.dtype == np.dtype('uint64')
         assert dynamic_flag.ndim == 1
-        assert dynamic_flag.dtype == np.dtype('bool')
+        assert dynamic_flag.dtype == np.dtype('int8')
         num_points = xyz_s.shape[0]
         assert all((xyz_s.shape[0] == num_points, xyz_e.shape[0] == num_points, intensity.shape[0] == num_points, timestamp.shape[0] == num_points, dynamic_flag.shape[0] == num_points))
 
@@ -267,7 +270,7 @@ class DataWriter():
             f.create_dataset('dynamic_flag', data=dynamic_flag, compression=COMPRESSION)
 
         # Output frame meta data
-        output = {'T_rig_worlds': T_rig_worlds.tolist(), 'timestamps_us': timestamps_us.tolist()}
+        output = {'T_rig_worlds': T_rig_worlds.tolist(), 'timestamps_us': timestamps_us.tolist(), 'frame_labels': frame_labels}
 
         with open(sensor_output_dir / (continous_frame_index_string + '.json'), 'w') as outfile:
             outfile.write(json.dumps(output))

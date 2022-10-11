@@ -19,7 +19,7 @@ from functools import partial
 from src.py.data_converter.v2.data_converter import BaseNvidiaDataConverter
 from src.py.data_converter.v2.data_writer import DataWriter, FThetaCameraModel
 
-from src.py.common.nvidia_utils import (parse_rig_sensors_from_dict, sensor_to_rig, LabelProcessor,
+from src.py.common.nvidia_utils import (parse_rig_sensors_from_dict, sensor_to_rig, LabelProcessorV2,
                                         camera_intrinsic_parameters, compute_fw_polynomial,
                                         camera_car_mask, vehicle_bbox)
 from src.py.common.common import load_jsonl, PoseInterpolator, uniform_subdivide_range, platform_cpu_count, SimpleTimer
@@ -226,8 +226,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         logger.info(f'Loading labels')
 
         # Initialize annotation structs (defaults in case no labels are available loaded)
-        self.labels = {'3d_labels': {}}
-        self.frame_labels = {}
+        self.track_labels: dict[int, dict] = {}
+        self.frame_labels: dict[str, dict] = {}
 
         # Process autolabels, if available
         labels_path = self.sequence_path / 'cuboids_tracked' / 'labels_lidar.parquet'
@@ -240,11 +240,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                                                                 self.duration_sec)
 
         # Perform label parsing
-        self.labels, self.frame_labels = LabelProcessor.parse(labels_path, start_timestamp_us, end_timestamp_us, logger)
+        self.track_labels, self.frame_labels = LabelProcessorV2.parse(labels_path, start_timestamp_us, end_timestamp_us, logger)
 
-        # Save the accumulated data / per frame data [only by main shard]
+        # Save the accumulated track [only by main shard]
         if self.shard_id == 0:
-            self.data_writer.store_labels(self.labels, self.frame_labels)
+            self.data_writer.store_labels(self.track_labels)
 
 
     def decode_cameras(self):
@@ -504,7 +504,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         # Create 3D ray structure of 3D rays in sensor space with accompanying metadata.
         # Colums; xyz_s, xyz_e, intensity, dynamic_flag, timestamp
-        # Dynamic flag is set to 'True' if if the points are classified to be dynamic, and 'False' otherwise (not-availabel or static)
+        # Dynamic flag is set to -1 if the information is not available, 0 static, 1 = dynamic
 
         # Determine ray start-point by interpolating poses at per-point timestamps
         if all(key in mesh.vertex_data.custom_attributes for key in ('timestamp_lo', 'timestamp_hi')):
@@ -569,8 +569,13 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         time_process = timer.elapsed_sec(restart = True)
 
         # Compute dynamic flag / load current frame labels
-        dynamic_flag, _ = LabelProcessor.lidar_dynamic_flag(xyz, frame_end_timestamp, self.labels, self.frame_labels, skip_dynamic_flag=self.skip_dynamic_flag)
-        dynamic_flag = dynamic_flag == 1. # map float to bools
+        dynamic_flag, frame_labels = LabelProcessorV2.lidar_dynamic_flag(lidar_id,
+                                                                         xyz,
+                                                                         frame_end_timestamp,
+                                                                         self.track_labels,
+                                                                         self.frame_labels,
+                                                                         skip_dynamic_flag=self.skip_dynamic_flag)
+
         time_dynflag = timer.elapsed_sec(restart = True)
 
         # Subselect to valid points
@@ -587,15 +592,16 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         time_process += timer.elapsed_sec(restart = True)
 
         # Serialize lidar frame
-        self.data_writer.store_lidar_frame(lidar_id, continuos_frame_index, xyz_s, xyz_e, intensity, timestamp, dynamic_flag, T_rig_worlds, timestamps_us)
-
-        # # Serialize per-frame labels
-        # # Remark: it's currently simpler to serialize per lidar-frame labels for this timestamp here, as we perform frame subsampling as part of lidar processing.
-        # # However, in the future we might also incorporate camera data also, and this serialization might need to be relocated.
-        # save_pkl(
-        #     current_frame_labels,
-        #     os.path.join(self.output_dir, self.session_id, self.label_save_dir,
-        #                  str(continuos_frame_index).zfill(self.INDEX_DIGITS) + '.pkl'))
+        self.data_writer.store_lidar_frame(lidar_id,
+                                            continuos_frame_index,
+                                            xyz_s,
+                                            xyz_e,
+                                            intensity,
+                                            timestamp,
+                                            dynamic_flag,
+                                            frame_labels,
+                                            T_rig_worlds,
+                                            timestamps_us)
 
         time_store = timer.elapsed_sec(restart = True)
 

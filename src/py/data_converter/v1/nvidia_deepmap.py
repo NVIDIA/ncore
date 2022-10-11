@@ -19,7 +19,7 @@ from src.py.common.common import (PoseInterpolator, save_pkl, load_pkl, save_pc_
 from src.cpp.av_utils import unwind_lidar, isWithin3DBBox
 from src.py.common.nvidia_utils import (compute_ftheta_parameters, extract_pose, extract_sensor_2_sdc,
                               parse_rig_sensors_from_dict, sensor_to_rig, camera_intrinsic_parameters, compute_fw_polynomial,
-                              camera_car_mask, vehicle_bbox, LabelProcessor)
+                              camera_car_mask, vehicle_bbox, LabelProcessorV1)
 
 
 class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
@@ -264,7 +264,7 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
         if not os.path.exists(os.path.join(self.output_dir, self.sequence_name, 'frame_labels.pkl')):
 
             # Perform label parsing
-            annotations, frame_annotations = LabelProcessor.parse(
+            annotations, frame_annotations = LabelProcessorV1.parse(
                 os.path.join(sequence_path, 'labels', 'autolabels.parquet'),
                 None, # make sure to parse *all* labels (as these apply to other tracks also)
                 None,
@@ -364,10 +364,10 @@ class NvidiaDeepMapConverter(BaseNvidiaDataConverter):
                 transformed_pc = transformed_pc[valid_idx,:]
 
                 # Use the bounding boxes to remove dynamic objects
-                dynamic_flag, current_frame_labels = LabelProcessor.lidar_dynamic_flag(pc_lidar,
-                                                                                       fa_timestamp if fa_timestamp else -1,
-                                                                                       annotations,
-                                                                                       frame_annotations)
+                dynamic_flag, current_frame_labels = LabelProcessorV1.lidar_dynamic_flag(pc_lidar,
+                                                                                         fa_timestamp if fa_timestamp else -1,
+                                                                                         annotations,
+                                                                                         frame_annotations)
                 transformed_pc[:,-1] = dynamic_flag
 
                 # Save the per frame label
