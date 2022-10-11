@@ -1,5 +1,5 @@
 protobuf<4.0
-waymo-open-dataset-tf-2-6-0
+waymo-open-dataset-tf-2-5-0
 tqdm
 scipy
 matplotlib
