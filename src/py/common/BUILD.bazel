@@ -23,7 +23,7 @@ py_library(
         requirement("tqdm"),
         requirement("matplotlib"),
         requirement("tensorflow"),
-        requirement("waymo-open-dataset-tf-2-6-0"),
+        requirement("waymo-open-dataset-tf-2-5-0"),
         requirement("open3d"),
         "//src/cpp/av_utils:pylib",
         "//src/protos/deepmap:py_proto",
