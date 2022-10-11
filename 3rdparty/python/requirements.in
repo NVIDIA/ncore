@@ -1,6 +1,5 @@
 protobuf<4.0
-tensorflow
-waymo-open-dataset-tf-2-5-0
+waymo-open-dataset-tf-2-6-0
 tqdm
 scipy
 matplotlib
@@ -10,19 +9,19 @@ scikit-image
 protobuf3-to-dict==0.1.5
 pandas
 pyarrow
-point-cloud-utils>=0.25.0
+point-cloud-utils
 click
 debugpy
 pytest
 open3d
 
 --find-links https://download.pytorch.org/whl/torch_stable.html
-torch==1.10.1+cu111
-torchvision==0.11.2+cu111
-torchaudio==0.10.1
+torch==1.12.0+cu116
+torchvision==0.13.0+cu116
+torchaudio==0.12.0
 
---find-links https://dl.fbaipublicfiles.com/detectron2/wheels/cu111/torch1.10/index.html
-detectron2==0.6+cu111
+--extra-index-url https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple
+detectron2==0.6
 
 --extra-index-url https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple
 apex==0.1
@@ -31,6 +30,5 @@ apex==0.1
 pycocotools --hash=sha256:31a6c2d2e0c75f76e23fb300f7b5421b6c1b244f7d5757c4ad21fd6c994ee2aa
 
 jupyter_server
-
 sphinx
 sphinx_rtd_theme

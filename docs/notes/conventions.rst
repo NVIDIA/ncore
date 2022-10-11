@@ -83,7 +83,7 @@ The data processed using DSAI library on Maglev will be made available in the fo
     │ │ ├-000000.json
     │ │ ├-000000_mask.png
     │ │ ├-000000_sem.png
-    │ │ ├-000000_inst.png
+    │ │ ├-000000_inst.hdf5
     │ │ ├─...
     │ │ └-meta.json
     │ │
@@ -92,7 +92,7 @@ The data processed using DSAI library on Maglev will be made available in the fo
     │ │ ├-000000.json
     │ │ ├-000000_mask.png
     │ │ ├-000000_sem.png
-    │ │ ├-000000_inst.png
+    │ │ ├-000000_inst.hdf5
     │ │ ├─...
     │ │ └-meta.json
     │ │
