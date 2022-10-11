@@ -8,7 +8,7 @@ py_library(
     name = "pylib",
     srcs = [
         "__init__.py",
-    ],       
+    ],
     data = [
         "//src/py/deps/semantic_segmentation/pretrained_models:cityscapes_ocrnet.HRNet_Mscale_outstanding-turtle.pth",
         "//src/py/deps/semantic_segmentation/pretrained_models:hrnetv2_w48_imagenet_pretrained.pth",
