@@ -228,7 +228,7 @@ class DataWriter():
             xyz_s: np.array,
             xyz_e: np.array,
             intensity: np.array,
-            timestamp: np.array,
+            timestamp_us: np.array,
             dynamic_flag: np.array,
 
             # label data
@@ -244,12 +244,12 @@ class DataWriter():
         assert xyz_e.dtype == np.dtype('float32')
         assert intensity.ndim == 1
         assert intensity.dtype == np.dtype('float32')
-        assert timestamp.ndim == 1
-        assert timestamp.dtype == np.dtype('uint64')
+        assert timestamp_us.ndim == 1
+        assert timestamp_us.dtype == np.dtype('uint64')
         assert dynamic_flag.ndim == 1
         assert dynamic_flag.dtype == np.dtype('int8')
         num_points = xyz_s.shape[0]
-        assert all((xyz_s.shape[0] == num_points, xyz_e.shape[0] == num_points, intensity.shape[0] == num_points, timestamp.shape[0] == num_points, dynamic_flag.shape[0] == num_points))
+        assert all((xyz_s.shape[0] == num_points, xyz_e.shape[0] == num_points, intensity.shape[0] == num_points, timestamp_us.shape[0] == num_points, dynamic_flag.shape[0] == num_points))
 
         assert T_rig_worlds.shape == (2, 4, 4)
         assert T_rig_worlds.dtype == np.dtype('float32')
@@ -266,7 +266,7 @@ class DataWriter():
             f.create_dataset('xyz_s', data=xyz_s, compression=COMPRESSION)
             f.create_dataset('xyz_e', data=xyz_e, compression=COMPRESSION)
             f.create_dataset('intensity', data=intensity, compression=COMPRESSION)
-            f.create_dataset('timestamp', data=timestamp, compression=COMPRESSION)
+            f.create_dataset('timestamp', data=timestamp_us, compression=COMPRESSION)
             f.create_dataset('dynamic_flag', data=dynamic_flag, compression=COMPRESSION)
 
         # Output frame meta data
