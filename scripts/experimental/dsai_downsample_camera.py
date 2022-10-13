@@ -95,9 +95,16 @@ def dsai_downsample_camera(root_dir: str, cam_id: int, inverse_downsample_factor
 
         assert meta['camera_model'] == 'f_theta', 'currently only support downsampling of ftheta cameras'
 
+        intrinsic = meta['intrinsic']
+
         intrinsic_array_downsampled, (img_width_downsampled,
-                                      img_height_downsampled) = downsample_ftheta(meta['intrinsic'],
+                                      img_height_downsampled) = downsample_ftheta(intrinsic,
                                                                                   inverse_downsample_factor)
+
+        with np.printoptions(suppress=True, floatmode='unique', linewidth=0): # print in highest precision
+            logger.debug(f'Original: {intrinsic}')
+            logger.debug(f'Downsampled: {intrinsic_array_downsampled}')
+        del(intrinsic)
 
     # Update all intrinsics in camera-associated meta files
     for camera_meta_path in camera_meta_paths:
@@ -122,7 +129,7 @@ def dsai_downsample_camera(root_dir: str, cam_id: int, inverse_downsample_factor
             assert img_width % inverse_downsample_factor == 0 and img_height % inverse_downsample_factor == 0, 'incompatible downsample factor for image resolution'
             img = img.resize((img_width // inverse_downsample_factor, img_height // inverse_downsample_factor),
                              Image.Resampling.LANCZOS)
-            img.save(image_path)
+            img.save(image_path, quality=100, subsampling=0)
 
 
 if __name__ == "__main__":
