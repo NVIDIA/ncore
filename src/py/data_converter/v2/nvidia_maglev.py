@@ -17,7 +17,7 @@ from typing import Optional, Tuple
 from functools import partial
 
 from src.py.data_converter.v2.data_converter import BaseNvidiaDataConverter
-from src.py.data_converter.v2.data_writer import DataWriter, FThetaCameraModel
+from src.py.data_converter.v2.data import DataWriter, FThetaCameraModel, Poses
 
 from src.py.common.nvidia_utils import (parse_rig_sensors_from_dict, sensor_to_rig, LabelProcessorV2,
                                         camera_intrinsic_parameters, compute_fw_polynomial,
@@ -29,8 +29,6 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
     """
     NVIDIA-specific data conversion (based on Maglev dsai-pp workflows data extraction)
     """
-
-    VERSION = '2.0.0'
 
     def __init__(self, config):
         super().__init__(config)
@@ -137,7 +135,6 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         if self.shard_id == 0:
             self.data_writer.store_meta(
-                self.VERSION,
                 # TODO: parse these from the data
                 'scene-calib',
                 'lidar-egomotion')
@@ -213,7 +210,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         # Save the poses [only by main shard]
         if self.shard_id == 0:
-            self.data_writer.store_poses(self.T_rig_world_base, self.T_rig_worlds, self.T_rig_world_timestamps_us)
+            self.data_writer.store_poses(Poses(self.T_rig_world_base, self.T_rig_worlds, self.T_rig_world_timestamps_us))
 
         # Log base pose to share it more easily with downstream teams (it's serialized also explicitly)
         with np.printoptions(floatmode='unique', linewidth=200):  # print in highest precision

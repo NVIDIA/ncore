@@ -8,7 +8,8 @@ py_library(
     name = "pylib",
     srcs = [
         "data_converter.py",
-        "data_writer.py",
+        "data.py",
+        # "data_loader.py",
         "nvidia_maglev.py",
     ],
     deps = [

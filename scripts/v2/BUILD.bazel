@@ -1,0 +1,17 @@
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_binary")
+
+py_binary(
+    name = "dsai_export_ply",
+    srcs = ["dsai_export_ply.py"],
+    deps = [
+        requirement("point-cloud-utils"),
+        requirement("numpy"),
+        requirement("click"),
+        requirement("tqdm"),
+        "//src/py/data_converter/v2:pylib",
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")
