@@ -15,9 +15,9 @@ from typing import Optional
 from functools import partial
 from pathlib import Path
 
-from src.py.dataset_converter import BaseNvidiaDataConverter
+from src.py.data_converter import BaseNvidiaDataConverter
 from src.py.common.nvidia_utils import (sensor_to_rig, parse_rig_sensors_from_dict, camera_intrinsic_parameters,
-                                        compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask, vehicle_bbox, LabelProcessor)
+                                        compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask, vehicle_bbox, LabelProcessorV1)
 from src.py.common.common import (load_jsonl, save_pkl, save_pc_dat, platform_cpu_count, PoseInterpolator, SimpleTimer, uniform_subdivide_range)
 from src.cpp.av_utils import isWithin3DBBox
 
@@ -226,7 +226,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         start_timestamp_us, end_timestamp_us = self.time_bounds(self.poses_timestamps, self.seek_sec, self.duration_sec)
 
         # Perform label parsing
-        self.labels, self.frame_labels = LabelProcessor.parse(labels_path, start_timestamp_us, end_timestamp_us, logger)
+        self.labels, self.frame_labels = LabelProcessorV1.parse(labels_path, start_timestamp_us, end_timestamp_us, logger)
 
         # Save the accumulated data / per frame data  [only by main shard]
         if self.shard_id == 0:
@@ -589,7 +589,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         time_process = timer.elapsed_sec(restart = True)
 
         # Compute dynamic flag / load current frame labels
-        dynamic_flag, current_frame_labels = LabelProcessor.lidar_dynamic_flag(xyz, frame_timestamp, self.labels, self.frame_labels, skip_dynamic_flag=self.skip_dynamic_flag)
+        dynamic_flag, current_frame_labels = LabelProcessorV1.lidar_dynamic_flag(xyz, frame_timestamp, self.labels, self.frame_labels, skip_dynamic_flag=self.skip_dynamic_flag)
         time_dynflag = timer.elapsed_sec(restart = True)
 
         # Assemble full point-cloud ray structure

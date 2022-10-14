@@ -24,20 +24,6 @@ class DataConverter(ABC):
 
     INDEX_DIGITS = 6 # the number of integer digits to pad counters in output filenames to
 
-    class Config(object):
-        """ Simple dictionary holding all options as key/value pairs """
-
-        def __init__(self, kwargs):
-            self.__dict__ = kwargs
-
-        def __iadd__(self, other):
-            """ Extend with more key/value options """
-            for key, value in other.items():
-                self.__dict__[key] = value
-
-            return self
-
-
     def __init__(self, config):
         self.logger = logging.getLogger(__name__)
 

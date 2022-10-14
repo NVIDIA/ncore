@@ -9,7 +9,7 @@ import numpy as np
 
 from functools import partial
 
-from src.py.common.nvidia_utils import LabelProcessor
+from src.py.common.nvidia_utils import LabelProcessorV1
 from src.py.common.common import (load_pc_dat, load_pkl, save_pkl, save_pc_dat)
 
 
@@ -44,7 +44,7 @@ def dsai_import_labels(root_dir: str, parquet_file: str, output_dir: str, index_
     lidar_timestamps = np.load(os.path.join(lidar_dir, 'timestamps.npz'))['timestamps']
 
     # Parse the labels
-    labels, frame_labels = LabelProcessor.parse(parquet_file, lidar_timestamps[0], lidar_timestamps[-1], logger)
+    labels, frame_labels = LabelProcessorV1.parse(parquet_file, lidar_timestamps[0], lidar_timestamps[-1], logger)
 
     if not output_dir:
         output_dir = root_dir
@@ -105,7 +105,7 @@ def update_lidar_frame_label_data_process(args, lidar_dir, output_dir_lidar, out
     xyz = xyz_lidar_homogeneous[:3, :].transpose()  # N x 3
 
     # Compute dynamic flag / load current frame labels
-    dynamic_flag, current_frame_labels = LabelProcessor.lidar_dynamic_flag(xyz, frame_timestamp, labels, frame_labels, skip_dynamic_flag=False)
+    dynamic_flag, current_frame_labels = LabelProcessorV1.lidar_dynamic_flag(xyz, frame_timestamp, labels, frame_labels, skip_dynamic_flag=False)
 
     # Set point-cloud dynamic flag and serialize updated point-cloud
     pc_data[:, 8] = dynamic_flag

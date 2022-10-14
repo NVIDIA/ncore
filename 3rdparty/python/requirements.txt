@@ -199,6 +199,10 @@ cycler==0.11.0 \
     --hash=sha256:3a27e95f763a428a739d2add979fa7494c912a32c17c4c38c4d5f082cad165a3 \
     --hash=sha256:9c87405839a19696e837b3b818fed3f5f69f16f1eec1a1ad77e043dcea9c772f
     # via matplotlib
+dataclasses-json==0.5.7 \
+    --hash=sha256:bc285b5f892094c3a53d558858a88553dd6a61a11ab1a8128a0e554385dcc5dd \
+    --hash=sha256:c2c11bc8214fbf709ffc369d11446ff6945254a7f09128154a7620613d8fda90
+    # via -r 3rdparty/python/requirements.in
 debugpy==1.6.2 \
     --hash=sha256:0984086a670f46c75b5046b39a55f34e4120bee78928ac4c3c7f1c7b8be1d8be \
     --hash=sha256:0bfdcf261f97a603d7ef7ab6972cdf7136201fde93d19bf3f917d0d2e43a5694 \
@@ -663,6 +667,16 @@ markupsafe==2.1.1 \
     # via
     #   jinja2
     #   nbconvert
+marshmallow==3.18.0 \
+    --hash=sha256:35e02a3a06899c9119b785c12a22f4cda361745d66a71ab691fd7610202ae104 \
+    --hash=sha256:6804c16114f7fce1f5b4dadc31f4674af23317fcc7f075da21e35c1a35d781f7
+    # via
+    #   dataclasses-json
+    #   marshmallow-enum
+marshmallow-enum==1.5.1 \
+    --hash=sha256:38e697e11f45a8e64b4a1e664000897c659b60aa57bfa18d44e226a9920b6e58 \
+    --hash=sha256:57161ab3dbfde4f57adeb12090f39592e992b9c86d206d02f6bd03ebec60f072
+    # via dataclasses-json
 matplotlib==3.5.2 \
     --hash=sha256:03bbb3f5f78836855e127b5dab228d99551ad0642918ccbf3067fcd52ac7ac5e \
     --hash=sha256:24173c23d1bcbaed5bf47b8785d27933a1ac26a5d772200a0f3e0e38f471b001 \
@@ -717,7 +731,9 @@ mistune==0.8.4 \
 mypy-extensions==0.4.3 \
     --hash=sha256:090fedd75945a69ae91ce1303b5824f428daf5a028d2f6ab8a299250a846f15d \
     --hash=sha256:2d82818f5bb3e369420cb3c4060a7970edba416647068eb4c5343488a6c604a8
-    # via black
+    # via
+    #   black
+    #   typing-inspect
 nbclassic==0.4.3 \
     --hash=sha256:4b01076effdac53e775cd1b6a4e891663568b32621468e205b502a23b2921899 \
     --hash=sha256:f03111b2cebaa69b88370a7b23b19b2b37c9bb71767f1828cdfd7a047eae8edd
@@ -856,12 +872,14 @@ packaging==21.3 \
     --hash=sha256:dd47c42927d89ab911e606518907cc2d3a1f38bbd026385970643f9c5b8ecfeb \
     --hash=sha256:ef103e05f519cdc783ae24ea4e2e0f508a9c99b2d4969652eed6a2e1ea5bd522
     # via
+    #   apex
     #   deprecation
     #   ipykernel
     #   jupyter-packaging
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
+    #   marshmallow
     #   matplotlib
     #   nbconvert
     #   pytest
@@ -1795,6 +1813,11 @@ typing-extensions==3.7.4.3 \
     #   tensorflow
     #   torch
     #   torchvision
+    #   typing-inspect
+typing-inspect==0.8.0 \
+    --hash=sha256:5fbf9c1e65d4fa01e701fe12a5bca6c6e08a4ffd5bc60bfac028253a447c5188 \
+    --hash=sha256:8b1ff0c400943b6145df8119c41c244ca8207f1f10c9c057aeed1560e4806e3d
+    # via dataclasses-json
 urllib3==1.26.10 \
     --hash=sha256:8298d6d56d39be0e3bc13c1c97d133f9b45d797169a0e11cdd0e0489d786f7ec \
     --hash=sha256:879ba4d1e89654d9769ce13121e0f94310ea32e8d2f8cf587b77c08bbcdb30d6

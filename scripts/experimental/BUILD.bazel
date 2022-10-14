@@ -10,7 +10,7 @@ py_binary(
         requirement("numpy"),
         requirement("tqdm"),
         "//src/py/common:pylib",
-        "//src/py/dataset_converter:pylib",
+        "//src/py/data_converter:pylib",
     ],
 )
 
@@ -23,7 +23,7 @@ py_binary(
         requirement("numpy"),
         "//src/protos/deepmap:py_proto",
         "//src/py/common:pylib",
-        "//src/py/dataset_converter:pylib",
+        "//src/py/data_converter:pylib",
     ],
 )
 

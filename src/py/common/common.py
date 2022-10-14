@@ -500,7 +500,7 @@ class MaskImage:
         # set new values for masked pixels
         self.mask_array[binary_mask] = mask_type.value
 
-    def get_image(self):
+    def get_image(self) -> Image:
         """
         Returns the color-paletted mask image with all mask types set
         Returns:
@@ -570,3 +570,17 @@ def uniform_subdivide_range(subdiv_id: int, subdiv_count: int, range_start: int,
     local_range = split_range[subdiv_id]
 
     return local_range, local_range[0] - range_start if len(local_range) else -1
+
+
+class Config(object):
+    """ Simple dictionary holding all options as key/value pairs """
+
+    def __init__(self, kwargs):
+        self.__dict__ = kwargs
+
+    def __iadd__(self, other):
+        """ Extend with more key/value options """
+        for key, value in other.items():
+            self.__dict__[key] = value
+
+        return self

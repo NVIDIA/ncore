@@ -62,8 +62,8 @@ class LabelVisualizer:
     COLOR_MAP_LABELS = cm.get_cmap('tab20')
 
     # TODO: currently only works for NVIDIA classes, we should add Waymo support
-    LABEL_STRING_TO_LABEL_ID = NvidiaLabelProcessor.LABEL_STRING_TO_LABEL_ID
-    LABEL_ID_TO_LABEL_STRING = NvidiaLabelProcessor.LABEL_ID_TO_LABEL_STRING
+    LABELTYPE_STRING_TO_LABELTYPE_ID = NvidiaLabelProcessor.LABELTYPE_STRING_TO_LABELTYPE_ID
+    LABELTYPE_ID_TO_LABELTYPE_STRING = NvidiaLabelProcessor.LABELTYPE_ID_TO_LABELTYPE_STRING
 
     def __init__(self) -> None:
         """ 
@@ -77,7 +77,7 @@ class LabelVisualizer:
 
         # Initialize the classes
         self.lut = ml3d.vis.LabelLUT()
-        for id, (key, value) in enumerate(self.LABEL_STRING_TO_LABEL_ID.items()):
+        for id, (key, value) in enumerate(self.LABELTYPE_STRING_TO_LABELTYPE_ID.items()):
             self.lut.add_label(value, key, self.COLOR_MAP_LABELS(id)[:3])
 
         # Set the BBOX line thickness
@@ -139,7 +139,7 @@ class LabelVisualizer:
                 up=orientation[:,2],
                 left=orientation[:,1],
                 size= np.array([bbox[4], bbox[5], bbox[3]]),
-                label_class=self.LABEL_ID_TO_LABEL_STRING[class_label],
+                label_class=self.LABELTYPE_ID_TO_LABELTYPE_STRING[class_label],
                 confidence=1.0,
                 identifier=identifier)
         )
