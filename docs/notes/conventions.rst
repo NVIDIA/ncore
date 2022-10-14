@@ -204,6 +204,7 @@ Finally, we also save general metadata related to the session (input data and ve
 * ``version`` - version of the dataset (str)
 * ``egomotion_type`` - type of ego-motion that was used to generate the data (str) 
 * ``calibration_type`` - type of sensor calibration that was used to generate the data (str)
+* ``sensors`` - individual lists of ``cameras`` / ``lidars`` / ``radars`` sensor names processed available in the data (str)
 
 Labels
 ------
