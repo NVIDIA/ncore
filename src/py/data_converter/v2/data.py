@@ -52,6 +52,7 @@ class FThetaCameraModel(CameraModel, DataClassJsonMixin):
     principal_point: list[float]
     bw_poly: list[float]
     fw_poly: list[float]
+    max_angle: float
 
     @staticmethod
     def type() -> str:
@@ -73,6 +74,8 @@ class FThetaCameraModel(CameraModel, DataClassJsonMixin):
         assert len(self.fw_poly) <= self.POLYNOMIAL_DEGREE
         while len(self.fw_poly) < self.POLYNOMIAL_DEGREE:
             self.fw_poly.append(0.0)
+
+        assert self.max_angle > 0.0
 
 
 @dataclass
