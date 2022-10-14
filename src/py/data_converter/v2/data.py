@@ -367,26 +367,36 @@ class Sensor:
         ''' Returns number of frames '''
         return len(self._sensor_meta.frame_timestamps_us)
 
+    def get_frame_index_range(self, start_frame :int = 0, end_frame : int = -1, step_frame : int = 1) -> range:
+        ''' Returns a specific range of frame indices following range(start,end,step) conventions '''
+        
+        if end_frame == -1:
+            end_frame = self.get_frames_count()
+
+        assert start_frame >= 0 and end_frame <= self.get_frames_count(), IndexError
+        
+        return range(start_frame, end_frame, step_frame)
+
     def get_frames_timestamps_us(self) -> np.array:
         ''' Returns all end-of-measurement frame timestamps '''
         return np.array(self._sensor_meta.frame_timestamps_us, dtype=np.uint64)
 
     # Frame-dependent poses / timestamps
-    def get_frame_T_rig_world(self, continous_frame_index: int, frame_timepoint: FrameTimepoint) -> np.array:
+    def get_frame_T_rig_world(self, continous_frame_index: int, frame_timepoint: FrameTimepoint = FrameTimepoint.END) -> np.array:
         ''' Returns start/end rig-to-world pose of specific frame '''
 
         with open(self._sensor_dir / (padded_index_string(continous_frame_index) + '.json'), 'r') as f:
             j = json.load(f)
             return np.array(j['T_rig_worlds'][frame_timepoint.value])
 
-    def get_frame_T_sensor_world(self, continous_frame_index: int, frame_timepoint: FrameTimepoint) -> np.array:
+    def get_frame_T_sensor_world(self, continous_frame_index: int, frame_timepoint: FrameTimepoint = FrameTimepoint.END) -> np.array:
         ''' Returns start/end sensor-to-world pose of specific frame '''
 
         with open(self._sensor_dir / (padded_index_string(continous_frame_index) + '.json'), 'r') as f:
             j = json.load(f)
             return np.array(j['T_rig_worlds'][frame_timepoint.value]) @ self.get_T_sensor_rig()
 
-    def get_frame_timestamp_us(self, continous_frame_index: int, frame_timepoint: FrameTimepoint) -> int:
+    def get_frame_timestamp_us(self, continous_frame_index: int, frame_timepoint: FrameTimepoint = FrameTimepoint.END) -> int:
         ''' Returns timestamp of specific frame timepoints '''
 
         with open(self._sensor_dir / (padded_index_string(continous_frame_index) + '.json'), 'r') as f:
@@ -399,24 +409,24 @@ class CameraSensor(Sensor):
     pass
 
 
-class LidarSensor(Sensor):
+class PointCloudSensor(Sensor):
+    ''' Provides access to sensor's measureing point-clouds '''
+    def get_frame_data(self, continous_frame_index: int, key: str) -> np.array:
+        ''' Returns frame-data for a specific frame and column-key '''
+        assert continous_frame_index >= 0 and continous_frame_index < self.get_frames_count(), IndexError
+
+        return np.array(
+            h5py.File(self.get_sensor_dir() / (padded_index_string(continous_frame_index) + '.hdf5'), 'r')[key])
+
+
+class LidarSensor(PointCloudSensor):
     ''' Provides access to lidar-specific sensor-data '''
-    def get_frame_data(self, continous_frame_index: int, key: str) -> np.array:
-        ''' Returns frame-data for a specific frame and column-key '''
-        assert continous_frame_index >= 0 and continous_frame_index < self.get_frames_count(), IndexError
-
-        return np.array(
-            h5py.File(self.get_sensor_dir() / (padded_index_string(continous_frame_index) + '.hdf5'), 'r')[key])
+    pass
 
 
-class RadarSensor(Sensor):
+class RadarSensor(PointCloudSensor):
     ''' Provides access to radar-specific sensor-data '''
-    def get_frame_data(self, continous_frame_index: int, key: str) -> np.array:
-        ''' Returns frame-data for a specific frame and column-key '''
-        assert continous_frame_index >= 0 and continous_frame_index < self.get_frames_count(), IndexError
-
-        return np.array(
-            h5py.File(self.get_sensor_dir() / (padded_index_string(continous_frame_index) + '.hdf5'), 'r')[key])
+    pass
 
 
 class DataLoader():
