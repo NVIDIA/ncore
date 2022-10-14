@@ -134,9 +134,6 @@ class BaseNvidiaDataConverter(DataConverter):
     # Reference lidar sensor name
     LIDAR_SENSORNAME = 'lidar:gt:top:p128:v4p5'
 
-    # Approximate spin time in microseconds
-    LIDAR_APPROX_SPIN_TIME = 1e6 / 10 # based on 10Hz frequency
-
     # Vehicle BBOX padding distances (for each axis) and maximum distances (in meters) for point cloud measurements (to filter points on the ego-car / out invalid points)
     LIDAR_FILTER_VEHICLE_BBOX_PADDING = np.array([0.4, 0.2, 1.0], dtype=np.float32)
     LIDAR_FILTER_MAX_DISTANCE = 100.0
