@@ -76,8 +76,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             end_timestamp_us: last valid timestamp in restricted bounds (in microseconds)
         """
 
-        start_timestamp_us = timestamps_us[0]
-        end_timestamp_us = timestamps_us[-1]
+        start_timestamp_us = int(timestamps_us[0])
+        end_timestamp_us = int(timestamps_us[-1])
 
         if seek_sec:
             assert seek_sec >= 0.0, "Require positive seek time"
@@ -517,13 +517,20 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             # valid egomotion (in particular lidar-based egomotion) might not have been
             # evaluated in the past before the processed lidar frame's end-of-frame timestamp
             # (usually at start of sequence)
-            if frame_end_timestamp - self.LIDARID_TO_APPROX_SPIN_TIME_US[lidar_id] < self.T_rig_world_timestamps_us[0]:
+            if continuos_frame_index == 0:
                 past_idxs = timestamp < self.T_rig_world_timestamps_us[0]
 
                 if np.any(past_idxs):
-                    logger.info("> snapping point timestamps of *initial* spins to start of egomotion")
-
+                    logger.info("> snapping out-of-range point timestamps of *initial* spin to start of egomotion")
                     timestamp[past_idxs] = frame_end_timestamp
+            
+            # Special case: snap too far in the future point timestamps to last valid end-of-frame timestamp
+            elif continuos_frame_index == num_global_frames - 1:
+                future_idxs = timestamp > self.T_rig_world_timestamps_us[-1]
+
+                if np.any(future_idxs):
+                    logger.info("> snapping out-of-range point timestamps of *last* spins to end of egomotion")
+                    timestamp[future_idxs] = frame_end_timestamp
 
             # Determine unique timestamps to only perform actually required pose interpolations (a lot of points share the same timestamp)
             timestamp_unique, unique_timestamp_reverse_idxs = np.unique(timestamp, return_inverse=True)

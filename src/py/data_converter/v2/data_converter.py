@@ -125,11 +125,6 @@ class BaseNvidiaDataConverter(DataConverter):
         'camera_rear_fisheye_200fov': 'fisheye',
     }
 
-    # Approximate spin time in microseconds
-    LIDARID_TO_APPROX_SPIN_TIME_US = {
-        'lidar_gt_top_p128_v4p5': 1e6 / 10  # based on 10Hz frequency
-    }
-
     # Vehicle BBOX padding distances (for each axis) and maximum distances (in meters) for point cloud measurements (to filter points on the ego-car / out invalid points)
     LIDAR_FILTER_VEHICLE_BBOX_PADDING_METERS = np.array([0.4, 0.2, 1.0], dtype=np.float32)
     LIDARID_TO_FILTER_MAX_DISTANCE_METERS = {
