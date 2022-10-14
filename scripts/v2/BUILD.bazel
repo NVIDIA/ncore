@@ -14,4 +14,16 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "dsai_surface_rec",
+    srcs = ["dsai_surface_rec.py"],
+    data = ["@PoissonRecon"],
+    deps = [
+        requirement("click"),
+        requirement("tqdm"),
+        requirement("point-cloud-utils"),
+        "//src/py/data_converter/v2:pylib",
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")
