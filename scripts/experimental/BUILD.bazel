@@ -47,4 +47,14 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "dsai_downsample_camera",
+    srcs = ["dsai_downsample_camera.py"],
+    deps = [
+        requirement("click"),
+        requirement("numpy"),
+        "//src/py/common:pylib",
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")

@@ -23,7 +23,7 @@ def run_semantic_segmentation(imgs: list, index_digits: int):
             # Resize if the image is to large
             if w > 1920 or h > 1280:
                 img = img.resize((w//2,h//2), Image.LANCZOS)
-            img.save(os.path.join(temp_dir, file.split(os.sep)[-1]))
+            img.save(os.path.join(temp_dir, file.split(os.sep)[-1]), quality=100, subsampling=0)
 
         args =  f'--dataset cityscapes --cv 0 --fp16 --bs_val 1 --eval folder ' \
                 '--eval_folder {} --n_scales 0.5,1.0,2.0 '\

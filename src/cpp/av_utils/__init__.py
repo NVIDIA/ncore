@@ -22,7 +22,7 @@ def image_to_world_ray(image_points, camera_metadata):
     T_cam_rig = camera_metadata['T_cam_rig'] # Transforms the points/rays from camera coordinate system to the rig
 
     T_cam_world = np.concatenate(
-        [ego_pose_s @ T_cam_rig, ego_pose_e @ T_cam_rig], axis=0)
+        [ego_pose_s @ T_cam_rig, ego_pose_e @ T_cam_rig], axis=0).astype(np.float64)
 
     if image_points.shape[0] == 1:
         image_points = np.tile(image_points, [2, 1])
