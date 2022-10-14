@@ -11,20 +11,20 @@ import numpy as np
 from PIL.Image import Image
 
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 from dataclasses import dataclass
 from dataclasses_json import DataClassJsonMixin
 
 # Constants
 VERSION = '2.0.0'
-INDEX_DIGITS = 6  # the number of integer digits to pad counters in output filenames to
+INDEX_DIGITS = 6  # the number of integer digits to pad counters in output filenames
 CAMERAS_BASE_DIR = 'cameras'
 LIDARS_BASE_DIR = 'lidars'
 RADARS_BASE_DIR = 'lidars'
 
-
-class FrameEndpoint(Enum):
-    """ Enumerates frame endpoints """
+# Helper types and functions
+class FrameTimepoint(Enum):
+    """ Enumerates special timepoints within a frame """
     START = 0
     END = 1
 
@@ -341,12 +341,17 @@ class DataWriter():
 
 class Sensor:
     ''' Provides access to generic data available to all sensor types '''
-    def __init__(self, sensor_dir: Path):
+    def __init__(self, sensor_id: str, sensor_dir: Path):
+        self._sensor_id = sensor_id
         self._sensor_dir = sensor_dir
 
         # load meta-data
         with open(self._sensor_dir / 'meta.json', 'r') as f:
             self._sensor_meta = json.load(f, object_hook=lambda d: SimpleNamespace(**d))
+
+    def get_sensor_id(self) -> str:
+        ''' Returns the current sensor's ID '''
+        return self._sensor_id
 
     def get_sensor_dir(self) -> Path:
         ''' Returns the current sensor's data folder '''
@@ -367,52 +372,51 @@ class Sensor:
         return np.array(self._sensor_meta.frame_timestamps_us, dtype=np.uint64)
 
     # Frame-dependent poses / timestamps
-    def get_frame_T_rig_world(self, continous_frame_index: int, frame_endpoint: FrameEndpoint) -> np.array:
+    def get_frame_T_rig_world(self, continous_frame_index: int, frame_timepoint: FrameTimepoint) -> np.array:
         ''' Returns start/end rig-to-world pose of specific frame '''
 
         with open(self._sensor_dir / (padded_index_string(continous_frame_index) + '.json'), 'r') as f:
             j = json.load(f)
-            return np.array(j['T_rig_worlds'][frame_endpoint.value])
+            return np.array(j['T_rig_worlds'][frame_timepoint.value])
 
-    def get_frame_T_sensor_world(self, continous_frame_index: int, frame_endpoint: FrameEndpoint) -> np.array:
+    def get_frame_T_sensor_world(self, continous_frame_index: int, frame_timepoint: FrameTimepoint) -> np.array:
         ''' Returns start/end sensor-to-world pose of specific frame '''
 
         with open(self._sensor_dir / (padded_index_string(continous_frame_index) + '.json'), 'r') as f:
             j = json.load(f)
-            return np.array(j['T_rig_worlds'][frame_endpoint.value]) @ self.get_T_sensor_rig()
+            return np.array(j['T_rig_worlds'][frame_timepoint.value]) @ self.get_T_sensor_rig()
 
-    def get_frame_timestamp_us(self, continous_frame_index: int, frame_endpoint: FrameEndpoint) -> int:
-        ''' Returns start/end timestamp of specific frame '''
+    def get_frame_timestamp_us(self, continous_frame_index: int, frame_timepoint: FrameTimepoint) -> int:
+        ''' Returns timestamp of specific frame timepoints '''
 
         with open(self._sensor_dir / (padded_index_string(continous_frame_index) + '.json'), 'r') as f:
             j = json.load(f)
-            return j['timestamps_us'][frame_endpoint.value]
+            return j['timestamps_us'][frame_timepoint.value]
 
 
 class CameraSensor(Sensor):
-    def __init__(self, sensor_dir: Path):
-        super().__init__(sensor_dir)
+    ''' Provides access to camera-specific sensor-data '''
+    pass
 
 
-class FrameBasedSensor(Sensor):
-    def __init__(self, sensor_dir: Path):
-        super().__init__(sensor_dir)
-
+class LidarSensor(Sensor):
+    ''' Provides access to lidar-specific sensor-data '''
     def get_frame_data(self, continous_frame_index: int, key: str) -> np.array:
+        ''' Returns frame-data for a specific frame and column-key '''
         assert continous_frame_index >= 0 and continous_frame_index < self.get_frames_count(), IndexError
 
         return np.array(
             h5py.File(self.get_sensor_dir() / (padded_index_string(continous_frame_index) + '.hdf5'), 'r')[key])
 
 
-class LidarSensor(FrameBasedSensor):
-    def __init__(self, sensor_dir: Path):
-        super().__init__(sensor_dir)
+class RadarSensor(Sensor):
+    ''' Provides access to radar-specific sensor-data '''
+    def get_frame_data(self, continous_frame_index: int, key: str) -> np.array:
+        ''' Returns frame-data for a specific frame and column-key '''
+        assert continous_frame_index >= 0 and continous_frame_index < self.get_frames_count(), IndexError
 
-
-class RadarSensor(FrameBasedSensor):
-    def __init__(self, sensor_dir: Path):
-        super().__init__(sensor_dir)
+        return np.array(
+            h5py.File(self.get_sensor_dir() / (padded_index_string(continous_frame_index) + '.hdf5'), 'r')[key])
 
 
 class DataLoader():
@@ -434,19 +438,19 @@ class DataLoader():
         # load all available sensors
         self._sensors: dict[str, Union[CameraSensor, LidarSensor, RadarSensor]] = {}
         self._sensors.update({
-            sensor_id: CameraSensor(self.sequence_dir / CAMERAS_BASE_DIR / sensor_id)
+            sensor_id: CameraSensor(sensor_id, self.sequence_dir / CAMERAS_BASE_DIR / sensor_id)
             for sensor_id in self._meta.sensors.cameras
         })
         self._sensors.update({
-            sensor_id: LidarSensor(self.sequence_dir / LIDARS_BASE_DIR / sensor_id)
+            sensor_id: LidarSensor(sensor_id, self.sequence_dir / LIDARS_BASE_DIR / sensor_id)
             for sensor_id in self._meta.sensors.lidars
         })
         self._sensors.update({
-            sensor_id: RadarSensor(self.sequence_dir / RADARS_BASE_DIR / sensor_id)
+            sensor_id: RadarSensor(sensor_id, self.sequence_dir / RADARS_BASE_DIR / sensor_id)
             for sensor_id in self._meta.sensors.radars
         })
 
-        self._poses: Optional[Poses] = None
+        self._poses: Optional[Poses] = None # poses will be loaded on-demand if required
 
     def get_poses(self) -> Poses:
         # Load poses on-demand

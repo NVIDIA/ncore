@@ -11,7 +11,7 @@ import numpy as np
 from point_cloud_utils import TriangleMesh
 
 from src.py.common.nvidia_utils import transform_point_cloud
-from src.py.data_converter.v2.data import DataLoader, FrameBasedSensor, FrameEndpoint, LidarSensor, padded_index_string
+from src.py.data_converter.v2.data import DataLoader, FrameTimepoint, LidarSensor, RadarSensor, padded_index_string
 
 
 @click.command()
@@ -47,7 +47,7 @@ def dsai_export_ply(root_dir: str, output_dir: Optional[str], sensor_id: str, st
 
     loader = DataLoader(root_dir)
     sensor = loader.get_sensor(sensor_id)
-    assert isinstance(sensor, FrameBasedSensor), 'only frame-based sensors supported'
+    assert isinstance(sensor, (LidarSensor, RadarSensor)), 'only frame-based sensors supported'
 
     if not output_dir:
         output_path = sensor.get_sensor_dir()
@@ -68,7 +68,7 @@ def dsai_export_ply(root_dir: str, output_dir: Optional[str], sensor_id: str, st
         elif frame == 'rig':
             T_sensor_target = sensor.get_T_sensor_rig()
         elif frame == 'world':
-            T_sensor_target = sensor.get_frame_T_sensor_world(frame_index, FrameEndpoint.END)
+            T_sensor_target = sensor.get_frame_T_sensor_world(frame_index, FrameTimepoint.END)
 
         pc = TriangleMesh()
         pc.vertex_data.positions = transform_point_cloud(sensor.get_frame_data(frame_index, 'xyz_e'), T_sensor_target)
@@ -79,7 +79,7 @@ def dsai_export_ply(root_dir: str, output_dir: Optional[str], sensor_id: str, st
             pc.vertex_data.custom_attributes['dynamic_flag'] = sensor.get_frame_data(frame_index, 'dynamic_flag')
 
             # Compute offset in "inverse" fashion to prevent wrapping around zero for uint64
-            negative_offset_timestamp = (sensor.get_frame_timestamp_us(frame_index, FrameEndpoint.END) -
+            negative_offset_timestamp = (sensor.get_frame_timestamp_us(frame_index, FrameTimepoint.END) -
                                          sensor.get_frame_data(frame_index, 'timestamp')).astype(np.int32)
             pc.vertex_data.custom_attributes['negative_offset_timestamp'] = negative_offset_timestamp
 
