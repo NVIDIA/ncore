@@ -56,7 +56,7 @@ def cli(ctx, *_, **kwargs):
 def waymo(ctx, *_, **kwargs):
     """Waymo-specific data conversion"""
 
-    from src.py.data_converter.v1.waymo_open import WaymoConverter
+    from src.py.data_converter.waymo_open import WaymoConverter
 
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
@@ -71,7 +71,7 @@ def waymo(ctx, *_, **kwargs):
 def nvidia_deepmap(ctx, *_, **kwargs):
     """NVIDIA-specific data conversion (based on DeepMap tracks)"""
 
-    from src.py.data_converter.v1.nvidia_deepmap import NvidiaDeepMapConverter
+    from src.py.data_converter.nvidia_deepmap import NvidiaDeepMapConverter
 
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
@@ -95,7 +95,7 @@ def nvidia_deepmap(ctx, *_, **kwargs):
 def nvidia_maglev(ctx, *_, **kwargs):
     """NVIDIA-specific data conversion (V1 format, based on Maglev data extraction)"""
     
-    from src.py.data_converter.v1.nvidia_maglev import NvidiaMaglevConverter
+    from src.py.data_converter.nvidia_maglev import NvidiaMaglevConverter
 
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs

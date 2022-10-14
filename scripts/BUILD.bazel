@@ -8,10 +8,32 @@ load("@io_bazel_rules_docker//python3:image.bzl", "py3_image")
 load("@pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary")
 
+py_binary(
+    name = "dsai_to_ngp",
+    srcs = ["dsai_to_ngp.py"],
+    deps = [
+        requirement("numpy"),
+        requirement("click"),
+        "//src/py/common:pylib",
+    ],
+)
+
+py_binary(
+    name = "dsai_extract_segmentation",
+    srcs = ["dsai_extract_segmentation.py"],
+    deps = [
+        requirement("click"),
+        requirement("debugpy"),
+        "//src/py/common:pylib",
+        "//src/py/deps/instance_segmentation:pylib",
+        "//src/py/deps/semantic_segmentation:pylib",
+    ],
+)
+
 CONVERT_RAW_DATA_DEPS = [
     requirement("click"),
     requirement("debugpy"),
-    "//src/py/data_converter/v1:pylib",
+    "//src/py/data_converter:pylib",
     "//src/py/data_converter/v2:pylib",
 ]
 
@@ -97,6 +119,67 @@ container_push(
     tags = [
         "manual",
         "no-remote-cache",
+    ],
+)
+
+py_binary(
+    name = "project_pc_to_img",
+    srcs = ["project_pc_to_img.py"],
+    deps = [
+        requirement("point-cloud-utils"),
+        requirement("pillow"),
+        requirement("matplotlib"),
+        requirement("numpy"),
+        "//src/cpp/av_utils:pylib",
+        "//src/py/common:pylib",
+    ],
+)
+
+py_binary(
+    name = "rgb_ray_mesh_intersection",
+    srcs = ["rgb_ray_mesh_intersection.py"],
+    deps = [
+        requirement("point-cloud-utils"),
+        requirement("pillow"),
+        "//src/cpp/av_utils:pylib",
+        "//src/py/common:pylib",
+    ],
+)
+
+py_binary(
+    name = "dsai_surface_rec",
+    srcs = ["dsai_surface_rec.py"],
+    data = ["@PoissonRecon"],
+    deps = [
+        requirement("point-cloud-utils"),
+        requirement("numpy"),
+        requirement("click"),
+        requirement("tqdm"),
+        "//src/py/common:pylib",
+    ],
+)
+
+py_binary(
+    name = "dsai_export_ply",
+    srcs = ["dsai_export_ply.py"],
+    deps = [
+        requirement("point-cloud-utils"),
+        requirement("numpy"),
+        requirement("click"),
+        requirement("tqdm"),
+        "//src/py/common:pylib",
+    ],
+)
+
+py_binary(
+    name = "dsai_visualize_labels",
+    srcs = ["dsai_visualize_labels.py"],
+    deps = [
+        requirement("open3d"),
+        requirement("numpy"),
+        requirement("click"),
+        requirement("tqdm"),
+        "//src/py/common:pylib",
     ],
 )
 

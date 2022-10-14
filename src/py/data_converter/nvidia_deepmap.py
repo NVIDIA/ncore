@@ -14,7 +14,7 @@ from collections import defaultdict
 from protobuf_to_dict import protobuf_to_dict
 
 from src.protos.deepmap import track_data_pb2, pointcloud_pb2
-from src.py.data_converter.v1 import BaseNvidiaDataConverter
+from src.py.data_converter import BaseNvidiaDataConverter
 from src.py.common.common import (PoseInterpolator, save_pkl, load_pkl, save_pc_dat)
 from src.cpp.av_utils import unwind_lidar, isWithin3DBBox
 from src.py.common.nvidia_utils import (compute_ftheta_parameters, extract_pose, extract_sensor_2_sdc,
