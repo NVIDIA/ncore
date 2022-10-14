@@ -652,6 +652,7 @@ class LabelProcessorV2(LabelProcessor):
                     ],
 
                 },
+                # TODO: add velocity to per-label data once coordinate frame is verified
                 'global_speed': global_speed,
                 'confidence': confidence,
             })
