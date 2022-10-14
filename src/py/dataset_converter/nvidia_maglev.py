@@ -65,8 +65,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             end_timestamp_us: last valid timestamp in restricted bounds (in microseconds)
         """
 
-        start_timestamp_us = timestamps_us[0]
-        end_timestamp_us = timestamps_us[-1]
+        start_timestamp_us = int(timestamps_us[0])
+        end_timestamp_us = int(timestamps_us[-1])
 
         if seek_sec:
             assert seek_sec >= 0.0, "Require positive seek time"
@@ -537,19 +537,29 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             # valid egomotion (in particular lidar-based egomotion) might not have been
             # evaluated in the past before the processed lidar frame's end-of-frame timestamp
             # (usually at start of sequence)
-            if frame_timestamp - self.LIDAR_APPROX_SPIN_TIME < self.poses_timestamps[0]:
+            if continuos_frame_index == 0:
                 past_idxs = timestamps < self.poses_timestamps[0]
 
                 if np.any(past_idxs):
-                    logger.info("> snapping point timestamps of *initial* spins to start of egomotion")
-
+                    logger.info("> snapping out-of-range point timestamps of *initial* spin to start of egomotion")
                 timestamps[past_idxs] = frame_timestamp
+            
+            # Special case: snap too far in the future point timestamps to last valid end-of-frame timestamp
+            elif continuos_frame_index == num_frames_global - 1:
+                future_idxs = timestamps > self.poses_timestamps[-1]
+
+                if np.any(future_idxs):
+                    logger.info("> snapping out-of-range point timestamps of *last* spins to end of egomotion")
+                    timestamps[future_idxs] = frame_timestamp
+
+            # Determine unique timestamps to only perform actually required pose interpolations (a lot of points share the same timestamp)
+            timestamps_unique, unique_timestamps_reverse_idxs = np.unique(timestamps, return_inverse=True)
 
             # Lidar to world poses for each point (will throw in case invalid timestamps are loaded)
-            xyz_s = pose_interpolator.interpolate_to_timestamps(timestamps) @ T_lidar_rig
+            xyz_s = pose_interpolator.interpolate_to_timestamps(timestamps_unique) @ T_lidar_rig
 
-            # Pick lidar to world positions for each point
-            xyz_s = xyz_s[:, 0:3, -1]  # N x 3
+            # Pick lidar to world positions for each point (blow up to original potentially non-unique timestamp range)
+            xyz_s = xyz_s[unique_timestamps_reverse_idxs, 0:3, -1]  # N x 3
         else:
             if continuos_frame_index == 0:  # Warn once in first iteration only
                 logger.warn('> no lidar point timestamps available (missing \'timestamp_lo\' / '
