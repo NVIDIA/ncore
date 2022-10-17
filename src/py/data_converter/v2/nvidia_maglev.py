@@ -598,15 +598,15 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         # Serialize lidar frame
         self.data_writer.store_lidar_frame(lidar_id,
-                                            continuos_frame_index,
-                                            xyz_s,
-                                            xyz_e,
-                                            intensity,
-                                            timestamp,
-                                            dynamic_flag,
-                                            frame_labels,
-                                            T_rig_worlds,
-                                            timestamps_us)
+                                           continuos_frame_index,
+                                           xyz_s,
+                                           xyz_e,
+                                           intensity,
+                                           timestamp,
+                                           dynamic_flag,
+                                           frame_labels,
+                                           T_rig_worlds,
+                                           timestamps_us)
 
         time_store = timer.elapsed_sec(restart = True)
 

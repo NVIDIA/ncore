@@ -4,7 +4,6 @@ import json
 import base64
 import logging
 import os
-import bisect
 import hashlib
 
 import tqdm
@@ -22,6 +21,7 @@ from src.protos.deepmap import transform_pb2, camera_calibration_pb2
 from src.py.common.common import PoseInterpolator, MaskImage
 from src.cpp.av_utils import isWithin3DBBox
 from src.py.common.transformations import euler_2_so3, transform_point_cloud, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
+from src.py.data_converter.v2.data import FrameLabel3, BBox3, TrackLabel, DynamicFlagState
 
 def extract_sensor_2_sdc(file_path):
     ''' Extract the sensor to self driving car (SDC) rig transformation parameters 
@@ -575,7 +575,7 @@ class LabelProcessorV2(LabelProcessor):
 
         # TODO: check if this user-defined velocity threshold makes sense
         global_speed_dynamic_threshold: float = LabelProcessor.GLOBAL_SPEED_DYNAMIC_THRESHOLD
-    ) -> Tuple[dict, dict]:
+    ) -> Tuple[dict[str, TrackLabel], dict[str, dict[int, list[FrameLabel3]]]]:
         """Parses a labels file for label tracks and per-frame labels.
 
         Supports labels in
@@ -592,8 +592,8 @@ class LabelProcessorV2(LabelProcessor):
         """
 
         # Initialize labels struct for current lidar
-        track_labels : dict[str, dict] = {} # track_labels[track_id] contains 'dynamic_flag' and set of sensors observed the track (with their individual timestamps)
-        frame_labels : dict[str, dict] = {} # [label-properties] in frame_labels[<sensor-id>][frame_timestamp_us]
+        track_labels: dict[str, TrackLabel] = {}  # {TrackLabel} in track_labels[track_id]
+        frame_labels: dict[str, dict[int, list[FrameLabel3]]] = {}  # [FrameLabel3] in frame_labels[<sensor-id>][frame_timestamp_us]
 
         # TODO: add format selection once multiple different formats need to be supported (not required currently for single-format)
 
@@ -609,7 +609,17 @@ class LabelProcessorV2(LabelProcessor):
         if start_timestamp_us:
             label_data = label_data[label_data['timestamp'].ge(start_timestamp_us)]  # all of the rows with start-timestamp <= timestamp <= end-timestamp | yapf: disable
 
-        # Load overwrites from environment variable DSAI_LABEL_TRACKIDS_FORCE_STATIC in the format DSAI_LABEL_TRACKIDS_FORCE_STATIC='0286dd552c9bea9a69ecb3759e7b94777635514b 0716d9708d321ffb6a00818614779e779925365c' (white-space separated IDs)
+        # Restrict to columns of interest to reduce memory usage (around 70% data reduction)
+        label_data = label_data[[
+            'label_name', 'sensor_name', 'gt_trackline_id', 'timestamp', 'label_id', 'velocity_x', 'velocity_y',
+            'velocity_z', 'centroid_x', 'centroid_y', 'centroid_z', 'dim_x', 'dim_y', 'dim_z', 'rot_x', 'rot_y', 'rot_z'
+        ]]
+
+        # Sort labels by timestamp to guarantee timestamp-sorted tracks
+        label_data.sort_values(by=['timestamp'], inplace=True)
+
+        # Load overwrites from environment variable DSAI_LABEL_TRACKIDS_FORCE_STATIC
+        # in the format DSAI_LABEL_TRACKIDS_FORCE_STATIC='0286dd552c9bea9a69ecb3759e7b94777635514b 0716d9708d321ffb6a00818614779e779925365c' (white-space separated IDs)
         trackids_force_static = set([int(id) for id in os.environ.get('DSAI_LABEL_TRACKIDS_FORCE_STATIC', '').split()])
 
         for row in tqdm.tqdm(label_data.itertuples(), total=len(label_data)):
@@ -617,11 +627,11 @@ class LabelProcessorV2(LabelProcessor):
                 logger.warn(f"> unhandled label type {row.label_name}")
                 continue
 
+            # load relevant label data
             sensor_id = row.sensor_name
             track_id = hashlib.sha1(str(row.gt_trackline_id).encode()).hexdigest()
             label_timestamp_us = int(row.timestamp)
             label_id = row.label_id
-            confidence = row.confidence
 
             # this is assuming velocity is not relative to the local sensor motion, but w.r.t. fixed scene / world
             global_speed = np.linalg.norm([row.velocity_x, row.velocity_y, row.velocity_z])
@@ -633,48 +643,39 @@ class LabelProcessorV2(LabelProcessor):
             if label_timestamp_us not in frame_labels[sensor_id]:
                 frame_labels[sensor_id][label_timestamp_us] = []
 
-            frame_labels[sensor_id][label_timestamp_us].append({
-                'label_id': label_id,
-                'track_id': track_id,
-                'label_type': row.label_name,
-                # cuboid in sensor frame
-                '3D_bbox': {
-                    'centroid': [row.centroid_x, row.centroid_y, row.centroid_z],
-                    'dims': [
-                        row.dim_x,
-                        row.dim_y,
-                        row.dim_z,
-                    ],
-                    'rot': [
-                        row.rot_x,
-                        row.rot_y,
-                        row.rot_z,
-                    ],
-
-                },
-                # TODO: add velocity to per-label data once coordinate frame is verified
-                'global_speed': global_speed,
-                'confidence': confidence,
-            })
+            frame_labels[sensor_id][label_timestamp_us].append(
+                FrameLabel3(label_id=label_id,
+                            track_id=track_id,
+                            label_type=row.label_name,
+                            global_speed=global_speed,
+                            bbox3=BBox3(centroid=(row.centroid_x, row.centroid_y, row.centroid_z),
+                                        dim=(row.dim_x, row.dim_y, row.dim_z),
+                                        rot=(
+                                            row.rot_x,
+                                            row.rot_y,
+                                            row.rot_z,
+                                        ))))
 
             # store track label data
             if track_id not in track_labels:
-                track_labels[track_id] = {}
-                track_labels[track_id]['dynamic_flag'] = True if row.label_name in cls.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else False
-                track_labels[track_id]['sensors'] = {}
+                track_labels[track_id] = TrackLabel(
+                    dynamic_flag=True if row.label_name in cls.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else False,
+                    sensors={})
 
-            if sensor_id not in track_labels[track_id]['sensors']:
-                track_labels[track_id]['sensors'][sensor_id] = []
+            if sensor_id not in track_labels[track_id].sensors:
+                track_labels[track_id].sensors[sensor_id] = []
 
-            # inserted frame timestamp into *sorted* list
-            bisect.insort(track_labels[track_id]['sensors'][sensor_id], label_timestamp_us)
+            # append frame timestamp into *sorted* list (rows are processed sorted by timestamp)
+            track_labels[track_id].sensors[sensor_id].append(label_timestamp_us)
 
             if row.label_name not in cls.LABEL_STRINGS_UNCONDITIONALLY_STATIC and global_speed >= global_speed_dynamic_threshold:
-                track_labels[track_id]['dynamic_flag'] = True
+                track_labels[track_id].dynamic_flag = True
 
             if track_id in trackids_force_static:
-                logger.debug(f'> forcing track_id={track_id} to be static (timestamp={label_timestamp_us}, estimated global_speed={global_speed})')
-                track_labels[track_id]['dynamic_flag'] = False
+                logger.debug(
+                    f'> forcing track_id={track_id} to be static (timestamp={label_timestamp_us}, estimated global_speed={global_speed})'
+                )
+                track_labels[track_id].dynamic_flag = False
 
         return track_labels, frame_labels
 
@@ -684,9 +685,9 @@ class LabelProcessorV2(LabelProcessor):
                            sensor_id: str, # sensor id
                            xyz: np.array,  # points in sensor frame
                            frame_timestamp_us: int,
-                           track_labels: dict[int, dict],
-                           frame_labels: dict[str, dict],
-                           skip_dynamic_flag: bool = False) -> Tuple[np.array, dict]:
+                           track_labels: dict[str, TrackLabel],
+                           frame_labels: dict[str, dict[int, list[FrameLabel3]]],
+                           skip_dynamic_flag: bool = False) -> Tuple[np.array, list[FrameLabel3]]:
         """ Computes per-point lidar dynamic flag by intersecting frame-associated bounding boxes of dynamic objects"""
 
         assert xyz.shape[1] == 3, "wrong point cloud shape"
@@ -694,28 +695,28 @@ class LabelProcessorV2(LabelProcessor):
         point_count = xyz.shape[0]
 
         # Initialize dynamic flag
-        dynamic_flag = np.full(
+        dynamic_flag : np.array = np.full(
             point_count,
             # initialize dynamic_flag to -1 if there are no labels at all
-            0 if len(frame_labels) and not skip_dynamic_flag else -1,
+            DynamicFlagState.STATIC.value if len(frame_labels) and not skip_dynamic_flag else DynamicFlagState.NOT_AVAILABLE.value,
             dtype=np.int8)  # N x 1
 
         # Incorporate labels, if available
-        current_frame_labels = frame_labels.get(sensor_id, {}).get(frame_timestamp_us, {}) # returns empty dict if no annotations available for this frame
+        current_frame_labels: list[FrameLabel3] = frame_labels.get(sensor_id, {}).get(frame_timestamp_us, []) # returns empty dict if no annotations available for this frame
 
         # Use the bounding boxes to remove dynamic objects / set dynamic flag
         for frame_label in current_frame_labels:
             # If the object is classified to be dynamic update the points that fall in that bounding box
-            if track_labels[frame_label['track_id']]['dynamic_flag']:
+            if track_labels[frame_label.track_id].dynamic_flag:
                 if skip_dynamic_flag:
                     # skip dynamic flag computation (but still execute loop for potential statistics)
                     continue
-                bbox = np.array(frame_label['3D_bbox']['centroid'] + frame_label['3D_bbox']['dims'] +
-                                frame_label['3D_bbox']['rot'],
+                bbox = np.array(frame_label.bbox3.centroid + frame_label.bbox3.dim +
+                                frame_label.bbox3.rot,
                                 dtype=np.float32)
                 # enlarge the bounding box for the check *only*
                 bbox[3:6] += cls.LIDAR_DYNAMIC_FLAG_BBOX_PADDING  # TODO: make sure this parameter is tuned sensibly
-                dynamic_flag[isWithin3DBBox(xyz, bbox.reshape(1, -1))] = 1
+                dynamic_flag[isWithin3DBBox(xyz, bbox.reshape(1, -1))] = DynamicFlagState.DYNAMIC.value
 
         return dynamic_flag, current_frame_labels
 
