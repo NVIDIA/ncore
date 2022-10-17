@@ -17,14 +17,14 @@ from src.py.data_converter.v2.data import DataLoader, PointCloudSensor
 
 
 @click.command()
-@click.option('--root-dir', type=str, help='Path to the preprocessed sequence.', required=True)
-@click.option('--sensor-id', type=str, help='Sensor to construct surface from', required=True)
+@click.option('--root-dir', type=str, help='Path to the preprocessed sequence', required=True)
+@click.option('--sensor-id', type=str, help='Sensor to construct surface from', default='lidar_gt_top_p128_v4p5')
 @click.option(
     '--output-dir',
     type=str,
     help='Path to the output folder (will output into \'source-folder/reconstructed_surface\' if not provided)',
     default=None)
-@click.option('--output-filename', type=str, help='Name of the ouputfile.', default="reconstructed_mesh")
+@click.option('--output-filename', type=str, help='Name of the output file', default="reconstructed_mesh")
 @click.option('--start-frame',
               type=click.IntRange(min=0, max_open=True),
               help='Initial frame to be use',
