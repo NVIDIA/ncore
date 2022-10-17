@@ -15,26 +15,31 @@ from typing import Optional, Union
 from dataclasses import dataclass
 from dataclasses_json import DataClassJsonMixin
 
-# Constants
+
+## Constants
 VERSION = '2.0.0'
 INDEX_DIGITS = 6  # the number of integer digits to pad counters in output filenames
 CAMERAS_BASE_DIR = 'cameras'
 LIDARS_BASE_DIR = 'lidars'
 RADARS_BASE_DIR = 'lidars'
 
-# Helper types and functions
+
+## Helper types and functions
 class FrameTimepoint(Enum):
-    """ Enumerates special timepoints within a frame """
+    ''' Enumerates special timepoints within a frame '''
     START = 0
     END = 1
 
 
-def padded_index_string(index: int) -> str:
-    return str(index).zfill(INDEX_DIGITS)
+def padded_index_string(index: int, index_digits=INDEX_DIGITS) -> str:
+    ''' Pads an integer with leading zeros to a fixed number of digits '''
+    return str(index).zfill(index_digits)
 
 
+## Data classes representing stored data types
 @dataclass
 class CameraModel:
+    ''' Represents properties common to all camera models '''
     resolution: list[int]
     rolling_shutter_direction: str
     exposure_time_us: int
@@ -49,6 +54,7 @@ class CameraModel:
 
 @dataclass
 class FThetaCameraModel(CameraModel, DataClassJsonMixin):
+    ''' Represents FTheta-specific camera model parameters '''
     principal_point: list[float]
     bw_poly: list[float]
     fw_poly: list[float]
@@ -80,6 +86,8 @@ class FThetaCameraModel(CameraModel, DataClassJsonMixin):
 
 @dataclass
 class PinholeCameraModel(CameraModel, DataClassJsonMixin):
+    ''' Represents a Pinhole-specific camera model parameters '''
+
     principal_point: list[float]
     focal_length_u: float
     focal_length_v: float
@@ -102,6 +110,7 @@ class PinholeCameraModel(CameraModel, DataClassJsonMixin):
 
 @dataclass
 class Poses:
+    ''' Represents a collection of timestamped poses (rig-to-local-world transformation) '''
     T_rig_world_base: np.array
     T_rig_worlds: np.array
     T_rig_world_timestamps_us: np.array
