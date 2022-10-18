@@ -43,7 +43,7 @@ def run_instance_segmentation(imgs: list):
         input_dir, img_name = os.path.split(image_path)
         img_name = img_name.split('.')[0]
         save_path = Path(os.path.join(input_dir,f"{img_name}_inst")).with_suffix('.hdf5')
-        with h5py.File(Path(save_path).with_suffix('.hdf5'), "w") as f:
+        with h5py.File(str(save_path), "w") as f:
             COMPRESSION = 'lzf'
             f.create_dataset('car_bbox', data=car_bbox, compression=COMPRESSION)
             f.create_dataset('car_mask', data=car_mask, compression=COMPRESSION)
