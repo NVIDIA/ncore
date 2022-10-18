@@ -612,7 +612,8 @@ class LabelProcessorV2(LabelProcessor):
         # Restrict to columns of interest to reduce memory usage (around 70% data reduction)
         label_data = label_data[[
             'label_name', 'sensor_name', 'gt_trackline_id', 'timestamp', 'label_id', 'velocity_x', 'velocity_y',
-            'velocity_z', 'centroid_x', 'centroid_y', 'centroid_z', 'dim_x', 'dim_y', 'dim_z', 'rot_x', 'rot_y', 'rot_z'
+            'velocity_z', 'centroid_x', 'centroid_y', 'centroid_z', 'dim_x', 'dim_y', 'dim_z', 'rot_x', 'rot_y',
+            'rot_z', 'confidence'
         ]]
 
         # Sort labels by timestamp to guarantee timestamp-sorted tracks
@@ -646,8 +647,9 @@ class LabelProcessorV2(LabelProcessor):
             frame_labels[sensor_id][label_timestamp_us].append(
                 FrameLabel3(label_id=label_id,
                             track_id=track_id,
-                            label_type=row.label_name,
+                            label_class=row.label_name,
                             global_speed=global_speed,
+                            confidence=row.confidence,
                             bbox3=BBox3(centroid=(row.centroid_x, row.centroid_y, row.centroid_z),
                                         dim=(row.dim_x, row.dim_y, row.dim_z),
                                         rot=(
@@ -711,9 +713,7 @@ class LabelProcessorV2(LabelProcessor):
                 if skip_dynamic_flag:
                     # skip dynamic flag computation (but still execute loop for potential statistics)
                     continue
-                bbox = np.array(frame_label.bbox3.centroid + frame_label.bbox3.dim +
-                                frame_label.bbox3.rot,
-                                dtype=np.float32)
+                bbox = frame_label.bbox3.to_array()
                 # enlarge the bounding box for the check *only*
                 bbox[3:6] += cls.LIDAR_DYNAMIC_FLAG_BBOX_PADDING  # TODO: make sure this parameter is tuned sensibly
                 dynamic_flag[isWithin3DBBox(xyz, bbox.reshape(1, -1))] = DynamicFlagState.DYNAMIC.value

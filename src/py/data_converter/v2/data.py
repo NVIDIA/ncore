@@ -136,15 +136,20 @@ class BBox3(DataClassJsonMixin):
     dim: Tuple[float, float, float]
     rot: Tuple[float, float, float]
 
+    def to_array(self) -> np.array:
+        ''' Convenience single-array representation '''
+        return np.array(self.centroid + self.dim + self.rot, dtype=np.float32)
+
 
 @dataclass
 class FrameLabel3(DataClassJsonMixin):
     ''' Description of a 3D frame-associated label '''
     label_id: str
     track_id: str
-    label_type: str
+    label_class: str
     bbox3: BBox3
     global_speed: float
+    confidence: float
 
 
 @dataclass
@@ -410,12 +415,12 @@ class Sensor:
 
     def get_frame_index_range(self, start_frame :int = 0, end_frame : int = -1, step_frame : int = 1) -> range:
         ''' Returns a specific range of frame indices following range(start,end,step) conventions '''
-        
+
         if end_frame == -1:
             end_frame = self.get_frames_count()
 
         assert start_frame >= 0 and end_frame <= self.get_frames_count(), IndexError
-        
+
         return range(start_frame, end_frame, step_frame)
 
     def get_frames_timestamps_us(self) -> np.array:
@@ -462,7 +467,12 @@ class PointCloudSensor(Sensor):
 
 class LidarSensor(PointCloudSensor):
     ''' Provides access to lidar-specific sensor-data '''
-    pass
+    def get_frame_labels(self, continous_frame_index: int) -> list[FrameLabel3]:
+        ''' Returns frame-labels for a specific frame '''
+
+        with open(self._sensor_dir / (padded_index_string(continous_frame_index) + '.json'), 'r') as f:
+            j = json.load(f)
+            return [FrameLabel3.from_dict(frame_label) for frame_label in j['frame_labels']]
 
 
 class RadarSensor(PointCloudSensor):

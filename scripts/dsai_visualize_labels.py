@@ -52,7 +52,7 @@ def visualize_labels(root_dir, start_frame, end_frame, step_frame):
 
         # Import the point cloud and add it to the visualizer
         pc_data = load_pc_dat(lidar_file)     
-        viz.add_pc(pc_data, T_world_lidar, frame_id=frame_id)
+        viz.add_pc(pc_data, T_world_lidar, frame_id)
 
         # Import the labels and add them to the viz
         labels = load_pkl(label_file)
