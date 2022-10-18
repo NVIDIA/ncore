@@ -66,8 +66,8 @@ class LabelVisualizer:
     COLOR_MAP_LABELS = cm.get_cmap('tab20')
 
     # TODO: currently only works for NVIDIA classes, we should add Waymo support
-    LABELTYPE_STRING_TO_LABELTYPE_ID = NvidiaLabelProcessor.LABELTYPE_STRING_TO_LABELTYPE_ID
-    LABELTYPE_ID_TO_LABELTYPE_STRING = NvidiaLabelProcessor.LABELTYPE_ID_TO_LABELTYPE_STRING
+    LABELCLASS_STRING_TO_LABELCLASS_ID = NvidiaLabelProcessor.LABELCLASS_STRING_TO_LABELCLASS_ID
+    LABELCLASS_ID_TO_LABELCLASS_STRING = NvidiaLabelProcessor.LABELCLASS_ID_TO_LABELCLASS_STRING
 
     def __init__(self) -> None:
         """ 
@@ -81,7 +81,7 @@ class LabelVisualizer:
 
         # Initialize the classes
         self.lut = ml3d.vis.LabelLUT()
-        for id, (key, value) in enumerate(self.LABELTYPE_STRING_TO_LABELTYPE_ID.items()):
+        for id, (key, value) in enumerate(self.LABELCLASS_STRING_TO_LABELCLASS_ID.items()):
             self.lut.add_label(value, key, self.COLOR_MAP_LABELS(id)[:3])
 
     @multimethod  # V1 data
@@ -118,7 +118,7 @@ class LabelVisualizer:
         # Iterate over the labels and add them to the visualizer
         for label in labels['lidar_labels']:
             self._add_bbox(bbox=label['3D_bbox'],
-                           label_type=self.LABELTYPE_ID_TO_LABELTYPE_STRING[label['label']],
+                           label_class=self.LABELCLASS_ID_TO_LABELCLASS_STRING[label['label']],
                            identifier=str(label['track_id']))
 
     @add_labels.register()  # V2 data
@@ -126,11 +126,11 @@ class LabelVisualizer:
         ''' Registers frame-label bounding boxes (V2 data) '''
         for frame_label in frame_labels:
             self._add_bbox(bbox=frame_label.bbox3.to_array(),
-                           label_type=frame_label.label_class,
+                           label_class=frame_label.label_class,
                            identifier=frame_label.track_id,
                            confidence=frame_label.confidence)
 
-    def _add_bbox(self, bbox: np.ndarray, label_type: str, identifier: str, confidence: float = 1.0) -> None:
+    def _add_bbox(self, bbox: np.ndarray, label_class: str, identifier: str, confidence: float = 1.0) -> None:
         # TODO: This orientation seems correct to me, but we should double check it as the definition is weird
 
         orientation = R.from_euler('xyz', bbox[6:9], degrees=False).as_matrix()
@@ -140,7 +140,7 @@ class LabelVisualizer:
                                    up=orientation[:, 2],
                                    left=orientation[:, 1],
                                    size=np.array([bbox[4], bbox[5], bbox[3]]),
-                                   label_class=label_type,
+                                   label_class=label_class,
                                    confidence=confidence,
                                    identifier=identifier))
 

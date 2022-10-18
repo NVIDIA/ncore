@@ -372,7 +372,7 @@ def camera_car_mask(sensor, scale_to_source_resolution=True):
 class LabelProcessor:
     """ Base class providing facilities to parse / process NV labels into common DSAI format """
 
-    LABELTYPE_STRING_TO_LABELTYPE_ID: dict[str, int] = {
+    LABELCLASS_STRING_TO_LABELCLASS_ID: dict[str, int] = {
         'unknown': 0,
         'automobile': 1,
         'pedestrian': 2,
@@ -393,7 +393,7 @@ class LabelProcessor:
         'cycle': 17,
     }
 
-    LABELTYPE_ID_TO_LABELTYPE_STRING: dict[int, str] = {v: k for k, v in LABELTYPE_STRING_TO_LABELTYPE_ID.items()}
+    LABELCLASS_ID_TO_LABELCLASS_STRING: dict[int, str] = {v: k for k, v in LABELCLASS_STRING_TO_LABELCLASS_ID.items()}
 
     LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC: set[str] = set(
         ['pedestrian', 'stroller', 'person', 'person_group', 'rider', 'bicycle_with_rider', 'bicycle', 'CYCLIST', 'motorcycle', 'motorcycle_with_rider', 'cycle'])
@@ -457,7 +457,7 @@ class LabelProcessorV1(LabelProcessor):
         trackids_force_static = set([int(id) for id in os.environ.get('DSAI_LABEL_TRACKIDS_FORCE_STATIC','').split()])
 
         for row in tqdm.tqdm(label_data.itertuples(), total=len(label_data)):
-            if row.label_name in cls.LABELTYPE_STRING_TO_LABELTYPE_ID.keys():
+            if row.label_name in cls.LABELCLASS_STRING_TO_LABELCLASS_ID.keys():
 
                 track_id = int(row.gt_trackline_id)
                 label_timestamp_us = int(row.timestamp)
@@ -487,7 +487,7 @@ class LabelProcessorV1(LabelProcessor):
                     'track_id':
                     track_id,
                     'label':
-                    cls.LABELTYPE_STRING_TO_LABELTYPE_ID[row.label_name],
+                    cls.LABELCLASS_STRING_TO_LABELCLASS_ID[row.label_name],
                     '3D_bbox':
                     cuboid,
                     'num_points':
@@ -506,7 +506,7 @@ class LabelProcessorV1(LabelProcessor):
                     labels['3d_labels'][track_id] = {}
                     labels['3d_labels'][track_id][
                         'dynamic_flag'] = 1 if row.label_name in cls.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else 0
-                    labels['3d_labels'][track_id]['type'] = cls.LABELTYPE_STRING_TO_LABELTYPE_ID[row.label_name]
+                    labels['3d_labels'][track_id]['type'] = cls.LABELCLASS_STRING_TO_LABELCLASS_ID[row.label_name]
                     labels['3d_labels'][track_id]['lidar'] = {}
 
                 labels['3d_labels'][track_id]['lidar'][label_timestamp_us] = {
@@ -524,7 +524,7 @@ class LabelProcessorV1(LabelProcessor):
                     labels['3d_labels'][track_id]['dynamic_flag'] = 0
 
             else:
-                logger.warn(f"> unhandled label type {row.label_name}")
+                logger.warn(f"> unhandled label class {row.label_name}")
 
         return labels, frame_labels
 
@@ -624,15 +624,15 @@ class LabelProcessorV2(LabelProcessor):
         trackids_force_static = set([int(id) for id in os.environ.get('DSAI_LABEL_TRACKIDS_FORCE_STATIC', '').split()])
 
         for row in tqdm.tqdm(label_data.itertuples(), total=len(label_data)):
-            if not row.label_name in cls.LABELTYPE_STRING_TO_LABELTYPE_ID.keys():
-                logger.warn(f"> unhandled label type {row.label_name}")
+            if not row.label_name in cls.LABELCLASS_STRING_TO_LABELCLASS_ID.keys():
+                logger.warn(f"> unhandled label class {row.label_name}")
                 continue
 
             # load relevant label data
             sensor_id = row.sensor_name
             track_id = hashlib.sha1(str(row.gt_trackline_id).encode()).hexdigest()
             label_timestamp_us = int(row.timestamp)
-            label_id = row.label_id
+            label_class = row.label_name
 
             # this is assuming velocity is not relative to the local sensor motion, but w.r.t. fixed scene / world
             global_speed = np.linalg.norm([row.velocity_x, row.velocity_y, row.velocity_z])
@@ -645,9 +645,9 @@ class LabelProcessorV2(LabelProcessor):
                 frame_labels[sensor_id][label_timestamp_us] = []
 
             frame_labels[sensor_id][label_timestamp_us].append(
-                FrameLabel3(label_id=label_id,
+                FrameLabel3(label_id=row.label_id,
                             track_id=track_id,
-                            label_class=row.label_name,
+                            label_class=label_class,
                             global_speed=global_speed,
                             confidence=row.confidence,
                             bbox3=BBox3(centroid=(row.centroid_x, row.centroid_y, row.centroid_z),
@@ -661,7 +661,7 @@ class LabelProcessorV2(LabelProcessor):
             # store track label data
             if track_id not in track_labels:
                 track_labels[track_id] = TrackLabel(
-                    dynamic_flag=True if row.label_name in cls.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else False,
+                    dynamic_flag=True if label_class in cls.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else False,
                     sensors={})
 
             if sensor_id not in track_labels[track_id].sensors:
@@ -670,7 +670,7 @@ class LabelProcessorV2(LabelProcessor):
             # append frame timestamp into *sorted* list (rows are processed sorted by timestamp)
             track_labels[track_id].sensors[sensor_id].append(label_timestamp_us)
 
-            if row.label_name not in cls.LABEL_STRINGS_UNCONDITIONALLY_STATIC and global_speed >= global_speed_dynamic_threshold:
+            if label_class not in cls.LABEL_STRINGS_UNCONDITIONALLY_STATIC and global_speed >= global_speed_dynamic_threshold:
                 track_labels[track_id].dynamic_flag = True
 
             if track_id in trackids_force_static:
