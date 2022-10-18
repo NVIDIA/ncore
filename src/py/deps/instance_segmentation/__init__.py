@@ -35,13 +35,15 @@ def run_instance_segmentation(imgs: list):
     predictor = DefaultPredictor(cfg)
 
     for image_path in tqdm(imgs):
-        img_name = os.path.basename(image_path).split('.')[0]
         input_img = cv2.imread(image_path)
         output = predictor(input_img)
         car_bbox = output['instances'].pred_boxes.tensor[output['instances'].pred_classes==2].cpu().numpy()
         car_mask = output['instances'].pred_masks[output['instances'].pred_classes==2].cpu().numpy()
 
-        with h5py.File(Path(image_path.replace(img_name, f"{img_name}_inst")).with_suffix('.hdf5'), "w") as f:
+        input_dir, img_name = os.path.split(image_path)
+        img_name = img_name.split('.')[0]
+        save_path = Path(os.path.join(input_dir,f"{img_name}_inst")).with_suffix('.hdf5')
+        with h5py.File(Path(save_path).with_suffix('.hdf5'), "w") as f:
             COMPRESSION = 'lzf'
             f.create_dataset('car_bbox', data=car_bbox, compression=COMPRESSION)
             f.create_dataset('car_mask', data=car_mask, compression=COMPRESSION)
