@@ -42,6 +42,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         self.shard_id : int = config.shard_id
         self.shard_count : int = config.shard_count
+        self.shard_meta: bool = config.shard_meta
 
         self.symlink_camera_frames : bool = config.symlink_camera_frames
         self.compress_lidar : bool = config.compress_lidar
@@ -114,6 +115,12 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Create all output folders
         self.create_folders(self.session_id)
 
+        if self.shard_meta:
+            # Store per-shard meta data / initial success state
+            with open(os.path.join(self.output_dir, self.session_id, f'shard-meta-{str(self.shard_id).zfill(4)}.json'),
+                      'w') as outfile:
+                json.dump({'shard-id': self.shard_id, 'shard-count': self.shard_count, 'successful': False}, outfile)
+
         # Decode data from maglev
         self.decode_poses()
 
@@ -122,6 +129,12 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.decode_cameras()
 
         self.decode_lidar()
+
+        if self.shard_meta:
+            # Store per-shard meta data / final success state
+            with open(os.path.join(self.output_dir, self.session_id, f'shard-meta-{str(self.shard_id).zfill(4)}.json'),
+                      'w') as outfile:
+                json.dump({'shard-id': self.shard_id, 'shard-count': self.shard_count, 'successful': True}, outfile)
 
         return [self.session_id]
 
@@ -543,7 +556,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 if np.any(past_idxs):
                     logger.info("> snapping out-of-range point timestamps of *initial* spin to start of egomotion")
                 timestamps[past_idxs] = frame_timestamp
-            
+
             # Special case: snap too far in the future point timestamps to last valid end-of-frame timestamp
             elif continuos_frame_index == num_frames_global - 1:
                 future_idxs = timestamps > self.poses_timestamps[-1]

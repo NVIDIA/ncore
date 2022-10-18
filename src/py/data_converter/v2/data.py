@@ -384,6 +384,9 @@ class DataWriter():
         with open(self.sequence_output_dir / 'meta.json', 'w') as outfile:
             outfile.write(json.dumps(output))
 
+    def store_shard_meta(self, shard_id: int, shard_count: int, successful: bool) -> None:
+        with open(self.sequence_output_dir / f'shard-meta-{padded_index_string(shard_id, index_digits=4)}.json', 'w') as outfile:
+            json.dump({'shard-id': shard_id, 'shard-count': shard_count, 'successful': successful}, outfile)
 
 class Sensor:
     ''' Provides access to generic data available to all sensor types '''
