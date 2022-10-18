@@ -5,17 +5,25 @@ load("@rules_python//python:defs.bzl", "py_library")
 package(default_visibility = ["//visibility:public"])
 
 py_library(
+    name = "pylib_data",
+    srcs = [
+        "data.py",
+    ],
+    deps = [
+        requirement("h5py"),
+        requirement("dataclasses-json"),
+    ],
+)
+
+py_library(
     name = "pylib",
     srcs = [
         "data_converter.py",
-        "data.py",
-        # "data_loader.py",
         "nvidia_maglev.py",
     ],
     deps = [
+        ":pylib_data",
         "//src/py/common:pylib",
-        requirement("h5py"),
-        requirement("dataclasses-json"),
     ],
 )
 

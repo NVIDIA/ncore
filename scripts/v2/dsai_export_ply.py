@@ -16,7 +16,7 @@ from src.py.data_converter.v2.data import DataLoader, LidarSensor, PointCloudSen
 
 @click.command()
 @click.option('--root-dir', type=str, help='Path to the preprocessed sequence', required=True)
-@click.option('--sensor-id', type=str, help='Sensor to export ply files for', required=True)
+@click.option('--sensor-id', type=str, help='Sensor to export ply files for', default='lidar_gt_top_p128_v4p5')
 @click.option('--output-dir',
               type=str,
               help='Path to the output folder (will output into source folder if not provided)',
