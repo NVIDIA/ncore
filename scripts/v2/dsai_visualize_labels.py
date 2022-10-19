@@ -32,7 +32,8 @@ def dsai_visualize_labels(root_dir, sensor_id, start_frame, end_frame, step_fram
 
         # Import the point cloud and add it to the visualizer
         viz.add_pc(sensor.get_frame_data(frame_index, 'xyz_e'), sensor.get_frame_data(frame_index, 'intensity'),
-                   sensor.get_frame_data(frame_index, 'dynamic_flag'), frame_index)
+                   sensor.get_frame_data(frame_index, 'dynamic_flag'), sensor.get_frame_data(frame_index, 'timestamp'),
+                   frame_index)
 
         viz.add_labels(sensor.get_frame_labels(frame_index))
 
