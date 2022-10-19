@@ -12,6 +12,8 @@ py_library(
     deps = [
         requirement("h5py"),
         requirement("dataclasses-json"),
+        requirement("pillow"),
+        requirement("marshmallow"),
     ],
 )
 
