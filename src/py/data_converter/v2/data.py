@@ -12,16 +12,17 @@ from PIL.Image import Image
 
 from pathlib import Path
 from typing import Optional, Tuple, Union
-from dataclasses import dataclass
-from dataclasses_json import DataClassJsonMixin
 
+from dataclasses import dataclass, field
+import dataclasses_json
+import marshmallow
 
 ## Constants
 VERSION = '2.0.0'
 INDEX_DIGITS = 6  # the number of integer digits to pad counters in output filenames
 CAMERAS_BASE_DIR = 'cameras'
 LIDARS_BASE_DIR = 'lidars'
-RADARS_BASE_DIR = 'lidars'
+RADARS_BASE_DIR = 'radars'
 
 
 ## Helper types and functions
@@ -36,29 +37,41 @@ def padded_index_string(index: int, index_digits=INDEX_DIGITS) -> str:
     return str(index).zfill(index_digits)
 
 
+def numpy_array_field(datatype: np.dtype, default=None):
+    ''' Provides encoder / decoder functionality for numpy arrays into dataclass JSON-compatible types'''
+    def decoder(*args, **kwargs):
+        return np.array(*args, dtype=datatype, **kwargs)
+
+    return field(default=default,
+                 metadata=dataclasses_json.config(encoder=np.ndarray.tolist,
+                                                  decoder=decoder,
+                                                  mm_field=marshmallow.fields.List))
+
+
 ## Data classes representing stored data types
 @dataclass
 class CameraModel:
     ''' Represents properties common to all camera models '''
-    resolution: list[int]
-    rolling_shutter_direction: str
-    exposure_time_us: int
+    resolution: np.array = numpy_array_field(np.uint64)
+    rolling_shutter_direction: str = ''
+    exposure_time_us: int = 0
 
     def __post_init__(self):
         # Sanity checks
-        assert len(self.resolution) == 2
+        assert self.resolution.shape == (2, )
+        assert self.resolution.dtype == np.dtype('uint64')
         assert self.resolution[0] > 0 and self.resolution[1] > 0
         assert self.rolling_shutter_direction in ('TOP_TO_BOTTOM', 'LEFT_TO_RIGHT', 'BOTTOM_TO_TOP', 'RIGHT_TO_LEFT')
         assert self.exposure_time_us > 0
 
 
 @dataclass
-class FThetaCameraModel(CameraModel, DataClassJsonMixin):
+class FThetaCameraModel(CameraModel, dataclasses_json.DataClassJsonMixin):
     ''' Represents FTheta-specific camera model parameters '''
-    principal_point: list[float]
-    bw_poly: list[float]
-    fw_poly: list[float]
-    max_angle: float
+    principal_point: np.array = numpy_array_field(np.float32)
+    bw_poly: np.array = numpy_array_field(np.float32)
+    fw_poly: np.array = numpy_array_field(np.float32)
+    max_angle: float = 0.0
 
     @staticmethod
     def type() -> str:
@@ -69,33 +82,36 @@ class FThetaCameraModel(CameraModel, DataClassJsonMixin):
     def __post_init__(self):
         # Sanity checks
         super().__post_init__()
-        assert len(self.principal_point) == 2
+        assert self.principal_point.shape == (2, )
+        assert self.principal_point.dtype == np.dtype('float32')
         assert self.principal_point[0] > 0.0 and self.principal_point[1] > 0.0
 
-        # pad polynomials to full size
+        assert self.bw_poly.ndim == 1
         assert len(self.bw_poly) <= self.POLYNOMIAL_DEGREE
-        while len(self.bw_poly) < self.POLYNOMIAL_DEGREE:
-            self.bw_poly.append(0.0)
+        assert self.bw_poly.dtype == np.dtype('float32')
 
+        assert self.fw_poly.ndim == 1
         assert len(self.fw_poly) <= self.POLYNOMIAL_DEGREE
-        while len(self.fw_poly) < self.POLYNOMIAL_DEGREE:
-            self.fw_poly.append(0.0)
+        assert self.fw_poly.dtype == np.dtype('float32')
+
+        # pad polynomials to full size
+        self.bw_poly = np.pad(self.bw_poly, (0,self.POLYNOMIAL_DEGREE - len(self.bw_poly)), mode='constant', constant_values=0.0)
+        self.fw_poly = np.pad(self.fw_poly, (0,self.POLYNOMIAL_DEGREE - len(self.fw_poly)), mode='constant', constant_values=0.0)
 
         assert self.max_angle > 0.0
 
 
 @dataclass
-class PinholeCameraModel(CameraModel, DataClassJsonMixin):
+class PinholeCameraModel(CameraModel, dataclasses_json.DataClassJsonMixin):
     ''' Represents a Pinhole-specific camera model parameters '''
-
-    principal_point: list[float]
-    focal_length_u: float
-    focal_length_v: float
-    p1: float
-    p2: float
-    k1: float
-    k2: float
-    k3: float
+    principal_point: np.array = numpy_array_field(np.float32)
+    focal_length_u: float = 0.0
+    focal_length_v: float = 0.0
+    p1: float = 0.0
+    p2: float = 0.0
+    k1: float = 0.0
+    k2: float = 0.0
+    k3: float = 0.0
 
     @staticmethod
     def type() -> str:
@@ -104,8 +120,12 @@ class PinholeCameraModel(CameraModel, DataClassJsonMixin):
     def __post_init__(self):
         # Sanity checks
         super().__post_init__()
-        assert len(self.principal_point) == 2
+        assert self.principal_point.shape == (2, )
+        assert self.principal_point.dtype == np.dtype('float32')
         assert self.principal_point[0] > 0.0 and self.principal_point[1] > 0.0
+
+        assert self.focal_length_u > 0
+        assert self.focal_length_v > 0
 
 
 @dataclass
@@ -130,7 +150,7 @@ class Poses:
 
 
 @dataclass
-class BBox3(DataClassJsonMixin):
+class BBox3(dataclasses_json.DataClassJsonMixin):
     ''' Parameters of a 3D bounding-box '''
     centroid: Tuple[float, float, float]
     dim: Tuple[float, float, float]
@@ -142,7 +162,7 @@ class BBox3(DataClassJsonMixin):
 
 
 @dataclass
-class FrameLabel3(DataClassJsonMixin):
+class FrameLabel3(dataclasses_json.DataClassJsonMixin):
     ''' Description of a 3D frame-associated label '''
     label_id: str
     track_id: str
@@ -153,7 +173,7 @@ class FrameLabel3(DataClassJsonMixin):
 
 
 @dataclass
-class TrackLabel(DataClassJsonMixin):
+class TrackLabel(dataclasses_json.DataClassJsonMixin):
     ''' Description of an object-specific track '''
     dynamic_flag: bool
     sensors: dict[str, list[int]]  # all frame-timestamps of the object in different sensors
@@ -455,7 +475,12 @@ class Sensor:
 
 class CameraSensor(Sensor):
     ''' Provides access to camera-specific sensor-data '''
-    pass
+    def get_camera_model(self) -> Union[FThetaCameraModel, PinholeCameraModel]:
+        if self._sensor_meta.camera_model_type == 'ftheta':
+            return FThetaCameraModel.from_dict(self._sensor_meta.camera_model.__dict__)
+        if self._sensor_meta.camera_model_type == 'pinhole':
+            return PinholeCameraModel.from_dict(self._sensor_meta.camera_model.__dict__)
+        raise ValueError
 
 
 class PointCloudSensor(Sensor):
