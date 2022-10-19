@@ -164,4 +164,18 @@ py_binary(
     ],
 )
 
+
+py_binary(
+    name = "dsai_project_pc_to_img",
+    srcs = ["dsai_project_pc_to_img.py"],
+    deps = [
+        requirement("click"),
+        requirement("tqdm"),
+        requirement("numpy"),
+        "//src/py/common:pylib",
+        "//src/py/data_converter:pylib_data",
+        "//src/cpp/av_utils:pylib",
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")

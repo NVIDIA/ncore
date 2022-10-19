@@ -8,6 +8,7 @@ import lzma
 import io
 import os
 import time
+# import torch
 import numpy as np
 
 from enum import Enum
@@ -577,3 +578,147 @@ class Config(object):
             self.__dict__[key] = value
 
         return self
+
+
+# def rotmat_to_unitquat(R: torch.Tensor):
+#     """
+#     Converts rotation matrix to unit quaternion representation.
+
+#     Args:
+#         R (bsx3x3 torch.Tensor): batch of rotation matrices.
+
+#     Returns:
+#         batch of unit quaternions (bsx4 tensor, XYZW convention).
+#     """
+
+#     num_rotations, D1, D2 = R.shape
+#     assert((D1, D2) == (3,3)), "Input has to be a Bx3x3 tensor."
+
+#     decision_matrix = torch.empty((num_rotations, 4), dtype=R.dtype, device=R.device)
+#     quat = torch.empty((num_rotations, 4), dtype=R.dtype, device=R.device)
+
+#     decision_matrix[:, :3] = R.diagonal(dim1=1, dim2=2)
+#     decision_matrix[:, -1] = decision_matrix[:, :3].sum(axis=1)
+#     choices = decision_matrix.argmax(axis=1)
+
+#     ind = torch.nonzero(choices != 3, as_tuple=True)[0]
+#     i = choices[ind]
+#     j = (i + 1) % 3
+#     k = (j + 1) % 3
+
+#     quat[ind, i] = 1 - decision_matrix[ind, -1] + 2 * R[ind, i, i]
+#     quat[ind, j] = R[ind, j, i] + R[ind, i, j]
+#     quat[ind, k] = R[ind, k, i] + R[ind, i, k]
+#     quat[ind, 3] = R[ind, k, j] - R[ind, j, k]
+
+#     ind = torch.nonzero(choices == 3, as_tuple=True)[0]
+#     quat[ind, 0] = R[ind, 2, 1] - R[ind, 1, 2]
+#     quat[ind, 1] = R[ind, 0, 2] - R[ind, 2, 0]
+#     quat[ind, 2] = R[ind, 1, 0] - R[ind, 0, 1]
+#     quat[ind, 3] = 1 + decision_matrix[ind, -1]
+
+#     quat = quat / torch.norm(quat, dim=1)[:, None]
+
+#     return quat
+    
+# def unitquat_to_rotmat(quat):
+#     """
+#     Converts unit quaternion into rotation matrix representation.
+#     Args:
+#         quat (bsx4 tensor, XYZW convention): batch of unit quaternions.
+
+#     Returns:
+#         batch of rotation matrices (bsx3x3 tensor).
+#     """
+#     # Adapted from SciPy:
+#     # https://github.com/scipy/scipy/blob/adc4f4f7bab120ccfab9383aba272954a0a12fb0/scipy/spatial/transform/rotation.py#L912
+#     x = quat[..., 0]
+#     y = quat[..., 1]
+#     z = quat[..., 2]
+#     w = quat[..., 3]
+
+#     R = torch.empty(quat.shape[:-1] + (3, 3), dtype=quat.dtype, device=quat.device)
+
+#     R[..., 0, 0] = torch.pow(x,2) - torch.pow(y,2) - torch.pow(z,2) + torch.pow(w,2)
+#     R[..., 1, 0] = 2 * (x * y + z * w)
+#     R[..., 2, 0] = 2 * (x * z - y * w)
+
+#     R[..., 0, 1] = 2 * (x * y - z * w)
+#     R[..., 1, 1] = - torch.pow(x,2) + torch.pow(y,2) - torch.pow(z,2) + torch.pow(w,2)
+#     R[..., 2, 1] = 2 * (y * z + x * w)
+
+#     R[..., 0, 2] = 2 * (x * z + y * w)
+#     R[..., 1, 2] = 2 * (y * z - x * w)
+#     R[..., 2, 2] = - torch.pow(x,2) - torch.pow(y,2) + torch.pow(z,2) + torch.pow(w,2)
+
+#     return R
+
+# def unitquat_slerp_fast(q0, q1, t, shortest_arc=True):
+#     """
+#     Spherical linear interpolation between two unit quaternions.
+
+#     Args: 
+#         q0, q1 (bs x n x 4 tensor): batch of unit quaternions 
+#         t (b x n): interpolation steps within 0.0 and 1.0, 0.0 corresponding to q0 and 1.0 to q1.
+#         shortest_arc (boolean): if True, interpolation will be performed along the shortest arc on SO(3) from `q0` to `q1` or `-q1`.
+#     Returns: 
+#         batch of interpolated quaternions (bs x n x 4 tensor).
+#     """
+
+#     assert q0.shape == q1.shape, "Input quaternions must be of the same shape."
+
+#     if len(q0.shape) == 2:
+#         q0 = q0.unsqueeze(q0)
+#         q1 = q1.unsqueeze(q1)
+    
+#     # omega is the 'angle' between both quaternions
+#     cos_omega = torch.sum(q0 * q1, dim=-1)
+#     if shortest_arc:
+#         # Flip quaternions with negative angle to perform shortest arc interpolation.
+#         q1 = q1.clone()
+#         q1[cos_omega < 0,:] *= -1
+#         cos_omega = torch.abs(cos_omega)
+
+#     # True when q0 and q1 are close.
+#     nearby_quaternions = cos_omega > (1.0 - 1e-3)
+
+#     # General approach    
+#     omega = torch.acos(cos_omega)
+#     alpha = torch.sin((1-t)*omega)
+    
+#     beta = torch.sin(t*omega)
+#     # Use linear interpolation for nearby quaternions
+#     alpha[nearby_quaternions] = (1 - t)[nearby_quaternions]
+#     beta[nearby_quaternions] = t[nearby_quaternions]
+
+#     # Interpolation
+#     # q = alpha * q0.reshape((1,) * steps.dim() + q0.shape) + beta * q1.reshape((1,) * steps.dim() + q1.shape)
+#     q = alpha.reshape(-1,1) * q0 + beta.reshape(-1,1) * q1
+#     # Normalization of the output
+#     q /= torch.norm(q, dim=-1, keepdim=True)
+#     #return q.reshape(steps.shape + batch_shape + (4,))
+#     return q
+
+# def rs_projection_gpu(points: np.array, cam_metadata, T_world_cam: np.array, ego_pose_timestamps: np.array, device: str = 'cuda'):
+
+
+#     principal_point = torch.from_numpy(cam_metadata.principal_point).to(device)
+#     img_resolution = torch.from_numpy(cam_metadata.img_resolution).to(device)
+#     T_world_cam_s = torch.from_numpy(T_world_cam[:4,:]).to(device)
+#     T_world_cam_e = torch.from_numpy(T_world_cam[4:,:]).to(device)
+
+#     ego_pose_timestamps = torch.from_numpy(ego_pose_timestamps).to(device)
+#     dtime_s_e = ego_pose_timestamps[1] - ego_pose_timestamps[0]
+
+#     ego_pose_s_quat = rotmat_to_unitquat(T_world_cam_s[None, :3, :3]) # n, 4
+#     ego_pose_e_quat = rotmat_to_unitquat(T_world_cam_e[None, :3, :3]) # n, 4
+#     mof_rot = unitquat_to_rotmat(unitquat_slerp_fast(ego_pose_s_quat, ego_pose_e_quat, torch.tensor([0.5]).to(device))).squeeze() # 3 x 3
+#     mof_trans = 0.5 * T_world_cam_s[:3, 3] + 0.5 * T_world_cam_e[:3, 3] # 3
+    
+#      # Do the initial transformation
+#     cam_points = (mof_rot @ points.transpose(0,1) + mof_trans[..., None]).transpose(0,1)
+
+#     init_pixel = ftheta.ray2pixel(cam_points)
+#     valid = (init_pixel[:,0]>=0) & (init_pixel[:,1]>=0) & (init_pixel[:,0] <= img_resolution[0])  & (init_pixel[:,1] <= img_resolution[1])
+
+    

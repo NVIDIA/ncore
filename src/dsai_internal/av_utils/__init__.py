@@ -4,77 +4,113 @@ __version__ = "1.0.0"
 
 import libav_utils_cc  # type: ignore
 import numpy as np
+from src.py.data_converter.data import FThetaCameraModel, PinholeCameraModel
 
 def unwind_lidar(pc, transformation_matrices, column_idx):
     return libav_utils_cc._lidarUnwinding(pc, transformation_matrices, column_idx)
 
 
-def image_to_world_ray(image_points, camera_metadata):
-    # Initialize the parameters
-    intrinsic   = np.array(camera_metadata['intrinsic']).reshape(1,-1).astype(np.float64)
-    camera_model   = camera_metadata['camera_model']
-    img_height  = camera_metadata['img_height']
-    img_width  = camera_metadata['img_width']
-    rs_direction   = camera_metadata['shutter_type'].value
-    ego_pose_timestamps =  np.array(camera_metadata['ego_pose_timestamps']).reshape(1,-1).astype(np.float64)
+def image_to_world_ray(image_points, camera_metadata, T_sensor_world, ego_pose_timestamps):
+    assert len(image_points.shape) == 2, "image points need to be a 2D numpy array"
+    assert image_points.shape[1] == 2, "image points need to be a N x 2 array"
 
-    # Extract the poses
-    ego_pose_s = camera_metadata['ego_pose_s'] # These are ego poses in the rig coordinate system
-    ego_pose_e = camera_metadata['ego_pose_e']
-    T_cam_rig = camera_metadata['T_cam_rig'] # Transforms the points/rays from camera coordinate system to the rig
+    if isinstance(camera_metadata,FThetaCameraModel):
+        img_width, img_height  = camera_metadata.resolution
+        cam_rays = libav_utils_cc._pixel2WorldRayFTheta(
+                        image_points.astype(np.float64), camera_metadata.fw_poly.reshape(1,-1).astype(np.float64),
+                        camera_metadata.bw_poly.reshape(1,-1).astype(np.float64),
+                        camera_metadata.principal_point.reshape(1,-1).astype(np.float64), img_width,
+                        img_height, camera_metadata.max_angle, camera_metadata.rolling_shutter_direction,
+                        T_sensor_world.astype(np.float64), ego_pose_timestamps.reshape(1,-1))
 
-    T_cam_world = np.concatenate(
-        [ego_pose_s @ T_cam_rig, ego_pose_e @ T_cam_rig], axis=0).astype(np.float64)
+    elif isinstance(camera_metadata, PinholeCameraModel):
+        img_width, img_height  = camera_metadata.resolution
+        cam_rays = libav_utils_cc._pixel2WorldRayPinhole(
+                    image_points.astype(np.float64), 
+                    camera_metadata.principal_point.reshape(1,-1).astype(np.float64),
+                    camera_metadata.focal_length.reshape(1,-1).astype(np.float64),
+                    camera_metadata.radial_poly.reshape(1,-1).astype(np.float64),
+                    camera_metadata.tangential_poly.reshape(1,-1).astype(np.float64),
+                    img_width, img_height, camera_metadata.rolling_shutter_direction,
+                    T_sensor_world.astype(np.float64), ego_pose_timestamps.reshape(1,-1))
 
-    if image_points.shape[0] == 1:
-        image_points = np.tile(image_points, [2, 1])
-        return libav_utils_cc._pixel2WorldRay(image_points, intrinsic, camera_model, img_height, img_width,
-                                        T_cam_world, ego_pose_timestamps, rs_direction)[0, :]
-    else:
-        return libav_utils_cc._pixel2WorldRay(image_points, intrinsic, camera_model, img_height, img_width,
-                                        T_cam_world, ego_pose_timestamps, rs_direction)
+    return cam_rays
 
 def pixel2CameraRay(image_points, camera_metadata):
     assert len(image_points.shape) == 2, "image points need to be a 2D numpy array"
     assert image_points.shape[1] == 2, "image points need to be a N x 2 array"
 
-    # Initialize the parameters
-    intrinsic = np.array(camera_metadata['intrinsic']).reshape(1,-1).astype(np.float64)
-    camera_model  = camera_metadata['camera_model']
+    if isinstance(camera_metadata,FThetaCameraModel):
+        img_width, img_height  = camera_metadata.resolution
+        cam_rays = libav_utils_cc._pixel2CameraRayFTheta(
+                        image_points.astype(np.float64), camera_metadata.fw_poly.reshape(1,-1).astype(np.float64),
+                        camera_metadata.bw_poly.reshape(1,-1).astype(np.float64),
+                        camera_metadata.principal_point.reshape(1,-1).astype(np.float64), img_width,
+                        img_height, camera_metadata.max_angle, camera_metadata.rolling_shutter_direction)
 
-    return libav_utils_cc._pixel2CameraRay(image_points, intrinsic, camera_model)
+    elif isinstance(camera_metadata, PinholeCameraModel):
+        img_width, img_height  = camera_metadata.resolution
+        cam_rays = libav_utils_cc._pixel2CameraRayPinhole(
+                    image_points.astype(np.float64), 
+                    camera_metadata.principal_point.reshape(1,-1).astype(np.float64),
+                    camera_metadata.focal_length.reshape(1,-1).astype(np.float64),
+                    camera_metadata.radial_poly.reshape(1,-1).astype(np.float64),
+                    camera_metadata.tangential_poly.reshape(1,-1).astype(np.float64),
+                    img_width, img_height, camera_metadata.rolling_shutter_direction)
+
+    return cam_rays
 
 
 def cameraRay2Pixel(cameraPoints, camera_metadata):
-    # Initialize the parameters
-    intrinsic   = np.array(camera_metadata['intrinsic']).reshape(1,-1)
-    camera_model   = camera_metadata['camera_model']
-    img_height   = camera_metadata['img_height']
-    img_width   = camera_metadata['img_width']
 
-    return libav_utils_cc._cameraRay2Pixel(cameraPoints, intrinsic, img_width, img_height, camera_model)
+    if isinstance(camera_metadata,FThetaCameraModel):
+        img_width, img_height  = camera_metadata.resolution
+        pixel_coords, valid_flag = libav_utils_cc._cameraRay2PixelFTheta(
+                        cameraPoints.astype(np.float64), camera_metadata.fw_poly.reshape(1,-1).astype(np.float64),
+                        camera_metadata.bw_poly.reshape(1,-1).astype(np.float64),
+                        camera_metadata.principal_point.reshape(1,-1).astype(np.float64), img_width,
+                        img_height, camera_metadata.max_angle,camera_metadata.rolling_shutter_direction)
+
+    elif isinstance(camera_metadata, PinholeCameraModel):
+        img_width, img_height  = camera_metadata.resolution
+        pixel_coords, valid_flag = libav_utils_cc._cameraRay2PixelPinhole(
+                        cameraPoints.astype(np.float64), 
+                        camera_metadata.principal_point.reshape(1,-1).astype(np.float64),
+                        camera_metadata.focal_length.reshape(1,-1).astype(np.float64),
+                        camera_metadata.radial_poly.reshape(1,-1).astype(np.float64),
+                        camera_metadata.tangential_poly.reshape(1,-1).astype(np.float64),
+                        img_width, img_height, camera_metadata.rolling_shutter_direction)
+
+    return pixel_coords, valid_flag
 
 
-def rollingShutterProjection(points, camera_metadata, iter=1):
-    # Initialize the parameters
-    intrinsic   = np.array(camera_metadata['intrinsic']).reshape(1,-1)
-    camera_model   = camera_metadata['camera_model']
-    img_height  = camera_metadata['img_height']
-    img_width  = camera_metadata['img_width']
-    rs_direction   = camera_metadata['shutter_type'].value
-    ego_pose_timestamps =  np.array(camera_metadata['ego_pose_timestamps']).reshape(1,-1).astype(np.float64)
+def rollingShutterProjection(points, camera_metadata, T_world_cam, ego_pose_timestamps,  iter=1):
 
-    # Extract the poses
-    ego_pose_s = camera_metadata['ego_pose_s'] # These are ego poses in the rig coordinate system
-    ego_pose_e = camera_metadata['ego_pose_e']
-    T_cam_rig = camera_metadata['T_cam_rig'] # Transforms the points/rays from camera coordinate system to the rig
+    if isinstance(camera_metadata,FThetaCameraModel):
 
-    T_world_cam = np.concatenate([np.linalg.inv(T_cam_rig) @ np.linalg.inv(ego_pose_s),
-                        np.linalg.inv(T_cam_rig) @ np.linalg.inv(ego_pose_e)], axis=0)
+        img_width, img_height  = camera_metadata.resolution
 
-    pixel_coords, trans_matrices, valid_proj, initial_valid_idx = libav_utils_cc._rollingShutterProjection(
-        points.astype(np.float64), intrinsic.astype(np.float64), img_height, img_width, rs_direction,
-        T_world_cam.astype(np.float64), ego_pose_timestamps, camera_model, iter)
+        pixel_coords, trans_matrices, valid_proj, initial_valid_idx = libav_utils_cc._rollingShutterProjectionFTheta(
+                                points.astype(np.float64), camera_metadata.fw_poly.reshape(1,-1).astype(np.float64),
+                                camera_metadata.bw_poly.reshape(1,-1).astype(np.float64),
+                                camera_metadata.principal_point.reshape(1,-1).astype(np.float64), img_width,
+                                img_height, camera_metadata.max_angle,camera_metadata.rolling_shutter_direction, 
+                                T_world_cam.astype(np.float64), ego_pose_timestamps.reshape(1,-1), iter)
+
+    elif isinstance(camera_metadata, PinholeCameraModel):
+
+        img_width, img_height  = camera_metadata.resolution
+
+        pixel_coords, trans_matrices, valid_proj, initial_valid_idx = libav_utils_cc._rollingShutterProjectionFTheta(
+                                points.astype(np.float64), camera_metadata.principal_point.reshape(1,-1).astype(np.float64),
+                                camera_metadata.focal_length.reshape(1,-1).astype(np.float64),
+                                camera_metadata.radial_poly.reshape(1,-1).astype(np.float64),
+                                camera_metadata.tangential_poly.reshape(1,-1).astype(np.float64),
+                                img_width, img_height, camera_metadata.rolling_shutter_direction, 
+                                T_world_cam.astype(np.float64), ego_pose_timestamps.reshape(1,-1), iter)
+    
+    else:
+        raise TypeError("Camera model must be one of [FThetaCameraModel, PinholeCameraModel]")
 
     valid_idx = initial_valid_idx[valid_proj]
     pixel_coords = pixel_coords[valid_proj,:]

@@ -564,18 +564,18 @@ class LabelProcessor:
 
 
 # Functions related to the F-THeta camera model
-def numericallyStable2Norm2D(x, y):
-    absX = abs(x)
-    absY = abs(y)
-    minimum = min(absX, absY)
-    maximum = max(absX, absY)
+# def numericallyStable2Norm2D(x, y):
+#     absX = abs(x)
+#     absY = abs(y)
+#     minimum = min(absX, absY)
+#     maximum = max(absX, absY)
 
-    if maximum <= np.float32(0.0):
-        return np.float32(0.0)
+#     if maximum <= np.float32(0.0):
+#         return np.float32(0.0)
 
-    oneOverMaximum = np.float32(1.0) / maximum
-    minMaxRatio = np.float32(minimum) * oneOverMaximum
-    return maximum * np.sqrt(np.float32(1.0) + minMaxRatio * minMaxRatio)
+#     oneOverMaximum = np.float32(1.0) / maximum
+#     minMaxRatio = np.float32(minimum) * oneOverMaximum
+#     return maximum * np.sqrt(np.float32(1.0) + minMaxRatio * minMaxRatio)
 
 
 def backwards_polynomial(pixel_norms, intrinsic):
