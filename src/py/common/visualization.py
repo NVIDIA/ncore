@@ -103,9 +103,20 @@ class LabelVisualizer:
         self.data.append({'name': frame_id, 'points': xyz, 'intensity': pc[:, -2], 'dynamic_flag': pc[:, -1]})
 
     @add_pc.register  # V2 data
-    def _(self, xyz: np.ndarray, intensity: np.ndarray, dynamic_flag: np.ndarray, frame_id: int) -> None:
+    def _(self, xyz: np.ndarray, intensity: np.ndarray, dynamic_flag: np.ndarray, timestamp: np.ndarray, frame_id: int) -> None:
         ''' Adds a single lidar point cloud to the visualizer (V2 data) '''
-        self.data.append({'name': str(frame_id), 'points': xyz.astype(np.float32), 'intensity': intensity.astype(np.float32), 'dynamic_flag': dynamic_flag})
+
+        # normalize timestamps to floating point [0,1]
+        timestamp = (timestamp - timestamp.min())/ (timestamp.max() - timestamp.min())
+        timestamp[np.isnan(timestamp)] = 0 # first spin has same timestamp for all points
+
+        self.data.append({
+            'name': str(frame_id),
+            'points': xyz.astype(np.float32),
+            'intensity': intensity.astype(np.float32),
+            'dynamic_flag': dynamic_flag,
+            'timestamp': timestamp.astype(np.float32)
+        })
 
     @multimethod  # V1 data
     def add_labels(self, labels: dict[str, list]) -> None:
