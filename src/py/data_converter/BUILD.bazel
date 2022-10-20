@@ -5,18 +5,27 @@ load("@rules_python//python:defs.bzl", "py_library")
 package(default_visibility = ["//visibility:public"])
 
 py_library(
-    name = "pylib",
+    name = "pylib_data",
     srcs = [
-        "__init__.py",
-        "nvidia_deepmap.py",
-        "nvidia_maglev.py",
-        "waymo_open.py",
+        "data.py",
     ],
     deps = [
+        requirement("h5py"),
+        requirement("dataclasses-json"),
         requirement("pillow"),
-        requirement("protobuf3-to-dict"),
+        requirement("marshmallow"),
+    ],
+)
+
+py_library(
+    name = "pylib",
+    srcs = [
+        "data_converter.py",
+        "nvidia_maglev.py",
+    ],
+    deps = [
+        ":pylib_data",
         requirement("point-cloud-utils"),
-        "//src/cpp/av_utils:pylib",
         "//src/py/common:pylib",
     ],
 )

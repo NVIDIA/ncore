@@ -12,7 +12,6 @@ py_library(
         "nvidia_utils.py",
         "transformations.py",
         "visualization.py",
-        "waymo_utils.py",
     ],
     deps = [
         requirement("numpy"),
@@ -22,13 +21,11 @@ py_library(
         requirement("scipy"),
         requirement("tqdm"),
         requirement("matplotlib"),
-        requirement("tensorflow"),
-        requirement("waymo-open-dataset-tf-2-5-0"),
         requirement("open3d"),
         requirement("multimethod"),
         "//src/cpp/av_utils:pylib",
         "//src/protos/deepmap:py_proto",
-        "//src/py/data_converter/v2:pylib_data",
+        "//src/py/data_converter:pylib_data",
     ],
 )
 
