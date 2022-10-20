@@ -22,6 +22,7 @@ py_library(
         requirement("tqdm"),
         requirement("matplotlib"),
         requirement("open3d"),
+        requirement("tensorflow"),  # required by open3d.ml.tf
         requirement("multimethod"),
         "//src/cpp/av_utils:pylib",
         "//src/protos/deepmap:py_proto",
