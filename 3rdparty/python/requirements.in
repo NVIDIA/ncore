@@ -13,6 +13,7 @@ click
 debugpy
 pytest
 open3d
+tensorflow<=2.5 # required by open3d.ml.tf
 h5py
 
 --find-links https://download.pytorch.org/whl/torch_stable.html
