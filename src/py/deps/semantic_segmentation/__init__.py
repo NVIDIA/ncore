@@ -39,11 +39,12 @@ def run_semantic_segmentation(imgs: list, index_digits: int):
         assert len(predictions) == len(img_res), "Number of semantic segmentation predictions is not the same as the number of input images"
 
         for (idx, pred_img), input_image in zip(enumerate(predictions), imgs):
-            img_name = os.path.basename(input_image).split('.')[0]
-
             img = Image.open(pred_img)
             w,h = img.size[0], img.size[1]
             if w != img_res[idx][0] or h != img_res[idx][1]:
                 img = img.resize(img_res[idx], Image.LANCZOS)
 
-            img.save(Path(input_image.replace(img_name, f"{img_name}_sem")).with_suffix('.png'))
+            input_dir, img_name = os.path.split(input_image)
+            img_name = img_name.split('.')[0]
+            save_path = Path(os.path.join(input_dir,f"{img_name}_sem")).with_suffix('.png')
+            img.save(save_path)
