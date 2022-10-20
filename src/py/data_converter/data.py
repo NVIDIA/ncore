@@ -161,12 +161,18 @@ class BBox3(dataclasses_json.DataClassJsonMixin):
         return np.array(self.centroid + self.dim + self.rot, dtype=np.float32)
 
 
+class LabelSource(str, Enum):
+    ''' Enumerates different sources for labels (auto, manual, GT, synthetic etc.) '''
+    AUTOLABEL = 'autolabel'
+
+
 @dataclass
 class FrameLabel3(dataclasses_json.DataClassJsonMixin):
     ''' Description of a 3D frame-associated label '''
     label_id: str
     track_id: str
     label_class: str
+    source: LabelSource
     bbox3: BBox3
     global_speed: float
     confidence: float

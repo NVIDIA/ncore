@@ -17,7 +17,7 @@ from typing import Optional, Tuple
 from functools import partial
 
 from src.py.data_converter.data_converter import BaseNvidiaDataConverter
-from src.py.data_converter.data import DataWriter, FThetaCameraModel, Poses
+from src.py.data_converter.data import DataWriter, FThetaCameraModel, LabelSource, Poses
 
 from src.py.common.nvidia_utils import (parse_rig_sensors_from_dict, sensor_to_rig, LabelProcessor,
                                         camera_intrinsic_parameters, compute_fw_polynomial, compute_ftheta_parameters,
@@ -246,7 +246,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                                                                 self.duration_sec)
 
         # Perform label parsing
-        self.track_labels, self.frame_labels = LabelProcessor.parse(labels_path, start_timestamp_us, end_timestamp_us, logger)
+        self.track_labels, self.frame_labels = LabelProcessor.parse(labels_path, start_timestamp_us, end_timestamp_us, LabelSource.AUTOLABEL, logger)
 
         # Save the accumulated track [only by main shard]
         if self.shard_id == 0:
