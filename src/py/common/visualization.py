@@ -65,7 +65,7 @@ class LabelVisualizer:
     # Get the color map for the NVIDIA labels
     COLOR_MAP_LABELS = cm.get_cmap('tab20')
 
-    # TODO: currently only works for NVIDIA classes, we should add Waymo support
+    # TODO: currently only works for NVIDIA classes
     LABELCLASS_STRING_TO_LABELCLASS_ID = NvidiaLabelProcessor.LABELCLASS_STRING_TO_LABELCLASS_ID
     LABELCLASS_ID_TO_LABELCLASS_STRING = NvidiaLabelProcessor.LABELCLASS_ID_TO_LABELCLASS_STRING
 
