@@ -181,7 +181,7 @@ The field ``camera_model`` will unconditionally contain:
 
 * ``resolution`` - width and height of the image in pixels (uint32, [2,])
 * ``exposure_time_us`` - exposure time of the camera in microseconds (uint64)
-* ``shutter_type`` - type of camera shutter (str, one of [TOP_TO_BOTTOM, LEFT_TO_RIGHT, BOTTOM_TO_TOP, RIGHT_TO_LEFT, GLOBAL])
+* ``shutter_type`` - type of camera shutter (str, one of [ROLLING_TOP_TO_BOTTOM, ROLLING_LEFT_TO_RIGHT, ROLLING_BOTTOM_TO_TOP, ROLLING_RIGHT_TO_LEFT, GLOBAL])
 
 If ``camera_model_type = 'f_theta'`` the following intrinsic parameters will additionally be available in ``camera_model``:
 

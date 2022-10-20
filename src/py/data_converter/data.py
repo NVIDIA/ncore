@@ -1,6 +1,6 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-from enum import Enum, auto
+from enum import IntEnum, auto, unique
 import json
 import shutil
 from types import SimpleNamespace
@@ -13,7 +13,7 @@ from PIL.Image import Image
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
-from dataclasses import dataclass, field, Field
+from dataclasses import dataclass, field
 import dataclasses_json
 import marshmallow
 
@@ -26,10 +26,11 @@ RADARS_BASE_DIR = 'radars'
 
 
 ## Helper types and functions
-class FrameTimepoint(Enum):
+@unique
+class FrameTimepoint(IntEnum):
     ''' Enumerates special timepoints within a frame '''
-    START = 0
-    END = 1
+    START = auto()
+    END = auto()
 
 
 def padded_index_string(index: int, index_digits=INDEX_DIGITS) -> str:
@@ -38,7 +39,7 @@ def padded_index_string(index: int, index_digits=INDEX_DIGITS) -> str:
 
 
 def numpy_array_field(datatype: np.dtype, default=None):
-    ''' Provides encoder / decoder functionality for numpy arrays into dataclass JSON-compatible types'''
+    ''' Provides encoder / decoder functionality for numpy arrays into field types compatible with dataclass-JSON '''
     def decoder(*args, **kwargs):
         return np.array(*args, dtype=datatype, **kwargs)
 
@@ -49,29 +50,29 @@ def numpy_array_field(datatype: np.dtype, default=None):
 
 
 def enum_field(enum_class, default=None):
-    def encoder(v):
-        return v.name
+    ''' Provides encoder / decoder functionality for enum types into field types compatible with dataclass-JSON '''
+    def encoder(variant):
+        ''' encode enum as name's string representation. This way values in JSON are "human-readable '''
+        return variant.name
 
-    def decoder(*args, **kwargs):
-        return enum_class(*args, **kwargs)
+    def decoder(variant):
+        ''' load enum variant from name's string to value map of the enumeration type '''
+        return enum_class.__members__[variant]
 
     return field(default=default,
                  metadata=dataclasses_json.config(encoder=encoder, decoder=decoder, mm_field=marshmallow.fields.Enum))
 
 
-class AutoNameEnum(Enum):
-    def _generate_next_value_(name, start, count, last_values):
-        return name
-
-
 ## Data classes representing stored data types
-class ShutterType(AutoNameEnum):
+@unique
+class ShutterType(IntEnum):
     ''' Enumerates different possible shutter types '''
     ROLLING_TOP_TO_BOTTOM = auto()
     ROLLING_LEFT_TO_RIGHT = auto()
     ROLLING_BOTTOM_TO_TOP = auto()
     ROLLING_RIGHT_TO_LEFT = auto()
     GLOBAL = auto()
+
 
 @dataclass
 class CameraModel:
@@ -183,10 +184,10 @@ class BBox3(dataclasses_json.DataClassJsonMixin):
         ''' Convenience single-array representation '''
         return np.array(self.centroid + self.dim + self.rot, dtype=np.float32)
 
-
-class LabelSource(str, Enum):
+@unique
+class LabelSource(IntEnum):
     ''' Enumerates different sources for labels (auto, manual, GT, synthetic etc.) '''
-    AUTOLABEL = 'autolabel'
+    AUTOLABEL = auto()
 
 
 @dataclass
@@ -195,10 +196,10 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
     label_id: str
     track_id: str
     label_class: str
-    source: LabelSource
     bbox3: BBox3
     global_speed: float
     confidence: float
+    source: LabelSource = enum_field(LabelSource)
 
 
 @dataclass
@@ -208,7 +209,8 @@ class TrackLabel(dataclasses_json.DataClassJsonMixin):
     sensors: dict[str, list[int]]  # all frame-timestamps of the object in different sensors
 
 
-class DynamicFlagState(Enum):
+@unique
+class DynamicFlagState(IntEnum):
     ''' Enumerates potential per-point flag values related to 'dynamic_flag' property '''
     NOT_AVAILABLE = -1
     STATIC = 0

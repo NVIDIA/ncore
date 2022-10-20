@@ -854,7 +854,7 @@ def world_points_2_pixel_py(points, cam_metadata, iterate=False):
     img_width = cam_metadata['img_width']
     img_height = cam_metadata['img_height']
     exposure_time = cam_metadata['exposure_time']
-    rs_direction = cam_metadata['shutter_type']
+    rs_direction = cam_metadata['shutter_type'].value
 
 
     t_sof, t_eof = cam_metadata['ego_pose_timestamps']
