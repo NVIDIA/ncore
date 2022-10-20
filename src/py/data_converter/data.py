@@ -1,6 +1,6 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-from enum import Enum
+from enum import Enum, auto
 import json
 import shutil
 from types import SimpleNamespace
@@ -13,7 +13,7 @@ from PIL.Image import Image
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, Field
 import dataclasses_json
 import marshmallow
 
@@ -48,12 +48,36 @@ def numpy_array_field(datatype: np.dtype, default=None):
                                                   mm_field=marshmallow.fields.List))
 
 
+def enum_field(enum_class, default=None):
+    def encoder(v):
+        return v.name
+
+    def decoder(*args, **kwargs):
+        return enum_class(*args, **kwargs)
+
+    return field(default=default,
+                 metadata=dataclasses_json.config(encoder=encoder, decoder=decoder, mm_field=marshmallow.fields.Enum))
+
+
+class AutoNameEnum(Enum):
+    def _generate_next_value_(name, start, count, last_values):
+        return name
+
+
 ## Data classes representing stored data types
+class ShutterType(AutoNameEnum):
+    ''' Enumerates different possible shutter types '''
+    ROLLING_TOP_TO_BOTTOM = auto()
+    ROLLING_LEFT_TO_RIGHT = auto()
+    ROLLING_BOTTOM_TO_TOP = auto()
+    ROLLING_RIGHT_TO_LEFT = auto()
+    GLOBAL = auto()
+
 @dataclass
 class CameraModel:
     ''' Represents properties common to all camera models '''
     resolution: np.array = numpy_array_field(np.uint64)
-    rolling_shutter_direction: str = ''
+    shutter_type: ShutterType = enum_field(ShutterType)
     exposure_time_us: int = 0
 
     def __post_init__(self):
@@ -61,7 +85,6 @@ class CameraModel:
         assert self.resolution.shape == (2, )
         assert self.resolution.dtype == np.dtype('uint64')
         assert self.resolution[0] > 0 and self.resolution[1] > 0
-        assert self.rolling_shutter_direction in ('TOP_TO_BOTTOM', 'LEFT_TO_RIGHT', 'BOTTOM_TO_TOP', 'RIGHT_TO_LEFT')
         assert self.exposure_time_us > 0
 
 
