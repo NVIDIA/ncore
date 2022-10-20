@@ -8,7 +8,7 @@ from matplotlib import cm
 from scipy.spatial.transform import Rotation as R
 from multimethod import multimethod
 
-from src.py.data_converter.v2.data import FrameLabel3
+from src.py.data_converter.data import FrameLabel3
 
 from src.py.common.nvidia_utils import LabelProcessor as NvidiaLabelProcessor
 
@@ -84,26 +84,8 @@ class LabelVisualizer:
         for id, (key, value) in enumerate(self.LABELCLASS_STRING_TO_LABELCLASS_ID.items()):
             self.lut.add_label(value, key, self.COLOR_MAP_LABELS(id)[:3])
 
-    @multimethod  # V1 data
-    def add_pc(self, pc: np.ndarray, T_world_lidar: np.ndarray, frame_id: str) -> None:
-        """ Adds a single Lidar spin to the visualizer (V1 data)
-
-        Args:
-            pc: point cloud together with 
-            T_world_lidar: transformation from the world frame to the lidar 
-            frame_id: id of the lidar spin
-        """
-
-        # Transform points from world to lidar
-        xyz_world_homogeneous = np.row_stack([pc[:, 3:6].transpose(), np.ones(pc.shape[0], dtype=np.float32)])  # 4 x N
-        xyz_lidar_homogeneous = T_world_lidar @ xyz_world_homogeneous  # 4 x N
-
-        xyz = xyz_lidar_homogeneous[:3, :].transpose()  # N x 3
-
-        self.data.append({'name': frame_id, 'points': xyz, 'intensity': pc[:, -2], 'dynamic_flag': pc[:, -1]})
-
-    @add_pc.register  # V2 data
-    def _(self, xyz: np.ndarray, intensity: np.ndarray, dynamic_flag: np.ndarray, timestamp: np.ndarray, frame_id: int) -> None:
+    @multimethod
+    def add_pc(self, xyz: np.ndarray, intensity: np.ndarray, dynamic_flag: np.ndarray, timestamp: np.ndarray, frame_id: int) -> None:
         ''' Adds a single lidar point cloud to the visualizer (V2 data) '''
 
         # normalize timestamps to floating point [0,1]
@@ -118,22 +100,8 @@ class LabelVisualizer:
             'timestamp': timestamp.astype(np.float32)
         })
 
-    @multimethod  # V1 data
-    def add_labels(self, labels: dict[str, list]) -> None:
-        """ Iterates over the labels of the given lidar spin and adds the bboxes to the visualizer
-
-        Args:
-            labels: 3D bbox labels and the accompanying attributes
-        """
-
-        # Iterate over the labels and add them to the visualizer
-        for label in labels['lidar_labels']:
-            self._add_bbox(bbox=label['3D_bbox'],
-                           label_class=self.LABELCLASS_ID_TO_LABELCLASS_STRING[label['label']],
-                           identifier=str(label['track_id']))
-
-    @add_labels.register()  # V2 data
-    def _(self, frame_labels: list[FrameLabel3]) -> None:
+    @multimethod
+    def add_labels(self, frame_labels: list[FrameLabel3]) -> None:
         ''' Registers frame-label bounding boxes (V2 data) '''
         for frame_label in frame_labels:
             self._add_bbox(bbox=frame_label.bbox3.to_array(),

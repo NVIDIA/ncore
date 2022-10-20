@@ -28,7 +28,7 @@ py_library(
         requirement("multimethod"),
         "//src/cpp/av_utils:pylib",
         "//src/protos/deepmap:py_proto",
-        "//src/py/data_converter/v2:pylib_data",
+        "//src/py/data_converter:pylib_data",
     ],
 )
 

@@ -19,13 +19,6 @@ from scipy.spatial.transform import Rotation as R
 from src.py.common.transformations import so3_trans_2_se3
 
 
-NV_CAMERAS = ['00','01','02','03','04','05','10','11','12','13']
-WAYMO_CAMERAS = ['00','01','02','03','04']
-R_WAYMO_NGP = np.array([[0,0,-1],[-1,0,0],[0,1,0]])
-R_NVIDIA_NGP = np.array([[1,0,0],[0,-1,0],[0,0,-1]])
-RS_DIR_TO_NGP = {1: (0.0, 0.0, 1.0), 2: (0.0, 1.0, 0.0), 3: (1.0, 0.0, -1.0), 4: (1.0, -1.0, 0.0)}
-
-
 def natural_key(string_):
     """
     Sort strings by numbers in the name
