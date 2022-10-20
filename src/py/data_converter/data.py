@@ -482,6 +482,12 @@ class CameraSensor(Sensor):
             return PinholeCameraModel.from_dict(self._sensor_meta.camera_model.__dict__)
         raise ValueError
 
+    def get_frame_image_path(self, continous_frame_index: int) -> Path:
+        ''' Returns the path to the image file of a specific frame '''
+        assert continous_frame_index >= 0 and continous_frame_index < self.get_frames_count(), IndexError
+
+        return self.get_sensor_dir() / (padded_index_string(continous_frame_index) + '.jpeg')
+
 
 class PointCloudSensor(Sensor):
     ''' Provides access to sensor's measureing point-clouds '''
@@ -542,6 +548,7 @@ class DataLoader():
         self._poses: Optional[Poses] = None  # poses will be loaded on-demand if required
 
     def get_poses(self) -> Poses:
+        ''' Returns all timestamped poses associated with the dataset '''
         # Load poses on-demand
         if self._poses is None:
             with h5py.File(self.sequence_dir / 'poses.hdf5', 'r') as f:
@@ -550,4 +557,17 @@ class DataLoader():
         return self._poses
 
     def get_sensor(self, sensor_id: str) -> Union[CameraSensor, LidarSensor, RadarSensor]:
+        ''' Provides access to a specific sensor given it's sensor-id '''
         return self._sensors[sensor_id]
+
+    def get_camera_sensor_ids(self) -> list[str]:
+        ''' Returns all camera sensor-ids '''
+        return self._meta.sensors.cameras
+
+    def get_lidar_sensor_ids(self) -> list[str]:
+        ''' Returns all lidar sensor-ids '''
+        return self._meta.sensors.lidars
+
+    def get_radar_sensor_ids(self) -> list[str]:
+        ''' Returns all radar sensor-ids '''
+        return self._meta.sensors.radars
