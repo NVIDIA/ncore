@@ -136,4 +136,15 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "dsai_extract_segmentation",
+    srcs = ["dsai_extract_segmentation.py"],
+    deps = [
+        requirement("click"),
+        "//src/py/data_converter:pylib_data",
+        "//src/py/deps/instance_segmentation:pylib",
+        "//src/py/deps/semantic_segmentation:pylib",
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")
