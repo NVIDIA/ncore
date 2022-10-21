@@ -21,7 +21,7 @@ from src.protos.deepmap import transform_pb2, camera_calibration_pb2
 from src.py.common.common import PoseInterpolator, MaskImage
 from src.cpp.av_utils import isWithin3DBBox
 from src.py.common.transformations import euler_2_so3, transform_point_cloud, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
-from src.py.data_converter.data import FrameLabel3, BBox3, TrackLabel, DynamicFlagState
+from src.py.data_converter.data import FrameLabel3, BBox3, LabelSource, TrackLabel, DynamicFlagState
 
 def extract_sensor_2_sdc(file_path):
     ''' Extract the sensor to self driving car (SDC) rig transformation parameters 
@@ -411,6 +411,7 @@ class LabelProcessor:
         labels_path: str,
         start_timestamp_us: Optional[int],
         end_timestamp_us: Optional[int],
+        source: LabelSource,
         logger: logging.Logger,
 
         # TODO: check if this user-defined velocity threshold makes sense
@@ -490,6 +491,7 @@ class LabelProcessor:
                             label_class=label_class,
                             global_speed=global_speed,
                             confidence=row.confidence,
+                            source=source,
                             bbox3=BBox3(centroid=(row.centroid_x, row.centroid_y, row.centroid_z),
                                         dim=(row.dim_x, row.dim_y, row.dim_z),
                                         rot=(
@@ -852,7 +854,7 @@ def world_points_2_pixel_py(points, cam_metadata, iterate=False):
     img_width = cam_metadata['img_width']
     img_height = cam_metadata['img_height']
     exposure_time = cam_metadata['exposure_time']
-    rs_direction = cam_metadata['rolling_shutter_direction']
+    rs_direction = cam_metadata['shutter_type'].value
 
 
     t_sof, t_eof = cam_metadata['ego_pose_timestamps']

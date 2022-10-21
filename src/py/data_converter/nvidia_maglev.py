@@ -17,7 +17,7 @@ from typing import Optional, Tuple
 from functools import partial
 
 from src.py.data_converter.data_converter import BaseNvidiaDataConverter
-from src.py.data_converter.data import DataWriter, FThetaCameraModel, Poses
+from src.py.data_converter.data import DataWriter, FThetaCameraModelParameters, LabelSource, Poses, ShutterType
 
 from src.py.common.nvidia_utils import (parse_rig_sensors_from_dict, sensor_to_rig, LabelProcessor,
                                         camera_intrinsic_parameters, compute_fw_polynomial, compute_ftheta_parameters,
@@ -246,7 +246,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                                                                 self.duration_sec)
 
         # Perform label parsing
-        self.track_labels, self.frame_labels = LabelProcessor.parse(labels_path, start_timestamp_us, end_timestamp_us, logger)
+        self.track_labels, self.frame_labels = LabelProcessor.parse(labels_path, start_timestamp_us, end_timestamp_us, LabelSource.AUTOLABEL, logger)
 
         # Save the accumulated track [only by main shard]
         if self.shard_id == 0:
@@ -316,9 +316,9 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
                 self.data_writer.store_camera_meta(
                     camera_id, global_camera_timestamps_us, T_sensor_rig,
-                    FThetaCameraModel(intrinsic[2:4].astype(np.uint64), 'TOP_TO_BOTTOM',
-                                      self.CAMERATYPE_TO_EXPOSURETIME_US[camera_type].item(), intrinsic[0:2],
-                                      bw_poly, fw_poly, float(max_angle)), mask_image.get_image())
+                    FThetaCameraModelParameters(intrinsic[2:4].astype(np.uint64), ShutterType.ROLLING_TOP_TO_BOTTOM,
+                                                self.CAMERATYPE_TO_EXPOSURETIME_US[camera_type].item(), intrinsic[0:2],
+                                                bw_poly, fw_poly, float(max_angle)), mask_image.get_image())
 
             # Apply uniform subdivision of current shard to get local data range
             local_range, local_offset = uniform_subdivide_range(self.shard_id, self.shard_count, global_range_start,

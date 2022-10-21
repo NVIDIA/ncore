@@ -13,7 +13,7 @@ def image_to_world_ray(image_points, camera_metadata):
     camera_model   = camera_metadata['camera_model']
     img_height  = camera_metadata['img_height']
     img_width  = camera_metadata['img_width']
-    rs_direction   = camera_metadata['rolling_shutter_direction']
+    rs_direction   = camera_metadata['shutter_type'].value
     ego_pose_timestamps =  np.array(camera_metadata['ego_pose_timestamps']).reshape(1,-1).astype(np.float64)
 
     # Extract the poses
@@ -59,7 +59,7 @@ def rollingShutterProjection(points, camera_metadata, iter=1):
     camera_model   = camera_metadata['camera_model']
     img_height  = camera_metadata['img_height']
     img_width  = camera_metadata['img_width']
-    rs_direction   = camera_metadata['rolling_shutter_direction']
+    rs_direction   = camera_metadata['shutter_type'].value
     ego_pose_timestamps =  np.array(camera_metadata['ego_pose_timestamps']).reshape(1,-1).astype(np.float64)
 
     # Extract the poses

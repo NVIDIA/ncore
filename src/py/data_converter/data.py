@@ -1,6 +1,6 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-from enum import Enum
+from enum import IntEnum, auto, unique
 import json
 import shutil
 from types import SimpleNamespace
@@ -26,10 +26,11 @@ RADARS_BASE_DIR = 'radars'
 
 
 ## Helper types and functions
-class FrameTimepoint(Enum):
+@unique
+class FrameTimepoint(IntEnum):
     ''' Enumerates special timepoints within a frame '''
-    START = 0
-    END = 1
+    START = auto()
+    END = auto()
 
 
 def padded_index_string(index: int, index_digits=INDEX_DIGITS) -> str:
@@ -38,7 +39,7 @@ def padded_index_string(index: int, index_digits=INDEX_DIGITS) -> str:
 
 
 def numpy_array_field(datatype: np.dtype, default=None):
-    ''' Provides encoder / decoder functionality for numpy arrays into dataclass JSON-compatible types'''
+    ''' Provides encoder / decoder functionality for numpy arrays into field types compatible with dataclass-JSON '''
     def decoder(*args, **kwargs):
         return np.array(*args, dtype=datatype, **kwargs)
 
@@ -48,12 +49,36 @@ def numpy_array_field(datatype: np.dtype, default=None):
                                                   mm_field=marshmallow.fields.List))
 
 
+def enum_field(enum_class, default=None):
+    ''' Provides encoder / decoder functionality for enum types into field types compatible with dataclass-JSON '''
+    def encoder(variant):
+        ''' encode enum as name's string representation. This way values in JSON are "human-readable '''
+        return variant.name
+
+    def decoder(variant):
+        ''' load enum variant from name's string to value map of the enumeration type '''
+        return enum_class.__members__[variant]
+
+    return field(default=default,
+                 metadata=dataclasses_json.config(encoder=encoder, decoder=decoder, mm_field=marshmallow.fields.Enum))
+
+
 ## Data classes representing stored data types
+@unique
+class ShutterType(IntEnum):
+    ''' Enumerates different possible shutter types '''
+    ROLLING_TOP_TO_BOTTOM = auto()
+    ROLLING_LEFT_TO_RIGHT = auto()
+    ROLLING_BOTTOM_TO_TOP = auto()
+    ROLLING_RIGHT_TO_LEFT = auto()
+    GLOBAL = auto()
+
+
 @dataclass
-class CameraModel:
-    ''' Represents properties common to all camera models '''
+class CameraModelParameters:
+    ''' Represents parameters common to all camera models '''
     resolution: np.array = numpy_array_field(np.uint64)
-    rolling_shutter_direction: str = ''
+    shutter_type: ShutterType = enum_field(ShutterType)
     exposure_time_us: int = 0
 
     def __post_init__(self):
@@ -61,12 +86,11 @@ class CameraModel:
         assert self.resolution.shape == (2, )
         assert self.resolution.dtype == np.dtype('uint64')
         assert self.resolution[0] > 0 and self.resolution[1] > 0
-        assert self.rolling_shutter_direction in ('TOP_TO_BOTTOM', 'LEFT_TO_RIGHT', 'BOTTOM_TO_TOP', 'RIGHT_TO_LEFT')
         assert self.exposure_time_us > 0
 
 
 @dataclass
-class FThetaCameraModel(CameraModel, dataclasses_json.DataClassJsonMixin):
+class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
     ''' Represents FTheta-specific camera model parameters '''
     principal_point: np.array = numpy_array_field(np.float32)
     bw_poly: np.array = numpy_array_field(np.float32)
@@ -102,7 +126,7 @@ class FThetaCameraModel(CameraModel, dataclasses_json.DataClassJsonMixin):
 
 
 @dataclass
-class PinholeCameraModel(CameraModel, dataclasses_json.DataClassJsonMixin):
+class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
     ''' Represents a Pinhole-specific camera model parameters '''
     principal_point: np.array = numpy_array_field(np.float32)
     focal_length_u: float = 0.0
@@ -160,6 +184,11 @@ class BBox3(dataclasses_json.DataClassJsonMixin):
         ''' Convenience single-array representation '''
         return np.array(self.centroid + self.dim + self.rot, dtype=np.float32)
 
+@unique
+class LabelSource(IntEnum):
+    ''' Enumerates different sources for labels (auto, manual, GT, synthetic etc.) '''
+    AUTOLABEL = auto()
+
 
 @dataclass
 class FrameLabel3(dataclasses_json.DataClassJsonMixin):
@@ -170,6 +199,7 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
     bbox3: BBox3
     global_speed: float
     confidence: float
+    source: LabelSource = enum_field(LabelSource)
 
 
 @dataclass
@@ -179,7 +209,8 @@ class TrackLabel(dataclasses_json.DataClassJsonMixin):
     sensors: dict[str, list[int]]  # all frame-timestamps of the object in different sensors
 
 
-class DynamicFlagState(Enum):
+@unique
+class DynamicFlagState(IntEnum):
     ''' Enumerates potential per-point flag values related to 'dynamic_flag' property '''
     NOT_AVAILABLE = -1
     STATIC = 0
@@ -278,7 +309,7 @@ class DataWriter():
             T_sensor_rig: np.array,
 
             # intrinsics
-            camera_model: Union[FThetaCameraModel, PinholeCameraModel],
+            camera_model_parameters: Union[FThetaCameraModelParameters, PinholeCameraModelParameters],
 
             # sensor constants
             mask_image: Optional[Image]) -> None:
@@ -292,8 +323,8 @@ class DataWriter():
         output = {
             'frame_timestamps_us': frame_timestamps_us.tolist(),
             'T_sensor_rig': T_sensor_rig.tolist(),
-            'camera_model_type': camera_model.type(),
-            'camera_model': camera_model.to_dict()
+            'camera_model_type': camera_model_parameters.type(),
+            'camera_model_parameters': camera_model_parameters.to_dict()
         }
 
         with open(sensor_output_dir / 'meta.json', 'w') as outfile:
@@ -475,11 +506,12 @@ class Sensor:
 
 class CameraSensor(Sensor):
     ''' Provides access to camera-specific sensor-data '''
-    def get_camera_model(self) -> Union[FThetaCameraModel, PinholeCameraModel]:
+    def get_camera_model_parameters(self) -> Union[FThetaCameraModelParameters, PinholeCameraModelParameters]:
+        ''' Returns parameters specific to the camera's intrinsic model '''
         if self._sensor_meta.camera_model_type == 'ftheta':
-            return FThetaCameraModel.from_dict(self._sensor_meta.camera_model.__dict__)
+            return FThetaCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters.__dict__)
         if self._sensor_meta.camera_model_type == 'pinhole':
-            return PinholeCameraModel.from_dict(self._sensor_meta.camera_model.__dict__)
+            return PinholeCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters.__dict__)
         raise ValueError
 
     def get_frame_image_path(self, continous_frame_index: int) -> Path:
