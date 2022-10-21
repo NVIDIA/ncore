@@ -177,20 +177,20 @@ For individual sensors we also save session-wise metadata:
 
 * ``camera_model_type`` - camera model type (str, one of [ftheta, pinhole])
 
-The field ``camera_model`` will unconditionally contain:
+The field ``camera_model_parameters`` will unconditionally contain:
 
 * ``resolution`` - width and height of the image in pixels (uint32, [2,])
 * ``exposure_time_us`` - exposure time of the camera in microseconds (uint64)
 * ``shutter_type`` - type of camera shutter (str, one of [ROLLING_TOP_TO_BOTTOM, ROLLING_LEFT_TO_RIGHT, ROLLING_BOTTOM_TO_TOP, ROLLING_RIGHT_TO_LEFT, GLOBAL])
 
-If ``camera_model_type = 'f_theta'`` the following intrinsic parameters will additionally be available in ``camera_model``:
+If ``camera_model_type = 'f_theta'`` the following intrinsic parameters will additionally be available in ``camera_model_parameters``:
 
 * ``principal_point`` - u and v coordinate of the principal point (float32, [2,])
 * ``bw_poly`` - coefficients of the backward distortion polynomial, mapping pixel-distances to angles [rad] (float32, [6,])
 * ``fw_poly`` - coefficients of the forward distortion polynomial (approximate inverse of the backwards polynomial), mapping angles [rad] to pixel-distances (float32, [6,])
 * ``max_angle`` - maximal extrinsic ray angle [rad] with the principal direction (float32)
 
-If ``camera_model` = 'pinhole'`` the following intrinsic parameters will additionally be available in ``camera_model``:
+If ``camera_model_type` = 'pinhole'`` the following intrinsic parameters will additionally be available in ``camera_model_parameters``:
 
 * ``principal_point`` - u and v coordinate of the principal point (float32, [2,])
 * ``focal_length_u`` / ``focal_length_v`` - focal length in u and v direction, resp. (float32)

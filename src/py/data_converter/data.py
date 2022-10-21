@@ -75,8 +75,8 @@ class ShutterType(IntEnum):
 
 
 @dataclass
-class CameraModel:
-    ''' Represents properties common to all camera models '''
+class CameraModelParameters:
+    ''' Represents parameters common to all camera models '''
     resolution: np.array = numpy_array_field(np.uint64)
     shutter_type: ShutterType = enum_field(ShutterType)
     exposure_time_us: int = 0
@@ -90,7 +90,7 @@ class CameraModel:
 
 
 @dataclass
-class FThetaCameraModel(CameraModel, dataclasses_json.DataClassJsonMixin):
+class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
     ''' Represents FTheta-specific camera model parameters '''
     principal_point: np.array = numpy_array_field(np.float32)
     bw_poly: np.array = numpy_array_field(np.float32)
@@ -126,7 +126,7 @@ class FThetaCameraModel(CameraModel, dataclasses_json.DataClassJsonMixin):
 
 
 @dataclass
-class PinholeCameraModel(CameraModel, dataclasses_json.DataClassJsonMixin):
+class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
     ''' Represents a Pinhole-specific camera model parameters '''
     principal_point: np.array = numpy_array_field(np.float32)
     focal_length_u: float = 0.0
@@ -309,7 +309,7 @@ class DataWriter():
             T_sensor_rig: np.array,
 
             # intrinsics
-            camera_model: Union[FThetaCameraModel, PinholeCameraModel],
+            camera_model_parameters: Union[FThetaCameraModelParameters, PinholeCameraModelParameters],
 
             # sensor constants
             mask_image: Optional[Image]) -> None:
@@ -323,8 +323,8 @@ class DataWriter():
         output = {
             'frame_timestamps_us': frame_timestamps_us.tolist(),
             'T_sensor_rig': T_sensor_rig.tolist(),
-            'camera_model_type': camera_model.type(),
-            'camera_model': camera_model.to_dict()
+            'camera_model_type': camera_model_parameters.type(),
+            'camera_model_parameters': camera_model_parameters.to_dict()
         }
 
         with open(sensor_output_dir / 'meta.json', 'w') as outfile:
@@ -506,11 +506,12 @@ class Sensor:
 
 class CameraSensor(Sensor):
     ''' Provides access to camera-specific sensor-data '''
-    def get_camera_model(self) -> Union[FThetaCameraModel, PinholeCameraModel]:
+    def get_camera_model_parameters(self) -> Union[FThetaCameraModelParameters, PinholeCameraModelParameters]:
+        ''' Returns parameters specific to the camera's intrinsic model '''
         if self._sensor_meta.camera_model_type == 'ftheta':
-            return FThetaCameraModel.from_dict(self._sensor_meta.camera_model.__dict__)
+            return FThetaCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters.__dict__)
         if self._sensor_meta.camera_model_type == 'pinhole':
-            return PinholeCameraModel.from_dict(self._sensor_meta.camera_model.__dict__)
+            return PinholeCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters.__dict__)
         raise ValueError
 
     def get_frame_image_path(self, continous_frame_index: int) -> Path:
