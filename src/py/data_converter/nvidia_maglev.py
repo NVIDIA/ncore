@@ -506,7 +506,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Remove all points with *duplicate* coordinates (these seem to be present in the input already)
         # and remember the indices of the valid points to load other attributes
         xyz, unique_input_idxs = np.unique(mesh.vertex_data.positions, axis=0, return_index=True) # Motion-compensated end-points in end-of-spin frame
-        intensity = mesh.vertex_data.custom_attributes['intensity'][unique_input_idxs].flatten()
+        intensity = mesh.vertex_data.custom_attributes['intensity'][unique_input_idxs].flatten() / 2.55 # Intensities are oddly represented as [0.0 .. 2.55], normalize to [0.0 .. 1.0]
         point_count = xyz.shape[0]
 
         # Create 3D ray structure of 3D rays in sensor space with accompanying metadata.
