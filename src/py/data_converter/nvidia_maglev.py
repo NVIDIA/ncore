@@ -7,6 +7,7 @@ import re
 import json
 import os
 import multiprocessing
+import shutil
 
 import numpy as np
 import tqdm
@@ -382,8 +383,17 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         ])
         T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
 
-        self.data_writer.store_camera_frame(camera_id, continous_frame_index, source_image_path,
-                                            self.symlink_camera_frames, T_rig_worlds, timestamps_us)
+        def store_image(target_image_path: Path) -> None:
+            ''' Callback to store the image at the target path '''
+            # Copy / symlink image from source to target
+            if self.symlink_camera_frames:
+                # Create symlink target -> source
+                Path(target_image_path).symlink_to(source_image_path)
+            else:
+                # Perform explicit frame file copy
+                shutil.copy(source_image_path, target_image_path)
+
+        self.data_writer.store_camera_frame(camera_id, continous_frame_index, store_image, T_rig_worlds, timestamps_us)
 
 
     def decode_lidars(self):
