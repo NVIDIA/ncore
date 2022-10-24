@@ -166,6 +166,12 @@ http_archive(
 )
 
 http_archive(
+    name = "instance-segmentation-models",
+    sha256 = "b2db69e0c6e409ec137d953217f8481def9e7f3af84255f705e8dd963adf01a5",
+    urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/instance_segmentation_pretrained_models/0.1/instance_segmentation_pretrained_models.tar.xz"],
+)
+
+http_archive(
     name = "eigen",
     build_file_content =
         """
