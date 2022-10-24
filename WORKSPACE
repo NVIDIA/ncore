@@ -160,6 +160,18 @@ new_git_repository(
 )
 
 http_archive(
+    name = "semantic-segmentation-models",
+    sha256 = "6ff6f5f1d80ad5742fad3f81651e1053e37a50d9bf79c561dd07a6ec5f88f5e2",
+    urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/semantic_segmentation_pretrained_models/0.1/semantic_segmentation_pretrained_models.tar.xz"],
+)
+
+http_archive(
+    name = "instance-segmentation-models",
+    sha256 = "b2db69e0c6e409ec137d953217f8481def9e7f3af84255f705e8dd963adf01a5",
+    urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/instance_segmentation_pretrained_models/0.1/instance_segmentation_pretrained_models.tar.xz"],
+)
+
+http_archive(
     name = "eigen",
     build_file_content =
         """

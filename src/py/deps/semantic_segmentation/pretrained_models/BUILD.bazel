@@ -1,5 +1,0 @@
-exports_files([
-    "cityscapes_ocrnet.HRNet_Mscale_outstanding-turtle.pth",
-    "hrnetv2_w48_imagenet_pretrained.pth",
-])
-
