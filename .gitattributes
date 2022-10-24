@@ -1,3 +1,1 @@
 src/py/deps/instance_segmentation/pretrained_models/model_final_ba17b9.pkl filter=lfs diff=lfs merge=lfs -text
-src/py/deps/semantic_segmentation/pretrained_models/cityscapes_ocrnet.HRNet_Mscale_outstanding-turtle.pth filter=lfs diff=lfs merge=lfs -text
-src/py/deps/semantic_segmentation/pretrained_models/hrnetv2_w48_imagenet_pretrained.pth filter=lfs diff=lfs merge=lfs -text

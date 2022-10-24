@@ -27,7 +27,7 @@ def run_semantic_segmentation(imgs: list, index_digits: int):
 
         args =  f'--dataset cityscapes --cv 0 --fp16 --bs_val 1 --eval folder ' \
                 '--eval_folder {} --n_scales 0.5,1.0,2.0 '\
-                '--snapshot src/py/deps/semantic_segmentation/pretrained_models/cityscapes_ocrnet.HRNet_Mscale_outstanding-turtle.pth '\
+                '--snapshot external/semantic-segmentation-models/cityscapes_ocrnet.HRNet_Mscale_outstanding-turtle.pth '\
                 '--arch ocrnet.HRNet_Mscale --result_dir {}'.format(temp_dir, os.path.join(temp_dir,'semantic_seg'))
 
         # Run the semantic segmentation
