@@ -2,16 +2,15 @@
 
 from enum import IntEnum, auto, unique
 import json
-import shutil
 from types import SimpleNamespace
 
 import h5py
 
 import numpy as np
-from PIL.Image import Image
+import PIL
 
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Callable, Optional, Tuple, Union
 
 from dataclasses import dataclass, field
 import dataclasses_json
@@ -265,9 +264,8 @@ class DataWriter():
             camera_id: str,
             continous_frame_index: int,
 
-            # image data
-            source_image_path: Path,
-            symlink_frame: bool,
+            # image data callback (caller passed function stores the frame at the provided path)
+            image_callback: Callable[[Path], None],
 
             # poses
             T_rig_worlds: np.array,
@@ -281,15 +279,9 @@ class DataWriter():
         sensor_output_dir = self.sequence_output_dir / CAMERAS_BASE_DIR / camera_id
         continous_frame_index_string = padded_index_string(continous_frame_index)
 
-        # Copy / symlink image from source to target
+        # Handle image 
         target_image_path = sensor_output_dir / (continous_frame_index_string + '.jpeg')
-
-        if symlink_frame:
-            # Create symlink target -> source
-            Path(target_image_path).symlink_to(source_image_path)
-        else:
-            # Perform explicit frame file copy
-            shutil.copy(source_image_path, target_image_path)
+        image_callback(target_image_path)
 
         # Output frame meta data
         output = {'T_rig_worlds': T_rig_worlds.tolist(), 'timestamps_us': timestamps_us.tolist()}
@@ -311,7 +303,7 @@ class DataWriter():
             camera_model_parameters: Union[FThetaCameraModelParameters, PinholeCameraModelParameters],
 
             # sensor constants
-            mask_image: Optional[Image]) -> None:
+            mask_image: Optional[PIL.Image.Image]) -> None:
         assert T_sensor_rig.shape == (4, 4)
         assert T_sensor_rig.dtype == np.dtype('float32')
         assert frame_timestamps_us.ndim == 1

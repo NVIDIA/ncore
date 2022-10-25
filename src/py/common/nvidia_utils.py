@@ -400,7 +400,7 @@ class LabelProcessor:
     LABEL_STRINGS_UNCONDITIONALLY_STATIC: set[str] = set(['unknown', 'sign'])
 
     # Label BBOX padding distance (in meters) to enlarge bounding boxes for per-point dynamic-flag assignment
-    LIDAR_DYNAMIC_FLAG_BBOX_PADDING = 3.0
+    LIDAR_DYNAMIC_FLAG_BBOX_PADDING_METERS = 3.0
 
     # TODO: check if this user-defined velocity threshold makes sense
     GLOBAL_SPEED_DYNAMIC_THRESHOLD = 1.0 / 3.6
@@ -557,7 +557,7 @@ class LabelProcessor:
                     continue
                 bbox = frame_label.bbox3.to_array()
                 # enlarge the bounding box for the check *only*
-                bbox[3:6] += cls.LIDAR_DYNAMIC_FLAG_BBOX_PADDING  # TODO: make sure this parameter is tuned sensibly
+                bbox[3:6] += cls.LIDAR_DYNAMIC_FLAG_BBOX_PADDING_METERS  # TODO: make sure this parameter is tuned sensibly
                 dynamic_flag[isWithin3DBBox(xyz, bbox.reshape(1, -1))] = DynamicFlagState.DYNAMIC.value
 
         return dynamic_flag, current_frame_labels

@@ -7,6 +7,7 @@ import re
 import json
 import os
 import multiprocessing
+import shutil
 
 import numpy as np
 import tqdm
@@ -382,8 +383,17 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         ])
         T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
 
-        self.data_writer.store_camera_frame(camera_id, continous_frame_index, source_image_path,
-                                            self.symlink_camera_frames, T_rig_worlds, timestamps_us)
+        def store_image(target_image_path: Path) -> None:
+            ''' Callback to store the image at the target path '''
+            # Copy / symlink image from source to target
+            if self.symlink_camera_frames:
+                # Create symlink target -> source
+                Path(target_image_path).symlink_to(source_image_path)
+            else:
+                # Perform explicit frame file copy
+                shutil.copy(source_image_path, target_image_path)
+
+        self.data_writer.store_camera_frame(camera_id, continous_frame_index, store_image, T_rig_worlds, timestamps_us)
 
 
     def decode_lidars(self):
@@ -506,7 +516,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Remove all points with *duplicate* coordinates (these seem to be present in the input already)
         # and remember the indices of the valid points to load other attributes
         xyz, unique_input_idxs = np.unique(mesh.vertex_data.positions, axis=0, return_index=True) # Motion-compensated end-points in end-of-spin frame
-        intensity = mesh.vertex_data.custom_attributes['intensity'][unique_input_idxs].flatten()
+        intensity = mesh.vertex_data.custom_attributes['intensity'][unique_input_idxs].flatten() / 2.55 # Intensities are oddly represented as [0.0 .. 2.55], normalize to [0.0 .. 1.0]
         point_count = xyz.shape[0]
 
         # Create 3D ray structure of 3D rays in sensor space with accompanying metadata.

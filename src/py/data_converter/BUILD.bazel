@@ -18,14 +18,38 @@ py_library(
 )
 
 py_library(
-    name = "pylib",
+    name = "pylib_data_converter",
     srcs = [
         "data_converter.py",
+    ],
+    deps = [
+        requirement("numpy"),
+    ],
+)
+
+py_library(
+    name = "pylib_nvidia_maglev",
+    srcs = [
         "nvidia_maglev.py",
     ],
     deps = [
         ":pylib_data",
+        ":pylib_data_converter",
         requirement("point-cloud-utils"),
+        "//src/py/common:pylib",
+    ],
+)
+
+py_library(
+    name = "pylib_nvidia_deepmap",
+    srcs = [
+        "nvidia_deepmap.py",
+    ],
+    deps = [
+        ":pylib_data",
+        ":pylib_data_converter",
+        requirement("protobuf3-to-dict"),
+        requirement("opencv-python"),
         "//src/py/common:pylib",
     ],
 )

@@ -73,5 +73,20 @@ def nvidia_maglev_v2(ctx, *_, **kwargs):
     NvidiaMaglevConverter.convert(config)
 
 
+@cli.command()
+@click.option('--start-timestamp-us', type=int, default=None, help="If provided, the start timestamp to restrict processing to")
+@click.option('--end-timestamp-us', type=int, default=None, help="If provided, the end timestamp to restrict processing to")
+@click.pass_context
+def nvidia_deepmap_v2(ctx, *_, **kwargs):
+    """NVIDIA-specific data conversion (V2 format, based on DeepMap tracks)"""
+
+    from src.py.data_converter.nvidia_deepmap import NvidiaDeepmapConverter
+
+    config = ctx.obj  # Extend base config with command-specific options
+    config += kwargs
+
+    NvidiaDeepmapConverter.convert(config)
+
+
 if __name__ == '__main__':
     cli(show_default=True)
