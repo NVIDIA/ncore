@@ -7,7 +7,7 @@ cc_library(
     hdrs = glob(["include/**"]),
     includes = ["include"],
     deps = [
-        "@python39//:libpython",
-        "@python39//:python_headers",
+        "@python310//:libpython",
+        "@python310//:python_headers",
     ],
 )
