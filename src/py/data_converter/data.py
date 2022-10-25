@@ -45,8 +45,7 @@ def numpy_array_field(datatype: np.dtype, default=None):
 
     return field(default=default,
                  metadata=dataclasses_json.config(encoder=np.ndarray.tolist,
-                                                  decoder=decoder,
-                                                  mm_field=marshmallow.fields.List))
+                                                  decoder=decoder))
 
 
 def enum_field(enum_class, default=None):
@@ -60,7 +59,7 @@ def enum_field(enum_class, default=None):
         return enum_class.__members__[variant]
 
     return field(default=default,
-                 metadata=dataclasses_json.config(encoder=encoder, decoder=decoder, mm_field=marshmallow.fields.Enum))
+                 metadata=dataclasses_json.config(encoder=encoder, decoder=decoder))
 
 
 ## Data classes representing stored data types
