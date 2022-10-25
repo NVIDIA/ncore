@@ -41,7 +41,7 @@ py_library(
         ":av_utils_cc",
     ],
     imports = ["."],
-    visibility = ["//visibility:public"],
+    visibility = ["//src:__subpackages__"],
     deps = [
         requirement("numpy"),
     ],

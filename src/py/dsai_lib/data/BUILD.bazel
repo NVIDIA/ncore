@@ -1,0 +1,26 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@rules_python//python:defs.bzl", "py_library")
+load("//bazel/pytest:defs.bzl", "pytest_test")
+
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "pylib",
+    srcs = [
+        "__init__.py",
+    ],
+    imports = ["../.."],  # enable import via 'dsai_lib.data'
+    deps = ["//src/py/data_converter:pylib_data"],
+)
+
+pytest_test(
+    name = "test",
+    srcs = ["test.py"],
+    deps = [
+        ":pylib",
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")

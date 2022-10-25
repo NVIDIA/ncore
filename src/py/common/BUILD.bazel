@@ -3,7 +3,7 @@ load("@pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_library")
 load("//bazel/pytest:defs.bzl", "pytest_test")
 
-package(default_visibility = ["//visibility:public"])
+package(default_visibility = ["//:code_package_group"])
 
 py_library(
     name = "pylib",

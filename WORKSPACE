@@ -34,7 +34,6 @@ cc_library(
     name = 'numpy',
     includes = ['site-packages/numpy/core/include'],
     hdrs = glob(['site-packages/numpy/core/include/numpy/*.h']),
-    visibility = ['//visibility:public'],
 )
 """,
         ),
