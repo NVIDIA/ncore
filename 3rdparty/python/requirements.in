@@ -13,7 +13,7 @@ click
 debugpy
 pytest
 open3d
-tensorflow<=2.5 # required by open3d.ml.tf
+tensorflow~=2.8.2 # required by open3d.ml.tf
 h5py
 
 --find-links https://download.pytorch.org/whl/torch_stable.html
@@ -22,13 +22,13 @@ torchvision==0.13.0+cu116
 torchaudio==0.12.0
 
 --extra-index-url https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple
-detectron2==0.6
+detectron2==0.6+cu116
 
 --extra-index-url https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple
 apex==0.1
 
-# v2.0.4 py3.9 wheel from internal package repo (dist package fails to build)
-pycocotools --hash=sha256:31a6c2d2e0c75f76e23fb300f7b5421b6c1b244f7d5757c4ad21fd6c994ee2aa
+# v2.0.4 py3.10 wheel from internal package repo (dist package fails to build)
+pycocotools==2.0.4 --hash=sha256:45c93ded54dbd0f74a9eb25ea19fbb1c178fa0d2f3185ea63dfac58786bd5fd6
 
 jupyter_server
 sphinx

@@ -15,13 +15,13 @@ http_archive(
 load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 
 python_register_toolchains(
-    name = "python39",
+    name = "python310",
     # Available versions are listed in @rules_python//python:versions.bzl
-    python_version = "3.9",
+    python_version = "3.10",
 )
 
 # Create a central repo that knows about the dependencies needed from requirements.txt
-load("@python39//:defs.bzl", "interpreter")
+load("@python310//:defs.bzl", "interpreter")
 load("@rules_python//python:pip.bzl", "package_annotation", "pip_parse")
 
 pip_parse(
