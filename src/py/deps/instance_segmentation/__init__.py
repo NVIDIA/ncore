@@ -24,7 +24,7 @@ def run_instance_segmentation(imgs: list):
         cfg.merge_from_file(best_model_config)
         cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5  # set threshold for this model
         # Find a model from detectron2's model zoo. You can use the https://dl.fbaipublicfiles... url as well
-        cfg.MODEL.WEIGHTS = 'src/py/deps/instance_segmentation/pretrained_models/model_final_ba17b9.pkl'
+        cfg.MODEL.WEIGHTS = 'external/instance-segmentation-models/model_final_ba17b9.pkl'
 
     else:
         cfg.merge_from_file(model_zoo.get_config_file(best_model_config))
