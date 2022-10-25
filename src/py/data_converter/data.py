@@ -7,14 +7,13 @@ from types import SimpleNamespace
 import h5py
 
 import numpy as np
-import PIL
+from PIL.Image import Image
 
 from pathlib import Path
 from typing import Callable, Optional, Tuple, Union
 
 from dataclasses import dataclass, field
 import dataclasses_json
-import marshmallow
 
 ## Constants
 VERSION = '2.0.0'
@@ -303,7 +302,7 @@ class DataWriter():
             camera_model_parameters: Union[FThetaCameraModelParameters, PinholeCameraModelParameters],
 
             # sensor constants
-            mask_image: Optional[PIL.Image.Image]) -> None:
+            mask_image: Optional[Image]) -> None:
         assert T_sensor_rig.shape == (4, 4)
         assert T_sensor_rig.dtype == np.dtype('float32')
         assert frame_timestamps_us.ndim == 1
