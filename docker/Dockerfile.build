@@ -15,10 +15,22 @@ RUN \
     add-apt-repository -y ppa:ubuntu-toolchain-r/test && \
     apt-get -y update -qq --fix-missing && \
     apt-get -y install --no-install-recommends \
-        gcc g++ libgl1 clang git wget xz-utils jq \
+        gcc g++ libgl1 clang git wget xz-utils jq sudo \
     && \
     rm -rf /var/lib/apt/lists/*
 
 RUN \
    # Add python -> python3 symlink (required for bazel-build image entrypoints)
    ln -s /usr/bin/python3 /usr/bin/python
+
+ARG BAZELISK_VERSION=v1.14.0
+RUN \
+    # Install bazelisk
+    wget https://github.com/bazelbuild/bazelisk/releases/download/$BAZELISK_VERSION/bazelisk-linux-amd64 -O /usr/local/bin/bazelisk && \
+    chmod +x /usr/local/bin/bazelisk
+
+# Run as developer user
+RUN \
+    useradd --create-home --groups sudo developer && \
+    echo "developer ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+USER developer

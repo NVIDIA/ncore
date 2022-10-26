@@ -10,9 +10,12 @@ default:
     - os/linux
     - arch/x86_64
   before_script:
-    # Install bazelisk
-    - wget https://github.com/bazelbuild/bazelisk/releases/download/$BAZELISK_VERSION/bazelisk-linux-amd64 -O /usr/local/bin/bazelisk
-    - chmod +x /usr/local/bin/bazelisk
+    # Fix permission as we are running as a local user
+    - git config --global --add safe.directory /builds/Toronto_DL_Lab/dsai
+    - |
+      if test -d $CI_PROJECT_DIR/.ci-keep; then
+        sudo chown -R developer $CI_PROJECT_DIR/.ci-keep
+      fi
 
     # Setup python-package / remote cache credentials
     - echo "machine $ARTIFACTORY_MACHINE" >> ~/.netrc
