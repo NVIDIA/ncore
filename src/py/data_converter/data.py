@@ -26,9 +26,9 @@ RADARS_BASE_DIR = 'radars'
 ## Helper types and functions
 @unique
 class FrameTimepoint(IntEnum):
-    ''' Enumerates special timepoints within a frame '''
-    START = auto()
-    END = auto()
+    ''' Enumerates special timepoints within a frame (values used to index into buffers) '''
+    START = 0
+    END = 1
 
 
 def padded_index_string(index: int, index_digits=INDEX_DIGITS) -> str:
@@ -278,7 +278,7 @@ class DataWriter():
         sensor_output_dir = self.sequence_output_dir / CAMERAS_BASE_DIR / camera_id
         continous_frame_index_string = padded_index_string(continous_frame_index)
 
-        # Handle image 
+        # Handle image
         target_image_path = sensor_output_dir / (continous_frame_index_string + '.jpeg')
         image_callback(target_image_path)
 
