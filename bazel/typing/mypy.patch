@@ -1,0 +1,28 @@
+diff --git i/mypy/main.py w/mypy/main.py
+index 04442ad..682ec52 100644
+--- i/mypy/main.py
++++ w/mypy/main.py
+@@ -4,4 +4,4 @@ import sys
+ from mypy.main import main
+ 
+ if __name__ == '__main__':
+-    main(None, sys.stdout, sys.stderr)
++    main()
+
+diff --git i/mypy/BUILD w/mypy/BUILD
+index 63bb405..0d3c3ef 100644
+--- i/mypy/BUILD
++++ w/mypy/BUILD
+@@ -1,4 +1,5 @@
+ load("@mypy_integration_pip_deps//:requirements.bzl", "requirement")
++load("@pip_deps//:requirements.bzl", local_req = "requirement")
+ 
+ py_binary(
+     name = "mypy",
+@@ -8,5 +9,6 @@ py_binary(
+     visibility = ["//visibility:public"],
+     deps = [
+         requirement("mypy"),
++        local_req("numpy"),
+     ],
+ )

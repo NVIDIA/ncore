@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import h5py
 
 import numpy as np
+import numpy.typing as npt
 from PIL.Image import Image
 
 from pathlib import Path
@@ -36,7 +37,7 @@ def padded_index_string(index: int, index_digits=INDEX_DIGITS) -> str:
     return str(index).zfill(index_digits)
 
 
-def numpy_array_field(datatype: np.dtype, default=None):
+def numpy_array_field(datatype: npt.DTypeLike, default=None):
     ''' Provides encoder / decoder functionality for numpy arrays into field types compatible with dataclass-JSON '''
     def decoder(*args, **kwargs):
         return np.array(*args, dtype=datatype, **kwargs)
@@ -74,7 +75,7 @@ class ShutterType(IntEnum):
 @dataclass
 class CameraModelParameters:
     ''' Represents parameters common to all camera models '''
-    resolution: np.array = numpy_array_field(np.uint64)
+    resolution: np.ndarray = numpy_array_field(np.uint64)
     shutter_type: ShutterType = enum_field(ShutterType)
     exposure_time_us: int = 0
 
@@ -89,9 +90,9 @@ class CameraModelParameters:
 @dataclass
 class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
     ''' Represents FTheta-specific camera model parameters '''
-    principal_point: np.array = numpy_array_field(np.float32)
-    bw_poly: np.array = numpy_array_field(np.float32)
-    fw_poly: np.array = numpy_array_field(np.float32)
+    principal_point: np.ndarray = numpy_array_field(np.float32)
+    bw_poly: np.ndarray = numpy_array_field(np.float32)
+    fw_poly: np.ndarray = numpy_array_field(np.float32)
     max_angle: float = 0.0
 
     @staticmethod
@@ -125,7 +126,7 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
 @dataclass
 class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
     ''' Represents a Pinhole-specific camera model parameters '''
-    principal_point: np.array = numpy_array_field(np.float32)
+    principal_point: np.ndarray = numpy_array_field(np.float32)
     focal_length_u: float = 0.0
     focal_length_v: float = 0.0
     p1: float = 0.0
@@ -152,9 +153,9 @@ class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
 @dataclass
 class Poses:
     ''' Represents a collection of timestamped poses (rig-to-local-world transformation) '''
-    T_rig_world_base: np.array
-    T_rig_worlds: np.array
-    T_rig_world_timestamps_us: np.array
+    T_rig_world_base: np.ndarray
+    T_rig_worlds: np.ndarray
+    T_rig_world_timestamps_us: np.ndarray
 
     def __post_init__(self):
         # Sanity checks
@@ -177,7 +178,7 @@ class BBox3(dataclasses_json.DataClassJsonMixin):
     dim: Tuple[float, float, float]
     rot: Tuple[float, float, float]
 
-    def to_array(self) -> np.array:
+    def to_array(self) -> np.ndarray:
         ''' Convenience single-array representation '''
         return np.array(self.centroid + self.dim + self.rot, dtype=np.float32)
 
@@ -267,8 +268,8 @@ class DataWriter():
             image_callback: Callable[[Path], None],
 
             # poses
-            T_rig_worlds: np.array,
-            timestamps_us: np.array) -> None:
+            T_rig_worlds: np.ndarray,
+            timestamps_us: np.ndarray) -> None:
         # sanity / consistency checks
         assert T_rig_worlds.shape == (2, 4, 4)
         assert T_rig_worlds.dtype == np.dtype('float32')
@@ -293,10 +294,10 @@ class DataWriter():
             camera_id: str,
 
             # all frame timestamps
-            frame_timestamps_us: np.array,
+            frame_timestamps_us: np.ndarray,
 
             # extrinsics
-            T_sensor_rig: np.array,
+            T_sensor_rig: np.ndarray,
 
             # intrinsics
             camera_model_parameters: Union[FThetaCameraModelParameters, PinholeCameraModelParameters],
@@ -332,18 +333,18 @@ class DataWriter():
             continous_frame_index: int,
 
             # point-cloud data
-            xyz_s: np.array,
-            xyz_e: np.array,
-            intensity: np.array,
-            timestamp_us: np.array,
-            dynamic_flag: np.array,
+            xyz_s: np.ndarray,
+            xyz_e: np.ndarray,
+            intensity: np.ndarray,
+            timestamp_us: np.ndarray,
+            dynamic_flag: np.ndarray,
 
             # label data
             frame_labels: list[FrameLabel3],
 
             # poses
-            T_rig_worlds: np.array,
-            timestamps_us: np.array) -> None:
+            T_rig_worlds: np.ndarray,
+            timestamps_us: np.ndarray) -> None:
         # sanity / consistency checks
         assert xyz_s.shape[1] == 3
         assert xyz_s.dtype == np.dtype('float32')
@@ -392,10 +393,10 @@ class DataWriter():
             lidar_id: str,
 
             # all frame timestamps
-            frame_timestamps_us: np.array,
+            frame_timestamps_us: np.ndarray,
 
             # extrinsics
-            T_sensor_rig: np.array) -> None:
+            T_sensor_rig: np.ndarray) -> None:
         assert T_sensor_rig.shape == (4, 4)
         assert T_sensor_rig.dtype == np.dtype('float32')
         assert frame_timestamps_us.shape[1:] == ()
@@ -448,7 +449,7 @@ class Sensor:
         return self._sensor_dir
 
     # Extrinsics
-    def get_T_sensor_rig(self) -> np.array:
+    def get_T_sensor_rig(self) -> np.ndarray:
         ''' Returns constant sensor-to-rig pose '''
         return np.array(self._sensor_meta.T_sensor_rig, dtype=np.float32)
 
@@ -467,19 +468,19 @@ class Sensor:
 
         return range(start_frame, end_frame, step_frame)
 
-    def get_frames_timestamps_us(self) -> np.array:
+    def get_frames_timestamps_us(self) -> np.ndarray:
         ''' Returns all end-of-measurement frame timestamps '''
         return np.array(self._sensor_meta.frame_timestamps_us, dtype=np.uint64)
 
     # Frame-dependent poses / timestamps
-    def get_frame_T_rig_world(self, continous_frame_index: int, frame_timepoint: FrameTimepoint = FrameTimepoint.END) -> np.array:
+    def get_frame_T_rig_world(self, continous_frame_index: int, frame_timepoint: FrameTimepoint = FrameTimepoint.END) -> np.ndarray:
         ''' Returns start/end rig-to-world pose of specific frame '''
 
         with open(self._sensor_dir / (padded_index_string(continous_frame_index) + '.json'), 'r') as f:
             j = json.load(f)
             return np.array(j['T_rig_worlds'][frame_timepoint.value])
 
-    def get_frame_T_sensor_world(self, continous_frame_index: int, frame_timepoint: FrameTimepoint = FrameTimepoint.END) -> np.array:
+    def get_frame_T_sensor_world(self, continous_frame_index: int, frame_timepoint: FrameTimepoint = FrameTimepoint.END) -> np.ndarray:
         ''' Returns start/end sensor-to-world pose of specific frame '''
 
         with open(self._sensor_dir / (padded_index_string(continous_frame_index) + '.json'), 'r') as f:
@@ -513,7 +514,7 @@ class CameraSensor(Sensor):
 
 class PointCloudSensor(Sensor):
     ''' Provides access to sensor's measureing point-clouds '''
-    def get_frame_data(self, continous_frame_index: int, key: str) -> np.array:
+    def get_frame_data(self, continous_frame_index: int, key: str) -> np.ndarray:
         ''' Returns frame-data for a specific frame and column-key '''
         assert continous_frame_index >= 0 and continous_frame_index < self.get_frames_count(), IndexError
 

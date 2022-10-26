@@ -43,7 +43,7 @@ def save_pkl(obj, path):
 
 
 def load_pc_dat(file_path: str,
-                allow_lookup_fallback: bool = True) -> np.array:
+                allow_lookup_fallback: bool = True) -> np.ndarray:
     """
     Loads binary .dat / .dat.xz files representing a 2D single-precision array.
     Serialized 2D arrays usually represent a point-clouds with columns defined as
@@ -64,7 +64,7 @@ def load_pc_dat(file_path: str,
     Return:
         lidar_data: loaded 2D single-precision array
     """
-    def load(file: Union[io.BufferedReader, lzma.LZMAFile]) -> np.array:
+    def load(file: Union[io.BufferedReader, lzma.LZMAFile]) -> np.ndarray:
         # The first number denotes the number of points
         n_rows, n_columns = struct.unpack('<ii', file.read(8))
         # The remaining data are floats saved in little endian
@@ -102,7 +102,7 @@ def load_pc_dat(file_path: str,
     return lidar_data
 
 
-def save_pc_dat(file_path: str, lidar_data: np.array) -> None:
+def save_pc_dat(file_path: str, lidar_data: np.ndarray) -> None:
     """
     Stores binary .dat / .dat.xz file representing a 2D single-precision array, usually representing
     a point-cloud (see load_pc_dat for format description).
@@ -532,7 +532,7 @@ class SimpleTimer:
 
 
 def uniform_subdivide_range(subdiv_id: int, subdiv_count: int, range_start: int,
-                            range_end: int) -> Tuple[np.array, np.int64]:
+                            range_end: int) -> Tuple[np.ndarray, np.int64]:
     """
     Splits the index range range_start:range_end into (approximately) uniform intervals
     based on the requested number of subvisions.
