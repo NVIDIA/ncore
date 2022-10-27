@@ -5,9 +5,9 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 ## Python rules
 http_archive(
     name = "rules_python",
-    sha256 = "56dc7569e5dd149e576941bdb67a57e19cd2a7a63cc352b62ac047732008d7e1",
-    strip_prefix = "rules_python-0.10.0",
-    url = "https://github.com/bazelbuild/rules_python/archive/refs/tags/0.10.0.tar.gz",
+    sha256 = "8c8fe44ef0a9afc256d1e75ad5f448bb59b81aba149b8958f02f7b3a98f5d9b4",
+    strip_prefix = "rules_python-0.13.0",
+    url = "https://github.com/bazelbuild/rules_python/archive/refs/tags/0.13.0.tar.gz",
 )
 
 # Register python toolchain
@@ -67,12 +67,15 @@ load(
 
 mypy_integration_repositories()
 
-load("@mypy_integration//repositories:deps.bzl", mypy_integration_deps = "deps")
-
-mypy_integration_deps(
-    mypy_requirements_file = "//bazel/typing:mypy_version.txt",
+pip_parse(
+    name = "mypy_integration_pip_deps",
     python_interpreter_target = interpreter,
+    requirements_lock = "//bazel/typing:mypy_version.txt",
 )
+
+load("@mypy_integration_pip_deps//:requirements.bzl", install_deps_mypy = "install_deps")
+
+install_deps_mypy()
 
 ## Docker rules
 http_archive(

@@ -1,1 +1,4 @@
 mypy==0.981
+tomli==2.0.1
+typing-extensions==4.4.0
+mypy-extensions==0.4.3
