@@ -19,11 +19,12 @@ index 63bb405..0d3c3ef 100644
  
  py_binary(
      name = "mypy",
-@@ -8,5 +9,7 @@ py_binary(
+@@ -8,5 +9,8 @@ py_binary(
      visibility = ["//visibility:public"],
      deps = [
          requirement("mypy"),
 +        # List of dependencies that provide type-hints
-+        local_req("click"), local_req("pytest"), local_req("numpy"), local_req("sphinx"), local_req("multimethod"), local_req("jupyter_server"), local_req("dataclasses_json")
++        local_req("click"), local_req("pytest"), local_req("numpy"), local_req("sphinx"), local_req("multimethod"), local_req("jupyter_server"), local_req("dataclasses_json"),
++        "@dsai//src/py/dsai_lib/data:pylib", "@dsai//src/py/dsai_lib/geometry:pylib",
      ],
  )
