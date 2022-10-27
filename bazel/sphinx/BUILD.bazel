@@ -5,7 +5,7 @@ load("@rules_python//python:defs.bzl", "py_binary")
 py_binary(
     name = "sphinx_wrapper",
     srcs = ["sphinx_wrapper.py"],
-    visibility = ["//visibility:public"],
+    visibility = ["//docs:__subpackages__"],
     deps = [
         requirement("sphinx"),
         requirement("sphinx_rtd_theme"),

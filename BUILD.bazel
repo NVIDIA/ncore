@@ -35,3 +35,12 @@ updatesrc_update_all(
         ":bzlformat_missing_pkgs_fix",
     ],
 )
+
+# Package group representing all code-related sub-packages
+package_group(
+    name = "code_package_group",
+    packages = [
+        "//scripts/...",
+        "//src/...",
+    ],
+)
