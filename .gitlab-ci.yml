@@ -59,8 +59,8 @@ pages:
   # Build the HTML documentation
   - bazelisk build //docs:dsai
 
-  # Move it to the output artifact for upload
-  - mv bazel-bin/docs/dsai_html/ public/
+  # Move it to the output artifact for upload (requires root right to write)
+  - sudo mv bazel-bin/docs/dsai_html/ public/
   artifacts:
     paths:
     - public
