@@ -53,6 +53,10 @@ install_deps()
 # mypy-integration
 http_archive(
     name = "mypy_integration",
+    patch_args = ["-p1"],
+    patches = [
+        "@//:bazel/typing/mypy.patch",
+    ],
     sha256 = "cf94c102fbaccb587eea8de5cf1cb7f55c5c74396a2468932c3a2a4df989aa1d",
     strip_prefix = "bazel-mypy-integration-0.4.0",
     url = "https://github.com/thundergolfer/bazel-mypy-integration/archive/refs/tags/0.4.0.tar.gz",

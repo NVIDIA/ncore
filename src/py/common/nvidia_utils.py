@@ -191,7 +191,7 @@ def sensor_to_rig(sensor):
 
 def camera_intrinsic_parameters(sensor: dict,
                                 logger: Optional[logging.Logger] = None
-                                ) -> np.array:
+                                ) -> np.ndarray:
     """  Parses the provided rig-style camera sensor dictionary into FTheta camera intrinsic parameters.
 
     Note: currenlty only 5th-order 'pixeldistance-to-angle' ("bw-poly") FTheta are supported, possibly
@@ -259,7 +259,7 @@ def camera_intrinsic_parameters(sensor: dict,
     return np.array(intrinsic, dtype=np.float32)
 
 
-def vehicle_bbox(rig: dict) -> np.array:
+def vehicle_bbox(rig: dict) -> np.ndarray:
     """ Parses the vehicle's bounding-box from the 'vehicle' property
         of a rig and converts it into DSAI bbox conventions.
 
@@ -476,7 +476,7 @@ class LabelProcessor:
             label_class = row.label_name
 
             # this is assuming velocity is not relative to the local sensor motion, but w.r.t. fixed scene / world
-            global_speed = np.linalg.norm([row.velocity_x, row.velocity_y, row.velocity_z])
+            global_speed = float(np.linalg.norm([row.velocity_x, row.velocity_y, row.velocity_z]))
 
             # store frame label data
             if sensor_id not in frame_labels:
@@ -527,11 +527,11 @@ class LabelProcessor:
     @classmethod
     def lidar_dynamic_flag(cls,
                            sensor_id: str, # sensor id
-                           xyz: np.array,  # points in sensor frame
+                           xyz: np.ndarray,  # points in sensor frame
                            frame_timestamp_us: int,
                            track_labels: dict[str, TrackLabel],
                            frame_labels: dict[str, dict[int, list[FrameLabel3]]],
-                           skip_dynamic_flag: bool = False) -> Tuple[np.array, list[FrameLabel3]]:
+                           skip_dynamic_flag: bool = False) -> Tuple[np.ndarray, list[FrameLabel3]]:
         """ Computes per-point lidar dynamic flag by intersecting frame-associated bounding boxes of dynamic objects"""
 
         assert xyz.shape[1] == 3, "wrong point cloud shape"
@@ -539,7 +539,7 @@ class LabelProcessor:
         point_count = xyz.shape[0]
 
         # Initialize dynamic flag
-        dynamic_flag : np.array = np.full(
+        dynamic_flag : np.ndarray = np.full(
             point_count,
             # initialize dynamic_flag to -1 if there are no labels at all
             DynamicFlagState.STATIC.value if len(frame_labels) and not skip_dynamic_flag else DynamicFlagState.NOT_AVAILABLE.value,
