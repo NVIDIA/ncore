@@ -1,6 +1,6 @@
 __version__ = "1.0.0"
 
-import libav_utils_cc
+import libav_utils_cc  # type: ignore
 import numpy as np
 
 def unwind_lidar(pc, transformation_matrices, column_idx):
