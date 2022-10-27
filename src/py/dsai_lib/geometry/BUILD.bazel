@@ -11,6 +11,7 @@ py_library(
     srcs = [
         "__init__.py",
     ],
+    data = ["py.typed"],
     imports = ["../.."],  # enable import via 'dsai_lib.geometry'
     deps = ["//src/cpp/av_utils:pylib"],
 )
