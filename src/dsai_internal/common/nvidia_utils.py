@@ -17,11 +17,11 @@ from google.protobuf import text_format
 from scipy.optimize import curve_fit
 from numpy.polynomial.polynomial import Polynomial
 
-from src.protos.deepmap import transform_pb2, camera_calibration_pb2
-from src.py.common.common import PoseInterpolator, MaskImage
-from src.cpp.av_utils import isWithin3DBBox
-from src.py.common.transformations import euler_2_so3, transform_point_cloud, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
-from src.py.data_converter.data import FrameLabel3, BBox3, LabelSource, TrackLabel, DynamicFlagState
+from src.dsai_internal.data_converter.protos.deepmap import transform_pb2, camera_calibration_pb2
+from src.dsai_internal.common.common import PoseInterpolator, MaskImage
+from src.dsai_internal.av_utils import isWithin3DBBox
+from src.dsai_internal.common.transformations import euler_2_so3, transform_point_cloud, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
+from src.dsai_internal.data.data import FrameLabel3, BBox3, LabelSource, TrackLabel, DynamicFlagState
 
 def extract_sensor_2_sdc(file_path):
     ''' Extract the sensor to self driving car (SDC) rig transformation parameters 

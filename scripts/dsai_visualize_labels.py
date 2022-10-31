@@ -3,8 +3,8 @@
 import click
 import tqdm
 
-from src.py.common.visualization import LabelVisualizer
-from src.py.data_converter.data import DataLoader, LidarSensor
+from src.dsai_internal.common.visualization import LabelVisualizer
+from src.dsai_internal.data.data import DataLoader, LidarSensor
 
 
 @click.command()

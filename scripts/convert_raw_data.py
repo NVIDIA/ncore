@@ -5,7 +5,7 @@ import click
 import debugpy
 import logging
 
-from src.py.common.common import Config
+from src.dsai_internal.common.common import Config
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ def cli(ctx, *_, **kwargs):
 def nvidia_maglev_v2(ctx, *_, **kwargs):
     """NVIDIA-specific data conversion (V2 format, based on Maglev data extraction)"""
     
-    from src.py.data_converter.nvidia_maglev import NvidiaMaglevConverter
+    from src.dsai_internal.data_converter.nvidia_maglev import NvidiaMaglevConverter
 
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
@@ -80,7 +80,7 @@ def nvidia_maglev_v2(ctx, *_, **kwargs):
 def nvidia_deepmap_v2(ctx, *_, **kwargs):
     """NVIDIA-specific data conversion (V2 format, based on DeepMap tracks)"""
 
-    from src.py.data_converter.nvidia_deepmap import NvidiaDeepmapConverter
+    from src.dsai_internal.data_converter.nvidia_deepmap import NvidiaDeepmapConverter
 
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs

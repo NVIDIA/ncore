@@ -14,7 +14,7 @@ package deepmap.api;
 option java_package = "ai.deepmap.api";
 option go_package = "codereview.deepmap.ai/deepmap-go/api/public/deepmap_api/protos";
 
-import "src/protos/deepmap/math.proto";
+import "src/dsai_internal/data_converter/protos/deepmap/math.proto";
 
 // Calibration parameters for the mono view.
 // See OpenCV's documentation on a camera model:

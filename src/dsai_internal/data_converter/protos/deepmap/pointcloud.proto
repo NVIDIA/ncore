@@ -14,8 +14,8 @@ option go_package = "codereview.deepmap.ai/deepmap-go/api/public/deepmap_api/pro
 
 package deepmap.api;
 
-import "src/protos/deepmap/coordinate_systems.proto";
-import "src/protos/deepmap/transform.proto";
+import "src/dsai_internal/data_converter/protos/deepmap/coordinate_systems.proto";
+import "src/dsai_internal/data_converter/protos/deepmap/transform.proto";
 
 // A point cloud is the collections of points from LiDAR. It is assumed the data
 // is already corrected in the x,y,z directions, based on the LiDAR geometry if

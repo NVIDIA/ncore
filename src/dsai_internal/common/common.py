@@ -16,7 +16,7 @@ from PIL import Image
 from scipy import spatial, interpolate
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.transform import Rotation as R
-from src.py.common.transformations import so3_trans_2_se3
+from src.dsai_internal.common.transformations import so3_trans_2_se3
 
 
 def natural_key(string_):

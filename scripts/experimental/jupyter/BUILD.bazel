@@ -7,7 +7,7 @@ py_binary(
     srcs = ["jupyter.py"],
     deps = [
         requirement("jupyter_server"),
-        "//src/py/common:pylib",
+        "//src/dsai_internal/common:pylib",
     ],
 )
 

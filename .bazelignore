@@ -1,4 +1,4 @@
-bazel-dsai
+bazel-dsai-repo
 bazel-bin
 bazel-out
 bazel-testlogs
