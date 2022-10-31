@@ -16,7 +16,7 @@ from protobuf_to_dict import protobuf_to_dict
 
 from src.dsai_internal.data_converter.protos.deepmap import track_data_pb2, pointcloud_pb2
 from src.dsai_internal.data_converter.data_converter import BaseNvidiaDataConverter
-from src.dsai_lib.data import DataWriter, Poses, FThetaCameraModelParameters, LabelSource, ShutterType
+from src.dsai_internal.data.data import DataWriter, Poses, FThetaCameraModelParameters, LabelSource, ShutterType
 from src.dsai_internal.common.common import PoseInterpolator
 from src.dsai_internal.common.nvidia_utils import (LabelProcessor, extract_sensor_2_sdc, parse_rig_sensors_from_dict,
                                                    sensor_to_rig, extract_pose, vehicle_bbox,

@@ -12,7 +12,7 @@ py_proto_library(
         ":track_data.proto",
         ":transform.proto",
     ],
-    visibility = ["//src:__subpackages__"],
+    visibility = ["//src/dsai_internal:__subpackages__"],
 )
 
 bzlformat_pkg(name = "bzlformat")

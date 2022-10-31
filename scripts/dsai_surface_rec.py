@@ -13,7 +13,7 @@ import numpy as np
 import point_cloud_utils as pcu
 
 from src.dsai_internal.common.nvidia_utils import transform_point_cloud
-from src.dsai_lib.data import DataLoader, PointCloudSensor
+from src.dsai_internal.data.data import DataLoader, PointCloudSensor
 
 
 @click.command()
