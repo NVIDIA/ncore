@@ -16,7 +16,8 @@ from typing import Callable, Optional, Tuple, Union
 from dataclasses import dataclass, field
 import dataclasses_json
 
-from .util import padded_index_string
+from .util import padded_index_string, closest_index_sorted
+
 
 ## Constants
 VERSION = '2.0.0'
@@ -489,6 +490,11 @@ class Sensor:
         with open(self._sensor_dir / (padded_index_string(continous_frame_index) + '.json'), 'r') as f:
             j = json.load(f)
             return j['timestamps_us'][frame_timepoint.value]
+
+    def get_closest_frame_index(self, timestamp_us: int) -> int:
+        ''' Given a timestamp, returns the frame index of the closes frame '''
+
+        return closest_index_sorted(self._sensor_meta.frame_timestamps_us, timestamp_us)
 
 
 class CameraSensor(Sensor):
