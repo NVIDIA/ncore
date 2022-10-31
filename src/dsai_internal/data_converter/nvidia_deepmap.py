@@ -14,14 +14,15 @@ import cv2
 from google.protobuf import text_format
 from protobuf_to_dict import protobuf_to_dict
 
-from src.protos.deepmap import track_data_pb2, pointcloud_pb2
-from src.py.data_converter.data_converter import BaseNvidiaDataConverter
-from src.py.data_converter.data import DataWriter, Poses, FThetaCameraModelParameters, LabelSource, ShutterType
-from src.py.common.common import PoseInterpolator
-from src.py.common.nvidia_utils import (LabelProcessor, extract_sensor_2_sdc, parse_rig_sensors_from_dict,
-                                        sensor_to_rig, extract_pose, vehicle_bbox, camera_intrinsic_parameters,
-                                        compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask)
-from src.cpp.av_utils import unwind_lidar, isWithin3DBBox
+from src.dsai_internal.data_converter.protos.deepmap import track_data_pb2, pointcloud_pb2
+from src.dsai_internal.data_converter.data_converter import BaseNvidiaDataConverter
+from src.dsai_lib.data import DataWriter, Poses, FThetaCameraModelParameters, LabelSource, ShutterType
+from src.dsai_internal.common.common import PoseInterpolator
+from src.dsai_internal.common.nvidia_utils import (LabelProcessor, extract_sensor_2_sdc, parse_rig_sensors_from_dict,
+                                                   sensor_to_rig, extract_pose, vehicle_bbox,
+                                                   camera_intrinsic_parameters, compute_fw_polynomial,
+                                                   compute_ftheta_parameters, camera_car_mask)
+from src.dsai_internal.av_utils import unwind_lidar, isWithin3DBBox
 
 
 class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
@@ -344,6 +345,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                     # sof-timestamp
                     frame_timestamp_us - self.CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US[camera_type] - self.CAMERATYPE_TO_EXPOSURETIME_HALF_US[camera_type], \
                     # eof-timestamp
+
                     frame_timestamp_us - self.CAMERATYPE_TO_EXPOSURETIME_HALF_US[camera_type]
                 ])
 

@@ -17,14 +17,14 @@ from pathlib import Path
 from typing import Optional, Tuple
 from functools import partial
 
-from src.py.data_converter.data_converter import BaseNvidiaDataConverter
-from src.py.data_converter.data import DataWriter, FThetaCameraModelParameters, LabelSource, Poses, ShutterType
+from src.dsai_internal.data_converter.data_converter import BaseNvidiaDataConverter
+from src.dsai_lib.data import DataWriter, FThetaCameraModelParameters, LabelSource, Poses, ShutterType
 
-from src.py.common.nvidia_utils import (parse_rig_sensors_from_dict, sensor_to_rig, LabelProcessor,
+from src.dsai_internal.common.nvidia_utils import (parse_rig_sensors_from_dict, sensor_to_rig, LabelProcessor,
                                         camera_intrinsic_parameters, compute_fw_polynomial, compute_ftheta_parameters,
                                         camera_car_mask, vehicle_bbox)
-from src.py.common.common import load_jsonl, PoseInterpolator, uniform_subdivide_range, platform_cpu_count, SimpleTimer
-from src.cpp.av_utils import isWithin3DBBox
+from src.dsai_internal.common.common import load_jsonl, PoseInterpolator, uniform_subdivide_range, platform_cpu_count, SimpleTimer
+from src.dsai_internal.av_utils import isWithin3DBBox
 
 class NvidiaMaglevConverter(BaseNvidiaDataConverter):
     """

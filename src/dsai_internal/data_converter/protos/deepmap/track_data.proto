@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package alignment.data_wrapper;
 
-import "src/protos/deepmap/transform.proto";
+import "src/dsai_internal/data_converter/protos/deepmap/transform.proto";
 
 // All paths recorded in messages are relative to some base dir.
 

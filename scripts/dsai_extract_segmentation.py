@@ -3,10 +3,10 @@
 import click
 import logging
 
-from src.py.deps.semantic_segmentation import run_semantic_segmentation
-from src.py.deps.instance_segmentation import run_instance_segmentation
+from src.dsai_internal.deps.semantic_segmentation import run_semantic_segmentation
+from src.dsai_internal.deps.instance_segmentation import run_instance_segmentation
 
-from src.py.data_converter.data import DataLoader, CameraSensor, INDEX_DIGITS
+from src.dsai_internal.data.data import DataLoader, CameraSensor, INDEX_DIGITS
 
 
 @click.command()

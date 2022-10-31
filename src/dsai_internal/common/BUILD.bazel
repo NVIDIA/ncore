@@ -24,9 +24,9 @@ py_library(
         requirement("open3d"),
         requirement("tensorflow"),  # required by open3d.ml.tf
         requirement("multimethod"),
-        "//src/cpp/av_utils:pylib",
-        "//src/protos/deepmap:py_proto",
-        "//src/py/data_converter:pylib_data",
+        "//src/dsai_internal/av_utils:pylib",
+        "//src/dsai_internal/data_converter/protos/deepmap:py_proto",
+        "//src/dsai_lib/data:pylib",
     ],
 )
 
@@ -35,7 +35,7 @@ pytest_test(
     srcs = glob(["*test.py"]),
     deps = [
         ":pylib",
-        "//src/cpp/av_utils:pylib",
+        "//src/dsai_internal/av_utils:pylib",
     ],
 )
 

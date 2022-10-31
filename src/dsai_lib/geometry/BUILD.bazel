@@ -13,7 +13,7 @@ py_library(
     ],
     data = ["py.typed"],
     imports = ["../.."],  # enable import via 'dsai_lib.geometry'
-    deps = ["//src/cpp/av_utils:pylib"],
+    deps = ["//src/dsai_internal/av_utils:pylib"],
 )
 
 pytest_test(
