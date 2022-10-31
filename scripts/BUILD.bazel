@@ -108,8 +108,8 @@ py_binary(
         requirement("numpy"),
         requirement("click"),
         requirement("tqdm"),
+        "//src/dsai/data:pylib",
         "//src/dsai_internal/common:pylib",
-        "//src/dsai_lib/data:pylib",
     ],
 )
 
@@ -121,8 +121,8 @@ py_binary(
         requirement("click"),
         requirement("tqdm"),
         requirement("point-cloud-utils"),
+        "//src/dsai/data:pylib",
         "//src/dsai_internal/common:pylib",
-        "//src/dsai_lib/data:pylib",
     ],
 )
 
@@ -132,8 +132,8 @@ py_binary(
     deps = [
         requirement("click"),
         requirement("tqdm"),
+        "//src/dsai/data:pylib",
         "//src/dsai_internal/common:pylib",
-        "//src/dsai_lib/data:pylib",
     ],
 )
 
@@ -142,9 +142,9 @@ py_binary(
     srcs = ["dsai_extract_segmentation.py"],
     deps = [
         requirement("click"),
+        "//src/dsai/data:pylib",
         "//src/dsai_internal/deps/instance_segmentation:pylib",
         "//src/dsai_internal/deps/semantic_segmentation:pylib",
-        "//src/dsai_lib/data:pylib",
     ],
 )
 

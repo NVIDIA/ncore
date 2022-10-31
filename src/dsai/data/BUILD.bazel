@@ -12,8 +12,8 @@ py_library(
         "__init__.py",
     ],
     data = ["py.typed"],
-    imports = ["../.."],  # enable import via 'dsai_lib.geometry'
-    deps = ["//src/dsai_internal/av_utils:pylib"],
+    imports = ["../.."],  # enable import via 'dsai.data'
+    deps = ["//src/dsai_internal/data:pylib"],
 )
 
 pytest_test(
