@@ -16,9 +16,11 @@ from typing import Callable, Optional, Tuple, Union
 from dataclasses import dataclass, field
 import dataclasses_json
 
+from .util import padded_index_string, closest_index_sorted
+
+
 ## Constants
 VERSION = '2.0.0'
-INDEX_DIGITS = 6  # the number of integer digits to pad counters in output filenames
 CAMERAS_BASE_DIR = 'cameras'
 LIDARS_BASE_DIR = 'lidars'
 RADARS_BASE_DIR = 'radars'
@@ -30,11 +32,6 @@ class FrameTimepoint(IntEnum):
     ''' Enumerates special timepoints within a frame (values used to index into buffers) '''
     START = 0
     END = 1
-
-
-def padded_index_string(index: int, index_digits=INDEX_DIGITS) -> str:
-    ''' Pads an integer with leading zeros to a fixed number of digits '''
-    return str(index).zfill(index_digits)
 
 
 def numpy_array_field(datatype: npt.DTypeLike, default=None):
@@ -493,6 +490,11 @@ class Sensor:
         with open(self._sensor_dir / (padded_index_string(continous_frame_index) + '.json'), 'r') as f:
             j = json.load(f)
             return j['timestamps_us'][frame_timepoint.value]
+
+    def get_closest_frame_index(self, timestamp_us: int) -> int:
+        ''' Given a timestamp, returns the frame index of the closes frame '''
+
+        return closest_index_sorted(self._sensor_meta.frame_timestamps_us, timestamp_us)
 
 
 class CameraSensor(Sensor):

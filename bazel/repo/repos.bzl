@@ -1,3 +1,5 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 load("@bazel_tools//tools/build_defs/repo:http.bzl", _http_archive = "http_archive",)
 load("@bazel_tools//tools/build_defs/repo:git.bzl",  _new_git_repository = "new_git_repository")
 load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")

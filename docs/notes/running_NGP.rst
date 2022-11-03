@@ -1,3 +1,5 @@
+.. Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 Running NGP on the DriveSimAI data
 ==================================
 

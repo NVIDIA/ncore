@@ -1,3 +1,5 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 """ Wrap py_test with a common pytest wrapper """
 
 load("@rules_python//python:defs.bzl", "py_test")

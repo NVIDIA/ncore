@@ -1,6 +1,9 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_library")
+load("//bazel/pytest:defs.bzl", "pytest_test")
 
 package(default_visibility = ["//:code_package_group"])
 
@@ -8,12 +11,21 @@ py_library(
     name = "pylib",
     srcs = [
         "data.py",
+        "util.py",
     ],
     deps = [
         requirement("h5py"),
         requirement("dataclasses-json"),
         requirement("pillow"),
         requirement("marshmallow"),
+    ],
+)
+
+pytest_test(
+    name = "test",
+    srcs = glob(["*test.py"]),
+    deps = [
+        ":pylib",
     ],
 )
 

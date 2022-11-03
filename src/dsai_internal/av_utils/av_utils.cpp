@@ -1,3 +1,5 @@
+// Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 #include <npe.h>
 #include <Eigen/Dense>
 #include <iomanip>

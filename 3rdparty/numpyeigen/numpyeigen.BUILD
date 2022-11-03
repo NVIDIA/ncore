@@ -1,3 +1,5 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 load("@rules_cc//cc:defs.bzl", "cc_library")
 load("@rules_python//python:defs.bzl", "py_binary")
 
