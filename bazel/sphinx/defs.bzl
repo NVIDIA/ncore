@@ -1,3 +1,5 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 """ Execute wrapped sphinx-build to build/view HTML docs """
 
 load("@bazel_skylib//lib:paths.bzl", "paths")

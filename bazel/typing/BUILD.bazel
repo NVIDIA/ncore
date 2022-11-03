@@ -1,3 +1,5 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 exports_files([
     "mypy_version.txt",
     "mypy.ini",

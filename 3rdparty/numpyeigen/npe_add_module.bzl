@@ -1,3 +1,5 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 """Rules for numpyeigen function / module codegeneration"""
 
 def _npe_codegen_function_impl(ctx):

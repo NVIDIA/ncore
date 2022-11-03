@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved. -->
+
 # Jupyter Workflows
 
 This bazel package defines a `:jupyter` target that starts a `jupyter_server` within a bazel sandbox while making all dependencies available. This enables connecting a notebook as a client to run within this server environment.
