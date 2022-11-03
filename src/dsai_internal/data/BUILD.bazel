@@ -10,6 +10,7 @@ py_library(
     name = "pylib",
     srcs = [
         "data.py",
+        "util.py",
     ],
     deps = [
         requirement("h5py"),

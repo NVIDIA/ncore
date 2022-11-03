@@ -6,7 +6,8 @@ import logging
 from src.dsai_internal.deps.semantic_segmentation import run_semantic_segmentation
 from src.dsai_internal.deps.instance_segmentation import run_instance_segmentation
 
-from src.dsai_internal.data.data import DataLoader, CameraSensor, INDEX_DIGITS
+from src.dsai_internal.data.data import DataLoader, CameraSensor
+from src.dsai_internal.data.util import INDEX_DIGITS
 
 
 @click.command()
