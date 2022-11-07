@@ -10,7 +10,7 @@ import h5py
 import numpy as np
 import numpy.typing as npt
 
-import PIL
+import PIL.Image as PILImage
 
 from pathlib import Path
 from typing import Callable, Optional, Tuple, Union
@@ -308,7 +308,7 @@ class DataWriter():
             camera_model_parameters: Union[FThetaCameraModelParameters, PinholeCameraModelParameters],
 
             # sensor constants
-            mask_image: Optional[PIL.Image.Image]) -> None:
+            mask_image: Optional[PILImage.Image]) -> None:
         assert T_sensor_rig.shape == (4, 4)
         assert T_sensor_rig.dtype == np.dtype('float32')
         assert frame_timestamps_us.ndim == 1
@@ -542,9 +542,9 @@ class CameraSensor(Sensor):
                 data = stream.read()
             return data
 
-        def get_image(self) -> PIL.Image.Image:
+        def get_image(self) -> PILImage.Image:
             ''' Returns decoded image from image file data '''
-            return PIL.Image.open(self.get_image_file_path())
+            return PILImage.open(self.get_image_file_path())
 
     def get_camera_model_parameters(self) -> Union[FThetaCameraModelParameters, PinholeCameraModelParameters]:
         ''' Returns parameters specific to the camera's intrinsic model '''
@@ -562,12 +562,12 @@ class CameraSensor(Sensor):
         #       in the future (e.g., video / archived)
         return self.FileFrameHandle(self.get_sensor_dir() / (padded_index_string(continous_frame_index) + '.jpeg'))
 
-    def get_camera_mask_image(self) -> Optional[PIL.Image.Image]:
+    def get_camera_mask_image(self) -> Optional[PILImage.Image]:
         ''' Returns camera mask image, if available '''
         mask_path = self.get_sensor_dir() / 'mask.png'
 
         if mask_path.exists():
-            return PIL.Image.open(str(mask_path))
+            return PILImage.open(str(mask_path))
         else:
             return None
 
