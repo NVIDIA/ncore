@@ -562,6 +562,15 @@ class CameraSensor(Sensor):
         #       in the future (e.g., video / archived)
         return self.FileFrameHandle(self.get_sensor_dir() / (padded_index_string(continous_frame_index) + '.jpeg'))
 
+    def get_camera_mask_image(self) -> Optional[PIL.Image.Image]:
+        ''' Returns camera mask image, if available '''
+        mask_path = self.get_sensor_dir() / 'mask.png'
+
+        if mask_path.exists():
+            return PIL.Image.open(str(mask_path))
+        else:
+            return None
+
 
 class PointCloudSensor(Sensor):
     ''' Provides access to sensor's measureing point-clouds '''
