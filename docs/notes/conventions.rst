@@ -174,6 +174,7 @@ For individual sensors we also save session-wise metadata:
 
 * ``T_sensor_rig``- SE3 transformation matrix from the sensor to the rig coordinate system (float32, [4,4])
 * ``frame_timestamps_us`` - end-of-frame timestamps of the all sensor frames in microseconds (uint64, [n,])
+* ``frame_storage`` - mode used to store frames (str, one of [FRAMEFILE])
 
 *Cameras*: 
 

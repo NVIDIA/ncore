@@ -46,11 +46,11 @@ def dsai_extract_segmentation(root_dir: str, camera_sensors: list[str], semantic
         sensor = loader.get_sensor(camera_sensor)
         assert isinstance(sensor, CameraSensor), 'only camera sensors supported'
 
-        image_path_strings = [
-             # segmentation functions expect file path strings
-            str(sensor.get_frame_image_path(i))
-            for i in sensor.get_frame_index_range(start_frame, end_frame, step_frame)
-        ]
+        image_path_strings = []
+        for i in sensor.get_frame_index_range(start_frame, end_frame, step_frame):
+            frame = sensor.get_frame(i)
+            assert isinstance(frame, CameraSensor.FileFrameHandle), 'only file-based frames currently supported'
+            image_path_strings.append(str(frame.get_image_file_path()))
 
         if semantic_seg:
             logger.info(f'Running semantic segmentation on {len(image_path_strings)} images of camera {camera_sensor}')
