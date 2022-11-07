@@ -3,12 +3,14 @@
 from enum import IntEnum, auto, unique
 import json
 from types import SimpleNamespace
+from abc import ABC, abstractmethod
 
 import h5py
 
 import numpy as np
 import numpy.typing as npt
-from PIL.Image import Image
+
+import PIL
 
 from pathlib import Path
 from typing import Callable, Optional, Tuple, Union
@@ -262,7 +264,7 @@ class DataWriter():
             continous_frame_index: int,
 
             # image data callback (caller passed function stores the frame at the provided path)
-            image_callback: Callable[[Path], None],
+            image_file_callback: Callable[[Path], None],
 
             # poses
             T_rig_worlds: np.ndarray,
@@ -276,9 +278,9 @@ class DataWriter():
         sensor_output_dir = self.sequence_output_dir / CAMERAS_BASE_DIR / camera_id
         continous_frame_index_string = padded_index_string(continous_frame_index)
 
-        # Handle image
+        # Handle image file
         target_image_path = sensor_output_dir / (continous_frame_index_string + '.jpeg')
-        image_callback(target_image_path)
+        image_file_callback(target_image_path)
 
         # Output frame meta data
         output = {'T_rig_worlds': T_rig_worlds.tolist(), 'timestamps_us': timestamps_us.tolist()}
@@ -300,7 +302,7 @@ class DataWriter():
             camera_model_parameters: Union[FThetaCameraModelParameters, PinholeCameraModelParameters],
 
             # sensor constants
-            mask_image: Optional[Image]) -> None:
+            mask_image: Optional[PIL.Image.Image]) -> None:
         assert T_sensor_rig.shape == (4, 4)
         assert T_sensor_rig.dtype == np.dtype('float32')
         assert frame_timestamps_us.ndim == 1
@@ -499,6 +501,41 @@ class Sensor:
 
 class CameraSensor(Sensor):
     ''' Provides access to camera-specific sensor-data '''
+
+    class BaseFrameHandle(ABC):
+        ''' Base class for all frame data access, abstracting away storage-related details '''
+
+        # Abstract interface
+        @abstractmethod
+        def get_image_array(self) -> np.ndarray:
+            ''' Returns decoded image data as array [W,H,C] '''
+            pass
+
+    class FileFrameHandle(BaseFrameHandle):
+        ''' Represents a file-based handle to an image '''
+        def __init__(self, image_path: Path):
+            self._image_path = image_path
+
+        # Abstract interface
+        def get_image_array(self) -> np.ndarray:
+            ''' Returns decoded image data as array [W,H,C] '''
+            return np.asarray(self.get_image())
+
+        # File-only interface
+        def get_image_file_path(self) -> Path:
+            ''' Returns the path to the image file '''
+            return self._image_path
+
+        def get_image_file_data(self) -> bytes:
+            ''' Returns encoded image file data '''
+            with open(self.get_image_file_path(), 'rb') as stream:
+                data = stream.read()
+            return data
+
+        def get_image(self) -> PIL.Image.Image:
+            ''' Returns decoded image from image file data '''
+            return PIL.Image.open(self.get_image_file_path())
+
     def get_camera_model_parameters(self) -> Union[FThetaCameraModelParameters, PinholeCameraModelParameters]:
         ''' Returns parameters specific to the camera's intrinsic model '''
         if self._sensor_meta.camera_model_type == 'ftheta':
@@ -507,11 +544,13 @@ class CameraSensor(Sensor):
             return PinholeCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters.__dict__)
         raise ValueError
 
-    def get_frame_image_path(self, continous_frame_index: int) -> Path:
-        ''' Returns the path to the image file of a specific frame '''
+    def get_frame(self, continous_frame_index: int) -> BaseFrameHandle:
+        ''' Returns a handle to the frame's image data (storage-dependent) '''
         assert continous_frame_index >= 0 and continous_frame_index < self.get_frames_count(), IndexError
 
-        return self.get_sensor_dir() / (padded_index_string(continous_frame_index) + '.jpeg')
+        # Note: we currently only support file-based camera frames, but might support different types
+        #       in the future (e.g., video / archived)
+        return self.FileFrameHandle(self.get_sensor_dir() / (padded_index_string(continous_frame_index) + '.jpeg'))
 
 
 class PointCloudSensor(Sensor):
