@@ -150,4 +150,14 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "dsai_to_ngp",
+    srcs = ["dsai_to_ngp.py"],
+    deps = [
+        requirement("click"),
+        "//src/dsai_internal/common:pylib",
+        "//src/dsai_internal/data:pylib",
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")
