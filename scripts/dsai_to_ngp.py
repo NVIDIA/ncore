@@ -18,11 +18,24 @@ from src.dsai_internal.data.data import (
     LidarSensor,
     FThetaCameraModelParameters,
     FrameTimepoint,
+    PinholeCameraModelParameters,
 )
 from src.dsai_internal.data.util import padded_index_string
 
 from src.dsai_internal.common.common import average_camera_pose, save_pc_dat
 from src.dsai_internal.common.nvidia_utils import transform_point_cloud
+
+# Rotation of DSAI camera frame to NGP camera frame
+R_DSAI_NGP = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
+
+# Encodes the rolling shutter parameters [a,b,c] such y = a + b*x + c*y (Waymo rolling shutter is column wise)
+RS_DIR_TO_NGP = {
+    'ROLLING_TOP_TO_BOTTOM': np.array([0.0, 0.0, 1.0]),
+    'ROLLING_LEFT_TO_RIGHT': np.array([0.0, 1.0, 0.0]),
+    'ROLLING_BOTTOM_TO_TOP': np.array([1.0, 0.0, -1.0]),
+    'ROLLING_RIGHT_TO_LEFT': np.array([1.0, -1.0, 0.0])
+}
+
 
 @click.command()
 @click.option("--root-dir", type=str, help="Path to the preprocessed sequence", required=True)
@@ -111,15 +124,14 @@ def dsai_to_ngp(
                 principal_point=principal_point,
                 bw_poly=bw_poly,
                 fw_poly=fw_poly,
+                shutter_type=shutter_type,
             ):
                 # This is not really the focal length, only a crude approximation, but NGP expects some value for fov (not used in training)
                 focal_length = fw_poly[1]
                 fov_angle_x = math.atan2(resolution[0], focal_length * 2) * 2
 
-                # Extract the rolling shutter parameters such y = a + b*x + c*y
-                a = b = 0.0
-                c = 1.0
-                rolling_shutter = np.array([a, b, c])
+                # Extract the rolling shutter parameters representing y = a + b*x + c*y
+                rolling_shutter = RS_DIR_TO_NGP[shutter_type.name]
 
                 assert len(bw_poly) == 6, "Update polynomial export in case the internal order of distortion polynomials changed"
                 camera_data["intrinsic_data"] = {
@@ -137,17 +149,40 @@ def dsai_to_ngp(
                     "rolling_shutter": rolling_shutter.tolist(),
                     "camera_angle_x": fov_angle_x,
                 }
+
+            case PinholeCameraModelParameters() as pinhole:
+                # Get the focal length and compute the angular field of view
+                fov_angle_x = math.atan(pinhole.resolution[0]/(pinhole.focal_length_u*2))*2
+                fov_angle_y = math.atan(pinhole.resolution[1]/(pinhole.focal_length_v*2))*2
+
+                # Extract the rolling shutter parameters representing y = a + b*x + c*y
+                rolling_shutter = RS_DIR_TO_NGP[pinhole.shutter_type.name]
+
+                camera_data["intrinsic_data"] = {
+                    "w": int(pinhole.resolution[0]),
+                    "h": int(pinhole.resolution[1]),
+                    "cx": float(pinhole.principal_point[0]),
+                    "cy": float(pinhole.principal_point[1]),
+                    "k1": pinhole.k1,
+                    "k2": pinhole.k2,
+                    # Note: we are already outputting this higher-order coefficient although NGP might not use it yet
+                    "k3": pinhole.k3,
+                    "p1": pinhole.p1,
+                    "p2": pinhole.p2,
+                    "rolling_shutter": rolling_shutter.tolist(),
+                    "camera_angle_x": fov_angle_x,
+                    "camera_angle_y": fov_angle_y
+                }
             case _:
                 raise TypeError(
-                    f"unsupported camera model type {type(camera_model_parameters)}, currently supporting Ftheta only"
+                    f"unsupported camera model type {type(camera_model_parameters)}, currently supporting Ftheta/Pinhole only"
                 )
 
         # Z is the up vector in the DSAI coordinate system
         camera_data["up"] = np.array([0, 0, 1])
 
         def nvidia_to_ngp(T_sensor_to_world):
-            R_NVIDIA_NGP = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
-            R = T_sensor_to_world[:3, :3] @ R_NVIDIA_NGP
+            R = T_sensor_to_world[:3, :3] @ R_DSAI_NGP
             T_sensor_to_world[:3, :3] = R
             return T_sensor_to_world
 
