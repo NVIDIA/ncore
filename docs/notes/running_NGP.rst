@@ -1,7 +1,7 @@
 .. Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-Running NGP on the DriveSimAI data
-==================================
+Running NGP on DSAI data
+=============================
 
 To reconstruct the radiance field of the static background we use the Instant-NGP. 
 
@@ -15,7 +15,7 @@ To compile Instant-NGP start by cloning the repo from the [internal repository](
     cd neural-graphics-primitives
 
 
-FAQ, compiliation problems, and other usefull information are available in the [public repository](https://github.com/NVlabs/instant-ngp).
+FAQ, compilation problems, and other useful information are available in the [public repository](https://github.com/NVlabs/instant-ngp).
 
 Then, use CMake to build the project::
 
@@ -27,14 +27,27 @@ Then, use CMake to build the project::
 Generating config files
 -----------------------
 
-Instant-NGP uses `*.json` config files to initialize the parameters and image/lidar paths. The config files for DriveSimAi data can be generated using the `dsai_to_ngp.py` script. For example, the command::
+Instant-NGP uses `*.json` config files to initialize the parameters and image/lidar paths.
+The config files for DSAI data can be generated using the `dsai_to_ngp` target. For example, the command::
 
 
-    python scripts/dsai_to_ngp.py --root-dir /path/to/data/ --experiment-name dummy_experiment --start-frame 0 --end-frame 200 
-                                            --step-frame 2 -c 0 -c 1 --max-dist 200 --use-lidar nvidia
+    bazel run //scripts:dsai_to_ngp \
+        -- \
+        --root-dir=<PATH-TO-DATA> \
+        --experiment-name=dummy_experiment \
+        --camera-sensor=camera_front_wide_120fov \
+        --camera-sensor=camera_cross_left_120fov \
+        --camera-sensor=camera_cross_right_120fov \
+        --lidar-sensor=lidar_gt_top_p128_v4p5 \
+        --start-frame 0 \
+        --end-frame 200 \
+        --step-frame 2 \
+        --max-dist 200
 
 
-will generate config files for cameras (`-c`) `0` and `1` and save them in `/path/to/data/ngp_configs/dummy_experiment`. Runing Instan-NGP using the generated config files will fir a model using every ***third*** frame between ***0th*** and ***200th*** frame. Lidar data (`--use-lidar`) will also be included. Due to the memory constraints, currently only ~200 images of (4k x 2k - Nvidia resolution) can be used. 
+will generate config files for three cameras and save them in `<PATH-TO-DATA>/ngp_configs/dummy_experiment`.
+Running Instant-NGP using the generated config files will fit a model using every ***third*** frame between ***0th*** and ***200th*** frame.
+Lidar data will also be included. Due to the memory constraints, currently only ~200 images of (4k x 2k - Nvidia resolution) should be used. 
 
 Running Instant-NGP
 -------------------
@@ -43,8 +56,17 @@ Give the configs file generated above, Instant-NGP can be run as follows::
 
 
     cd instant-ngp
-    python ./scripts/run.py --mode nerf --train --scene /path/to/data/ngp_configs/dummy_experiment/camera_0.json  --n_steps 20000  --width 3848 --height 2168 --save_snapshot ./pretrained_models/dummy_experiment.msgpack --near_distance 0.0 --gui
+    python ./scripts/run.py \
+        --mode nerf \
+        --train \
+        --scene <PATH-TO-DATA>/ngp_configs/dummy_experiment/camera_front_wide_120fov_train.json \
+        --n_steps 20000 \
+        --width 3848 \
+        --height 2168 \
+        --save_snapshot ./pretrained_models/dummy_experiment.msgpack \
+        --near_distance 0.0 \
+        --gui
 
 
-This will train Instant-NGP for 20000 iterrations before saving the pretrained weights to `./pretrained_models/dummy_experiment.msgpack`. For more information on individual CL parameters please check the original Instant-NGP repository.
-
+This will train Instant-NGP for 20000 iterations before saving the pretrained weights to `./pretrained_models/dummy_experiment.msgpack`.
+For more information on individual CL parameters please check the original Instant-NGP repository.
