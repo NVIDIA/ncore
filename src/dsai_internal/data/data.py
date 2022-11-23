@@ -70,7 +70,6 @@ class ShutterType(IntEnum):
     ROLLING_RIGHT_TO_LEFT = auto()
     GLOBAL = auto()
 
-
 @dataclass
 class CameraModelParameters:
     ''' Represents parameters common to all camera models '''
@@ -562,14 +561,22 @@ class CameraSensor(Sensor):
         #       in the future (e.g., video / archived)
         return self.FileFrameHandle(self.get_sensor_dir() / (padded_index_string(continous_frame_index) + '.jpeg'))
 
+    def get_camera_mask_image_path(self) -> Optional[Path]:
+        ''' Returns camera mask image path, if available '''
+
+        if (mask_path := self.get_sensor_dir() / 'mask.png').exists():
+            return mask_path
+        else:
+            return None
+
     def get_camera_mask_image(self) -> Optional[PILImage.Image]:
         ''' Returns camera mask image, if available '''
-        mask_path = self.get_sensor_dir() / 'mask.png'
-
-        if mask_path.exists():
+        
+        if mask_path := self.get_camera_mask_image_path():
             return PILImage.open(str(mask_path))
         else:
             return None
+
 
 
 class PointCloudSensor(Sensor):
@@ -608,10 +615,10 @@ class DataLoader():
         if isinstance(sequence_dir, str):
             sequence_dir = Path(sequence_dir)
 
-        self.sequence_dir = sequence_dir
+        self._sequence_dir_path = sequence_dir
 
         # load sequence meta-data
-        with open(self.sequence_dir / 'meta.json', 'r') as f:
+        with open(self._sequence_dir_path / 'meta.json', 'r') as f:
             self._meta = json.load(f, object_hook=lambda d: SimpleNamespace(**d))
 
         # check version-compatibility
@@ -620,25 +627,29 @@ class DataLoader():
         # load all available sensors
         self._sensors: dict[str, Union[CameraSensor, LidarSensor, RadarSensor]] = {}
         self._sensors.update({
-            sensor_id: CameraSensor(sensor_id, self.sequence_dir / CAMERAS_BASE_DIR / sensor_id)
+            sensor_id: CameraSensor(sensor_id, self._sequence_dir_path / CAMERAS_BASE_DIR / sensor_id)
             for sensor_id in self._meta.sensors.cameras
         })
         self._sensors.update({
-            sensor_id: LidarSensor(sensor_id, self.sequence_dir / LIDARS_BASE_DIR / sensor_id)
+            sensor_id: LidarSensor(sensor_id, self._sequence_dir_path / LIDARS_BASE_DIR / sensor_id)
             for sensor_id in self._meta.sensors.lidars
         })
         self._sensors.update({
-            sensor_id: RadarSensor(sensor_id, self.sequence_dir / RADARS_BASE_DIR / sensor_id)
+            sensor_id: RadarSensor(sensor_id, self._sequence_dir_path / RADARS_BASE_DIR / sensor_id)
             for sensor_id in self._meta.sensors.radars
         })
 
         self._poses: Optional[Poses] = None  # poses will be loaded on-demand if required
 
+    def get_sequence_dir(self) -> Path:
+        ''' Returns the path of the loaded sequence's directory '''
+        return self._sequence_dir_path
+
     def get_poses(self) -> Poses:
         ''' Returns all timestamped poses associated with the dataset '''
         # Load poses on-demand
         if self._poses is None:
-            with h5py.File(self.sequence_dir / 'poses.hdf5', 'r') as f:
+            with h5py.File(self._sequence_dir_path / 'poses.hdf5', 'r') as f:
                 self._poses = Poses(np.array(f['T_rig_world_base']), np.array(f['T_rig_worlds']),
                                     np.array(f['T_rig_world_timestamps_us']))
         return self._poses
