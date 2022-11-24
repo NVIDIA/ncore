@@ -20,6 +20,7 @@ py_library(
     name = "pylib_nvidia_maglev",
     srcs = [
         "nvidia_maglev.py",
+        "nvidia_maglev3.py",
     ],
     deps = [
         ":pylib_data_converter",
