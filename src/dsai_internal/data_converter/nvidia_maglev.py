@@ -48,7 +48,6 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.shard_meta: bool = config.shard_meta
 
         self.symlink_camera_frames: bool = config.symlink_camera_frames
-        self.compress_lidar: bool = config.compress_lidar
 
         self.egomotion_file : str = config.egomotion_file
 
