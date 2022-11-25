@@ -144,7 +144,7 @@ Lidar data contains the following columns:
 
 * ``xyz_s`` - 3D coordinate of the *start* of the ray in the sensor's end-of-spin reference frame (float32, [n,3])
 * ``xyz_e`` - Motion-compensated 3D coordinate of the *end* of the ray in the sensor's end-of-spin reference frame (float32, [n,3])
-* ``intensity`` - measured intensity (float32, [n])
+* ``intensity`` - measured intensity (float32, [n]): normalized to ``[0.0, 1.0]`` range
 * ``dynamic_flag`` - dynamic flag (int8, [n]): ``-1`` if not evaluated, ``0`` for static points, and ``1`` for dynamic points
 * ``timestamp_us`` - point timestamp in microseconds (uint64, [n])
 
@@ -166,7 +166,7 @@ Metadata is available per frame, but also for individual sensors and for the gen
 Per-frame metadata contains the following entries for all sensors:
 
 * ``timestamps_us`` - timestamps of the frame's start and end point in microseconds (uint64, [2,])
-* ``T_rig_worlds`` - SE3 transformation matrices from the rig to the world coordinate system at the start and end timestamp of the frame (float32, [2,4,4] )
+* ``T_rig_worlds`` - SE3 transformation matrices from the rig to the world coordinate system at the start and end timestamp of the frame (float32, [2,4,4])
 
 For individual sensors we also save session-wise metadata:
 
