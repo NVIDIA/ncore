@@ -154,6 +154,17 @@ def transform_point_cloud(pc, T):
     return (T[:3,:3] @ pc[:,:3].transpose() + T[:3,3:4]).transpose()
 
 
+def se3_inverse(T: np.ndarray) -> np.ndarray:
+    ''' Computed the inverse of a rigid transformation 
+    Args:
+        T (np.array): se3 transformation matrix to inverte [4,4]
+
+    Out:
+        (np array): inverse transformation [4,4]
+    '''
+    Rt = T[:3, :3].transpose()
+    return np.block([[Rt, - Rt @ T[:3,3:]], [np.zeros((1, 3)), 1]])
+
 
 def local_ENU_2_ECEF_orientation(theta, phi):
     ''' Computes the rotation matrix between the world_pose and ECEF coordinate system

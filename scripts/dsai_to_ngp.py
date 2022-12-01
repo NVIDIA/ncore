@@ -23,7 +23,7 @@ from src.dsai_internal.data.data import (
 from src.dsai_internal.data.util import padded_index_string
 
 from src.dsai_internal.common.common import average_camera_pose, save_pc_dat
-from src.dsai_internal.common.nvidia_utils import transform_point_cloud
+from src.dsai_internal.common.transformations import transform_point_cloud
 
 # Rotation of DSAI camera frame to NGP camera frame
 R_DSAI_NGP = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
