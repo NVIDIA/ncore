@@ -9,7 +9,7 @@ from matplotlib import cm
 from scipy.spatial.transform import Rotation as R
 from multimethod import multimethod
 
-from src.dsai_internal.data.data import FrameLabel3
+from src.dsai_internal.data.types import FrameLabel3
 
 from src.dsai_internal.common.nvidia_utils import LabelProcessor as NvidiaLabelProcessor
 

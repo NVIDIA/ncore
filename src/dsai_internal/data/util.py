@@ -3,8 +3,11 @@
 import math
 
 from typing import Any
+from dataclasses import field
 
 import numpy as np
+import numpy.typing as npt
+import dataclasses_json
 
 ## Constants
 INDEX_DIGITS = 6  # the number of integer digits to pad counters in output filenames
@@ -30,3 +33,24 @@ def closest_index_sorted(sorted_array: np.ndarray, value: Any) -> int:
         return idx - 1
     else:
         return idx
+
+
+def numpy_array_field(datatype: npt.DTypeLike, default=None):
+    ''' Provides encoder / decoder functionality for numpy arrays into field types compatible with dataclass-JSON '''
+    def decoder(*args, **kwargs):
+        return np.array(*args, dtype=datatype, **kwargs)
+
+    return field(default=default, metadata=dataclasses_json.config(encoder=np.ndarray.tolist, decoder=decoder))
+
+
+def enum_field(enum_class, default=None):
+    ''' Provides encoder / decoder functionality for enum types into field types compatible with dataclass-JSON '''
+    def encoder(variant):
+        ''' encode enum as name's string representation. This way values in JSON are "human-readable '''
+        return variant.name
+
+    def decoder(variant):
+        ''' load enum variant from name's string to value map of the enumeration type '''
+        return enum_class.__members__[variant]
+
+    return field(default=default, metadata=dataclasses_json.config(encoder=encoder, decoder=decoder))

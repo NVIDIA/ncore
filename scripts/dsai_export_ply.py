@@ -11,7 +11,8 @@ import numpy as np
 from point_cloud_utils import TriangleMesh
 
 from src.dsai_internal.common.transformations import transform_point_cloud
-from src.dsai_internal.data.data import DataLoader, LidarSensor, PointCloudSensor, padded_index_string
+from src.dsai_internal.data.data2 import DataLoader, LidarSensor, PointCloudSensor
+from src.dsai_internal.data.util import padded_index_string
 
 
 @click.command()

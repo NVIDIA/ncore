@@ -1,30 +1,24 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
-load("@pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_library")
 load("//bazel/pytest:defs.bzl", "pytest_test")
 
-package(default_visibility = ["//:code_package_group"])
+package(default_visibility = ["//visibility:public"])
 
 py_library(
     name = "pylib",
     srcs = [
-        "data2.py",
-        "types.py",
-        "util.py",
+        "__init__.py",
     ],
-    deps = [
-        requirement("h5py"),
-        requirement("dataclasses-json"),
-        requirement("pillow"),
-        requirement("marshmallow"),
-    ],
+    data = ["py.typed"],
+    imports = ["../../.."],  # enable import via 'dsai.data.v2'
+    deps = ["//src/dsai_internal/data:pylib"],
 )
 
 pytest_test(
     name = "test",
-    srcs = glob(["*test.py"]),
+    srcs = ["test.py"],
     deps = [
         ":pylib",
     ],
