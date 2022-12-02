@@ -1,6 +1,5 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-from enum import IntEnum, auto, unique
 import json
 from types import SimpleNamespace
 from abc import ABC, abstractmethod
@@ -8,209 +7,19 @@ from abc import ABC, abstractmethod
 import h5py
 
 import numpy as np
-import numpy.typing as npt
 
 import PIL.Image as PILImage
 
 from pathlib import Path
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, Optional, Union
 
-from dataclasses import dataclass, field
-import dataclasses_json
-
-from .util import padded_index_string, closest_index_sorted
-
+from . import types, util
 
 ## Constants
 VERSION = '2.0.0'
 CAMERAS_BASE_DIR = 'cameras'
 LIDARS_BASE_DIR = 'lidars'
 RADARS_BASE_DIR = 'radars'
-
-
-## Helper types and functions
-@unique
-class FrameTimepoint(IntEnum):
-    ''' Enumerates special timepoints within a frame (values used to index into buffers) '''
-    START = 0
-    END = 1
-
-
-def numpy_array_field(datatype: npt.DTypeLike, default=None):
-    ''' Provides encoder / decoder functionality for numpy arrays into field types compatible with dataclass-JSON '''
-    def decoder(*args, **kwargs):
-        return np.array(*args, dtype=datatype, **kwargs)
-
-    return field(default=default,
-                 metadata=dataclasses_json.config(encoder=np.ndarray.tolist,
-                                                  decoder=decoder))
-
-
-def enum_field(enum_class, default=None):
-    ''' Provides encoder / decoder functionality for enum types into field types compatible with dataclass-JSON '''
-    def encoder(variant):
-        ''' encode enum as name's string representation. This way values in JSON are "human-readable '''
-        return variant.name
-
-    def decoder(variant):
-        ''' load enum variant from name's string to value map of the enumeration type '''
-        return enum_class.__members__[variant]
-
-    return field(default=default,
-                 metadata=dataclasses_json.config(encoder=encoder, decoder=decoder))
-
-
-## Data classes representing stored data types
-@unique
-class ShutterType(IntEnum):
-    ''' Enumerates different possible shutter types '''
-    ROLLING_TOP_TO_BOTTOM = auto()
-    ROLLING_LEFT_TO_RIGHT = auto()
-    ROLLING_BOTTOM_TO_TOP = auto()
-    ROLLING_RIGHT_TO_LEFT = auto()
-    GLOBAL = auto()
-
-@dataclass
-class CameraModelParameters:
-    ''' Represents parameters common to all camera models '''
-    resolution: np.ndarray = numpy_array_field(np.uint64)
-    shutter_type: ShutterType = enum_field(ShutterType)
-    exposure_time_us: int = 0
-
-    def __post_init__(self):
-        # Sanity checks
-        assert self.resolution.shape == (2, )
-        assert self.resolution.dtype == np.dtype('uint64')
-        assert self.resolution[0] > 0 and self.resolution[1] > 0
-        assert self.exposure_time_us > 0
-
-
-@dataclass
-class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
-    ''' Represents FTheta-specific camera model parameters '''
-    principal_point: np.ndarray = numpy_array_field(np.float32)
-    bw_poly: np.ndarray = numpy_array_field(np.float32)
-    fw_poly: np.ndarray = numpy_array_field(np.float32)
-    max_angle: float = 0.0
-
-    @staticmethod
-    def type() -> str:
-        return 'ftheta'
-
-    POLYNOMIAL_DEGREE = 6
-
-    def __post_init__(self):
-        # Sanity checks
-        super().__post_init__()
-        assert self.principal_point.shape == (2, )
-        assert self.principal_point.dtype == np.dtype('float32')
-        assert self.principal_point[0] > 0.0 and self.principal_point[1] > 0.0
-
-        assert self.bw_poly.ndim == 1
-        assert len(self.bw_poly) <= self.POLYNOMIAL_DEGREE
-        assert self.bw_poly.dtype == np.dtype('float32')
-
-        assert self.fw_poly.ndim == 1
-        assert len(self.fw_poly) <= self.POLYNOMIAL_DEGREE
-        assert self.fw_poly.dtype == np.dtype('float32')
-
-        # pad polynomials to full size
-        self.bw_poly = np.pad(self.bw_poly, (0,self.POLYNOMIAL_DEGREE - len(self.bw_poly)), mode='constant', constant_values=0.0)
-        self.fw_poly = np.pad(self.fw_poly, (0,self.POLYNOMIAL_DEGREE - len(self.fw_poly)), mode='constant', constant_values=0.0)
-
-        assert self.max_angle > 0.0
-
-
-@dataclass
-class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
-    ''' Represents a Pinhole-specific camera model parameters '''
-    principal_point: np.ndarray = numpy_array_field(np.float32)
-    focal_length_u: float = 0.0
-    focal_length_v: float = 0.0
-    p1: float = 0.0
-    p2: float = 0.0
-    k1: float = 0.0
-    k2: float = 0.0
-    k3: float = 0.0
-
-    @staticmethod
-    def type() -> str:
-        return 'pinhole'
-
-    def __post_init__(self):
-        # Sanity checks
-        super().__post_init__()
-        assert self.principal_point.shape == (2, )
-        assert self.principal_point.dtype == np.dtype('float32')
-        assert self.principal_point[0] > 0.0 and self.principal_point[1] > 0.0
-
-        assert self.focal_length_u > 0
-        assert self.focal_length_v > 0
-
-
-@dataclass
-class Poses:
-    ''' Represents a collection of timestamped poses (rig-to-local-world transformation) '''
-    T_rig_world_base: np.ndarray
-    T_rig_worlds: np.ndarray
-    T_rig_world_timestamps_us: np.ndarray
-
-    def __post_init__(self):
-        # Sanity checks
-        assert self.T_rig_world_base.shape == (4, 4)
-        assert self.T_rig_world_base.dtype == np.dtype('float64')
-
-        assert self.T_rig_worlds.shape[1:] == (4, 4)
-        assert self.T_rig_worlds.dtype == np.dtype('float64')
-
-        assert self.T_rig_world_timestamps_us.ndim == 1
-        assert self.T_rig_world_timestamps_us.dtype == np.dtype('uint64')
-
-        assert self.T_rig_worlds.shape[0] == self.T_rig_world_timestamps_us.shape[0]
-
-
-@dataclass
-class BBox3(dataclasses_json.DataClassJsonMixin):
-    ''' Parameters of a 3D bounding-box '''
-    centroid: Tuple[float, float, float]
-    dim: Tuple[float, float, float]
-    rot: Tuple[float, float, float]
-
-    def to_array(self) -> np.ndarray:
-        ''' Convenience single-array representation '''
-        return np.array(self.centroid + self.dim + self.rot, dtype=np.float32)
-
-@unique
-class LabelSource(IntEnum):
-    ''' Enumerates different sources for labels (auto, manual, GT, synthetic etc.) '''
-    AUTOLABEL = auto()
-
-
-@dataclass
-class FrameLabel3(dataclasses_json.DataClassJsonMixin):
-    ''' Description of a 3D frame-associated label '''
-    label_id: str
-    track_id: str
-    label_class: str
-    bbox3: BBox3
-    global_speed: float
-    confidence: float
-    source: LabelSource = enum_field(LabelSource)
-
-
-@dataclass
-class TrackLabel(dataclasses_json.DataClassJsonMixin):
-    ''' Description of an object-specific track '''
-    dynamic_flag: bool
-    sensors: dict[str, list[int]]  # all frame-timestamps of the object in different sensors
-
-
-@unique
-class DynamicFlagState(IntEnum):
-    ''' Enumerates potential per-point flag values related to 'dynamic_flag' property '''
-    NOT_AVAILABLE = -1
-    STATIC = 0
-    DYNAMIC = 1
 
 
 class DataWriter():
@@ -241,13 +50,13 @@ class DataWriter():
             (self.sequence_output_dir / RADARS_BASE_DIR / radar_id).mkdir(parents=True, exist_ok=True)
 
     # Individual 'store*' methods performing data sanity checks and serialize consistent output formats
-    def store_poses(self, poses: Poses) -> None:
+    def store_poses(self, poses: types.Poses) -> None:
         with h5py.File(self.sequence_output_dir / 'poses.hdf5', "w") as f:
             f.create_dataset('T_rig_world_base', data=poses.T_rig_world_base)
             f.create_dataset('T_rig_worlds', data=poses.T_rig_worlds)
             f.create_dataset('T_rig_world_timestamps_us', data=poses.T_rig_world_timestamps_us)
 
-    def store_labels(self, track_labels: dict[str, TrackLabel]) -> None:
+    def store_labels(self, track_labels: dict[str, types.TrackLabel]) -> None:
         output = {'track_labels': {k: v.to_dict() for (k, v) in track_labels.items()}}
 
         # TODO: add sanity checks on the final label structure before output
@@ -275,7 +84,7 @@ class DataWriter():
         assert timestamps_us.dtype == np.dtype('uint64')
 
         sensor_output_dir = self.sequence_output_dir / CAMERAS_BASE_DIR / camera_id
-        continous_frame_index_string = padded_index_string(continous_frame_index)
+        continous_frame_index_string = util.padded_index_string(continous_frame_index)
 
         # Handle image file
         target_image_path = sensor_output_dir / (continous_frame_index_string + '.jpeg')
@@ -298,7 +107,7 @@ class DataWriter():
             T_sensor_rig: np.ndarray,
 
             # intrinsics
-            camera_model_parameters: Union[FThetaCameraModelParameters, PinholeCameraModelParameters],
+            camera_model_parameters: Union[types.FThetaCameraModelParameters, types.PinholeCameraModelParameters],
 
             # sensor constants
             mask_image: Optional[PILImage.Image]) -> None:
@@ -338,7 +147,7 @@ class DataWriter():
             dynamic_flag: np.ndarray,
 
             # label data
-            frame_labels: list[FrameLabel3],
+            frame_labels: list[types.FrameLabel3],
 
             # poses
             T_rig_worlds: np.ndarray,
@@ -364,7 +173,7 @@ class DataWriter():
         assert timestamps_us.dtype == np.dtype('uint64')
 
         sensor_output_dir = self.sequence_output_dir / LIDARS_BASE_DIR / lidar_id
-        continous_frame_index_string = padded_index_string(continous_frame_index)
+        continous_frame_index_string = util.padded_index_string(continous_frame_index)
 
         # Store frame data
         target_frame_path = sensor_output_dir / (continous_frame_index_string + '.hdf5')
@@ -425,7 +234,7 @@ class DataWriter():
             outfile.write(json.dumps(output))
 
     def store_shard_meta(self, shard_id: int, shard_count: int, successful: bool) -> None:
-        with open(self.sequence_output_dir / f'shard-meta-{padded_index_string(shard_id, index_digits=4)}.json', 'w') as outfile:
+        with open(self.sequence_output_dir / f'shard-meta-{util.padded_index_string(shard_id, index_digits=4)}.json', 'w') as outfile:
             json.dump({'shard-id': shard_id, 'shard-count': shard_count, 'successful': successful}, outfile)
 
 class Sensor:
@@ -471,31 +280,31 @@ class Sensor:
         return np.array(self._sensor_meta.frame_timestamps_us, dtype=np.uint64)
 
     # Frame-dependent poses / timestamps
-    def get_frame_T_rig_world(self, continous_frame_index: int, frame_timepoint: FrameTimepoint = FrameTimepoint.END) -> np.ndarray:
+    def get_frame_T_rig_world(self, continous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> np.ndarray:
         ''' Returns start/end rig-to-world pose of specific frame '''
 
-        with open(self._sensor_dir / (padded_index_string(continous_frame_index) + '.json'), 'r') as f:
+        with open(self._sensor_dir / (util.padded_index_string(continous_frame_index) + '.json'), 'r') as f:
             j = json.load(f)
             return np.array(j['T_rig_worlds'][frame_timepoint.value])
 
-    def get_frame_T_sensor_world(self, continous_frame_index: int, frame_timepoint: FrameTimepoint = FrameTimepoint.END) -> np.ndarray:
+    def get_frame_T_sensor_world(self, continous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> np.ndarray:
         ''' Returns start/end sensor-to-world pose of specific frame '''
 
-        with open(self._sensor_dir / (padded_index_string(continous_frame_index) + '.json'), 'r') as f:
+        with open(self._sensor_dir / (util.padded_index_string(continous_frame_index) + '.json'), 'r') as f:
             j = json.load(f)
             return np.array(j['T_rig_worlds'][frame_timepoint.value]) @ self.get_T_sensor_rig()
 
-    def get_frame_timestamp_us(self, continous_frame_index: int, frame_timepoint: FrameTimepoint = FrameTimepoint.END) -> int:
+    def get_frame_timestamp_us(self, continous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> int:
         ''' Returns timestamp of specific frame timepoints '''
 
-        with open(self._sensor_dir / (padded_index_string(continous_frame_index) + '.json'), 'r') as f:
+        with open(self._sensor_dir / (util.padded_index_string(continous_frame_index) + '.json'), 'r') as f:
             j = json.load(f)
             return j['timestamps_us'][frame_timepoint.value]
 
     def get_closest_frame_index(self, timestamp_us: int) -> int:
         ''' Given a timestamp, returns the frame index of the closes frame '''
 
-        return closest_index_sorted(self._sensor_meta.frame_timestamps_us, timestamp_us)
+        return util.closest_index_sorted(self._sensor_meta.frame_timestamps_us, timestamp_us)
 
 
 class CameraSensor(Sensor):
@@ -535,12 +344,12 @@ class CameraSensor(Sensor):
             ''' Returns decoded image from image file data '''
             return PILImage.open(self.get_image_file_path())
 
-    def get_camera_model_parameters(self) -> Union[FThetaCameraModelParameters, PinholeCameraModelParameters]:
+    def get_camera_model_parameters(self) -> Union[types.FThetaCameraModelParameters, types.PinholeCameraModelParameters]:
         ''' Returns parameters specific to the camera's intrinsic model '''
         if self._sensor_meta.camera_model_type == 'ftheta':
-            return FThetaCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters.__dict__)
+            return types.FThetaCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters.__dict__)
         if self._sensor_meta.camera_model_type == 'pinhole':
-            return PinholeCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters.__dict__)
+            return types.PinholeCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters.__dict__)
         raise ValueError
 
     def get_frame(self, continous_frame_index: int) -> BaseFrameHandle:
@@ -549,7 +358,7 @@ class CameraSensor(Sensor):
 
         # Note: we currently only support file-based camera frames, but might support different types
         #       in the future (e.g., video / archived)
-        return self.FileFrameHandle(self.get_sensor_dir() / (padded_index_string(continous_frame_index) + '.jpeg'))
+        return self.FileFrameHandle(self.get_sensor_dir() / (util.padded_index_string(continous_frame_index) + '.jpeg'))
 
     def get_camera_mask_image_path(self) -> Optional[Path]:
         ''' Returns camera mask image path, if available '''
@@ -561,7 +370,7 @@ class CameraSensor(Sensor):
 
     def get_camera_mask_image(self) -> Optional[PILImage.Image]:
         ''' Returns camera mask image, if available '''
-        
+
         if mask_path := self.get_camera_mask_image_path():
             return PILImage.open(str(mask_path))
         else:
@@ -575,7 +384,7 @@ class PointCloudSensor(Sensor):
         ''' Signals if specifically named frame-data property exists '''
         assert continous_frame_index >= 0 and continous_frame_index < self.get_frames_count(), IndexError
 
-        return name in h5py.File(self.get_sensor_dir() / (padded_index_string(continous_frame_index) + '.hdf5'), 'r')
+        return name in h5py.File(self.get_sensor_dir() / (util.padded_index_string(continous_frame_index) + '.hdf5'), 'r')
 
     def get_frame_data(self, continous_frame_index: int, name: str) -> np.ndarray:
         ''' Returns frame-data for a specific frame and column-name '''
@@ -584,19 +393,19 @@ class PointCloudSensor(Sensor):
         # Note: we currently only support file-based frames, but might support different types
         #       in the future (e.g., shards / archived files etc.)
         return np.array(
-            h5py.File(self.get_sensor_dir() / (padded_index_string(continous_frame_index) + '.hdf5'), 'r')[name])
+            h5py.File(self.get_sensor_dir() / (util.padded_index_string(continous_frame_index) + '.hdf5'), 'r')[name])
 
 
 class LidarSensor(PointCloudSensor):
     ''' Provides access to lidar-specific sensor-data '''
-    def get_frame_labels(self, continous_frame_index: int) -> list[FrameLabel3]:
+    def get_frame_labels(self, continous_frame_index: int) -> list[types.FrameLabel3]:
         ''' Returns frame-labels for a specific frame '''
 
         # Note: we currently only support file-based frames, but might support different types
         #       in the future (e.g., shards / archived files etc.)
-        with open(self._sensor_dir / (padded_index_string(continous_frame_index) + '.json'), 'r') as f:
+        with open(self._sensor_dir / (util.padded_index_string(continous_frame_index) + '.json'), 'r') as f:
             j = json.load(f)
-            return [FrameLabel3.from_dict(frame_label) for frame_label in j['frame_labels']]
+            return [types.FrameLabel3.from_dict(frame_label) for frame_label in j['frame_labels']]
 
 
 class RadarSensor(PointCloudSensor):
@@ -635,19 +444,19 @@ class DataLoader():
             for sensor_id in self._meta.sensors.radars
         })
 
-        self._poses: Optional[Poses] = None  # poses will be loaded on-demand if required
+        self._poses: Optional[types.Poses] = None  # poses will be loaded on-demand if required
 
     def get_sequence_dir(self) -> Path:
         ''' Returns the path of the loaded sequence's directory '''
         return self._sequence_dir_path
 
-    def get_poses(self) -> Poses:
+    def get_poses(self) -> types.Poses:
         ''' Returns all timestamped poses associated with the dataset '''
         # Load poses on-demand
         if self._poses is None:
             with h5py.File(self._sequence_dir_path / 'poses.hdf5', 'r') as f:
-                self._poses = Poses(np.array(f['T_rig_world_base']), np.array(f['T_rig_worlds']),
-                                    np.array(f['T_rig_world_timestamps_us']))
+                self._poses = types.Poses(np.array(f['T_rig_world_base']), np.array(f['T_rig_worlds']),
+                                          np.array(f['T_rig_world_timestamps_us']))
         return self._poses
 
     def get_sensor(self, sensor_id: str) -> Union[CameraSensor, LidarSensor, RadarSensor]:
