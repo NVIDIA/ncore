@@ -4,15 +4,13 @@ import click
 import logging
 import tqdm
 
-from pathlib import Path
-from typing import Optional
-
 import numpy as np
 
-from src.py.data_converter.data import DataLoader, PointCloudSensor, CameraSensor, FrameTimepoint
-from src.py.common.transformations import transform_point_cloud
-from src.cpp.av_utils import rollingShutterProjection
-from src.py.common.visualization import plot_points_on_image
+from src.dsai_internal.data.data2 import DataLoader, PointCloudSensor, CameraSensor 
+from src.dsai_internal.data.types import FrameTimepoint
+from src.dsai_internal.common.transformations import transform_point_cloud
+from src.dsai_internal.av_utils import rollingShutterProjection
+from src.dsai_internal.common.visualization import plot_points_on_image
 
 @click.command()
 @click.option('--root-dir', type=str, help='Path to the preprocessed sequence', required=True)
@@ -46,9 +44,9 @@ def dsai_project_pc_to_img(root_dir: str, sensor_id: str, camera_id: str, start_
 
     loader = DataLoader(root_dir)
     pc_sensor = loader.get_sensor(sensor_id)
-    assert isinstance(pc_sensor, PointCloudSensor), 'only point-cloud sensors supported as source sensor'
+    assert isinstance(pc_sensor, PointCloudSensor), 'only point-cloud sensors are supported as source sensor'
     cam_sensor = loader.get_sensor(camera_id)
-    assert isinstance(cam_sensor, CameraSensor), 'only image sensors supported as the target sensor'
+    assert isinstance(cam_sensor, CameraSensor), 'only image sensors are supported as the target sensor'
 
     # Get the camera frame indices from the index range
     indices = cam_sensor.get_frame_index_range(start_frame, end_frame, step_frame)

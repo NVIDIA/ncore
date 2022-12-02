@@ -3,7 +3,7 @@ import torch
 
 import numpy as np
 
-from src.py.data_converter.data import FThetaCameraModelParameters, PinholeCameraModelParameters
+from src.dsai_internal.data.types import FThetaCameraModelParameters, PinholeCameraModelParameters
 from abc import ABC, abstractmethod
 from typing import Tuple, Union
 
