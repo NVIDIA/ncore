@@ -77,8 +77,8 @@ def dsai_export_ply(root_dir: str, output_dir: Optional[str], sensor_id: str, st
 
             # Compute offset in "inverse" fashion to prevent wrapping around zero for uint64
             negative_offset_timestamp = (sensor.get_frame_timestamp_us(frame_index) -
-                                         sensor.get_frame_data(frame_index, 'timestamp')).astype(np.int32)
-            pc.vertex_data.custom_attributes['negative_offset_timestamp'] = negative_offset_timestamp
+                                         sensor.get_frame_data(frame_index, 'timestamp_us')).astype(np.int32)
+            pc.vertex_data.custom_attributes['negative_offset_timestamp_us'] = negative_offset_timestamp
 
         # Save the ply file
         pc.save(str(output_path / (padded_index_string(frame_index) + '.ply')))

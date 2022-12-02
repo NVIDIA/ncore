@@ -373,7 +373,7 @@ class DataWriter():
             f.create_dataset('xyz_s', data=xyz_s, compression=COMPRESSION)
             f.create_dataset('xyz_e', data=xyz_e, compression=COMPRESSION)
             f.create_dataset('intensity', data=intensity, compression=COMPRESSION)
-            f.create_dataset('timestamp', data=timestamp_us, compression=COMPRESSION)
+            f.create_dataset('timestamp_us', data=timestamp_us, compression=COMPRESSION)
             f.create_dataset('dynamic_flag', data=dynamic_flag, compression=COMPRESSION)
 
         # Output frame meta data
@@ -570,15 +570,21 @@ class CameraSensor(Sensor):
 
 
 class PointCloudSensor(Sensor):
-    ''' Provides access to sensor's measureing point-clouds '''
-    def get_frame_data(self, continous_frame_index: int, key: str) -> np.ndarray:
-        ''' Returns frame-data for a specific frame and column-key '''
+    ''' Provides access to sensor's measuring point-clouds '''
+    def has_frame_data(self, continous_frame_index: int, name: str) -> bool:
+        ''' Signals if specifically named frame-data property exists '''
+        assert continous_frame_index >= 0 and continous_frame_index < self.get_frames_count(), IndexError
+
+        return name in h5py.File(self.get_sensor_dir() / (padded_index_string(continous_frame_index) + '.hdf5'), 'r')
+
+    def get_frame_data(self, continous_frame_index: int, name: str) -> np.ndarray:
+        ''' Returns frame-data for a specific frame and column-name '''
         assert continous_frame_index >= 0 and continous_frame_index < self.get_frames_count(), IndexError
 
         # Note: we currently only support file-based frames, but might support different types
         #       in the future (e.g., shards / archived files etc.)
         return np.array(
-            h5py.File(self.get_sensor_dir() / (padded_index_string(continous_frame_index) + '.hdf5'), 'r')[key])
+            h5py.File(self.get_sensor_dir() / (padded_index_string(continous_frame_index) + '.hdf5'), 'r')[name])
 
 
 class LidarSensor(PointCloudSensor):
