@@ -11,6 +11,7 @@ py_library(
     name = "pylib_data",
     srcs = [
         "data2.py",
+        "data3.py",
     ],
     deps = [
         ":pylib_types",
@@ -45,10 +46,24 @@ py_library(
 )
 
 pytest_test(
-    name = "test",
-    srcs = glob(["*test.py"]),
+    name = "pytest",
+    srcs = glob(
+        ["*test.py"],
+        exclude = ["data3_test.py"],
+    ),
     deps = [
         ":pylib_util",
+    ],
+)
+
+pytest_test(
+    name = "pytest_data3",
+    srcs = ["data3_test.py"],
+    data = [
+        "@test-data-v3-shards//:test-shards",
+    ],
+    deps = [
+        ":pylib_data",
     ],
 )
 
