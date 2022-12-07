@@ -8,17 +8,38 @@ load("//bazel/pytest:defs.bzl", "pytest_test")
 package(default_visibility = ["//:code_package_group"])
 
 py_library(
-    name = "pylib",
+    name = "pylib_data",
     srcs = [
         "data2.py",
+    ],
+    deps = [
+        ":pylib_types",
+        ":pylib_util",
+        requirement("h5py"),
+        requirement("pillow"),
+    ],
+)
+
+py_library(
+    name = "pylib_types",
+    srcs = [
         "types.py",
+    ],
+    deps = [
+        ":pylib_util",
+        requirement("numpy"),
+        requirement("dataclasses-json"),
+    ],
+)
+
+py_library(
+    name = "pylib_util",
+    srcs = [
         "util.py",
     ],
     deps = [
-        requirement("h5py"),
+        requirement("numpy"),
         requirement("dataclasses-json"),
-        requirement("pillow"),
-        requirement("marshmallow"),
     ],
 )
 
@@ -26,7 +47,7 @@ pytest_test(
     name = "test",
     srcs = glob(["*test.py"]),
     deps = [
-        ":pylib",
+        ":pylib_util",
     ],
 )
 
