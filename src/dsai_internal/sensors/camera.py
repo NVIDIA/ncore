@@ -1,14 +1,17 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 from __future__ import annotations
-import logging
-import torch 
 
+import logging
+
+from abc import ABC, abstractmethod
+from typing import Tuple, Union
+
+import torch 
 import numpy as np
 
 from src.dsai_internal.data import types
-from abc import ABC, abstractmethod
-from typing import Tuple, Union
+
 
 class CameraModel(ABC):
     ''' Base camera model class '''
@@ -43,6 +46,10 @@ class CameraModel(ABC):
                 return FThetaCameraModel(cam_model_parameters)
             case types.PinholeCameraModelParameters():
                 return PinholeCameraModel(cam_model_parameters)
+            case _:
+                raise TypeError(
+                        f"unsupported camera model type {type(cam_model_parameters)}, currently supporting Ftheta/Pinhole only"
+                    )
 
     def to_torch(self, var: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
 
@@ -271,7 +278,7 @@ class CameraModel(ABC):
     def __unitquat_slerp(self, quat_s: torch.Tensor, quat_e: torch.Tensor, 
                             t: torch.Tensor, shortest_arc=True) -> torch.Tensor:
         """
-        Batchwise implemntation of SLREP (spherical linear interpolation)
+        Batch-wise implementation of SLERP (spherical linear interpolation)
 
         Args: 
             quat_s: batch of unit quaternions denoting the start rotation [bs, 4]
@@ -356,8 +363,6 @@ class FThetaCameraModel(CameraModel):
         assert self.bw_poly.dtype == self.dtype
         assert self.resolution.shape == (2,)
         assert self.resolution.dtype == torch.int64
-
-        # super().__init__()
 
     def pixel_to_camera_ray(self, image_points: Union[torch.Tensor, np.ndarray]) ->  torch.Tensor:
         '''

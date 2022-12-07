@@ -168,7 +168,7 @@ def dsai_to_ngp(
                     "k1": pinhole.radial_poly[0],
                     "k2": pinhole.radial_poly[1],
                     # Note: we are already outputting this higher-order coefficient although NGP might not use it yet
-                    "k3": pinhole.tangential_poly[2],
+                    "k3": pinhole.radial_poly[2],
                     "p1": pinhole.tangential_poly[0],
                     "p2": pinhole.tangential_poly[1],
                     "rolling_shutter": rolling_shutter.tolist(),
