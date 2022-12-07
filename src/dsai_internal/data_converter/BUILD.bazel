@@ -23,7 +23,8 @@ py_library(
     ],
     deps = [
         ":pylib_data_converter",
-        "//src/dsai_internal/data:pylib",
+        "//src/dsai_internal/data:pylib_data",
+        "//src/dsai_internal/data:pylib_types",
         requirement("point-cloud-utils"),
         "//src/dsai_internal/common:pylib",
     ],
@@ -36,7 +37,8 @@ py_library(
     ],
     deps = [
         ":pylib_data_converter",
-        "//src/dsai_internal/data:pylib",
+        "//src/dsai_internal/data:pylib_data",
+        "//src/dsai_internal/data:pylib_types",
         requirement("protobuf3-to-dict"),
         requirement("opencv-python"),
         "//src/dsai_internal/common:pylib",

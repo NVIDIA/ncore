@@ -13,7 +13,7 @@ py_library(
     ],
     data = ["py.typed"],
     imports = ["../../.."],  # enable import via 'dsai.data.v2'
-    deps = ["//src/dsai_internal/data:pylib"],
+    deps = ["//src/dsai_internal/data:pylib_data"],
 )
 
 pytest_test(

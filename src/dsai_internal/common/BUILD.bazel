@@ -27,7 +27,7 @@ py_library(
         requirement("tensorflow"),  # required by open3d.ml.tf
         requirement("multimethod"),
         "//src/dsai_internal/av_utils:pylib",
-        "//src/dsai_internal/data:pylib",
+        "//src/dsai_internal/data:pylib_types",
         "//src/dsai_internal/data_converter/protos/deepmap:py_proto",
     ],
 )

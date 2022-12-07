@@ -13,7 +13,10 @@ py_library(
     ],
     data = ["py.typed"],
     imports = ["../.."],  # enable import via 'dsai.data'
-    deps = ["//src/dsai_internal/data:pylib"],
+    deps = [
+        "//src/dsai_internal/data:pylib_types",
+        "//src/dsai_internal/data:pylib_util",
+    ],
 )
 
 pytest_test(
