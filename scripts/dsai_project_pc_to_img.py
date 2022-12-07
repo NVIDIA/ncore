@@ -81,11 +81,10 @@ def dsai_project_pc_to_img(root_dir: str, sensor_id: str, camera_id: str, start_
             pixel_coords_torch = pixel_coords_gpu.cpu().numpy()
             trans_matrices_torch = trans_matrices_gpu.cpu().numpy()
             valid_idx_torch = valid_idx_gpu.cpu().numpy()
+            transformed_points = transform_point_cloud(pc[valid_idx_torch,None,:], trans_matrices_torch).squeeze(1)
+            dist_rs = np.linalg.norm(transformed_points, axis=1, keepdims=True)
 
-            transformed_points = (trans_matrices_torch[:,:3,:3] @ pc[valid_idx_torch,:,None] + trans_matrices_torch[:,:3,3:4]).squeeze(-1)
-            dist_rs = np.linalg.norm(transformed_points,axis=1,keepdims=True)
-
-            plot_points_on_image(np.concatenate((pixel_coords_torch[:,:2].cpu().numpy(), dist_rs.cpu().numpy()),axis=1), img_frame, 
+            plot_points_on_image(np.concatenate((pixel_coords_torch[:,:2], dist_rs),axis=1), img_frame, 
                                             "Projection with rolling shutter (torch GPU implementation)", point_size=4.0)
         if device in ['cpu', 'both']:
             logger.info(f"Starting the projection with a c++ CPU implementation.")
@@ -93,8 +92,8 @@ def dsai_project_pc_to_img(root_dir: str, sensor_id: str, camera_id: str, start_
             pixel_coords_rs, trans_matrices_rs, valid_idx_rs = rollingShutterProjection(pc, cam_model_params, T_world_sensor)
 
             # Compute the distance to the points in the camera coordinate system
-            transformed_points = (trans_matrices_rs[:,:3,:3] @ pc[valid_idx_rs,:,None] + trans_matrices_rs[:,:3,3:4]).squeeze(-1)
-            dist_rs = np.linalg.norm(transformed_points,axis=1,keepdims=True)
+            transformed_points = transform_point_cloud(pc[valid_idx_rs,None,:], trans_matrices_rs).squeeze(1)
+            dist_rs = np.linalg.norm(transformed_points, axis=1, keepdims=True)
 
             plot_points_on_image(np.concatenate((pixel_coords_rs[:,:2], dist_rs),axis=1), img_frame, 
                                                 "Projection with rolling shutter (c++ implementation)", point_size=4.0)

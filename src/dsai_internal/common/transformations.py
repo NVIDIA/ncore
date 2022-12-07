@@ -153,11 +153,16 @@ def transform_point_cloud(pc, T):
         (np array): transformed point cloud coordinated [num_pts, 3] or [bs, num_pts, 3]
     '''
     if len(pc.shape) == 3:
-        trans_pts = T[:, :3, :3] @ pc.permute(0, 2, 1) + T[:, :3, 3:4]
-        return trans_pts.permute(0, 2, 1)
+        if isinstance(pc, np.ndarray):
+            trans_pts = T[:, :3, :3] @ pc.transpose(0, 2, 1) + T[:, :3, 3:4]
+            return trans_pts.transpose(0, 2, 1)
+        else:
+            trans_pts = T[:, :3, :3] @ pc.permute(0, 2, 1) + T[:, :3, 3:4]
+            return trans_pts.permute(0, 2, 1)
+
     else:
-        trans_pts = T[:3, :3] @ pc.T + T[:3, 3:4]
-        return trans_pts.T
+        trans_pts = T[:3, :3] @ pc.transpose() + T[:3, 3:4]
+        return trans_pts.transpose()
 
 
 def se3_inverse(T: np.ndarray) -> np.ndarray:
