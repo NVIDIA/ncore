@@ -42,7 +42,6 @@ py_library(
         requirement("dataclasses-json"),
         requirement("pillow"),
         requirement("marshmallow"),
-        "//src/dsai_internal/common:pylib",
     ],
 )
 

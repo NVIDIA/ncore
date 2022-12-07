@@ -1,5 +1,6 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
+from __future__ import annotations
 import logging
 import torch 
 
@@ -31,6 +32,17 @@ class CameraModel(ABC):
         Return sequence pathnames to process
         '''
         pass
+
+    @staticmethod
+    def from_parameters(cam_model_parameters: Union[types.FThetaCameraModelParameters, types.PinholeCameraModelParameters]) -> CameraModel:
+        '''
+        Initialize a camera model class
+        '''
+        match cam_model_parameters:
+            case types.FThetaCameraModelParameters():
+                return FThetaCameraModel(cam_model_parameters)
+            case types.PinholeCameraModelParameters():
+                return PinholeCameraModel(cam_model_parameters)
 
     def to_torch(self, var: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
 

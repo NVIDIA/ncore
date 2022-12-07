@@ -11,7 +11,7 @@ from src.dsai_internal.data import types
 from src.dsai_internal.common.transformations import transform_point_cloud
 from src.dsai_internal.av_utils import rollingShutterProjection
 from src.dsai_internal.common.visualization import plot_points_on_image
-from src.dsai_internal.sensors.camera import FThetaCameraModel, PinholeCameraModel
+from src.dsai_internal.sensors.camera import CameraModel
 
 @click.command()
 @click.option('--root-dir', type=str, help='Path to the preprocessed sequence', required=True)
@@ -65,21 +65,16 @@ def dsai_project_pc_to_img(root_dir: str, sensor_id: str, camera_id: str, start_
         # Transform the point cloud to the world coordinate frame
         pc = transform_point_cloud(pc, pc_sensor.get_frame_T_sensor_world(pc_frame_index))
         
-        # Get the camera metadata
-        cam_metadata = cam_sensor.get_camera_model_parameters()
-
         T_world_sensor_start = cam_sensor.get_frame_T_world_sensor(frame_index, types.FrameTimepoint.START)
         T_world_sensor_end = cam_sensor.get_frame_T_world_sensor(frame_index, types.FrameTimepoint.END)
         T_world_sensor = np.vstack([T_world_sensor_start, T_world_sensor_end])
         
-        # Project with rolling shutter
+        # Initialize the camera model
+        cam_model_params = cam_sensor.get_camera_model_parameters()
+        cam_model = CameraModel.from_parameters(cam_model_params)
+
         if device in ['gpu', 'both']:
             logger.info(f"Starting the projection with a torch GPU implementation.")
-            match cam_metadata:
-                case types.FThetaCameraModelParameters():
-                    cam_model = FThetaCameraModel(cam_metadata)
-                case types.PinholeCameraModelParameters():
-                    cam_model = PinholeCameraModel(cam_metadata) # type: ignore
 
             pixel_coords_gpu, trans_matrices_gpu, valid_idx_gpu = cam_model.rolling_shutter_projection(pc, T_world_sensor)
 
@@ -95,7 +90,7 @@ def dsai_project_pc_to_img(root_dir: str, sensor_id: str, camera_id: str, start_
         if device in ['cpu', 'both']:
             logger.info(f"Starting the projection with a c++ CPU implementation.")
 
-            pixel_coords_rs, trans_matrices_rs, valid_idx_rs = rollingShutterProjection(pc, cam_metadata, T_world_sensor)
+            pixel_coords_rs, trans_matrices_rs, valid_idx_rs = rollingShutterProjection(pc, cam_model_params, T_world_sensor)
 
             # Compute the distance to the points in the camera coordinate system
             transformed_points = (trans_matrices_rs[:,:3,:3] @ pc[valid_idx_rs,:,None] + trans_matrices_rs[:,:3,3:4]).squeeze(-1)
