@@ -172,9 +172,10 @@ py_binary(
         requirement("click"),
         requirement("tqdm"),
         requirement("numpy"),
-        "//src/py/common:pylib",
-        "//src/py/data_converter:pylib_data",
-        "//src/cpp/av_utils:pylib",
+        "//src/dsai_internal/common:pylib",
+        "//src/dsai_internal/data:pylib",
+        "//src/dsai_internal/av_utils:pylib",
+        "//src/dsai_internal/sensors:pylib",
     ],
 )
 

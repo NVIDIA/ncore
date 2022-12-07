@@ -7,10 +7,11 @@ import tqdm
 import numpy as np
 
 from src.dsai_internal.data.data2 import DataLoader, PointCloudSensor, CameraSensor 
-from src.dsai_internal.data.types import FrameTimepoint
+from src.dsai_internal.data import types 
 from src.dsai_internal.common.transformations import transform_point_cloud
 from src.dsai_internal.av_utils import rollingShutterProjection
 from src.dsai_internal.common.visualization import plot_points_on_image
+from src.dsai_internal.sensors.camera import FThetaCameraModel, PinholeCameraModel
 
 @click.command()
 @click.option('--root-dir', type=str, help='Path to the preprocessed sequence', required=True)
@@ -30,7 +31,7 @@ from src.dsai_internal.common.visualization import plot_points_on_image
               default=1)    
 @click.option('--device',
               type=click.Choice(['gpu', 'cpu', 'both']),
-              help='Device used for the computation. If gpu - projection will be done in pytorch.',
+              help='Device used for the computation. If gpu - projection will be done in pytorch on a gpu.',
               default='cpu')
 
 
@@ -55,36 +56,53 @@ def dsai_project_pc_to_img(root_dir: str, sensor_id: str, camera_id: str, start_
 
         # Get the camera timestamp and find the closes lidar frame
         cam_timestamp = cam_sensor.get_frame_timestamp_us(frame_index)
-        pc_frame_index = pc_sensor.get_closest_frame(cam_timestamp)
+        pc_frame_index = pc_sensor.get_closest_frame_index(cam_timestamp)
         
         # Load the camera image and the point cloud
-        img_frame = cam_sensor.get_frame_img(frame_index)
+        img_frame = cam_sensor.get_frame(frame_index).get_image_array()
         pc = pc_sensor.get_frame_data(pc_frame_index, 'xyz_e')
 
         # Transform the point cloud to the world coordinate frame
         pc = transform_point_cloud(pc, pc_sensor.get_frame_T_sensor_world(pc_frame_index))
         
         # Get the camera metadata
-        cam_metadata = cam_sensor.get_camera_model()
+        cam_metadata = cam_sensor.get_camera_model_parameters()
 
-        T_world_sensor_start = cam_sensor.get_frame_T_world_sensor(frame_index, FrameTimepoint.START)
-        T_world_sensor_end = cam_sensor.get_frame_T_world_sensor(frame_index, FrameTimepoint.END)
-        cam_timestamp_start = cam_sensor.get_frame_timestamp_us(frame_index, FrameTimepoint.START )
-        cam_timestamp_end = cam_sensor.get_frame_timestamp_us(frame_index, FrameTimepoint.END )
-
+        T_world_sensor_start = cam_sensor.get_frame_T_world_sensor(frame_index, types.FrameTimepoint.START)
+        T_world_sensor_end = cam_sensor.get_frame_T_world_sensor(frame_index, types.FrameTimepoint.END)
         T_world_sensor = np.vstack([T_world_sensor_start, T_world_sensor_end])
-        cam_timestamps = np.vstack([cam_timestamp_start, cam_timestamp_end])
-        pixel_coords_rs, trans_matrices_rs, valid_idx_rs = rollingShutterProjection(pc, cam_metadata, T_world_sensor, cam_timestamps)
+        
+        # Project with rolling shutter
+        if device in ['gpu', 'both']:
+            logger.info(f"Starting the projection with a torch GPU implementation.")
+            match cam_metadata:
+                case types.FThetaCameraModelParameters():
+                    cam_model = FThetaCameraModel(cam_metadata)
+                case types.PinholeCameraModelParameters():
+                    cam_model = PinholeCameraModel(cam_metadata) # type: ignore
 
-        # Compute the distance to the points in the camera coordinate system
-        transformed_points = (trans_matrices_rs[:,:3,:3] @ pc[valid_idx_rs,:,None] + trans_matrices_rs[:,:3,3:4]).squeeze(-1)
-        dist_rs = np.linalg.norm(transformed_points,axis=1,keepdims=True)
+            pixel_coords_gpu, trans_matrices_gpu, valid_idx_gpu = cam_model.rolling_shutter_projection(pc, T_world_sensor)
 
-        # Visualize the result 
-        # plot_points_on_image(np.concatenate((pixel_coords[:,:2], dist),axis=1), img_frame, 
-        #                                     "Projection without considering rolling shutter", point_size=4.0)
-        plot_points_on_image(np.concatenate((pixel_coords_rs[:,:2], dist_rs),axis=1), img_frame, 
-                                            "Projection with rolling shutter (c++ implementation)", point_size=4.0)
+            pixel_coords_torch = pixel_coords_gpu.cpu().numpy()
+            trans_matrices_torch = trans_matrices_gpu.cpu().numpy()
+            valid_idx_torch = valid_idx_gpu.cpu().numpy()
+
+            transformed_points = (trans_matrices_torch[:,:3,:3] @ pc[valid_idx_torch,:,None] + trans_matrices_torch[:,:3,3:4]).squeeze(-1)
+            dist_rs = np.linalg.norm(transformed_points,axis=1,keepdims=True)
+
+            plot_points_on_image(np.concatenate((pixel_coords_torch[:,:2].cpu().numpy(), dist_rs.cpu().numpy()),axis=1), img_frame, 
+                                            "Projection with rolling shutter (torch GPU implementation)", point_size=4.0)
+        if device in ['cpu', 'both']:
+            logger.info(f"Starting the projection with a c++ CPU implementation.")
+
+            pixel_coords_rs, trans_matrices_rs, valid_idx_rs = rollingShutterProjection(pc, cam_metadata, T_world_sensor)
+
+            # Compute the distance to the points in the camera coordinate system
+            transformed_points = (trans_matrices_rs[:,:3,:3] @ pc[valid_idx_rs,:,None] + trans_matrices_rs[:,:3,3:4]).squeeze(-1)
+            dist_rs = np.linalg.norm(transformed_points,axis=1,keepdims=True)
+
+            plot_points_on_image(np.concatenate((pixel_coords_rs[:,:2], dist_rs),axis=1), img_frame, 
+                                                "Projection with rolling shutter (c++ implementation)", point_size=4.0)
 
 
 if __name__ == "__main__":

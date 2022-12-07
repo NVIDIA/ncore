@@ -1,9 +1,11 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 import logging
 import torch 
 
 import numpy as np
 
-from src.dsai_internal.data.types import FThetaCameraModelParameters, PinholeCameraModelParameters
+from src.dsai_internal.data import types
 from abc import ABC, abstractmethod
 from typing import Tuple, Union
 
@@ -15,46 +17,42 @@ class CameraModel(ABC):
         self.device: str
         self.dtype: torch.dtype
 
-    @abstractmethod
-    def pixel_to_camera_ray(self, image_points: torch.Tensor) -> torch.Tensor:
+
+    @abstractmethod 
+    def pixel_to_camera_ray(self, image_points: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
         '''
         Return sequence pathnames to process
         '''
         pass
     
     @abstractmethod
-    def camera_ray_to_pixel(self, cam_rays: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def camera_ray_to_pixel(self, cam_rays: Union[torch.Tensor, np.ndarray]) -> Tuple[torch.Tensor, torch.Tensor]:
         '''
         Return sequence pathnames to process
         '''
         pass
 
-    def to_torch(self, var: Union[torch.tensor, np.array]) -> torch.tensor:
+    def to_torch(self, var: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
 
         if isinstance(var, np.ndarray):
             var = torch.from_numpy(var)
   
         return var.to(self.device)
 
-    def rolling_shutter_projection(self, points: Union[torch.Tensor, np.array], 
-                                  T_world_sensor: Union[torch.Tensor, np.array], 
-                                  frame_timestamps: Union[torch.Tensor, np.array],
-                                  max_iter: int = 1,
-                                  return_numpy: bool = False,
-                                ) -> Tuple[Union[torch.Tensor, np.array], Union[torch.Tensor, np.array],Union[torch.Tensor, np.array]]:
+    def rolling_shutter_projection(self, points: Union[torch.Tensor, np.ndarray], 
+                                  T_world_sensor: Union[torch.Tensor, np.ndarray], 
+                                  max_iter: int = 10,
+                                  min_error: float = 1e-3) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         
         # Check if the variables are numpy, convert them to torch and send them to correct device
         points = self.to_torch(points).to(self.dtype)
         T_world_sensor = self.to_torch(T_world_sensor).to(self.dtype)
-        frame_timestamps = self.to_torch(frame_timestamps).to(torch.int64)
 
         assert T_world_sensor.shape == (8,4)
-        assert frame_timestamps.shape == (2,)
         assert len(points.shape) == 2
         assert points.shape[1] == 3
         assert points.dtype == self.dtype
         assert T_world_sensor.dtype == self.dtype
-        assert frame_timestamps.dtype == torch.int64
 
         T_world_sensor_s = T_world_sensor[:4,:4]
         T_world_sensor_e = T_world_sensor[4:,:4]
@@ -64,7 +62,7 @@ class CameraModel(ABC):
         ego_pose_e_quat = self.__rotmat_to_unitquat(T_world_sensor_e[None, :3, :3]) # [1, 4]
 
         mof_rot = self.__unitquat_to_rotmat(self.__unitquat_slerp(ego_pose_s_quat, 
-                                    ego_pose_e_quat, torch.tensor([0.5]).to(T_world_sensor_s))).squeeze() # [3, 3]
+                                    ego_pose_e_quat, torch.Tensor([0.5]).to(T_world_sensor_s))).squeeze() # [3, 3]
 
         mof_trans = 0.5 * T_world_sensor_s[:3, 3] + 0.5 * T_world_sensor_e[:3, 3] # [3]
 
@@ -78,7 +76,7 @@ class CameraModel(ABC):
             current_int = 0
             error = 1e12
 
-            while current_int < 10 and error > 1e-3:
+            while current_int < max_iter and error > min_error:
                 t = self.__get_interpolation_timestamp(pixel_rs_prev)
 
                 rot_rs = self.__unitquat_to_rotmat(self.__unitquat_slerp(ego_pose_s_quat.repeat(t.shape[0], 1), 
@@ -98,34 +96,26 @@ class CameraModel(ABC):
         valid[valid_idx] = valid[valid_idx] & valid_rs
 
         # Generate the output matrix
-        trans_matrices = torch.empty((valid.sum(), 4, 4)).to(rot_rs)
+        trans_matrices = torch.empty((valid.sum().int().item(), 4, 4)).to(rot_rs)   # type: ignore
         trans_matrices[:,:3, 3] = trans_rs[valid_rs, :]
         trans_matrices[:,:3,:3] = rot_rs[valid_rs, ...]
 
-        if return_numpy:
-            return pixel_rs[valid_rs,:].cpu().numpy(), trans_matrices.cpu().numpy(), torch.where(valid)[0].cpu().numpy()
-        else:
-            return pixel_rs[valid_rs,:], trans_matrices, torch.where(valid)[0]
+
+        return pixel_rs[valid_rs,:], trans_matrices, torch.where(valid)[0]
 
 
-    def project_without_rolling_shutter(self, points: Union[torch.Tensor, np.array], 
-                                        T_world_sensor: Union[torch.Tensor, np.array], 
-                                        frame_timestamps: Union[torch.Tensor, np.array],
-                                        return_numpy: bool = False,
-                                        ) -> Tuple[Union[torch.Tensor, np.array], Union[torch.Tensor, np.array],Union[torch.Tensor, np.array]]:
+    def project_without_rolling_shutter(self, points: Union[torch.Tensor, np.ndarray], 
+                                        T_world_sensor: Union[torch.Tensor, np.ndarray]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         
         # Check if the variables are numpy, convert them to torch and send them to correct device
         points = self.to_torch(points).to(self.dtype)
         T_world_sensor = self.to_torch(T_world_sensor).to(self.dtype)
-        frame_timestamps = self.to_torch(frame_timestamps).to(torch.int64)
 
         assert T_world_sensor.shape == (8,4)
-        assert frame_timestamps.shape == (2,)
         assert len(points.shape) == 2
         assert points.shape[1] == 3
         assert points.dtype == self.dtype
         assert T_world_sensor.dtype == self.dtype
-        assert frame_timestamps.dtype == torch.int64
 
         T_world_sensor_s = T_world_sensor[:4,:4]
         T_world_sensor_e = T_world_sensor[4:,:4]
@@ -135,7 +125,7 @@ class CameraModel(ABC):
         ego_pose_e_quat = self.__rotmat_to_unitquat(T_world_sensor_e[None, :3, :3]) # [1, 4]
 
         mof_rot = self.__unitquat_to_rotmat(self.__unitquat_slerp(ego_pose_s_quat, 
-                                    ego_pose_e_quat, torch.tensor([0.5]).to(T_world_sensor_s))).squeeze() # [3, 3]
+                                    ego_pose_e_quat, torch.Tensor([0.5]).to(T_world_sensor_s))).squeeze() # [3, 3]
 
         mof_trans = 0.5 * T_world_sensor_s[:3, 3] + 0.5 * T_world_sensor_e[:3, 3] # [3]
 
@@ -148,30 +138,21 @@ class CameraModel(ABC):
         trans_matrix[0,:3, 3] = mof_trans
         trans_matrix[0,:3,:3] = mof_rot
 
-        if return_numpy:
-            return init_pixel[valid,:].cpu().numpy(), trans_matrix.cpu().numpy(),  torch.where(valid)[0].cpu().numpy()
-        else:
-            return init_pixel[valid,:], trans_matrix, torch.where(valid)[0]
+        return init_pixel[valid,:], trans_matrix, torch.where(valid)[0]
 
 
-    def camera_to_world_ray(self, image_points: Union[torch.Tensor, np.array], 
-                                  T_sensor_world: Union[torch.Tensor, np.array],
-                                  frame_timestamps:Union[torch.Tensor, np.array],
-                                  return_numpy: bool = False
-                            ) -> Union[torch.Tensor, np.array]: 
+    def camera_to_world_ray(self, image_points: Union[torch.Tensor, np.ndarray], 
+                                  T_sensor_world: Union[torch.Tensor, np.ndarray]) -> torch.Tensor: 
 
         # Check if the variables are numpy, convert them to torch and send them to correct device
         image_points = self.to_torch(image_points).to(self.dtype)
         T_sensor_world = self.to_torch(T_sensor_world).to(self.dtype)
-        frame_timestamps = self.to_torch(frame_timestamps).to(torch.int64)
 
         assert T_sensor_world.shape == (8,4)
-        assert frame_timestamps.shape == (2,)
         assert len(image_points.shape) == 2
         assert image_points.shape[1] == 2
         assert image_points.dtype == self.dtype
         assert T_sensor_world.dtype == self.dtype
-        assert frame_timestamps.dtype == torch.int64
 
         # Initialize the output variable 
         world_rays = torch.empty((image_points.shape[0], 6), dtype=self.dtype).to(self.device)
@@ -201,10 +182,7 @@ class CameraModel(ABC):
         world_rays[:,0:3] = trans_rs
         world_rays[:,3:] = cam_points_rs
 
-        if return_numpy:
-            return world_rays.cpu().numpy()
-        else:
-            return world_rays
+        return world_rays
 
     def __rotmat_to_unitquat(self, R: torch.Tensor) -> torch.Tensor:
         """
@@ -224,8 +202,8 @@ class CameraModel(ABC):
         quat = torch.empty((num_rotations, 4), dtype=R.dtype).to(self.device)
 
         decision_matrix[:, :3] = R.diagonal(dim1=1, dim2=2)
-        decision_matrix[:, -1] = decision_matrix[:, :3].sum(axis=1)
-        choices = decision_matrix.argmax(axis=1)
+        decision_matrix[:, -1] = decision_matrix[:, :3].sum(dim=1)
+        choices = decision_matrix.argmax(dim=1)
 
         ind = torch.nonzero(choices != 3, as_tuple=True)[0]
         i = choices[ind]
@@ -295,8 +273,8 @@ class CameraModel(ABC):
         assert quat_s.shape == quat_e.shape, "Input quaternions must be of the same shape."
 
         if len(quat_s.shape) == 1:
-            quat_s = quat_s.unsqueeze(quat_s, 0)
-            quat_e = quat_e.unsqueeze(quat_e, 0)
+            quat_s = torch.unsqueeze(quat_s, 0)
+            quat_e = torch.unsqueeze(quat_e, 0)
         
         # omega is the 'angle' between both quaternions
         cos_omega = torch.sum(quat_s * quat_e, dim=-1)
@@ -325,22 +303,22 @@ class CameraModel(ABC):
 
         return quat
 
-    def __get_interpolation_timestamp(self, points: torch.tensor) -> torch.tensor:
+    def __get_interpolation_timestamp(self, points: torch.Tensor) -> torch.Tensor:
         ''' Get interpolation timestamp based on the pixel coordinates and rolling shutter type '''
 
-        if self.shutter_type == "TOP_TO_BOTTOM":
+        if self.shutter_type == "ROLLING_TOP_TO_BOTTOM":
             t = torch.floor(points[:,1]) / (self.resolution[1] - 1)
-        elif self.shutter_type == "LEFT_TO_RIGHT":
+        elif self.shutter_type == "ROLLING_LEFT_TO_RIGHT":
             t = torch.floor(points[:,0]) / (self.resolution[0] - 1)
-        elif self.shutter_type == "BOTTOM_TO_TOP":
+        elif self.shutter_type == "ROLLING_BOTTOM_TO_TOP":
             t = (self.resolution[1] - torch.ceil(points[:,1])) / (self.resolution[1] - 1)
-        elif self.shutter_type == "RIGHT_TO_LEFT":
+        elif self.shutter_type == "ROLLING_RIGHT_TO_LEFT":
             t = (self.resolution[0] - torch.ceil(points[:,0])) / (self.resolution[0] - 1)
 
         return t
 
 class FThetaCameraModel(CameraModel):
-    def __init__(self, camera_model_parameters: FThetaCameraModelParameters, 
+    def __init__(self, camera_model_parameters: types.FThetaCameraModelParameters, 
                         device: str = 'cuda', dtype: torch.dtype = torch.float64 ):
         
         # Check if cuda device is actually available
@@ -355,7 +333,7 @@ class FThetaCameraModel(CameraModel):
         self.fw_poly = self.to_torch(camera_model_parameters.fw_poly).to(self.dtype)
         self.bw_poly = self.to_torch(camera_model_parameters.bw_poly).to(self.dtype)
         self.resolution = self.to_torch(camera_model_parameters.resolution.astype(np.int64))
-        self.shutter_type = camera_model_parameters.rolling_shutter_direction
+        self.shutter_type = camera_model_parameters.shutter_type.name
         self.max_angle = float(camera_model_parameters.max_angle)
 
         assert self.principal_point.shape == (2,)
@@ -369,8 +347,7 @@ class FThetaCameraModel(CameraModel):
 
         # super().__init__()
 
-    def pixel_to_camera_ray(self, image_points: Union[torch.Tensor, np.array], 
-                                  return_numpy: bool = False) ->  Union[torch.Tensor, np.array]:
+    def pixel_to_camera_ray(self, image_points: Union[torch.Tensor, np.ndarray]) ->  torch.Tensor:
         '''
         Computes the camera ray for each image point
         '''
@@ -381,20 +358,15 @@ class FThetaCameraModel(CameraModel):
         rdist = torch.linalg.norm(pixels_dist, axis=1, keepdims=True)
 
         alphas = self.__eval_bw_poly(rdist)
-        min_norm = torch.tensor(1e-6).to(pixels_dist)
+        min_norm = torch.Tensor(1e-6).to(pixels_dist)
 
         # Compute the camera rays and set the ones at the image center to [0,0,1]
         cam_rays = torch.hstack((torch.sin(alphas) * pixels_dist / torch.maximum(rdist, min_norm), torch.cos(alphas)))
-        cam_rays[rdist < min_norm] = torch.tensor([[0,0,1]]).to(pixels_dist)
+        cam_rays[rdist < min_norm] = torch.Tensor([[0,0,1]]).to(pixels_dist)
 
-        # If the input was numpy, return numpy arrays as well
-        if return_numpy:
-            return cam_rays.cpu().numpy()
-        else:
-            return cam_rays
+        return cam_rays
     
-    def camera_ray_to_pixel(self, cam_rays: Union[torch.Tensor, np.array], return_numpy: bool = False) \
-                        ->  Tuple[Union[torch.Tensor, np.array], Union[torch.Tensor, np.array]]:
+    def camera_ray_to_pixel(self, cam_rays: Union[torch.Tensor, np.ndarray]) ->  Tuple[torch.Tensor, torch.Tensor]:
         '''
         For each camera ray it computes the corresponding pixel coordinates
         '''
@@ -420,10 +392,7 @@ class FThetaCameraModel(CameraModel):
         valid = valid_x & valid_y & valid_delta
 
         # If the input was numpy, return numpy arrays as well
-        if return_numpy: 
-            return image_points.cpu().numpy(), valid.cpu().numpy()
-        else:
-            return image_points, valid
+        return image_points, valid
 
     def __eval_bw_poly(self, pixel_norms: torch.Tensor) -> torch.Tensor:
         ''' Evaluate the backward polynomial using Horner scheme '''
@@ -459,7 +428,7 @@ class FThetaCameraModel(CameraModel):
 
 
 class PinholeCameraModel(CameraModel):
-    def __init__(self, camera_model_parameters: PinholeCameraModelParameters, 
+    def __init__(self, camera_model_parameters: types.PinholeCameraModelParameters, 
                         device: str = 'cuda', dtype: torch.dtype = torch.float64 ):
         
         # Check if cuda device is actually available
@@ -470,12 +439,11 @@ class PinholeCameraModel(CameraModel):
         self.device = device
         self.dtype = dtype
         self.principal_point = self.to_torch(camera_model_parameters.principal_point).to(self.dtype)
-        self.focal_length = self.to_torch(camera_model_parameters.focal_length).to(self.dtype)
-        self.radial_poly = self.to_torch(camera_model_parameters.radial_poly).to(self.dtype)
-        self.tangential_poly = self.to_torch(camera_model_parameters.tangential_poly).to(self.dtype)
+        self.focal_length = self.to_torch(np.array([camera_model_parameters.focal_length_u, camera_model_parameters.focal_length_v])).to(self.dtype)
+        self.radial_poly = self.to_torch(np.array([camera_model_parameters.k1, camera_model_parameters.k2, camera_model_parameters.k3])).to(self.dtype)
+        self.tangential_poly = self.to_torch(np.array([camera_model_parameters.p1, camera_model_parameters.p2])).to(self.dtype)
         self.resolution = self.to_torch(camera_model_parameters.resolution.astype(np.int64))
-        self.shutter_type = camera_model_parameters.rolling_shutter_direction
-        self.max_angle = float(camera_model_parameters.max_angle)
+        self.shutter_type = camera_model_parameters.shutter_type.name
 
         assert self.principal_point.shape == (2,)
         assert self.principal_point.dtype == self.dtype
@@ -488,8 +456,7 @@ class PinholeCameraModel(CameraModel):
         assert self.resolution.shape == (2,)
         assert self.resolution.dtype == torch.int64
 
-    def pixel_to_camera_ray(self, image_points: Union[torch.Tensor, np.array], 
-                                  return_numpy: bool = False) ->  Union[torch.Tensor, np.array]:
+    def pixel_to_camera_ray(self, image_points: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
         '''
         Computes the camera ray for each image point
         '''
@@ -497,16 +464,14 @@ class PinholeCameraModel(CameraModel):
         camera_rays = self.__iterative_undistort(image_points)
         cam_rays = torch.cat([camera_rays, torch.ones_like(camera_rays[:,0:1])], dim=1)
 
-        if return_numpy:
-            return cam_rays.cpu().numpy()
-        else:
-            return cam_rays
+        return cam_rays
         
-    def camera_ray_to_pixel(self, cam_rays: Union[torch.Tensor, np.array], return_numpy: bool = False) \
-                        ->  Tuple[Union[torch.Tensor, np.array], Union[torch.Tensor, np.array]]:
+    def camera_ray_to_pixel(self, cam_rays: Union[torch.Tensor, np.ndarray]) -> Tuple[torch.Tensor, torch.Tensor]:
         '''
         For each camera ray it computes the corresponding pixel coordinates
         '''
+
+        cam_rays = self.to_torch(cam_rays).to(self.dtype)
 
         # Initialize the valid flag and set all the points behind the camera plane to invalid
         valid = torch.ones_like(cam_rays[:,0], dtype=torch.bool)
@@ -516,20 +481,16 @@ class PinholeCameraModel(CameraModel):
         valid_idx = torch.where(valid)[0]
 
         uv_normalized = cam_rays[valid, :2] / cam_rays[valid, 2:3] # [n,2]
-        uv_normalized_squared = torch.pow(uv_normalized,2) # [n,2]
-        uv_normalized_product = uv_normalized[:,0] * uv_normalized[:,1] # [n,]
-
-        r2 = torch.pow(uv_normalized,2).sum(axis=1) # [n]
-        rD = 1.0 + r2 * (self.radial_poly[0] + r2 * (self.radial_poly[1] + r2 * self.radial_poly[2])) # [n]
+        icD, delta_x, delta_y = self.__compute_distortion(uv_normalized)
 
         k_min_radial_dist = 0.8
         k_max_radial_dist = 1.2
 
-        valid_radial = torch.logical_and(rD > k_min_radial_dist, rD < k_max_radial_dist)
+        valid_radial = torch.logical_and(icD > k_min_radial_dist, icD < k_max_radial_dist)
 
         # Apply tangential distortion
-        uND = uv_normalized[:,0] * rD + 2.0 * self.tangential_poly[0] * uv_normalized_product + self.tangential_poly[1] * (r2 + 2.0 * uv_normalized_squared[:,0]) # [n]
-        vND = uv_normalized[:,1] * rD + 2.0 * self.tangential_poly[1] * uv_normalized_product + self.tangential_poly[0] * (r2 + 2.0 * uv_normalized_squared[:,1]) # [n]
+        uND = uv_normalized[:,0] * icD + delta_x # [n]
+        vND = uv_normalized[:,1] * icD + delta_y # [n]
 
         image_points[valid_idx,0] = uND * self.focal_length[0] + self.principal_point[0]
         image_points[valid_idx,1] = vND * self.focal_length[1] + self.principal_point[1]
@@ -542,15 +503,31 @@ class PinholeCameraModel(CameraModel):
         valid_pts = valid_x & valid_y & valid_radial
         valid[valid_idx[~valid_pts]] = False
 
-        # If the input was numpy, return numpy arrays as well
-        if return_numpy: 
-            return image_points.cpu().numpy(), valid.cpu().numpy()
-        else:
-            return image_points, valid
+        return image_points, valid
 
-    def __iterative_undistort(self, image_points: torch.tensor, eps: float = 1e-12) -> torch.tensor:
+    def __compute_distortion(self, xy: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        ''' Computes the radial and tangential distortion given the camera rays '''
+ 
+        # Compute the helper variables
+        xy_squared = torch.pow(xy, 2)
+        xy_prod = xy[:,0] * xy[:,1]
+        r_2 = torch.sum(xy_squared, dim=1)
+        r_4 = r_2 * r_2
+        r_6 = r_4 * r_2
+        a1 = 2*xy_prod
+        a2 = r_2 + 2*xy_squared[:,0]
+        a3 = r_2 + 2*xy_squared[:,1]
 
-        
+        icD_numerator = (1.0 + self.radial_poly[0] * r_2 + self.radial_poly[1] * r_4 + self.radial_poly[2] * r_6)
+        icD_denominator = (1.0 + self.radial_poly[3] * r_2 + self.radial_poly[4] * r_4 + self.radial_poly[5] * r_6)
+        icD = icD_numerator/icD_denominator
+
+        delta_x = self.tangential_poly[0] * a1 + self.tangential_poly[1] * a2 + self.tangential_poly[2] * r_2 + self.tangential_poly[3] * r_4
+        delta_y = self.tangential_poly[0] * a3 + self.tangential_poly[1] * a1 + self.tangential_poly[4] * r_2 + self.tangential_poly[5] * r_4
+ 
+        return icD, delta_x, delta_y
+
+    def __iterative_undistort(self, image_points: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
         cam_rays = (image_points - self.principal_point[:,None]) / self.focal_length[:,None]
         cam_rays_0 = torch.clone(cam_rays)
 
@@ -558,18 +535,12 @@ class PinholeCameraModel(CameraModel):
         max_iter = 20
         error = 1e12
         while (error > eps and c_iter < max_iter):
-            cam_rays_squared = torch.pow(cam_rays, 2)
-            cam_rays_prod = cam_rays[:,0] * cam_rays[:,1]
-            r_squared = torch.sum(cam_rays_squared, dim=1)
-            icD = 1.0 / (1.0 + ((self.radial_poly[2] * r_squared + self.radial_poly[1]) * r_squared + self.radial_poly[0]) * r_squared)
-
-            delta_x = 2 * self.tangential_poly[0] * cam_rays_prod + self.tangential_poly[1] * (r_squared  + 2 * cam_rays_squared[:,0])
-            delta_y = 2 * self.tangential_poly[1] * cam_rays_prod + self.tangential_poly[0] * (r_squared  + 2 * cam_rays_squared[:,1])
+            icD, delta_x, delta_y = self.__compute_distortion(cam_rays)
             
             # Get the previous values to compute the residual
             cam_rays_prev = torch.clone(cam_rays)
             cam_rays = (cam_rays_0 - torch.cat([delta_x[:, None], delta_y[:, None]], dim=1)) * icD
     
-            error = torch.mean(torch.square(cam_rays - cam_rays_prev))
+            error = torch.mean(torch.square(cam_rays - cam_rays_prev)).item()
 
         return cam_rays

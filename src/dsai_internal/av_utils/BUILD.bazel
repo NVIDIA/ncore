@@ -19,6 +19,20 @@ npe_codegen_module(
     module = "libav_utils_cc",
 )
 
+cc_library(
+    name = "camera_lib",
+    srcs = [
+        "camera.cpp"
+    ],
+    deps = [
+        "@eigen"
+    ],
+    hdrs = [
+        "camera.hpp"
+    ],
+    includes = ["."]
+)
+
 cc_binary(
     name = "av_utils_cc",
     srcs = [
@@ -31,6 +45,7 @@ cc_binary(
     linkshared = True,
     deps = [
         "@numpyeigen//:npe",
+        ":camera_lib"
     ],
 )
 
@@ -43,9 +58,10 @@ py_library(
         ":av_utils_cc",
     ],
     imports = ["."],
-    visibility = ["//src:__subpackages__"],
+    visibility = ["//src:__subpackages__", "//scripts:__subpackages__"],
     deps = [
         requirement("numpy"),
+        "//src/dsai_internal/data:pylib",
     ],
 )
 

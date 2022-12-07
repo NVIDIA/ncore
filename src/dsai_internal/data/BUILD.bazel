@@ -40,6 +40,9 @@ py_library(
     deps = [
         requirement("numpy"),
         requirement("dataclasses-json"),
+        requirement("pillow"),
+        requirement("marshmallow"),
+        "//src/dsai_internal/common:pylib",
     ],
 )
 

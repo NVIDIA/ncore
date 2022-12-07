@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Callable, Optional, Union
 
 from . import types, util
+from src.dsai_internal.common.transformations import se3_inverse
 
 ## Constants
 VERSION = '2.0.0'
@@ -260,9 +261,9 @@ class Sensor:
         ''' Returns constant sensor-to-rig pose '''
         return np.array(self._sensor_meta.T_sensor_rig, dtype=np.float32)
 
-    def get_T_rig_sensor(self) -> np.array:
+    def get_T_rig_sensor(self) -> np.ndarray:
         ''' Returns constant rig-to-sensor pose '''
-        return np.linalg.inv(self.get_T_sensor_rig())
+        return se3_inverse(self.get_T_sensor_rig())
 
     # Sessions-wide frame data
     def get_frames_count(self) -> int:
@@ -298,9 +299,9 @@ class Sensor:
             j = json.load(f)
             return np.array(j['T_rig_worlds'][frame_timepoint.value]) @ self.get_T_sensor_rig()
 
-    def get_frame_T_world_sensor(self, continous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> np.array:
+    def get_frame_T_world_sensor(self, continous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> np.ndarray:
         ''' Returns start/end world-to-sensor pose of specific frame '''
-        return np.linalg.inv(self.get_frame_T_sensor_world(continous_frame_index, frame_timepoint))
+        return se3_inverse(self.get_frame_T_sensor_world(continous_frame_index, frame_timepoint))
 
     def get_frame_timestamp_us(self, continous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> int:
         ''' Returns timestamp of specific frame timepoints '''
