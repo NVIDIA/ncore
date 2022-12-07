@@ -6,29 +6,85 @@ from pathlib import Path
 
 import numpy as np
 
-from .data3 import ShardDataLoader, CameraSensor
-from .types import FrameTimepoint
+from .data3 import ShardDataLoader, Sensor, CameraSensor, LidarSensor
+from .types import FrameTimepoint, FThetaCameraModelParameters
 
 
 class TestData3Loader(unittest.TestCase):
     ''' Test to verify functionality of V3 data loader '''
     def setUp(self):
-        self.all_shards = [p for p in Path('external/test-data-v3-shards').iterdir() if p.match('*.hdf5')]
+        self.all_shards = sorted([p for p in Path('external/test-data-v3-shards').iterdir() if p.match('*.hdf5')])
 
     def test_shard_loader(self):
+        shard_num_poses = [4, 4, 3]
+        self.assertEqual(len(self.all_shards), 3)
+
+        def check(start, end):
+            loader = ShardDataLoader(self.all_shards[start:end])
+            expected_num_poses = sum(shard_num_poses[start:end])
+
+            self.assertEqual(len(loader.get_camera_ids()), 10)
+            self.assertEqual(len(loader.get_lidar_ids()), 1)
+            self.assertEqual(len(loader.get_radar_ids()), 0)
+
+            poses = loader.get_poses()
+            self.assertEqual(poses.T_rig_world_base.shape, (4, 4))
+            self.assertEqual(poses.T_rig_world_timestamps_us.shape, (expected_num_poses, ))
+            self.assertEqual(poses.T_rig_worlds.shape, (expected_num_poses, 4, 4))
+
+            self.assertEqual(len(np.unique(poses.T_rig_world_timestamps_us)), expected_num_poses)
+
+        # check all shard slice variants
+        for end in range(1, len(self.all_shards) + 1):
+            for start in range(0, end):
+                check(start, end)
+
+    def test_shard_sensor_lidar(self):
         self.assertEqual(len(self.all_shards), 3)
         loader = ShardDataLoader(self.all_shards)
 
-        self.assertEqual(len(loader.get_camera_ids()), 10)
-        self.assertEqual(len(loader.get_lidar_ids()), 1)
-        self.assertEqual(len(loader.get_radar_ids()), 0)
+        self.assertIsInstance(lidar_sensor := loader.get_sensor('lidar_gt_top_p128_v4p5'), LidarSensor)
+        self.assertEqual(lidar_sensor.get_sensor_id(), 'lidar_gt_top_p128_v4p5')
+
+        # Load all data
+        for frame_index in lidar_sensor.get_frame_index_range():
+            self.assertTrue(lidar_sensor.has_frame_data(frame_index, 'xyz_s'))
+            self.assertTrue(lidar_sensor.has_frame_data(frame_index, 'xyz_e'))
+            self.assertTrue(lidar_sensor.has_frame_data(frame_index, 'intensity'))
+            self.assertTrue(lidar_sensor.has_frame_data(frame_index, 'timestamp_us'))
+            self.assertTrue(lidar_sensor.has_frame_data(frame_index, 'dynamic_flag'))
+            self.assertFalse(lidar_sensor.has_frame_data(frame_index, 'foo'))
+
+            point_count = lidar_sensor.get_frame_data(frame_index, 'xyz_e').shape[0]
+            self.assertEqual(
+                lidar_sensor.get_frame_data(frame_index, 'xyz_s').shape,
+                lidar_sensor.get_frame_data(frame_index, 'xyz_e').shape)
+            self.assertEqual(len(lidar_sensor.get_frame_data(frame_index, 'intensity')), point_count)
+            self.assertEqual(len(lidar_sensor.get_frame_data(frame_index, 'timestamp_us')), point_count)
+            self.assertEqual(len(lidar_sensor.get_frame_data(frame_index, 'dynamic_flag')), point_count)
+
+            self.assertGreater(len(lidar_sensor.get_frame_labels(frame_index)), 0,
+                               f'no labels for lidar frame {frame_index}')
+
+    def test_shard_sensor_camera(self):
+        self.assertEqual(len(self.all_shards), 3)
+        loader = ShardDataLoader(self.all_shards)
+
+        self.assertIsInstance(camera_sensor := loader.get_sensor('camera_cross_left_120fov'), CameraSensor)
+        self.assertEqual(camera_sensor.get_sensor_id(), 'camera_cross_left_120fov')
+
+        self.assertIsInstance(camera_sensor.get_camera_model_parameters(), FThetaCameraModelParameters)
+        self.assertEqual(camera_sensor.get_camera_mask_image().size, (3848, 2168))
+
+        # Decode all camera frames
+        for frame_index in camera_sensor.get_frame_index_range():
+            self.assertEqual(camera_sensor.get_frame_image(frame_index).size, (3848, 2168))
 
     def test_shard_sensor(self):
         self.assertEqual(len(self.all_shards), 3)
         loader = ShardDataLoader(self.all_shards)
 
-        sensor = loader.get_sensor('camera_front_wide_120fov')
-        self.assertIsInstance(sensor, CameraSensor)
+        self.assertIsInstance(sensor := loader.get_sensor('camera_front_wide_120fov'), Sensor)
         self.assertEqual(sensor.get_sensor_id(), 'camera_front_wide_120fov')
 
         # Check some known values across shards
@@ -57,7 +113,8 @@ class TestData3Loader(unittest.TestCase):
         self.assertIsNone(
             np.testing.assert_array_equal(sensor.get_frame_T_sensor_world(0, FrameTimepoint.START),
                                           reference_T_rig_world_0_start @ reference_T_sensor_rig))
-        
+        self.assertEqual(sensor.get_frame_image(0).size, (3848, 2168))
+
         self.assertIsNone(
             np.testing.assert_array_equal(
                 sensor.get_frame_T_rig_world(0, FrameTimepoint.END),
