@@ -15,7 +15,7 @@ py_library(
     deps = [
         requirement("numpy"),
         requirement("torch"),
-        "//src/dsai_internal/data:pylib",
+        "//src/dsai_internal/data:pylib_types",
     ],
 )
 

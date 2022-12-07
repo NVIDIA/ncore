@@ -196,7 +196,8 @@ If ``camera_model_type` = 'pinhole'`` the following intrinsic parameters will ad
 
 * ``principal_point`` - u and v coordinate of the principal point (float32, [2,])
 * ``focal_length_u`` / ``focal_length_v`` - focal length in u and v direction, resp. (float32)
-* ``p1``, ``p2``, ``k1``, ``k2``, ``k3`` - distortion coefficients (float32)
+* ``radial_poly`` - radial distortion coefficients (float32, [6,])
+* ``tangential_poly`` - tangential distortion coefficients (float32, [2,])
 
 *Lidars*: 
 

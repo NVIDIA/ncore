@@ -61,7 +61,7 @@ py_library(
     visibility = ["//src:__subpackages__", "//scripts:__subpackages__"],
     deps = [
         requirement("numpy"),
-        "//src/dsai_internal/data:pylib",
+        "//src/dsai_internal/data:pylib_types",
     ],
 )
 

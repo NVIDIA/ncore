@@ -165,12 +165,12 @@ def dsai_to_ngp(
                     "h": int(pinhole.resolution[1]),
                     "cx": float(pinhole.principal_point[0]),
                     "cy": float(pinhole.principal_point[1]),
-                    "k1": pinhole.k1,
-                    "k2": pinhole.k2,
+                    "k1": pinhole.radial_poly[0],
+                    "k2": pinhole.radial_poly[1],
                     # Note: we are already outputting this higher-order coefficient although NGP might not use it yet
-                    "k3": pinhole.k3,
-                    "p1": pinhole.p1,
-                    "p2": pinhole.p2,
+                    "k3": pinhole.tangential_poly[2],
+                    "p1": pinhole.tangential_poly[0],
+                    "p2": pinhole.tangential_poly[1],
                     "rolling_shutter": rolling_shutter.tolist(),
                     "camera_angle_x": fov_angle_x,
                     "camera_angle_y": fov_angle_y
