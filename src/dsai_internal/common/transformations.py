@@ -143,21 +143,32 @@ def spherical_2_direction(spherical_coords):
     return np.concatenate((dx[:,None],dy[:,None],dz[:,None]),axis=-1)
 
 def transform_point_cloud(pc, T):
-    ''' Transform the point cloud with the provided transformation matrix
+    ''' Transform the point cloud with the provided transformation matrix, 
+        support torch.Tensor and np.ndarry. 
     Args:
-        pc (np.array): point cloud coordinates (x,y,z) [n,3]
-        T (np.array): se3 transformation matrix [4,4]
+        pc (np.array): point cloud coordinates (x,y,z) [num_pts, 3] or [bs, num_pts, 3]
+        T (np.array): se3 transformation matrix  [4, 4] or [bs, 4, 4]
 
     Out:
-        (np array): transformed point cloud coordinated [n,3]
+        (np array): transformed point cloud coordinated [num_pts, 3] or [bs, num_pts, 3]
     '''
-    return (T[:3,:3] @ pc[:,:3].transpose() + T[:3,3:4]).transpose()
+    if len(pc.shape) == 3:
+        if isinstance(pc, np.ndarray):
+            trans_pts = T[:, :3, :3] @ pc.transpose(0, 2, 1) + T[:, :3, 3:4]
+            return trans_pts.transpose(0, 2, 1)
+        else:
+            trans_pts = T[:, :3, :3] @ pc.permute(0, 2, 1) + T[:, :3, 3:4]
+            return trans_pts.permute(0, 2, 1)
+
+    else:
+        trans_pts = T[:3, :3] @ pc.transpose() + T[:3, 3:4]
+        return trans_pts.transpose()
 
 
 def se3_inverse(T: np.ndarray) -> np.ndarray:
     ''' Computed the inverse of a rigid transformation 
     Args:
-        T (np.array): se3 transformation matrix to inverte [4,4]
+        T (np.array): se3 transformation matrix to invert [4,4]
 
     Out:
         (np array): inverse transformation [4,4]

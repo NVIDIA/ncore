@@ -60,6 +60,7 @@ def plot_points_on_image(projected_points, camera_image, title, rgba_func =rgba,
     plt.scatter(xs, ys, c=colors, s=point_size, edgecolors="none")
     plt.axis('off')
     plt.grid(visible=False)
+    plt.show()
 
 
 class LabelVisualizer:

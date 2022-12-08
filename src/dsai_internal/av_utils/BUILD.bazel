@@ -2,7 +2,7 @@
 
 load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@pip_deps//:requirements.bzl", "requirement")
-load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 load("@rules_python//python:defs.bzl", "py_library")
 load("//3rdparty/numpyeigen:npe_add_module.bzl", "npe_codegen_function", "npe_codegen_module")
 
@@ -19,6 +19,20 @@ npe_codegen_module(
     module = "libav_utils_cc",
 )
 
+cc_library(
+    name = "camera_lib",
+    srcs = [
+        "camera.cpp",
+    ],
+    hdrs = [
+        "camera.hpp",
+    ],
+    includes = ["."],
+    deps = [
+        "@eigen",
+    ],
+)
+
 cc_binary(
     name = "av_utils_cc",
     srcs = [
@@ -30,6 +44,7 @@ cc_binary(
     ],
     linkshared = True,
     deps = [
+        ":camera_lib",
         "@numpyeigen//:npe",
     ],
 )
@@ -43,9 +58,12 @@ py_library(
         ":av_utils_cc",
     ],
     imports = ["."],
-    visibility = ["//src:__subpackages__"],
+    visibility = [
+        "//:code_package_group",
+    ],
     deps = [
         requirement("numpy"),
+        "//src/dsai_internal/data:pylib_types",
     ],
 )
 

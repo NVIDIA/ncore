@@ -24,7 +24,7 @@ index 63bb405..0d3c3ef 100644
      deps = [
          requirement("mypy"),
 +        # List of dependencies that provide type-hints
-+        local_req("click"), local_req("pytest"), local_req("numpy"), local_req("sphinx"), local_req("multimethod"), local_req("jupyter_server"), local_req("dataclasses_json"),
-+        "@dsai-repo//src/dsai/data:pylib", "@dsai-repo//src/dsai/data/v2:pylib", "@dsai-repo//src/dsai/geometry:pylib",
++        local_req("click"), local_req("pytest"), local_req("numpy"), local_req("sphinx"), local_req("multimethod"), local_req("jupyter_server"), local_req("dataclasses_json"), local_req("torch"),
++        "@dsai-repo//src/dsai/data:pylib", "@dsai-repo//src/dsai/data/v2:pylib", "@dsai-repo//src/dsai/geometry:pylib", "@dsai-repo//src/dsai/sensors:pylib",
      ],
  )

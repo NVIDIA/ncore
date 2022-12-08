@@ -15,6 +15,7 @@ py_library(
     deps = [
         ":pylib_types",
         ":pylib_util",
+        "//src/dsai_internal/common:pylib",
         requirement("h5py"),
         requirement("pillow"),
     ],
