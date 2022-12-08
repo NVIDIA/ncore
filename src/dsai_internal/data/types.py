@@ -74,8 +74,7 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
 class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
     ''' Represents a Pinhole-specific camera model parameters '''
     principal_point: np.ndarray = util.numpy_array_field(np.float32)
-    focal_length_u: float = 0.0
-    focal_length_v: float = 0.0
+    focal_length: np.ndarray = util.numpy_array_field(np.float32)
     radial_poly: np.ndarray = util.numpy_array_field(np.float32) 
     tangential_poly: np.ndarray = util.numpy_array_field(np.float32)
     #TODO: do we also want to add the thin prism distortion coefficients?
@@ -91,15 +90,15 @@ class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
         assert self.principal_point.dtype == np.dtype('float32')
         assert self.principal_point[0] > 0.0 and self.principal_point[1] > 0.0
 
+        assert self.focal_length.shape == (2, )
+        assert self.focal_length.dtype == np.dtype('float32')
+        assert self.focal_length[0] > 0.0 and self.principal_point[1] > 0.0
+
         assert self.radial_poly.shape == (6,)
         assert self.radial_poly.dtype == np.dtype('float32')
 
         assert self.tangential_poly.shape == (2, )
         assert self.tangential_poly.dtype == np.dtype('float32')
-
-        assert self.focal_length_u > 0
-        assert self.focal_length_v > 0
-
 
 @dataclass
 class Poses:

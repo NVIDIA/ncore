@@ -195,7 +195,7 @@ If ``camera_model_type = 'f_theta'`` the following intrinsic parameters will add
 If ``camera_model_type` = 'pinhole'`` the following intrinsic parameters will additionally be available in ``camera_model_parameters``:
 
 * ``principal_point`` - u and v coordinate of the principal point (float32, [2,])
-* ``focal_length_u`` / ``focal_length_v`` - focal length in u and v direction, resp. (float32)
+* ``focal_length`` - focal lengths in u and v direction, resp. (float32, [2,])
 * ``radial_poly`` - radial distortion coefficients (float32, [6,])
 * ``tangential_poly`` - tangential distortion coefficients (float32, [2,])
 

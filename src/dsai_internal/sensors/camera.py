@@ -446,7 +446,7 @@ class FThetaCameraModel(CameraModel):
 
 class PinholeCameraModel(CameraModel):
     def __init__(self, camera_model_parameters: types.PinholeCameraModelParameters, 
-                        device: str = 'cuda', dtype: torch.dtype = torch.float64 ):
+                device: str = 'cuda', dtype: torch.dtype = torch.float64):
         
         # Check if cuda device is actually available
         if device == 'cuda' and not torch.cuda.is_available():
@@ -456,7 +456,7 @@ class PinholeCameraModel(CameraModel):
         self.device = device
         self.dtype = dtype
         self.principal_point = self.to_torch(camera_model_parameters.principal_point).to(self.dtype)
-        self.focal_length = self.to_torch(np.array([camera_model_parameters.focal_length_u, camera_model_parameters.focal_length_v])).to(self.dtype)
+        self.focal_length = self.to_torch(camera_model_parameters.focal_length).to(self.dtype)
         self.radial_poly = self.to_torch(camera_model_parameters.radial_poly[:3]).to(self.dtype)
         self.tangential_poly = self.to_torch(camera_model_parameters.tangential_poly).to(self.dtype)
         self.resolution = self.to_torch(camera_model_parameters.resolution.astype(np.int64))

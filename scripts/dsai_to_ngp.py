@@ -154,8 +154,8 @@ def dsai_to_ngp(
 
             case PinholeCameraModelParameters() as pinhole:
                 # Get the focal length and compute the angular field of view
-                fov_angle_x = math.atan(pinhole.resolution[0]/(pinhole.focal_length_u*2))*2
-                fov_angle_y = math.atan(pinhole.resolution[1]/(pinhole.focal_length_v*2))*2
+                fov_angle_x = math.atan(pinhole.resolution[0]/(pinhole.focal_length[0]*2))*2
+                fov_angle_y = math.atan(pinhole.resolution[1]/(pinhole.focal_length[1]*2))*2
 
                 # Extract the rolling shutter parameters representing y = a + b*x + c*y
                 rolling_shutter = RS_DIR_TO_NGP[pinhole.shutter_type.name]

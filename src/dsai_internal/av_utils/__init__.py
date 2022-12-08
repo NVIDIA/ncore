@@ -35,7 +35,7 @@ def image_to_world_ray(image_points: np.ndarray, camera_metadata: Union[types.FT
             cam_rays = libav_utils_cc._pixel2WorldRayPinhole(
                         image_points.astype(np.float64), 
                         pinhole_parameters.principal_point.reshape(1,-1).astype(np.float64),
-                        np.array([pinhole_parameters.focal_length_u, pinhole_parameters.focal_length_v], dtype=np.float64).reshape(1,-1),
+                        pinhole_parameters.focal_length.reshape(1,-1).astype(np.float64),
                         pinhole_parameters.radial_poly[:3].reshape(1,-1).astype(np.float64),
                         pinhole_parameters.tangential_poly.reshape(1,-1).astype(np.float64),
                         img_width, img_height, pinhole_parameters.shutter_type.name,
@@ -64,7 +64,7 @@ def pixel2CameraRay(image_points: np.ndarray, camera_metadata: Union[types.FThet
             cam_rays = libav_utils_cc._pixel2CameraRayPinhole(
                         image_points.astype(np.float64), 
                         pinhole_parameters.principal_point.reshape(1,-1).astype(np.float64),
-                        np.array([pinhole_parameters.focal_length_u, pinhole_parameters.focal_length_v], dtype=np.float64).reshape(1,-1),
+                        pinhole_parameters.focal_length.reshape(1,-1).astype(np.float64),
                         pinhole_parameters.radial_poly[:3].reshape(1,-1).astype(np.float64),
                         pinhole_parameters.tangential_poly.reshape(1,-1).astype(np.float64),
                         img_width, img_height, pinhole_parameters.shutter_type.name)
@@ -91,7 +91,7 @@ def cameraRay2Pixel(cameraPoints: np.ndarray, camera_metadata: Union[types.FThet
             pixel_coords, valid_flag = libav_utils_cc._cameraRay2PixelPinhole(
                             cameraPoints.astype(np.float64), 
                             pinhole_parameters.principal_point.reshape(1,-1).astype(np.float64),
-                            np.array([pinhole_parameters.focal_length_u, pinhole_parameters.focal_length_v], dtype=np.float64).reshape(1,-1),
+                            pinhole_parameters.focal_length.reshape(1,-1).astype(np.float64),
                             pinhole_parameters.radial_poly[:3].reshape(1,-1).astype(np.float64),
                             pinhole_parameters.tangential_poly.reshape(1,-1).astype(np.float64),
                             img_width, img_height, pinhole_parameters.shutter_type.name)
@@ -124,7 +124,7 @@ def rollingShutterProjection(points: np.ndarray,
 
             pixel_coords, trans_matrices, valid_proj, initial_valid_idx = libav_utils_cc._rollingShutterProjectionFTheta(
                                     points.astype(np.float64), pinhole_parameters.principal_point.reshape(1,-1).astype(np.float64),
-                                    np.array([pinhole_parameters.focal_length_u, pinhole_parameters.focal_length_v], dtype=np.float64).reshape(1,-1),
+                                    pinhole_parameters.focal_length.reshape(1,-1).astype(np.float64),
                                     pinhole_parameters.radial_poly[:3].reshape(1,-1).astype(np.float64),
                                     pinhole_parameters.tangential_poly.reshape(1,-1).astype(np.float64),
                                     img_width, img_height, pinhole_parameters.shutter_type.name, 
