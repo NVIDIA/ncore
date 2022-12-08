@@ -1,5 +1,9 @@
+// Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 #pragma once
+
 #include <Eigen/Dense>
+
 #include <array>
  
 class CameraModel {
@@ -10,9 +14,9 @@ class CameraModel {
         std::string shutterType;
 
     public:
-        CameraModel(const int imgWidth_, const double imgHeight_, const Eigen::Matrix<double, 1,2>& principalPoint_, const std::string& shutterType_);
+        CameraModel(const int imgWidth_, const int imgHeight_, const Eigen::Matrix<double, 1,2>& principalPoint_, const std::string& shutterType_);
 
-        virtual ~CameraModel();
+        virtual ~CameraModel() = default;
 
         virtual void cameraRayToPixel(const Eigen::Matrix<double, Eigen::Dynamic, 3>& cameraPoints,
                                 Eigen::Matrix<double, Eigen::Dynamic, 2 >& imgPoints,
@@ -49,8 +53,6 @@ class FThetaCamera : public CameraModel
                      const std::array<double, 6>& fwPolyCoefficients_, const std::array<double, 6>& bwPolyCoefficients_,
                      const double maxAngle_, const std::string shutterType_);
 
-        ~FThetaCamera();
-
         void cameraRayToPixel(const Eigen::Matrix<double, Eigen::Dynamic, 3>& cameraPoints,
                               Eigen::Matrix<double, Eigen::Dynamic, 2>& imgPoints,
                               Eigen::Matrix<bool, Eigen::Dynamic, 1 >& valid) override;
@@ -85,22 +87,19 @@ class PinholeCamera : public CameraModel
 
     public:
         PinholeCamera(const int imgWidth_, const int imgHeight_,  const Eigen::Matrix<double, 1,2>& principalPoint_,
-                     const Eigen::Matrix<double, 1,2>& focalLength_, const Eigen::Matrix<double, 1,3>& radialPoly_,
-                     const Eigen::Matrix<double, 1,2>& tangentialPoly_, const std::string shutterType_);
-
-        ~PinholeCamera();
+                      const Eigen::Matrix<double, 1,2>& focalLength_, const Eigen::Matrix<double, 1,3>& radialPoly_,
+                      const Eigen::Matrix<double, 1,2>& tangentialPoly_, const std::string shutterType_);
 
         // Transform the camera rays to pixel coordinates for pinhole camera
         void cameraRayToPixel(const Eigen::Matrix<double, Eigen::Dynamic, 3>& cameraPoints,
                               Eigen::Matrix<double, Eigen::Dynamic, 2>& imgPoints,
                               Eigen::Matrix<bool, Eigen::Dynamic, 1 >& valid) override;
 
-        virtual void pixelToCameraRay(const Eigen::Matrix<double, Eigen::Dynamic, 2>& pixelCoordinates,
-                                    Eigen::Matrix<double, Eigen::Dynamic, 3>& cameraRays);
+        void pixelToCameraRay(const Eigen::Matrix<double, Eigen::Dynamic, 2>& pixelCoordinates,
+                                    Eigen::Matrix<double, Eigen::Dynamic, 3>& cameraRays) override;
 
     private:
-
-        void iteraitiveUndistortPoints(const Eigen::Matrix<double, Eigen::Dynamic, 2>& src, 
-                                       Eigen::Matrix<double, Eigen::Dynamic, 2>& tgt,
-                                       const double eps = 1e-12);
+        void iterativeUndistortPoints(const Eigen::Matrix<double, Eigen::Dynamic, 2>& src, 
+                                      Eigen::Matrix<double, Eigen::Dynamic, 2>& tgt,
+                                      const double eps = 1e-12);
 };

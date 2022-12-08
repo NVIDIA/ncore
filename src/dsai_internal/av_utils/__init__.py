@@ -84,7 +84,7 @@ def cameraRay2Pixel(cameraPoints, camera_metadata):
     return pixel_coords, valid_flag
 
 
-def rollingShutterProjection(points, camera_metadata, T_world_cam,  iter=1):
+def rollingShutterProjection(points, camera_metadata, T_world_cam, iter=1):
 
     if isinstance(camera_metadata, types.FThetaCameraModelParameters):
 

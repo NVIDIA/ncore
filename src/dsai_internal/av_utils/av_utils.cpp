@@ -1,8 +1,10 @@
 // Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-#include <npe.h>
-#include <camera.hpp>
+#include "camera.hpp"
+
 #include <Eigen/Dense>
+#include <npe.h>
+
 #include <iomanip>
 #include <array>
 
@@ -331,7 +333,7 @@ npe_begin_code()
 npe_end_code()
 
 
-Eigen::Quaternionf euler2Quaternion(const float roll, const float pitch, const float yaw )
+Eigen::Quaternionf euler2Quaternion(const float roll, const float pitch, const float yaw)
 {
     Eigen::AngleAxisf rollAngle(roll, Eigen::Vector3f::UnitX());
     Eigen::AngleAxisf pitchAngle(pitch, Eigen::Vector3f::UnitY());
@@ -376,11 +378,17 @@ npe_begin_code()
 
         for (int j=0; j < transformedPoints.rows(); j++)
         {
-            if(transformedPoints(j,0) <= halfDim.x() && transformedPoints(j,0) >= -halfDim.x() && transformedPoints(j,1) <= halfDim.y() && transformedPoints(j,1) >= -halfDim.y() && transformedPoints(j,2) <= halfDim.z() && transformedPoints(j,2) >= -halfDim.z())
-            {
-                inBBox(j,i) = true;
-            }
+          if (transformedPoints(j, 0) <= halfDim.x() &&
+              transformedPoints(j, 0) >= -halfDim.x() &&
+              transformedPoints(j, 1) <= halfDim.y() &&
+              transformedPoints(j, 1) >= -halfDim.y() &&
+              transformedPoints(j, 2) <= halfDim.z() &&
+              transformedPoints(j, 2) >= -halfDim.z()) {
+            inBBox(j, i) = true;
+          }
         }
     }
+
     return npe::move(inBBox);
+
 npe_end_code()

@@ -1,12 +1,14 @@
+// Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 #include "camera.hpp"
+
 #include <Eigen/Dense>
+
 #include <array>
 #include <vector>
 
-CameraModel::CameraModel(const int imgWidth_, const double imgHeight_, const Eigen::Matrix<double, 1,2>& principalPoint_, const std::string& shutterType_) 
+CameraModel::CameraModel(const int imgWidth_, const int imgHeight_, const Eigen::Matrix<double, 1,2>& principalPoint_, const std::string& shutterType_) 
 : imgWidth(imgWidth_), imgHeight(imgHeight_), principalPoint(principalPoint_), shutterType(shutterType_) {}
-
-CameraModel::~CameraModel(){}
 
 void CameraModel::cameraToWorldRay(const Eigen::Matrix<double, Eigen::Dynamic, 2>& pixelCoordinates,
                         const Eigen::Matrix<double, Eigen::Dynamic, 3>& cameraRays, 
@@ -197,8 +199,6 @@ FThetaCamera::FThetaCamera(const int imgWidth_,  const int imgHeight_, const Eig
     CameraModel(imgWidth_, imgHeight_, principalPoint_, shutterType_), bwPolyCoefficients(bwPolyCoefficients_), 
                                     fwPolyCoefficients(fwPolyCoefficients_), maxAngle(maxAngle_) {}
 
-FThetaCamera::~FThetaCamera(){}
-
 void FThetaCamera::cameraRayToPixel(const Eigen::Matrix<double, Eigen::Dynamic, 3>& cameraPoints,
                         Eigen::Matrix<double, Eigen::Dynamic, 2>& imgPoints,
                         Eigen::Matrix<bool, Eigen::Dynamic, 1 >& valid)
@@ -355,8 +355,6 @@ PinholeCamera::PinholeCamera(const int imgWidth_, const int imgHeight_,  const E
     CameraModel(imgWidth_, imgHeight_, principalPoint_, shutterType_), focalLength(focalLength_), 
                                     radialPoly(radialPoly_), tangentialPoly(tangentialPoly_) {}
 
-PinholeCamera::~PinholeCamera(){}
-
 // Transform the camera rays to pixel coordinates for pinhole camera
 void PinholeCamera::cameraRayToPixel(const Eigen::Matrix<double, Eigen::Dynamic, 3>& cameraPoints,
                         Eigen::Matrix<double, Eigen::Dynamic, 2>& imgPoints,
@@ -434,15 +432,15 @@ void PinholeCamera::pixelToCameraRay(const Eigen::Matrix<double, Eigen::Dynamic,
         Eigen::Matrix<double,Eigen::Dynamic,2> worldRay;
         worldRay.resize(1,2);
         worldRay.setZero();
-        iteraitiveUndistortPoints(pixelCoordinates.row(i), worldRay);
+        iterativeUndistortPoints(pixelCoordinates.row(i), worldRay);
 
         cameraRays.row(i) << worldRay(0,0), worldRay(0,1), 1.0;
     }
 } 
 
-void PinholeCamera::iteraitiveUndistortPoints(const Eigen::Matrix<double, Eigen::Dynamic, 2>& src, 
-                                Eigen::Matrix<double, Eigen::Dynamic, 2>& tgt,
-                                const double eps)
+void PinholeCamera::iterativeUndistortPoints(const Eigen::Matrix<double, Eigen::Dynamic, 2>& src, 
+                                             Eigen::Matrix<double, Eigen::Dynamic, 2>& tgt,
+                                             const double eps)
 {
     // Convert pixel coordinate to normalized coordinates
     double x, y, x0, y0;
