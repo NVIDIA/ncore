@@ -92,7 +92,7 @@ class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
 
         assert self.focal_length.shape == (2, )
         assert self.focal_length.dtype == np.dtype('float32')
-        assert self.focal_length[0] > 0.0 and self.principal_point[1] > 0.0
+        assert self.focal_length[0] > 0.0 and self.focal_length[1] > 0.0
 
         assert self.radial_poly.shape == (6,)
         assert self.radial_poly.dtype == np.dtype('float32')
