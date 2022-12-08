@@ -19,7 +19,8 @@ py_library(
 py_library(
     name = "pylib_nvidia_maglev",
     srcs = [
-        "nvidia_maglev.py",
+        "nvidia_maglev2.py",
+        "nvidia_maglev3.py",
     ],
     deps = [
         ":pylib_data_converter",
@@ -33,7 +34,7 @@ py_library(
 py_library(
     name = "pylib_nvidia_deepmap",
     srcs = [
-        "nvidia_deepmap.py",
+        "nvidia_deepmap2.py",
     ],
     deps = [
         ":pylib_data_converter",

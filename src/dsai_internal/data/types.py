@@ -1,11 +1,15 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
+import io
+
 from enum import IntEnum, auto, unique
 from dataclasses import dataclass
 from typing import Tuple
+from functools import lru_cache
 
 import numpy as np
 import dataclasses_json
+import PIL.Image as PILImage
 
 from . import util
 
@@ -75,7 +79,7 @@ class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
     ''' Represents a Pinhole-specific camera model parameters '''
     principal_point: np.ndarray = util.numpy_array_field(np.float32)
     focal_length: np.ndarray = util.numpy_array_field(np.float32)
-    radial_poly: np.ndarray = util.numpy_array_field(np.float32) 
+    radial_poly: np.ndarray = util.numpy_array_field(np.float32)
     tangential_poly: np.ndarray = util.numpy_array_field(np.float32)
     #TODO: do we also want to add the thin prism distortion coefficients?
 
@@ -170,3 +174,23 @@ class FrameTimepoint(IntEnum):
     ''' Enumerates special timepoints within a frame (values used to index into buffers) '''
     START = 0
     END = 1
+
+
+class EncodedImageData():
+    ''' Represents encoded image data of a specific format in memory '''
+    def __init__(self, encoded_image_data: bytes, encoded_image_format: str):
+        self._encoded_image_data = encoded_image_data
+        self._encoded_image_format = encoded_image_format
+
+    def get_encoded_image_data(self) -> bytes:
+        ''' Returns encoded image data '''
+        return self._encoded_image_data
+
+    def get_encoded_image_format(self) -> str:
+        ''' Returns encoded image format '''
+        return self._encoded_image_format
+
+    @lru_cache(maxsize=1)
+    def get_decoded_image(self) -> PILImage.Image:
+        ''' Returns decoded image from image data '''
+        return PILImage.open(io.BytesIO(self.get_encoded_image_data()), formats=[self.get_encoded_image_format()])

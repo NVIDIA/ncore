@@ -194,8 +194,8 @@ def dsai_to_ngp(
         poses_start: list[np.ndarray] = []
         poses_end: list[np.ndarray] = []
         for i in camera_sensor.get_frame_index_range(start_frame, end_frame):
-            assert isinstance(frame := camera_sensor.get_frame(i),
-                              CameraSensor.FileFrameHandle), "only file-based frames currently supported"
+            assert isinstance(frame := camera_sensor.get_frame_handle(i),
+                              CameraSensor.EncodedImageFileHandle), "only file-based frames currently supported"
 
             all_image_paths.append(frame.get_image_file_path())
 
@@ -206,8 +206,8 @@ def dsai_to_ngp(
         # Train images respect step size
         all_image_train_paths: list[Path] = []
         for i in camera_sensor.get_frame_index_range(start_frame, end_frame, step_frame):
-            assert isinstance(frame := camera_sensor.get_frame(i),
-                              CameraSensor.FileFrameHandle), "only file-based frames currently supported"
+            assert isinstance(frame := camera_sensor.get_frame_handle(i),
+                              CameraSensor.EncodedImageFileHandle), "only file-based frames currently supported"
 
             all_image_train_paths.append(frame.get_image_file_path())
 
@@ -220,13 +220,12 @@ def dsai_to_ngp(
         camera_data["all_image_paths"] = all_image_paths
         camera_data["all_image_train_paths"] = all_image_train_paths
 
-        # Resave all image masks as 'dynamic_mask' symlinks
-        if camera_mask_image_path := camera_sensor.get_camera_mask_image_path():
+        # Resave all image masks as 'dynamic_masks'
+        if camera_mask_image := camera_sensor.get_camera_mask_image():
             for image_path in all_image_paths:
-                target_camera_mask_image_path = image_path.parent / ("dynamic_mask_" + image_path.stem +
-                                                                     camera_mask_image_path.suffix)
-                if not (target_camera_mask_image_path.exists() or target_camera_mask_image_path.is_symlink()):
-                    target_camera_mask_image_path.symlink_to(camera_mask_image_path)
+                target_camera_mask_image_path = image_path.parent / ("dynamic_mask_" + image_path.stem + '.png')
+                if not (target_camera_mask_image_path.exists()):
+                    camera_mask_image.save(target_camera_mask_image_path, optimize=True)
 
     # Combine all the poses and compute the scaling factor and centroid, use the start timestamp pose as approximation
     all_poses = [all_camera_data[camera_sensor_id]["poses_start"] for camera_sensor_id in camera_sensor_ids]

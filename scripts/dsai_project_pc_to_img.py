@@ -59,7 +59,7 @@ def dsai_project_pc_to_img(root_dir: str, sensor_id: str, camera_id: str, start_
         pc_frame_index = pc_sensor.get_closest_frame_index(cam_timestamp)
         
         # Load the camera image and the point cloud
-        img_frame = cam_sensor.get_frame(frame_index).get_image_array()
+        img_frame = cam_sensor.get_frame_image_array(frame_index)
         pc = pc_sensor.get_frame_data(pc_frame_index, 'xyz_e')
 
         # Transform the point cloud to the world coordinate frame
