@@ -11,7 +11,7 @@ CameraModel::CameraModel(const int imgWidth_, const int imgHeight_, const Eigen:
 : imgWidth(imgWidth_), imgHeight(imgHeight_), principalPoint(principalPoint_), shutterType(shutterType_) {}
 
 void CameraModel::cameraToWorldRay(const Eigen::Matrix<double, Eigen::Dynamic, 2>& pixelCoordinates,
-                        const Eigen::Matrix<double, Eigen::Dynamic, 3>& cameraRays, 
+                                   const Eigen::Matrix<double, Eigen::Dynamic, 3>& cameraRays, 
                         const Eigen::Matrix<double, 8, 4>& TSensorWorld, 
                         Eigen::Matrix<double, Eigen::Dynamic, 6>& worldRays)
 {
@@ -57,20 +57,21 @@ void CameraModel::cameraToWorldRay(const Eigen::Matrix<double, Eigen::Dynamic, 2
 }
 
 void CameraModel::rollingShutterProjection(const Eigen::Matrix<double, Eigen::Dynamic, 3>& points,
-                                const Eigen::Matrix<double, 8, 4>& TWorldSensor, 
-                                const int maxIter,
-                                Eigen::Matrix<double, Eigen::Dynamic, 4>& transformationMatrices,
-                                Eigen::Matrix<double, Eigen::Dynamic, 2>& pixelCoordinates,
-                                Eigen::VectorXi& validProjec,
-                                Eigen::VectorXi& initialValidIdx)
+                                           const Eigen::Matrix<double, 4, 4>& TWorldSensorStart, 
+                                           const Eigen::Matrix<double, 4, 4>& TWorldSensorEnd, 
+                                           const int maxIter,
+                                           Eigen::Matrix<double, Eigen::Dynamic, 4>& transformationMatrices,
+                                           Eigen::Matrix<double, Eigen::Dynamic, 2>& pixelCoordinates,
+                                           Eigen::VectorXi& validProjec,
+                                           Eigen::VectorXi& initialValidIdx)
 {
-    Eigen::Matrix<double,3,3> startRotMat = TWorldSensor.block(0,0,3,3);
+    Eigen::Matrix<double,3,3> startRotMat = TWorldSensorStart.block<3,3>(0,0);
     Eigen::Quaterniond startRot(startRotMat);
-    Eigen::Matrix<double,3,3> endRotMat = TWorldSensor.block(4,0,3,3);
+    Eigen::Matrix<double,3,3> endRotMat = TWorldSensorEnd.block<3,3>(0,0);
     Eigen::Quaterniond endRot(endRotMat);
 
-    Eigen::Matrix<double,3,1> startTrans = TWorldSensor.block(0,3,3,1);
-    Eigen::Matrix<double,3,1> endTrans = TWorldSensor.block(4,3,3,1);
+    Eigen::Matrix<double,3,1> startTrans = TWorldSensorStart.block<3,1>(0,3);
+    Eigen::Matrix<double,3,1> endTrans = TWorldSensorEnd.block<3,1>(0,3);
 
     // Interpolate the pose to mof timestamp  
     Eigen::Matrix<double,3,1> mofTrans = (1 - 0.5) * startTrans.array() + 0.5 * endTrans.array();

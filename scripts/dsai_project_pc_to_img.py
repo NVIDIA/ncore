@@ -67,7 +67,7 @@ def dsai_project_pc_to_img(root_dir: str, sensor_id: str, camera_id: str, start_
         
         T_world_sensor_start = cam_sensor.get_frame_T_world_sensor(frame_index, types.FrameTimepoint.START)
         T_world_sensor_end = cam_sensor.get_frame_T_world_sensor(frame_index, types.FrameTimepoint.END)
-        T_world_sensor = np.vstack([T_world_sensor_start, T_world_sensor_end])
+        T_world_sensor = np.stack([T_world_sensor_start, T_world_sensor_end])
         
         # Initialize the camera model
         cam_model_params = cam_sensor.get_camera_model_parameters()

@@ -19,8 +19,8 @@ class CameraModel {
         virtual ~CameraModel() = default;
 
         virtual void cameraRayToPixel(const Eigen::Matrix<double, Eigen::Dynamic, 3>& cameraPoints,
-                                Eigen::Matrix<double, Eigen::Dynamic, 2 >& imgPoints,
-                                Eigen::Matrix<bool, Eigen::Dynamic, 1 >& valid) = 0;
+                                      Eigen::Matrix<double, Eigen::Dynamic, 2 >& imgPoints,
+                                      Eigen::Matrix<bool, Eigen::Dynamic, 1 >& valid) = 0;
 
         virtual void pixelToCameraRay(const Eigen::Matrix<double, Eigen::Dynamic, 2>& pixelCoordinates,
                                     Eigen::Matrix<double, Eigen::Dynamic, 3>& cameraRays) = 0;
@@ -33,7 +33,8 @@ class CameraModel {
 
 
         void rollingShutterProjection(const Eigen::Matrix<double, Eigen::Dynamic, 3>& points,
-                                      const Eigen::Matrix<double, 8, 4>& TWorldSensor, 
+                                      const Eigen::Matrix<double, 4, 4>& TWorldSensorStart, 
+                                      const Eigen::Matrix<double, 4, 4>& TWorldSensorEnd, 
                                       const int maxIter,
                                       Eigen::Matrix<double, Eigen::Dynamic, 4>& transformationMatrices,
                                       Eigen::Matrix<double, Eigen::Dynamic, 2>& pixelCoordinates,

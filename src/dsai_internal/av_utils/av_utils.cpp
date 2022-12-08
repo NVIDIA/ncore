@@ -262,7 +262,8 @@ npe_arg(imgWidth, int)
 npe_arg(imgHeight, int)
 npe_arg(maxAngle, double)
 npe_arg(shutterType, std::string)
-npe_arg(TWorldSensor, dense_double)
+npe_arg(TWorldSensorStart, dense_double)
+npe_arg(TWorldSensorEnd, dense_double)
 npe_arg(maxIter, int)
 npe_begin_code()
 
@@ -281,7 +282,8 @@ npe_begin_code()
 
     // Compute the rolling shutter projection
     f_theta.rollingShutterProjection(points,
-                                     TWorldSensor,
+                                     TWorldSensorStart,
+                                     TWorldSensorEnd, 
                                      maxIter,
                                      transformationMatrices,
                                      pixelCoordinates,
@@ -306,7 +308,8 @@ npe_arg(tangentialPoly, dense_double)
 npe_arg(imgWidth, int)
 npe_arg(imgHeight, int)
 npe_arg(shutterType, std::string)
-npe_arg(TWorldSensor, dense_double)
+npe_arg(TWorldSensorStart, dense_double)
+npe_arg(TWorldSensorEnd, dense_double)
 npe_arg(maxIter, int)
 npe_begin_code()
 
@@ -321,7 +324,8 @@ npe_begin_code()
 
     // Compute the rolling shutter projection
     pinhole.rollingShutterProjection(points,
-                                     TWorldSensor, 
+                                     TWorldSensorStart,
+                                     TWorldSensorEnd, 
                                      maxIter,
                                      transformationMatrices,
                                      pixelCoordinates,

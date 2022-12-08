@@ -67,14 +67,14 @@ class CameraModel(ABC):
         points = self.to_torch(points).to(self.dtype)
         T_world_sensor = self.to_torch(T_world_sensor).to(self.dtype)
 
-        assert T_world_sensor.shape == (8,4)
+        assert T_world_sensor.shape == (2,4,4)
         assert len(points.shape) == 2
         assert points.shape[1] == 3
         assert points.dtype == self.dtype
         assert T_world_sensor.dtype == self.dtype
 
-        T_world_sensor_s = T_world_sensor[:4,:4]
-        T_world_sensor_e = T_world_sensor[4:,:4]
+        T_world_sensor_s = T_world_sensor[0,:,:]
+        T_world_sensor_e = T_world_sensor[1,:,:]
 
         # Convert the start and end rotation matrix to quaternions
         ego_pose_s_quat = self.__rotmat_to_unitquat(T_world_sensor_s[None, :3, :3]) # [1, 4]
