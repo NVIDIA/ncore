@@ -337,7 +337,7 @@ class CameraModel(ABC):
 
 class FThetaCameraModel(CameraModel):
     def __init__(self, camera_model_parameters: types.FThetaCameraModelParameters, 
-                 device: str = 'cuda', dtype: torch.dtype = torch.float64):
+                 device: str = 'cuda', dtype: torch.dtype = torch.float32):
         
         # Check if cuda device is actually available
         if device == 'cuda' and not torch.cuda.is_available():
@@ -350,7 +350,7 @@ class FThetaCameraModel(CameraModel):
         self.principal_point = self.to_torch(camera_model_parameters.principal_point).to(self.dtype)
         self.fw_poly = self.to_torch(camera_model_parameters.fw_poly).to(self.dtype)
         self.bw_poly = self.to_torch(camera_model_parameters.bw_poly).to(self.dtype)
-        self.resolution = self.to_torch(camera_model_parameters.resolution.astype(np.int64))
+        self.resolution = self.to_torch(camera_model_parameters.resolution.astype(np.int32))
         self.shutter_type = camera_model_parameters.shutter_type.name
         self.max_angle = float(camera_model_parameters.max_angle)
 
@@ -361,7 +361,7 @@ class FThetaCameraModel(CameraModel):
         assert self.bw_poly.shape == (6,)
         assert self.bw_poly.dtype == self.dtype
         assert self.resolution.shape == (2,)
-        assert self.resolution.dtype == torch.int64
+        assert self.resolution.dtype == torch.int32
 
     def pixel_to_camera_ray(self, image_points: Union[torch.Tensor, np.ndarray]) ->  torch.Tensor:
         '''
@@ -445,7 +445,7 @@ class FThetaCameraModel(CameraModel):
 
 class PinholeCameraModel(CameraModel):
     def __init__(self, camera_model_parameters: types.PinholeCameraModelParameters, 
-                 device: str = 'cuda', dtype: torch.dtype = torch.float64):
+                 device: str = 'cuda', dtype: torch.dtype = torch.float32):
         
         # Check if cuda device is actually available
         if device == 'cuda' and not torch.cuda.is_available():
@@ -458,7 +458,7 @@ class PinholeCameraModel(CameraModel):
         self.focal_length = self.to_torch(camera_model_parameters.focal_length).to(self.dtype)
         self.radial_poly = self.to_torch(camera_model_parameters.radial_poly[:3]).to(self.dtype)
         self.tangential_poly = self.to_torch(camera_model_parameters.tangential_poly).to(self.dtype)
-        self.resolution = self.to_torch(camera_model_parameters.resolution.astype(np.int64))
+        self.resolution = self.to_torch(camera_model_parameters.resolution.astype(np.int32))
         self.shutter_type = camera_model_parameters.shutter_type.name
 
         assert self.principal_point.shape == (2,)
@@ -470,7 +470,7 @@ class PinholeCameraModel(CameraModel):
         assert self.tangential_poly.shape == (2,)
         assert self.tangential_poly.dtype == self.dtype
         assert self.resolution.shape == (2,)
-        assert self.resolution.dtype == torch.int64
+        assert self.resolution.dtype == torch.int32
 
     def pixel_to_camera_ray(self, image_points: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
         '''
