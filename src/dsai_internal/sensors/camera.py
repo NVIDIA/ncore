@@ -25,14 +25,14 @@ class CameraModel(ABC):
     @abstractmethod 
     def pixel_to_camera_ray(self, image_points: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
         '''
-        Return sequence pathnames to process
+        Computes camera rays for each image point
         '''
         pass
     
     @abstractmethod
     def camera_ray_to_pixel(self, cam_rays: Union[torch.Tensor, np.ndarray]) -> Tuple[torch.Tensor, torch.Tensor]:
         '''
-        Return sequence pathnames to process
+        For each camera ray computes the corresponding pixel coordinates
         '''
         pass
 
@@ -59,9 +59,9 @@ class CameraModel(ABC):
         return var.to(self.device)
 
     def rolling_shutter_projection(self, points: Union[torch.Tensor, np.ndarray], 
-                                  T_world_sensor: Union[torch.Tensor, np.ndarray], 
-                                  max_iter: int = 10,
-                                  min_error: float = 1e-3) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+                                   T_world_sensor: Union[torch.Tensor, np.ndarray], 
+                                   max_iter: int = 10,
+                                   min_error: float = 1e-3) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         
         # Check if the variables are numpy, convert them to torch and send them to correct device
         points = self.to_torch(points).to(self.dtype)
@@ -81,7 +81,8 @@ class CameraModel(ABC):
         ego_pose_e_quat = self.__rotmat_to_unitquat(T_world_sensor_e[None, :3, :3]) # [1, 4]
 
         mof_rot = self.__unitquat_to_rotmat(self.__unitquat_slerp(ego_pose_s_quat, 
-                                    ego_pose_e_quat, torch.Tensor([0.5]).to(T_world_sensor_s))).squeeze() # [3, 3]
+                                            ego_pose_e_quat,
+                                            torch.Tensor([0.5]).to(T_world_sensor_s))).squeeze() # [3, 3]
 
         mof_trans = 0.5 * T_world_sensor_s[:3, 3] + 0.5 * T_world_sensor_e[:3, 3] # [3]
 
@@ -99,7 +100,7 @@ class CameraModel(ABC):
                 t = self.__get_interpolation_timestamp(pixel_rs_prev)
 
                 rot_rs = self.__unitquat_to_rotmat(self.__unitquat_slerp(ego_pose_s_quat.repeat(t.shape[0], 1), 
-                                                                        ego_pose_e_quat.repeat(t.shape[0], 1), t)).squeeze() #[n_valid, 3, 3]
+                                                                         ego_pose_e_quat.repeat(t.shape[0], 1), t)).squeeze() #[n_valid, 3, 3]
 
                 trans_rs = (1-t)[..., None] * T_world_sensor_s[:3, 3:4].transpose(0,1).repeat(t.shape[0],1) + t[..., None] * T_world_sensor_e[:3, 3:4].transpose(0,1).repeat(t.shape[0],1)
 
@@ -118,7 +119,6 @@ class CameraModel(ABC):
         trans_matrices = torch.empty((valid.sum().int().item(), 4, 4)).to(rot_rs)   # type: ignore
         trans_matrices[:,:3, 3] = trans_rs[valid_rs, :]
         trans_matrices[:,:3,:3] = rot_rs[valid_rs, ...]
-
 
         return pixel_rs[valid_rs,:], trans_matrices, torch.where(valid)[0]
 
@@ -144,14 +144,13 @@ class CameraModel(ABC):
         ego_pose_e_quat = self.__rotmat_to_unitquat(T_world_sensor_e[None, :3, :3]) # [1, 4]
 
         mof_rot = self.__unitquat_to_rotmat(self.__unitquat_slerp(ego_pose_s_quat, 
-                                    ego_pose_e_quat, torch.Tensor([0.5]).to(T_world_sensor_s))).squeeze() # [3, 3]
+                                            ego_pose_e_quat, torch.Tensor([0.5]).to(T_world_sensor_s))).squeeze() # [3, 3]
 
         mof_trans = 0.5 * T_world_sensor_s[:3, 3] + 0.5 * T_world_sensor_e[:3, 3] # [3]
 
         # Do the initial transformation
         cam_rays = (mof_rot @ points.transpose(0,1) + mof_trans[..., None]).transpose(0,1)
         init_pixel, valid = self.camera_ray_to_pixel(cam_rays)
-        
 
         trans_matrix = torch.empty((1, 4, 4)).to(self.device, self.dtype)
         trans_matrix[0,:3, 3] = mof_trans
@@ -161,7 +160,7 @@ class CameraModel(ABC):
 
 
     def camera_to_world_ray(self, image_points: Union[torch.Tensor, np.ndarray], 
-                                  T_sensor_world: Union[torch.Tensor, np.ndarray]) -> torch.Tensor: 
+                            T_sensor_world: Union[torch.Tensor, np.ndarray]) -> torch.Tensor: 
 
         # Check if the variables are numpy, convert them to torch and send them to correct device
         image_points = self.to_torch(image_points).to(self.dtype)
@@ -190,7 +189,7 @@ class CameraModel(ABC):
         t = self.__get_interpolation_timestamp(image_points)
                    
         rot_rs = self.__unitquat_to_rotmat(self.__unitquat_slerp(T_sensor_world_s_quat.repeat(t.shape[0], 1), 
-                                            T_sensor_world_e_quat.repeat(t.shape[0], 1), t)).squeeze() #[n_image_points, 3, 3]
+                                           T_sensor_world_e_quat.repeat(t.shape[0], 1), t)).squeeze() #[n_image_points, 3, 3]
 
         trans_rs = (1-t)[..., None] * T_sensor_world_s_quat[:3, 3:4].transpose(0,1).repeat(t.shape[0],1) + \
                                                  t[..., None] * T_sensor_world_e_quat[:3, 3:4].transpose(0,1).repeat(t.shape[0],1)
@@ -276,7 +275,7 @@ class CameraModel(ABC):
         return R
 
     def __unitquat_slerp(self, quat_s: torch.Tensor, quat_e: torch.Tensor, 
-                            t: torch.Tensor, shortest_arc=True) -> torch.Tensor:
+                         t: torch.Tensor, shortest_arc=True) -> torch.Tensor:
         """
         Batch-wise implementation of SLERP (spherical linear interpolation)
 
@@ -338,7 +337,7 @@ class CameraModel(ABC):
 
 class FThetaCameraModel(CameraModel):
     def __init__(self, camera_model_parameters: types.FThetaCameraModelParameters, 
-                        device: str = 'cuda', dtype: torch.dtype = torch.float64 ):
+                 device: str = 'cuda', dtype: torch.dtype = torch.float64):
         
         # Check if cuda device is actually available
         if device == 'cuda' and not torch.cuda.is_available():
@@ -446,7 +445,7 @@ class FThetaCameraModel(CameraModel):
 
 class PinholeCameraModel(CameraModel):
     def __init__(self, camera_model_parameters: types.PinholeCameraModelParameters, 
-                device: str = 'cuda', dtype: torch.dtype = torch.float64):
+                 device: str = 'cuda', dtype: torch.dtype = torch.float64):
         
         # Check if cuda device is actually available
         if device == 'cuda' and not torch.cuda.is_available():

@@ -59,8 +59,7 @@ py_library(
     ],
     imports = ["."],
     visibility = [
-        "//scripts:__subpackages__",
-        "//src:__subpackages__",
+        "//:code_package_group",
     ],
     deps = [
         requirement("numpy"),
