@@ -13,8 +13,9 @@ import PIL.Image as PILImage
 from pathlib import Path
 from typing import Callable, Optional, Union
 
-from . import types, util
 from src.dsai_internal.common.transformations import se3_inverse
+
+from . import types, util
 
 ## Constants
 VERSION = '2.0.0'
@@ -291,6 +292,10 @@ class Sensor:
         with open(self._sensor_dir / (util.padded_index_string(continous_frame_index) + '.json'), 'r') as f:
             j = json.load(f)
             return np.array(j['T_rig_worlds'][frame_timepoint.value])
+
+    def get_frame_T_world_rig(self, continous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> np.ndarray:
+        ''' Returns start/end world-to-rig pose of specific frame '''
+        return se3_inverse(self.get_frame_T_rig_world(continous_frame_index, frame_timepoint))
 
     def get_frame_T_sensor_world(self, continous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> np.ndarray:
         ''' Returns start/end sensor-to-world pose of specific frame '''

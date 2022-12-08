@@ -168,7 +168,7 @@ def transform_point_cloud(pc, T):
 def se3_inverse(T: np.ndarray) -> np.ndarray:
     ''' Computed the inverse of a rigid transformation 
     Args:
-        T (np.array): se3 transformation matrix to inverte [4,4]
+        T (np.array): se3 transformation matrix to invert [4,4]
 
     Out:
         (np array): inverse transformation [4,4]
