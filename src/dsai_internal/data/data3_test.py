@@ -94,6 +94,7 @@ class TestData3Loader(unittest.TestCase):
              [-0.007992231287062168, -0.9999469518661499, -0.006502173840999603, 1.448835015296936],
              [0.0, 0.0, 0.0, 1.0]])
         self.assertIsNone(np.testing.assert_array_equal(sensor.get_T_sensor_rig(), reference_T_sensor_rig))
+        self.assertIsNone(np.testing.assert_array_almost_equal(sensor.get_T_rig_sensor(), np.linalg.inv(reference_T_sensor_rig)))
 
         self.assertEqual(sensor.get_frames_count(), 9)
         self.assertEqual(sensor.get_frame_index_range(), range(0, 9, 1))
@@ -111,8 +112,14 @@ class TestData3Loader(unittest.TestCase):
             np.testing.assert_array_equal(sensor.get_frame_T_rig_world(0, FrameTimepoint.START),
                                           reference_T_rig_world_0_start))
         self.assertIsNone(
+            np.testing.assert_array_almost_equal(sensor.get_frame_T_world_rig(0, FrameTimepoint.START),
+                                                 np.linalg.inv(reference_T_rig_world_0_start)))
+        self.assertIsNone(
             np.testing.assert_array_equal(sensor.get_frame_T_sensor_world(0, FrameTimepoint.START),
                                           reference_T_rig_world_0_start @ reference_T_sensor_rig))
+        self.assertIsNone(
+            np.testing.assert_array_almost_equal(sensor.get_frame_T_world_sensor(0, FrameTimepoint.START),
+                                                 np.linalg.inv(reference_T_rig_world_0_start @ reference_T_sensor_rig)))
         self.assertEqual(sensor.get_frame_image(0).size, (3848, 2168))
 
         self.assertIsNone(

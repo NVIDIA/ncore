@@ -13,6 +13,8 @@ import numpy as np
 import h5py
 import PIL.Image as PILImage
 
+import src.dsai_internal.common.transformations as transformations
+
 from . import types, util
 
 VERSION = '3.0.0'
@@ -302,6 +304,11 @@ class Sensor:
         ''' Returns constant sensor-to-rig pose '''
         return np.array(self._sensor_meta.T_sensor_rig, dtype=np.float32)
 
+    @lru_cache(maxsize=1)
+    def get_T_rig_sensor(self) -> np.ndarray:
+        ''' Returns constant rig-to-sensor pose '''
+        return transformations.se3_inverse(self.get_T_sensor_rig())
+
     # Sequence-wide frame data
     def get_frames_count(self) -> int:
         ''' Returns number of frames '''
@@ -346,12 +353,24 @@ class Sensor:
         return np.array(self._get_frame_meta(continous_frame_index)['T_rig_worlds'][frame_timepoint.value])
 
     @lru_cache
+    def get_frame_T_world_rig(self,
+                              continous_frame_index: int,
+                              frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> np.ndarray:
+        ''' Returns start/end world-to-rig pose of specific frame '''
+        return transformations.se3_inverse(self.get_frame_T_rig_world(continous_frame_index, frame_timepoint))
+
+    @lru_cache
     def get_frame_T_sensor_world(self,
                                  continous_frame_index: int,
                                  frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> np.ndarray:
         ''' Returns start/end sensor-to-world pose of specific frame '''
 
         return self.get_frame_T_rig_world(continous_frame_index, frame_timepoint) @ self.get_T_sensor_rig()
+
+    @lru_cache
+    def get_frame_T_world_sensor(self, continous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> np.ndarray:
+        ''' Returns start/end world-to-sensor pose of specific frame '''
+        return transformations.se3_inverse(self.get_frame_T_sensor_world(continous_frame_index, frame_timepoint))
 
     @lru_cache
     def get_frame_timestamp_us(self,
