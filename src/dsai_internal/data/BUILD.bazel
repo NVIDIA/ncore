@@ -31,6 +31,7 @@ py_library(
         ":pylib_util",
         requirement("numpy"),
         requirement("dataclasses-json"),
+        requirement("pillow"),
     ],
 )
 

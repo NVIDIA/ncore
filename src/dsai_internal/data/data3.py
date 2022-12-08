@@ -1,9 +1,10 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
+from __future__ import annotations
+
 import io
 import json
 
-from abc import ABC, abstractmethod
 from types import SimpleNamespace
 from pathlib import Path
 from functools import lru_cache
@@ -389,36 +390,39 @@ class Sensor:
 
 class CameraSensor(Sensor):
     ''' Provides access to camera-specific sensor-data '''
-    class EncodedImageData():
-        ''' Represents encoded image data '''
-        def __init__(self, encoded_image_data: bytes, encoded_image_format: str):
-            self._encoded_image_data = encoded_image_data
-            self._encoded_image_format = encoded_image_format
 
-        def get_encoded_image_data(self) -> bytes:
-            ''' Returns encoded image data '''
-            return self._encoded_image_data
-
-        def get_encoded_image_format(self) -> str:
-            ''' Returns encoded image format '''
-            return self._encoded_image_format
+    # Image Frame Data
+    class EncodedImageDataHandle():
+        ''' References encoded image data without loading it '''
+        def __init__(self, image_dataset: h5py.Dataset):
+            self._image_dataset = image_dataset
 
         @lru_cache(maxsize=1)
-        def get_decoded_image(self) -> PILImage.Image:
-            ''' Returns decoded image from image data '''
-            return PILImage.open(io.BytesIO(self.get_encoded_image_data()), formats=[self.get_encoded_image_format()])
+        def get_data(self) -> types.EncodedImageData:
+            ''' Loads the referenced encoded image data to memory '''
+            return types.EncodedImageData(self._image_dataset[()], self._image_dataset.attrs['format'])
 
     @lru_cache(maxsize=10)
-    def get_frame(self, continous_frame_index: int) -> EncodedImageData:
+    def get_frame_handle(self, continous_frame_index: int) -> EncodedImageDataHandle:
         ''' Returns the frame's encoded image data '''
-        image_dataset = self._get_frame_group(continous_frame_index)['image']
-        return self.EncodedImageData(image_dataset[()], image_dataset.attrs['format'])
+        return self.EncodedImageDataHandle(self._get_frame_group(continous_frame_index)['image'])
+
+    @lru_cache(maxsize=10)
+    def get_frame_data(self, continous_frame_index: int) -> types.EncodedImageData:
+        ''' Returns the frame's encoded image data '''
+        return self.get_frame_handle(continous_frame_index).get_data()
 
     @lru_cache(maxsize=10)
     def get_frame_image(self, continous_frame_index: int) -> PILImage.Image:
         ''' Returns the frame's decoded image data '''
-        return self.get_frame(continous_frame_index).get_decoded_image()
+        return self.get_frame_data(continous_frame_index).get_decoded_image()
 
+    @lru_cache(maxsize=10)
+    def get_frame_image_array(self, continous_frame_index: int) -> np.ndarray:
+        ''' Returns decoded image data as array [W,H,C] '''
+        return np.asarray(self.get_frame_image(continous_frame_index))
+
+    # Intrinsics
     @lru_cache(maxsize=1)
     def get_camera_model_parameters(
             self) -> Union[types.FThetaCameraModelParameters, types.PinholeCameraModelParameters]:
@@ -429,6 +433,7 @@ class CameraSensor(Sensor):
             return types.PinholeCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters)
         raise ValueError
 
+    # Camera Mask
     @lru_cache(maxsize=1)
     def get_camera_mask_image(self) -> Optional[PILImage.Image]:
         ''' Returns constant camera mask image, if available '''
