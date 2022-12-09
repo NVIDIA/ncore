@@ -4,11 +4,14 @@ import click
 import tqdm
 
 from src.dsai_internal.common.visualization import LabelVisualizer
-from src.dsai_internal.data.data2 import DataLoader, LidarSensor
+from src.dsai_internal.data.data3 import ShardDataLoader, LidarSensor
 
 
 @click.command()
-@click.option('--root-dir', type=str, help='Path to the preprocessed sequence', required=True)
+@click.option('--shard-file-pattern',
+              type=str,
+              help='Data shard pattern to load (supports range expansion)',
+              required=True)
 @click.option('--sensor-id', type=str, help='Sensor to visualize labels for', default='lidar_gt_top_p128_v4p5')
 @click.option('--start-frame',
               type=click.IntRange(min=0, max_open=True),
@@ -19,9 +22,10 @@ from src.dsai_internal.data.data2 import DataLoader, LidarSensor
               type=click.IntRange(min=1, max_open=True),
               help='Step used to downsample the number of frames',
               default=1)
-def dsai_visualize_labels(root_dir, sensor_id, start_frame, end_frame, step_frame):
+def dsai_visualize_labels(shard_file_pattern, sensor_id, start_frame, end_frame, step_frame):
 
-    loader = DataLoader(root_dir)
+    shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
+    loader = ShardDataLoader(shards)
     sensor = loader.get_sensor(sensor_id)
     assert isinstance(sensor, LidarSensor), 'only lidar sensors supported'
 
