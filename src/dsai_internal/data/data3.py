@@ -457,7 +457,7 @@ class PointCloudSensor(Sensor):
     def get_frame_data(self, continous_frame_index: int, name: str) -> np.ndarray:
         ''' Returns frame-data for a specific frame and column-name '''
 
-        return self._get_frame_group(continous_frame_index)[name]
+        return self._get_frame_group(continous_frame_index)[name][()]
 
 
 class LidarSensor(PointCloudSensor):
