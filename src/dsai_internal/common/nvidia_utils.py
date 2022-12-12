@@ -5,20 +5,22 @@ import base64
 import logging
 import os
 import hashlib
+import csv
+
+from typing import Optional, Tuple
+from pathlib import Path
 
 import tqdm
-
 import numpy as np
 import pyarrow.parquet as pq
 
-from typing import Optional, Tuple
 from PIL import Image
 from google.protobuf import text_format
 from scipy.optimize import curve_fit
 from numpy.polynomial.polynomial import Polynomial
 
 from src.dsai_internal.data_converter.protos.deepmap import transform_pb2, camera_calibration_pb2
-from src.dsai_internal.common.common import MaskImage
+from src.dsai_internal.common.common import MaskImage, load_jsonl
 from src.dsai_internal.av_utils import isWithin3DBBox
 from src.dsai_internal.common.transformations import euler_2_so3, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
 from src.dsai_internal.data.types import FrameLabel3, BBox3, LabelSource, TrackLabel, DynamicFlagState
@@ -746,3 +748,27 @@ def compute_ftheta_parameters(intrinsic):
     max_ray_distortion = np.asarray([val, dval], dtype=np.float32)
 
     return max_ray_distortion, max_angle.astype(np.float32)
+
+
+def load_maglev_camera_indexer_frame_meta(camera_path: Path, use_csv_workaround=True) -> Tuple[np.ndarray, np.ndarray]:
+    ''' Returns *raw* frame numbers and timestamps from meta-data of Maglev's camera-indexer '''
+
+    frames_metadata = load_jsonl(camera_path / 'meta.json')
+
+    if not use_csv_workaround:
+        # load all data from 'meta.json' - default case assuming 'meta.json' is subsampled to all existing frames
+        raw_frame_numbers = np.array([frame_data['frame_number'] for frame_data in frames_metadata], dtype=np.uint64)
+        raw_frame_timestamps_us = np.array([frame_data['timestamp'] for frame_data in frames_metadata], dtype=np.uint64)
+    else:
+        # WAR: due to a bug in 'meta.json' generation it is not subsampled, but 'frames.csv' is - so incorporate
+        #      this data instead along with timestamps from 'meta.json'
+        frame_timestamps_map_us = {
+            frame_metadata['frame_number']: frame_metadata['timestamp']
+            for frame_metadata in frames_metadata
+        }
+        with open(camera_path / 'frames.csv', 'r') as frames_file:
+            raw_frame_numbers = np.array([row[0] for row in csv.reader(frames_file)], dtype=np.uint64)
+        raw_frame_timestamps_us = np.array(
+            [frame_timestamps_map_us[raw_frame_number] for raw_frame_number in raw_frame_numbers], dtype=np.uint64)
+
+    return raw_frame_numbers, raw_frame_timestamps_us

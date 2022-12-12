@@ -21,9 +21,10 @@ from src.dsai_internal.data_converter.data_converter import BaseNvidiaDataConver
 from src.dsai_internal.data.data2 import DataWriter
 from src.dsai_internal.data.types import FThetaCameraModelParameters, LabelSource, Poses, ShutterType
 
-from src.dsai_internal.common.nvidia_utils import (parse_rig_sensors_from_dict, sensor_to_rig, LabelProcessor,
-                                        camera_intrinsic_parameters, compute_fw_polynomial, compute_ftheta_parameters,
-                                        camera_car_mask, vehicle_bbox)
+from src.dsai_internal.common.nvidia_utils import (load_maglev_camera_indexer_frame_meta, parse_rig_sensors_from_dict,
+                                                   sensor_to_rig, LabelProcessor, camera_intrinsic_parameters,
+                                                   compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask,
+                                                   vehicle_bbox)
 from src.dsai_internal.common.common import load_jsonl, PoseInterpolator, uniform_subdivide_range, platform_cpu_count, SimpleTimer
 from src.dsai_internal.av_utils import isWithin3DBBox
 
@@ -272,13 +273,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             camera_type = self.CAMERAID_TO_CAMERATYPE[camera_id]
 
             # Load frame numbers and timestamps
-            frames_metadata = load_jsonl(self.sequence_path / 'cameras' / camera_rig_name / 'meta.json')
-            raw_frame_numbers = np.array([frame_data['frame_number'] for frame_data in frames_metadata],
-                                         dtype=np.uint64)
-            raw_frame_timestamps_us = np.array([frame_data['timestamp'] for frame_data in frames_metadata],
-                                               dtype=np.uint64)
-            del (frames_metadata)
-
+            raw_frame_numbers, raw_frame_timestamps_us = load_maglev_camera_indexer_frame_meta(
+                self.sequence_path / 'cameras' / camera_rig_name)
             assert len(raw_frame_numbers) == len(raw_frame_timestamps_us)
 
             # Get the frame range of the first and last frame relative to available egomotion poses and respecting exposure timings

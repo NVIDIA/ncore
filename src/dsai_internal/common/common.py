@@ -11,6 +11,7 @@ import time
 import numpy as np
 
 from enum import Enum
+from pathlib import Path
 from typing import Optional, Tuple, Union
 from PIL import Image
 from scipy import spatial, interpolate
@@ -138,7 +139,7 @@ def save_pc_dat(file_path: str, lidar_data: np.ndarray) -> None:
         )
 
 
-def load_jsonl(jsonl_path: str) -> list[dict]:
+def load_jsonl(jsonl_path: Union[str, Path]) -> list[dict]:
     """
     Loads a jsonl (json-lines) file (each line corresponds to a serialized json object) - see jsonlines.org
 
