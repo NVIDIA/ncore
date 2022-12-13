@@ -518,12 +518,6 @@ class ShardDataLoader:
         assert len(shard_files), "No shard inputs provided"
 
         # Load shards and check for sequence consistency and continuity of shards
-        self._sequence_id = None
-        self._camera_ids: list[str] = []
-        self._lidar_ids: list[str] = []
-        self._radar_ids: list[str] = []
-        self._shard_count = None
-        self._shard_version = None
         shards_file_map: dict[int, h5py.File] = {}
         for f in shard_files:
             shard_file = h5py.File(f, 'r')
@@ -532,17 +526,17 @@ class ShardDataLoader:
             shard_camera_ids = shard_file.attrs.get('camera_ids').tolist()
             shard_lidar_ids = shard_file.attrs.get('lidar_ids').tolist()
             shard_radar_ids = shard_file.attrs.get('radar_ids').tolist()
-            shard_shard_id = shard_file.attrs.get('shard_id')
-            shard_shard_count = shard_file.attrs.get('shard_count')
+            shard_shard_id = shard_file.attrs.get('shard_id').item()
+            shard_shard_count = shard_file.attrs.get('shard_count').item()
             shard_shard_version = shard_file.attrs.get('version')
 
-            if not self._sequence_id:
-                self._sequence_id = shard_sequence_id
-                self._camera_ids = shard_camera_ids
-                self._lidar_ids = shard_lidar_ids
-                self._radar_ids = shard_radar_ids
-                self._shard_count = shard_shard_count
-                self._shard_version = shard_shard_version
+            if not shards_file_map:
+                self._sequence_id: str = shard_sequence_id
+                self._camera_ids: list[str] = shard_camera_ids
+                self._lidar_ids: list[str] = shard_lidar_ids
+                self._radar_ids: list[str] = shard_radar_ids
+                self._shard_count: int = shard_shard_count
+                self._shard_version: str = shard_shard_version
 
             assert self._sequence_id == shard_sequence_id, "Can't load shards from different sequences"
             assert self._camera_ids == shard_camera_ids, "Can't load shards with different camera sensors"
@@ -558,11 +552,11 @@ class ShardDataLoader:
         assert self._shard_version == VERSION, 'loading incompatible version'  # TODO: this check can still be refined
 
         # Make sure shard IDs are continous
-        shard_ids = sorted(list(shards_file_map.keys()))
-        assert shard_ids[-1] - shard_ids[0] + 1 == len(shard_ids), f"Non-continous sequence of shards: {shard_ids}"
+        self._shard_ids = sorted(list(shards_file_map.keys()))
+        assert self._shard_ids[-1] - self._shard_ids[0] + 1 == len(self._shard_ids), f"Non-continous sequence of shards: {self._shard_ids}"
 
         # *Linear* sequence of shard files
-        self._shard_files = [shards_file_map[shard_id] for shard_id in shard_ids]
+        self._shard_files = [shards_file_map[shard_id] for shard_id in self._shard_ids]
 
         # Initialize all available sensors
         self._sensors: dict[str, Union[CameraSensor, LidarSensor, RadarSensor]] = {}
@@ -594,6 +588,17 @@ class ShardDataLoader:
 
         # [TODO(janickm): add timestamp uniqueness check on data across all shards?]
         return types.Poses(np.array(T_rig_world_base), np.vstack(T_rig_worlds), np.hstack(T_rig_world_timestamps_us))
+
+    def get_sequence_id(self, with_shard_range: bool) -> str:
+        ''' Provides access to a unique identifier of the loaded shard data, optionally including the linear range of shards
+        
+            Examples:
+            - with_shard_range == False: c9b05cf4-afb9-11ec-b3c2-00044bf65fcb
+            - with_shard_range == True:  c9b05cf4-afb9-11ec-b3c2-00044bf65fcb_2_3_4 [assuming shards 2,3,4 were loaded]
+        '''
+        if with_shard_range:
+            return f"{self._sequence_id}_{'_'.join([str(shard_id) for shard_id in self._shard_ids])}"
+        return self._sequence_id
 
     def get_sensor(self, sensor_id: str) -> Union[CameraSensor, LidarSensor, RadarSensor]:
         ''' Provides access to a specific sensor given it's sensor-id '''
