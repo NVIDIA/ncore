@@ -34,6 +34,11 @@ class TestData3Loader(unittest.TestCase):
 
             self.assertEqual(len(np.unique(poses.T_rig_world_timestamps_us)), expected_num_poses)
 
+            self.assertEqual(loader.get_sequence_id(with_shard_range=False), 'c9b05cf4-afb9-11ec-b3c2-00044bf65fcb')
+            self.assertEqual(
+                loader.get_sequence_id(with_shard_range=True),
+                'c9b05cf4-afb9-11ec-b3c2-00044bf65fcb_' + '_'.join([str(shard_id) for shard_id in range(start, end)]))
+
         # check all shard slice variants
         for end in range(1, len(self.all_shards) + 1):
             for start in range(0, end):

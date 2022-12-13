@@ -1,20 +1,32 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-import click
 import logging
+
+from typing import Tuple
+from pathlib import Path
+
+import click
 
 from src.dsai_internal.deps.semantic_segmentation import run_semantic_segmentation
 from src.dsai_internal.deps.instance_segmentation import run_instance_segmentation
 
-from src.dsai_internal.data.data2 import DataLoader, CameraSensor
+from src.dsai_internal.data.types import EncodedImageHandle
+from src.dsai_internal.data.data3 import ShardDataLoader, CameraSensor
 from src.dsai_internal.data.util import INDEX_DIGITS
 
 
 @click.command()
-@click.option('--root-dir', type=str, help="Path to the folder containing preprocessed data", required=True)
-@click.option('--camera-sensor',
+@click.option('--shard-file-pattern',
+              type=str,
+              help='Data shard pattern to load (supports range expansion)',
+              required=True)
+@click.option('--output-dir',
+              type=str,
+              help="Path to the output folder (will be prefixed by camera sensor id)",
+              required=True)
+@click.option('--camera-id',
               '-c',
-              'camera_sensors',
+              'camera_ids',
               multiple=True,
               type=str,
               help='Cameras to be used (multiple value option, all if not specified)',
@@ -30,35 +42,38 @@ from src.dsai_internal.data.util import INDEX_DIGITS
               type=click.IntRange(min=1, max_open=True),
               help='Step used to downsample the number of frames',
               default=1)
-def dsai_extract_segmentation(root_dir: str, camera_sensors: list[str], semantic_seg: bool, instance_seg: bool,
-                              start_frame: int, end_frame: int, step_frame: int):
+def dsai_extract_segmentation(shard_file_pattern: str, output_dir: str, camera_ids: list[str], semantic_seg: bool,
+                              instance_seg: bool, start_frame: int, end_frame: int, step_frame: int):
 
     # Initialize the logger
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    loader = DataLoader(root_dir)
+    shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
+    loader = ShardDataLoader(shards)
 
-    if not camera_sensors:
-        camera_sensors = loader.get_camera_sensor_ids()
+    if not camera_ids:
+        camera_ids = loader.get_camera_ids()
 
-    for camera_sensor in camera_sensors:
-        sensor = loader.get_sensor(camera_sensor)
-        assert isinstance(sensor, CameraSensor), 'only camera sensors supported'
+    for camera_id in camera_ids:
+        assert isinstance(camera_sensor := loader.get_sensor(camera_id), CameraSensor), 'only camera sensors supported'
 
-        image_path_strings = []
-        for i in sensor.get_frame_index_range(start_frame, end_frame, step_frame):
-            frame = sensor.get_frame_handle(i)
-            assert isinstance(frame, CameraSensor.EncodedImageFileHandle), 'only file-based frames currently supported'
-            image_path_strings.append(str(frame.get_image_file_path()))
+        # set up output paths
+        output_path = Path(output_dir) / camera_sensor.get_sensor_id()
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        image_handles: list[Tuple[int, EncodedImageHandle]] = [
+            (i, camera_sensor.get_frame_handle(i))
+            for i in camera_sensor.get_frame_index_range(start_frame, end_frame, step_frame)
+        ]
 
         if semantic_seg:
-            logger.info(f'Running semantic segmentation on {len(image_path_strings)} images of camera {camera_sensor}')
-            run_semantic_segmentation(image_path_strings, INDEX_DIGITS)
+            logger.info(f'Running semantic segmentation on {len(image_handles)} images of camera {camera_id}')
+            run_semantic_segmentation(image_handles, output_path, INDEX_DIGITS)
 
         if instance_seg:
-            logger.info(f'Running instance segmentation on {len(image_path_strings)} images of camera {camera_sensor}')
-            run_instance_segmentation(image_path_strings)
+            logger.info(f'Running instance segmentation on {len(image_handles)} images of camera {camera_id}')
+            run_instance_segmentation(image_handles, output_path, INDEX_DIGITS)
 
 
 if __name__ == "__main__":

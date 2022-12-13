@@ -5,23 +5,22 @@ import logging
 import tqdm
 
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 from point_cloud_utils import TriangleMesh
 
 from src.dsai_internal.common.transformations import transform_point_cloud
-from src.dsai_internal.data.data2 import DataLoader, LidarSensor, PointCloudSensor
+from src.dsai_internal.data.data3 import ShardDataLoader, LidarSensor, PointCloudSensor
 from src.dsai_internal.data.util import padded_index_string
 
 
 @click.command()
-@click.option('--root-dir', type=str, help='Path to the preprocessed sequence', required=True)
-@click.option('--sensor-id', type=str, help='Sensor to export ply files for', default='lidar_gt_top_p128_v4p5')
-@click.option('--output-dir',
+@click.option('--shard-file-pattern',
               type=str,
-              help='Path to the output folder (will output into source folder if not provided)',
-              default=None)
+              help='Data shard pattern to load (supports range expansion)',
+              required=True)
+@click.option('--output-dir', type=str, help='Path to the output folder', required=True)
+@click.option('--sensor-id', type=str, help='Sensor to export ply files for', default='lidar_gt_top_p128_v4p5')
 @click.option('--start-frame',
               type=click.IntRange(min=0, max_open=True),
               help='Initial frame to be exported',
@@ -38,7 +37,7 @@ from src.dsai_internal.data.util import padded_index_string
               type=click.Choice(['sensor', 'rig', 'world']),
               help='Frame to represent the point-cloud in',
               default='world')
-def dsai_export_ply(root_dir: str, output_dir: Optional[str], sensor_id: str, start_frame: int, end_frame: int,
+def dsai_export_ply(shard_file_pattern: str, output_dir: str, sensor_id: str, start_frame: int, end_frame: int,
                     step_frame: int, frame: str):
     ''' Exports the point cloud data to the ply format with named attributes '''
 
@@ -46,14 +45,12 @@ def dsai_export_ply(root_dir: str, output_dir: Optional[str], sensor_id: str, st
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    loader = DataLoader(root_dir)
+    shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
+    loader = ShardDataLoader(shards)
     sensor = loader.get_sensor(sensor_id)
     assert isinstance(sensor, PointCloudSensor), 'only point-cloud sensors supported'
 
-    if not output_dir:
-        output_path = sensor.get_sensor_dir()
-    else:
-        output_path = Path(output_dir)
+    output_path = Path(output_dir)
 
     indices = sensor.get_frame_index_range(start_frame, end_frame, step_frame)
     logger.info(f"Starting '.ply' export. {len(indices)} files will be exported.")

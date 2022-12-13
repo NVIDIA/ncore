@@ -13,17 +13,16 @@ import numpy as np
 import point_cloud_utils as pcu
 
 from src.dsai_internal.common.transformations import transform_point_cloud
-from src.dsai_internal.data.data2 import DataLoader, PointCloudSensor
+from src.dsai_internal.data.data3 import ShardDataLoader, PointCloudSensor
 
 
 @click.command()
-@click.option('--root-dir', type=str, help='Path to the preprocessed sequence', required=True)
+@click.option('--shard-file-pattern',
+              type=str,
+              help='Data shard pattern to load (supports range expansion)',
+              required=True)
+@click.option('--output-dir', type=str, help='Path to the output folder', required=True)
 @click.option('--sensor-id', type=str, help='Sensor to construct surface from', default='lidar_gt_top_p128_v4p5')
-@click.option(
-    '--output-dir',
-    type=str,
-    help='Path to the output folder (will output into \'source-folder/reconstructed_surface\' if not provided)',
-    default=None)
 @click.option('--output-filename', type=str, help='Name of the output file', default="reconstructed_mesh")
 @click.option('--start-frame',
               type=click.IntRange(min=0, max_open=True),
@@ -48,7 +47,7 @@ from src.dsai_internal.data.data2 import DataLoader, PointCloudSensor
     help=
     'Trimming distance to trimm unwanted parts of the mesh (everything that is further away from the input points will be removed)',
     default=0.225)
-def dsai_surface_rec(root_dir: str, sensor_id: str, output_dir: Optional[str], output_filename: str, max_dist: float,
+def dsai_surface_rec(shard_file_pattern: str, output_dir: str, sensor_id: str, output_filename: str, max_dist: float,
                      start_frame: int, end_frame: int, step_frame: int, n_neighbors: int, trim_distance: float):
     ''' Given a set of 3D lidar rays in space runs surface reconstruction using SPSR surface reconstruction method (https://hhoppe.com/poissonrecon.pdf) '''
 
@@ -57,15 +56,12 @@ def dsai_surface_rec(root_dir: str, sensor_id: str, output_dir: Optional[str], o
     logger = logging.getLogger(__name__)
 
     # set up output paths
-    if not output_dir:
-        output_path = Path(root_dir) / 'reconstructed_surface'
-    else:
-        output_path = Path(output_dir)
+    output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
     logger.info("Loading points and ray directions.")
 
-    points, dirs = load_fused_pc(root_dir,
+    points, dirs = load_fused_pc(shard_file_pattern,
                                  sensor_id,
                                  max_dist=max_dist,
                                  start_frame=start_frame,
@@ -101,21 +97,21 @@ def dsai_surface_rec(root_dir: str, sensor_id: str, output_dir: Optional[str], o
     pcu.save_mesh_vfnc(str(output_path / f'{output_filename}.ply'), v, f[f_mask], n, c)
 
 
-def load_fused_pc(root_dir, sensor_id, max_dist=-1, start_frame=0, end_frame=-1, step_frame=1):
+def load_fused_pc(shard_file_pattern, sensor_id, max_dist=-1, start_frame=0, end_frame=-1, step_frame=1):
     ''' Load the individual point cloud spins and accumulates them to a single point cloud
 
     Args:
-        lidar_dir (string): path to the lidar data
+        shard_file_pattern (str): Shards to load
+        sensor_id (str): PointCloudSensor to load data from
         max_dist (float): Ignore fused points greater than this distance from the ego vehicle
         start_frame (int): Start fusing input points at this index
         end_frame (int): Stop fusing input points after this index (-1 = use all frames up to the last)
         step_frame (int): Determines the temporal downsampling rate  (if 1 all frames will be used)
-        n_neighbors (int): Number of neighbors used in the k-nn search for the normal estimation
-        trim_distance (float): distance used to trimm unwanted parts of the mesh (everything that is further away from the input points will be removed)
     '''
 
     # Load point-cloud data
-    loader = DataLoader(root_dir)
+    shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
+    loader = ShardDataLoader(shards)
     sensor = loader.get_sensor(sensor_id)
     assert isinstance(sensor, PointCloudSensor), 'only point-cloud sensors supported'
 

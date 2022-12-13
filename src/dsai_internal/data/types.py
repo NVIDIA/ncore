@@ -4,7 +4,7 @@ import io
 
 from enum import IntEnum, auto, unique
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Protocol, Tuple
 from functools import lru_cache
 
 import numpy as np
@@ -194,3 +194,9 @@ class EncodedImageData():
     def get_decoded_image(self) -> PILImage.Image:
         ''' Returns decoded image from image data '''
         return PILImage.open(io.BytesIO(self.get_encoded_image_data()), formats=[self.get_encoded_image_format()])
+
+
+class EncodedImageHandle(Protocol):
+    ''' Protocol type to reference encoded image data (e.g., file-based, container-based, memory-based) '''
+    def get_data(self) -> EncodedImageData:
+        ...
