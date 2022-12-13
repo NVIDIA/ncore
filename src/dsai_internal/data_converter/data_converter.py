@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import logging
 
-import numpy as np
-
 from pathlib import Path
 from abc import ABC, abstractmethod
+from typing import Optional
+
+import numpy as np
 
 # Initialize basic top-level logger configuration
 logging.basicConfig(level=logging.DEBUG,
@@ -86,6 +87,37 @@ class BaseNvidiaDataConverter(DataConverter):
     '''
     Base class for all Nvidia-specific data converters, maintaining common definitions and logic
     '''
+
+    @staticmethod
+    def time_bounds(timestamps_us: list[int], seek_sec: Optional[float],
+                    duration_sec: Optional[float]) -> tuple[int, int]:
+        """
+        Determine start and end timestamps given optional seek and duration times
+
+        Args:
+            timestamps_us : list of all available timestamps (in microseconds)
+            seek_sec: Optional: if non-None, the time (in seconds)  to skip starting from the first timestamp
+            duration_sec: Optional: if non-None, the total time (in seconds) between the start and end time bounds
+
+        Return:
+            start_timestamp_us: first valid timestamp in restricted bounds (in microseconds)
+            end_timestamp_us: last valid timestamp in restricted bounds (in microseconds)
+        """
+
+        start_timestamp_us = int(timestamps_us[0])
+        end_timestamp_us = int(timestamps_us[-1])
+
+        if seek_sec:
+            assert seek_sec >= 0.0, "Require positive seek time"
+            start_timestamp_us += int(seek_sec * 1e6)
+
+        if duration_sec:
+            assert duration_sec >= 0.0, "Require positive duration time"
+            end_timestamp_us = start_timestamp_us + int(duration_sec * 1e6)
+
+        assert start_timestamp_us < end_timestamp_us, "Arguments lead to invalid time bounds"
+
+        return start_timestamp_us, end_timestamp_us
 
     ## Constants defined for *Hyperion8* sensor-set
 
