@@ -12,7 +12,6 @@ import tqdm
 import point_cloud_utils as pcu
 
 from pathlib import Path
-from typing import Optional
 
 from src.dsai_internal.data_converter.data_converter import BaseNvidiaDataConverter
 from src.dsai_internal.data.data3 import ContainerDataWriter
@@ -53,37 +52,6 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
     @staticmethod
     def from_config(config) -> NvidiaMaglevConverter:
         return NvidiaMaglevConverter(config)
-
-    @staticmethod
-    def time_bounds(timestamps_us: list[int], seek_sec: Optional[float],
-                    duration_sec: Optional[float]) -> tuple[int, int]:
-        """
-        Determine start and end timestamps given optional seek and duration times
-
-        Args:
-            timestamps_us : list of all available timestamps (in microseconds)
-            seek_sec: Optional: if non-None, the time (in seconds)  to skip starting from the first timestamp
-            duration_sec: Optional: if non-None, the total time (in seconds) between the start and end time bounds
-
-        Return:
-            start_timestamp_us: first valid timestamp in restricted bounds (in microseconds)
-            end_timestamp_us: last valid timestamp in restricted bounds (in microseconds)
-        """
-
-        start_timestamp_us = int(timestamps_us[0])
-        end_timestamp_us = int(timestamps_us[-1])
-
-        if seek_sec:
-            assert seek_sec >= 0.0, "Require positive seek time"
-            start_timestamp_us += int(seek_sec * 1e6)
-
-        if duration_sec:
-            assert duration_sec >= 0.0, "Require positive duration time"
-            end_timestamp_us = start_timestamp_us + int(duration_sec * 1e6)
-
-        assert start_timestamp_us < end_timestamp_us, "Arguments lead to invalid time bounds"
-
-        return start_timestamp_us, end_timestamp_us
 
     def convert_sequence(self, sequence_path: Path) -> None:
         """
