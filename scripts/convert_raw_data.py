@@ -62,7 +62,7 @@ def cli(ctx, *_, **kwargs):
 @click.pass_context
 def nvidia_maglev_v2(ctx, *_, **kwargs):
     """NVIDIA-specific data conversion (V2 format, based on Maglev data extraction)"""
-    
+
     from src.dsai_internal.data_converter.nvidia_maglev2 import NvidiaMaglevConverter
 
     config = ctx.obj  # Extend base config with command-specific options
@@ -96,13 +96,14 @@ def nvidia_deepmap_v2(ctx, *_, **kwargs):
 @click.pass_context
 def nvidia_maglev_v3(ctx, *_, **kwargs):
     """NVIDIA-specific data conversion (V3 format, based on Maglev data extraction)"""
-    
+
     from src.dsai_internal.data_converter.nvidia_maglev3 import NvidiaMaglevConverter
 
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
 
     NvidiaMaglevConverter.convert(config)
+
 
 if __name__ == '__main__':
     cli(show_default=True)
