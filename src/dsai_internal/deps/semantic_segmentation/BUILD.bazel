@@ -17,7 +17,8 @@ py_library(
     ],
     deps = [
         requirement("pillow"),
-        requirement("pycocotools"),
+        "//src/dsai_internal/data:pylib_types",
+        "//src/dsai_internal/data:pylib_util",
         "@semantic-segmentation//:train",
     ],
 )

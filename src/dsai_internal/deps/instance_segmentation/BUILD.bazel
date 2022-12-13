@@ -19,10 +19,11 @@ py_library(
     ],
     deps = [
         requirement("tqdm"),
-        requirement("opencv-python"),
+        requirement("numpy"),
+        requirement("h5py"),
         requirement("detectron2"),
-        requirement("torch"),
-        requirement("torchvision"),
+        "//src/dsai_internal/data:pylib_types",
+        "//src/dsai_internal/data:pylib_util",
     ],
 )
 
