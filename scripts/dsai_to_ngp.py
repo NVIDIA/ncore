@@ -5,6 +5,7 @@ import math
 import copy
 import json
 import os
+
 from pathlib import Path
 from collections import defaultdict
 from typing import Optional
@@ -12,8 +13,8 @@ from typing import Optional
 import click
 import numpy as np
 
-from src.dsai_internal.data.data2 import (
-    DataLoader,
+from src.dsai_internal.data.data3 import (
+    ShardDataLoader,
     CameraSensor,
     LidarSensor
 )
@@ -23,7 +24,6 @@ from src.dsai_internal.data.types import (
     PinholeCameraModelParameters,
 )
 from src.dsai_internal.data.util import padded_index_string
-
 from src.dsai_internal.common.common import average_camera_pose, save_pc_dat
 from src.dsai_internal.common.transformations import transform_point_cloud
 
@@ -40,7 +40,11 @@ RS_DIR_TO_NGP = {
 
 
 @click.command()
-@click.option("--root-dir", type=str, help="Path to the preprocessed sequence", required=True)
+@click.option('--shard-file-pattern',
+              type=str,
+              help='Data shard pattern to load (supports range expansion)',
+              required=True)
+@click.option('--output-dir', type=str, help='Path to the output folder', required=True)
 @click.option("--experiment-name", type=str, help="Name of the experiment", required=True)
 @click.option(
     "--start-frame",
@@ -61,8 +65,8 @@ RS_DIR_TO_NGP = {
     default=1,
 )
 @click.option(
-    "--camera-sensor",
-    "camera_sensor_ids",
+    "--camera-id",
+    "camera_ids",
     multiple=True,
     type=str,
     help="Cameras to be used (multiple value option, all if not specified)",
@@ -76,8 +80,8 @@ RS_DIR_TO_NGP = {
 )
 @click.option("--aabb-scale", type=float, help="The desired aabb scale", default=16.0)
 @click.option(
-    "--lidar-sensor",
-    "lidar_sensor_id",
+    "--lidar-id",
+    "lidar_id",
     default=None,
     type=str,
     help="If provided, the lidar sensor to incorporate point clouds from",
@@ -89,35 +93,39 @@ RS_DIR_TO_NGP = {
     help="Save the test configs with the same parameters as train",
 )
 def dsai_to_ngp(
-    root_dir: str,
+    shard_file_pattern: str,
+    output_dir: str,
     experiment_name: str,
     start_frame: int,
     end_frame: int,
     step_frame: int,
-    camera_sensor_ids: list[str],
+    camera_ids: list[str],
     max_dist: float,
     aabb_scale: float,
-    lidar_sensor_id: Optional[str],
+    lidar_id: Optional[str],
     save_test: bool,
 ):
     # Initialize the logger
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    loader = DataLoader(root_dir)
+    shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
+    loader = ShardDataLoader(shards)
 
-    # Create output path
-    assert not (output_dir := loader.get_sequence_dir() /
-                (f"ngp_configs/{experiment_name}")).exists(), "Experiment with the same name already exists"
-    output_dir.mkdir(parents=True)
+    # Create output paths
+    output_path_data = Path(output_dir) / loader.get_sequence_id(with_shard_range=True)
+    output_path_data.mkdir(parents=True, exist_ok=True)
+    assert not (output_path_experiment := output_path_data / 'ngp_configs' / experiment_name
+               ).exists(), "Experiment with the same name already exists"
+    output_path_experiment.mkdir(parents=True)
 
-    logger.info(f"Preparing NGP config in '{output_dir}'")
+    logger.info(f"Preparing NGP config for experiment '{experiment_name}' in '{output_path_experiment}'")
 
     all_camera_data: dict[str, dict] = defaultdict(dict)
-    for camera_sensor_id in camera_sensor_ids:
-        assert isinstance(camera_sensor := loader.get_sensor(camera_sensor_id), CameraSensor)
+    for camera_id in camera_ids:
+        assert isinstance(camera_sensor := loader.get_sensor(camera_id), CameraSensor)
 
-        camera_data = all_camera_data[camera_sensor_id]
+        camera_data = all_camera_data[camera_id]
 
         # Get camera intrinsic properties compatible with NGP
         match camera_model_parameters := camera_sensor.get_camera_model_parameters():
@@ -188,28 +196,32 @@ def dsai_to_ngp(
             T_sensor_to_world[:3, :3] = R
             return T_sensor_to_world
 
-        # Collect all image paths (to average the pose we neglect the selected step size as all images will be used for testing) and poses
+        # Prepare all image paths (to average the pose we neglect the selected step size as all images will be used for testing) and poses
         all_image_paths: list[Path] = []
         T_cam_rig: list[np.ndarray] = []
         poses_start: list[np.ndarray] = []
         poses_end: list[np.ndarray] = []
-        for i in camera_sensor.get_frame_index_range(start_frame, end_frame):
-            assert isinstance(frame := camera_sensor.get_frame_handle(i),
-                              CameraSensor.EncodedImageFileHandle), "only file-based frames currently supported"
+        for camera_frame_idx in camera_sensor.get_frame_index_range(start_frame, end_frame):
+            camera_path = output_path_data / 'cameras' / camera_sensor.get_sensor_id()
+            camera_path.mkdir(parents=True, exist_ok=True)
 
-            all_image_paths.append(frame.get_image_file_path())
+            # check if camera image data was already exported / export it otherwise
+            IMAGE_FORMAT='jpeg'
+            if not (frame_file_path := camera_path / Path(padded_index_string(camera_frame_idx)).with_suffix(f'.{IMAGE_FORMAT}')).exists():
+                frame_data_handle = camera_sensor.get_frame_data(camera_frame_idx)
+                frame_data_format = frame_data_handle.get_encoded_image_format()
+                assert(frame_data_format == IMAGE_FORMAT), f"update conversion script to support encoding '{frame_data_format}' images"
+                with open(frame_file_path, "wb") as frame_file:
+                    frame_file.write(frame_data_handle.get_encoded_image_data())
+
+            all_image_paths.append(frame_file_path)
 
             T_cam_rig.append(camera_sensor.get_T_sensor_rig())
-            poses_start.append(nvidia_to_ngp(camera_sensor.get_frame_T_sensor_world(i, FrameTimepoint.START)))
-            poses_end.append(nvidia_to_ngp(camera_sensor.get_frame_T_sensor_world(i, FrameTimepoint.END)))
+            poses_start.append(nvidia_to_ngp(camera_sensor.get_frame_T_sensor_world(camera_frame_idx, FrameTimepoint.START)))
+            poses_end.append(nvidia_to_ngp(camera_sensor.get_frame_T_sensor_world(camera_frame_idx, FrameTimepoint.END)))
 
         # Train images respect step size
-        all_image_train_paths: list[Path] = []
-        for i in camera_sensor.get_frame_index_range(start_frame, end_frame, step_frame):
-            assert isinstance(frame := camera_sensor.get_frame_handle(i),
-                              CameraSensor.EncodedImageFileHandle), "only file-based frames currently supported"
-
-            all_image_train_paths.append(frame.get_image_file_path())
+        all_image_train_paths: list[Path] = all_image_paths[::step_frame]
 
         poses_start = np.stack(poses_start)
         poses_end = np.stack(poses_end)
@@ -228,7 +240,7 @@ def dsai_to_ngp(
                     camera_mask_image.save(target_camera_mask_image_path, optimize=True)
 
     # Combine all the poses and compute the scaling factor and centroid, use the start timestamp pose as approximation
-    all_poses = [all_camera_data[camera_sensor_id]["poses_start"] for camera_sensor_id in camera_sensor_ids]
+    all_poses = [all_camera_data[camera_id]["poses_start"] for camera_id in camera_ids]
     all_poses = np.concatenate(all_poses, axis=0)
 
     pose_avg, extent = average_camera_pose(all_poses)
@@ -236,9 +248,9 @@ def dsai_to_ngp(
     offset = -(pose_avg * scale_factor) + np.array([0.5, 0.5, 0.5])  # Instant NGP assumes that the scenes are centered at 0.5^3
 
     # Generate a config file for each of the cameras
-    for camera_sensor_idx, camera_sensor_id in enumerate(camera_sensor_ids):
+    for camera_sensor_idx, camera_id in enumerate(camera_ids):
 
-        camera_data = all_camera_data[camera_sensor_id]
+        camera_data = all_camera_data[camera_id]
 
         intrinsic_data = camera_data["intrinsic_data"]
 
@@ -256,7 +268,7 @@ def dsai_to_ngp(
 
         for i, image_train_path in enumerate(camera_data["all_image_train_paths"]):
             frame_data = {
-                "file_path": os.path.relpath(image_train_path, output_dir),
+                "file_path": os.path.relpath(image_train_path, output_path_experiment),
                 "transform_matrix_start": camera_data["poses_start"][step_frame * i].tolist(),
                 "transform_matrix_end": camera_data["poses_end"][step_frame * i].tolist(),
             } | intrinsic_data
@@ -265,19 +277,19 @@ def dsai_to_ngp(
 
         for i, image_path in enumerate(camera_data["all_image_paths"]):
             frame_data = {
-                "file_path": os.path.relpath(image_path, output_dir),
+                "file_path": os.path.relpath(image_path, output_path_experiment),
                 "transform_matrix_start": camera_data["poses_start"][i].tolist(),
                 "transform_matrix_end": camera_data["poses_end"][i].tolist(),
             }
 
             out_test["frames"].append(frame_data)
 
-        if camera_sensor_idx == 0 and lidar_sensor_id:
-            logger.info(f"Preparing lidar '{lidar_sensor_id}'")
+        if camera_sensor_idx == 0 and lidar_id:
+            logger.info(f"Preparing lidar '{lidar_id}'")
 
             # Load sensors
-            assert isinstance(camera_sensor := loader.get_sensor(camera_sensor_id), CameraSensor)
-            assert isinstance(lidar_sensor := loader.get_sensor(lidar_sensor_id), LidarSensor)
+            assert isinstance(camera_sensor := loader.get_sensor(camera_id), CameraSensor)
+            assert isinstance(lidar_sensor := loader.get_sensor(lidar_id), LidarSensor)
 
             # Find the corresponding lidar frames based on their timestamps
             camera_timestamps = camera_sensor.get_frames_timestamps_us()
@@ -289,10 +301,10 @@ def dsai_to_ngp(
             # Store lidar data as '.dat' files as required by NGP
             out_train["lidar"] = []
 
+            lidar_path = output_path_data / 'lidars' / lidar_sensor.get_sensor_id()
+            lidar_path.mkdir(parents=True, exist_ok=True)
             for lidar_frame_idx in range(lidar_frame_start_idx, lidar_frame_end_idx):
-                dat_path = lidar_sensor.get_sensor_dir() / (padded_index_string(lidar_frame_idx) + ".dat")
-                if not dat_path.exists():
-
+                if not (dat_path := lidar_path / Path(padded_index_string(lidar_frame_idx)).with_suffix('.dat')).exists():
                     T_sensor_to_world = lidar_sensor.get_frame_T_sensor_world(lidar_frame_idx).astype(np.float32)
 
                     # Load relevant frame data for ray structure
@@ -310,15 +322,15 @@ def dsai_to_ngp(
                     # Serialize point cloud
                     save_pc_dat(str(dat_path), point_cloud)
 
-                out_train["lidar"].append({"file_path": os.path.relpath(dat_path, output_dir)})
+                out_train["lidar"].append({"file_path": os.path.relpath(dat_path, output_path_experiment)})
 
-        train_camera_path = output_dir / f"{camera_sensor_id}_train.json"
+        train_camera_path = output_path_experiment / f"{camera_id}_train.json"
         logger.info(f"Writing '{train_camera_path}'")
         with open(train_camera_path, "w") as f:
             json.dump(out_train, f, indent=2)
 
         if save_test:
-            test_camera_path = output_dir / f"{camera_sensor_id}_test.json"
+            test_camera_path = output_path_experiment / f"{camera_id}_test.json"
             logger.info(f"Writing '{test_camera_path}'")
             with open(test_camera_path, "w") as f:
                 json.dump(out_test, f, indent=2)
