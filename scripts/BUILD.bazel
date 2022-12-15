@@ -117,6 +117,18 @@ py_binary(
 )
 
 py_binary(
+    name = "dsai_export_image",
+    srcs = ["dsai_export_image.py"],
+    deps = [
+        requirement("click"),
+        requirement("tqdm"),
+        "//src/dsai_internal/common:pylib",
+        "//src/dsai_internal/data:pylib_data",
+        "//src/dsai_internal/data:pylib_util",
+    ],
+)
+
+py_binary(
     name = "dsai_surface_rec",
     srcs = ["dsai_surface_rec.py"],
     data = ["@PoissonRecon"],
