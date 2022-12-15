@@ -294,13 +294,18 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                                             self.CAMERATYPE_TO_EXPOSURETIME_US[camera_type].item(), intrinsic[0:2],
                                             bw_poly, fw_poly, float(max_angle)), mask_image.get_image())
 
+            # Load tar file containing images
+            tar_file = open(self.sequence_path / 'cameras' / camera_rig_name / 'images.tar', 'rb')
+            tar_index = json.load(open(self.sequence_path / 'cameras' / camera_rig_name / 'images.tar.idx.json', 'r'))
+
             ## Process all valid images
             for continous_local_frame_index, (frame_number, frame_end_timestamp_us) in \
                 tqdm.tqdm(enumerate(zip(local_frame_numbers, local_frame_timestamps_us)), total=len(local_frame_numbers)):
 
-                # Load image file data
-                with open(self.sequence_path / 'cameras' / camera_rig_name / (str(frame_number) + '.jpeg'), 'rb') as image_file:
-                    image_file_binary_data = image_file.read()
+                # Load image file data from archive
+                file_record = tar_index[f'./{str(frame_number)}.jpeg']
+                tar_file.seek(file_record['offset_data'])
+                image_file_binary_data = tar_file.read(file_record['size'])
 
                 # Interpolate the start and end pose to the timestamps of the first and last row
                 timestamps_us = np.array([
