@@ -203,6 +203,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             crop_size: np.ndarray = util.numpy_array_field(np.uint64)
             downscale_factor: int = 1
 
+            def __post_init__(self):
+                # Sanity checks
+                assert self.crop_size[0] % self.downscale_factor == 0, 'height not divisible by downscale factor'
+                assert self.crop_size[1] % self.downscale_factor == 0, 'width not divisible by downscale factor'
+
         # Specify sensors to be processed and their sensor-specific crop transformation
         CAMERAID_TO_CROPTRANSFORM = {
             'camera_front_wide_120fov':
