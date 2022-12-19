@@ -40,7 +40,7 @@ py_binary(
 
 # extract all transitive dependencies of dependencies under //src
 py_layer(
-    name = "sd_shards_common_deps_layer",
+    name = "sd_shards_src_deps_layer",
     filter = "//src",
     tags = [
         "manual",
@@ -49,18 +49,18 @@ py_layer(
     deps = SD_SHARDS_DEPS,
 )
 
-# extract all external dependencies of the deps under //src
+# extract all transitive dependencies of dependencies under //src
 py_layer(
-    name = "sd_shards_common_external_deps_layer",
-    filter = "@",
+    name = "sd_shards_scripts_deps_layer",
+    filter = "//scripts",
     tags = [
         "manual",
         "no-remote-cache",
     ],
-    deps = [":sd_shards_common_deps_layer"],
+    deps = SD_SHARDS_DEPS,
 )
 
-# extract all external dependencies of SD_SHARDS_DEPS, which is a superset of ":sd_shards_common_external_deps_layer".
+# extract all external dependencies of SD_SHARDS_DEPS
 py_layer(
     name = "sd_shards_external_deps_layer",
     filter = "@",
@@ -75,10 +75,13 @@ py3_image(
     name = "sd_shards_image",
     srcs = ["sd_shards.py"],
     base = "@dsai_dev_container//image",
+    # Create the image by stacking the above filtered layers on top of one
+    # another in the "layers" attribute. The layers are applied in order, and any
+    # dependencies already added to the image will *not* be added again.
     layers = [
         ":sd_shards_external_deps_layer",
-        ":sd_shards_common_external_deps_layer",
-        ":sd_shards_common_deps_layer",
+        ":sd_shards_src_deps_layer",
+        ":sd_shards_scripts_deps_layer",
     ],
     main = "sd_shards.py",
     tags = [
