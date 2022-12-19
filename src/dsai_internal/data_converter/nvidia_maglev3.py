@@ -3,24 +3,24 @@
 from __future__ import annotations
 
 import logging
-import re
 import json
 import os
+
+from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import tqdm
 import point_cloud_utils as pcu
 
-from pathlib import Path
-
 from src.dsai_internal.data_converter.data_converter import BaseNvidiaDataConverter
 from src.dsai_internal.data.data3 import ContainerDataWriter
 from src.dsai_internal.data.types import FThetaCameraModelParameters, LabelSource, Poses, ShutterType
 
-from src.dsai_internal.common.nvidia_utils import (load_maglev_camera_indexer_frame_meta, parse_rig_sensors_from_dict,
-                                                   sensor_to_rig, LabelProcessor, camera_intrinsic_parameters,
-                                                   compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask,
-                                                   vehicle_bbox)
+from src.dsai_internal.common.nvidia_utils import (load_maglev_camera_indexer_frame_meta, load_maglev_egomotion, load_maglev_session_id,
+                                                   parse_rig_sensors_from_dict, sensor_to_rig, LabelProcessor,
+                                                   camera_intrinsic_parameters, compute_fw_polynomial,
+                                                   compute_ftheta_parameters, camera_car_mask, vehicle_bbox)
 from src.dsai_internal.common.common import load_jsonl, PoseInterpolator, uniform_subdivide_range, SimpleTimer
 from src.dsai_internal.av_utils import isWithin3DBBox
 
@@ -41,7 +41,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.shard_id: int = config.shard_id
         self.shard_count: int = config.shard_count
 
-        self.egomotion_file : str = config.egomotion_file
+        self.egomotion_file : Optional[Path] = Path(config.egomotion_file) if config.egomotion_file else None
 
         self.skip_dynamic_flag: bool = config.skip_dynamic_flag
 
@@ -67,15 +67,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.sensors_calibration_data = parse_rig_sensors_from_dict(self.rig)
 
         # Determine session-id to be processed
-        # Note: session_id in loaded rig meta might not reflect the actual current session due to bugs
-        #       in the rig generation, prefer loading correct ID from rig used for egomotion for now
-        with open(self.sequence_path / 'egomotion' / 'rig_egomotion_indexer.json', 'r') as fp:
-            match = re.search(r'session_data/(\w{8}-\w{4}-\w{4}-\w{4}-\w{12})/', fp.read())
-            if match:
-                session_id = match[1]
-            else:
-                raise ValueError("Unable to determine trustable session_id")
-
+        session_id = load_maglev_session_id(self.sequence_path)
         self.logger.info(f'Converting session {session_id} [shard {self.shard_id + 1}/{self.shard_count}]')
 
         # DataWriter for all outputs
@@ -111,56 +103,9 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         logger = self.logger.getChild('decode_poses')
         logger.info(f'Loading poses')
 
-        # Initialize pose / timestamp variables
-        self.global_T_rig_worlds = []
-        self.global_T_rig_world_timestamps_us = []
-
-        # Load sensor extrinsics to compute poses of the rig frame if egomotion is represented in a sensor frame
-        T_rig_sensors = {
-            lidar_sensor_name: np.linalg.inv(sensor_to_rig(self.sensors_calibration_data[lidar_sensor_name]))
-            for lidar_sensor_name in list(self.CAMERAID_TO_RIGNAME.values()) + list(self.LIDARID_TO_RIGNAME.values())
-        }
-
-        # Load egomotion trajectory
-        if not self.egomotion_file:
-            # Use default egomotion jsonl location
-            egomotion_file = self.sequence_path / 'egomotion/egomotion.json'
-        else:
-            # Use overwrite file
-            egomotion_file = self.egomotion_file
-
-        for egomotion_pose_entry in load_jsonl(egomotion_file):
-            # Skip invalid poses
-            if not egomotion_pose_entry['valid']:
-                continue
-
-            # Note: there is additional data like lat/long and sensor-related information
-            #       which could be used in the future
-            # Note: make sure all poses information is represented as f64 to have sufficient
-            #       precision in case poses are representing global / map-associated coordinates
-            T_rig_world_timestamp_us = int(egomotion_pose_entry['timestamp'])
-            T_rig_world = np.asfarray(egomotion_pose_entry['pose'].split(' '), dtype=np.float64).reshape(
-                (4, 4)).transpose()
-
-            # Make sure poses represent *rigToWorld* transformations
-            # (actually *rigToGlobal* as they include the base pose also - this is the case for non-identity initial poses)
-            # Note: there currently seems to be an inconsistency in the egomotion indexer output - keep
-            #       this verified workaround logic for now (might need to be adapted if egomotion indexer
-            #       is fixed)
-            if egomotion_pose_entry['sensor_name'] == 'dgps':
-                pass
-            elif egomotion_pose_entry['sensor_name'] in T_rig_sensors:
-                # Convert pose in lidar frame to pose in rig frame
-                T_rig_world = T_rig_world @ T_rig_sensors[egomotion_pose_entry['sensor_name']]
-            else:
-                raise ValueError(f"Unsupported source ego frame {egomotion_pose_entry['in_sensor_name_frame']}")
-
-            # Sanity check on data-type
-            assert T_rig_world.dtype is np.dtype('float64'), \
-                "Require pose to be double-precision (to suppoglobally aligned / map-associated)"
-
-            self.global_T_rig_worlds.append(T_rig_world)
-            self.global_T_rig_world_timestamps_us.append(T_rig_world_timestamp_us)
+        # Load timestamped poses variables
+        self.global_T_rig_worlds, self.global_T_rig_world_timestamps_us = load_maglev_egomotion(
+            self.sequence_path, self.sensors_calibration_data, self.egomotion_file)
 
         assert len(self.global_T_rig_worlds), "No valid egomotion poses loaded"
 

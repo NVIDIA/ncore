@@ -6,6 +6,7 @@ import logging
 import os
 import hashlib
 import csv
+import re
 
 from typing import Optional, Tuple
 from pathlib import Path
@@ -22,7 +23,7 @@ from numpy.polynomial.polynomial import Polynomial
 from src.dsai_internal.data_converter.protos.deepmap import transform_pb2, camera_calibration_pb2
 from src.dsai_internal.common.common import MaskImage, load_jsonl
 from src.dsai_internal.av_utils import isWithin3DBBox
-from src.dsai_internal.common.transformations import euler_2_so3, lat_lng_alt_2_ecef, axis_angle_trans_2_se3
+from src.dsai_internal.common.transformations import euler_2_so3, lat_lng_alt_2_ecef, axis_angle_trans_2_se3, se3_inverse
 from src.dsai_internal.data.types import FrameLabel3, BBox3, LabelSource, TrackLabel, DynamicFlagState
 
 def extract_sensor_2_sdc(file_path):
@@ -158,10 +159,14 @@ def parse_rig_sensors_from_file(rig_fp):
     return parse_rig_sensors_from_dict(rig)
 
 
-def sensor_to_rig(sensor):
+def sensor_to_rig(sensor) -> Optional[np.ndarray]:
 
     sensor_name = sensor["name"]
     sensor_to_FLU = get_sensor_to_sensor_flu(sensor_name)
+
+    if "nominalSensor2Rig_FLU" not in sensor:
+        # Some sensors (like CAN sensors) don't have an associated sensorToRig
+        return None
 
     nominal_T = sensor["nominalSensor2Rig_FLU"]["t"]
     nominal_R = sensor["nominalSensor2Rig_FLU"]["roll-pitch-yaw"]
@@ -772,3 +777,83 @@ def load_maglev_camera_indexer_frame_meta(camera_path: Path, use_csv_workaround=
             [frame_timestamps_map_us[raw_frame_number] for raw_frame_number in raw_frame_numbers], dtype=np.uint64)
 
     return raw_frame_numbers, raw_frame_timestamps_us
+
+
+def load_maglev_session_id(sequence_path: Path) -> str:
+    ''' Loads session-id in a strustable way '''
+
+    # Note: session_id in loaded rig meta might not reflect the actual current session due to bugs
+    #       in the rig generation, prefer loading correct ID from session-data directly
+
+    # Find `aux_info` from session-data
+    session_data_path = sequence_path / 'session_data'
+    assert session_data_path.exists(), f'{session_data_path} doesn\'t exist'
+
+    aux_infos = list(session_data_path.glob('**/aux_info'))
+    assert len(aux_infos), f"no 'aux_info' found in {session_data_path}"
+
+    # Parse first `aux_info` (session-id is the same in all of them)
+    with open(aux_infos[0], 'r') as fp:
+        match = re.search(r'uuid: (\w{8}-\w{4}-\w{4}-\w{4}-\w{12})', fp.read())
+        if match:
+            return match[1]
+        else:
+            raise ValueError("Unable to determine trustable session_id")
+
+
+def load_maglev_egomotion(sequence_path: Path, sensors_calibration_data: dict[str, dict],
+                          egomotion_file_overwrite: Optional[Path] = None) -> Tuple[list[np.ndarray], list[int]]:
+    ''' Parse a maglev-based egomotion data into timestamped global T_rig_worlds '''
+
+    # Pre-compute sensor extrinsics to compute poses of the rig frame if egomotion is represented in a sensor frame
+    T_rig_sensors = {
+        sensor_name: se3_inverse(T_sensor_rig)
+        for sensor_name, T_sensor_rig in
+        {sensor_name: sensor_to_rig(sensors_calibration_data[sensor_name])
+         for sensor_name in sensors_calibration_data}.items() if T_sensor_rig is not None
+    }
+
+    # Determine egomotion source file to parse
+    if egomotion_file_overwrite:
+        # Use specific egomotion input
+        egomotion_file = egomotion_file_overwrite
+    else:
+        # Use default egomotion jsonl location
+        egomotion_file = sequence_path / 'egomotion' / 'egomotion.json'
+
+    global_T_rig_worlds = []
+    global_T_rig_world_timestamps_us = []
+
+    for egomotion_pose_entry in load_jsonl(egomotion_file):
+        # Skip invalid poses
+        if not egomotion_pose_entry['valid']:
+            continue
+
+        # Note: there is additional data like lat/long and sensor-related information
+        #       which could be used in the future
+        # Note: make sure all poses information is represented as f64 to have sufficient
+        #       precision in case poses are representing global / map-associated coordinates
+        T_rig_world_timestamp_us = int(egomotion_pose_entry['timestamp'])
+        T_rig_world = np.asfarray(egomotion_pose_entry['pose'].split(' '), dtype=np.float64).reshape((4, 4)).transpose()
+
+        # Make sure poses represent *rigToWorld* transformations
+        # (actually *rigToGlobal* as they include the base pose also - this is the case for non-identity initial poses)
+        # Note: there currently seems to be an inconsistency in the egomotion indexer output - keep
+        #       this verified workaround logic for now (might need to be adapted if egomotion indexer is fixed)
+        if egomotion_pose_entry['in_sensor_name_frame'] == 'rig':
+            # Pose is for the rig frame already - nothing to transform
+            pass
+        elif egomotion_pose_entry['in_sensor_name_frame'] in T_rig_sensors:
+            # Convert pose in lidar frame to pose in rig frame
+            T_rig_world = T_rig_world @ T_rig_sensors[egomotion_pose_entry['in_sensor_name_frame']]
+        else:
+            raise ValueError(f"Unsupported source ego frame {egomotion_pose_entry['in_sensor_name_frame']}")
+
+        # Sanity check on data-type
+        assert T_rig_world.dtype is np.dtype('float64'), \
+            "Require pose to be double-precision (to support globally aligned / map-associated)"
+
+        global_T_rig_worlds.append(T_rig_world)
+        global_T_rig_world_timestamps_us.append(T_rig_world_timestamp_us)
+
+    return global_T_rig_worlds, global_T_rig_world_timestamps_us
