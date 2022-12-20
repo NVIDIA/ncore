@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 import json
 
 from pathlib import Path
@@ -111,6 +110,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
     def from_config(config) -> NvidiaMaglevConverter:
         return NvidiaMaglevConverter(config)
 
+    def store_shard_meta(self, successful: bool) -> None:
+        ''' Store shard-specific meta-data '''
+        with open(self.output_dir / self.session_id / f'shard-meta-{util.padded_index_string(self.shard_id, index_digits=4)}.json', 'w') as outfile:
+            json.dump({'shard-id': self.shard_id, 'shard-count': self.shard_count, 'successful': successful}, outfile)
+
     def convert_sequence(self, sequence_path: Path) -> None:
         """
         Runs the conversion of a single session (single job output of Maglev Stable-Diffusion pp workflow)
@@ -131,10 +135,16 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Create output dir
         (self.output_dir / self.session_id).mkdir(parents=True, exist_ok=True)
 
+        # Store initial shard meta 
+        self.store_shard_meta(False)
+
         # Decode data from maglev WF
         self.decode_poses()
 
         self.decode_cameras()
+
+        # Store final shard meta
+        self.store_shard_meta(True)
 
     def decode_poses(self):
         logger = self.logger.getChild('decode_poses')
