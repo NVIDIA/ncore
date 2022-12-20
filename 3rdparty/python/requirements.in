@@ -39,3 +39,5 @@ sphinx_rtd_theme
 dataclasses_json
 
 multimethod
+
+webdataset

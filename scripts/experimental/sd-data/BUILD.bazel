@@ -1,0 +1,121 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load(
+    "@io_bazel_rules_docker//container:container.bzl",
+    "container_push",
+)
+load("@io_bazel_rules_docker//python:image.bzl", "py_layer")
+load("@io_bazel_rules_docker//python3:image.bzl", "py3_image")
+load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+package(default_visibility = ["//:code_package_group"])
+
+py_library(
+    name = "pylib_nvidia_maglev_sd",
+    srcs = [
+        "nvidia_maglev_sd.py",
+    ],
+    deps = [
+        "//src/dsai_internal/common:pylib",
+        "//src/dsai_internal/data_converter:pylib_data_converter",
+        requirement("webdataset"),
+        requirement("dataclasses-json"),
+    ],
+)
+
+SD_SHARDS_DEPS = [
+    requirement("click"),
+    ":pylib_nvidia_maglev_sd",
+]
+
+py_binary(
+    name = "sd_shards",
+    srcs = ["sd_shards.py"],
+    deps = SD_SHARDS_DEPS,
+)
+
+# Image for 'sd_shards'
+
+# extract all transitive dependencies of dependencies under //src
+py_layer(
+    name = "sd_shards_src_deps_layer",
+    filter = "//src",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = SD_SHARDS_DEPS,
+)
+
+# extract all transitive dependencies of dependencies under //src
+py_layer(
+    name = "sd_shards_scripts_deps_layer",
+    filter = "//scripts",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = SD_SHARDS_DEPS,
+)
+
+# extract all external dependencies of SD_SHARDS_DEPS
+py_layer(
+    name = "sd_shards_external_deps_layer",
+    filter = "@",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = SD_SHARDS_DEPS,
+)
+
+py3_image(
+    name = "sd_shards_image",
+    srcs = ["sd_shards.py"],
+    base = "@dsai_dev_container//image",
+    # Create the image by stacking the above filtered layers on top of one
+    # another in the "layers" attribute. The layers are applied in order, and any
+    # dependencies already added to the image will *not* be added again.
+    layers = [
+        ":sd_shards_external_deps_layer",
+        ":sd_shards_src_deps_layer",
+        ":sd_shards_scripts_deps_layer",
+    ],
+    main = "sd_shards.py",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+)
+
+# Push image to 'production' (prod) tag - use with *CAUTION* as referenced by default in workflows
+container_push(
+    name = "push_sd_shards_image_prod",
+    format = "Docker",
+    image = ":sd_shards_image",
+    registry = "nvcr.io",
+    repository = "nv-maglev/dlav/drivesim-ai",
+    tag = "sd-shards-prod",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+)
+
+# Push image to 'staging' (stage) tag - useful for experimentation
+container_push(
+    name = "push_sd_shards_image_stage",
+    format = "Docker",
+    image = ":sd_shards_image",
+    registry = "nvcr.io",
+    repository = "nv-maglev/dlav/drivesim-ai",
+    tag = "sd-shards-stage",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")

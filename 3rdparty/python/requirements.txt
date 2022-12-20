@@ -99,6 +99,10 @@ bleach==5.0.1 \
     --hash=sha256:085f7f33c15bd408dd9b17a4ad77c577db66d76203e5984b1bd59baeee948b2a \
     --hash=sha256:0d03255c47eb9bd2f26aa9bb7f2107732e7e8fe195ca2f64709fcf3b0a4a085c
     # via nbconvert
+braceexpand==0.1.7 \
+    --hash=sha256:91332d53de7828103dcae5773fb43bc34950b0c8160e35e0f44c4427a3b85014 \
+    --hash=sha256:e6e539bd20eaea53547472ff94f4fb5c3d3bf9d0a89388c4b56663aba765f705
+    # via webdataset
 brotli==1.0.9 \
     --hash=sha256:12effe280b8ebfd389022aa65114e30407540ccb89b177d3fbc9a4f177c4bd5d \
     --hash=sha256:160c78292e98d21e73a4cc7f76a234390e516afcd982fa17e1422f7c6a9ce9c8 \
@@ -912,6 +916,7 @@ numpy==1.23.4 \
     #   tensorflow
     #   tifffile
     #   torchvision
+    #   webdataset
 oauthlib==3.2.2 \
     --hash=sha256:8139f29aac13e25d502680e9e19963e83f16838d48a0d71c287fe40e7067fbca \
     --hash=sha256:9859c40929662bec5d64f34d01c99e093149682a3f38915dc0655d5a633dd918
@@ -1381,6 +1386,7 @@ pyyaml==6.0 \
     #   omegaconf
     #   open3d
     #   runx
+    #   webdataset
     #   yacs
 pyzmq==24.0.1 \
     --hash=sha256:0108358dab8c6b27ff6b985c2af4b12665c1bc659648284153ee501000f5c107 \
@@ -1911,6 +1917,10 @@ wcwidth==0.2.5 \
     --hash=sha256:beb4802a9cebb9144e99086eff703a642a13d6a0052920003a230f3294bbe784 \
     --hash=sha256:c4d647b99872929fdb7bdcaa4fbe7f01413ed3d98077df798530e5b04f116c83
     # via prompt-toolkit
+webdataset==0.2.31 \
+    --hash=sha256:0793d344b1c9f7003e746d5be135dc1d6a0fc65a71136453144daa7a3cdd8bf9 \
+    --hash=sha256:d71658ed65d114d842c0b00d429e9cc3f0a68ed11f37f5e91aee9f8ffbced62f
+    # via -r 3rdparty/python/requirements.in
 webencodings==0.5.1 \
     --hash=sha256:a0af1213f3c2226497a97e2b3aa01a7e4bee4f403f95be16fc9acd2947514a78 \
     --hash=sha256:b36a1c245f2d304965eb4e0a82848379241dc04b865afcc4aab16748587e1923
