@@ -65,6 +65,9 @@ argon2-cffi-bindings==21.2.0 \
     --hash=sha256:f1152ac548bd5b8bcecfb0b0371f082037e47128653df2e8ba6e914d384f3c3e \
     --hash=sha256:f9f8b450ed0547e3d473fdc8612083fd08dd2120d6ac8f73828df9b7d45bb351
     # via argon2-cffi
+asciitree==0.3.3 \
+    --hash=sha256:4aa4b9b649f85e3fcb343363d97564aa1fb62e249677f2e18a96765145cc0f6e
+    # via zarr
 asttokens==2.0.8 \
     --hash=sha256:c61e16246ecfb2cde2958406b4c8ebc043c9e6d73aaa83c941673b35e5d3a76b \
     --hash=sha256:e3305297c744ae53ffa032c45dc347286165e4ffce6875dc662b205db0623d86
@@ -399,7 +402,9 @@ docutils==0.17.1 \
 entrypoints==0.4 \
     --hash=sha256:b706eddaa9218a19ebcd67b56818f05bb27589b1ca9e8d797b74affad4ccacd4 \
     --hash=sha256:f174b5ff827504fd3cd97cc3f8649f3693f51538c7e4bdf3ef002c8429d42f9f
-    # via jupyter-client
+    # via
+    #   jupyter-client
+    #   numcodecs
 exceptiongroup==1.0.0rc9 \
     --hash=sha256:2e3c3fc1538a094aab74fad52d6c33fc94de3dfee3ee01f187c0e0c72aec5337 \
     --hash=sha256:9086a4a21ef9b31c72181c77c040a074ba0889ee56a7b289ff0afb0d97655f96
@@ -408,6 +413,10 @@ executing==1.1.1 \
     --hash=sha256:236ea5f059a38781714a8bfba46a70fad3479c2f552abee3bbafadc57ed111b8 \
     --hash=sha256:b0d7f8dcc2bac47ce6e39374397e7acecea6fdc380a6d5323e26185d70f38ea8
     # via stack-data
+fasteners==0.18 \
+    --hash=sha256:1d4caf5f8db57b0e4107d94fd5a1d02510a450dced6ca77d1839064c1bacf20c \
+    --hash=sha256:cb7c13ef91e0c7e4fe4af38ecaf6b904ec3f5ce0dda06d34924b6b74b869d953
+    # via zarr
 fastjsonschema==2.16.2 \
     --hash=sha256:01e366f25d9047816fe3d288cbfc3e10541daf0af2044763f3d0ade42476da18 \
     --hash=sha256:21f918e8d9a1a4ba9c22e09574ba72267a6762d47822db9add95f6454e51cc1c
@@ -861,6 +870,21 @@ networkx==2.8.7 \
     --hash=sha256:15cdf7f7c157637107ea690cabbc488018f8256fa28242aed0fb24c93c03a06d \
     --hash=sha256:815383fd52ece0a7024b5fd8408cc13a389ea350cd912178b82eed8b96f82cd3
     # via scikit-image
+numcodecs==0.11.0 \
+    --hash=sha256:0c240858bf29e0ff254b1db60430e8b2658b8c8328b684f80033289d94807a7c \
+    --hash=sha256:0fabc7dfdf64a9555bf8a34911e05b415793c67a1377207dc79cd96342291fa1 \
+    --hash=sha256:11596b71267417425ea8afb407477a67d684f434c8b07b1dd59c25a97d5c3ccb \
+    --hash=sha256:32697785b786bb0039d3feeaabdc10f25eda6c149700cde954653aaa47637832 \
+    --hash=sha256:694dc2e80b1f169b7deb14bdd0a04b20e5f17ef32cb0f81b71ab690406ec6bd9 \
+    --hash=sha256:6c058b321de84a1729299b0eae4d652b2e48ea1ca7f9df0da65cb13470e635eb \
+    --hash=sha256:7dae3f5678f247336c84e7315a0c59a4fec7c33eb7db72d78ff5c776479a812e \
+    --hash=sha256:8c2f36b21162c6ebccc05d3fe896f86b91dcf8709946809f730cc23a37f8234d \
+    --hash=sha256:bd05cdb853c7bcfde2efc809a9df2c5e205b96f70405b810e5788b45d0d81f73 \
+    --hash=sha256:bf3925eeb37aed0e6c04d7fb9614133a3c8426dc77f8bda54c99c601a44b3bd3 \
+    --hash=sha256:c0bc116752be45b4f9dca4315e5a2b4185e3b46f68c997dbb84aef334ceb5a1d \
+    --hash=sha256:c27dfca402f69fbfa01c46fb572086e77f38121192160cc8ed1177dc30702c52 \
+    --hash=sha256:ee5bda16e9d26a7a39fc20b6c1cec23b4debc314df5cfae3ed505149c2eeafc4
+    # via zarr
 numpy==1.23.4 \
     --hash=sha256:0fe563fc8ed9dc4474cbf70742673fc4391d70f4363f917599a7fa99f042d5a8 \
     --hash=sha256:12ac457b63ec8ded85d85c1e17d85efd3c2b0967ca39560b307a35a6703a4735 \
@@ -897,6 +921,7 @@ numpy==1.23.4 \
     #   imageio
     #   keras-preprocessing
     #   matplotlib
+    #   numcodecs
     #   open3d
     #   opencv-python
     #   opt-einsum
@@ -915,6 +940,7 @@ numpy==1.23.4 \
     #   tifffile
     #   torchvision
     #   webdataset
+    #   zarr
 oauthlib==3.2.2 \
     --hash=sha256:8139f29aac13e25d502680e9e19963e83f16838d48a0d71c287fe40e7067fbca \
     --hash=sha256:9859c40929662bec5d64f34d01c99e093149682a3f38915dc0655d5a633dd918
@@ -2018,6 +2044,10 @@ yacs==0.1.8 \
     # via
     #   detectron2
     #   fvcore
+zarr==2.13.3 \
+    --hash=sha256:883305e8ded972e25992269b0355436f11d7057b2943d278bf33cdcd2debfe2d \
+    --hash=sha256:db24b090616c638f65e33a6bc5d956d642221182961515ccbc28b17fb0d0b48c
+    # via -r 3rdparty/python/requirements.in
 
 # The following packages are considered to be unsafe in a requirements file:
 setuptools==65.5.0 \
