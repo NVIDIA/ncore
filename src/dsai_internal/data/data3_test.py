@@ -50,6 +50,7 @@ class TestData3Loader(unittest.TestCase):
 
         self.assertIsInstance(lidar_sensor := loader.get_sensor('lidar_gt_top_p128_v4p5'), LidarSensor)
         self.assertEqual(lidar_sensor.get_sensor_id(), 'lidar_gt_top_p128_v4p5')
+        self.assertEqual(lidar_sensor, loader.get_lidar_sensor('lidar_gt_top_p128_v4p5'))
 
         # Load all data
         for frame_index in lidar_sensor.get_frame_index_range():
@@ -77,6 +78,7 @@ class TestData3Loader(unittest.TestCase):
 
         self.assertIsInstance(camera_sensor := loader.get_sensor('camera_cross_left_120fov'), CameraSensor)
         self.assertEqual(camera_sensor.get_sensor_id(), 'camera_cross_left_120fov')
+        self.assertEqual(camera_sensor, loader.get_camera_sensor('camera_cross_left_120fov'))
 
         self.assertIsInstance(camera_sensor.get_camera_model_parameters(), FThetaCameraModelParameters)
         self.assertEqual(camera_sensor.get_camera_mask_image().size, (3848, 2168))
