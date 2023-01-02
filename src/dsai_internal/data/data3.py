@@ -8,7 +8,7 @@ import re
 
 from types import SimpleNamespace
 from pathlib import Path
-from functools import lru_cache
+from functools import lru_cache, cache
 from typing import NamedTuple, Optional, Union
 
 import numpy as np
@@ -523,18 +523,18 @@ class ShardDataLoader:
             shard_file = h5py.File(f, 'r')
 
             shard_sequence_id = shard_file.attrs.get('sequence_id')
-            shard_camera_ids = shard_file.attrs.get('camera_ids').tolist()
-            shard_lidar_ids = shard_file.attrs.get('lidar_ids').tolist()
-            shard_radar_ids = shard_file.attrs.get('radar_ids').tolist()
+            shard_camera_ids = set(shard_file.attrs.get('camera_ids').tolist())
+            shard_lidar_ids = set(shard_file.attrs.get('lidar_ids').tolist())
+            shard_radar_ids = set(shard_file.attrs.get('radar_ids').tolist())
             shard_shard_id = shard_file.attrs.get('shard_id').item()
             shard_shard_count = shard_file.attrs.get('shard_count').item()
             shard_shard_version = shard_file.attrs.get('version')
 
             if not shards_file_map:
                 self._sequence_id: str = shard_sequence_id
-                self._camera_ids: list[str] = shard_camera_ids
-                self._lidar_ids: list[str] = shard_lidar_ids
-                self._radar_ids: list[str] = shard_radar_ids
+                self._camera_ids: set[str] = shard_camera_ids
+                self._lidar_ids: set[str] = shard_lidar_ids
+                self._radar_ids: set[str] = shard_radar_ids
                 self._shard_count: int = shard_shard_count
                 self._shard_version: str = shard_shard_version
 
@@ -557,19 +557,6 @@ class ShardDataLoader:
 
         # *Linear* sequence of shard files
         self._shard_files = [shards_file_map[shard_id] for shard_id in self._shard_ids]
-
-        # Initialize all available sensors
-        self._sensors: dict[str, Union[CameraSensor, LidarSensor, RadarSensor]] = {}
-        self._sensors.update({
-            sensor_id: CameraSensor(sensor_id, CAMERAS_BASE_GROUP, self._shard_files)
-            for sensor_id in self._camera_ids
-        })
-        self._sensors.update(
-            {sensor_id: LidarSensor(sensor_id, LIDARS_BASE_GROUP, self._shard_files)
-             for sensor_id in self._lidar_ids})
-        self._sensors.update(
-            {sensor_id: RadarSensor(sensor_id, RADARS_BASE_GROUP, self._shard_files)
-             for sensor_id in self._radar_ids})
 
     @lru_cache(maxsize=1)
     def get_poses(self) -> types.Poses:
@@ -602,16 +589,37 @@ class ShardDataLoader:
 
     def get_sensor(self, sensor_id: str) -> Union[CameraSensor, LidarSensor, RadarSensor]:
         ''' Provides access to a specific sensor given it's sensor-id '''
-        return self._sensors[sensor_id]
+        if sensor_id in self._camera_ids:
+            return self.get_camera_sensor(sensor_id)
+        if sensor_id in self._lidar_ids:
+            return self.get_lidar_sensor(sensor_id)
+        if sensor_id in self._radar_ids:
+            return self.get_radar_sensor(sensor_id)
+        raise ValueError(f'Unknown sensor {sensor_id}')
+
+    @cache
+    def get_camera_sensor(self, camera_id) -> CameraSensor:
+        ''' Provides access to a specific camera sensor given it's sensor-id '''
+        return CameraSensor(camera_id, CAMERAS_BASE_GROUP, self._shard_files)
 
     def get_camera_ids(self) -> list[str]:
         ''' Returns all camera sensor ids '''
-        return self._camera_ids
+        return list(self._camera_ids)
+
+    @cache
+    def get_lidar_sensor(self, lidar_id) -> LidarSensor:
+        ''' Provides access to a specific lidar sensor given it's sensor-id '''
+        return LidarSensor(lidar_id, LIDARS_BASE_GROUP, self._shard_files)
 
     def get_lidar_ids(self) -> list[str]:
         ''' Returns all lidar sensor ids '''
-        return self._lidar_ids
+        return list(self._lidar_ids)
+
+    @cache
+    def get_radar_sensor(self, radar_id) -> RadarSensor:
+        ''' Provides access to a specific radar sensor given it's sensor-id '''
+        return RadarSensor(radar_id, RADARS_BASE_GROUP, self._shard_files)
 
     def get_radar_ids(self) -> list[str]:
         ''' Returns all radar sensor ids '''
-        return self._radar_ids
+        return list(self._radar_ids)
