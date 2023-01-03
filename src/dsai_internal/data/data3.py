@@ -5,18 +5,24 @@ from __future__ import annotations
 import io
 import json
 import re
-import zipfile
+import lzma
+import tarfile
+import logging
 
 from types import SimpleNamespace
 from pathlib import Path
+from dataclasses import dataclass, field
 from functools import lru_cache, cache
-from typing import NamedTuple, Optional, Union
+from typing import BinaryIO, Iterator, Literal, NamedTuple, Optional, Union
+from threading import RLock
 
 import numpy as np
 import zarr
 import numcodecs
+import dataclasses_json
 import PIL.Image as PILImage
 
+import src.dsai_internal.common.common as common
 import src.dsai_internal.common.transformations as transformations
 
 from . import types, util
@@ -26,6 +32,159 @@ CAMERAS_BASE_GROUP = 'cameras'
 LIDARS_BASE_GROUP = 'lidars'
 RADARS_BASE_GROUP = 'radars'
 
+
+class IndexedTarStore(zarr._storage.store.Store):
+    """ A zarr store over *indexed* tar files
+    
+    Parameters
+    ----------
+    tar_path : string
+        Location of the tar file (needs to end with '.tar').
+        A corresponding index table file will be stored at the same path with a '.taridx.xz' suffix.
+    mode : string, optional
+        One of 'r' to read an existing file, or 'w' to truncate and write a new
+        file.
+
+    After modifying a IndexedTarStore, the ``close()`` method must be called, otherwise
+    essential data will not be written to the underlying files. The IndexedTarStore
+    class also supports the context manager protocol, which ensures the ``close()``
+    method is called on leaving the context, e.g.::
+
+        >>> with IndexedTarStore('data/array.tar', mode='w') as store:
+        ...     z = zarr.zeros((10, 10), chunks=(5, 5), store=store)
+        ...     z[...] = 42
+        ...     # no need to call store.close()
+    
+    """
+
+    _erasable = False
+
+    @dataclass
+    class TarRecord(dataclasses_json.DataClassJsonMixin):
+        """ A file record within a tar file """
+
+        offset_data: int
+        size: int
+
+    @dataclass
+    class TarRecordIndex(dataclasses_json.DataClassJsonMixin):
+        """ All file records within a tar file """
+
+        records: dict[str, IndexedTarStore.TarRecord] = field(default_factory=dict)
+
+    def __init__(self, tar_path: Union[str, Path], mode: Literal['r', 'w'] = 'r'):
+
+        assert mode in ['r', 'w']
+
+        # store properties
+        self.tar_path = Path(tar_path).absolute()
+        assert self.tar_path.suffix == '.tar', f"{tar_path} is not a '.tar' file path"
+
+        self.index_path = self.tar_path.with_suffix('.taridx.xz')
+        
+        self.mode = mode
+
+        # Current understanding is that tarfile module in stdlib is not thread-safe,
+        # and so locking is required for both read and write. However, this has not
+        # been investigated in detail, perhaps no lock is needed if mode='r'.
+        self.mutex = RLock()
+
+        # open tar file and file object
+        if self.mode == 'w':
+            # require file to be both writeable and readable
+            self.tar_file = tarfile.TarFile(fileobj=open(self.tar_path, 'wb+'), mode=self.mode)
+        else:
+            self.tar_file = tarfile.TarFile(fileobj=open(self.tar_path, 'rb'), mode=self.mode)
+        self.tar_file_object: BinaryIO = self.tar_file.fileobj # type: ignore
+
+        # init / load index table
+        if mode == 'r':
+            # load table (SOA)
+            with lzma.open(self.index_path, 'rt') as f:
+                table = json.load(f)
+                items = table['items']
+                offset_datas = table['offset_datas']
+                sizes = table['sizes']
+
+            # create record map
+            self.file_index = self.TarRecordIndex(
+                {item: self.TarRecord(offset_datas[i], sizes[i])
+                 for i, item in enumerate(items)})
+
+            del (table, items, offset_datas, sizes)
+        else:
+            self.file_index = self.TarRecordIndex()
+
+    def __delitem__(self, _: str):
+        raise NotImplementedError('Deleting items is not supported')
+
+    def __iter__(self) -> Iterator[str]:
+        with self.mutex:
+            return iter(self.file_index.records.keys())
+
+    def __len__(self) -> int:
+        with self.mutex:
+            return len(self.file_index.records)
+
+    def __getitem__(self, item: str) -> bytes:
+
+        record = self.file_index.records[item]  # raises KeyError if not in archive
+
+        # Remember current tar file position
+        current_position = self.tar_file_object.tell()
+
+        # Read the value
+        self.tar_file_object.seek(record.offset_data)
+        value = self.tar_file_object.read(record.size)
+
+        # Return tar file to previous location
+        self.tar_file_object.seek(current_position)
+
+        return value
+
+    def __setitem__(self, item: str, value):
+
+        if self.mode != 'w':
+            raise zarr.errors.ReadOnlyError
+
+        with self.mutex:
+            if item in self.file_index.records:
+                raise ValueError(f'{item} already exists, update is not supported')
+
+            value_bytes: bytes = numcodecs.compat.ensure_bytes(value)
+
+            record = self.TarRecord(
+                # Start of data in tar file (current tar file position + header-size)
+                self.tar_file_object.tell() + tarfile.BLOCKSIZE,
+                # Length of the data
+                len(value_bytes))
+
+            tarinfo = tarfile.TarInfo(item)
+            tarinfo.size = record.size
+
+            self.tar_file.addfile(tarinfo, fileobj=io.BytesIO(value_bytes))
+
+            self.file_index.records[item] = record
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()
+
+    def close(self):
+        """ Needs to be called after finishing updating the store """
+        with self.mutex:
+            self.tar_file.close()
+            self.tar_file_object.close()
+
+            if self.mode == 'w':
+                # Store index table as SOA (sorted by offset)
+                table = [(item, record.offset_data, record.size) for (item, record) in self.file_index.records.items()]
+                items, offset_datas, sizes = list(zip(*sorted(table, key=lambda data: data[1])))
+
+                with lzma.open(self.index_path, 'wt') as f:
+                    json.dump({'items': items, 'offset_datas': offset_datas, 'sizes': sizes}, f)
 
 class ContainerDataWriter:
     ''' DataWriter implementing format-specific serialization specifications to store V3 / zarr data generated by data-converters '''
@@ -58,9 +217,9 @@ class ContainerDataWriter:
         self.shard_id = shard_id
         self.shard_count = shard_count
 
-        # Initialize container file (uncompressed zip file)
+        # Initialize container file (indexed tar file)
         self.output_dir_path.mkdir(parents=True, exist_ok=True)
-        self.container_store = zarr.ZipStore(self.output_dir_path / f'{self.container_name}.zzarr', mode='w', compression=zipfile.ZIP_STORED, allowZip64=True)
+        self.container_store = IndexedTarStore(self.output_dir_path / f'{self.container_name}.zarr.tar', mode='w')
         self.container_root = zarr.group(store=self.container_store)
 
         # Store dataset associated meta-data
@@ -521,7 +680,7 @@ class ShardDataLoader:
     ''' ShardDataLoader providing convenience methods to load data generated by data-converters '''
 
     @staticmethod
-    def evaluate_shard_file_pattern(pattern: str) -> list[Path]:
+    def evaluate_shard_file_pattern(pattern: str, skip_suffixes : list[str]=['.taridx.xz']) -> list[Path]:
         ''' Given a shard-file-pattern returns a list of matching and existing files
 
         Supported patterns (mutually exclusive):
@@ -548,18 +707,33 @@ class ShardDataLoader:
         for evaluated_pattern in evaluated_name_patterns:
             for candidate in pattern_basepath.iterdir():
                 if candidate.name.startswith(evaluated_pattern):
-                    matches.add(candidate)
+                    skip = False
+                    for skip_suffix in skip_suffixes:
+                        if str(candidate).endswith(skip_suffix):
+                            skip = True
+                            break
+                    if not skip:
+                        matches.add(candidate)
 
         return list(matches)
 
-
-    def __init__(self, shard_files: Union[list[Path], list[str]]):
+    def __init__(self, shard_files: Union[list[Path], list[str]], open_consolidated: bool = True):
         assert len(shard_files), "No shard inputs provided"
 
         # Load shards and check for sequence consistency and continuity of shards
         shards_root_map: dict[int, zarr.Group] = {}
         for f in shard_files:
-            shard_root = zarr.group(store=zarr.ZipStore(f, mode='r'))
+            
+            logging.info(f'ShardDataLoader: Loading shard file {f}')
+
+            timer = common.SimpleTimer()
+            store = IndexedTarStore(f, mode='r')
+            if open_consolidated:
+                shard_root = zarr.open_consolidated(store=store, mode='r')
+            else:
+                shard_root = zarr.open(store=store, mode='r')
+
+            logging.info(f'ShardDataLoader: time_load={timer.elapsed_sec(restart = True)}sec | open_consolidated={open_consolidated}')
 
             shard_sequence_id = shard_root.attrs.get('sequence_id')
             shard_camera_ids = set(shard_root.attrs.get('camera_ids'))
