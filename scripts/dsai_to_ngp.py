@@ -69,7 +69,7 @@ RS_DIR_TO_NGP = {
     "camera_ids",
     multiple=True,
     type=str,
-    help="Cameras to be used (multiple value option, all if not specified)",
+    help="Cameras to be used (multiple value option, front wide camera if not specified)",
     default=["camera_front_wide_120fov"],
 )
 @click.option(
@@ -156,6 +156,12 @@ def dsai_to_ngp(
                     "ftheta_p4": float(bw_poly[4]),
                     # Note: we are already outputting this higher-order coefficient although NGP might not use it yet
                     "ftheta_p5": float(bw_poly[5]),
+                    "ftheta_f0": float(fw_poly[0]),
+                    "ftheta_f1": float(fw_poly[1]),
+                    "ftheta_f2": float(fw_poly[2]),
+                    "ftheta_f3": float(fw_poly[3]),
+                    "ftheta_f4": float(fw_poly[4]),
+                    "ftheta_f5": float(fw_poly[5]),
                     "rolling_shutter": rolling_shutter.tolist(),
                     "camera_angle_x": fov_angle_x,
                 }
