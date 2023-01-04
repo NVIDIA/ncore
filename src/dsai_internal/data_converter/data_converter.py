@@ -10,11 +10,6 @@ from typing import Optional
 
 import numpy as np
 
-# Initialize basic top-level logger configuration
-logging.basicConfig(level=logging.DEBUG,
-                    format='<%(asctime)s|%(levelname)s|%(filename)s:%(lineno)d|%(name)s> %(message)s')
-
-
 class DataConverter(ABC):
     '''
     Base preprocessing class used to preprocess AV datasets in a canonical representation (V2) as used in the Nvidia DriveSim-AI project.
