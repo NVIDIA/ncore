@@ -10,6 +10,7 @@ import lzma
 import tarfile
 import logging
 import struct
+import concurrent.futures
 
 from types import SimpleNamespace
 from pathlib import Path
@@ -566,18 +567,24 @@ class Sensor:
 
         self._shard_roots = shard_roots
 
-        # Load all shard meta-data
-        shard_sensor_metas = [
-            shard_root[self._sensor_group][self._sensor_id].attrs.asdict()
-            for shard_root in self._shard_roots
-        ]
+        # Load cross-shard sensor information concurrently to hide latencies
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            def thread_load_shard(shard_root):
+                ''' Thread-executed shard data loading '''
 
-        # Construct frame offset map / sensor frame time-range over all shards
-        sensor_frame_timestamps_us = [
-            shard_root[self._sensor_group][self._sensor_id]['frame_timestamps_us'] for shard_root in self._shard_roots
-        ]
+                # Load shard-associated sensor meta-data
+                shard_sensor_meta = shard_root[self._sensor_group][self._sensor_id].attrs.asdict()
 
-        # Offset map [0, len(s0), len(s0+s1), ... , len(s0+..+sN)]
+                # Load shard-associated sensor timestamps
+                shard_sensor_frame_timestamps_us = shard_root[self._sensor_group][self._sensor_id]['frame_timestamps_us'][()]
+               
+                return shard_sensor_meta, shard_sensor_frame_timestamps_us
+
+            # Load in multi-threaded fashion, making sure order is preserved
+            shard_sensor_metas, sensor_frame_timestamps_us = zip(*executor.map(thread_load_shard, self._shard_roots))
+
+        # Construct frame offset map / sensor frame time-range over all shards as
+        # offset map [0, len(s0), len(s0+s1), ... , len(s0+..+sN)]
         self._shard_frame_map = np.hstack([
             0, np.cumsum([len(shard_timestamps_us) for shard_timestamps_us in sensor_frame_timestamps_us])
         ]).astype(np.uint64)
@@ -817,53 +824,73 @@ class ShardDataLoader:
     def __init__(self, shard_files: Union[list[Path], list[str]], open_consolidated: bool = True):
         assert len(shard_files), "No shard inputs provided"
 
-        # Load shards and check for sequence consistency and continuity of shards
+        # Load shards concurrently (to hide latency) and check for sequence consistency and continuity of shards
         shards_root_map: dict[int, zarr.Group] = {}
-        for f in shard_files:
 
-            logging.info(f'ShardDataLoader: Loading shard file {f}')
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            def thread_load_shard(shard_file):
+                ''' Thread-executed shard opening '''
+                logging.info(f'ShardDataLoader: Loading shard file {shard_file}')
 
-            timer = common.SimpleTimer()
-            store = IndexedTarStore(f, mode='r')
-            if open_consolidated:
-                shard_root = zarr.open_consolidated(store=store, mode='r')
-            else:
-                shard_root = zarr.open(store=store, mode='r')
+                timer = common.SimpleTimer()
+                store = IndexedTarStore(shard_file, mode='r')
+                if open_consolidated:
+                    shard_root = zarr.open_consolidated(store=store, mode='r')
+                else:
+                    shard_root = zarr.open(store=store, mode='r')
 
-            logging.debug(f'ShardDataLoader: time_load={timer.elapsed_sec(restart = True)}sec | open_consolidated={open_consolidated}')
+                logging.debug(
+                    f'ShardDataLoader: {shard_file} time_load={timer.elapsed_sec()}sec | open_consolidated={open_consolidated}'
+                )
 
-            shard_sequence_id = shard_root.attrs.get('sequence_id')
-            shard_camera_ids = set(shard_root.attrs.get('camera_ids'))
-            shard_lidar_ids = set(shard_root.attrs.get('lidar_ids'))
-            shard_radar_ids = set(shard_root.attrs.get('radar_ids'))
-            shard_shard_id = shard_root.attrs.get('shard_id')
-            shard_shard_count = shard_root.attrs.get('shard_count')
-            shard_shard_version = shard_root.attrs.get('version')
+                return shard_root
 
-            if not shards_root_map:
-                self._sequence_id: str = shard_sequence_id
-                self._camera_ids: set[str] = shard_camera_ids
-                self._lidar_ids: set[str] = shard_lidar_ids
-                self._radar_ids: set[str] = shard_radar_ids
-                self._shard_count: int = shard_shard_count
-                self._shard_version: str = shard_shard_version
+            for future in concurrent.futures.as_completed(
+                [executor.submit(thread_load_shard, shard_file) for shard_file in shard_files]):
+                # Note: thread completion order is not relevant here
+                shard_root = future.result()
+                
+                shard_sequence_id = shard_root.attrs.get('sequence_id')
+                shard_camera_ids = set(shard_root.attrs.get('camera_ids'))
+                shard_lidar_ids = set(shard_root.attrs.get('lidar_ids'))
+                shard_radar_ids = set(shard_root.attrs.get('radar_ids'))
+                shard_shard_id = shard_root.attrs.get('shard_id')
+                shard_shard_count = shard_root.attrs.get('shard_count')
+                shard_shard_version = shard_root.attrs.get('version')
 
-            assert self._sequence_id == shard_sequence_id, "Can't load shards from different sequences"
-            assert self._camera_ids == shard_camera_ids, "Can't load shards with different camera sensors"
-            assert self._lidar_ids == shard_lidar_ids, "Can't load shards with different lidar sensors"
-            assert self._radar_ids == shard_radar_ids, "Can't load shards with different radar sensors"
-            assert self._shard_count == shard_shard_count, "Can't load shards from different subdivisions"
-            assert self._shard_version == shard_shard_version, "Can't load shards from different data versions"
+                if not shards_root_map:
+                    self._sequence_id: str = shard_sequence_id
+                    self._camera_ids: set[str] = shard_camera_ids
+                    self._lidar_ids: set[str] = shard_lidar_ids
+                    self._radar_ids: set[str] = shard_radar_ids
+                    self._shard_count: int = shard_shard_count
+                    self._shard_version: str = shard_shard_version
 
-            assert shard_shard_id not in shards_root_map, "Shard ID loaded multiple times"
-            shards_root_map[shard_shard_id] = shard_root
+                if not self._sequence_id == shard_sequence_id:
+                    raise ValueError("Can't load shards from different sequences")
+                if not self._camera_ids == shard_camera_ids:
+                    raise ValueError("Can't load shards with different camera sensors")
+                if not self._lidar_ids == shard_lidar_ids:
+                    raise ValueError("Can't load shards with different lidar sensors")
+                if not self._radar_ids == shard_radar_ids:
+                    raise ValueError("Can't load shards with different radar sensors")
+                if not self._shard_count == shard_shard_count:
+                    raise ValueError("Can't load shards from different subdivisions")
+                if not self._shard_version == shard_shard_version:
+                    raise ValueError("Can't load shards from different data versions")
+
+                if shard_shard_id in shards_root_map: raise ValueError("Shard ID loaded multiple times")
+                
+                shards_root_map[shard_shard_id] = shard_root
 
         # Check version-compatibility
-        assert self._shard_version == VERSION, 'loading incompatible version'  # TODO: this check can still be refined
+        if self._shard_version != VERSION:
+            raise ValueError(f'Loading incompatible version {self._shard_version}, supporting {VERSION} only') # TODO: this check can still be refined
 
         # Make sure shard IDs are continous
         self._shard_ids = sorted(list(shards_root_map.keys()))
-        assert self._shard_ids[-1] - self._shard_ids[0] + 1 == len(self._shard_ids), f"Non-continous sequence of shards: {self._shard_ids}"
+        if self._shard_ids[-1] - self._shard_ids[0] + 1 != len(self._shard_ids):
+            raise ValueError(f"Loading non-continous sequence of shards: {self._shard_ids}")
 
         # *Linear* sequence of shard files
         self._shard_files = [shards_root_map[shard_id] for shard_id in self._shard_ids]
