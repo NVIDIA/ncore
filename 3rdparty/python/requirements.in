@@ -12,7 +12,6 @@ pandas
 pyarrow
 point-cloud-utils
 click
-debugpy
 pytest
 open3d
 tensorflow~=2.8.2 # required by open3d.ml.tf

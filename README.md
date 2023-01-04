@@ -89,13 +89,15 @@ In this command, `run` is the bazel command to run (other common alternatives ar
 
 ## Example of debugging a python target
 
-Python targets are executed within a sandbox and scripts can't be executed directly. To facilitate debugging of scripts `debugpy`-based remote debugging can be used. To enable a `debugpy` server, use the `--debug-wait-for-client` CLI argument for supported targets, e.g., 
+Python targets are executed within a sandbox and scripts can't be executed directly. To facilitate debugging of scripts `debugpy`-based remote debugging can be used. To enable a `debugpy` server, use bazel's `--run_under` CLI argument for supported targets, e.g.,
 
 ```
-bazel run //scripts:convert_raw_data -- \
-  ... \
-  --debug-wait-for-client \
+bazel run //scripts:convert_raw_data \
+  --run_under="python -m debugpy --listen 0.0.0.0:5678 --wait-for-client"
+  -- \
   ...
 ```
+
+The `debugpy` module needs to be available for the local host's `python` interpreter (it can be installed, e.g., with `pip install debugpy --user`).
 
 A remote debugger client can then be attached to this process. For instance, in vs-code, create a new `Python: Remote Attach` run configuration (usually using `localhost:5678` as the server to connect to).

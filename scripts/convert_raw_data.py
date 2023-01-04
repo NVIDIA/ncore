@@ -1,19 +1,15 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 import click
-import debugpy
 import logging
 
 from src.dsai_internal.common.common import Config
 
-logger = logging.getLogger(__name__)
 
 @click.group()
 @click.option('--root-dir', type=str, help="Path to the raw data sequences", required=True)
 @click.option('--output-dir', type=str, help="Path where the converted data will be saved", required=True)
-@click.option("--debug", is_flag=True, default=False, help="Enables a debugpy client to connect to the port specified by --debug-port")
-@click.option("--debug-wait-for-client", is_flag=True, default=False, help="Enables a debugpy client to connect to the port specified by --debug-port and waits for a client to connect on start-up")
-@click.option("--debug-port", default=5678, type=int, help="Configure the TCP port to use for debugging")
+@click.option("--debug", is_flag=True, default=False, help="Enables debug logging outputs")
 @click.version_option('0.1')
 @click.pass_context
 def cli(ctx, *_, **kwargs):
@@ -34,18 +30,10 @@ def cli(ctx, *_, **kwargs):
     # @click.pass_context decorator.
     ctx.obj = Config(kwargs)
 
-    # Conditionally enable debugging
-    if ctx.obj.debug or ctx.obj.debug_wait_for_client:
-        # Note: enabling debug impacts the performance of system calls and Python code execution.
-        logger.info("Listening for incoming debug connection on port {}".format(
-            ctx.obj.debug_port))
-        debugpy.listen(("0.0.0.0", ctx.obj.debug_port))
+    # Initialize basic top-level logger configuration
+    logging.basicConfig(level=logging.DEBUG if ctx.obj.debug else logging.INFO,
+                        format='<%(asctime)s|%(levelname)s|%(filename)s:%(lineno)d|%(name)s> %(message)s')
 
-        if ctx.obj.debug_wait_for_client:
-            logger.info("Waiting for incoming debug connection on port {}".format(
-                ctx.obj.debug_port))
-            # Block until a client connects
-            debugpy.wait_for_client()
 
 @cli.command()
 @click.option('--seek-sec', type=click.FloatRange(min=0.0, max_open=True), help="Time to skip for the dataset conversion (in seconds)")
