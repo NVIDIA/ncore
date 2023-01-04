@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import io
+import os
 import json
 import re
 import lzma
 import tarfile
 import logging
+import struct
 
 from types import SimpleNamespace
 from pathlib import Path
@@ -15,6 +17,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache, cache
 from typing import BinaryIO, Iterator, Literal, NamedTuple, Optional, Union
 from threading import RLock
+from enum import IntEnum, auto, unique
 
 import numpy as np
 import zarr
@@ -38,9 +41,8 @@ class IndexedTarStore(zarr._storage.store.Store):
     
     Parameters
     ----------
-    tar_path : string
-        Location of the tar file (needs to end with '.tar').
-        A corresponding index table file will be stored at the same path with a '.taridx.xz' suffix.
+    itar_path : string
+        Location of the tar file (needs to end with '.itar').
     mode : string, optional
         One of 'r' to read an existing file, or 'w' to truncate and write a new
         file.
@@ -50,7 +52,7 @@ class IndexedTarStore(zarr._storage.store.Store):
     class also supports the context manager protocol, which ensures the ``close()``
     method is called on leaving the context, e.g.::
 
-        >>> with IndexedTarStore('data/array.tar', mode='w') as store:
+        >>> with IndexedTarStore('data/array.itar', mode='w') as store:
         ...     z = zarr.zeros((10, 10), chunks=(5, 5), store=store)
         ...     z[...] = 42
         ...     # no need to call store.close()
@@ -72,16 +74,15 @@ class IndexedTarStore(zarr._storage.store.Store):
 
         records: dict[str, IndexedTarStore.TarRecord] = field(default_factory=dict)
 
-    def __init__(self, tar_path: Union[str, Path], mode: Literal['r', 'w'] = 'r'):
+    def __init__(self, itar_path: Union[str, Path], mode: Literal['r', 'w'] = 'r'):
 
-        assert mode in ['r', 'w']
+        if mode not in ['r', 'w']:
+            raise ValueError('TarRecordIndex: only r/w modes supported')
 
         # store properties
-        self.tar_path = Path(tar_path).absolute()
-        assert self.tar_path.suffix == '.tar', f"{tar_path} is not a '.tar' file path"
+        itar_path = Path(itar_path).absolute()
+        assert itar_path.suffix == '.itar', f"{itar_path} is not a '.itar' file path"
 
-        self.index_path = self.tar_path.with_suffix('.taridx.xz')
-        
         self.mode = mode
 
         # Current understanding is that tarfile module in stdlib is not thread-safe,
@@ -92,43 +93,31 @@ class IndexedTarStore(zarr._storage.store.Store):
         # open tar file and file object
         if self.mode == 'w':
             # require file to be both writeable and readable
-            self.tar_file = tarfile.TarFile(fileobj=open(self.tar_path, 'wb+'), mode=self.mode)
+            self.tar_file = tarfile.TarFile(fileobj=open(itar_path, 'wb+'), mode=self.mode)
         else:
-            self.tar_file = tarfile.TarFile(fileobj=open(self.tar_path, 'rb'), mode=self.mode)
-        self.tar_file_object: BinaryIO = self.tar_file.fileobj # type: ignore
+            self.tar_file = tarfile.TarFile(fileobj=open(itar_path, 'rb'), mode=self.mode, ignore_zeros=False)
+        self.tar_file_object: BinaryIO = self.tar_file.fileobj  # type: ignore
 
         # init / load index table
         if mode == 'r':
-            # load table (SOA)
-            with lzma.open(self.index_path, 'rt') as f:
-                table = json.load(f)
-                items = table['items']
-                offset_datas = table['offset_datas']
-                sizes = table['sizes']
-
-            # create record map
-            self.file_index = self.TarRecordIndex(
-                {item: self.TarRecord(offset_datas[i], sizes[i])
-                 for i, item in enumerate(items)})
-
-            del (table, items, offset_datas, sizes)
+            self.index = self._load_tar_index(self.tar_file_object)
         else:
-            self.file_index = self.TarRecordIndex()
+            self.index = self.TarRecordIndex()
 
     def __delitem__(self, _: str):
         raise NotImplementedError('Deleting items is not supported')
 
     def __iter__(self) -> Iterator[str]:
         with self.mutex:
-            return iter(self.file_index.records.keys())
+            return iter(self.index.records.keys())
 
     def __len__(self) -> int:
         with self.mutex:
-            return len(self.file_index.records)
+            return len(self.index.records)
 
     def __getitem__(self, item: str) -> bytes:
-
-        record = self.file_index.records[item]  # raises KeyError if not in archive
+        # Query index for file record
+        record = self.index.records[item]  # raises KeyError if not in archive
 
         # Remember current tar file position
         current_position = self.tar_file_object.tell()
@@ -143,12 +132,11 @@ class IndexedTarStore(zarr._storage.store.Store):
         return value
 
     def __setitem__(self, item: str, value):
-
         if self.mode != 'w':
             raise zarr.errors.ReadOnlyError
 
         with self.mutex:
-            if item in self.file_index.records:
+            if item in self.index.records:
                 raise ValueError(f'{item} already exists, update is not supported')
 
             value_bytes: bytes = numcodecs.compat.ensure_bytes(value)
@@ -164,7 +152,7 @@ class IndexedTarStore(zarr._storage.store.Store):
 
             self.tar_file.addfile(tarinfo, fileobj=io.BytesIO(value_bytes))
 
-            self.file_index.records[item] = record
+            self.index.records[item] = record
 
     def __enter__(self):
         return self
@@ -175,16 +163,125 @@ class IndexedTarStore(zarr._storage.store.Store):
     def close(self):
         """ Needs to be called after finishing updating the store """
         with self.mutex:
-            self.tar_file.close()
-            self.tar_file_object.close()
+            self.tar_file.close()  # appends two finishing blocks to the end of the file if in write mode, but doesn't close it yet
 
             if self.mode == 'w':
-                # Store index table as SOA (sorted by offset)
-                table = [(item, record.offset_data, record.size) for (item, record) in self.file_index.records.items()]
-                items, offset_datas, sizes = list(zip(*sorted(table, key=lambda data: data[1])))
+                # Add index if writing
+                self._save_tar_index(self.tar_file_object, self.index)
 
-                with lzma.open(self.index_path, 'wt') as f:
-                    json.dump({'items': items, 'offset_datas': offset_datas, 'sizes': sizes}, f)
+            self.tar_file_object.close()
+
+    # Methods / constants for storing index header and payload
+    INDEX_HEADER_MAGIC = b"itar"
+
+    # Index header binary format
+    #
+    # <little-endian
+    # IndexMagic  - 4s - 4xchar             - 4bytes
+    # IndexType   - I  - unsigned int       - 4bytes
+    # IndexOffset - Q  - unsigned long long - 8bytes
+    # IndexSize   - I  - unsigned int       - 4bytes
+    INDEX_HEADER_FORMAT = '<4sIQI'
+
+    class IndexHeader(NamedTuple):
+        ''' A decoded index header '''
+        magic: bytes
+        type: int
+        offset: int
+        size: int
+
+    @unique
+    class IndexType(IntEnum):
+        ''' Enumerates different possible index storage types '''
+        JSON_LZMA_V1 = auto()
+
+    @classmethod
+    def _load_tar_index(cls, tar_file_object: BinaryIO) -> TarRecordIndex:
+        ''' Loads a tar record index from the end of a tar file object '''
+
+        # Load header
+        original_file_position = tar_file_object.tell()
+        tar_file_object.seek(-tarfile.BLOCKSIZE, os.SEEK_END)
+        header_binary = tar_file_object.read(struct.calcsize(cls.INDEX_HEADER_FORMAT))
+
+        # Decode header
+        header = cls.IndexHeader._make(struct.unpack(cls.INDEX_HEADER_FORMAT, header_binary))
+
+        # Check magic bytes
+        if header.magic != cls.INDEX_HEADER_MAGIC:
+            raise ValueError('IndexedTarStore: invalid index header, can\'t load indexed tar file')
+
+        # Load index based on type
+        tar_file_object.seek(header.offset)
+        header_binary = tar_file_object.read(header.size)
+        tar_file_object.seek(original_file_position)
+
+        match header.type:
+            case cls.IndexType.JSON_LZMA_V1.value:
+                logging.debug(f'IndexedTarStore: lzma-compressed index load size={len(header_binary)}')
+
+                # load table (SOA)
+                with lzma.open(io.BytesIO(header_binary), 'rb') as f:
+                    table = json.load(f)
+                    items = table['items']
+                    offset_datas = table['offset_datas']
+                    sizes = table['sizes']
+            case _:
+                raise TypeError(f"IndexedTarStore: unsupported header type {header.type}")
+
+        # Construct record index
+        return cls.TarRecordIndex({item: cls.TarRecord(offset_datas[i], sizes[i]) for i, item in enumerate(items)})
+
+    @classmethod
+    def _save_tar_index(cls, tar_file_object: BinaryIO, index: TarRecordIndex):
+        ''' Saves a tar record index at the end of a tar file object (needs to be finalized / have two empty blocks appended already) '''
+        def fill_block():
+            # Fill up block with zeros
+            _, remainder = divmod(tar_file_object.tell(), tarfile.BLOCKSIZE)
+            if remainder > 0:
+                tar_file_object.write(tarfile.NUL * (tarfile.BLOCKSIZE - remainder))
+
+            assert tar_file_object.tell() % tarfile.BLOCKSIZE == 0, "Tar file not at block boundary"
+
+        # Remember where we are storing the index
+        index_offset = tar_file_object.tell()
+
+        assert index_offset % tarfile.BLOCKSIZE == 0, "Tar file not at block boundary"
+
+        # Reformat index table as SOA (sorted by offset)
+        table = [(item, record.offset_data, record.size) for (item, record) in index.records.items()]
+        items, offset_datas, sizes = list(zip(*sorted(table, key=lambda data: data[1])))
+
+        # Append compressed table to tar file
+        with io.BytesIO() as index_buffer:
+            # Compress table to in-memory buffer
+            with lzma.open(index_buffer, 'wt') as lzma_buffer:
+                json.dump({'items': items, 'offset_datas': offset_datas, 'sizes': sizes}, lzma_buffer)   # type: ignore
+
+            index_binary = index_buffer.getvalue()
+            index_size = len(index_binary)
+
+            logging.debug(f'IndexedTarStore lzma-compressed index store size={index_size}')
+
+            # Append buffer to tar file
+            tar_file_object.write(index_binary)
+
+            fill_block()
+
+        # Create index header block
+        assert struct.calcsize(cls.INDEX_HEADER_FORMAT) <= tarfile.BLOCKSIZE, "Index header larger than single block size"
+        header_binary = struct.pack(cls.INDEX_HEADER_FORMAT,
+                                    cls.INDEX_HEADER_MAGIC,
+                                    cls.IndexType.JSON_LZMA_V1.value,
+                                    index_offset,
+                                    index_size)
+        header_size = len(header_binary)
+        logging.debug(f'IndexedTarStore: header store size={header_size}')
+
+        # Append index header to tar file
+        tar_file_object.write(header_binary)
+        fill_block()
+
 
 class ContainerDataWriter:
     ''' DataWriter implementing format-specific serialization specifications to store V3 / zarr data generated by data-converters '''
@@ -219,7 +316,7 @@ class ContainerDataWriter:
 
         # Initialize container file (indexed tar file)
         self.output_dir_path.mkdir(parents=True, exist_ok=True)
-        self.container_store = IndexedTarStore(self.output_dir_path / f'{self.container_name}.zarr.tar', mode='w')
+        self.container_store = IndexedTarStore(self.output_dir_path / f'{self.container_name}.zarr.itar', mode='w')
         self.container_root = zarr.group(store=self.container_store)
 
         # Store dataset associated meta-data
@@ -680,7 +777,7 @@ class ShardDataLoader:
     ''' ShardDataLoader providing convenience methods to load data generated by data-converters '''
 
     @staticmethod
-    def evaluate_shard_file_pattern(pattern: str, skip_suffixes : list[str]=['.taridx.xz']) -> list[Path]:
+    def evaluate_shard_file_pattern(pattern: str, skip_suffixes : list[str]=[]) -> list[Path]:
         ''' Given a shard-file-pattern returns a list of matching and existing files
 
         Supported patterns (mutually exclusive):
@@ -723,7 +820,7 @@ class ShardDataLoader:
         # Load shards and check for sequence consistency and continuity of shards
         shards_root_map: dict[int, zarr.Group] = {}
         for f in shard_files:
-            
+
             logging.info(f'ShardDataLoader: Loading shard file {f}')
 
             timer = common.SimpleTimer()
@@ -733,7 +830,7 @@ class ShardDataLoader:
             else:
                 shard_root = zarr.open(store=store, mode='r')
 
-            logging.info(f'ShardDataLoader: time_load={timer.elapsed_sec(restart = True)}sec | open_consolidated={open_consolidated}')
+            logging.debug(f'ShardDataLoader: time_load={timer.elapsed_sec(restart = True)}sec | open_consolidated={open_consolidated}')
 
             shard_sequence_id = shard_root.attrs.get('sequence_id')
             shard_camera_ids = set(shard_root.attrs.get('camera_ids'))
