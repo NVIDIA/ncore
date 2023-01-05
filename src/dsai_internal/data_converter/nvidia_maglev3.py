@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import json
-import os
+import tempfile
 
 from pathlib import Path
 from typing import Optional
@@ -319,11 +319,13 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             # Store all static sensor data
             self.data_writer.store_lidar_meta(lidar_id, local_frame_timestamps_us, T_sensor_rig)
 
+            # Load tar file containing frames
+            tar_file = open(self.sequence_path / 'lidars' / lidar_rig_name / 'frames.tar', 'rb')
+            tar_index = json.load(open(self.sequence_path / 'lidars' / lidar_rig_name / 'frames.tar.idx.json', 'r'))
+
             ## Process all valid point clouds
             for continous_local_frame_index, (frame_number, frame_end_timestamp_us) in \
                 tqdm.tqdm(enumerate(zip(local_frame_numbers, local_frame_timestamps_us)), total=num_local_frames):
-
-                source_pc_path = os.path.join(self.sequence_path, 'lidars', lidar_rig_name, str(frame_number) + '.ply')
 
                 # Interpolate egomotion at frame end timestamp for sensor reference pose at end-of-spin time
                 T_sensor_world = pose_interpolator.interpolate_to_timestamps(frame_end_timestamp_us)[0] @ T_sensor_rig
@@ -333,7 +335,17 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 timer = SimpleTimer()
 
                 # Load point cloud (already motion-compensated)
-                mesh = pcu.load_triangle_mesh(source_pc_path)
+
+                # Load ply file data from archive
+                file_record = tar_index[f'./{str(frame_number)}.ply']
+                tar_file.seek(file_record['offset_data'])
+                ply_binary_data = tar_file.read(file_record['size'])
+
+                # Need a temporary file-system file as PCU can't load from memory
+                with tempfile.NamedTemporaryFile(suffix='.ply') as ply:
+                    ply.write(ply_binary_data)
+                    mesh = pcu.load_triangle_mesh(ply.name)
+                
                 time_load = timer.elapsed_sec(restart = True)
 
                 # Remove all points with *duplicate* coordinates (these seem to be present in the input already)
