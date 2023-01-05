@@ -101,7 +101,7 @@ class ContainerDataWriter:
     def finalize(self) -> None:
 
         # Make sure the shard file is consolidated
-        zarr.consolidate_metadata(self.container_store)
+        stores.consolidate_compressed_metadata(self.container_store)
 
         # Finish writing all files
         self.container_store.close()
@@ -556,7 +556,7 @@ class ShardDataLoader:
 
         return list(matches)
 
-    def __init__(self, shard_files: Union[list[Path], list[str]], open_consolidated: bool = True):
+    def __init__(self, shard_files: Union[list[Path], list[str]]):
         assert len(shard_files), "No shard inputs provided"
 
         # Load shards concurrently (to hide latency) and check for sequence consistency and continuity of shards
@@ -570,13 +570,10 @@ class ShardDataLoader:
 
                 timer = common.SimpleTimer()
                 store = stores.IndexedTarStore(shard_file, mode='r')
-                if open_consolidated:
-                    shard_root = zarr.open_consolidated(store=store, mode='r')
-                else:
-                    shard_root = zarr.open(store=store, mode='r')
+                shard_root = stores.open_compressed_consolidated(store=store, mode='r')
 
                 logging.debug(
-                    f'ShardDataLoader: {shard_file} time_load={timer.elapsed_sec()}sec | open_consolidated={open_consolidated}'
+                    f'ShardDataLoader: {shard_file} time_load={timer.elapsed_sec()}sec'
                 )
 
                 return shard_root

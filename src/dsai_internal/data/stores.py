@@ -206,8 +206,8 @@ class IndexedTarStore(zarr._storage.store.Store):
                 logging.debug(f'IndexedTarStore: lzma-compressed index load size={len(header_binary)}')
 
                 # load table (SOA)
-                with lzma.open(io.BytesIO(header_binary), 'rb') as f:
-                    table = cbor2.load(f)
+                with lzma.open(io.BytesIO(header_binary), 'rb') as lzma_file:
+                    table = cbor2.load(lzma_file)
                     items = table['items']
                     offset_datas = table['offset_datas']
                     sizes = table['sizes']
@@ -240,8 +240,8 @@ class IndexedTarStore(zarr._storage.store.Store):
         # Append compressed table to tar file
         with io.BytesIO() as index_buffer:
             # Compress table to in-memory buffer
-            with lzma.open(index_buffer, 'wb') as lzma_buffer:
-                cbor2.dump({'items': items, 'offset_datas': offset_datas, 'sizes': sizes}, lzma_buffer)  # type: ignore
+            with lzma.open(index_buffer, 'wb') as lzma_file:
+                cbor2.dump({'items': items, 'offset_datas': offset_datas, 'sizes': sizes}, lzma_file)  # type: ignore
 
             index_binary = index_buffer.getvalue()
             index_size = len(index_binary)
@@ -264,3 +264,91 @@ class IndexedTarStore(zarr._storage.store.Store):
         # Append index header to tar file
         tar_file_object.write(header_binary)
         fill_block()
+
+
+def consolidate_compressed_metadata(store: zarr.BaseStore, metadata_key=".zmetadata.cbor.xz"):
+    """ Consolidate all metadata for groups and arrays within the given store
+    into a single compressed cbor resource and put it under the given key.
+
+    See Also
+    --------
+    zarr.consolidate_metadata
+    """
+    store = zarr.storage.normalize_store_arg(store, mode="w")
+
+    version = store._store_version
+
+    if version == 2:
+
+        def is_zarr_key(key):
+            return (key.endswith('.zarray') or key.endswith('.zgroup') or key.endswith('.zattrs'))
+
+    else:
+        raise NotImplementedError("Only supporting V2 stores")
+
+    # Collect all meta-data
+    out = {
+        'zarr_consolidated_format': 1,
+        'metadata': {key: zarr.util.json_loads(store[key])
+                     for key in store if is_zarr_key(key)}
+    }
+
+    with io.BytesIO() as metadata_buffer:
+        # Compress meta-data to in-memory buffer
+        with lzma.open(metadata_buffer, 'wb') as lzma_file:
+            cbor2.dump(out, lzma_file)  # type: ignore
+
+        store[metadata_key] = metadata_buffer.getvalue()
+
+
+class ConsolidatedCompressedMetadataStore(zarr.storage.ConsolidatedMetadataStore):
+    """ A layer over other storage, where the metadata has been consolidated into a single compressed key.
+    """
+
+    # Overwrite constructor to perform decompression of metadata
+    def __init__(self, store: zarr.StoreLike, metadata_key=".zmetadata.cbor.xz"):
+        self.store = zarr._storage.store.Store._ensure_store(store)
+
+        # retrieve consolidated metadata
+        with lzma.open(io.BytesIO(self.store[metadata_key]), 'rb') as lzma_file:
+            meta = cbor2.load(lzma_file)
+
+        # check format of consolidated metadata
+        consolidated_format = meta.get('zarr_consolidated_format', None)
+        if consolidated_format != 1:
+            raise zarr.MetadataError('unsupported zarr consolidated metadata format: %s' % consolidated_format)
+
+        # decode metadata
+        self.meta_store: zarr.Store = zarr.KVStore(meta["metadata"])
+
+
+def open_compressed_consolidated(store: zarr.StoreLike, metadata_key=".zmetadata.cbor.xz", mode="r+", **kwargs):
+    """ Open group using metadata previously consolidated and compressed into a single key.
+
+    See Also
+    --------
+    consolidate_compressed_metadata
+    zarr.open__consolidated
+    """
+
+    # normalize parameters
+    zarr_version = kwargs.get('zarr_version')
+    store = zarr.storage.normalize_store_arg(store,
+                                             storage_options=kwargs.get("storage_options"),
+                                             mode=mode,
+                                             zarr_version=zarr_version)
+    if mode not in {'r', 'r+'}:
+        raise ValueError("invalid mode, expected either 'r' or 'r+'; found {!r}".format(mode))
+
+    path = kwargs.pop('path', None)
+    if store._store_version == 2:
+        ConsolidatedStoreClass = ConsolidatedCompressedMetadataStore
+    else:
+        raise NotImplementedError("Only supporting V2 stores")
+
+    # setup metadata store
+    meta_store = ConsolidatedStoreClass(store, metadata_key=metadata_key)
+
+    # pass through
+    chunk_store = kwargs.pop('chunk_store', None) or store
+    return zarr.convenience.open(store=meta_store, chunk_store=chunk_store, mode=mode, path=path, **kwargs)
