@@ -74,13 +74,13 @@ class IndexedTarStore(zarr._storage.store.Store):
         # been investigated in detail, perhaps no lock is needed if mode='r'.
         self.mutex = RLock()
 
-        # open tar file and file object
-        if self.mode == 'w':
-            # require file to be both writeable and readable
-            self.tar_file = tarfile.TarFile(fileobj=open(itar_path, 'wb+'), mode=self.mode)
-        else:
-            self.tar_file = tarfile.TarFile(fileobj=open(itar_path, 'rb'), mode=self.mode, ignore_zeros=False)
-        self.tar_file_object: BinaryIO = self.tar_file.fileobj  # type: ignore
+        # open file object and tar file
+
+        # require file to be both writeable and readable when writing
+        self.tar_file_object: Union[io.BufferedReader,
+                                    io.BufferedRandom] = open(itar_path, 'wb+') if self.mode == 'w' else open(
+                                        itar_path, 'rb')
+        self.tar_file = tarfile.TarFile(fileobj=self.tar_file_object, mode=self.mode)
 
         # init / load index table
         if mode == 'r':
@@ -241,7 +241,7 @@ class IndexedTarStore(zarr._storage.store.Store):
         with io.BytesIO() as index_buffer:
             # Compress table to in-memory buffer
             with lzma.open(index_buffer, 'wb') as lzma_file:
-                cbor2.dump({'items': items, 'offset_datas': offset_datas, 'sizes': sizes}, lzma_file)  # type: ignore
+                cbor2.dump({'items': items, 'offset_datas': offset_datas, 'sizes': sizes}, lzma_file)
 
             index_binary = index_buffer.getvalue()
             index_size = len(index_binary)
@@ -296,7 +296,7 @@ def consolidate_compressed_metadata(store: zarr.BaseStore, metadata_key=".zmetad
     with io.BytesIO() as metadata_buffer:
         # Compress meta-data to in-memory buffer
         with lzma.open(metadata_buffer, 'wb') as lzma_file:
-            cbor2.dump(out, lzma_file)  # type: ignore
+            cbor2.dump(out, lzma_file)
 
         store[metadata_key] = metadata_buffer.getvalue()
 
