@@ -22,8 +22,8 @@ from enum import IntEnum, auto, unique
 
 import numpy as np
 import zarr
+import cbor2
 import numcodecs
-import dataclasses_json
 import PIL.Image as PILImage
 
 import src.dsai_internal.common.common as common
@@ -63,14 +63,14 @@ class IndexedTarStore(zarr._storage.store.Store):
     _erasable = False
 
     @dataclass
-    class TarRecord(dataclasses_json.DataClassJsonMixin):
+    class TarRecord():
         """ A file record within a tar file """
 
         offset_data: int
         size: int
 
     @dataclass
-    class TarRecordIndex(dataclasses_json.DataClassJsonMixin):
+    class TarRecordIndex():
         """ All file records within a tar file """
 
         records: dict[str, IndexedTarStore.TarRecord] = field(default_factory=dict)
@@ -194,7 +194,7 @@ class IndexedTarStore(zarr._storage.store.Store):
     @unique
     class IndexType(IntEnum):
         ''' Enumerates different possible index storage types '''
-        JSON_LZMA_V1 = auto()
+        CBOR_LZMA_V1 = auto()
 
     @classmethod
     def _load_tar_index(cls, tar_file_object: BinaryIO) -> TarRecordIndex:
@@ -218,12 +218,12 @@ class IndexedTarStore(zarr._storage.store.Store):
         tar_file_object.seek(original_file_position)
 
         match header.type:
-            case cls.IndexType.JSON_LZMA_V1.value:
+            case cls.IndexType.CBOR_LZMA_V1.value:
                 logging.debug(f'IndexedTarStore: lzma-compressed index load size={len(header_binary)}')
 
                 # load table (SOA)
                 with lzma.open(io.BytesIO(header_binary), 'rb') as f:
-                    table = json.load(f)
+                    table = cbor2.load(f)
                     items = table['items']
                     offset_datas = table['offset_datas']
                     sizes = table['sizes']
@@ -256,8 +256,8 @@ class IndexedTarStore(zarr._storage.store.Store):
         # Append compressed table to tar file
         with io.BytesIO() as index_buffer:
             # Compress table to in-memory buffer
-            with lzma.open(index_buffer, 'wt') as lzma_buffer:
-                json.dump({'items': items, 'offset_datas': offset_datas, 'sizes': sizes}, lzma_buffer)   # type: ignore
+            with lzma.open(index_buffer, 'wb') as lzma_buffer:
+                cbor2.dump({'items': items, 'offset_datas': offset_datas, 'sizes': sizes}, lzma_buffer)   # type: ignore
 
             index_binary = index_buffer.getvalue()
             index_size = len(index_binary)
@@ -273,7 +273,7 @@ class IndexedTarStore(zarr._storage.store.Store):
         assert struct.calcsize(cls.INDEX_HEADER_FORMAT) <= tarfile.BLOCKSIZE, "Index header larger than single block size"
         header_binary = struct.pack(cls.INDEX_HEADER_FORMAT,
                                     cls.INDEX_HEADER_MAGIC,
-                                    cls.IndexType.JSON_LZMA_V1.value,
+                                    cls.IndexType.CBOR_LZMA_V1.value,
                                     index_offset,
                                     index_size)
         header_size = len(header_binary)

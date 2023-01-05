@@ -19,6 +19,7 @@ py_library(
         "//src/dsai_internal/common:pylib",
         requirement("h5py"),
         requirement("zarr"),
+        requirement("cbor2"),
         requirement("pillow"),
     ],
 )
