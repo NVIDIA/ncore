@@ -377,11 +377,12 @@ class ContainerDataWriter:
         poses_grp.create_dataset('T_rig_world_timestamps_us', data=poses.T_rig_world_timestamps_us)
 
     def store_labels(self, track_labels: dict[str, types.TrackLabel]) -> None:
-        output = {'track_labels': {k: v.to_dict() for (k, v) in track_labels.items()}}
-
         # TODO: add sanity checks on the final label structure before output
-
-        self.container_root.require_group('labels').create_dataset('json', data=json.dumps(output))
+        labels_grp = self.container_root.require_group('labels')
+        labels_grp.create_dataset('track_labels',
+                                  dtype=object,
+                                  data=[(k, v.to_dict()) for (k, v) in track_labels.items()],
+                                  object_codec=numcodecs.JSON())
 
     def store_camera_meta(
             self,
@@ -446,13 +447,12 @@ class ContainerDataWriter:
         continous_frame_index_string = util.padded_index_string(continous_frame_index)
         frame_group = self.container_root[CAMERAS_BASE_GROUP][camera_id].require_group(continous_frame_index_string)
 
-        # Store image data and meta data
+        # Store image data
         frame_group.create_dataset('image', data=np.asarray(image_file_binary_data),
                                    compressor=None).attrs['format'] = image_file_format
-        frame_group.attrs.put({
-            'T_rig_worlds': T_rig_worlds.tolist(),
-            'timestamps_us': timestamps_us.tolist(),
-        })
+        # Store pose data
+        frame_group.create_dataset('T_rig_worlds', data=T_rig_worlds)
+        frame_group.create_dataset('timestamps_us', data=timestamps_us)
 
     def store_lidar_meta(
             self,
@@ -529,12 +529,9 @@ class ContainerDataWriter:
                                    dtype=object,
                                    data=[frame_label.to_dict() for frame_label in frame_labels],
                                    object_codec=numcodecs.JSON())
-
-        # Output frame meta data
-        frame_group.attrs.put({
-            'T_rig_worlds': T_rig_worlds.tolist(),
-            'timestamps_us': timestamps_us.tolist(),
-        })
+        # Store pose data
+        frame_group.create_dataset('T_rig_worlds', data=T_rig_worlds)
+        frame_group.create_dataset('timestamps_us', data=timestamps_us)
 
 
 class Sensor:
@@ -643,18 +640,12 @@ class Sensor:
                 [self._sensor_id][util.padded_index_string(shard_frame.shard_frame_index)]
 
     @lru_cache
-    def _get_frame_meta(self, continous_frame_index: int) -> dict:
-        ''' Returns frame-specific meta data '''
-
-        return self._get_frame_group(continous_frame_index).attrs.asdict()
-
-    @lru_cache
     def get_frame_T_rig_world(self,
                               continous_frame_index: int,
                               frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> np.ndarray:
         ''' Returns start/end rig-to-world pose of specific frame '''
 
-        return np.array(self._get_frame_meta(continous_frame_index)['T_rig_worlds'][frame_timepoint.value])
+        return self._get_frame_group(continous_frame_index)['T_rig_worlds'][frame_timepoint.value]
 
     @lru_cache
     def get_frame_T_world_rig(self,
@@ -682,7 +673,7 @@ class Sensor:
                                frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> int:
         ''' Returns timestamp of specific frame timepoints '''
 
-        return self._get_frame_meta(continous_frame_index)['timestamps_us'][frame_timepoint.value]
+        return self._get_frame_group(continous_frame_index)['timestamps_us'][frame_timepoint.value]
 
     @lru_cache
     def get_closest_frame_index(self, timestamp_us: int) -> int:
