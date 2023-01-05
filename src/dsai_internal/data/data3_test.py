@@ -13,7 +13,7 @@ from .types import FrameTimepoint, FThetaCameraModelParameters
 class TestData3Loader(unittest.TestCase):
     ''' Test to verify functionality of V3 data loader '''
     def setUp(self):
-        self.all_shards = sorted([p for p in Path('external/test-data-v3-shards').iterdir() if p.match('*.zzarr')])
+        self.all_shards = sorted([p for p in Path('external/test-data-v3-shards').iterdir() if p.match('*.itar')])
 
     def test_shard_loader(self):
         shard_num_poses = [4, 4, 3]
@@ -99,7 +99,8 @@ class TestData3Loader(unittest.TestCase):
             [[-0.01677173376083374, -0.006367421709001064, 0.9998390674591064, 1.7747461795806885],
              [-0.9998273849487305, 0.008099998347461224, -0.016719957813620567, 0.0014275670982897282],
              [-0.007992231287062168, -0.9999469518661499, -0.006502173840999603, 1.448835015296936],
-             [0.0, 0.0, 0.0, 1.0]])
+             [0.0, 0.0, 0.0, 1.0]],
+            dtype=np.float32)
         self.assertIsNone(np.testing.assert_array_equal(sensor.get_T_sensor_rig(), reference_T_sensor_rig))
         self.assertIsNone(np.testing.assert_array_almost_equal(sensor.get_T_rig_sensor(), np.linalg.inv(reference_T_sensor_rig)))
 
@@ -110,7 +111,8 @@ class TestData3Loader(unittest.TestCase):
         reference_T_rig_world_0_start = np.array(
             [[0.9999999403953552, -0.0002584185858722776, -1.9103787053609267e-05, -0.00011249187082285061],
              [0.0002584183239378035, 0.9999999403953552, -1.4615495274483692e-05, 0.0009787322487682104],
-             [1.9107563275611028e-05, 1.4610557627747767e-05, 1.0, 0.00023270734527613968], [0.0, 0.0, 0.0, 1.0]])
+             [1.9107563275611028e-05, 1.4610557627747767e-05, 1.0, 0.00023270734527613968], [0.0, 0.0, 0.0, 1.0]],
+            dtype=np.float32)
         self.assertEqual(sensor.get_frames_timestamps_us()[0], 1648597319007668)
         self.assertEqual(sensor.get_closest_frame_index(1648597319007668), 0)
         self.assertEqual(sensor.get_frame_timestamp_us(0, FrameTimepoint.START), 1648597318976057)
