@@ -501,7 +501,7 @@ class ShardDataLoader:
             high = int(range_match.group(2))
 
             for i in range(low, high + 1):
-                evaluated_name_patterns.append(pattern_name.replace(f'[{low}-{high}]', str(i)))
+                evaluated_name_patterns.append(pattern_name.replace(f'[{low}-{high}]', str(i) + '-'))
         else:
             evaluated_name_patterns.append(pattern_name)
 
