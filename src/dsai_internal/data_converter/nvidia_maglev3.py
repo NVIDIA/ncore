@@ -77,10 +77,13 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             list(self.CAMERAID_TO_RIGNAME.keys()),
             list(self.LIDARID_TO_RIGNAME.keys()),
             []  # no radars yet
-        )
-
-        # Store per-shard meta data / initial success state
-        self.data_writer.store_shard_meta(session_id, self.shard_id, self.shard_count, False)
+            ,
+            # TODO: parse these from the data
+            'scene-calib',
+            'lidar-egomotion',
+            session_id,
+            self.shard_id,
+            self.shard_count)
 
         # Decode data from maglev
         self.decode_poses()
@@ -91,13 +94,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         self.decode_lidars()
 
-        self.data_writer.store_meta(
-            # TODO: parse these from the data
-            'scene-calib',
-            'lidar-egomotion')
-
-        # Store per-shard meta data / final success state
-        self.data_writer.store_shard_meta(session_id, self.shard_id, self.shard_count, True)
+        # Store per-shard meta data / final success state / close file
+        self.data_writer.finalize()
 
     def decode_poses(self):
         logger = self.logger.getChild('decode_poses')

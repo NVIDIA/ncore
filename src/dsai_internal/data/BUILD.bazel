@@ -14,10 +14,12 @@ py_library(
         "data3.py",
     ],
     deps = [
+        ":pylib_stores",
         ":pylib_types",
         ":pylib_util",
         "//src/dsai_internal/common:pylib",
         requirement("h5py"),
+        requirement("zarr"),
         requirement("pillow"),
     ],
 )
@@ -32,6 +34,17 @@ py_library(
         requirement("numpy"),
         requirement("dataclasses-json"),
         requirement("pillow"),
+    ],
+)
+
+py_library(
+    name = "pylib_stores",
+    srcs = [
+        "stores.py",
+    ],
+    deps = [
+        requirement("zarr"),
+        requirement("cbor2"),
     ],
 )
 
