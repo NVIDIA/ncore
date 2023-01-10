@@ -85,6 +85,7 @@ pytest_test(
     srcs = ["stores_test.py"],
     deps = [
         ":pylib_stores",
+        requirement("parameterized"),
     ],
 )
 

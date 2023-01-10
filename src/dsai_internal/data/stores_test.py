@@ -3,6 +3,7 @@
 import unittest
 import tempfile
 
+import parameterized
 import numpy as np
 import zarr
 
@@ -56,16 +57,29 @@ class TestIndexedTarStore(unittest.TestCase):
             # check all data was correctly serialized / deserialized
             self.check_with_reference(g_reload)
 
-    def test_empty(self):
+    @parameterized.parameterized.expand([(
+        "not-compressed-consolidate",
+        False,
+    ), (
+        "compressed_consolidate",
+        True,
+    )])
+    def test_empty(self, _, compressed_consolidate: bool):
         ''' Verify edge case of serialization of empty store is possible without errors '''
         with tempfile.NamedTemporaryFile(suffix='.itar') as f:
-            with IndexedTarStore(f.name, mode='w') as _:  # closes file on exit
+            with IndexedTarStore(f.name, mode='w') as s_itar_out:  # closes file on exit
                 # Don't write any zarr data (still serializes empty tar / seek tables)
-                pass
+
+                if compressed_consolidate:
+                    consolidate_compressed_metadata(s_itar_out)
 
             with IndexedTarStore(f.name) as s_itar_in:
                 # Loading store should work without errors
 
                 # But loading a non-existing group should then fail
                 with self.assertRaises(zarr.errors.PathNotFoundError):
-                    zarr.open(store=s_itar_in, mode='r')
+
+                    if compressed_consolidate:
+                        open_compressed_consolidated(s_itar_in, mode='r')
+                    else:
+                        zarr.open(store=s_itar_in, mode='r')
