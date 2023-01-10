@@ -65,7 +65,6 @@ class IndexedTarStore(zarr._storage.store.Store):
 
         # store properties
         itar_path = Path(itar_path).absolute()
-        assert itar_path.suffix == '.itar', f"{itar_path} is not a '.itar' file path"
 
         self.mode = mode
 
@@ -147,8 +146,9 @@ class IndexedTarStore(zarr._storage.store.Store):
     def close(self):
         """ Needs to be called after finishing updating the store """
         with self.mutex:
-            self.tar_file.close(
-            )  # appends two finishing blocks to the end of the file if in write mode, but doesn't close it yet
+            # Closing the tar file appends two finishing blocks to the end of the file
+            # if in write mode, but doesn't close the internal file object yet
+            self.tar_file.close()
 
             if self.mode == 'w':
                 # Add index if writing
@@ -235,7 +235,7 @@ class IndexedTarStore(zarr._storage.store.Store):
 
         # Reformat index table as SOA (sorted by offset)
         table = [(item, record.offset_data, record.size) for (item, record) in index.records.items()]
-        items, offset_datas, sizes = list(zip(*sorted(table, key=lambda data: data[1])))
+        items, offset_datas, sizes = list(zip(*sorted(table, key=lambda data: data[1]))) if len(table) else ([], [], [])
 
         # Append compressed table to tar file
         with io.BytesIO() as index_buffer:
