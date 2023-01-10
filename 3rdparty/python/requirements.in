@@ -13,6 +13,7 @@ pyarrow
 point-cloud-utils
 click
 pytest
+parameterized
 open3d
 tensorflow~=2.8.2 # required by open3d.ml.tf
 h5py

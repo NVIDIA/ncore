@@ -60,11 +60,10 @@ py_library(
 )
 
 pytest_test(
-    name = "pytest",
-    srcs = glob(
-        ["*test.py"],
-        exclude = ["data3_test.py"],
-    ),
+    name = "pytest_util",
+    srcs = [
+        "util_test.py",
+    ],
     deps = [
         ":pylib_util",
     ],
@@ -78,6 +77,15 @@ pytest_test(
     ],
     deps = [
         ":pylib_data",
+    ],
+)
+
+pytest_test(
+    name = "pytest_stores",
+    srcs = ["stores_test.py"],
+    deps = [
+        ":pylib_stores",
+        requirement("parameterized"),
     ],
 )
 
