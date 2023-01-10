@@ -1,0 +1,19 @@
+# Copyright (c) 2023 NVIDIA CORPORATION.  All rights reserved.
+
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_binary")
+
+py_binary(
+    name = "convert_deepmap_egomotion",
+    srcs = ["convert_deepmap_egomotion.py"],
+    deps = [
+        requirement("click"),
+        requirement("protobuf3-to-dict"),
+        requirement("numpy"),
+        "//src/dsai_internal/common:pylib",
+        "//src/dsai_internal/data_converter/protos/deepmap:py_proto",
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")

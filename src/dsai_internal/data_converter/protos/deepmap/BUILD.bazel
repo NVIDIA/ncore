@@ -14,7 +14,10 @@ py_proto_library(
         ":track_data.proto",
         ":transform.proto",
     ],
-    visibility = ["//src/dsai_internal:__subpackages__"],
+    visibility = [
+        "//scripts/experimental/deepmap:__subpackages__",
+        "//src/dsai_internal:__subpackages__",
+    ],
 )
 
 bzlformat_pkg(name = "bzlformat")
