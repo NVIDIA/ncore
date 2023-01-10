@@ -569,7 +569,7 @@ class ShardDataLoader:
                 logging.info(f'ShardDataLoader: Loading shard file {shard_file}')
 
                 timer = common.SimpleTimer()
-                store = stores.IndexedTarStore(shard_file, mode='r')
+                store = stores.IndexedTarStore(shard_file)
                 shard_root = stores.open_compressed_consolidated(store=store, mode='r')
 
                 logging.debug(
