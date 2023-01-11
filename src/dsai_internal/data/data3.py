@@ -25,6 +25,7 @@ import src.dsai_internal.common.transformations as transformations
 from . import types, stores, util
 
 VERSION = '3.0.0'
+SENSORS_BASE_GROUP = 'sensors'
 CAMERAS_BASE_GROUP = 'cameras'
 LIDARS_BASE_GROUP = 'lidars'
 RADARS_BASE_GROUP = 'radars'
@@ -74,15 +75,16 @@ class ContainerDataWriter:
         })
 
         # Create sensor groups
-        cameras_grp = self.container_root.require_group(CAMERAS_BASE_GROUP)
+        sensors_grp = self.container_root.require_group(SENSORS_BASE_GROUP)
+        cameras_grp = sensors_grp.require_group(CAMERAS_BASE_GROUP)
         for camera_id in self.camera_ids:
             cameras_grp.require_group(camera_id)
 
-        lidars_grp = self.container_root.require_group(LIDARS_BASE_GROUP)
+        lidars_grp = sensors_grp.require_group(LIDARS_BASE_GROUP)
         for lidar_id in self.lidar_ids:
             lidars_grp.require_group(lidar_id)
 
-        radars_grp = self.container_root.require_group(RADARS_BASE_GROUP)
+        radars_grp = sensors_grp.require_group(RADARS_BASE_GROUP)
         for radar_id in self.radar_ids:
             radars_grp.require_group(radar_id)
 
@@ -145,7 +147,7 @@ class ContainerDataWriter:
         assert frame_timestamps_us.dtype == np.dtype('uint64')
 
         # Store meta data
-        camera_grp = self.container_root[CAMERAS_BASE_GROUP][camera_id]
+        camera_grp = self.container_root[SENSORS_BASE_GROUP][CAMERAS_BASE_GROUP][camera_id]
         camera_grp.attrs.put({
             'T_sensor_rig': T_sensor_rig.tolist(),
             'camera_model_type': camera_model_parameters.type(),
@@ -160,8 +162,8 @@ class ContainerDataWriter:
             with io.BytesIO() as buffer:
                 FORMAT = 'png'
                 mask_image.save(buffer, format=FORMAT, optimize=True)  # encodes as png
-                self.container_root[CAMERAS_BASE_GROUP][camera_id].create_dataset(
-                    'mask', data=np.asarray(buffer.getvalue()), compressor=None).attrs['format'] = FORMAT
+                camera_grp.create_dataset('mask', data=np.asarray(buffer.getvalue()),
+                                          compressor=None).attrs['format'] = FORMAT
 
     def store_camera_frame(
             self,
@@ -185,7 +187,8 @@ class ContainerDataWriter:
 
         # Initialize frame
         continous_frame_index_string = util.padded_index_string(continous_frame_index)
-        frame_group = self.container_root[CAMERAS_BASE_GROUP][camera_id].require_group(continous_frame_index_string)
+        frame_group = self.container_root[SENSORS_BASE_GROUP][CAMERAS_BASE_GROUP][camera_id].require_group(
+            continous_frame_index_string)
 
         # Store image data
         frame_group.create_dataset('image', data=np.asarray(image_file_binary_data),
@@ -209,7 +212,7 @@ class ContainerDataWriter:
         assert frame_timestamps_us.dtype == np.dtype('uint64')
 
         # Store meta data
-        lidar_grp = self.container_root[LIDARS_BASE_GROUP][lidar_id]
+        lidar_grp = self.container_root[SENSORS_BASE_GROUP][LIDARS_BASE_GROUP][lidar_id]
         lidar_grp.attrs.put({'T_sensor_rig': T_sensor_rig.tolist()})
 
         # Store timestamps
@@ -257,7 +260,8 @@ class ContainerDataWriter:
 
         # Initialize frame
         continous_frame_index_string = util.padded_index_string(continous_frame_index)
-        frame_group = self.container_root[LIDARS_BASE_GROUP][lidar_id].require_group(continous_frame_index_string)
+        frame_group = self.container_root[SENSORS_BASE_GROUP][LIDARS_BASE_GROUP][lidar_id].require_group(
+            continous_frame_index_string)
 
         # Store frame data
         frame_group.create_dataset('xyz_s', data=xyz_s)
@@ -311,10 +315,10 @@ class Sensor:
                 ''' Thread-executed shard data loading '''
 
                 # Load shard-associated sensor meta-data
-                shard_sensor_meta = shard_root[self._sensor_group][self._sensor_id].attrs.asdict()
+                shard_sensor_meta = shard_root[SENSORS_BASE_GROUP][self._sensor_group][self._sensor_id].attrs.asdict()
 
                 # Load shard-associated sensor timestamps
-                shard_sensor_frame_timestamps_us = shard_root[self._sensor_group][
+                shard_sensor_frame_timestamps_us = shard_root[SENSORS_BASE_GROUP][self._sensor_group][
                     self._sensor_id]['frame_timestamps_us'][()]
 
                 return shard_sensor_meta, shard_sensor_frame_timestamps_us
@@ -378,7 +382,7 @@ class Sensor:
 
         shard_frame = self._get_shard_frame(continous_frame_index)
 
-        return self._shard_roots[shard_frame.shard_index][self._sensor_group] \
+        return self._shard_roots[shard_frame.shard_index][SENSORS_BASE_GROUP][self._sensor_group] \
                 [self._sensor_id][util.padded_index_string(shard_frame.shard_frame_index)]
 
     @lru_cache
@@ -477,8 +481,8 @@ class CameraSensor(Sensor):
         ''' Returns constant camera mask image, if available '''
 
         # Take mask from *first* shard
-        if (mask_dataset := self._shard_roots[0][self._sensor_group][self._sensor_id].get('mask',
-                                                                                          default=None)) is None:
+        if (mask_dataset := self._shard_roots[0][SENSORS_BASE_GROUP][self._sensor_group][self._sensor_id].get(
+                'mask', default=None)) is None:
             return None
 
         return PILImage.open(io.BytesIO(mask_dataset[()]), formats=[mask_dataset.attrs['format']])
