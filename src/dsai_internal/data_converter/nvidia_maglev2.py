@@ -228,6 +228,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                     camera_id, global_camera_timestamps_us, T_sensor_rig,
                     FThetaCameraModelParameters(intrinsic[2:4].astype(np.uint64), ShutterType.ROLLING_TOP_TO_BOTTOM,
                                                 self.CAMERATYPE_TO_EXPOSURETIME_US[camera_type].item(), intrinsic[0:2],
+                                                FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE,
                                                 bw_poly, fw_poly, float(max_angle)), mask_image.get_image())
 
             # Apply uniform subdivision of current shard to get local data range

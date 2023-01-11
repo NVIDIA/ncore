@@ -1,5 +1,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
+from __future__ import annotations
+
 import io
 
 from enum import IntEnum, auto, unique
@@ -41,14 +43,30 @@ class CameraModelParameters:
 @dataclass
 class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
     ''' Represents FTheta-specific camera model parameters '''
+    @unique
+    class PolynomialType(IntEnum):
+        ''' Enumerates different possible polynomial types '''
+        PIXELDIST_TO_ANGLE = auto()  # also known as "backward"
+        ANGLE_TO_PIXELDIST = auto()  # also known as "forward"
+
     principal_point: np.ndarray = util.numpy_array_field(np.float32)
-    bw_poly: np.ndarray = util.numpy_array_field(np.float32)
-    fw_poly: np.ndarray = util.numpy_array_field(np.float32)
+    reference_poly: PolynomialType = util.enum_field(PolynomialType)
+    pixeldist_to_angle_poly: np.ndarray = util.numpy_array_field(np.float32)
+    angle_to_pixeldist_poly: np.ndarray = util.numpy_array_field(np.float32)
     max_angle: float = 0.0
 
     @staticmethod
     def type() -> str:
         return 'ftheta'
+
+    # Aliases for polynomial members
+    @property
+    def bw_poly(self):
+        return self.pixeldist_to_angle_poly
+
+    @property
+    def fw_poly(self):
+        return self.angle_to_pixeldist_poly
 
     POLYNOMIAL_DEGREE = 6
 
@@ -59,17 +77,17 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
         assert self.principal_point.dtype == np.dtype('float32')
         assert self.principal_point[0] > 0.0 and self.principal_point[1] > 0.0
 
-        assert self.bw_poly.ndim == 1
-        assert len(self.bw_poly) <= self.POLYNOMIAL_DEGREE
-        assert self.bw_poly.dtype == np.dtype('float32')
+        assert self.pixeldist_to_angle_poly.ndim == 1
+        assert len(self.pixeldist_to_angle_poly) <= self.POLYNOMIAL_DEGREE
+        assert self.pixeldist_to_angle_poly.dtype == np.dtype('float32')
 
-        assert self.fw_poly.ndim == 1
-        assert len(self.fw_poly) <= self.POLYNOMIAL_DEGREE
-        assert self.fw_poly.dtype == np.dtype('float32')
+        assert self.angle_to_pixeldist_poly.ndim == 1
+        assert len(self.angle_to_pixeldist_poly) <= self.POLYNOMIAL_DEGREE
+        assert self.angle_to_pixeldist_poly.dtype == np.dtype('float32')
 
         # pad polynomials to full size
-        self.bw_poly = np.pad(self.bw_poly, (0,self.POLYNOMIAL_DEGREE - len(self.bw_poly)), mode='constant', constant_values=0.0)
-        self.fw_poly = np.pad(self.fw_poly, (0,self.POLYNOMIAL_DEGREE - len(self.fw_poly)), mode='constant', constant_values=0.0)
+        self.pixeldist_to_angle_poly = np.pad(self.pixeldist_to_angle_poly, (0,self.POLYNOMIAL_DEGREE - len(self.pixeldist_to_angle_poly)), mode='constant', constant_values=0.0)
+        self.angle_to_pixeldist_poly = np.pad(self.angle_to_pixeldist_poly, (0,self.POLYNOMIAL_DEGREE - len(self.angle_to_pixeldist_poly)), mode='constant', constant_values=0.0)
 
         assert self.max_angle > 0.0
 

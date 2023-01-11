@@ -188,8 +188,9 @@ The field ``camera_model_parameters`` will unconditionally contain:
 If ``camera_model_type = 'f_theta'`` the following intrinsic parameters will additionally be available in ``camera_model_parameters``:
 
 * ``principal_point`` - u and v coordinate of the principal point (float32, [2,])
-* ``bw_poly`` - coefficients of the backward distortion polynomial, mapping pixel-distances to angles [rad] (float32, [6,])
-* ``fw_poly`` - coefficients of the forward distortion polynomial (approximate inverse of the backwards polynomial), mapping angles [rad] to pixel-distances (float32, [6,])
+* ``reference_poly`` - indicating which of the two polynomials is the *reference* polynomial - the other polynomial is only an approximation of the inverse of the reference polynomial (str, one of [PIXELDIST_TO_ANGLE, ANGLE_TO_PIXELDIST])
+* ``pixeldist_to_angle_poly`` - coefficients of the backward distortion polynomial (conditionally approximate, depending on ``reference_poly``), mapping pixel-distances to angles [rad] (float32, [6,])
+* ``angle_to_pixeldist_poly`` - coefficients of the forward distortion polynomial (conditionally approximate, depending on ``reference_poly``), mapping angles [rad] to pixel-distances (float32, [6,])
 * ``max_angle`` - maximal extrinsic ray angle [rad] with the principal direction (float32)
 
 If ``camera_model_type` = 'pinhole'`` the following intrinsic parameters will additionally be available in ``camera_model_parameters``:
