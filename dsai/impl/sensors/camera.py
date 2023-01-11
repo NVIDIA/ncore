@@ -373,15 +373,15 @@ class FThetaCameraModel(CameraModel):
         
         image_points = self.to_torch(image_points).to(self.dtype)
 
-        pixels_dist = image_points - self.principal_point[:, None]
+        pixels_dist = image_points - self.principal_point
         rdist = torch.linalg.norm(pixels_dist, axis=1, keepdims=True)
 
         alphas = self.__eval_bw_poly(rdist)
-        min_norm = torch.Tensor(1e-6).to(pixels_dist)
+        min_norm = torch.tensor(1e-6).to(pixels_dist)
 
         # Compute the camera rays and set the ones at the image center to [0,0,1]
         cam_rays = torch.hstack((torch.sin(alphas) * pixels_dist / torch.maximum(rdist, min_norm), torch.cos(alphas)))
-        cam_rays[rdist < min_norm] = torch.Tensor([[0,0,1]]).to(pixels_dist)
+        cam_rays[rdist.flatten() < min_norm, :] = torch.tensor([[0,0,1]]).to(pixels_dist)
 
         return cam_rays
     
