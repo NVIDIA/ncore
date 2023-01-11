@@ -755,28 +755,39 @@ def compute_ftheta_parameters(intrinsic):
     return max_ray_distortion, max_angle.astype(np.float32)
 
 
-def load_maglev_camera_indexer_frame_meta(camera_path: Path, use_csv_workaround=True) -> Tuple[np.ndarray, np.ndarray]:
+def load_maglev_camera_indexer_frame_meta(camera_path: Path) -> Tuple[np.ndarray, np.ndarray]:
     ''' Returns *raw* frame numbers and timestamps from meta-data of Maglev's camera-indexer '''
 
     frames_metadata = load_jsonl(camera_path / 'meta.json')
 
-    if not use_csv_workaround:
-        # load all data from 'meta.json' - default case assuming 'meta.json' is subsampled to all existing frames
-        raw_frame_numbers = np.array([frame_data['frame_number'] for frame_data in frames_metadata], dtype=np.uint64)
-        raw_frame_timestamps_us = np.array([frame_data['timestamp'] for frame_data in frames_metadata], dtype=np.uint64)
-    else:
-        # WAR: due to a bug in 'meta.json' generation it is not subsampled, but 'frames.csv' is - so incorporate
-        #      this data instead along with timestamps from 'meta.json'
+    # WAR: Due to a bug in 'meta.json' generation it is not subsampled, but 'frames.csv' is if it exists - so incorporate
+    #      this data instead along with timestamps from 'meta.json'.
+    #      If 'frames.csv' doesn't exist this indicates that *all* frames were exported at full framerate,
+    #      so revert to the regular meta data.
+    try:
+        # Figure out which frames were actually indexed
+        with open(camera_path / 'frames.csv', 'r') as frames_file:
+            raw_frame_numbers = np.array([row[0] for row in csv.reader(frames_file)], dtype=np.uint64)
+
+        # Construct frame number to timestamp map
         frame_timestamps_map_us = {
             frame_metadata['frame_number']: frame_metadata['timestamp']
             for frame_metadata in frames_metadata
         }
-        with open(camera_path / 'frames.csv', 'r') as frames_file:
-            raw_frame_numbers = np.array([row[0] for row in csv.reader(frames_file)], dtype=np.uint64)
+        # Evaluate timestamps map for exported frames
         raw_frame_timestamps_us = np.array(
             [frame_timestamps_map_us[raw_frame_number] for raw_frame_number in raw_frame_numbers], dtype=np.uint64)
 
-    return raw_frame_numbers, raw_frame_timestamps_us
+    except FileNotFoundError:
+        # Special case: if 'frames.csv' doesn't exists the camera indexer exported all frames, so load
+        #               all frames from the 'meta.json' file
+
+        # Load all data from 'meta.json' - default case assuming 'meta.json' is subsampled to all existing frames
+        raw_frame_numbers = np.array([frame_data['frame_number'] for frame_data in frames_metadata], dtype=np.uint64)
+        raw_frame_timestamps_us = np.array([frame_data['timestamp'] for frame_data in frames_metadata], dtype=np.uint64)
+
+    finally:
+        return raw_frame_numbers, raw_frame_timestamps_us
 
 
 def load_maglev_session_id(sequence_path: Path) -> str:
