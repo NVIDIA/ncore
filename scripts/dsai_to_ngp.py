@@ -132,8 +132,9 @@ def dsai_to_ngp(
             case FThetaCameraModelParameters(
                 resolution=resolution,
                 principal_point=principal_point,
-                bw_poly=bw_poly,
-                fw_poly=fw_poly,
+                reference_poly=reference_poly,
+                pixeldist_to_angle_poly=bw_poly,
+                angle_to_pixeldist_poly=fw_poly,
                 shutter_type=shutter_type,
             ):
                 # This is not really the focal length, only a crude approximation, but NGP expects some value for fov (not used in training)
@@ -162,6 +163,7 @@ def dsai_to_ngp(
                     "ftheta_f3": float(fw_poly[3]),
                     "ftheta_f4": float(fw_poly[4]),
                     "ftheta_f5": float(fw_poly[5]),
+                    "reference_poly": reference_poly.name,
                     "rolling_shutter": rolling_shutter.tolist(),
                     "camera_angle_x": fov_angle_x,
                 }

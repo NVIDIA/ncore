@@ -347,6 +347,9 @@ class FThetaCameraModel(CameraModel):
         self.device = device
         self.dtype = dtype
 
+        assert camera_model_parameters.reference_poly == types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, \
+             'currently only supporting PIXELDIST_TO_ANGLE reference polynomials'
+
         self.principal_point = self.to_torch(camera_model_parameters.principal_point).to(self.dtype)
         self.fw_poly = self.to_torch(camera_model_parameters.fw_poly).to(self.dtype)
         self.bw_poly = self.to_torch(camera_model_parameters.bw_poly).to(self.dtype)

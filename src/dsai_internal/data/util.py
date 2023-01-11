@@ -18,7 +18,7 @@ def padded_index_string(index: int, index_digits=INDEX_DIGITS) -> str:
     return str(index).zfill(index_digits)
 
 
-def closest_index_sorted(sorted_array: np.ndarray, value: Any) -> int:
+def closest_index_sorted(sorted_array: np.ndarray, value: int) -> int:
     ''' Returns the index of the closest value within a *sorted* array relative to a query value.
     
         Note: we are *not* checking that the input is sorted
@@ -28,11 +28,13 @@ def closest_index_sorted(sorted_array: np.ndarray, value: Any) -> int:
 
     idx = int(np.searchsorted(sorted_array, value, side="left"))
 
-    if idx > 0 and (idx == len(sorted_array)
-                    or math.fabs(value - sorted_array[idx - 1]) < math.fabs(value - sorted_array[idx])):
-        return idx - 1
-    else:
-        return idx
+    if idx > 0:
+        if idx == len(sorted_array):
+            return idx - 1
+        if abs(value - sorted_array[idx - 1]) < abs(sorted_array[idx] - value):
+            return idx - 1
+    
+    return idx
 
 
 def numpy_array_field(datatype: npt.DTypeLike, default=None):

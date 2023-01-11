@@ -19,6 +19,7 @@ def image_to_world_ray(image_points: np.ndarray, camera_metadata: Union[types.FT
 
     match camera_metadata:
         case types.FThetaCameraModelParameters() as ftheta_parameters:
+            assert ftheta_parameters.reference_poly == types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, 'currently only supporting PIXELDIST_TO_ANGLE reference polynomials'
             img_width, img_height = ftheta_parameters.resolution
             cam_rays = libav_utils_cc._pixel2WorldRayFTheta(
                             image_points.astype(np.float64),
@@ -53,6 +54,7 @@ def pixel2CameraRay(image_points: np.ndarray, camera_metadata: Union[types.FThet
 
     match camera_metadata:
         case types.FThetaCameraModelParameters() as ftheta_parameters:
+            assert ftheta_parameters.reference_poly == types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, 'currently only supporting PIXELDIST_TO_ANGLE reference polynomials'
             img_width, img_height  = ftheta_parameters.resolution
             cam_rays = libav_utils_cc._pixel2CameraRayFTheta(
                             image_points.astype(np.float64), ftheta_parameters.fw_poly.reshape(1,-1).astype(np.float64),
@@ -80,6 +82,7 @@ def cameraRay2Pixel(cameraPoints: np.ndarray, camera_metadata: Union[types.FThet
 
     match camera_metadata:
         case types.FThetaCameraModelParameters() as ftheta_parameters:
+            assert ftheta_parameters.reference_poly == types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, 'currently only supporting PIXELDIST_TO_ANGLE reference polynomials'
             img_width, img_height  = ftheta_parameters.resolution
             pixel_coords, valid_flag = libav_utils_cc._cameraRay2PixelFTheta(
                             cameraPoints.astype(np.float64), ftheta_parameters.fw_poly.reshape(1,-1).astype(np.float64),
@@ -111,6 +114,7 @@ def rollingShutterProjection(points: np.ndarray,
 
     match camera_metadata:
         case types.FThetaCameraModelParameters() as ftheta_parameters:
+            assert ftheta_parameters.reference_poly == types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, 'currently only supporting PIXELDIST_TO_ANGLE reference polynomials'
             img_width, img_height = ftheta_parameters.resolution
 
             pixel_coords, trans_matrices, valid_proj, initial_valid_idx = libav_utils_cc._rollingShutterProjectionFTheta(

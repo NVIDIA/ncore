@@ -71,58 +71,59 @@ The data pre-processed using DSAI on Maglev will be made available in the follow
 .. code-block:: text
 
    session-id/
-    ├-lidars/
-    │ ├─lidar_gt_top_p128_v4p5/
-    │ │ ├-000000.hdf5
-    │ │ ├-000000.json
-    │ │ ├-000001.hdf5
-    │ │ ├-000001.json
-    │ │ ├─...
-    │ │ └-meta.json
-    │ │
-    │ ├─{lidar_parking_gt_front_p128/}
-    │ │ ├-000000.hdf5
-    │ │ ├-000000.json
-    │ │ ├─...
-    │ │ └-meta.json
-    │ │
-    │ └─...
-    │
-    ├-cameras/
-    │ ├─camera_front_wide_120fov/
-    │ │ ├-000000.jpeg
-    │ │ ├-000000.json
-    │ │ ├-{000000_sem.png}
-    │ │ ├-{000000_inst.hdf5}
-    │ │ ├─...
-    | | ├-mask.png
-    │ │ └-meta.json
-    │ │
-    │ ├─camera_front_fisheye_200fov/
-    │ │ ├-000000.jpeg
-    │ │ ├-000000.json
-    │ │ ├-{000000_sem.png}
-    │ │ ├-{000000_inst.hdf5}
-    │ │ ├─...
-    | | ├-mask.png
-    │ │ └-meta.json
-    │ │
-    │ └─...
-    │
-    ├-{radars/}
-    │ ├─radar_front_center/
-    │ │ ├-000000.hdf5
-    │ │ ├-000000.json
-    │ │ ├─...
-    │ │ └-meta.json
-    │ │
-    │ ├─radar_front_left/
-    │ │ ├-000000.hdf5
-    │ │ ├-000000.json
-    │ │ ├─...
-    │ │ └-meta.json
-    │ │
-    │ └─...
+    ├-sensors/
+    | ├-lidars/
+    | │ ├─lidar_gt_top_p128_v4p5/
+    | │ │ ├-000000.hdf5
+    | │ │ ├-000000.json
+    | │ │ ├-000001.hdf5
+    | │ │ ├-000001.json
+    | │ │ ├─...
+    | │ │ └-meta.json
+    | │ │
+    | │ ├─{lidar_parking_gt_front_p128/}
+    | │ │ ├-000000.hdf5
+    | │ │ ├-000000.json
+    | │ │ ├─...
+    | │ │ └-meta.json
+    | │ │
+    | │ └─...
+    | │
+    | ├-cameras/
+    | │ ├─camera_front_wide_120fov/
+    | │ │ ├-000000.jpeg
+    | │ │ ├-000000.json
+    | │ │ ├-{000000_sem.png}
+    | │ │ ├-{000000_inst.hdf5}
+    | │ │ ├─...
+    | | | ├-mask.png
+    | │ │ └-meta.json
+    | │ │
+    | │ ├─camera_front_fisheye_200fov/
+    | │ │ ├-000000.jpeg
+    | │ │ ├-000000.json
+    | │ │ ├-{000000_sem.png}
+    | │ │ ├-{000000_inst.hdf5}
+    | │ │ ├─...
+    | | | ├-mask.png
+    | │ │ └-meta.json
+    | │ │
+    | │ └─...
+    | │
+    | └-{radars/}
+    |   ├─radar_front_center/
+    |   │ ├-000000.hdf5
+    |   │ ├-000000.json
+    |   │ ├─...
+    |   │ └-meta.json
+    |   │
+    |   ├─radar_front_left/
+    |   │ ├-000000.hdf5
+    |   │ ├-000000.json
+    |   │ ├─...
+    |   │ └-meta.json
+    |   │
+    |   └─...
     │
     ├-poses.hdf5
     ├-labels.json
@@ -188,8 +189,9 @@ The field ``camera_model_parameters`` will unconditionally contain:
 If ``camera_model_type = 'f_theta'`` the following intrinsic parameters will additionally be available in ``camera_model_parameters``:
 
 * ``principal_point`` - u and v coordinate of the principal point (float32, [2,])
-* ``bw_poly`` - coefficients of the backward distortion polynomial, mapping pixel-distances to angles [rad] (float32, [6,])
-* ``fw_poly`` - coefficients of the forward distortion polynomial (approximate inverse of the backwards polynomial), mapping angles [rad] to pixel-distances (float32, [6,])
+* ``reference_poly`` - indicating which of the two polynomials is the *reference* polynomial - the other polynomial is only an approximation of the inverse of the reference polynomial (str, one of [PIXELDIST_TO_ANGLE, ANGLE_TO_PIXELDIST])
+* ``pixeldist_to_angle_poly`` - coefficients of the backward distortion polynomial (conditionally approximate, depending on ``reference_poly``), mapping pixel-distances to angles [rad] (float32, [6,])
+* ``angle_to_pixeldist_poly`` - coefficients of the forward distortion polynomial (conditionally approximate, depending on ``reference_poly``), mapping angles [rad] to pixel-distances (float32, [6,])
 * ``max_angle`` - maximal extrinsic ray angle [rad] with the principal direction (float32)
 
 If ``camera_model_type` = 'pinhole'`` the following intrinsic parameters will additionally be available in ``camera_model_parameters``:
