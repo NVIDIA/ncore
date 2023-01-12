@@ -337,7 +337,7 @@ class CameraModel(ABC):
 
 class FThetaCameraModel(CameraModel):
     def __init__(self, camera_model_parameters: types.FThetaCameraModelParameters, 
-                 device: str = 'cuda', dtype: torch.dtype = torch.float32, newton_iterations: int = 2):
+                 device: str = 'cuda', dtype: torch.dtype = torch.float32, newton_iterations: int = 3):
         '''Initializes a FThetaCameraModel to operate on a specific device and floating-point type.
          
             newton_iterations: the number of Newton iterations to perform polynomial inversion (zero to disable)
@@ -464,17 +464,16 @@ class FThetaCameraModel(CameraModel):
 
     def __nummerically_stable_norm(self, cam_rays: torch.Tensor) -> torch.Tensor:
         ''' Evaluate the norm in a numarically stable manner '''
-        xy_norms = torch.zeros_like(cam_rays[:,0]).unsqueeze(1)
+        xy_norms = torch.zeros_like(cam_rays[:,0]).unsqueeze(1) # Zero rays stay with zero norm
 
         abs_pts = torch.abs(cam_rays[:,:2])
         min_pts = torch.min(abs_pts, dim = 1, keepdim=True).values
         max_pts = torch.max(abs_pts, dim = 1, keepdim=True).values
 
-        # Set the norm of zero points to zero
-        xy_norms[max_pts <= 0.0, None] = 0.0
-
+        # Output the norm of non-zero rays only
+        non_zero_norms = max_pts > 0
         min_max_ratio = min_pts / max_pts
-        xy_norms[max_pts > 0.0, None] = max_pts * torch.sqrt(1.0 + torch.pow(min_max_ratio, 2))
+        xy_norms[non_zero_norms, None] = max_pts[non_zero_norms, None] * torch.sqrt(1 + torch.pow(min_max_ratio[non_zero_norms, None], 2))
 
         return xy_norms
 

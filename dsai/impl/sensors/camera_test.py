@@ -12,9 +12,9 @@ import torch
 from dsai.impl.data.types import FThetaCameraModelParameters, ShutterType
 from .camera import FThetaCameraModel
 
+
 ## Reference camera implementation
 class ReferenceCamera(metaclass=abc.ABCMeta):
-
     def project(self, point3d):
         return self.ray2pixel(point3d)
 
@@ -57,8 +57,8 @@ class ReferenceFThetaCamera(ReferenceCamera):
         # - potentially, also the coordinate [-0.5, -0.5] would still be
         #   considered visible
         lastPixel = self._imageSize - np.array([1, 1])
-        return ((0 <= point2d[0]) and (point2d[0] <= lastPixel[0])
-                and (0 <= point2d[1]) and (point2d[1] <= lastPixel[1]))
+        return ((0 <= point2d[0]) and (point2d[0] <= lastPixel[0]) and (0 <= point2d[1])
+                and (point2d[1] <= lastPixel[1]))
 
     def getPrincipalPoint(self):
         return copy.deepcopy(self._principalPoint)
@@ -118,11 +118,11 @@ class ReferenceFThetaCamera(ReferenceCamera):
 
     def _offset2ray(self, offset2d):
         offset = np.array(offset2d)
-        radius = np.linalg.norm(offset, axis=offset.ndim-1, keepdims=True)
+        radius = np.linalg.norm(offset, axis=offset.ndim - 1, keepdims=True)
         theta = self._radius2angle(radius)
         s, c = np.sin(theta), np.cos(theta)
         radius[radius < np.finfo(float).eps] = 1.
-        ray = np.append(offset * s / radius, c, axis=offset.ndim-1)
+        ray = np.append(offset * s / radius, c, axis=offset.ndim - 1)
         return ray
 
     def _determineForwardPolynomial(self, maxRadius):
@@ -134,14 +134,12 @@ class ReferenceFThetaCamera(ReferenceCamera):
     def _getForwardPolynomialLinearSystem(self, maxRadius):
         samplesRadius = np.array(range(1, int(np.ceil(maxRadius))))
         samplesAngle = np.array([self._radius2angle(r) for r in samplesRadius])
-        transposedSystemMatrix = [samplesAngle ** p for p in range(1, len(self._backwardPolynomial))]
+        transposedSystemMatrix = [samplesAngle**p for p in range(1, len(self._backwardPolynomial))]
         return np.transpose(transposedSystemMatrix), samplesRadius
 
     def _calculateMaxRadius(self):
-        corners = np.array([[0, 0], [self._imageSize[0] - 1, 0],
-                               [0, self._imageSize[1] - 1], self._imageSize - [1, 1]])
-        radiusAtCorners = [np.linalg.norm(corner - self._principalPoint)
-                           for corner in corners]
+        corners = np.array([[0, 0], [self._imageSize[0] - 1, 0], [0, self._imageSize[1] - 1], self._imageSize - [1, 1]])
+        radiusAtCorners = [np.linalg.norm(corner - self._principalPoint) for corner in corners]
         return np.max(np.array(radiusAtCorners))
 
     def _radius2angle(self, radius):
@@ -192,12 +190,14 @@ class ReferenceFThetaCamera(ReferenceCamera):
             radius = c + theta * radius
         return radius
 
-class TestReferenceFThetaCamera(unittest.TestCase):
 
+@parameterized.parameterized_class(('device', 'dtype'), [('cpu', torch.float32), ('cpu', torch.float64),
+                                                         ('cuda', torch.float32), ('cuda', torch.float64)])
+class TestReferenceFThetaCamera(unittest.TestCase):
+    ''' Parameterized test cases validating both the reference implementation and the torch-based camera model '''
     def _compareVector(self, a, b):
         self.assertEqual(len(a), len(b))
-        for c in zip(a, b):
-            self.assertAlmostEqual(c[0], c[1], delta=c[1] * 10 ** -7)
+        self.assertIsNone(np.testing.assert_array_almost_equal(a, b))
 
     def test_pixel2ray(self):
         """test backward polynomial coefficients from r**1, r**2, ... r**4"""
@@ -212,25 +212,43 @@ class TestReferenceFThetaCamera(unittest.TestCase):
         principalPoint = (resolution - 1) / 2
         backwardPolynomial = _generateBackwardPolynomial(resolution, baseAngle, orderPolynomial)
         cumulativeAngle = _computeCumulativeAngleAtImageBorder(baseAngle, orderPolynomial)
+
         camera = ReferenceFThetaCamera([resolution, resolution], [principalPoint, principalPoint], backwardPolynomial)
-        self._executePixel2RayTestCase(camera, [principalPoint, principalPoint], [0, 0, 1])
-        self._executePixel2RayTestCase(camera, [resolution - 1, principalPoint],
-                                       [np.sin(cumulativeAngle), 0, np.cos(cumulativeAngle)])
-        self._executePixel2RayTestCase(camera, [principalPoint, resolution - 1],
-                                       [0, np.sin(cumulativeAngle), np.cos(cumulativeAngle)])
+
+        self._executePixels2RayTestCase(camera, [[principalPoint, principalPoint]], [[0, 0, 1]])
+        self._executePixels2RayTestCase(
+            camera, [[resolution - 1, principalPoint]],
+            [[np.sin(cumulativeAngle), 0, np.cos(cumulativeAngle)]])
+        self._executePixels2RayTestCase(
+            camera, [[principalPoint, resolution - 1]],
+            [[0, np.sin(cumulativeAngle), np.cos(cumulativeAngle)]])
+
+        self._executePixels2RayTestCase(
+            camera,
+            [[principalPoint, principalPoint], [resolution - 1, principalPoint], [principalPoint, resolution - 1]],
+            [[0, 0, 1], [np.sin(cumulativeAngle), 0, np.cos(cumulativeAngle)],
+             [0, np.sin(cumulativeAngle), np.cos(cumulativeAngle)]])
 
     def test_pixel2ray_shiftedPrincipalPoint(self):
         """test principal point shift for camera without radial distortions"""
         fov = np.radians(90)
         resolution = np.array([1000, 1000])
         camera = ReferenceFThetaCamera(resolution, [0, 0], [0, fov / resolution[0]])
-        self._executePixel2RayTestCase(camera, [resolution[0] / 2, 0], [np.sin(fov / 2), 0, np.cos(fov / 2)])
-        self._executePixel2RayTestCase(camera, [0, resolution[1] / 2], [0, np.sin(fov / 2), np.cos(fov / 2)])
+        self._executePixels2RayTestCase(camera, [[resolution[0] / 2, 0]], [[np.sin(fov / 2), 0, np.cos(fov / 2)]])
+        self._executePixels2RayTestCase(camera, [[0, resolution[1] / 2]], [[0, np.sin(fov / 2), np.cos(fov / 2)]])
 
-    def _executePixel2RayTestCase(self, camera, pixel2d, ray3dExpected):
-        rayActual = camera.pixel2ray(pixel2d)
-        # print("pixel2d= ", pixel2d, "actual3d= ", rayActual, "expected3d= ", ray3dExpected)
-        self._compareVector(rayActual, ray3dExpected)
+    def _executePixels2RayTestCase(self, camera, pixels2d, rays3dExpected):
+        # Reference
+        for a, e in zip(camera.pixel2ray(pixels2d), rays3dExpected):
+            self._compareVector(a, e)
+
+        # Torch-version
+        for a, e in zip(
+                np.array(
+                    ftheta_from_reference(camera, self.device,
+                                          self.dtype).pixel_to_camera_ray(np.array(pixels2d, ndmin=2)).cpu()),
+                np.array(rays3dExpected, ndmin=2)):
+            self._compareVector(a, e)
 
     def test_ray2pixel(self):
         for orderPolynomial in range(1, 5):
@@ -250,56 +268,29 @@ class TestReferenceFThetaCamera(unittest.TestCase):
         rightRay = [np.sin(cumulativeAngle), 0, np.cos(cumulativeAngle)]
         bottomRay = [0, np.sin(cumulativeAngle), np.cos(cumulativeAngle)]
 
-        self._executeRay2PixelTestCase(camera, opticalAxesRay, [principalPoint, principalPoint])
-        self._executeRay2PixelTestCase(camera, rightRay, [resolution - 1, principalPoint])
-        self._executeRay2PixelTestCase(camera, bottomRay, [principalPoint, resolution - 1])
+        self._executeRays2PixelsTestCase(camera, [opticalAxesRay], [[principalPoint, principalPoint]])
+        self._executeRays2PixelsTestCase(camera, [rightRay], [[resolution - 1, principalPoint]])
+        self._executeRays2PixelsTestCase(camera, [bottomRay], [[principalPoint, resolution - 1]])
 
         rays3d = np.array([opticalAxesRay, rightRay, bottomRay])
-        pixels2dExpected = np.array(
-            [[principalPoint, principalPoint], [resolution - 1, principalPoint], [principalPoint, resolution - 1]])
+        pixels2dExpected = np.array([[principalPoint, principalPoint], [resolution - 1, principalPoint],
+                                     [principalPoint, resolution - 1]])
         self._executeRays2PixelsTestCase(camera, rays3d, pixels2dExpected)
 
-    def _executeRay2PixelTestCase(self, camera, ray3d, pixel2dExpected):
-        if len(pixel2dExpected) == 0:
-            self._executeRay2PixelFail(camera, ray3d)
-        else:
-            self._executeRay2PixelSuccess(camera, ray3d, pixel2dExpected)
-
-    def _executeRay2PixelFail(self, camera, ray3d):
-        pixel2dActual = camera.ray2pixel(ray3d)
-        self.assertEqual(pixel2dActual, [])
-        # self.assertFalse(pixel2dActual.success)
-
-    def _executeRay2PixelSuccess(self, camera, ray3d, pixel2dExpected):
-        pixel2dActual = camera.ray2pixel(ray3d)
-        self.assertTrue(not np.array_equal(pixel2dActual, []))
-        # self.assertTrue(pixel2dActual.success)
-        # print("ray3d= ", ray3d, "actual2d= ", pixel2dActual, "expected2d= ", pixel2dExpected)
-        self._compareVector(pixel2dActual, pixel2dExpected)
-
     def _executeRays2PixelsTestCase(self, camera, rays3d, pixels2dExpected):
-        pixels2dActual = camera.rays2pixels(rays3d)
-
-        for a, e in zip(pixels2dActual, pixels2dExpected):
+        # Reference
+        for a, e in zip(camera.rays2pixels(rays3d), pixels2dExpected):
             self._compareVector(a, e)
 
-    @parameterized.parameterized.expand([(
-        "cpu-based evaluation, f32",
-        'cpu', torch.float32
-    ),
-    (
-        "cpu-based evaluation, f64",
-        'cpu', torch.float64
-    ),
-    (
-        "cuda-based evaluation, f32",
-        'cuda', torch.float32
-    ),
-    (
-        "cuda-based evaluation, f64",
-        'cuda', torch.float64
-    )])
-    def test_pixel2ray_ray2pixel_consistency(self, _, device, dtype):
+        # Torch-version
+        for a, e in zip(
+                np.array(
+                    ftheta_from_reference(camera, self.device,
+                                          self.dtype).camera_ray_to_pixel(np.array(rays3d, ndmin=2))[0].cpu()),
+                np.array(pixels2dExpected, ndmin=2)):
+            self._compareVector(a, e)
+
+    def test_pixel2ray_ray2pixel_consistency(self):
         ''' Tests self-consistency of both the reference camera and torch-based FTheta cameras, as well as
             cross-consistency of both cameras '''
         MAX_DEVIATION_IN_PIXEL = 0.001
@@ -307,11 +298,14 @@ class TestReferenceFThetaCamera(unittest.TestCase):
         size2d = np.array([1000, 1000])
         principalPoint = size2d / 2
         focalLengthPixel = 500.
-        backwardPolynomial = [0., 0.4 / focalLengthPixel, (0.4 / focalLengthPixel) ** 2, (0.4 / focalLengthPixel) ** 3,
-                              (0.4 / focalLengthPixel) ** 4]
+        backwardPolynomial = [
+            0., 0.4 / focalLengthPixel, (0.4 / focalLengthPixel)**2, (0.4 / focalLengthPixel)**3,
+            (0.4 / focalLengthPixel)**4
+        ]
         camera_ref = ReferenceFThetaCamera(size2d, principalPoint, backwardPolynomial)
 
-        camera_ftheta = ftheta_from_reference(camera_ref, device, dtype) # instantiate a corresponding torch-based camera
+        camera_ftheta = ftheta_from_reference(camera_ref, self.device,
+                                              self.dtype)  # instantiate a corresponding torch-based camera
 
         # for p in [0, px]:
         for p in range(int(principalPoint[0])):
@@ -322,7 +316,8 @@ class TestReferenceFThetaCamera(unittest.TestCase):
                 ray3d_ref = camera_ref.pixel2ray(expectedPoint2d)
 
                 # Evaluate torch-camera
-                ray3d = camera_ftheta.pixel_to_camera_ray(camera_ftheta.to_torch(expectedPoint2d).to(camera_ftheta.dtype))
+                ray3d = camera_ftheta.pixel_to_camera_ray(
+                    camera_ftheta.to_torch(expectedPoint2d).to(camera_ftheta.dtype))
 
                 # test that the computed rays of both cameras agree
                 self.assertLessEqual(np.linalg.norm(ray3d_ref - np.array(ray3d.cpu())), MAX_DEVIATION_RAY)
@@ -334,7 +329,8 @@ class TestReferenceFThetaCamera(unittest.TestCase):
 
                     # Verify torch-camera's result
                     actualPoint2d, _ = camera_ftheta.camera_ray_to_pixel(ray3d)
-                    self.assertLessEqual(np.linalg.norm(expectedPoint2d - np.array(actualPoint2d.cpu())), MAX_DEVIATION_IN_PIXEL)
+                    self.assertLessEqual(np.linalg.norm(expectedPoint2d - np.array(actualPoint2d.cpu())),
+                                         MAX_DEVIATION_IN_PIXEL)
 
     def test_calculateMaxRadius(self):
         size2d = np.array([10, 5])
@@ -355,33 +351,38 @@ class TestReferenceFThetaCamera(unittest.TestCase):
         actualMaxRadius = camera._maxRadius
         self.assertAlmostEqual(actualMaxRadius, expectedMaxRadius)
 
+
 def _solveLinearEquation(linearSystemMatrix, linearSystemVector):
     solution, residues, rank, singularValues = scipy.linalg.lstsq(linearSystemMatrix, linearSystemVector)
     # print("solution= ", solution, "max(residues)= ", numpy.max(residues))
     return solution
 
+
 def _generateBackwardPolynomial(resolution, baseAngle, orderPolynomial):
     firstToLastPixelDistance = (resolution - 1)
     backwardPolynomial = [0]
     for j in range(1, orderPolynomial + 1):
-        backwardPolynomial.append(baseAngle / ((0.5 * firstToLastPixelDistance) ** j))
+        backwardPolynomial.append(baseAngle / ((0.5 * firstToLastPixelDistance)**j))
     return backwardPolynomial
+
 
 def _computeCumulativeAngleAtImageBorder(baseAngle, orderPolynomial):
     return baseAngle * orderPolynomial
 
 
-def ftheta_from_reference(reference_camera: ReferenceFThetaCamera, device: str, dtype: torch.dtype) -> FThetaCameraModel:
+def ftheta_from_reference(reference_camera: ReferenceFThetaCamera, device: str,
+                          dtype: torch.dtype) -> FThetaCameraModel:
     parameters = FThetaCameraModelParameters(
         resolution=reference_camera._imageSize.astype(np.uint64),
         shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
-        exposure_time_us=np.uint64(1641.58),
+        exposure_time_us=int(1641.58),
         principal_point=reference_camera._principalPoint.astype(np.float32),
         reference_poly=FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE,
         pixeldist_to_angle_poly=np.array(reference_camera._backwardPolynomial, dtype=np.float32),
         angle_to_pixeldist_poly=np.array(reference_camera._forwardPolynomial, dtype=np.float32),
         max_angle=reference_camera._maxRadius.astype(np.float32))
     return FThetaCameraModel(camera_model_parameters=parameters, device=device, dtype=dtype)
+
 
 if __name__ == '__main__':
     unittest.main(argv=['first-arg-is-ignored'], exit=False)
