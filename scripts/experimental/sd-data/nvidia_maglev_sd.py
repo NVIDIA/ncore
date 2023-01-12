@@ -289,7 +289,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             camera_model_parameters = types.FThetaCameraModelParameters(
                 intrinsic[2:4].astype(np.uint64), types.ShutterType.ROLLING_TOP_TO_BOTTOM,
-                self.CAMERATYPE_TO_EXPOSURETIME_US[camera_type].item(), intrinsic[0:2], bw_poly, fw_poly,
+                self.CAMERATYPE_TO_EXPOSURETIME_US[camera_type].item(), intrinsic[0:2],
+                types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, bw_poly, fw_poly,
                 float(max_angle))
 
             # Assemble camera meta-data
