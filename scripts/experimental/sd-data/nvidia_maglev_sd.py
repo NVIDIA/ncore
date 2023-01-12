@@ -23,7 +23,7 @@ from src.dsai_internal.common.nvidia_utils import (load_maglev_camera_indexer_fr
                                                    load_maglev_session_id, parse_rig_sensors_from_dict, sensor_to_rig,
                                                    camera_intrinsic_parameters, compute_fw_polynomial,
                                                    compute_ftheta_parameters)
-from src.dsai_internal.common.common import uniform_subdivide_range
+from src.dsai_internal.common.common import uniform_subdivide_range, PoseInterpolator
 
 
 class PositionInterpolator:
@@ -205,6 +205,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         # Position interpolator to sample velocities
         position_interpolator = PositionInterpolator(self.global_T_rig_worlds, self.global_T_rig_world_timestamps_us)
+        # Pose interpolator to obtain start / end egomotion poses
+        pose_interpolator = PoseInterpolator(self.global_T_rig_worlds, self.global_T_rig_world_timestamps_us)
 
         # Per-camera crop-transformation specification
         @dataclass
@@ -289,11 +291,14 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             camera_model_parameters = types.FThetaCameraModelParameters(
                 intrinsic[2:4].astype(np.uint64), types.ShutterType.ROLLING_TOP_TO_BOTTOM,
-                self.CAMERATYPE_TO_EXPOSURETIME_US[camera_type].item(), intrinsic[0:2], bw_poly, fw_poly,
+                self.CAMERATYPE_TO_EXPOSURETIME_US[camera_type].item(), intrinsic[0:2],
+                types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, bw_poly, fw_poly,
                 float(max_angle))
 
             # Assemble camera meta-data
             meta = {
+                'camera_id': camera_id,
+                'session_id': self.session_id,
                 'T_sensor_rig': T_sensor_rig.tolist(),
                 'camera_model_type': camera_model_parameters.type(),
                 'camera_model_parameters': camera_model_parameters.to_dict(),
@@ -319,10 +324,10 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                     tqdm.tqdm(enumerate(zip(local_frame_numbers, local_frame_timestamps_us)), total=len(local_frame_numbers)):
 
                     # Determine current speed
-                    speeds_km_h = position_interpolator.get_speeds_km_h(frame_end_timestamp_us).item()
+                    speed_km_h = position_interpolator.get_speeds_km_h(frame_end_timestamp_us).item()
 
                     # Filter image based on local speed if threshold is set
-                    if self.min_speed_km_h and speeds_km_h < self.min_speed_km_h:
+                    if self.min_speed_km_h and speed_km_h < self.min_speed_km_h:
                         continue
 
                     # Load image file data from archive
@@ -335,12 +340,22 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                         target_resolution, box=crop_box.astype(np.float32),
                         resample=PILImage.LANCZOS)  # crop and downsample ROI
 
+                    timestamps_us = np.array([
+                        frame_end_timestamp_us - self.CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US[camera_type], \
+                        frame_end_timestamp_us
+                    ])
+                    T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
+
                     # Store image and meta data to webdataset shard (add frame-specific data to static meta-data)
                     sample = {
                         "__key__": util.padded_index_string(continous_local_frame_index),
                         "cropped.jpeg": img_croptransformed,
                         "json": meta | {
-                            'speeds_km_h': speeds_km_h
+                            'speed_km_h': speed_km_h,
+                            'timestamps_us': timestamps_us.tolist(),
+                            'T_rig_worlds': T_rig_worlds.tolist(),
+                            'global_frame_idx': frame_number.item(),
+                            'local_frame_idx': continous_local_frame_index,
                         },
                     }
                     sink.write(sample)
