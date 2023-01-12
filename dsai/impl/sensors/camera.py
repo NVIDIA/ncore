@@ -337,8 +337,12 @@ class CameraModel(ABC):
 
 class FThetaCameraModel(CameraModel):
     def __init__(self, camera_model_parameters: types.FThetaCameraModelParameters, 
-                 device: str = 'cuda', dtype: torch.dtype = torch.float32):
-        
+                 device: str = 'cuda', dtype: torch.dtype = torch.float32, newton_iterations: int = 2):
+        '''Initializes a FThetaCameraModel to operate on a specific device and floating-point type.
+         
+            newton_iterations: the number of Newton iterations to perform polynomial inversion (zero to disable)
+        '''
+
         # Check if cuda device is actually available
         if device == 'cuda' and not torch.cuda.is_available():
             logging.warning("Cuda device selected but not available, reverting to CPU!")
@@ -350,12 +354,18 @@ class FThetaCameraModel(CameraModel):
         assert camera_model_parameters.reference_poly == types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, \
              'currently only supporting PIXELDIST_TO_ANGLE reference polynomials'
 
+        # Initialize first derivative of bw_poly for Newton iteration
+        dbw_poly = np.array([i * c for i, c in enumerate(camera_model_parameters.bw_poly[1:], start=1)],
+                            dtype=camera_model_parameters.bw_poly.dtype) # first derivative of the bw polynomial
+
         self.principal_point = self.to_torch(camera_model_parameters.principal_point).to(self.dtype)
         self.fw_poly = self.to_torch(camera_model_parameters.fw_poly).to(self.dtype)
         self.bw_poly = self.to_torch(camera_model_parameters.bw_poly).to(self.dtype)
+        self.dbw_poly = self.to_torch(dbw_poly).to(self.dtype)
         self.resolution = self.to_torch(camera_model_parameters.resolution.astype(np.int32))
         self.shutter_type = camera_model_parameters.shutter_type.name
         self.max_angle = float(camera_model_parameters.max_angle)
+        self.newton_iterations = newton_iterations
 
         assert self.principal_point.shape == (2,)
         assert self.principal_point.dtype == self.dtype
@@ -370,7 +380,7 @@ class FThetaCameraModel(CameraModel):
         '''
         Computes the camera ray for each image point
         '''
-        
+
         image_points = self.to_torch(image_points).to(self.dtype)
 
         pixels_dist = image_points - self.principal_point
@@ -395,8 +405,8 @@ class FThetaCameraModel(CameraModel):
 
         ray_norm = self.__nummerically_stable_norm(cam_rays)
         alphas = torch.atan2(torch.linalg.norm(cam_rays[:, :2], axis=1, keepdims=True), cam_rays[:, 2:])
-        delta = self.__eval_fw_poly(alphas)
-
+        delta = self.__eval_bw_poly_inverse_newton(alphas)
+        
         # Replace the invalid angles and prevent division by 0
         delta[ray_norm <= 0.0] = 0.0
         ray_norm[ray_norm <= 0.0] = 1.0
@@ -420,6 +430,29 @@ class FThetaCameraModel(CameraModel):
             val = val * pixel_norms + it
 
         return val
+
+    def __eval_dbw_poly(self, pixel_norms: torch.Tensor) -> torch.Tensor:
+        ''' Evaluate the first derivative of the backward polynomial using Horner scheme '''
+        val = torch.zeros_like(pixel_norms)
+        for it in torch.flip(self.dbw_poly, dims=(0,)):
+            val = val * pixel_norms + it
+
+        return val
+
+    def __eval_bw_poly_inverse_newton(self, theta: torch.Tensor) -> torch.Tensor:
+        ''' Evaluate the inverse of the backward polynomial using a fixed number of Newton iterations starting from the forward polynomial '''
+        
+        radii = self.__eval_fw_poly(theta) # approximation / starting points - also returned for zero iterations
+        
+        assert self.newton_iterations >= 0, 'Newton-iteration number needs to be non-negative'
+
+        for _ in range(self.newton_iterations):
+            # Evaluate single Newton step
+            dradius2angle = self.__eval_dbw_poly(radii)
+            residuals = self.__eval_bw_poly(radii) - theta
+            radii -= residuals / dradius2angle
+
+        return radii
 
     def __eval_fw_poly(self, theta: torch.Tensor) -> torch.Tensor:
         ''' Evaluate the forward polynomial using Horner scheme '''

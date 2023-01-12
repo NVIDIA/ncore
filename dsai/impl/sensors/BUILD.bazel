@@ -26,6 +26,7 @@ pytest_test(
     ],
     deps = [
         requirement("numpy"),
+        requirement("parameterized"),
         requirement("scipy"),
         ":pylib_camera",
         "//dsai/impl/data:pylib_types",
