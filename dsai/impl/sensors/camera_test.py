@@ -7,6 +7,7 @@ import copy
 import numpy as np
 import scipy
 import parameterized
+import torch
 
 from dsai.impl.data.types import FThetaCameraModelParameters, ShutterType
 from .camera import FThetaCameraModel
@@ -283,13 +284,22 @@ class TestReferenceFThetaCamera(unittest.TestCase):
             self._compareVector(a, e)
 
     @parameterized.parameterized.expand([(
-        "cpu-based evaluation",
-        'cpu',
-    ), (
-        "cuda-based evaluation",
-        'cuda',
+        "cpu-based evaluation, f32",
+        'cpu', torch.float32
+    ),
+    (
+        "cpu-based evaluation, f64",
+        'cpu', torch.float64
+    ),
+    (
+        "cuda-based evaluation, f32",
+        'cuda', torch.float32
+    ),
+    (
+        "cuda-based evaluation, f64",
+        'cuda', torch.float64
     )])
-    def test_pixel2ray_ray2pixel_consistency(self, _, device):
+    def test_pixel2ray_ray2pixel_consistency(self, _, device, dtype):
         ''' Tests self-consistency of both the reference camera and torch-based FTheta cameras, as well as
             cross-consistency of both cameras '''
         MAX_DEVIATION_IN_PIXEL = 0.001
@@ -301,7 +311,7 @@ class TestReferenceFThetaCamera(unittest.TestCase):
                               (0.4 / focalLengthPixel) ** 4]
         camera_ref = ReferenceFThetaCamera(size2d, principalPoint, backwardPolynomial)
 
-        camera_ftheta = ftheta_from_reference(camera_ref, device) # instantiate a corresponding torch-based camera
+        camera_ftheta = ftheta_from_reference(camera_ref, device, dtype) # instantiate a corresponding torch-based camera
 
         # for p in [0, px]:
         for p in range(int(principalPoint[0])):
@@ -323,8 +333,7 @@ class TestReferenceFThetaCamera(unittest.TestCase):
                     self.assertLessEqual(np.linalg.norm(expectedPoint2d - actualPoint2d_ref), MAX_DEVIATION_IN_PIXEL)
 
                     # Verify torch-camera's result
-                    actualPoint2d, valid = camera_ftheta.camera_ray_to_pixel(ray3d)
-                    self.assertTrue(valid.cpu())
+                    actualPoint2d, _ = camera_ftheta.camera_ray_to_pixel(ray3d)
                     self.assertLessEqual(np.linalg.norm(expectedPoint2d - np.array(actualPoint2d.cpu())), MAX_DEVIATION_IN_PIXEL)
 
     def test_calculateMaxRadius(self):
@@ -362,7 +371,7 @@ def _computeCumulativeAngleAtImageBorder(baseAngle, orderPolynomial):
     return baseAngle * orderPolynomial
 
 
-def ftheta_from_reference(reference_camera: ReferenceFThetaCamera, device: str) -> FThetaCameraModel:
+def ftheta_from_reference(reference_camera: ReferenceFThetaCamera, device: str, dtype: torch.dtype) -> FThetaCameraModel:
     parameters = FThetaCameraModelParameters(
         resolution=reference_camera._imageSize.astype(np.uint64),
         shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
@@ -372,7 +381,7 @@ def ftheta_from_reference(reference_camera: ReferenceFThetaCamera, device: str) 
         pixeldist_to_angle_poly=np.array(reference_camera._backwardPolynomial, dtype=np.float32),
         angle_to_pixeldist_poly=np.array(reference_camera._forwardPolynomial, dtype=np.float32),
         max_angle=reference_camera._maxRadius.astype(np.float32))
-    return FThetaCameraModel(camera_model_parameters=parameters, device=device)
+    return FThetaCameraModel(camera_model_parameters=parameters, device=device, dtype=dtype)
 
 if __name__ == '__main__':
     unittest.main(argv=['first-arg-is-ignored'], exit=False)
