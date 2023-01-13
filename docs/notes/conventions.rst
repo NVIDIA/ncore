@@ -36,7 +36,6 @@ point :math:`\mathbf{p}_b` as
 .. figure:: ../images/ecef.png
    :figwidth: 40%
    :width: 50%
-   :align: right
 
 The position and orientation of the ego car, as well as other objects in
 the scene, are expressed in the earth-centered-earth-fixed (ECEF)
@@ -51,7 +50,6 @@ reference pose is available as ``T_rig_world_base`` [#f1]_.
 .. figure:: ../images/rig.png
    :figwidth: 40%
    :width: 50%
-   :align: right
 
 The ``rig`` coordinate system is defined as a right-handed coordinate
 system with the x-axis pointing to the front of the car, y is pointing
@@ -67,7 +65,6 @@ corresponding to a lidar spin).
 .. figure:: ../images/camera.jpg
    :figwidth: 40%
    :width: 80%
-   :align: right
 
 Both camera and image coordinate systems are right-handed coordinate
 systems. The axes of the camera coordinate system are defined as
