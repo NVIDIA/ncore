@@ -80,7 +80,8 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                 f'{self.sequence_name}-{self.track_name}',
                 # always single-shard
                 0,
-                1)
+                1,
+                False)
 
             # Read rig json file
             with open(os.path.join(sequence_path, 'rig.json'), 'r') as fp:
