@@ -83,7 +83,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             'lidar-egomotion',
             session_id,
             self.shard_id,
-            self.shard_count)
+            self.shard_count,
+            True)
 
         # Decode data from maglev
         self.decode_poses()

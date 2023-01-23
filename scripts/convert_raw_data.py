@@ -10,7 +10,6 @@ from src.dsai_internal.common.common import Config
 @click.option('--root-dir', type=str, help="Path to the raw data sequences", required=True)
 @click.option('--output-dir', type=str, help="Path where the converted data will be saved", required=True)
 @click.option("--debug", is_flag=True, default=False, help="Enables debug logging outputs")
-@click.version_option('0.1')
 @click.pass_context
 def cli(ctx, *_, **kwargs):
     """Data Preprocessing Pipeline
@@ -23,7 +22,7 @@ def cli(ctx, *_, **kwargs):
     ./convert_raw_data.py 
       --root-dir <FOLDER WITH SOURCE DATASETS>
       --output-dir <FOLDER DATA WILL BE PRODUCED>
-      nvidia-maglev-v2
+      nvidia-maglev-v3
     """
     # Create a config object and remember it as the context object. From
     # this point onwards other commands can refer to it by using the
@@ -36,37 +35,13 @@ def cli(ctx, *_, **kwargs):
 
 
 @cli.command()
-@click.option('--seek-sec', type=click.FloatRange(min=0.0, max_open=True), help="Time to skip for the dataset conversion (in seconds)")
-@click.option('--duration-sec', type=click.FloatRange(min=0.0, max_open=True), help="Restrict total duration of the dataset conversion (in seconds)")
-@click.option('--multiprocessing-camera', is_flag=True, default=False, help="Perform camera data conversion with multiprocessing if enabled")
-@click.option('--multiprocessing-lidar', is_flag=True, default=False, help="Perform lidar data conversion with multiprocessing if enabled")
-@click.option('--max-processes', default=None, type=int, help="If provided, the upper bound for processes to start")
-@click.option('--shard-id', type=click.IntRange(min=0, max_open=True), default=0, help="Shard id in [0,N-1] controlling uniform dataset subset processing")
-@click.option('--shard-count', type=click.IntRange(min=1, max_open=True), default=1, help="Total number of shards N to performing full dataset processing")
-@click.option('--shard-meta', is_flag=True, default=False, help="Output shard-associated meta data if enabled")
-@click.option('--symlink-camera-frames', is_flag=True, default=False, help="Symlink camera frames instead of copying files if enabled")
-@click.option('--egomotion-file', type=str, help="If provided, overwrite default egomotion file location", default=None)
-@click.option('--skip-dynamic-flag', is_flag=True, default=False, help="Skip lidar dynamic flag computation to improve performance")
-@click.pass_context
-def nvidia_maglev_v2(ctx, *_, **kwargs):
-    """NVIDIA-specific data conversion (V2 format, based on Maglev data extraction)"""
-
-    from src.dsai_internal.data_converter.nvidia_maglev2 import NvidiaMaglevConverter
-
-    config = ctx.obj  # Extend base config with command-specific options
-    config += kwargs
-
-    NvidiaMaglevConverter.convert(config)
-
-
-@cli.command()
 @click.option('--start-timestamp-us', type=int, default=None, help="If provided, the start timestamp to restrict processing to")
 @click.option('--end-timestamp-us', type=int, default=None, help="If provided, the end timestamp to restrict processing to")
 @click.pass_context
-def nvidia_deepmap_v2(ctx, *_, **kwargs):
-    """NVIDIA-specific data conversion (V2 format, based on DeepMap tracks)"""
+def nvidia_deepmap_v3(ctx, *_, **kwargs):
+    """NVIDIA-specific data conversion (V3 format, based on DeepMap tracks)"""
 
-    from src.dsai_internal.data_converter.nvidia_deepmap2 import NvidiaDeepmapConverter
+    from src.dsai_internal.data_converter.nvidia_deepmap3 import NvidiaDeepmapConverter
 
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs

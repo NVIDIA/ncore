@@ -6,17 +6,21 @@ import logging
 import glob
 import os
 import json
+import io
+
 from pathlib import Path
 
 import tqdm
 import numpy as np
 import cv2
+import PIL.Image as PILImage
+
 from google.protobuf import text_format
 from protobuf_to_dict import protobuf_to_dict
 
 from src.dsai_internal.data_converter.protos.deepmap import track_data_pb2, pointcloud_pb2
 from src.dsai_internal.data_converter.data_converter import BaseNvidiaDataConverter
-from src.dsai_internal.data.data2 import DataWriter
+from src.dsai_internal.data.data3 import ContainerDataWriter
 from src.dsai_internal.data.types import Poses, FThetaCameraModelParameters, LabelSource, ShutterType
 from src.dsai_internal.common.common import PoseInterpolator
 from src.dsai_internal.common.nvidia_utils import (LabelProcessor, extract_sensor_2_sdc, parse_rig_sensors_from_dict,
@@ -62,13 +66,22 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
         for track in sequence_tracks:
             self.track_name = track.split(os.sep)[-2]
 
-            # DataWriter for all outputs
-            self.data_writer = DataWriter(
+            # ContainerDataWriter for all outputs (always single-shard)
+            self.data_writer = ContainerDataWriter(
                 self.output_dir / f'{self.sequence_name}-{self.track_name}',
+                f'{self.sequence_name}-{self.track_name}',
                 list(self.CAMERAID_TO_RIGNAME.keys()),
-                [self.LIDAR_SENSOR_ID],
-                []  # no radars yet
-            )
+                list(self.LIDARID_TO_RIGNAME.keys()),
+                # no radars yet
+                [],
+                # TODO: parse these from the data
+                'scene-calib',
+                'deepmap',
+                f'{self.sequence_name}-{self.track_name}',
+                # always single-shard
+                0,
+                1,
+                False)
 
             # Read rig json file
             with open(os.path.join(sequence_path, 'rig.json'), 'r') as fp:
@@ -93,10 +106,8 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
 
             self.decode_cameras(sequence_path)
 
-            self.data_writer.store_meta(
-                # TODO: parse these from the data
-                'unknown',
-                'deepmap')
+            # Store per-shard meta data / final success state / close file
+            self.data_writer.finalize()
 
     def decode_poses_timestamps(self, sequence_path):
         # Compute the transformation from the SDC (deepmap rig) to the NV rig definition
@@ -323,7 +334,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
             # seek video to first valid frame
             vidcap.set(cv2.CAP_PROP_POS_FRAMES, frame_timestamps[0, 0])
 
-            success, image = vidcap.read()
+            success, image_bgr = vidcap.read()
 
             if not success:
                 self.logger.warn(f'skipping {camera_id} - can\'t read frame')
@@ -344,19 +355,24 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                 # Interpolate the start and end pose to the timestamps of the first and last row
                 timestamps_us = np.array([
                     # sof-timestamp
-                    frame_timestamp_us - self.CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US[camera_type] - self.CAMERATYPE_TO_EXPOSURETIME_HALF_US[camera_type], \
+                    frame_timestamp_us - self.CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US[camera_type] -
+                    self.CAMERATYPE_TO_EXPOSURETIME_HALF_US[camera_type],
                     # eof-timestamp
-
                     frame_timestamp_us - self.CAMERATYPE_TO_EXPOSURETIME_HALF_US[camera_type]
                 ])
 
                 T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
 
-                self.data_writer.store_camera_frame(
-                    camera_id, continous_frame_index,
-                    lambda target_image_path: cv2.imwrite(str(target_image_path), image), T_rig_worlds, timestamps_us)
+                with io.BytesIO() as buffer:
+                    FORMAT = 'jpeg'
+                    image_rgb = image_bgr[..., ::-1]  # invert last dimension from BGR -> RGB (reverse BGR)
+                    PILImage.fromarray(image_rgb).save(buffer, format=FORMAT, optimize=True,
+                                                       quality=91)  # encode image as jpeg
 
-                success, image = vidcap.read()
+                    self.data_writer.store_camera_frame(camera_id, continous_frame_index, buffer.getvalue(), FORMAT,
+                                                        T_rig_worlds, timestamps_us)
+
+                success, image_bgr = vidcap.read()
                 raw_frame_index += 1
                 continous_frame_index += 1
 
