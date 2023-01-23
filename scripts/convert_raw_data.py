@@ -63,10 +63,10 @@ def nvidia_maglev_v2(ctx, *_, **kwargs):
 @click.option('--start-timestamp-us', type=int, default=None, help="If provided, the start timestamp to restrict processing to")
 @click.option('--end-timestamp-us', type=int, default=None, help="If provided, the end timestamp to restrict processing to")
 @click.pass_context
-def nvidia_deepmap_v2(ctx, *_, **kwargs):
-    """NVIDIA-specific data conversion (V2 format, based on DeepMap tracks)"""
+def nvidia_deepmap_v3(ctx, *_, **kwargs):
+    """NVIDIA-specific data conversion (V3 format, based on DeepMap tracks)"""
 
-    from src.dsai_internal.data_converter.nvidia_deepmap2 import NvidiaDeepmapConverter
+    from src.dsai_internal.data_converter.nvidia_deepmap3 import NvidiaDeepmapConverter
 
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
