@@ -19,7 +19,6 @@ py_library(
 py_library(
     name = "pylib_nvidia_maglev",
     srcs = [
-        "nvidia_maglev2.py",
         "nvidia_maglev3.py",
     ],
     deps = [

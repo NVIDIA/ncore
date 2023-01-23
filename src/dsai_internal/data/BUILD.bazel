@@ -10,7 +10,6 @@ package(default_visibility = ["//:code_package_group"])
 py_library(
     name = "pylib_data",
     srcs = [
-        "data2.py",
         "data3.py",
     ],
     deps = [
