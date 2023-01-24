@@ -49,4 +49,34 @@ py_library(
     ],
 )
 
+py_library(
+    name = "pylib_waymo_open_utils",
+    srcs = [
+        "waymo_utils.py",
+    ],
+    deps = [
+        "@waymo-open-dataset//waymo_open_dataset:dataset_proto_py_pb2",
+        requirement("tensorflow"),
+        requirement("numpy"),
+        requirement("scipy"),
+    ],
+)
+
+py_library(
+    name = "pylib_waymo_open",
+    srcs = [
+        "waymo3.py",
+    ],
+    deps = [
+        ":pylib_data_converter",
+        "@waymo-open-dataset//waymo_open_dataset:dataset_proto_py_pb2",
+        requirement("tensorflow"),
+        requirement("numpy"),
+        requirement("tqdm"),
+        ":pylib_waymo_open_utils",
+        "//dsai/impl/av_utils:pylib",
+        "//dsai/impl/data:pylib_data",
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")

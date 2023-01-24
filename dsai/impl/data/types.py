@@ -173,10 +173,12 @@ class BBox3(dataclasses_json.DataClassJsonMixin):
         assert isinstance(self.rot, tuple)
         assert all(isinstance(i, float) for i in self.rot)
 
+
 @unique
 class LabelSource(IntEnum):
     ''' Enumerates different sources for labels (auto, manual, GT, synthetic etc.) '''
     AUTOLABEL = auto()
+    EXTERNAL = auto()  # Unspecified external source, e.g., from third-party data
 
 
 @dataclass

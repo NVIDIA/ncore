@@ -14,6 +14,7 @@ CONVERT_RAW_DATA_DEPS = [
     requirement("click"),
     "//dsai/impl/data_converter:pylib_nvidia_maglev",
     "//dsai/impl/data_converter:pylib_nvidia_deepmap",
+    "//dsai/impl/data_converter:pylib_waymo_open",
 ]
 
 py_binary(
