@@ -1,0 +1,91 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_library")
+load("//bazel/pytest:defs.bzl", "pytest_test")
+
+package(default_visibility = ["//:code_package_group"])
+
+py_library(
+    name = "pylib_data",
+    srcs = [
+        "data3.py",
+    ],
+    deps = [
+        ":pylib_stores",
+        ":pylib_types",
+        ":pylib_util",
+        "//dsai_internal/common:pylib",
+        requirement("h5py"),
+        requirement("zarr"),
+        requirement("pillow"),
+    ],
+)
+
+py_library(
+    name = "pylib_types",
+    srcs = [
+        "types.py",
+    ],
+    deps = [
+        ":pylib_util",
+        requirement("numpy"),
+        requirement("dataclasses-json"),
+        requirement("pillow"),
+    ],
+)
+
+py_library(
+    name = "pylib_stores",
+    srcs = [
+        "stores.py",
+    ],
+    deps = [
+        requirement("zarr"),
+        requirement("cbor2"),
+    ],
+)
+
+py_library(
+    name = "pylib_util",
+    srcs = [
+        "util.py",
+    ],
+    deps = [
+        requirement("numpy"),
+        requirement("dataclasses-json"),
+    ],
+)
+
+pytest_test(
+    name = "pytest_util",
+    srcs = [
+        "util_test.py",
+    ],
+    deps = [
+        ":pylib_util",
+    ],
+)
+
+pytest_test(
+    name = "pytest_data3",
+    srcs = ["data3_test.py"],
+    data = [
+        "@test-data-v3-shards//:test-shards",
+    ],
+    deps = [
+        ":pylib_data",
+    ],
+)
+
+pytest_test(
+    name = "pytest_stores",
+    srcs = ["stores_test.py"],
+    deps = [
+        ":pylib_stores",
+        requirement("parameterized"),
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")

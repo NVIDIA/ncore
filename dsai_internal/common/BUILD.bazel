@@ -1,0 +1,44 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_library")
+load("//bazel/pytest:defs.bzl", "pytest_test")
+
+package(default_visibility = ["//:code_package_group"])
+
+py_library(
+    name = "pylib",
+    srcs = [
+        "common.py",
+        "nvidia_utils.py",
+        "transformations.py",
+        "visualization.py",
+    ],
+    deps = [
+        requirement("numpy"),
+        requirement("pillow"),
+        requirement("pyarrow"),
+        requirement("pandas"),  # for pyarrow::to_pandas()
+        requirement("scipy"),
+        requirement("tqdm"),
+        requirement("matplotlib"),
+        requirement("open3d"),
+        requirement("tensorflow"),  # required by open3d.ml.tf
+        requirement("multimethod"),
+        "//dsai_internal/av_utils:pylib",
+        "//dsai_internal/data:pylib_types",
+        "//dsai_internal/data_converter/protos/deepmap:py_proto",
+    ],
+)
+
+pytest_test(
+    name = "test",
+    srcs = glob(["*test.py"]),
+    deps = [
+        ":pylib",
+        "//dsai_internal/av_utils:pylib",
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")

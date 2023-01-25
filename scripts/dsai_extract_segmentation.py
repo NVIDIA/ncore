@@ -7,12 +7,12 @@ from pathlib import Path
 
 import click
 
-from src.dsai_internal.deps.semantic_segmentation import run_semantic_segmentation
-from src.dsai_internal.deps.instance_segmentation import run_instance_segmentation
+from dsai_internal.deps.semantic_segmentation import run_semantic_segmentation
+from dsai_internal.deps.instance_segmentation import run_instance_segmentation
 
-from src.dsai_internal.data.types import EncodedImageHandle
-from src.dsai_internal.data.data3 import ShardDataLoader, CameraSensor
-from src.dsai_internal.data.util import INDEX_DIGITS
+from dsai_internal.data.types import EncodedImageHandle
+from dsai_internal.data.data3 import ShardDataLoader, CameraSensor
+from dsai_internal.data.util import INDEX_DIGITS
 
 
 @click.command()

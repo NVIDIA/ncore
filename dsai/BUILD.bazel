@@ -1,0 +1,34 @@
+# Copyright (c) 2023 NVIDIA CORPORATION.  All rights reserved.
+
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
+
+py_package(
+    name = "dsai_pkg",
+    packages = ["dsai"],
+    deps = [
+        "@dsai-repo//dsai/data:pylib",
+        "@dsai-repo//dsai/data/v3:pylib",
+    ],
+)
+
+py_wheel(
+    name = "dsai_wheel",
+    distribution = "dsai",
+    python_requires = ">=3.10",
+    python_tag = "cp310",
+    requires = [
+        "numpy",
+        "dataclasses_json",
+        "pillow",
+        "zarr",
+        "cbor2",
+        "scipy",
+    ],
+    version = "0.3.0",
+    deps = [
+        ":dsai_pkg",
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")

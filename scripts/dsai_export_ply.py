@@ -9,9 +9,9 @@ from pathlib import Path
 import numpy as np
 from point_cloud_utils import TriangleMesh
 
-from src.dsai_internal.common.transformations import transform_point_cloud
-from src.dsai_internal.data.data3 import ShardDataLoader, LidarSensor, PointCloudSensor
-from src.dsai_internal.data.util import padded_index_string
+from dsai_internal.common.transformations import transform_point_cloud
+from dsai_internal.data.data3 import ShardDataLoader, LidarSensor, PointCloudSensor
+from dsai_internal.data.util import padded_index_string
 
 
 @click.command()

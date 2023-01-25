@@ -16,14 +16,14 @@ import PIL.Image as PILImage
 import webdataset as wds
 import scipy
 
-from src.dsai_internal.data_converter.data_converter import BaseNvidiaDataConverter
-from src.dsai_internal.data import types, util
+from dsai_internal.data_converter.data_converter import BaseNvidiaDataConverter
+from dsai_internal.data import types, util
 
-from src.dsai_internal.common.nvidia_utils import (load_maglev_camera_indexer_frame_meta, load_maglev_egomotion,
+from dsai_internal.common.nvidia_utils import (load_maglev_camera_indexer_frame_meta, load_maglev_egomotion,
                                                    load_maglev_session_id, parse_rig_sensors_from_dict, sensor_to_rig,
                                                    camera_intrinsic_parameters, compute_fw_polynomial,
                                                    compute_ftheta_parameters)
-from src.dsai_internal.common.common import uniform_subdivide_range, PoseInterpolator
+from dsai_internal.common.common import uniform_subdivide_range, PoseInterpolator
 
 
 class PositionInterpolator:
