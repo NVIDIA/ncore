@@ -19,8 +19,15 @@ import zarr
 import numcodecs
 import PIL.Image as PILImage
 
-import src.dsai_internal.common.common as common
-import src.dsai_internal.common.transformations as transformations
+try:
+    import src.dsai_internal.common.common as common
+except ImportError:
+    import dsai_internal.common.common as common # type: ignore
+
+try:
+    import src.dsai_internal.common.transformations as transformations
+except ImportError:
+    import dsai_internal.common.transformations as transformations # type: ignore
 
 from . import types, stores, util
 
