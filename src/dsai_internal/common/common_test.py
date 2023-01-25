@@ -5,9 +5,11 @@ import tempfile
 import unittest
 import numpy as np
 
-from src.dsai_internal.common.common import load_pkl, save_pkl, load_pc_dat, save_pc_dat, is_within_3d_bbox, uniform_subdivide_range
-from src.dsai_internal.av_utils import isWithin3DBBox
+from scipy.spatial.transform import Rotation as R
 
+from src.dsai_internal.common.common import load_pkl, save_pkl, load_pc_dat, save_pc_dat, uniform_subdivide_range
+from src.dsai_internal.common.transformations import so3_trans_2_se3
+from src.dsai_internal.av_utils import isWithin3DBBox
 
 def test_save_load_pkl():
     """ Test to verify functionality of load_pkl / save_pkl """
@@ -77,6 +79,59 @@ class TestSaveLoadPCDat(unittest.TestCase):
 
 
 class TestIsWithin3DBBox(unittest.TestCase):
+    @staticmethod
+    def is_within_3d_bbox(points, box, normals=None, return_points_in_bbox_frame=False):
+        """Reference implementation: Checks whether a point is in a 3d box given a set of points and a box.
+            Args:
+                point: [N, 3] tensor. Inner dims are: [x, y, z].
+                box: [9,] tensor. Inner dims are: [center_x, center_y, center_z, length, width, height, roll, pitch, yaw].
+                                roll/pitch/yaw are in radians.
+            Returns:
+                point_in_box; [N,] boolean array.
+        """
+
+        center = box[0:3]
+        dim = box[3:6]
+        rotation_angles = box[6:9]
+
+        # Get the rotation matrix from the heading angle
+        rotation = R.from_euler('xyz', rotation_angles, degrees=False).as_matrix()
+
+        # [4, 4]
+        transform = so3_trans_2_se3(rotation, center)
+        # [4, 4]
+        transform = np.linalg.inv(transform)
+        # [3, 3]
+        rotation = transform[0:3, 0:3]
+        # [3]
+        translation = transform[0:3, 3]
+
+        # [M, 3]
+        points_in_box_frames = np.matmul(rotation, points.transpose()).transpose() + translation
+
+        # [M, 3]
+        point_in_box = np.logical_and(
+            np.logical_and(points_in_box_frames <= dim * 0.5,
+                        points_in_box_frames >= -dim * 0.5),
+            np.all(np.not_equal(dim, 0), axis=-1, keepdims=True))
+
+        # [N, M]
+        point_in_box = np.prod(point_in_box, axis=-1).astype(bool)
+
+        if not return_points_in_bbox_frame:
+            return point_in_box
+        else:
+            if normals is not None:
+                T_normals = np.linalg.inv(transform).transpose()
+
+                normals_in_bbox_frame = np.matmul(T_normals[0:3, 0:3], normals[point_in_box,:].transpose()).transpose() + T_normals[0:3, 3]
+
+
+                return points_in_box_frames[point_in_box,:], normals_in_bbox_frame/np.linalg.norm(normals_in_bbox_frame,axis=1,keepdims=True)
+            else:
+                return points_in_box_frames[point_in_box,:]
+
+
     def setUp(self):
         
         # Set the random seed 
@@ -93,10 +148,10 @@ class TestIsWithin3DBBox(unittest.TestCase):
         self.bboxes = np.concatenate([center, dim, rotation], axis=-1).astype(np.float32)
 
     def test_oputput_vales(self):
-        """ Test to verify functionality of the c++ implentation (the output should be the same to python) """
+        """ Test to verify functionality of the c++ implementation (the output should be the same to python) """
         any_true = False
         for i in range(self.bboxes.shape[0]):
-            self.assertTrue((is_within_3d_bbox(self.pc, self.bboxes[i,:]) == isWithin3DBBox(self.pc, self.bboxes[i:i+1,:])
+            self.assertTrue((self.is_within_3d_bbox(self.pc, self.bboxes[i,:]) == isWithin3DBBox(self.pc, self.bboxes[i:i+1,:])
                     ).all())
             any_true = any_true or isWithin3DBBox(self.pc, self.bboxes[i:i+1,:]).any()
 
@@ -117,7 +172,7 @@ class TestIsWithin3DBBox(unittest.TestCase):
 
         start_time_python = time.time()
         for i in range(self.bboxes.shape[0]):
-            is_within_3d_bbox(self.pc, self.bboxes[i,:])
+            self.is_within_3d_bbox(self.pc, self.bboxes[i,:])
         end_time_python = time.time()
         python_duration = end_time_python - start_time_python
 
