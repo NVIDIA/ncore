@@ -42,6 +42,7 @@ py_library(
         requirement("protobuf3-to-dict"),
         requirement("opencv-python"),
         "//dsai/impl/common:pylib",
+        "//dsai/impl/data_converter/protos/deepmap:pylib_util",
     ],
 )
 

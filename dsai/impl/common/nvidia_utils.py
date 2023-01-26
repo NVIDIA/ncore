@@ -16,72 +16,14 @@ import numpy as np
 import pyarrow.parquet as pq
 
 from PIL import Image
-from google.protobuf import text_format
 from scipy.optimize import curve_fit
 from numpy.polynomial.polynomial import Polynomial
 
-from dsai.impl.data_converter.protos.deepmap import transform_pb2, camera_calibration_pb2
 from dsai.impl.common.common import MaskImage, load_jsonl
 from dsai.impl.av_utils import isWithin3DBBox
-from dsai.impl.common.transformations import euler_2_so3, lat_lng_alt_2_ecef, axis_angle_trans_2_se3, se3_inverse
+from dsai.impl.common.transformations import euler_2_so3, lat_lng_alt_2_ecef, se3_inverse
 from dsai.impl.data.types import FrameLabel3, BBox3, LabelSource, TrackLabel, DynamicFlagState
 
-def extract_sensor_2_sdc(file_path):
-    ''' Extract the sensor to self driving car (SDC) rig transformation parameters 
-
-    Args:
-        file_path (string): path to the calibration file
-    Out:
-        (np.array): transformation from the sensor to SDC in se3 representation [m,4,4]
-    '''
-
-    # Initialize the Rigid Transform data structure
-
-    data = transform_pb2.RigidTransform3d()
-
-    with open(file_path, 'r') as f:
-        text_format.Parse(f.read(), data)
-
-
-    translation = np.array([data.translation.x,
-                            data.translation.y,
-                            data.translation.z]).reshape(-1,3)
-
-    rot_axis = np.array([data.axis_angle.x,
-                         data.axis_angle.y,
-                         data.axis_angle.z]).reshape(-1,3)
-
-    rot_angle = np.array(data.axis_angle.angle_degrees).reshape(-1,1)
-
-
-
-    return axis_angle_trans_2_se3(rot_axis, rot_angle, translation, degrees=True)[0]
-
-
-def extract_camera_calibration(file_path):
-    ''' Extract the camera calibration parameters
-
-    Args:
-        file_path (string): path to the calibration file
-    Out:
-        intrinsic (np.array): camera intrinsic parameters [1,9]
-        img_width (float): image width in pixels
-        img_height (float): image height in pixels
-        roll_shutter_delay (float): rolling shutter offset between the first and last row
-    '''
-
-    # Initialize the Rigid Transform data structure
-    data = camera_calibration_pb2.MonoCalibrationParameters()
-
-    with open(file_path, 'r') as f:
-        text_format.Parse(f.read(), data)
-
-    intrinsic = np.array(data.camera_matrix.data)
-    img_width = float(data.image_width)
-    img_height = float(data.image_height)
-    roll_shutter_delay = float(data.rolling_shutter_delay_microseconds)
-
-    return intrinsic, img_width, img_height, roll_shutter_delay
 
 def extract_pose(data, earth_model='WGS84'):
     ''' Extract the pose of the SDC  
@@ -91,7 +33,6 @@ def extract_pose(data, earth_model='WGS84'):
     Out:
         (np.array): Transformation from SDC to ECEF coordinate system [m,4,4]
     '''
-
 
     lat_lng_alt = np.array([data['lat_lng_alt']['latitude_degrees'],
                             data['lat_lng_alt']['longitude_degrees'],
@@ -126,6 +67,7 @@ def get_sensor_to_sensor_flu(sensor):
         rot = np.eye(4, dtype=np.float32)
 
     return np.asarray(rot, dtype=np.float32)
+
 
 def parse_rig_sensors_from_dict(rig):
     """Parses the provided rig dictionary into a dictionary indexed by sensor name.

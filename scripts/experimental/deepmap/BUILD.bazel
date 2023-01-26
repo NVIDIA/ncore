@@ -13,6 +13,7 @@ py_binary(
         requirement("numpy"),
         "//dsai/impl/common:pylib",
         "//dsai/impl/data_converter/protos/deepmap:py_proto",
+        "//dsai/impl/data_converter/protos/deepmap:pylib_util",
     ],
 )
 

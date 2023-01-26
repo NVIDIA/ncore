@@ -8,14 +8,18 @@ import lzma
 import io
 import os
 import time
-import numpy as np
 
 from enum import Enum
 from pathlib import Path
 from typing import Optional, Tuple, Union
+
+import numpy as np
+
 from PIL import Image
 from scipy import spatial, interpolate
 from scipy.optimize import linear_sum_assignment
+from scipy.spatial.transform import Rotation as R
+
 
 def natural_key(string_):
     """
@@ -197,6 +201,7 @@ def average_camera_pose(poses):
     extent_scene = np.max(pose_max - pose_min)
 
     return average_cam_position, extent_scene
+
 
 class PoseInterpolator:
     ''' 

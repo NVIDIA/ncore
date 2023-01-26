@@ -19,11 +19,12 @@ from google.protobuf import text_format
 from protobuf_to_dict import protobuf_to_dict
 
 from dsai.impl.data_converter.protos.deepmap import track_data_pb2, pointcloud_pb2
+from dsai.impl.data_converter.protos.deepmap.util import extract_sensor_2_sdc
 from dsai.impl.data_converter.data_converter import BaseNvidiaDataConverter
 from dsai.impl.data.data3 import ContainerDataWriter
 from dsai.impl.data.types import Poses, FThetaCameraModelParameters, LabelSource, ShutterType
 from dsai.impl.common.common import PoseInterpolator
-from dsai.impl.common.nvidia_utils import (LabelProcessor, extract_sensor_2_sdc, parse_rig_sensors_from_dict,
+from dsai.impl.common.nvidia_utils import (LabelProcessor, parse_rig_sensors_from_dict,
                                                    sensor_to_rig, extract_pose, vehicle_bbox,
                                                    camera_intrinsic_parameters, compute_fw_polynomial,
                                                    compute_ftheta_parameters, camera_car_mask)

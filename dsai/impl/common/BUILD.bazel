@@ -28,7 +28,6 @@ py_library(
         requirement("multimethod"),
         "//dsai/impl/av_utils:pylib",
         "//dsai/impl/data:pylib_types",
-        "//dsai/impl/data_converter/protos/deepmap:py_proto",
     ],
 )
 
