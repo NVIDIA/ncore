@@ -14,19 +14,19 @@ from PIL import Image
 import click
 import numpy as np
 
-from dsai_internal.data.data3 import (
+from dsai.impl.data.data3 import (
     ShardDataLoader,
     CameraSensor,
     LidarSensor
 )
-from dsai_internal.data.types import (
+from dsai.impl.data.types import (
     FThetaCameraModelParameters,
     FrameTimepoint,
     PinholeCameraModelParameters,
 )
-from dsai_internal.data.util import padded_index_string
-from dsai_internal.common.common import average_camera_pose, save_pc_dat
-from dsai_internal.common.transformations import transform_point_cloud
+from dsai.impl.data.util import padded_index_string
+from dsai.impl.common.common import average_camera_pose, save_pc_dat
+from dsai.impl.common.transformations import transform_point_cloud
 
 # Rotation of DSAI camera frame to NGP camera frame
 R_DSAI_NGP = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])

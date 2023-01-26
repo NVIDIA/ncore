@@ -1,0 +1,23 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
+
+py_proto_library(
+    name = "py_proto",
+    srcs = [
+        ":camera_calibration.proto",
+        ":coordinate_systems.proto",
+        ":lat_lng_alt.proto",
+        ":math.proto",
+        ":pointcloud.proto",
+        ":track_data.proto",
+        ":transform.proto",
+    ],
+    visibility = [
+        "//dsai/impl:__subpackages__",
+        "//scripts/experimental/deepmap:__subpackages__",
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")

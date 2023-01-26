@@ -3,7 +3,7 @@
 import click
 import logging
 
-from dsai_internal.common.common import Config
+from dsai.impl.common.common import Config
 
 logger = logging.getLogger(__name__)
 

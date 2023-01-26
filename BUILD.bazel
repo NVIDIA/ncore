@@ -43,7 +43,6 @@ package_group(
     name = "code_package_group",
     packages = [
         "//dsai/...",
-        "//dsai_internal/...",
         "//scripts/...",
     ],
 )

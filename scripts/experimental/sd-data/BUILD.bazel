@@ -18,8 +18,8 @@ py_library(
         "nvidia_maglev_sd.py",
     ],
     deps = [
-        "//dsai_internal/common:pylib",
-        "//dsai_internal/data_converter:pylib_data_converter",
+        "//dsai/impl/common:pylib",
+        "//dsai/impl/data_converter:pylib_data_converter",
         requirement("webdataset"),
         requirement("dataclasses-json"),
     ],
@@ -38,10 +38,10 @@ py_binary(
 
 # Image for 'sd_shards'
 
-# extract all transitive dependencies of dependencies under //dsai_internal
+# extract all transitive dependencies of dependencies under //dsai
 py_layer(
     name = "sd_shards_common_deps_layer",
-    filter = "//dsai_internal",
+    filter = "//dsai",
     tags = [
         "manual",
         "no-remote-cache",

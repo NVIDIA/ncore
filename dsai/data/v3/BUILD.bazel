@@ -12,7 +12,7 @@ py_library(
         "__init__.py",
     ],
     data = ["py.typed"],
-    deps = ["//dsai_internal/data:pylib_data"],
+    deps = ["//dsai/impl/data:pylib_data"],
 )
 
 pytest_test(

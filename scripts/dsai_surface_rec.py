@@ -12,8 +12,8 @@ import click
 import numpy as np
 import point_cloud_utils as pcu
 
-from dsai_internal.common.transformations import transform_point_cloud
-from dsai_internal.data.data3 import ShardDataLoader, PointCloudSensor
+from dsai.impl.common.transformations import transform_point_cloud
+from dsai.impl.data.data3 import ShardDataLoader, PointCloudSensor
 
 
 @click.command()
