@@ -11,8 +11,9 @@ py_binary(
         requirement("click"),
         requirement("protobuf3-to-dict"),
         requirement("numpy"),
-        "//src/dsai_internal/common:pylib",
-        "//src/dsai_internal/data_converter/protos/deepmap:py_proto",
+        "//dsai/impl/common:pylib",
+        "//dsai/impl/data_converter/protos/deepmap:py_proto",
+        "//dsai/impl/data_converter/protos/deepmap:pylib_util",
     ],
 )
 

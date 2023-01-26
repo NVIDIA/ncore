@@ -6,12 +6,12 @@ import tqdm
 
 import numpy as np
 
-from src.dsai_internal.data.data3 import ShardDataLoader, PointCloudSensor, CameraSensor
-from src.dsai_internal.data import types
-from src.dsai_internal.common.transformations import transform_point_cloud
-from src.dsai_internal.av_utils import rollingShutterProjection
-from src.dsai_internal.common.visualization import plot_points_on_image
-from src.dsai_internal.sensors.camera import CameraModel
+from dsai.impl.data.data3 import ShardDataLoader, PointCloudSensor, CameraSensor
+from dsai.impl.data import types
+from dsai.impl.common.transformations import transform_point_cloud
+from dsai.impl.av_utils import rollingShutterProjection
+from dsai.impl.common.visualization import plot_points_on_image
+from dsai.impl.sensors.camera import CameraModel
 
 @click.command()
 @click.option('--shard-file-pattern',

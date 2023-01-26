@@ -7,8 +7,8 @@ from pathlib import Path
 import click
 import tqdm
 
-from src.dsai_internal.data.data3 import ShardDataLoader, CameraSensor
-from src.dsai_internal.data.util import padded_index_string
+from dsai.impl.data.data3 import ShardDataLoader, CameraSensor
+from dsai.impl.data.util import padded_index_string
 
 
 @click.command()

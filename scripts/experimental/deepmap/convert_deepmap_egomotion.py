@@ -8,10 +8,10 @@ import numpy as np
 from google.protobuf import text_format
 from protobuf_to_dict import protobuf_to_dict
 
-from src.dsai_internal.data_converter.protos.deepmap import track_data_pb2
-from src.dsai_internal.common.nvidia_utils import extract_pose, extract_sensor_2_sdc
-from src.dsai_internal.common.transformations import se3_inverse
-from src.dsai_internal.common.common import save_jsonl
+from dsai.impl.data_converter.protos.deepmap import track_data_pb2
+from dsai.impl.data_converter.protos.deepmap.util import extract_sensor_2_sdc
+from dsai.impl.common.nvidia_utils import extract_pose
+from dsai.impl.common.common import save_jsonl
 
 
 @click.command()
