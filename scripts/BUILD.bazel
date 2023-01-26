@@ -168,6 +168,7 @@ py_binary(
     srcs = ["dsai_to_ngp.py"],
     deps = [
         requirement("click"),
+        requirement("pillow"),
         "//src/dsai_internal/common:pylib",
         "//src/dsai_internal/data:pylib_data",
         "//src/dsai_internal/data:pylib_types",
