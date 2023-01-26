@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 from collections import defaultdict
 from typing import Optional
+from PIL import Image 
 
 import click
 import numpy as np
@@ -244,8 +245,10 @@ def dsai_to_ngp(
         if camera_mask_image := camera_sensor.get_camera_mask_image():
             for image_path in all_image_paths:
                 target_camera_mask_image_path = image_path.parent / ("dynamic_mask_" + image_path.stem + '.png')
+                camera_mask_image = np.where(np.array(camera_mask_image) == 0, 0, 255).astype(np.uint8) # Force all non-zero values to 255
+
                 if not (target_camera_mask_image_path.exists()):
-                    camera_mask_image.save(target_camera_mask_image_path, optimize=True)
+                    Image.fromarray(camera_mask_image).save(target_camera_mask_image_path, bits=1, optimize=True)
 
     # Combine all the poses and compute the scaling factor and centroid, use the start timestamp pose as approximation
     all_poses = [all_camera_data[camera_id]["poses_start"] for camera_id in camera_ids]
