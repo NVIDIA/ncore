@@ -4,6 +4,10 @@ build --compilation_mode=opt
 # Default CXX flags
 build --cxxopt="-Werror"
 
+# Link libstdc++ / libgcc statically
+build --action_env=BAZEL_LINKLIBS=-l%:libstdc++.a:-lm
+build --action_env=BAZEL_LINKOPTS=-static-libgcc
+
 # Enable local disk caching
 build --disk_cache=~/.cache/bazel/disk-cache/dsai
 build --remote_instance_name dsai

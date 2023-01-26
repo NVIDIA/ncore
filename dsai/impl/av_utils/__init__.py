@@ -6,7 +6,7 @@ from typing import Tuple, Union
 
 import numpy as np
 
-import libav_utils_cc  # type: ignore
+from . import libav_utils_cc  # type: ignore
 from dsai.impl.data import types
 
 def unwind_lidar(pc, transformation_matrices, column_idx):

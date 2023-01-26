@@ -57,7 +57,6 @@ py_library(
     data = [
         ":av_utils_cc",
     ],
-    imports = ["."],
     visibility = [
         "//:code_package_group",
     ],
