@@ -21,6 +21,9 @@ py_wheel(
     distribution = "dsai",
     python_requires = ">=3.10",
     python_tag = "cp310",
+    abi = "cp310",
+    platform = "linux_x86_64",
+    homepage = "https://gitlab-master.nvidia.com/Toronto_DL_Lab/dsai",
     requires = [
         "numpy",
         "dataclasses_json",
