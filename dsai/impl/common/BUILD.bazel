@@ -13,7 +13,6 @@ py_library(
         "common.py",
         "nvidia_utils.py",
         "transformations.py",
-        "visualization.py",
     ],
     deps = [
         requirement("numpy"),
@@ -22,11 +21,25 @@ py_library(
         requirement("pandas"),  # for pyarrow::to_pandas()
         requirement("scipy"),
         requirement("tqdm"),
+        "//dsai/impl/av_utils:pylib",
+        "//dsai/impl/data:pylib_types",
+    ],
+)
+
+py_library(
+    name = "pylib_visualization",
+    srcs = [
+        "visualization.py",
+    ],
+    deps = [
+        requirement("numpy"),
+        requirement("scipy"),
+        requirement("tqdm"),
         requirement("matplotlib"),
         requirement("open3d"),
         requirement("tensorflow"),  # required by open3d.ml.tf
         requirement("multimethod"),
-        "//dsai/impl/av_utils:pylib",
+        ":pylib",
         "//dsai/impl/data:pylib_types",
     ],
 )

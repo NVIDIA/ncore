@@ -147,6 +147,7 @@ py_binary(
         requirement("click"),
         requirement("tqdm"),
         "//dsai/impl/common:pylib",
+        "//dsai/impl/common:pylib_visualization",
         "//dsai/impl/data:pylib_data",
     ],
 )
@@ -185,6 +186,7 @@ py_binary(
         requirement("numpy"),
         "//dsai/impl/av_utils:pylib",
         "//dsai/impl/common:pylib",
+        "//dsai/impl/common:pylib_visualization",
         "//dsai/impl/data:pylib_data",
         "//dsai/impl/data:pylib_types",
         "//dsai/impl/sensors:pylib",

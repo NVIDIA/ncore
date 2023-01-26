@@ -1,7 +1,6 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 import numpy as np
-import open3d as o3d
 import open3d.ml.tf as ml3d
 
 from matplotlib import pyplot as plt
@@ -10,7 +9,6 @@ from scipy.spatial.transform import Rotation as R
 from multimethod import multimethod
 
 from dsai.impl.data.types import FrameLabel3
-
 from dsai.impl.common.nvidia_utils import LabelProcessor as NvidiaLabelProcessor
 
 def rgba(r):
