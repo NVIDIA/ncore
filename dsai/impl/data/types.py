@@ -75,7 +75,7 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
         super().__post_init__()
         assert self.principal_point.shape == (2, )
         assert self.principal_point.dtype == np.dtype('float32')
-        assert self.principal_point[0] > 0.0 and self.principal_point[1] > 0.0
+        assert self.principal_point[0] >= 0.0 and self.principal_point[1] >= 0.0
 
         assert self.pixeldist_to_angle_poly.ndim == 1
         assert len(self.pixeldist_to_angle_poly) <= self.POLYNOMIAL_DEGREE

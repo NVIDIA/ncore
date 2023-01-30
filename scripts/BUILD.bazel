@@ -189,7 +189,7 @@ py_binary(
         "//dsai/impl/common:pylib_visualization",
         "//dsai/impl/data:pylib_data",
         "//dsai/impl/data:pylib_types",
-        "//dsai/impl/sensors:pylib",
+        "//dsai/impl/sensors:pylib_camera",
     ],
 )
 
