@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+import parameterized
 
 from .data3 import ShardDataLoader, Sensor, CameraSensor, LidarSensor
 from .types import FrameTimepoint, FThetaCameraModelParameters
@@ -15,12 +16,19 @@ class TestData3Loader(unittest.TestCase):
     def setUp(self):
         self.all_shards = sorted([p for p in Path('external/test-data-v3-shards').iterdir() if p.match('*.itar')])
 
-    def test_shard_loader(self):
+    @parameterized.parameterized.expand([(
+        "not-open_consolidated",
+        False,
+    ), (
+        "open_consolidated",
+        True,
+    )])
+    def test_shard_loader(self, _, open_consolidated: bool):
         shard_num_poses = [4, 4, 3]
         self.assertEqual(len(self.all_shards), 3)
 
         def check(start, end):
-            loader = ShardDataLoader(self.all_shards[start:end])
+            loader = ShardDataLoader(self.all_shards[start:end], open_consolidated=open_consolidated)
             expected_num_poses = sum(shard_num_poses[start:end])
 
             self.assertEqual(len(loader.get_camera_ids()), 10)

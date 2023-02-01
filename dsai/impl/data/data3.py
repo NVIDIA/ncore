@@ -564,7 +564,18 @@ class ShardDataLoader:
 
         return list(matches)
 
-    def __init__(self, shard_files: Union[list[Path], list[str]]):
+    def __init__(self, shard_files: Union[list[Path], list[str]], open_consolidated: bool = True):
+        ''' Initialize a ShardDataLoader for a virtual sequence represented by a list of shard files.
+            
+            Args:
+                shard_files: Paths to shard files to load, which need to represent a *continous* sequence
+                open_consolidated: If 'True', pre-load per-shard meta-data when opening the shards.
+                                   This is advisable if shard data is accessed from *non-local*
+                                   storage to prevent latencies introduced when accessing the data.
+                                   If the shard data is available on fast *local* storage, disabling
+                                   this option can speed up initial load times.
+            '''
+
         assert len(shard_files), "No shard inputs provided"
 
         # Load shards concurrently (to hide latency) and check for sequence consistency and continuity of shards
@@ -578,7 +589,7 @@ class ShardDataLoader:
 
                 timer = common.SimpleTimer()
                 store = stores.IndexedTarStore(shard_file)
-                shard_root = stores.open_compressed_consolidated(store=store, mode='r')
+                shard_root = stores.open_compressed_consolidated(store=store, mode='r') if open_consolidated else zarr.open(store=store, mode='r')
 
                 logging.debug(
                     f'ShardDataLoader: {shard_file} time_load={timer.elapsed_sec()}sec'

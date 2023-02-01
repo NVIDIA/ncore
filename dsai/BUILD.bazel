@@ -32,7 +32,7 @@ py_wheel(
         "cbor2",
         "scipy",
     ],
-    version = "0.1.0",
+    version = "0.1.1",
     deps = [
         ":dsai_pkg",
     ],
