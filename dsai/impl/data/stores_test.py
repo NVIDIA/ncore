@@ -58,7 +58,7 @@ class TestIndexedTarStore(unittest.TestCase):
             self.check_with_reference(g_reload)
 
     @parameterized.parameterized.expand([(
-        "not-compressed-consolidate",
+        "not-compressed_consolidate",
         False,
     ), (
         "compressed_consolidate",

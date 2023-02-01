@@ -76,6 +76,7 @@ pytest_test(
     ],
     deps = [
         ":pylib_data",
+        requirement("parameterized"),
     ],
 )
 
