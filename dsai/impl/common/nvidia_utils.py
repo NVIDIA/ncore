@@ -809,4 +809,8 @@ def load_maglev_egomotion(sequence_path: Path, sensors_calibration_data: dict[st
         global_T_rig_worlds.append(T_rig_world)
         global_T_rig_world_timestamps_us.append(T_rig_world_timestamp_us)
 
+    assert all(global_T_rig_world_timestamps_us[i] < global_T_rig_world_timestamps_us[i + 1]
+               for i in range(len(global_T_rig_world_timestamps_us) -
+                              1)), 'pose timestamps not monotonically increasing'
+
     return global_T_rig_worlds, global_T_rig_world_timestamps_us
