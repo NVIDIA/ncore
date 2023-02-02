@@ -677,7 +677,6 @@ class ShardDataLoader:
         T_rig_world_timestamps_us, unique_idxs, unique_counts = np.unique(np.hstack(T_rig_world_timestamps_us),
                                                                           return_index=True,
                                                                           return_counts=True)
-        T_rig_worlds = T_rig_worlds[unique_idxs]
 
         # Verify that overlapping poses showed up duplicated only once after concatenation
         if not np.all(unique_counts <= 2):
@@ -687,7 +686,7 @@ class ShardDataLoader:
         if not np.all(unique_idxs[:-1] < unique_idxs[1:]):
             raise ValueError(f"Concatenated pose timestamps not strictly monotonically increasing")
 
-        return types.Poses(np.array(T_rig_world_base), T_rig_worlds, T_rig_world_timestamps_us)
+        return types.Poses(np.array(T_rig_world_base), np.vstack(T_rig_worlds)[unique_idxs], np.hstack(T_rig_world_timestamps_us))
 
     def get_sequence_id(self, with_shard_range: bool) -> str:
         ''' Provides access to a unique identifier of the loaded shard data, optionally including the linear range of shards
