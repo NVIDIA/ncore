@@ -132,17 +132,36 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.global_end_timestamp_us          = self.global_T_rig_world_timestamps_us[-1]
 
         assert self.global_start_timestamp_us >= global_target_start_timestamp_us
-        assert self.global_end_timestamp_us <= global_target_end_timestamp_us
+        assert self.global_end_timestamp_us <= global_target_end_timestamp_us # note: global bounds are inclusive
 
-        # Apply uniform subdivision for current shard to get local pose range
-        local_range, _ = uniform_subdivide_range(self.shard_id, self.shard_count, 0, len(self.global_T_rig_world_timestamps_us))
-        local_T_rig_worlds = self.global_T_rig_worlds[local_range]
-        local_T_rig_world_timestamps_us = self.global_T_rig_world_timestamps_us[local_range]
-        self.local_start_timestamp_us   = local_T_rig_world_timestamps_us[0]
-        self.local_end_timestamp_us     = local_T_rig_world_timestamps_us[-1]
+        # Apply uniform subdivision for current shard to get local pose range with non-inclusive *single* pose **overlap**.
+        # This guarantees that all frames can be associated with a unique shard (needs to be un-done when loading multi-shard sequences)
+        #
+        # Example
+        # shard0_pose_timestamps = [0,1,2,3], valid pose-range-timestamps to select frame data [0,3) -> 0 <= t < 3
+        # shard1_pose_timestamps = [3,4,5,6], valid pose-range-timestamps to select frame data [3,6) -> 3 <= t < 6
+
+        local_range, _ = uniform_subdivide_range(self.shard_id, self.shard_count, 0,
+                                                 len(self.global_T_rig_world_timestamps_us))
+        # extend local range by single non-inclusive pose to keep in local shard
+        local_range_start = local_range[0]
+        local_range_end = min(
+            # non-extended local range end
+            (local_range[-1] + 1)
+            # extend by single additional non-inclusive pose
+            + 1,
+            len(self.global_T_rig_world_timestamps_us))
+        local_T_rig_worlds = self.global_T_rig_worlds[local_range_start:local_range_end]
+        local_T_rig_world_timestamps_us = self.global_T_rig_world_timestamps_us[local_range_start:local_range_end]
+        self.local_start_timestamp_us = local_T_rig_world_timestamps_us[0]
+        self.local_end_timestamp_us = local_T_rig_world_timestamps_us[-1]
+
+        logger.debug(
+            f'shard {self.shard_id+1}/{self.shard_count} | local_range_start {local_range_start} / local_range_end {local_range_end} | '
+            f'{self.local_start_timestamp_us} <= t < {self.local_end_timestamp_us}')
 
         assert self.local_start_timestamp_us >= self.global_start_timestamp_us
-        assert self.local_end_timestamp_us <= self.global_end_timestamp_us
+        assert self.local_end_timestamp_us <= self.global_end_timestamp_us  # note: global bounds are inclusive
 
         # Save the poses
         self.data_writer.store_poses(Poses(T_rig_world_base, local_T_rig_worlds, local_T_rig_world_timestamps_us))
@@ -150,7 +169,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Log base pose to share it more easily with downstream teams (it's serialized also explicitly)
         with np.printoptions(floatmode='unique', linewidth=200):  # print in highest precision
             logger.info(
-                f'> processed {len(local_range)} / {global_range_end - global_range_start} local / global poses, using base pose:\n{T_rig_world_base}')
+                f'> processed {local_range_end - local_range_start} / {global_range_end - global_range_start} local / global poses, using base pose:\n{T_rig_world_base}')
 
     def decode_labels(self):
         logger = self.logger.getChild('decode_labels')
@@ -196,25 +215,29 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             raw_frame_timestamps_us = raw_frame_timestamps_us - self.CAMERATYPE_TO_EXPOSURETIME_HALF_US[camera_type]
 
             # Get the frame range of the first and last frame relative to available egomotion poses and respecting exposure timings
-            global_range_start = np.argmax(raw_frame_timestamps_us - self.CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US[camera_type] >= self.global_start_timestamp_us)
+            global_range_start = np.argmax(raw_frame_timestamps_us >= self.global_start_timestamp_us)
             global_range_end = np.argmin(raw_frame_timestamps_us < self.global_end_timestamp_us) \
                 if raw_frame_timestamps_us[-1] > self.global_end_timestamp_us else len(raw_frame_timestamps_us) # take all frames if all are within egomotion range, or determine last valid frame
 
             global_frame_timestamps_us = raw_frame_timestamps_us[global_range_start:global_range_end]
 
             # Subsample frames to valid local ranges
-            local_range_start = np.argmax(raw_frame_timestamps_us - self.CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US[camera_type] >= self.local_start_timestamp_us)
+            local_range_start = np.argmax(raw_frame_timestamps_us >= self.local_start_timestamp_us)
             local_range_end = np.argmin(raw_frame_timestamps_us < self.local_end_timestamp_us) \
                 if raw_frame_timestamps_us[-1] > self.local_end_timestamp_us else len(raw_frame_timestamps_us)
 
             local_frame_numbers = raw_frame_numbers[local_range_start:local_range_end]
             local_frame_timestamps_us = raw_frame_timestamps_us[local_range_start:local_range_end]
 
+            logger.debug(
+                f'camera {camera_rig_name} | local_range_start {local_range_start} / local_range_end {local_range_end} | '
+                f'{self.local_start_timestamp_us} <= t < {self.local_end_timestamp_us}')
+
             assert global_frame_timestamps_us[0] <= local_frame_timestamps_us[0]
-            assert local_frame_timestamps_us[1] <= global_frame_timestamps_us[-1]
+            assert local_frame_timestamps_us[1] <= global_frame_timestamps_us[-1]  # note: global bounds are inclusive
 
             assert self.local_start_timestamp_us <= local_frame_timestamps_us[0]
-            assert local_frame_timestamps_us[-1] <= self.local_end_timestamp_us
+            assert local_frame_timestamps_us[-1] < self.local_end_timestamp_us   # note: local bounds are non-inclusive
 
             ## Compute sensor-specific data
 
@@ -261,7 +284,9 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
                 # Interpolate the start and end pose to the timestamps of the first and last row
                 timestamps_us = np.array([
-                    frame_end_timestamp_us - self.CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US[camera_type], \
+                    # Snap very first frame to the start of global egomotion in case timestamp of first row is outside of global pose-range
+                    max(frame_end_timestamp_us - self.CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US[camera_type],
+                        self.global_T_rig_world_timestamps_us[0]),
                     frame_end_timestamp_us
                 ])
                 T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
@@ -319,11 +344,15 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             local_frame_timestamps_us = raw_frame_timestamps_us[local_range_start:local_range_end] # corresponds to end-of-frame
             num_local_frames = len(local_frame_numbers)
 
+            logger.debug(
+                f'lidar {lidar_rig_name} | local_range_start {local_range_start} / local_range_end {local_range_end} | '
+                f'{self.local_start_timestamp_us} <= t < {self.local_end_timestamp_us}')
+
             assert global_frame_timestamps_us[0] <= local_frame_timestamps_us[0]
-            assert local_frame_timestamps_us[1] <= global_frame_timestamps_us[-1]
+            assert local_frame_timestamps_us[1] <= global_frame_timestamps_us[-1]  # note: global bounds are inclusive
 
             assert self.local_start_timestamp_us <= local_frame_timestamps_us[0]
-            assert local_frame_timestamps_us[-1] <= self.local_end_timestamp_us
+            assert local_frame_timestamps_us[-1] < self.local_end_timestamp_us  # note: local bounds are non-inclusive
 
             # Store all static sensor data
             self.data_writer.store_lidar_meta(lidar_id, local_frame_timestamps_us, T_sensor_rig)
@@ -354,7 +383,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 with tempfile.NamedTemporaryFile(suffix='.ply') as ply:
                     ply.write(ply_binary_data)
                     mesh = pcu.load_triangle_mesh(ply.name)
-                
+
                 time_load = timer.elapsed_sec(restart = True)
 
                 # Remove all points with *duplicate* coordinates (these seem to be present in the input already)
