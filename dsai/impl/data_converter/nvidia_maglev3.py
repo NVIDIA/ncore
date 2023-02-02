@@ -237,7 +237,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             assert local_frame_timestamps_us[1] <= global_frame_timestamps_us[-1]  # note: global bounds are inclusive
 
             assert self.local_start_timestamp_us <= local_frame_timestamps_us[0]
-            assert local_frame_timestamps_us[-1] < self.local_end_timestamp_us   # note: local bounds are non-inclusive
+            if self.shard_id <  self.shard_count - 1:
+                assert local_frame_timestamps_us[-1] < self.local_end_timestamp_us  # note: local bounds are non-inclusive in this regular case
+            else:
+                # last-shard or single-shard case
+                assert local_frame_timestamps_us[-1] <= self.local_end_timestamp_us  # note: local bounds are inclusive in this end-case
 
             ## Compute sensor-specific data
 
@@ -352,7 +356,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             assert local_frame_timestamps_us[1] <= global_frame_timestamps_us[-1]  # note: global bounds are inclusive
 
             assert self.local_start_timestamp_us <= local_frame_timestamps_us[0]
-            assert local_frame_timestamps_us[-1] < self.local_end_timestamp_us  # note: local bounds are non-inclusive
+            if self.shard_id <  self.shard_count - 1:
+                assert local_frame_timestamps_us[-1] < self.local_end_timestamp_us  # note: local bounds are non-inclusive in this regular case
+            else:
+                # last-shard or single-shard case
+                assert local_frame_timestamps_us[-1] <= self.local_end_timestamp_us  # note: local bounds are inclusive in this end-case
 
             # Store all static sensor data
             self.data_writer.store_lidar_meta(lidar_id, local_frame_timestamps_us, T_sensor_rig)
