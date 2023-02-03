@@ -130,6 +130,17 @@ class TestData3Loader(unittest.TestCase):
         self.assertIsNone(np.testing.assert_array_almost_equal(sensor.get_T_rig_sensor(), np.linalg.inv(reference_T_sensor_rig)))
 
         self.assertEqual(sensor.get_frames_count(), 10)
+        
+        self.assertEqual(sensor.get_frames_count(0, 1), 4)
+        self.assertEqual(sensor.get_frames_count(1, 2), 4)
+        self.assertEqual(sensor.get_frames_count(2, 3), 2)
+        self.assertEqual(sensor.get_frames_count(0, 2), 8)
+
+        self.assertEqual(len(sensor.get_frames_timestamps_us(0, 1)), 4)
+        self.assertEqual(len(sensor.get_frames_timestamps_us(1, 2)), 4)
+        self.assertEqual(len(sensor.get_frames_timestamps_us(2, 3)), 2)
+        self.assertEqual(len(sensor.get_frames_timestamps_us(0, 2)), 8)
+
         self.assertEqual(sensor.get_frame_index_range(), range(0, 10, 1))
 
         # Check that all sensor timestamps are strictly monotonically increasing

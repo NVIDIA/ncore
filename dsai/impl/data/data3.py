@@ -328,22 +328,29 @@ class Sensor:
                 return shard_sensor_meta, shard_sensor_frame_timestamps_us
 
             # Load in multi-threaded fashion, making sure order is preserved
-            shard_sensor_metas, sensor_frame_timestamps_us = zip(*executor.map(thread_load_shard, self._shard_roots))
+            shard_sensor_metas, shards_sensor_frame_timestamps_us = zip(
+                *executor.map(thread_load_shard, self._shard_roots))
 
         # Construct frame offset map / sensor frame time-range over all shards as
         # offset map [0, len(s0), len(s0+s1), ... , len(s0+..+sN)]
         self._shard_frame_map = np.hstack([
-            0, np.cumsum([len(shard_timestamps_us) for shard_timestamps_us in sensor_frame_timestamps_us])
+            0,
+            np.cumsum([
+                len(shard_sensor_frame_timestamps_us)
+                for shard_sensor_frame_timestamps_us in shards_sensor_frame_timestamps_us
+            ])
         ]).astype(np.uint64)
 
         # Remember single sensor meta of first shard
         # [TODO(janickm): add consistency check on static data across all shards?]
         self._sensor_meta = SimpleNamespace(**shard_sensor_metas[0])
 
-        # Global list of all frame timestamps across all shards
-        self._sensor_frame_timestamps_us = np.hstack(sensor_frame_timestamps_us)
+        # Global list of all frame timestamps per shard
+        self._shards_sensor_frame_timestamps_us = shards_sensor_frame_timestamps_us
 
-        assert len(self._sensor_frame_timestamps_us) == self._shard_frame_map[-1]
+        assert sum(
+            len(shard_sensor_frame_timestamps_us) for shard_sensor_frame_timestamps_us in
+            self._shards_sensor_frame_timestamps_us) == self._shard_frame_map[-1]
 
     def get_sensor_id(self) -> str:
         ''' Returns the current sensor's ID '''
@@ -360,10 +367,13 @@ class Sensor:
         ''' Returns constant rig-to-sensor pose '''
         return transformations.se3_inverse(self.get_T_sensor_rig())
 
-    # Sequence-wide frame data
-    def get_frames_count(self) -> int:
-        ''' Returns number of frames '''
-        return len(self._sensor_frame_timestamps_us)
+    # Sequence-wide or shard-wide frame data
+    @lru_cache(maxsize=10)
+    def get_frames_count(self, start_shard_idx: Optional[int] = None, end_shard_idx: Optional[int] = None) -> int:
+        ''' Returns number of frames for full session (default) or a range of shards [start,end) '''
+        return sum(
+            len(shard_sensor_frame_timestamps_us) for shard_sensor_frame_timestamps_us in
+            self._shards_sensor_frame_timestamps_us[start_shard_idx:end_shard_idx])
 
     def get_frame_index_range(self, start_frame: int = 0, end_frame: int = -1, step_frame: int = 1) -> range:
         ''' Returns a specific range of frame indices following range(start,end,step) conventions '''
@@ -375,9 +385,12 @@ class Sensor:
 
         return range(start_frame, end_frame, step_frame)
 
-    def get_frames_timestamps_us(self) -> np.ndarray:
-        ''' Returns all end-of-measurement frame timestamps '''
-        return self._sensor_frame_timestamps_us
+    @lru_cache(maxsize=10)
+    def get_frames_timestamps_us(self,
+                                 start_shard_idx: Optional[int] = None,
+                                 end_shard_idx: Optional[int] = None) -> np.ndarray:
+        ''' Returns all end-of-measurement frame timestamps full session (default) or a range of shards [start,end) '''
+        return np.hstack(self._shards_sensor_frame_timestamps_us[start_shard_idx:end_shard_idx])
 
     # Frame-dependent poses / timestamps
     @lru_cache
