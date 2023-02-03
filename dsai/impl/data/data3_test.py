@@ -49,6 +49,12 @@ class TestData3Loader(unittest.TestCase):
             self.assertEqual(poses.T_rig_world_timestamps_us.shape, (expected_num_poses, ))
             self.assertEqual(poses.T_rig_worlds.shape, (expected_num_poses, 4, 4))
 
+            for local_shard_idx, shard_id in enumerate(range(start, end)):
+                # check *single* shard sub-range pose lookup
+                self.assertEqual(
+                    loader.get_poses(local_shard_idx, local_shard_idx + 1).T_rig_world_timestamps_us.shape,
+                    (shard_num_poses[shard_id], ))
+
             self.assertEqual(loader.get_sequence_id(with_shard_range=False), 'c9b05cf4-afb9-11ec-b3c2-00044bf65fcb')
             self.assertEqual(
                 loader.get_sequence_id(with_shard_range=True),

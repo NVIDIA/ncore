@@ -653,9 +653,9 @@ class ShardDataLoader:
         self._shard_paths = [shards_map[shard_id][0] for shard_id in self._shard_ids]
         self._shard_roots = [shards_map[shard_id][1] for shard_id in self._shard_ids]
 
-    @lru_cache(maxsize=1)
-    def get_poses(self) -> types.Poses:
-        ''' Returns all timestamped poses associated with the dataset '''
+    @lru_cache(maxsize=10)
+    def get_poses(self, start_shard_idx : Optional[int] = None, end_shard_idx : Optional[int] = None) -> types.Poses:
+        ''' Returns all timestamped poses associated with the session (default) or a range of shards [start,end) '''
 
         # Load common base pose
         # [TODO(janickm): add consistency check on static data across all shards?]
@@ -664,7 +664,7 @@ class ShardDataLoader:
         # Concat all poses from all shards, making sure they are uniquely timestamped and sorted
         T_rig_worlds = []
         T_rig_world_timestamps_us = []
-        for shard_root in self._shard_roots:
+        for shard_root in self._shard_roots[start_shard_idx:end_shard_idx]:
             shard_T_rig_worlds = shard_root['poses']['T_rig_worlds'][()]
             shard_T_rig_world_timestamps_us = shard_root['poses']['T_rig_world_timestamps_us'][()]
 
