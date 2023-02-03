@@ -656,15 +656,37 @@ class ShardDataLoader:
         # [TODO(janickm): add consistency check on static data across all shards?]
         T_rig_world_base = self._shard_files[0]['poses']['T_rig_world_base']
 
-        # Concat all poses from all shards
+        # Concat all poses from all shards, making sure they are uniquely timestamped and sorted
         T_rig_worlds = []
         T_rig_world_timestamps_us = []
         for shard_file in self._shard_files:
-            T_rig_worlds.append(shard_file['poses']['T_rig_worlds'])
-            T_rig_world_timestamps_us.append(shard_file['poses']['T_rig_world_timestamps_us'])
+            shard_T_rig_worlds = shard_file['poses']['T_rig_worlds'][()]
+            shard_T_rig_world_timestamps_us = shard_file['poses']['T_rig_world_timestamps_us'][()]
 
-        # [TODO(janickm): add timestamp uniqueness check on data across all shards?]
-        return types.Poses(np.array(T_rig_world_base), np.vstack(T_rig_worlds), np.hstack(T_rig_world_timestamps_us))
+            if len(shard_T_rig_worlds) != len(shard_T_rig_world_timestamps_us):
+                raise ValueError(f"Inconsistent pose number / timestamp number for shard_file: {shard_file}")
+
+            if not np.all(shard_T_rig_world_timestamps_us[:-1] < shard_T_rig_world_timestamps_us[1:]):
+                raise ValueError(f"Pose timestamps not strictly monotonically increasing for shard_file: {shard_file}")
+
+            T_rig_worlds.append(shard_T_rig_worlds)
+            T_rig_world_timestamps_us.append(shard_T_rig_world_timestamps_us)
+
+        # Shards are allowed to have *single* overlapping poses across their boundary - remove these via unique search -
+        # and make sure that pose timestamps are ordered in strictly monotonically increasing order afterwards
+        T_rig_world_timestamps_us, unique_idxs, unique_counts = np.unique(np.hstack(T_rig_world_timestamps_us),
+                                                                          return_index=True,
+                                                                          return_counts=True)
+
+        # Verify that overlapping poses showed up duplicated only once after concatenation
+        if not np.all(unique_counts <= 2):
+            raise ValueError(f"Concatenated pose timestamps contain more than a single overlapping common pose")
+
+        # Make sure that concatenated timestamps were actually already sorted before unification
+        if not np.all(unique_idxs[:-1] < unique_idxs[1:]):
+            raise ValueError(f"Concatenated pose timestamps not strictly monotonically increasing")
+
+        return types.Poses(np.array(T_rig_world_base), np.vstack(T_rig_worlds)[unique_idxs], np.hstack(T_rig_world_timestamps_us))
 
     def get_sequence_id(self, with_shard_range: bool) -> str:
         ''' Provides access to a unique identifier of the loaded shard data, optionally including the linear range of shards
