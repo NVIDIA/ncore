@@ -1,6 +1,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 import unittest
+import random
 
 from pathlib import Path
 
@@ -14,7 +15,8 @@ from .types import FrameTimepoint, FThetaCameraModelParameters
 class TestData3Loader(unittest.TestCase):
     ''' Test to verify functionality of V3 data loader '''
     def setUp(self):
-        self.all_shards = sorted([p for p in Path('external/test-data-v3-shards').iterdir() if p.match('*.itar')])
+        self.random = random.Random(x=0)  # seed deterministically
+        self.all_shards = sorted([str(p) for p in Path('external/test-data-v3-shards').iterdir() if p.match('*.itar')])
 
     @parameterized.parameterized.expand([(
         "not-open_consolidated",
@@ -28,7 +30,11 @@ class TestData3Loader(unittest.TestCase):
         self.assertEqual(len(self.all_shards), 3)
 
         def check(start, end):
-            loader = ShardDataLoader(self.all_shards[start:end], open_consolidated=open_consolidated)
+            # Randomize shard path oder
+            local_shards = self.all_shards[start:end]
+            self.random.shuffle(local_shards)
+
+            loader = ShardDataLoader(local_shards, open_consolidated=open_consolidated)
 
             # expected number of total poses is sum of per-shard poses minus duplicated/removed poses at shard boundaries
             expected_num_poses = sum(shard_num_poses[start:end]) - (end - start - 1)
@@ -46,6 +52,9 @@ class TestData3Loader(unittest.TestCase):
             self.assertEqual(
                 loader.get_sequence_id(with_shard_range=True),
                 'c9b05cf4-afb9-11ec-b3c2-00044bf65fcb_' + '_'.join([str(shard_id) for shard_id in range(start, end)]))
+
+            # make sure returned paths are absolute and ordered by shard-id
+            self.assertEqual(loader.get_shard_paths(), [str(Path(p).absolute()) for p in self.all_shards[start:end]])
 
         # check all shard slice variants
         for end in range(1, len(self.all_shards) + 1):
