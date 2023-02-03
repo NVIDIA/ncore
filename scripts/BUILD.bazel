@@ -193,4 +193,13 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "dsai_sequence_meta",
+    srcs = ["dsai_sequence_meta.py"],
+    deps = [
+        requirement("click"),
+        "//dsai/impl/data:pylib_data",
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")
