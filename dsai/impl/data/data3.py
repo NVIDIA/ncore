@@ -709,7 +709,7 @@ class ShardDataLoader:
         return self._shard_paths
 
     def get_shard_ids(self) -> list[int]:
-        ''' Returns linearly ordered list of shard IDs '''
+        ''' Returns linearly ordered list of loaded shard IDs '''
         return self._shard_ids
 
     def get_sensor(self, sensor_id: str) -> Union[CameraSensor, LidarSensor, RadarSensor]:
@@ -721,6 +721,10 @@ class ShardDataLoader:
         if sensor_id in self._radar_ids:
             return self.get_radar_sensor(sensor_id)
         raise ValueError(f'Unknown sensor {sensor_id}')
+
+    def get_sensor_ids(self) -> list[str]:
+        ''' Returns all sensor ids '''
+        return self.get_camera_ids() + self.get_lidar_ids() + self.get_radar_ids()
 
     @cache
     def get_camera_sensor(self, camera_id) -> CameraSensor:

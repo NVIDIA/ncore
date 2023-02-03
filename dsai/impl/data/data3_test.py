@@ -42,6 +42,7 @@ class TestData3Loader(unittest.TestCase):
             self.assertEqual(len(loader.get_camera_ids()), 10)
             self.assertEqual(len(loader.get_lidar_ids()), 1)
             self.assertEqual(len(loader.get_radar_ids()), 0)
+            self.assertEqual(len(loader.get_sensor_ids()), 11)
 
             poses = loader.get_poses()
             self.assertEqual(poses.T_rig_world_base.shape, (4, 4))
