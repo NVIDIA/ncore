@@ -708,6 +708,10 @@ class ShardDataLoader:
         ''' Returns paths to loaded shards (ordered by linear shard ID) '''
         return self._shard_paths
 
+    def get_shard_ids(self) -> list[int]:
+        ''' Returns linearly ordered list of shard IDs '''
+        return self._shard_ids
+
     def get_sensor(self, sensor_id: str) -> Union[CameraSensor, LidarSensor, RadarSensor]:
         ''' Provides access to a specific sensor given it's sensor-id '''
         if sensor_id in self._camera_ids:

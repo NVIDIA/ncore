@@ -55,6 +55,7 @@ class TestData3Loader(unittest.TestCase):
 
             # make sure returned paths are absolute and ordered by shard-id
             self.assertEqual(loader.get_shard_paths(), [str(Path(p).absolute()) for p in self.all_shards[start:end]])
+            self.assertEqual(loader.get_shard_ids(), list(range(start, end)))
 
         # check all shard slice variants
         for end in range(1, len(self.all_shards) + 1):
