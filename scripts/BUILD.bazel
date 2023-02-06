@@ -71,6 +71,7 @@ py3_image(
         "manual",
         "no-remote-cache",
     ],
+    deps = [":dsai_sequence_meta"],  # include additional local targets to simplify their deployment
 )
 
 # Push image to 'production' (prod) tag - use with *CAUTION* as referenced by default in workflows
