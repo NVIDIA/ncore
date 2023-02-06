@@ -1,6 +1,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 import unittest
+import random
 
 from pathlib import Path
 
@@ -14,7 +15,8 @@ from .types import FrameTimepoint, FThetaCameraModelParameters
 class TestData3Loader(unittest.TestCase):
     ''' Test to verify functionality of V3 data loader '''
     def setUp(self):
-        self.all_shards = sorted([p for p in Path('external/test-data-v3-shards').iterdir() if p.match('*.itar')])
+        self.random = random.Random(x=0)  # seed deterministically
+        self.all_shards = sorted([str(p) for p in Path('external/test-data-v3-shards').iterdir() if p.match('*.itar')])
 
     @parameterized.parameterized.expand([(
         "not-open_consolidated",
@@ -28,7 +30,11 @@ class TestData3Loader(unittest.TestCase):
         self.assertEqual(len(self.all_shards), 3)
 
         def check(start, end):
-            loader = ShardDataLoader(self.all_shards[start:end], open_consolidated=open_consolidated)
+            # Randomize shard path oder
+            local_shards = self.all_shards[start:end]
+            self.random.shuffle(local_shards)
+
+            loader = ShardDataLoader(local_shards, open_consolidated=open_consolidated)
 
             # expected number of total poses is sum of per-shard poses minus duplicated/removed poses at shard boundaries
             expected_num_poses = sum(shard_num_poses[start:end]) - (end - start - 1)
@@ -36,16 +42,27 @@ class TestData3Loader(unittest.TestCase):
             self.assertEqual(len(loader.get_camera_ids()), 10)
             self.assertEqual(len(loader.get_lidar_ids()), 1)
             self.assertEqual(len(loader.get_radar_ids()), 0)
+            self.assertEqual(len(loader.get_sensor_ids()), 11)
 
             poses = loader.get_poses()
             self.assertEqual(poses.T_rig_world_base.shape, (4, 4))
             self.assertEqual(poses.T_rig_world_timestamps_us.shape, (expected_num_poses, ))
             self.assertEqual(poses.T_rig_worlds.shape, (expected_num_poses, 4, 4))
 
+            for local_shard_idx, shard_id in enumerate(range(start, end)):
+                # check *single* shard sub-range pose lookup
+                self.assertEqual(
+                    loader.get_poses(local_shard_idx, local_shard_idx + 1).T_rig_world_timestamps_us.shape,
+                    (shard_num_poses[shard_id], ))
+
             self.assertEqual(loader.get_sequence_id(with_shard_range=False), 'c9b05cf4-afb9-11ec-b3c2-00044bf65fcb')
             self.assertEqual(
                 loader.get_sequence_id(with_shard_range=True),
                 'c9b05cf4-afb9-11ec-b3c2-00044bf65fcb_' + '_'.join([str(shard_id) for shard_id in range(start, end)]))
+
+            # make sure returned paths are absolute and ordered by shard-id
+            self.assertEqual(loader.get_shard_paths(), [str(Path(p).absolute()) for p in self.all_shards[start:end]])
+            self.assertEqual(loader.get_shard_ids(), list(range(start, end)))
 
         # check all shard slice variants
         for end in range(1, len(self.all_shards) + 1):
@@ -113,6 +130,17 @@ class TestData3Loader(unittest.TestCase):
         self.assertIsNone(np.testing.assert_array_almost_equal(sensor.get_T_rig_sensor(), np.linalg.inv(reference_T_sensor_rig)))
 
         self.assertEqual(sensor.get_frames_count(), 10)
+        
+        self.assertEqual(sensor.get_frames_count(0, 1), 4)
+        self.assertEqual(sensor.get_frames_count(1, 2), 4)
+        self.assertEqual(sensor.get_frames_count(2, 3), 2)
+        self.assertEqual(sensor.get_frames_count(0, 2), 8)
+
+        self.assertEqual(len(sensor.get_frames_timestamps_us(0, 1)), 4)
+        self.assertEqual(len(sensor.get_frames_timestamps_us(1, 2)), 4)
+        self.assertEqual(len(sensor.get_frames_timestamps_us(2, 3)), 2)
+        self.assertEqual(len(sensor.get_frames_timestamps_us(0, 2)), 8)
+
         self.assertEqual(sensor.get_frame_index_range(), range(0, 10, 1))
 
         # Check that all sensor timestamps are strictly monotonically increasing

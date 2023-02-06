@@ -71,6 +71,7 @@ py3_image(
         "manual",
         "no-remote-cache",
     ],
+    deps = [":dsai_sequence_meta"],  # include additional local targets to simplify their deployment
 )
 
 # Push image to 'production' (prod) tag - use with *CAUTION* as referenced by default in workflows
@@ -190,6 +191,15 @@ py_binary(
         "//dsai/impl/data:pylib_data",
         "//dsai/impl/data:pylib_types",
         "//dsai/impl/sensors:pylib_camera",
+    ],
+)
+
+py_binary(
+    name = "dsai_sequence_meta",
+    srcs = ["dsai_sequence_meta.py"],
+    deps = [
+        requirement("click"),
+        "//dsai/impl/data:pylib_data",
     ],
 )
 

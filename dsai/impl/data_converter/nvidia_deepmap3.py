@@ -154,9 +154,15 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
         # Convert the poses to the sequence coordinate frame
         self.poses = np.linalg.inv(base_pose) @ self.poses
 
+        # Subselect poses in case timestamp ranges were provided (only subselect serialized poses, keep all poses for pose interpolation of frame data)
+        start_timestamp_us = self.start_timestamp_us if self.start_timestamp_us else self.poses_timestamps[0]
+        end_timestamp_us = self.end_timestamp_us if self.end_timestamp_us else self.poses_timestamps[-1]
+
+        local_pose_range = np.logical_and(start_timestamp_us <= self.poses_timestamps, self.poses_timestamps <= end_timestamp_us)
+
         # Save the poses
         self.data_writer.store_poses(
-            Poses(T_rig_world_base=base_pose, T_rig_worlds=self.poses, T_rig_world_timestamps_us=self.poses_timestamps))
+            Poses(T_rig_world_base=base_pose, T_rig_worlds=self.poses[local_pose_range], T_rig_world_timestamps_us=self.poses_timestamps[local_pose_range]))
 
     def decode_labels(self, sequence_path):
         # Perform label parsing
