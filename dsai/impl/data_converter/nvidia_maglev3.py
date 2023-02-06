@@ -68,12 +68,12 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         # Determine session-id to be processed
         session_id = load_maglev_session_id(self.sequence_path)
-        self.logger.info(f'Converting session {session_id} [shard {self.shard_id + 1}/{self.shard_count}]')
+        self.logger.info(f'Converting session {session_id} [shard {self.shard_id}/{self.shard_count}]')
 
         # DataWriter for all outputs
         self.data_writer = ContainerDataWriter(
             self.output_dir / session_id,
-            f'{session_id}_{self.shard_id + 1}-{self.shard_count}',
+            f'{session_id}_{self.shard_id}-{self.shard_count}',
             list(self.CAMERAID_TO_RIGNAME.keys()),
             list(self.LIDARID_TO_RIGNAME.keys()),
             []  # no radars yet
@@ -194,7 +194,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
     def decode_cameras(self):
         logger = self.logger.getChild('decode_cameras')
-        logger.info(f'Loading camera data [shard {self.shard_id + 1}/{self.shard_count}]')
+        logger.info(f'Loading camera data [shard {self.shard_id}/{self.shard_count}]')
 
         # Pose interpolator to obtain start / end egomotion poses
         pose_interpolator = PoseInterpolator(self.global_T_rig_worlds, self.global_T_rig_world_timestamps_us)
@@ -298,14 +298,14 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 self.data_writer.store_camera_frame(camera_id, continous_local_frame_index, image_file_binary_data, 'jpeg', T_rig_worlds, timestamps_us)
 
             logger.info(f'> processed {len(local_frame_timestamps_us)} local'
-                        f' images [shard {self.shard_id + 1}/{self.shard_count}]')
+                        f' images [shard {self.shard_id}/{self.shard_count}]')
 
         logger.info(f'> processed {len(self.CAMERAID_TO_RIGNAME)} cameras')
 
 
     def decode_lidars(self):
         logger = self.logger.getChild('decode_lidars')
-        logger.info(f'Loading lidar data [shard {self.shard_id + 1}/{self.shard_count}]')
+        logger.info(f'Loading lidar data [shard {self.shard_id}/{self.shard_count}]')
 
         # Pose interpolator to obtain start / end egomotion poses
         pose_interpolator = PoseInterpolator(self.global_T_rig_worlds, self.global_T_rig_world_timestamps_us)
@@ -513,6 +513,6 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 logger.debug(f'> spin {continous_local_frame_index+1}/{num_local_frames} | load/process/dynflag/store {time_load:.2f}/{time_process:.2f}/{time_dynflag:.2f}/{time_store:.2f}sec')
 
             logger.info(f'> processed {len(local_frame_timestamps_us)} local'
-                        f' point clouds [shard {self.shard_id + 1}/{self.shard_count}]')
+                        f' point clouds [shard {self.shard_id}/{self.shard_count}]')
 
         logger.info(f'> processed {len(self.LIDARID_TO_RIGNAME)} lidars')
