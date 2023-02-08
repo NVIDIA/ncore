@@ -38,15 +38,17 @@ class CameraModel(ABC):
     @staticmethod
     def from_parameters(
         cam_model_parameters: Union[types.FThetaCameraModelParameters,
-                                    types.PinholeCameraModelParameters]) -> CameraModel:
+                                    types.PinholeCameraModelParameters],
+        device: str = 'cuda',
+        dtype: torch.dtype = torch.float32) -> CameraModel:
         '''
         Initialize a camera model class
         '''
         match cam_model_parameters:
             case types.FThetaCameraModelParameters():
-                return FThetaCameraModel(cam_model_parameters)
+                return FThetaCameraModel(cam_model_parameters, device, dtype)
             case types.PinholeCameraModelParameters():
-                return PinholeCameraModel(cam_model_parameters)
+                return PinholeCameraModel(cam_model_parameters, device, dtype)
             case _:
                 raise TypeError(
                         f"unsupported camera model type {type(cam_model_parameters)}, currently supporting Ftheta/Pinhole only"
