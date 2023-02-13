@@ -33,3 +33,16 @@ index f9254f1..89d8b54 100644
      items = sorted(items)
  
      print(f'Found {len(items)} folder imgs')
+diff --git a/network/hrnetv2.py b/network/hrnetv2.py
+index 1484bcd..fa3e2d9 100644
+--- a/network/hrnetv2.py
++++ b/network/hrnetv2.py
+@@ -312,7 +312,7 @@ class HighResolutionNet(nn.Module):
+         self.stage4, pre_stage_channels = self._make_stage(
+             self.stage4_cfg, num_channels, multi_scale_output=True)
+
+-        self.high_level_ch = np.int(np.sum(pre_stage_channels))
++        self.high_level_ch = np.sum(pre_stage_channels).astype(np.int_)
+
+     def _make_transition_layer(
+             self, num_channels_pre_layer, num_channels_cur_layer):
