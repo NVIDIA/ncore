@@ -23,14 +23,14 @@ def run_instance_segmentation(image_handles: list[Tuple[int, EncodedImageHandle]
                               use_pointrend=True):
     cfg = get_cfg()
     if use_pointrend:
-        best_model_config = 'src/dsai/impl/deps/instance_segmentation/configs/InstanceSegmentation/pointrend_rcnn_X_101_32x8d_FPN_3x_coco.yaml'
+        best_model_config = 'dsai/impl/deps/instance_segmentation/configs/InstanceSegmentation/pointrend_rcnn_X_101_32x8d_FPN_3x_coco.yaml'
         add_pointrend_config(cfg)
         cfg.merge_from_file(best_model_config)
         cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5  # set threshold for this model
         # Find a model from detectron2's model zoo. You can use the https://dl.fbaipublicfiles... url as well
         cfg.MODEL.WEIGHTS = 'external/instance-segmentation-models/model_final_ba17b9.pkl'
     else:
-        best_model_config = 'src/dsai/impl/deps/instance_segmentation/configs/InstanceSegmentation/pointrend_rcnn_X_101_32x8d_FPN_3x_coco.yaml'
+        best_model_config = 'dsai/impl/deps/instance_segmentation/configs/InstanceSegmentation/pointrend_rcnn_X_101_32x8d_FPN_3x_coco.yaml'
         cfg.merge_from_file(model_zoo.get_config_file(best_model_config))
         cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5  # set threshold for this model
         # Find a model from detectron2's model zoo. You can use the https://dl.fbaipublicfiles... url as well
