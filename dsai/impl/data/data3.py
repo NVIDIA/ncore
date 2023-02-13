@@ -11,7 +11,6 @@ import concurrent.futures
 
 from types import SimpleNamespace
 from pathlib import Path
-from functools import lru_cache, cache
 from typing import NamedTuple, Optional, Tuple, Union
 
 import numpy as np
@@ -289,7 +288,6 @@ class Sensor:
         shard_index: int
         shard_frame_index: int
 
-    @lru_cache
     def _get_shard_frame(self, continous_frame_index: int) -> ShardFrame:
         ''' For a given continous-frame, determine the corresponding shard-frame '''
         assert continous_frame_index >= 0 and continous_frame_index < self._shard_frame_map[-1], IndexError
@@ -299,7 +297,6 @@ class Sensor:
 
         return self.ShardFrame(shard_index, shard_frame)
 
-    @lru_cache
     def _get_continous_frame(self, shard_frame: ShardFrame) -> int:
         ''' For a given shard-frame, determine the corresponding continous-frame '''
         return self._shard_frame_map[shard_frame.shard_index] + shard_frame.shard_frame_index
@@ -357,18 +354,15 @@ class Sensor:
         return self._sensor_id
 
     # Extrinsics
-    @lru_cache(maxsize=1)
     def get_T_sensor_rig(self) -> np.ndarray:
         ''' Returns constant sensor-to-rig pose '''
         return np.array(self._sensor_meta.T_sensor_rig, dtype=np.float32)
 
-    @lru_cache(maxsize=1)
     def get_T_rig_sensor(self) -> np.ndarray:
         ''' Returns constant rig-to-sensor pose '''
         return transformations.se3_inverse(self.get_T_sensor_rig())
 
     # Sequence-wide or shard-wide frame data
-    @lru_cache(maxsize=10)
     def get_frames_count(self, start_shard_idx: Optional[int] = None, end_shard_idx: Optional[int] = None) -> int:
         ''' Returns number of frames for full session (default) or a range of shards [start,end) '''
         return sum(
@@ -385,7 +379,6 @@ class Sensor:
 
         return range(start_frame, end_frame, step_frame)
 
-    @lru_cache(maxsize=10)
     def get_frames_timestamps_us(self,
                                  start_shard_idx: Optional[int] = None,
                                  end_shard_idx: Optional[int] = None) -> np.ndarray:
@@ -393,7 +386,6 @@ class Sensor:
         return np.hstack(self._shards_sensor_frame_timestamps_us[start_shard_idx:end_shard_idx])
 
     # Frame-dependent poses / timestamps
-    @lru_cache
     def _get_frame_group(self, continous_frame_index: int) -> zarr.Group:
         ''' Returns the zarr group for a specific frame '''
 
@@ -402,7 +394,6 @@ class Sensor:
         return self._shard_roots[shard_frame.shard_index][SENSORS_BASE_GROUP][self._sensor_group] \
                 [self._sensor_id][util.padded_index_string(shard_frame.shard_frame_index)]
 
-    @lru_cache
     def get_frame_T_rig_world(self,
                               continous_frame_index: int,
                               frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> np.ndarray:
@@ -410,14 +401,12 @@ class Sensor:
 
         return self._get_frame_group(continous_frame_index)['T_rig_worlds'][frame_timepoint.value]
 
-    @lru_cache
     def get_frame_T_world_rig(self,
                               continous_frame_index: int,
                               frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> np.ndarray:
         ''' Returns start/end world-to-rig pose of specific frame '''
         return transformations.se3_inverse(self.get_frame_T_rig_world(continous_frame_index, frame_timepoint))
 
-    @lru_cache
     def get_frame_T_sensor_world(self,
                                  continous_frame_index: int,
                                  frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> np.ndarray:
@@ -425,14 +414,12 @@ class Sensor:
 
         return self.get_frame_T_rig_world(continous_frame_index, frame_timepoint) @ self.get_T_sensor_rig()
 
-    @lru_cache
     def get_frame_T_world_sensor(self,
                                  continous_frame_index: int,
                                  frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> np.ndarray:
         ''' Returns start/end world-to-sensor pose of specific frame '''
         return transformations.se3_inverse(self.get_frame_T_sensor_world(continous_frame_index, frame_timepoint))
 
-    @lru_cache
     def get_frame_timestamp_us(self,
                                continous_frame_index: int,
                                frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END) -> int:
@@ -440,7 +427,6 @@ class Sensor:
 
         return self._get_frame_group(continous_frame_index)['timestamps_us'][frame_timepoint.value]
 
-    @lru_cache
     def get_closest_frame_index(self, timestamp_us: int) -> int:
         ''' Given a timestamp, returns the frame index of the closes frame '''
 
@@ -456,33 +442,27 @@ class CameraSensor(Sensor):
         def __init__(self, image_dataset: zarr.Array):
             self._image_dataset = image_dataset
 
-        @lru_cache(maxsize=1)
         def get_data(self) -> types.EncodedImageData:
             ''' Loads the referenced encoded image data to memory '''
             return types.EncodedImageData(self._image_dataset[()], self._image_dataset.attrs['format'])
 
-    @lru_cache(maxsize=10)
     def get_frame_handle(self, continous_frame_index: int) -> EncodedImageDataHandle:
         ''' Returns the frame's encoded image data '''
         return self.EncodedImageDataHandle(self._get_frame_group(continous_frame_index)['image'])
 
-    @lru_cache(maxsize=10)
     def get_frame_data(self, continous_frame_index: int) -> types.EncodedImageData:
         ''' Returns the frame's encoded image data '''
         return self.get_frame_handle(continous_frame_index).get_data()
 
-    @lru_cache(maxsize=10)
     def get_frame_image(self, continous_frame_index: int) -> PILImage.Image:
         ''' Returns the frame's decoded image data '''
         return self.get_frame_data(continous_frame_index).get_decoded_image()
 
-    @lru_cache(maxsize=10)
     def get_frame_image_array(self, continous_frame_index: int) -> np.ndarray:
         ''' Returns decoded image data as array [W,H,C] '''
         return np.asarray(self.get_frame_image(continous_frame_index))
 
     # Intrinsics
-    @lru_cache(maxsize=1)
     def get_camera_model_parameters(
             self) -> Union[types.FThetaCameraModelParameters, types.PinholeCameraModelParameters]:
         ''' Returns parameters specific to the camera's intrinsic model '''
@@ -493,7 +473,6 @@ class CameraSensor(Sensor):
         raise ValueError
 
     # Camera Mask
-    @lru_cache(maxsize=1)
     def get_camera_mask_image(self) -> Optional[PILImage.Image]:
         ''' Returns constant camera mask image, if available '''
 
@@ -507,13 +486,11 @@ class CameraSensor(Sensor):
 
 class PointCloudSensor(Sensor):
     ''' Provides access to sensor's measuring point-clouds '''
-    @lru_cache
     def has_frame_data(self, continous_frame_index: int, name: str) -> bool:
         ''' Signals if specifically named frame-data property exists '''
 
         return name in self._get_frame_group(continous_frame_index)
 
-    @lru_cache(maxsize=10)
     def get_frame_data(self, continous_frame_index: int, name: str) -> np.ndarray:
         ''' Returns frame-data for a specific frame and column-name '''
 
@@ -522,7 +499,6 @@ class PointCloudSensor(Sensor):
 
 class LidarSensor(PointCloudSensor):
     ''' Provides access to lidar-specific sensor-data '''
-    @lru_cache
     def get_frame_labels(self, continous_frame_index: int) -> list[types.FrameLabel3]:
         ''' Returns frame-labels for a specific frame '''
 
@@ -666,7 +642,6 @@ class ShardDataLoader:
         self._shard_paths = [shards_map[shard_id][0] for shard_id in self._shard_ids]
         self._shard_roots = [shards_map[shard_id][1] for shard_id in self._shard_ids]
 
-    @lru_cache(maxsize=10)
     def get_poses(self, start_shard_idx : Optional[int] = None, end_shard_idx : Optional[int] = None) -> types.Poses:
         ''' Returns all timestamped poses associated with the session (default) or a range of shards [start,end) '''
 
@@ -739,7 +714,6 @@ class ShardDataLoader:
         ''' Returns all sensor ids '''
         return self.get_camera_ids() + self.get_lidar_ids() + self.get_radar_ids()
 
-    @cache
     def get_camera_sensor(self, camera_id) -> CameraSensor:
         ''' Provides access to a specific camera sensor given it's sensor-id '''
         return CameraSensor(camera_id, CAMERAS_BASE_GROUP, self._shard_roots)
@@ -748,7 +722,6 @@ class ShardDataLoader:
         ''' Returns all camera sensor ids '''
         return list(self._camera_ids)
 
-    @cache
     def get_lidar_sensor(self, lidar_id) -> LidarSensor:
         ''' Provides access to a specific lidar sensor given it's sensor-id '''
         return LidarSensor(lidar_id, LIDARS_BASE_GROUP, self._shard_roots)
@@ -757,7 +730,6 @@ class ShardDataLoader:
         ''' Returns all lidar sensor ids '''
         return list(self._lidar_ids)
 
-    @cache
     def get_radar_sensor(self, radar_id) -> RadarSensor:
         ''' Provides access to a specific radar sensor given it's sensor-id '''
         return RadarSensor(radar_id, RADARS_BASE_GROUP, self._shard_roots)
