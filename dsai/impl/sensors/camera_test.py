@@ -246,7 +246,7 @@ class TestReferenceFThetaCamera(unittest.TestCase):
         for a, e in zip(
                 np.array(
                     ftheta_from_reference(camera, self.device,
-                                          self.dtype).pixel_to_camera_ray(np.array(pixels2d, ndmin=2)).cpu()),
+                                          self.dtype).pixels_to_camera_rays(np.array(pixels2d, ndmin=2)).cpu()),
                 np.array(rays3dExpected, ndmin=2)):
             self._compareVector(a, e)
 
@@ -286,7 +286,7 @@ class TestReferenceFThetaCamera(unittest.TestCase):
         for a, e in zip(
                 np.array(
                     ftheta_from_reference(camera, self.device,
-                                          self.dtype).camera_ray_to_pixel(np.array(rays3d, ndmin=2))[0].cpu()),
+                                          self.dtype).camera_rays_to_pixels(np.array(rays3d, ndmin=2))[0].cpu()),
                 np.array(pixels2dExpected, ndmin=2)):
             self._compareVector(a, e)
 
@@ -316,7 +316,7 @@ class TestReferenceFThetaCamera(unittest.TestCase):
                 ray3d_ref = camera_ref.pixel2ray(expectedPoint2d)
 
                 # Evaluate torch-camera
-                ray3d = camera_ftheta.pixel_to_camera_ray(
+                ray3d = camera_ftheta.pixels_to_camera_rays(
                     camera_ftheta.to_torch(expectedPoint2d).to(camera_ftheta.dtype))
 
                 # test that the computed rays of both cameras agree
@@ -328,7 +328,7 @@ class TestReferenceFThetaCamera(unittest.TestCase):
                     self.assertLessEqual(np.linalg.norm(expectedPoint2d - actualPoint2d_ref), MAX_DEVIATION_IN_PIXEL)
 
                     # Verify torch-camera's result
-                    actualPoint2d, _ = camera_ftheta.camera_ray_to_pixel(ray3d)
+                    actualPoint2d, _ = camera_ftheta.camera_rays_to_pixels(ray3d)
                     self.assertLessEqual(np.linalg.norm(expectedPoint2d - np.array(actualPoint2d.cpu())),
                                          MAX_DEVIATION_IN_PIXEL)
 
