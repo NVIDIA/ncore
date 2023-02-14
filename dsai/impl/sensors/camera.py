@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from abc import ABC, abstractmethod
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 import numpy as np
@@ -182,8 +182,11 @@ class CameraModel(ABC):
     def pixels_to_world_rays_rolling_shutter(self,
                                              image_points: Union[torch.Tensor, np.ndarray],
                                              T_world_sensor_start: Union[torch.Tensor, np.ndarray],
-                                             T_world_sensor_end: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
-        ''' Unprojects image points to world rays, compensating for rolling-shutter effects
+                                             T_world_sensor_end: Union[torch.Tensor, np.ndarray],
+                                             camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None) -> torch.Tensor:
+        ''' Unprojects image points to world rays, compensating for rolling-shutter effects.
+
+        Can optionally re-use known camera rays associated with image points.
         
         For each image point returns 3d world rays [point, direction], represented by 3d start of ray points and 3d ray directions in the world frame
         '''
@@ -204,7 +207,15 @@ class CameraModel(ABC):
         world_rays = torch.empty((image_points.shape[0], 6), dtype=self.dtype).to(self.device)
 
         # Unproject the pixels to camera rays
-        camera_rays = self.pixels_to_camera_rays(image_points)
+        if camera_rays:
+            # Reuse provided camera rays
+            camera_rays = self.to_torch(camera_rays).to(self.dtype)
+            assert len(camera_rays.shape) == 2
+            assert camera_rays.shape[0] == image_points.shape[0]
+            assert camera_rays.shape[1] == 3
+            assert camera_rays.dtype == self.dtype
+        else:
+            camera_rays = self.pixels_to_camera_rays(image_points)
 
         # Convert the start and end rotation matrix to quaternions
         R_sensor_world_s_quat = self.__rotmat_to_unitquat(T_world_sensor_start[None, :3, :3])        # [1, 4]
