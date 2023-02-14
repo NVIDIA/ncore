@@ -1,9 +1,9 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-import click
 import logging
-import tqdm
 
+import click
+import tqdm
 import numpy as np
 
 from dsai.impl.data.data3 import ShardDataLoader, PointCloudSensor, CameraSensor
@@ -36,8 +36,6 @@ from dsai.impl.sensors.camera import CameraModel
               type=click.Choice(['gpu', 'cpu', 'both']),
               help='Device used for the computation. If gpu - projection will be done in pytorch on a gpu.',
               default='cpu')
-
-
 def dsai_project_pc_to_img(shard_file_pattern: str, sensor_id: str, camera_id: str, start_frame: int, end_frame: int,
                            step_frame: int, device: str):
     ''' Projects the point cloud to the camera image, comparing projection w. and w/o rolling shutter compensation  '''
@@ -71,7 +69,6 @@ def dsai_project_pc_to_img(shard_file_pattern: str, sensor_id: str, camera_id: s
 
         T_world_sensor_start = cam_sensor.get_frame_T_world_sensor(frame_index, types.FrameTimepoint.START)
         T_world_sensor_end = cam_sensor.get_frame_T_world_sensor(frame_index, types.FrameTimepoint.END)
-        T_world_sensor = np.stack([T_world_sensor_start, T_world_sensor_end])
 
         # Initialize the camera model
         cam_model_params = cam_sensor.get_camera_model_parameters()
@@ -80,7 +77,7 @@ def dsai_project_pc_to_img(shard_file_pattern: str, sensor_id: str, camera_id: s
         if device in ['gpu', 'both']:
             logger.info(f"Starting the projection with a torch GPU implementation.")
 
-            pixel_coords_gpu, trans_matrices_gpu, valid_idx_gpu = cam_model.rolling_shutter_projection(pc, T_world_sensor)
+            pixel_coords_gpu, trans_matrices_gpu, valid_idx_gpu = cam_model.world_points_to_pixels_rolling_shutter(pc, T_world_sensor_start, T_world_sensor_end)
 
             pixel_coords_torch = pixel_coords_gpu.cpu().numpy()
             trans_matrices_torch = trans_matrices_gpu.cpu().numpy()
@@ -93,7 +90,7 @@ def dsai_project_pc_to_img(shard_file_pattern: str, sensor_id: str, camera_id: s
         if device in ['cpu', 'both']:
             logger.info(f"Starting the projection with a c++ CPU implementation.")
 
-            pixel_coords_rs, trans_matrices_rs, valid_idx_rs = rollingShutterProjection(pc, cam_model_params, T_world_sensor)
+            pixel_coords_rs, trans_matrices_rs, valid_idx_rs = rollingShutterProjection(pc, cam_model_params, np.stack([T_world_sensor_start, T_world_sensor_end]))
 
             # Compute the distance to the points in the camera coordinate system
             transformed_points = transform_point_cloud(pc[valid_idx_rs,None,:], trans_matrices_rs).squeeze(1)
