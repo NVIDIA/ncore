@@ -207,7 +207,7 @@ class CameraModel(ABC):
         world_rays = torch.empty((image_points.shape[0], 6), dtype=self.dtype).to(self.device)
 
         # Unproject the pixels to camera rays
-        if camera_rays:
+        if camera_rays is not None:
             # Reuse provided camera rays
             camera_rays = self.to_torch(camera_rays).to(self.dtype)
             assert len(camera_rays.shape) == 2
