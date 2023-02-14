@@ -36,11 +36,10 @@ class CameraModel(ABC):
         pass
 
     @staticmethod
-    def from_parameters(
-        cam_model_parameters: Union[types.FThetaCameraModelParameters,
-                                    types.PinholeCameraModelParameters],
-        device: str = 'cuda',
-        dtype: torch.dtype = torch.float32) -> CameraModel:
+    def from_parameters(cam_model_parameters: Union[types.FThetaCameraModelParameters,
+                                                    types.PinholeCameraModelParameters],
+                        device: str = 'cuda',
+                        dtype: torch.dtype = torch.float32) -> CameraModel:
         '''
         Initialize a generic camera model class from camera model parameters
         '''
@@ -61,12 +60,13 @@ class CameraModel(ABC):
 
         return var.to(self.device)
 
-    def world_points_to_pixels_rolling_shutter(self,
-                                               world_points: Union[torch.Tensor, np.ndarray],
-                                               T_world_sensor_start: Union[torch.Tensor, np.ndarray],
-                                               T_world_sensor_end: Union[torch.Tensor, np.ndarray],
-                                               max_iter: int = 10,
-                                               min_error: float = 1e-3) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def world_points_to_pixels_rolling_shutter(
+            self,
+            world_points: Union[torch.Tensor, np.ndarray],
+            T_world_sensor_start: Union[torch.Tensor, np.ndarray],
+            T_world_sensor_end: Union[torch.Tensor, np.ndarray],
+            max_iter: int = 10,
+            min_error: float = 1e-3) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         ''' Projects static world points to corresponding pixel coordinates using rolling-shutter compensation of sensor motion
             
             Returns
@@ -135,10 +135,9 @@ class CameraModel(ABC):
 
         return pixel_rs[valid_rs, :], trans_matrices, torch.where(valid)[0]
 
-    def world_points_to_pixels(self,
-                               world_points: Union[torch.Tensor, np.ndarray],
-                               T_world_sensor_start: Union[torch.Tensor, np.ndarray],
-                               T_world_sensor_end: Union[torch.Tensor, np.ndarray]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def world_points_to_pixels(
+            self, world_points: Union[torch.Tensor, np.ndarray], T_world_sensor_start: Union[torch.Tensor, np.ndarray],
+            T_world_sensor_end: Union[torch.Tensor, np.ndarray]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         ''' Projects static world points to corresponding pixel coordinates using the mean pose of the sensor between the start and end poses of the frame
             
             Returns
@@ -179,11 +178,12 @@ class CameraModel(ABC):
 
         return init_pixel[valid, :], trans_matrix, torch.where(valid)[0]
 
-    def pixels_to_world_rays_rolling_shutter(self,
-                                             image_points: Union[torch.Tensor, np.ndarray],
-                                             T_world_sensor_start: Union[torch.Tensor, np.ndarray],
-                                             T_world_sensor_end: Union[torch.Tensor, np.ndarray],
-                                             camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None) -> torch.Tensor:
+    def pixels_to_world_rays_rolling_shutter(
+            self,
+            image_points: Union[torch.Tensor, np.ndarray],
+            T_world_sensor_start: Union[torch.Tensor, np.ndarray],
+            T_world_sensor_end: Union[torch.Tensor, np.ndarray],
+            camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None) -> torch.Tensor:
         ''' Unprojects image points to world rays, compensating for rolling-shutter effects.
 
         Can optionally re-use known camera rays associated with image points.
@@ -218,8 +218,8 @@ class CameraModel(ABC):
             camera_rays = self.pixels_to_camera_rays(image_points)
 
         # Convert the start and end rotation matrix to quaternions
-        R_sensor_world_s_quat = self.__rotmat_to_unitquat(T_world_sensor_start[None, :3, :3])        # [1, 4]
-        R_sensor_world_e_quat = self.__rotmat_to_unitquat(T_world_sensor_end[None, :3, :3])          # [1, 4]
+        R_sensor_world_s_quat = self.__rotmat_to_unitquat(T_world_sensor_start[None, :3, :3])  # [1, 4]
+        R_sensor_world_e_quat = self.__rotmat_to_unitquat(T_world_sensor_end[None, :3, :3])  # [1, 4]
 
         t = self.__get_interpolation_timestamp(image_points)
 
@@ -228,9 +228,10 @@ class CameraModel(ABC):
 
         R_sensor_world_rs = self.__unitquat_to_rotmat(
             self.__unitquat_slerp(R_sensor_world_s_quat.repeat(t.shape[0], 1),
-                                  R_sensor_world_e_quat.repeat(t.shape[0], 1), t)).squeeze()         # [n_image_points, 3, 3]
+                                  R_sensor_world_e_quat.repeat(t.shape[0], 1), t)).squeeze()  # [n_image_points, 3, 3]
 
-        world_ray_directions_rs = torch.bmm(R_sensor_world_rs, camera_rays[:, :, None]).squeeze(-1)  # [n_image_points, 3]
+        world_ray_directions_rs = torch.bmm(R_sensor_world_rs, camera_rays[:, :,
+                                                                           None]).squeeze(-1)  # [n_image_points, 3]
 
         # Copy the values in the output variable
         world_rays[:, 0:3] = world_position_rs
