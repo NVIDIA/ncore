@@ -1,0 +1,18 @@
+# Copyright (c) 2023 NVIDIA CORPORATION.  All rights reserved.
+
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_binary")
+
+py_binary(
+    name = "dsai_to_map_transform",
+    srcs = ["dsai_to_map_transform.py"],
+    deps = [
+        requirement("click"),
+        requirement("numpy"),
+        "//dsai/impl/common:pylib",
+        "//dsai/impl/data:pylib_data",
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")
