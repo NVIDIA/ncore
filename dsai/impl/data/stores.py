@@ -98,21 +98,26 @@ class IndexedTarStore(zarr._storage.store.Store):
         with self.mutex:
             return len(self.index.records)
 
+    def __contains__(self, item: str) -> bool:
+        with self.mutex:
+            return item in self.index.records
+
     def __getitem__(self, item: str) -> bytes:
-        # Query index for file record
-        record = self.index.records[item]  # raises KeyError if not in archive
+        with self.mutex:
+            # Query index for file record
+            record = self.index.records[item]  # raises KeyError if not in archive
 
-        # Remember current tar file position
-        current_position = self.tar_file_object.tell()
+            # Remember current tar file position
+            current_position = self.tar_file_object.tell()
 
-        # Read the value
-        self.tar_file_object.seek(record.offset_data)
-        value = self.tar_file_object.read(record.size)
+            # Read the value
+            self.tar_file_object.seek(record.offset_data)
+            value = self.tar_file_object.read(record.size)
 
-        # Return tar file to previous location
-        self.tar_file_object.seek(current_position)
+            # Return tar file to previous location
+            self.tar_file_object.seek(current_position)
 
-        return value
+            return value
 
     def __setitem__(self, item: str, value):
         if self.mode != 'w':
@@ -123,17 +128,34 @@ class IndexedTarStore(zarr._storage.store.Store):
                 raise ValueError(f'{item} already exists, update is not supported')
 
             value_bytes: bytes = numcodecs.compat.ensure_bytes(value)
+            value_size: int = len(value_bytes)
 
-            record = self.TarRecord(
-                # Start of data in tar file (current tar file position + header-size)
-                self.tar_file_object.tell() + tarfile.BLOCKSIZE,
-                # Length of the data
-                len(value_bytes))
+            # Remember current tar file position, which is the start of the header
+            header_start_position = self.tar_file_object.tell()
 
+            # Store value in tar-file (will pre-pend a potentially *multi*-block header depending on item path-lengths)
             tarinfo = tarfile.TarInfo(item)
-            tarinfo.size = record.size
+            tarinfo.size = value_size
 
             self.tar_file.addfile(tarinfo, fileobj=io.BytesIO(value_bytes))
+
+            # End position after writing both header and payload
+            end_position = self.tar_file_object.tell()
+
+            # Determine the effective value's payload size as a multiple of blocksize
+            payload_size = value_size
+            if remainder := payload_size % tarfile.BLOCKSIZE:
+                payload_size += tarfile.BLOCKSIZE - remainder
+
+            # Determine the effective header-size (can be multiple blocks for long path names)
+            header_size = end_position - header_start_position - payload_size
+
+            # Construct record from reconstructed size-information
+            record = self.TarRecord(
+                # Effective start of the data in the tar file (current tar file position + header-size)
+                header_start_position + header_size,
+                # Length of the data
+                value_size)
 
             self.index.records[item] = record
 
