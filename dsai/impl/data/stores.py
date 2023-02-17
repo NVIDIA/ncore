@@ -103,20 +103,21 @@ class IndexedTarStore(zarr._storage.store.Store):
             return item in self.index.records
 
     def __getitem__(self, item: str) -> bytes:
-        # Query index for file record
-        record = self.index.records[item]  # raises KeyError if not in archive
+        with self.mutex:
+            # Query index for file record
+            record = self.index.records[item]  # raises KeyError if not in archive
 
-        # Remember current tar file position
-        current_position = self.tar_file_object.tell()
+            # Remember current tar file position
+            current_position = self.tar_file_object.tell()
 
-        # Read the value
-        self.tar_file_object.seek(record.offset_data)
-        value = self.tar_file_object.read(record.size)
+            # Read the value
+            self.tar_file_object.seek(record.offset_data)
+            value = self.tar_file_object.read(record.size)
 
-        # Return tar file to previous location
-        self.tar_file_object.seek(current_position)
+            # Return tar file to previous location
+            self.tar_file_object.seek(current_position)
 
-        return value
+            return value
 
     def __setitem__(self, item: str, value):
         if self.mode != 'w':
