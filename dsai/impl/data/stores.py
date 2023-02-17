@@ -128,17 +128,34 @@ class IndexedTarStore(zarr._storage.store.Store):
                 raise ValueError(f'{item} already exists, update is not supported')
 
             value_bytes: bytes = numcodecs.compat.ensure_bytes(value)
+            value_size: int = len(value_bytes)
 
-            record = self.TarRecord(
-                # Start of data in tar file (current tar file position + header-size)
-                self.tar_file_object.tell() + tarfile.BLOCKSIZE,
-                # Length of the data
-                len(value_bytes))
+            # Remember current tar file position, which is the start of the header
+            header_start_position = self.tar_file_object.tell()
 
+            # Store value in tar-file (will pre-pend a potentially *multi*-block header depending on item path-lengths)
             tarinfo = tarfile.TarInfo(item)
-            tarinfo.size = record.size
+            tarinfo.size = value_size
 
             self.tar_file.addfile(tarinfo, fileobj=io.BytesIO(value_bytes))
+
+            # End position after writing both header and payload
+            end_position = self.tar_file_object.tell()
+
+            # Determine the effective value's payload size as a multiple of blocksize
+            payload_size = value_size
+            if remainder := payload_size % tarfile.BLOCKSIZE:
+                payload_size += tarfile.BLOCKSIZE - remainder
+
+            # Determine the effective header-size (can be multiple blocks for long path names)
+            header_size = end_position - header_start_position - payload_size
+
+            # Construct record from reconstructed size-information
+            record = self.TarRecord(
+                # Effective start of the data in the tar file (current tar file position + header-size)
+                header_start_position + header_size,
+                # Length of the data
+                value_size)
 
             self.index.records[item] = record
 
