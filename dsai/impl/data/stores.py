@@ -98,6 +98,10 @@ class IndexedTarStore(zarr._storage.store.Store):
         with self.mutex:
             return len(self.index.records)
 
+    def __contains__(self, item: str) -> bool:
+        with self.mutex:
+            return item in self.index.records
+
     def __getitem__(self, item: str) -> bytes:
         # Query index for file record
         record = self.index.records[item]  # raises KeyError if not in archive
