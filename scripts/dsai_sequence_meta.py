@@ -4,7 +4,7 @@ from collections import defaultdict
 import logging
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import click
 import json
@@ -17,6 +17,12 @@ from dsai.impl.data.data3 import ShardDataLoader
               type=str,
               help='Data shard pattern to load (supports range expansion)',
               required=True)
+@click.option('--shard-file-skip-suffix',
+              'shard_file_skip_suffixes',
+              multiple=True,
+              type=str,
+              help='Suffixes to skip when evaluating shard file pattern',
+              default=None)
 @click.option('--output-dir', type=str, help='Path to the output folder', required=True)
 @click.option('--output-file',
               type=str,
@@ -24,14 +30,15 @@ from dsai.impl.data.data3 import ShardDataLoader
               help='Filename of generated file (json) - <sequence_id>.json will be used by default if not provided',
               required=False)
 @click.option('--open-consolidated/--no-open-consolidated', default=True, help='Pre-load shard meta-data?')
-def dsai_sequence_meta(shard_file_pattern: str, output_dir: str, output_file: Optional[str], open_consolidated: bool):
+def dsai_sequence_meta(shard_file_pattern: str, shard_file_skip_suffixes: Tuple[str], output_dir: str,
+                       output_file: Optional[str], open_consolidated: bool):
     ''' Summarizes and exports data-ranges within a virtual shard sequence'''
 
     # Initialize the logger
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    loader = ShardDataLoader(ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern),
+    loader = ShardDataLoader(ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern, skip_suffixes=shard_file_skip_suffixes),
                              open_consolidated=open_consolidated)
 
     ## Sequence-wide information
