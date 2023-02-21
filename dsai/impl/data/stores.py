@@ -359,13 +359,13 @@ class ConsolidatedCompressedMetadataStore(zarr.storage.ConsolidatedMetadataStore
         self.meta_store: zarr.Store = zarr.KVStore(meta["metadata"])
 
 
-def open_compressed_consolidated(store: zarr.StoreLike, metadata_key=".zmetadata.cbor.xz", mode="r+", **kwargs):
+def open_compressed_consolidated(store: zarr.StoreLike, metadata_key=".zmetadata.cbor.xz", mode="r+", **kwargs) -> zarr.hierarchy.Group:
     """ Open group using metadata previously consolidated and compressed into a single key.
 
     See Also
     --------
     consolidate_compressed_metadata
-    zarr.open__consolidated
+    zarr.open_consolidated
     """
 
     # normalize parameters

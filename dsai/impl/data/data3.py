@@ -644,7 +644,7 @@ class ShardDataLoader:
         self._shard_stores = [shards_map[shard_id][2] for shard_id in self._shard_ids]
 
     def reload_store_resources(self) -> None:
-        ''' Trigger a reload of the resources of each shard store - useful to, e.g., re-open file objects in multi-process settings '''
+        ''' Trigger a reload of each shard store - useful to re-initialize file objects in multi-process settings '''
         for shard_store in self._shard_stores:
             shard_store.reload_resources()
 

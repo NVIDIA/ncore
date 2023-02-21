@@ -19,13 +19,13 @@ class TestData3Loader(unittest.TestCase):
         self.all_shards = sorted([str(p) for p in Path('external/test-data-v3-shards').iterdir() if p.match('*.itar')])
 
     @parameterized.parameterized.expand([(
-        "not-open_consolidated",
-        False,
-    ), (
         "open_consolidated",
-        True,
+        False, True
+    ), (
+        "reload_store_resources",
+        False, True,
     )])
-    def test_shard_loader(self, _, open_consolidated: bool):
+    def test_shard_loader(self, _, open_consolidated: bool, reload_store_resources: bool):
         shard_num_poses = [5, 5, 3]
         self.assertEqual(len(self.all_shards), 3)
 
@@ -35,6 +35,9 @@ class TestData3Loader(unittest.TestCase):
             self.random.shuffle(local_shards)
 
             loader = ShardDataLoader(local_shards, open_consolidated=open_consolidated)
+
+            if reload_store_resources:
+                loader.reload_store_resources()
 
             # expected number of total poses is sum of per-shard poses minus duplicated/removed poses at shard boundaries
             expected_num_poses = sum(shard_num_poses[start:end]) - (end - start - 1)
