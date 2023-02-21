@@ -568,7 +568,7 @@ class ShardDataLoader:
         assert len(shard_paths), "No shard inputs provided"
 
         # Load shards concurrently (to hide latency) and check for sequence consistency and continuity of shards
-        shards_map: dict[int, Tuple[str, zarr.Group]] = {}  # use str as the generic path / URL type
+        shards_map: dict[int, Tuple[str, zarr.Group, stores.IndexedTarStore]] = {}  # use str as the generic path / URL type
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
 
@@ -581,19 +581,19 @@ class ShardDataLoader:
                 logging.info(f'ShardDataLoader: Loading shard {shard_path}')
 
                 timer = common.SimpleTimer()
-                store = stores.IndexedTarStore(shard_path)
-                shard_root = stores.open_compressed_consolidated(store=store, mode='r') if open_consolidated else zarr.open(store=store, mode='r')
+                shard_store = stores.IndexedTarStore(shard_path)
+                shard_root = stores.open_compressed_consolidated(store=shard_store, mode='r') if open_consolidated else zarr.open(store=shard_store, mode='r')
 
                 logging.debug(
                     f'ShardDataLoader: {shard_path} time_load={timer.elapsed_sec()}sec'
                 )
 
-                return str(shard_path), shard_root
+                return str(shard_path), shard_root, shard_store
 
             for future in concurrent.futures.as_completed(
                 [executor.submit(thread_load_shard, shard_path) for shard_path in shard_paths]):
                 # Note: thread completion order is not relevant here
-                shard_path, shard_root = future.result()
+                shard_path, shard_root, shard_store = future.result()
 
                 shard_sequence_id = shard_root.attrs.get('sequence_id')
                 shard_camera_ids = set(shard_root.attrs.get('camera_ids'))
@@ -626,7 +626,7 @@ class ShardDataLoader:
 
                 if shard_shard_id in shards_map: raise ValueError("Shard ID loaded multiple times")
 
-                shards_map[shard_shard_id] = shard_path, shard_root
+                shards_map[shard_shard_id] = shard_path, shard_root, shard_store
 
         # Check version-compatibility
         if self._shard_version != VERSION:
@@ -641,6 +641,12 @@ class ShardDataLoader:
         # *Linear* sequences of shards
         self._shard_paths = [shards_map[shard_id][0] for shard_id in self._shard_ids]
         self._shard_roots = [shards_map[shard_id][1] for shard_id in self._shard_ids]
+        self._shard_stores = [shards_map[shard_id][2] for shard_id in self._shard_ids]
+
+    def reload_store_resources(self) -> None:
+        ''' Trigger a reload of each shard store - useful to re-initialize file objects in multi-process settings '''
+        for shard_store in self._shard_stores:
+            shard_store.reload_resources()
 
     def get_poses(self, start_shard_idx : Optional[int] = None, end_shard_idx : Optional[int] = None) -> types.Poses:
         ''' Returns all timestamped poses associated with the session (default) or a range of shards [start,end) '''

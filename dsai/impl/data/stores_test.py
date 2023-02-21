@@ -35,9 +35,14 @@ class TestIndexedTarStore(unittest.TestCase):
                 zarr.copy_store(self.g_ref.store, s_itar_out)
 
             # reload store from file
-            g_reload = zarr.open(store=IndexedTarStore(f.name), mode='r')
+            store = IndexedTarStore(f.name)
+            g_reload = zarr.open(store=store, mode='r')
 
             # check all data was correctly serialized / deserialized
+            self.check_with_reference(g_reload)
+
+            # check reloading resources is functional
+            store.reload_resources()
             self.check_with_reference(g_reload)
 
     def test_compressed_consolidated(self):
@@ -52,9 +57,14 @@ class TestIndexedTarStore(unittest.TestCase):
                 consolidate_compressed_metadata(s_itar_out)
 
             # reload store from file with compressed consolidated meta-data
-            g_reload = open_compressed_consolidated(store=IndexedTarStore(f.name), mode='r')
+            store = IndexedTarStore(f.name)
+            g_reload = open_compressed_consolidated(store=store, mode='r')
 
             # check all data was correctly serialized / deserialized
+            self.check_with_reference(g_reload)
+
+            # check reloading resources is functional
+            store.reload_resources()
             self.check_with_reference(g_reload)
 
     @parameterized.parameterized.expand([(

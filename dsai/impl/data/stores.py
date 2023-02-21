@@ -178,6 +178,21 @@ class IndexedTarStore(zarr._storage.store.Store):
 
             self.tar_file_object.close()
 
+    def reload_resources(self):
+        """ Reloads the tar file object *only* - useful to re-initialize the store in multi-process 'fork()' settings """
+        with self.mutex:
+            # get current tar file path and seek positions
+            itar_path = self.tar_file_object.name
+            current_position = self.tar_file_object.tell()
+
+            # reload file (require file to be both writeable and readable when writing)
+            self.tar_file_object.close()
+            self.tar_file_object = open(itar_path, 'wb+') if self.mode == 'w' else open(itar_path, 'rb')
+            self.tar_file.fileobj = self.tar_file_object
+
+            # seek to previous position
+            self.tar_file_object.seek(current_position)
+
     # Methods / constants for storing index header and payload
     INDEX_HEADER_MAGIC = b"itar"
 
@@ -344,13 +359,13 @@ class ConsolidatedCompressedMetadataStore(zarr.storage.ConsolidatedMetadataStore
         self.meta_store: zarr.Store = zarr.KVStore(meta["metadata"])
 
 
-def open_compressed_consolidated(store: zarr.StoreLike, metadata_key=".zmetadata.cbor.xz", mode="r+", **kwargs):
+def open_compressed_consolidated(store: zarr.StoreLike, metadata_key=".zmetadata.cbor.xz", mode="r+", **kwargs) -> zarr.hierarchy.Group:
     """ Open group using metadata previously consolidated and compressed into a single key.
 
     See Also
     --------
     consolidate_compressed_metadata
-    zarr.open__consolidated
+    zarr.open_consolidated
     """
 
     # normalize parameters

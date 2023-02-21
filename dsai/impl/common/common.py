@@ -15,7 +15,7 @@ from typing import Optional, Tuple, Union
 
 import numpy as np
 
-from PIL import Image
+import PIL.Image as PILImage
 from scipy import spatial, interpolate
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.transform import Rotation as R
@@ -426,14 +426,14 @@ class MaskImage:
         # set new values for masked pixels
         self.mask_array[binary_mask] = mask_type.value
 
-    def get_image(self) -> Image:
+    def get_image(self) -> PILImage.Image:
         """
         Returns the color-paletted mask image with all mask types set
         Returns:
             mask_image: mask image with all pixel colors set to the corresponding mask types
         """
         # convert mask array to image
-        mask_image = Image.fromarray(self.mask_array, mode='P')
+        mask_image = PILImage.fromarray(self.mask_array, mode='P')
 
         # apply color palette
         mask_image.putpalette(self.palette)
