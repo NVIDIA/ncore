@@ -129,11 +129,12 @@ class CameraModel(ABC):
         valid[valid_idx] = valid[valid_idx] & valid_rs
 
         # Generate the output matrix
-        trans_matrices = torch.empty((valid.sum().int().item(), 4, 4)).to(rot_rs)  # type: ignore
-        trans_matrices[:, :3, 3] = trans_rs[valid_rs, :]
+        trans_matrices = torch.empty((valid.sum().item(), 4, 4), dtype=self.dtype, device=self.device)
+        trans_matrices[:, :3, 3] = trans_rs[valid_rs]
         trans_matrices[:, :3, :3] = rot_rs[valid_rs, ...]
+        trans_matrices[:, 3, :] = torch.Tensor([0, 0, 0, 1])
 
-        return pixel_rs[valid_rs, :], trans_matrices, torch.where(valid)[0]
+        return pixel_rs[valid_rs], trans_matrices, torch.where(valid)[0]
 
     def world_points_to_pixels(
             self, world_points: Union[torch.Tensor, np.ndarray], T_world_sensor_start: Union[torch.Tensor, np.ndarray],
