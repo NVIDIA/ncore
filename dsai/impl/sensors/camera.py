@@ -181,8 +181,8 @@ class CameraModel(ABC):
     def pixels_to_world_rays_rolling_shutter(
             self,
             image_points: Union[torch.Tensor, np.ndarray],
-            T_world_sensor_start: Union[torch.Tensor, np.ndarray],
-            T_world_sensor_end: Union[torch.Tensor, np.ndarray],
+            T_sensor_world_start: Union[torch.Tensor, np.ndarray],
+            T_sensor_world_end: Union[torch.Tensor, np.ndarray],
             camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None) -> torch.Tensor:
         ''' Unprojects image points to world rays, compensating for rolling-shutter effects.
 
@@ -192,16 +192,16 @@ class CameraModel(ABC):
         '''
         # Check if the variables are numpy, convert them to torch and send them to correct device
         image_points = self.to_torch(image_points).to(self.dtype)
-        T_world_sensor_start = self.to_torch(T_world_sensor_start).to(self.dtype)
-        T_world_sensor_end = self.to_torch(T_world_sensor_end).to(self.dtype)
+        T_sensor_world_start = self.to_torch(T_sensor_world_start).to(self.dtype)
+        T_sensor_world_end = self.to_torch(T_sensor_world_end).to(self.dtype)
 
-        assert T_world_sensor_start.shape == (4, 4)
-        assert T_world_sensor_end.shape == (4, 4)
+        assert T_sensor_world_start.shape == (4, 4)
+        assert T_sensor_world_end.shape == (4, 4)
         assert len(image_points.shape) == 2
         assert image_points.shape[1] == 2
         assert image_points.dtype == self.dtype
-        assert T_world_sensor_start.dtype == self.dtype
-        assert T_world_sensor_end.dtype == self.dtype
+        assert T_sensor_world_start.dtype == self.dtype
+        assert T_sensor_world_end.dtype == self.dtype
 
         # Initialize the output variable
         world_rays = torch.empty((image_points.shape[0], 6), dtype=self.dtype).to(self.device)
@@ -218,13 +218,13 @@ class CameraModel(ABC):
             camera_rays = self.pixels_to_camera_rays(image_points)
 
         # Convert the start and end rotation matrix to quaternions
-        R_sensor_world_s_quat = self.__rotmat_to_unitquat(T_world_sensor_start[None, :3, :3])  # [1, 4]
-        R_sensor_world_e_quat = self.__rotmat_to_unitquat(T_world_sensor_end[None, :3, :3])  # [1, 4]
+        R_sensor_world_s_quat = self.__rotmat_to_unitquat(T_sensor_world_start[None, :3, :3])  # [1, 4]
+        R_sensor_world_e_quat = self.__rotmat_to_unitquat(T_sensor_world_end[None, :3, :3])  # [1, 4]
 
         t = self.__get_interpolation_timestamp(image_points)
 
-        world_position_rs = (1-t)[..., None] * T_world_sensor_start[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1) + \
-            t[..., None] * T_world_sensor_end[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1)         # [n_image_points, 3]
+        world_position_rs = (1-t)[..., None] * T_sensor_world_start[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1) + \
+            t[..., None] * T_sensor_world_end[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1)  # [n_image_points, 3]
 
         R_sensor_world_rs = self.__unitquat_to_rotmat(
             self.__unitquat_slerp(R_sensor_world_s_quat.repeat(t.shape[0], 1),
