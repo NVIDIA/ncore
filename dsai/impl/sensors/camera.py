@@ -67,7 +67,7 @@ class CameraModel(ABC):
             T_world_sensor_end: Union[torch.Tensor, np.ndarray],
             max_iter: int = 10,
             min_error: float = 1e-3) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        ''' Projects static world points to corresponding pixel coordinates using rolling-shutter compensation of sensor motion
+        ''' Projects world points to corresponding pixel coordinates using *rolling-shutter compensation* of sensor motion
             
             Returns
             - pixel coordinates of valid projections
@@ -129,16 +129,17 @@ class CameraModel(ABC):
         valid[valid_idx] = valid[valid_idx] & valid_rs
 
         # Generate the output matrix
-        trans_matrices = torch.empty((valid.sum().int().item(), 4, 4)).to(rot_rs)  # type: ignore
-        trans_matrices[:, :3, 3] = trans_rs[valid_rs, :]
+        trans_matrices = torch.empty((int(valid.sum().item()), 4, 4), dtype=self.dtype, device=self.device)
+        trans_matrices[:, :3, 3] = trans_rs[valid_rs]
         trans_matrices[:, :3, :3] = rot_rs[valid_rs, ...]
+        trans_matrices[:, 3] = torch.Tensor([0, 0, 0, 1])
 
-        return pixel_rs[valid_rs, :], trans_matrices, torch.where(valid)[0]
+        return pixel_rs[valid_rs], trans_matrices, torch.where(valid)[0]
 
-    def world_points_to_pixels(
-            self, world_points: Union[torch.Tensor, np.ndarray], T_world_sensor_start: Union[torch.Tensor, np.ndarray],
-            T_world_sensor_end: Union[torch.Tensor, np.ndarray]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        ''' Projects static world points to corresponding pixel coordinates using the mean pose of the sensor between the start and end poses of the frame
+    def world_points_to_pixels_static_pose(
+            self, world_points: Union[torch.Tensor, np.ndarray],
+            T_world_sensor: Union[torch.Tensor, np.ndarray]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        ''' Projects world points to corresponding pixel coordinates using a *fixed* sensor pose (not compensating for potential sensor-motion).
             
             Returns
             - pixel coordinates of valid projections
@@ -147,44 +148,112 @@ class CameraModel(ABC):
          '''
         # Check if the variables are numpy, convert them to torch and send them to correct device
         world_points = self.to_torch(world_points).to(self.dtype)
-        T_world_sensor_start = self.to_torch(T_world_sensor_start).to(self.dtype)
-        T_world_sensor_end = self.to_torch(T_world_sensor_end).to(self.dtype)
+        T_world_sensor = self.to_torch(T_world_sensor).to(self.dtype)
 
-        assert T_world_sensor_start.shape == (4, 4)
-        assert T_world_sensor_end.shape == (4, 4)
+        assert T_world_sensor.shape == (4, 4)
         assert len(world_points.shape) == 2
         assert world_points.shape[1] == 3
         assert world_points.dtype == self.dtype
-        assert T_world_sensor_start.dtype == self.dtype
-        assert T_world_sensor_end.dtype == self.dtype
+        assert T_world_sensor.dtype == self.dtype
 
-        # Convert the start and end rotation matrix to quaternions
-        ego_pose_s_quat = self.__rotmat_to_unitquat(T_world_sensor_start[None, :3, :3])  # [1, 4]
-        ego_pose_e_quat = self.__rotmat_to_unitquat(T_world_sensor_end[None, :3, :3])  # [1, 4]
+        R_world_sensor = T_world_sensor[:3, :3]  # [3, 3]
+        t_world_sensor = T_world_sensor[:3, 3]  # [3, 1]
 
-        mof_rot = self.__unitquat_to_rotmat(
-            self.__unitquat_slerp(ego_pose_s_quat, ego_pose_e_quat,
-                                  torch.Tensor([0.5]).to(T_world_sensor_start))).squeeze()  # [3, 3]
+        # Do the transformation
+        cam_rays = torch.matmul(R_world_sensor, world_points[:, :, None]).squeeze(-1) + t_world_sensor
+        pixels, valid = self.camera_rays_to_pixels(cam_rays)
 
-        mof_trans = 0.5 * T_world_sensor_start[:3, 3] + 0.5 * T_world_sensor_end[:3, 3]  # [3]
+        # Repeat static pose n-valid times
+        trans_matrix = T_world_sensor.unsqueeze(0).repeat(int(valid.sum().item()), 1, 1)
 
-        # Do the initial transformation
-        cam_rays = (mof_rot @ world_points.transpose(0, 1) + mof_trans[..., None]).transpose(0, 1)
-        init_pixel, valid = self.camera_rays_to_pixels(cam_rays)
+        return pixels[valid], trans_matrix, torch.where(valid)[0]
 
-        trans_matrix = torch.empty((1, 4, 4)).to(self.device, self.dtype)
-        trans_matrix[0, :3, 3] = mof_trans
-        trans_matrix[0, :3, :3] = mof_rot
+    def world_points_to_pixels_mean_pose(
+            self, world_points: Union[torch.Tensor, np.ndarray], T_world_sensor_start: Union[torch.Tensor, np.ndarray],
+            T_world_sensor_end: Union[torch.Tensor, np.ndarray]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        ''' Projects world points to corresponding pixel coordinates using the *mean pose* of the sensor between
+            the start and end poses (not compensating for potential sensor-motion).
+            
+            Returns
+            - pixel coordinates of valid projections
+            - world-to-sensor poses of valid projections
+            - indices of valid projections relative to the input points
+         '''
+        return self.world_points_to_pixels_static_pose(
+            world_points,
+            self.__interpolate_poses(
+                self.to_torch(T_world_sensor_start).to(self.dtype),
+                self.to_torch(T_world_sensor_end).to(self.dtype), 0.5))
 
-        return init_pixel[valid, :], trans_matrix, torch.where(valid)[0]
+    def pixels_to_world_rays_static_pose(self,
+                                         image_points: Union[torch.Tensor, np.ndarray],
+                                         T_sensor_world: Union[torch.Tensor, np.ndarray],
+                                         camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None) -> torch.Tensor:
+        ''' Unprojects image points to world rays using a using a *fixed* sensor pose (not compensating for potential sensor-motion).
+
+            Can optionally re-use known camera rays associated with image points.
+
+            For each image point returns 3d world rays [point, direction], represented by 3d start of ray points and 3d ray directions in the world frame
+        '''
+        # Check if the variables are numpy, convert them to torch and send them to correct device
+        image_points = self.to_torch(image_points).to(self.dtype)
+        T_sensor_world = self.to_torch(T_sensor_world).to(self.dtype)
+
+        assert T_sensor_world.shape == (4, 4)
+        assert len(image_points.shape) == 2
+        assert image_points.shape[1] == 2
+        assert image_points.dtype == self.dtype
+        assert T_sensor_world.dtype == self.dtype
+
+        # Unproject the pixels to camera rays
+        if camera_rays is not None:
+            # Reuse provided camera rays
+            camera_rays = self.to_torch(camera_rays).to(self.dtype)
+            assert len(camera_rays.shape) == 2
+            assert len(camera_rays) == len(image_points)
+            assert camera_rays.shape[1] == 3
+            assert camera_rays.dtype == self.dtype
+        else:
+            camera_rays = self.pixels_to_camera_rays(image_points)
+
+        world_positions = T_sensor_world[:3, 3:4].transpose(0, 1).repeat(len(camera_rays), 1)  # [n_image_points, 3]
+
+        R_sensor_world = T_sensor_world[:3, :3]  # [3, 3]
+
+        world_ray_directions = torch.matmul(R_sensor_world, camera_rays[:, :, None]).squeeze(-1)  # [n_image_points, 3]
+
+        # Copy the values in the output variable
+        world_rays = torch.empty((len(camera_rays), 6), dtype=self.dtype, device=self.device)
+        world_rays[:, :3] = world_positions
+        world_rays[:, 3:] = world_ray_directions
+
+        return world_rays
+
+    def pixels_to_world_rays_mean_pose(self,
+                                       image_points: Union[torch.Tensor, np.ndarray],
+                                       T_sensor_world_start: Union[torch.Tensor, np.ndarray],
+                                       T_sensor_world_end: Union[torch.Tensor, np.ndarray],
+                                       camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None) -> torch.Tensor:
+        ''' Unprojects image points to world rays using the *mean pose* of the sensor between
+            the start and end poses (not compensating for potential sensor-motion).
+
+            Can optionally re-use known camera rays associated with image points.
+
+            For each image point returns 3d world rays [point, direction], represented by 3d start of ray points and 3d ray directions in the world frame
+        '''
+        return self.pixels_to_world_rays_static_pose(
+            image_points,
+            self.__interpolate_poses(
+                self.to_torch(T_sensor_world_start).to(self.dtype),
+                self.to_torch(T_sensor_world_end).to(self.dtype), 0.5), camera_rays)
 
     def pixels_to_world_rays_rolling_shutter(
             self,
             image_points: Union[torch.Tensor, np.ndarray],
-            T_world_sensor_start: Union[torch.Tensor, np.ndarray],
-            T_world_sensor_end: Union[torch.Tensor, np.ndarray],
+            T_sensor_world_start: Union[torch.Tensor, np.ndarray],
+            T_sensor_world_end: Union[torch.Tensor, np.ndarray],
             camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None) -> torch.Tensor:
-        ''' Unprojects image points to world rays, compensating for rolling-shutter effects.
+        ''' Unprojects image points to world rays using *rolling-shutter compensation* of sensor motion.
 
         Can optionally re-use known camera rays associated with image points.
         
@@ -192,19 +261,16 @@ class CameraModel(ABC):
         '''
         # Check if the variables are numpy, convert them to torch and send them to correct device
         image_points = self.to_torch(image_points).to(self.dtype)
-        T_world_sensor_start = self.to_torch(T_world_sensor_start).to(self.dtype)
-        T_world_sensor_end = self.to_torch(T_world_sensor_end).to(self.dtype)
+        T_sensor_world_start = self.to_torch(T_sensor_world_start).to(self.dtype)
+        T_sensor_world_end = self.to_torch(T_sensor_world_end).to(self.dtype)
 
-        assert T_world_sensor_start.shape == (4, 4)
-        assert T_world_sensor_end.shape == (4, 4)
+        assert T_sensor_world_start.shape == (4, 4)
+        assert T_sensor_world_end.shape == (4, 4)
         assert len(image_points.shape) == 2
         assert image_points.shape[1] == 2
         assert image_points.dtype == self.dtype
-        assert T_world_sensor_start.dtype == self.dtype
-        assert T_world_sensor_end.dtype == self.dtype
-
-        # Initialize the output variable
-        world_rays = torch.empty((image_points.shape[0], 6), dtype=self.dtype).to(self.device)
+        assert T_sensor_world_start.dtype == self.dtype
+        assert T_sensor_world_end.dtype == self.dtype
 
         # Unproject the pixels to camera rays
         if camera_rays is not None:
@@ -218,13 +284,13 @@ class CameraModel(ABC):
             camera_rays = self.pixels_to_camera_rays(image_points)
 
         # Convert the start and end rotation matrix to quaternions
-        R_sensor_world_s_quat = self.__rotmat_to_unitquat(T_world_sensor_start[None, :3, :3])  # [1, 4]
-        R_sensor_world_e_quat = self.__rotmat_to_unitquat(T_world_sensor_end[None, :3, :3])  # [1, 4]
+        R_sensor_world_s_quat = self.__rotmat_to_unitquat(T_sensor_world_start[None, :3, :3])  # [1, 4]
+        R_sensor_world_e_quat = self.__rotmat_to_unitquat(T_sensor_world_end[None, :3, :3])  # [1, 4]
 
         t = self.__get_interpolation_timestamp(image_points)
 
-        world_position_rs = (1-t)[..., None] * T_world_sensor_start[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1) + \
-            t[..., None] * T_world_sensor_end[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1)         # [n_image_points, 3]
+        world_position_rs = (1-t)[..., None] * T_sensor_world_start[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1) + \
+            t[..., None] * T_sensor_world_end[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1)  # [n_image_points, 3]
 
         R_sensor_world_rs = self.__unitquat_to_rotmat(
             self.__unitquat_slerp(R_sensor_world_s_quat.repeat(t.shape[0], 1),
@@ -234,7 +300,8 @@ class CameraModel(ABC):
                                                                            None]).squeeze(-1)  # [n_image_points, 3]
 
         # Copy the values in the output variable
-        world_rays[:, 0:3] = world_position_rs
+        world_rays = torch.empty((len(image_points), 6), dtype=self.dtype, device=self.device)
+        world_rays[:, :3] = world_position_rs
         world_rays[:, 3:] = world_ray_directions_rs
 
         return world_rays
@@ -374,6 +441,34 @@ class CameraModel(ABC):
             t = (self.resolution[0] - torch.ceil(points[:, 0])) / (self.resolution[0] - 1)
 
         return t
+
+    def __interpolate_poses(self, pose_s: torch.Tensor, pose_e: torch.Tensor, t: float) -> torch.Tensor:
+        ''' Interpolate/extrapolate pose components linearly between two poses using 
+            linear interpolation for positions / SLERP interpolation for orientations
+            given an interpolation point t in [0,1] '''
+        pose_s = pose_s.to(self.device)
+        pose_e = pose_e.to(self.device)
+
+        assert pose_s.shape == (4, 4)
+        assert pose_e.shape == (4, 4)
+
+        # Convert the start and end rotation matrix to quaternions
+        pose_s_quat = self.__rotmat_to_unitquat(pose_s[None, :3, :3])  # [1, 4]
+        pose_e_quat = self.__rotmat_to_unitquat(pose_e[None, :3, :3])  # [1, 4]
+
+        # Evaluate orientation interpolation at t
+        interp_rot = self.__unitquat_to_rotmat(
+            self.__unitquat_slerp(pose_s_quat, pose_e_quat,
+                                  torch.Tensor([t]).to(pose_s))).squeeze()  # [3, 3]
+
+        # Evaluate translation interpolation at t
+        interp_transl = (1 - t) * pose_s[:3, 3] + t * pose_e[:3, 3]  # [3]
+
+        interp_pose = torch.eye(4, 4).to(pose_s)
+        interp_pose[:3, :3] = interp_rot
+        interp_pose[:3, 3] = interp_transl
+
+        return interp_pose
 
 
 class FThetaCameraModel(CameraModel):
