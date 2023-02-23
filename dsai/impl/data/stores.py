@@ -243,11 +243,10 @@ class IndexedTarStore(zarr._storage.store.Store):
                 logging.debug(f'IndexedTarStore: lzma-compressed index load size={len(header_binary)}')
 
                 # load table (SOA)
-                with lzma.open(io.BytesIO(header_binary), 'rb') as lzma_file:
-                    table = cbor2.load(lzma_file)
-                    items = table['items']
-                    offset_datas = table['offset_datas']
-                    sizes = table['sizes']
+                table = cbor2.loads(lzma.LZMADecompressor().decompress(header_binary))
+                items = table['items']
+                offset_datas = table['offset_datas']
+                sizes = table['sizes']
             case _:
                 raise TypeError(f"IndexedTarStore: unsupported header type {header.type}")
 
