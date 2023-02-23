@@ -67,7 +67,7 @@ class CameraModel(ABC):
             T_world_sensor_end: Union[torch.Tensor, np.ndarray],
             max_iter: int = 10,
             min_error: float = 1e-3) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        ''' Projects static world points to corresponding pixel coordinates using *rolling-shutter compensation* of sensor motion
+        ''' Projects world points to corresponding pixel coordinates using *rolling-shutter compensation* of sensor motion
             
             Returns
             - pixel coordinates of valid projections
@@ -139,7 +139,7 @@ class CameraModel(ABC):
     def world_points_to_pixels_static_pose(
             self, world_points: Union[torch.Tensor, np.ndarray],
             T_world_sensor: Union[torch.Tensor, np.ndarray]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        ''' Projects static world points to corresponding pixel coordinates using a *fixed* sensor pose (not compensating for potential sensor-motion).
+        ''' Projects world points to corresponding pixel coordinates using a *fixed* sensor pose (not compensating for potential sensor-motion).
             
             Returns
             - pixel coordinates of valid projections
@@ -160,7 +160,7 @@ class CameraModel(ABC):
         t_world_sensor = T_world_sensor[:3, 3]  # [3, 1]
 
         # Do the transformation
-        cam_rays = torch.matmul(R_world_sensor, world_points[:, :, np.newaxis]).squeeze(-1) + t_world_sensor
+        cam_rays = torch.matmul(R_world_sensor, world_points[:, :, None]).squeeze(-1) + t_world_sensor
         pixels, valid = self.camera_rays_to_pixels(cam_rays)
 
         # Repeat static pose n-valid times
@@ -171,7 +171,7 @@ class CameraModel(ABC):
     def world_points_to_pixels_mean_pose(
             self, world_points: Union[torch.Tensor, np.ndarray], T_world_sensor_start: Union[torch.Tensor, np.ndarray],
             T_world_sensor_end: Union[torch.Tensor, np.ndarray]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        ''' Projects static world points to corresponding pixel coordinates using the *mean pose* of the sensor between
+        ''' Projects world points to corresponding pixel coordinates using the *mean pose* of the sensor between
             the start and end poses (not compensating for potential sensor-motion).
             
             Returns
@@ -220,8 +220,7 @@ class CameraModel(ABC):
 
         R_sensor_world = T_sensor_world[:3, :3]  # [3, 3]
 
-        world_ray_directions = torch.matmul(R_sensor_world, camera_rays[:, :,
-                                                                        np.newaxis]).squeeze(-1)  # [n_image_points, 3]
+        world_ray_directions = torch.matmul(R_sensor_world, camera_rays[:, :, None]).squeeze(-1)  # [n_image_points, 3]
 
         # Copy the values in the output variable
         world_rays = torch.empty((len(camera_rays), 6), dtype=self.dtype, device=self.device)
@@ -454,8 +453,8 @@ class CameraModel(ABC):
         assert pose_e.shape == (4, 4)
 
         # Convert the start and end rotation matrix to quaternions
-        pose_s_quat = self.__rotmat_to_unitquat(pose_s[np.newaxis, :3, :3])  # [1, 4]
-        pose_e_quat = self.__rotmat_to_unitquat(pose_e[np.newaxis, :3, :3])  # [1, 4]
+        pose_s_quat = self.__rotmat_to_unitquat(pose_s[None, :3, :3])  # [1, 4]
+        pose_e_quat = self.__rotmat_to_unitquat(pose_e[None, :3, :3])  # [1, 4]
 
         # Evaluate orientation interpolation at t
         interp_rot = self.__unitquat_to_rotmat(
