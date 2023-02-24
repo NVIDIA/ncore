@@ -2,6 +2,7 @@
 
 import unittest
 import random
+import itertools
 
 from pathlib import Path
 
@@ -18,14 +19,8 @@ class TestData3Loader(unittest.TestCase):
         self.random = random.Random(x=0)  # seed deterministically
         self.all_shards = sorted([str(p) for p in Path('external/test-data-v3-shards').iterdir() if p.match('*.itar')])
 
-    @parameterized.parameterized.expand([(
-        "open_consolidated",
-        False, True
-    ), (
-        "reload_store_resources",
-        False, True,
-    )])
-    def test_shard_loader(self, _, open_consolidated: bool, reload_store_resources: bool):
+    @parameterized.parameterized.expand(itertools.product((False, True), (False, True)))
+    def test_shard_loader(self, open_consolidated: bool, reload_store_resources: bool):
         shard_num_poses = [5, 5, 3]
         self.assertEqual(len(self.all_shards), 3)
 
@@ -78,7 +73,8 @@ class TestData3Loader(unittest.TestCase):
 
         self.assertIsInstance(lidar_sensor := loader.get_sensor('lidar_gt_top_p128_v4p5'), LidarSensor)
         self.assertEqual(lidar_sensor.get_sensor_id(), 'lidar_gt_top_p128_v4p5')
-        self.assertEqual(lidar_sensor.get_sensor_id(), loader.get_lidar_sensor('lidar_gt_top_p128_v4p5').get_sensor_id())
+        self.assertEqual(lidar_sensor.get_sensor_id(),
+                         loader.get_lidar_sensor('lidar_gt_top_p128_v4p5').get_sensor_id())
 
         # Load all data
         for frame_index in lidar_sensor.get_frame_index_range():
@@ -106,7 +102,8 @@ class TestData3Loader(unittest.TestCase):
 
         self.assertIsInstance(camera_sensor := loader.get_sensor('camera_cross_left_120fov'), CameraSensor)
         self.assertEqual(camera_sensor.get_sensor_id(), 'camera_cross_left_120fov')
-        self.assertEqual(camera_sensor.get_sensor_id(), loader.get_camera_sensor('camera_cross_left_120fov').get_sensor_id())
+        self.assertEqual(camera_sensor.get_sensor_id(),
+                         loader.get_camera_sensor('camera_cross_left_120fov').get_sensor_id())
 
         self.assertIsInstance(camera_sensor.get_camera_model_parameters(), FThetaCameraModelParameters)
         self.assertEqual(camera_sensor.get_camera_mask_image().size, (3848, 2168))
@@ -130,10 +127,11 @@ class TestData3Loader(unittest.TestCase):
              [0.0, 0.0, 0.0, 1.0]],
             dtype=np.float32)
         self.assertIsNone(np.testing.assert_array_equal(sensor.get_T_sensor_rig(), reference_T_sensor_rig))
-        self.assertIsNone(np.testing.assert_array_almost_equal(sensor.get_T_rig_sensor(), np.linalg.inv(reference_T_sensor_rig)))
+        self.assertIsNone(
+            np.testing.assert_array_almost_equal(sensor.get_T_rig_sensor(), np.linalg.inv(reference_T_sensor_rig)))
 
         self.assertEqual(sensor.get_frames_count(), 10)
-        
+
         self.assertEqual(sensor.get_frames_count(0, 1), 4)
         self.assertEqual(sensor.get_frames_count(1, 2), 4)
         self.assertEqual(sensor.get_frames_count(2, 3), 2)
@@ -147,7 +145,7 @@ class TestData3Loader(unittest.TestCase):
         self.assertEqual(sensor.get_frame_index_range(), range(0, 10, 1))
 
         # Check that all sensor timestamps are strictly monotonically increasing
-        self.assertTrue(np.all((timestamps := sensor.get_frames_timestamps_us()) [:-1] < timestamps[1:]))
+        self.assertTrue(np.all((timestamps := sensor.get_frames_timestamps_us())[:-1] < timestamps[1:]))
 
         # first frame in first shard
         reference_T_rig_world_0_start = np.array(
