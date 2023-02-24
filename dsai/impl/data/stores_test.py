@@ -2,6 +2,7 @@
 
 import unittest
 import tempfile
+import itertools
 
 import parameterized
 import numpy as np
@@ -26,12 +27,14 @@ class TestIndexedTarStore(unittest.TestCase):
                                                         group['subgroup']['foo'][()]))
         self.assertDictEqual(self.g_ref.attrs.asdict(), group.attrs.asdict())
 
-    def test_reserialization(self):
+    @parameterized.parameterized.expand(
+        itertools.product((IndexedTarStore.IndexType.CBOR_LZMA_V1, IndexedTarStore.IndexType.CBOR_LZMA_V2)))
+    def test_reserialization(self, write_index_type: IndexedTarStore.IndexType):
         ''' Make sure storing / loading of regular zarr data to .itar files works correctly '''
 
         # re-serialize to .itar archive
         with tempfile.NamedTemporaryFile(suffix='.itar') as f:
-            with IndexedTarStore(f.name, mode='w') as s_itar_out:  # closes file on exit
+            with IndexedTarStore(f.name, mode='w', write_index_type=write_index_type) as s_itar_out:  # closes file on exit
                 zarr.copy_store(self.g_ref.store, s_itar_out)
 
             # reload store from file
@@ -45,12 +48,14 @@ class TestIndexedTarStore(unittest.TestCase):
             store.reload_resources()
             self.check_with_reference(g_reload)
 
-    def test_compressed_consolidated(self):
+    @parameterized.parameterized.expand(
+        itertools.product((IndexedTarStore.IndexType.CBOR_LZMA_V1, IndexedTarStore.IndexType.CBOR_LZMA_V2)))
+    def test_compressed_consolidated(self, write_index_type: IndexedTarStore.IndexType):
         ''' Make sure compressed consolidated meta data is stored/loaded correctly '''
 
         # serialize to .itar archive (will also serialize compressed-consolidated meta-data)
         with tempfile.NamedTemporaryFile(suffix='.itar') as f:
-            with IndexedTarStore(f.name, mode='w') as s_itar_out:  # closes file on exit
+            with IndexedTarStore(f.name, mode='w', write_index_type=write_index_type) as s_itar_out:  # closes file on exit
                 zarr.copy_store(self.g_ref.store, s_itar_out)
 
                 # consolidate compress meta-data
@@ -67,17 +72,13 @@ class TestIndexedTarStore(unittest.TestCase):
             store.reload_resources()
             self.check_with_reference(g_reload)
 
-    @parameterized.parameterized.expand([(
-        "not-compressed_consolidate",
-        False,
-    ), (
-        "compressed_consolidate",
-        True,
-    )])
-    def test_empty(self, _, compressed_consolidate: bool):
+    @parameterized.parameterized.expand(
+        itertools.product((False, True),
+                          (IndexedTarStore.IndexType.CBOR_LZMA_V1, IndexedTarStore.IndexType.CBOR_LZMA_V2)))
+    def test_empty(self, compressed_consolidate: bool, write_index_type: IndexedTarStore.IndexType):
         ''' Verify edge case of serialization of empty store is possible without errors '''
         with tempfile.NamedTemporaryFile(suffix='.itar') as f:
-            with IndexedTarStore(f.name, mode='w') as s_itar_out:  # closes file on exit
+            with IndexedTarStore(f.name, mode='w', write_index_type=write_index_type) as s_itar_out:  # closes file on exit
                 # Don't write any zarr data (still serializes empty tar / seek tables)
 
                 if compressed_consolidate:
