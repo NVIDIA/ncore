@@ -73,7 +73,8 @@ class TestData3Loader(unittest.TestCase):
 
         self.assertIsInstance(lidar_sensor := loader.get_sensor('lidar_gt_top_p128_v4p5'), LidarSensor)
         self.assertEqual(lidar_sensor.get_sensor_id(), 'lidar_gt_top_p128_v4p5')
-        self.assertEqual(lidar_sensor.get_sensor_id(), loader.get_lidar_sensor('lidar_gt_top_p128_v4p5').get_sensor_id())
+        self.assertEqual(lidar_sensor.get_sensor_id(),
+                         loader.get_lidar_sensor('lidar_gt_top_p128_v4p5').get_sensor_id())
 
         # Load all data
         for frame_index in lidar_sensor.get_frame_index_range():
@@ -101,7 +102,8 @@ class TestData3Loader(unittest.TestCase):
 
         self.assertIsInstance(camera_sensor := loader.get_sensor('camera_cross_left_120fov'), CameraSensor)
         self.assertEqual(camera_sensor.get_sensor_id(), 'camera_cross_left_120fov')
-        self.assertEqual(camera_sensor.get_sensor_id(), loader.get_camera_sensor('camera_cross_left_120fov').get_sensor_id())
+        self.assertEqual(camera_sensor.get_sensor_id(),
+                         loader.get_camera_sensor('camera_cross_left_120fov').get_sensor_id())
 
         self.assertIsInstance(camera_sensor.get_camera_model_parameters(), FThetaCameraModelParameters)
         self.assertEqual(camera_sensor.get_camera_mask_image().size, (3848, 2168))
@@ -125,7 +127,8 @@ class TestData3Loader(unittest.TestCase):
              [0.0, 0.0, 0.0, 1.0]],
             dtype=np.float32)
         self.assertIsNone(np.testing.assert_array_equal(sensor.get_T_sensor_rig(), reference_T_sensor_rig))
-        self.assertIsNone(np.testing.assert_array_almost_equal(sensor.get_T_rig_sensor(), np.linalg.inv(reference_T_sensor_rig)))
+        self.assertIsNone(
+            np.testing.assert_array_almost_equal(sensor.get_T_rig_sensor(), np.linalg.inv(reference_T_sensor_rig)))
 
         self.assertEqual(sensor.get_frames_count(), 10)
 
@@ -142,7 +145,7 @@ class TestData3Loader(unittest.TestCase):
         self.assertEqual(sensor.get_frame_index_range(), range(0, 10, 1))
 
         # Check that all sensor timestamps are strictly monotonically increasing
-        self.assertTrue(np.all((timestamps := sensor.get_frames_timestamps_us()) [:-1] < timestamps[1:]))
+        self.assertTrue(np.all((timestamps := sensor.get_frames_timestamps_us())[:-1] < timestamps[1:]))
 
         # first frame in first shard
         reference_T_rig_world_0_start = np.array(
