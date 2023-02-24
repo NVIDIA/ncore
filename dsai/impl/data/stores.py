@@ -346,8 +346,7 @@ class ConsolidatedCompressedMetadataStore(zarr.storage.ConsolidatedMetadataStore
         self.store = zarr._storage.store.Store._ensure_store(store)
 
         # retrieve consolidated metadata
-        with lzma.open(io.BytesIO(self.store[metadata_key]), 'rb') as lzma_file:
-            meta = cbor2.load(lzma_file)
+        meta = cbor2.loads(lzma.LZMADecompressor().decompress(self.store[metadata_key]))
 
         # check format of consolidated metadata
         consolidated_format = meta.get('zarr_consolidated_format', None)
