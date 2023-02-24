@@ -2,6 +2,7 @@
 
 import unittest
 import random
+import itertools
 
 from pathlib import Path
 
@@ -18,14 +19,8 @@ class TestData3Loader(unittest.TestCase):
         self.random = random.Random(x=0)  # seed deterministically
         self.all_shards = sorted([str(p) for p in Path('external/test-data-v3-shards').iterdir() if p.match('*.itar')])
 
-    @parameterized.parameterized.expand([(
-        "open_consolidated",
-        False, True
-    ), (
-        "reload_store_resources",
-        False, True,
-    )])
-    def test_shard_loader(self, _, open_consolidated: bool, reload_store_resources: bool):
+    @parameterized.parameterized.expand(itertools.product((False, True), (False, True)))
+    def test_shard_loader(self, open_consolidated: bool, reload_store_resources: bool):
         shard_num_poses = [5, 5, 3]
         self.assertEqual(len(self.all_shards), 3)
 
@@ -133,7 +128,7 @@ class TestData3Loader(unittest.TestCase):
         self.assertIsNone(np.testing.assert_array_almost_equal(sensor.get_T_rig_sensor(), np.linalg.inv(reference_T_sensor_rig)))
 
         self.assertEqual(sensor.get_frames_count(), 10)
-        
+
         self.assertEqual(sensor.get_frames_count(0, 1), 4)
         self.assertEqual(sensor.get_frames_count(1, 2), 4)
         self.assertEqual(sensor.get_frames_count(2, 3), 2)

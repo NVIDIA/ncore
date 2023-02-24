@@ -3,6 +3,7 @@
 import unittest
 import abc
 import copy
+import itertools
 
 import numpy as np
 import scipy
@@ -191,8 +192,8 @@ class ReferenceFThetaCamera(ReferenceCamera):
         return radius
 
 
-@parameterized.parameterized_class(('device', 'dtype'), [('cpu', torch.float32), ('cpu', torch.float64),
-                                                         ('cuda', torch.float32), ('cuda', torch.float64)])
+@parameterized.parameterized_class(('device', 'dtype'),
+                                   itertools.product(('cpu', 'cuda'), (torch.float32, torch.float64)))
 class TestReferenceFThetaCamera(unittest.TestCase):
     ''' Parameterized test cases validating both the reference implementation and the torch-based camera model '''
     def _compareVector(self, a, b):
