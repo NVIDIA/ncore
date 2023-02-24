@@ -11,7 +11,7 @@ import logging
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import BinaryIO, Iterator, Literal, NamedTuple, TypeAlias, Union
+from typing import BinaryIO, Iterator, Literal, NamedTuple, Union
 from threading import RLock
 from enum import IntEnum, auto, unique
 
@@ -45,22 +45,20 @@ class IndexedTarStore(zarr._storage.store.Store):
 
     _erasable = False
 
-    # Easy serializable type representing a file record within a tar file given by 'offset_data' / 'size' values
-    TarRecord: TypeAlias = tuple[int, int] 
+    @dataclass
+    class TarRecord():
+        """ A file record within a tar file """
 
-    @dataclass(slots=True, frozen=True)
+        offset_data: int
+        size: int
+
+    @dataclass
     class TarRecordIndex():
         """ All file records within a tar file """
 
         records: dict[str, IndexedTarStore.TarRecord] = field(default_factory=dict)
 
-    @unique
-    class IndexType(IntEnum):
-        ''' Enumerates different possible index storage types '''
-        CBOR_LZMA_V1 = auto() # store lzma-compress cbor serialization of SOA seek table
-        CBOR_LZMA_V2 = auto() # store lzma-compress cbor serialization of record index dictionary
-
-    def __init__(self, itar_path: Union[str, Path], mode: Literal['r', 'w'] = 'r', write_index_type = IndexType.CBOR_LZMA_V2):
+    def __init__(self, itar_path: Union[str, Path], mode: Literal['r', 'w'] = 'r'):
 
         if mode not in ['r', 'w']:
             raise ValueError('TarRecordIndex: only r/w modes supported')
@@ -69,7 +67,6 @@ class IndexedTarStore(zarr._storage.store.Store):
         itar_path = Path(itar_path).absolute()
 
         self.mode = mode
-        self.write_index_type = write_index_type
 
         # Current understanding is that tarfile module in stdlib is not thread-safe,
         # and so locking is required for both read and write. However, this has not
@@ -114,8 +111,8 @@ class IndexedTarStore(zarr._storage.store.Store):
             current_position = self.tar_file_object.tell()
 
             # Read the value
-            self.tar_file_object.seek(record[0])
-            value = self.tar_file_object.read(record[1])
+            self.tar_file_object.seek(record.offset_data)
+            value = self.tar_file_object.read(record.size)
 
             # Return tar file to previous location
             self.tar_file_object.seek(current_position)
@@ -154,11 +151,11 @@ class IndexedTarStore(zarr._storage.store.Store):
             header_size = end_position - header_start_position - payload_size
 
             # Construct record from reconstructed size-information
-            record = self.TarRecord((
+            record = self.TarRecord(
                 # Effective start of the data in the tar file (current tar file position + header-size)
                 header_start_position + header_size,
                 # Length of the data
-                value_size))
+                value_size)
 
             self.index.records[item] = record
 
@@ -177,7 +174,7 @@ class IndexedTarStore(zarr._storage.store.Store):
 
             if self.mode == 'w':
                 # Add index if writing
-                self._save_tar_index(self.tar_file_object, self.index, self.write_index_type)
+                self._save_tar_index(self.tar_file_object, self.index)
 
             self.tar_file_object.close()
 
@@ -215,6 +212,11 @@ class IndexedTarStore(zarr._storage.store.Store):
         offset: int
         size: int
 
+    @unique
+    class IndexType(IntEnum):
+        ''' Enumerates different possible index storage types '''
+        CBOR_LZMA_V1 = auto()
+
     @classmethod
     def _load_tar_index(cls, tar_file_object: BinaryIO) -> TarRecordIndex:
         ''' Loads a tar record index from the end of a tar file object '''
@@ -238,30 +240,21 @@ class IndexedTarStore(zarr._storage.store.Store):
 
         match header.type:
             case cls.IndexType.CBOR_LZMA_V1.value:
-                logging.debug(f'IndexedTarStore: lzma-compressed index V1 load size={len(header_binary)}')
+                logging.debug(f'IndexedTarStore: lzma-compressed index load size={len(header_binary)}')
 
-                # Load seek table (SOA)
+                # load table (SOA)
                 table = cbor2.loads(lzma.LZMADecompressor().decompress(header_binary))
                 items = table['items']
                 offset_datas = table['offset_datas']
                 sizes = table['sizes']
-
-                # Construct record index from loaded table
-                records = {item: cls.TarRecord((offset_datas[i], sizes[i])) for i, item in enumerate(items)}
-
-            case cls.IndexType.CBOR_LZMA_V2.value:
-                logging.debug(f'IndexedTarStore: lzma-compressed index V2 load size={len(header_binary)}')
-
-                # Load record index dictionary directly
-                records = cbor2.loads(lzma.LZMADecompressor().decompress(header_binary))
-                
             case _:
                 raise TypeError(f"IndexedTarStore: unsupported header type {header.type}")
 
-        return cls.TarRecordIndex(records)
+        # Construct record index from loaded table
+        return cls.TarRecordIndex({item: cls.TarRecord(offset_datas[i], sizes[i]) for i, item in enumerate(items)})
 
     @classmethod
-    def _save_tar_index(cls, tar_file_object: BinaryIO, index: TarRecordIndex, index_type: IndexType):
+    def _save_tar_index(cls, tar_file_object: BinaryIO, index: TarRecordIndex):
         ''' Saves a tar record index at the end of a tar file object (needs to be finalized / have two empty blocks appended already) '''
         def fill_block():
             # Fill up block with zeros
@@ -276,25 +269,15 @@ class IndexedTarStore(zarr._storage.store.Store):
 
         assert index_offset % tarfile.BLOCKSIZE == 0, "Tar file not at block boundary"
 
-        # Append serialized index to tar file
+        # Reformat index table as SOA (sorted by offset)
+        table = [(item, record.offset_data, record.size) for (item, record) in index.records.items()]
+        items, offset_datas, sizes = list(zip(*sorted(table, key=lambda data: data[1]))) if len(table) else ([], [], [])
+
+        # Append compressed table to tar file
         with io.BytesIO() as index_buffer:
-            match index_type:
-                case cls.IndexType.CBOR_LZMA_V1:
-                    # Reformat index table as SOA (sorted by offset)
-                    table = [(item, record[0], record[1]) for (item, record) in index.records.items()]
-                    items, offset_datas, sizes = list(zip(*sorted(table, key=lambda data: data[1]))) if len(table) else ([], [], [])
-
-                    # Compress table to in-memory buffer
-                    with lzma.open(index_buffer, 'wb') as lzma_file:
-                        cbor2.dump({'items': items, 'offset_datas': offset_datas, 'sizes': sizes}, lzma_file)
-
-                case cls.IndexType.CBOR_LZMA_V2:
-                    # Compress map of records directly to in-memory buffer
-                    with lzma.open(index_buffer, 'wb') as lzma_file:
-                        cbor2.dump(index.records, lzma_file)
-
-                case _:
-                    raise TypeError(f"IndexedTarStore: unsupported header type {index_type}")
+            # Compress table to in-memory buffer
+            with lzma.open(index_buffer, 'wb') as lzma_file:
+                cbor2.dump({'items': items, 'offset_datas': offset_datas, 'sizes': sizes}, lzma_file)
 
             index_binary = index_buffer.getvalue()
             index_size = len(index_binary)
@@ -309,7 +292,7 @@ class IndexedTarStore(zarr._storage.store.Store):
         # Create index header block
         assert struct.calcsize(
             cls.INDEX_HEADER_FORMAT) <= tarfile.BLOCKSIZE, "Index header larger than single block size"
-        header_binary = struct.pack(cls.INDEX_HEADER_FORMAT, cls.INDEX_HEADER_MAGIC, index_type.value,
+        header_binary = struct.pack(cls.INDEX_HEADER_FORMAT, cls.INDEX_HEADER_MAGIC, cls.IndexType.CBOR_LZMA_V1.value,
                                     index_offset, index_size)
         header_size = len(header_binary)
         logging.debug(f'IndexedTarStore: header store size={header_size}')
