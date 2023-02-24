@@ -43,7 +43,7 @@ def dsai_sequence_meta(shard_file_pattern: str, shard_file_skip_suffixes: Tuple[
 
     ## Sequence-wide information
     output: dict[str, object] = {
-        'sequence_id': loader.get_sequence_id(with_shard_range=False),
+        'sequence_id': loader.get_sequence_id(),
         'pose-range': {
             "start-timestamp_us": int((sequence_pose_timestamps_us := loader.get_poses().T_rig_world_timestamps_us)[0]),
             "end-timestamp_us": int(sequence_pose_timestamps_us[-1]),
@@ -108,7 +108,7 @@ def dsai_sequence_meta(shard_file_pattern: str, shard_file_skip_suffixes: Tuple[
     if output_file:
         output_path /= output_file
     else:
-        output_path /= f'{loader.get_sequence_id(with_shard_range=False)}.json'
+        output_path /= f'{loader.get_sequence_id()}.json'
 
     with open(output_path, "w") as f:
         json.dump(output, f, indent=2)

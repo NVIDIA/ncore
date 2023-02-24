@@ -687,7 +687,7 @@ class ShardDataLoader:
 
         return types.Poses(np.array(T_rig_world_base), np.vstack(T_rig_worlds)[unique_idxs], np.hstack(T_rig_world_timestamps_us))
 
-    def get_sequence_id(self, with_shard_range: bool) -> str:
+    def get_sequence_id(self, with_shard_range: bool = False) -> str:
         ''' Provides access to a unique identifier of the loaded shard data, optionally including the linear range of shards
 
             Examples:
