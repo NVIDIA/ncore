@@ -34,6 +34,7 @@ py_library(
 py_library(
     name = "pylib_nvidia_deepmap",
     srcs = [
+        "carter_deepmap3.py",
         "nvidia_deepmap3.py",
     ],
     deps = [
