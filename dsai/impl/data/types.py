@@ -6,7 +6,7 @@ import io
 
 from enum import IntEnum, auto, unique
 from dataclasses import dataclass
-from typing import Protocol, Tuple
+from typing import Optional, Protocol, Tuple
 from functools import lru_cache
 
 import numpy as np
@@ -169,6 +169,15 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
     bbox3: BBox3
     global_speed: float
     confidence: float
+
+    # If available, the timestamp associated with the centroid of the label
+    # (possibly an accurate in-spin time). Optional also to be
+    # backwards-compatible with existing datasets that don't provide
+    # this information.
+    #
+    # In the future this field might become mandatory (deprecating old datasets)
+    timestamp_us: Optional[int]
+    
     source: LabelSource = util.enum_field(LabelSource)
 
 

@@ -457,6 +457,7 @@ class LabelProcessor:
             sensor_id = row.sensor_name
             track_id = hashlib.sha1(str(row.gt_trackline_id).encode()).hexdigest()
             label_frame_number = int(row.frame_number)
+            label_timestamp_us = int(row.timestamp)
             label_class = row.label_name
             label_frame_timestamp_us = sensor_frame_timestamps[sensor_id][label_frame_number]
 
@@ -471,14 +472,13 @@ class LabelProcessor:
                 frame_labels[sensor_id][label_frame_timestamp_us] = []
 
             frame_labels[sensor_id][label_frame_timestamp_us].append(
-                # TODO: consider also storing per-label (inter-spin) timestamps
-                #       - however, this could invalidate existing data, see how to deal with this (e.g., serialize "optional" fields)
                 FrameLabel3(label_id=row.label_id,
                             track_id=track_id,
                             label_class=label_class,
                             global_speed=global_speed,
                             confidence=row.confidence,
                             source=source,
+                            timestamp_us=label_timestamp_us,
                             bbox3=BBox3(centroid=(row.centroid_x, row.centroid_y, row.centroid_z),
                                         dim=(row.dim_x, row.dim_y, row.dim_z),
                                         rot=(

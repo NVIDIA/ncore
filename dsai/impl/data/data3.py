@@ -503,7 +503,7 @@ class LidarSensor(PointCloudSensor):
         ''' Returns frame-labels for a specific frame '''
 
         return [
-            types.FrameLabel3.from_dict(frame_label)
+            types.FrameLabel3.from_dict(frame_label, infer_missing=True)
             for frame_label in self._get_frame_group(continous_frame_index)['frame_labels']
         ]
 
