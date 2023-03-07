@@ -167,8 +167,9 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
     def decode_labels(self, sequence_path):
         # Perform label parsing
         self.track_labels, self.frame_labels = LabelProcessor.parse(
-            os.path.join(sequence_path, 'labels', 'autolabels.parquet'), self.poses_timestamps[0],
-            self.poses_timestamps[-1], LabelSource.AUTOLABEL, self.logger)
+            os.path.join(sequence_path, 'labels', 'autolabels.parquet'),
+            {self.LIDAR_SENSOR_ID: os.path.join(sequence_path, 'labels', f'{self.LIDAR_SENSOR_ID}_meta.json')},
+            self.poses_timestamps[0], self.poses_timestamps[-1], LabelSource.AUTOLABEL, self.logger)
 
         # Save the accumulated track
         self.data_writer.store_labels(self.track_labels)

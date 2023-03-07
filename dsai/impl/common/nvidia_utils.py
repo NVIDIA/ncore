@@ -354,10 +354,14 @@ class LabelProcessor:
     # TODO: check if this user-defined velocity threshold makes sense
     GLOBAL_SPEED_DYNAMIC_THRESHOLD = 1.0 / 3.6
 
+    # Use conservative +- margin time to maintain labels at frame boundaries if filtering for time-ranges
+    TIME_RANGE_MARGIN_US = int(0.1 * 1e6) # 0.1sec in usec
+
     @classmethod
     def parse(
         cls,
         labels_path: str,
+        sensor_meta_files: dict[str, Path], # load per sensor end-of-frame timestamps from sensor-indexer's meta files
         start_timestamp_us: Optional[int],
         end_timestamp_us: Optional[int],
         source: LabelSource,
@@ -374,6 +378,7 @@ class LabelProcessor:
 
         Args:
             labels_path: path to labels file
+            sensor_meta_files: per-sensor meta-files to obtain frame_number -> frame-timestamp infos
             start_timestamp_us / end_timestamp_us: start / end timestamp bounds
             logger: logger to use
         Returns:
@@ -385,6 +390,15 @@ class LabelProcessor:
         track_labels: dict[str, TrackLabel] = {}  # {TrackLabel} in track_labels[track_id]
         frame_labels: dict[str, dict[int, list[FrameLabel3]]] = {}  # [FrameLabel3] in frame_labels[<sensor-id>][frame_timestamp_us]
 
+        # Load per-frame timestamps for each sensor to associate the labels with frame IDs (given by end-of-frame timestamps)
+        # (using a dict to error out on missing per-frame timestamps)
+        sensor_frame_timestamps: dict[str, dict[int, int]] = {
+            sensor_id:
+            {frame_data['frame_number']: frame_data['timestamp']
+             for frame_data in load_jsonl(sensor_meta_file)}
+            for sensor_id, sensor_meta_file in sensor_meta_files.items()
+        }
+
         # TODO: add format selection once multiple different formats need to be supported (not required currently for single-format)
 
         # Load parquet file and convert to pandas dataframe
@@ -393,18 +407,37 @@ class LabelProcessor:
         # Fix float -> integer datatypes of track IDs / timestamps
         label_data = label_data.astype({'gt_trackline_id': 'int64', 'timestamp': 'int64'})
 
-        # Filter data range based on time bounds, to speed up processing in case of restricted seek / duration data ranges
+        # Conservatively pre-filter data range based on time bounds, to speed up processing in case of restricted seek / duration data ranges
         if end_timestamp_us:
-            label_data = label_data[label_data['timestamp'].le(end_timestamp_us)]  # all of the rows with timestamp <= end-timestamp | yapf: disable
+            # all of the rows with timestamp <= end-timestamp + 1sec
+            label_data = label_data[label_data['timestamp'].le(end_timestamp_us + cls.TIME_RANGE_MARGIN_US)]
         if start_timestamp_us:
-            label_data = label_data[label_data['timestamp'].ge(start_timestamp_us)]  # all of the rows with start-timestamp <= timestamp <= end-timestamp | yapf: disable
+            # all of the rows with start-timestamp - margin-time <= timestamp <= end-timestamp + margin-time
+            label_data = label_data[label_data['timestamp'].ge(start_timestamp_us - cls.TIME_RANGE_MARGIN_US)]
 
         # Restrict to columns of interest to reduce memory usage (around 70% data reduction)
         label_data = label_data[[
-            'label_name', 'sensor_name', 'gt_trackline_id', 'timestamp', 'label_id', 'velocity_x', 'velocity_y',
-            'velocity_z', 'centroid_x', 'centroid_y', 'centroid_z', 'dim_x', 'dim_y', 'dim_z', 'rot_x', 'rot_y',
-            'rot_z', 'confidence'
+            'label_name',
+            'sensor_name',
+            'gt_trackline_id',
+            'timestamp',
+            'label_id',
+            'velocity_x',
+            'velocity_y',
+            'velocity_z',
+            'centroid_x',
+            'centroid_y',
+            'centroid_z',
+            'dim_x',
+            'dim_y',
+            'dim_z',
+            'rot_x',
+            'rot_y',
+            'rot_z',
+            'confidence',
+            'frame_number',  # used to associated labels with source-frames
         ]]
+        # Note: more recent data contains 'timestamp_origin', which can be used to distinguish between 'spin-end' or 'per-cuboid', but we store all labels within it's source frame for now
 
         # Sort labels by timestamp to guarantee timestamp-sorted tracks
         label_data.sort_values(by=['timestamp'], inplace=True)
@@ -421,8 +454,9 @@ class LabelProcessor:
             # load relevant label data
             sensor_id = row.sensor_name
             track_id = hashlib.sha1(str(row.gt_trackline_id).encode()).hexdigest()
-            label_timestamp_us = int(row.timestamp)
+            label_frame_number = int(row.frame_number)
             label_class = row.label_name
+            label_frame_timestamp_us = sensor_frame_timestamps[sensor_id][label_frame_number]
 
             # this is assuming velocity is not relative to the local sensor motion, but w.r.t. fixed scene / world
             global_speed = float(np.linalg.norm([row.velocity_x, row.velocity_y, row.velocity_z]))
@@ -431,10 +465,12 @@ class LabelProcessor:
             if sensor_id not in frame_labels:
                 frame_labels[sensor_id] = {}
 
-            if label_timestamp_us not in frame_labels[sensor_id]:
-                frame_labels[sensor_id][label_timestamp_us] = []
+            if label_frame_timestamp_us not in frame_labels[sensor_id]:
+                frame_labels[sensor_id][label_frame_timestamp_us] = []
 
-            frame_labels[sensor_id][label_timestamp_us].append(
+            frame_labels[sensor_id][label_frame_timestamp_us].append(
+                # TODO: consider also storing per-label (inter-spin) timestamps
+                #       - however, this could invalidate existing data, see how to deal with this (e.g., serialize "optional" fields)
                 FrameLabel3(label_id=row.label_id,
                             track_id=track_id,
                             label_class=label_class,
@@ -459,14 +495,14 @@ class LabelProcessor:
                 track_labels[track_id].sensors[sensor_id] = []
 
             # append frame timestamp into *sorted* list (rows are processed sorted by timestamp)
-            track_labels[track_id].sensors[sensor_id].append(label_timestamp_us)
+            track_labels[track_id].sensors[sensor_id].append(label_frame_timestamp_us)
 
             if label_class not in cls.LABEL_STRINGS_UNCONDITIONALLY_STATIC and global_speed >= global_speed_dynamic_threshold:
                 track_labels[track_id].dynamic_flag = True
 
             if track_id in trackids_force_static:
                 logger.debug(
-                    f'> forcing track_id={track_id} to be static (timestamp={label_timestamp_us}, estimated global_speed={global_speed})'
+                    f'> forcing track_id={track_id} to be static (timestamp={label_frame_timestamp_us}, estimated global_speed={global_speed})'
                 )
                 track_labels[track_id].dynamic_flag = False
 
