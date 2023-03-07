@@ -26,7 +26,8 @@ py_library(
         "//dsai/impl/data:pylib_data",
         "//dsai/impl/data:pylib_types",
         requirement("point-cloud-utils"),
-        "//dsai/impl/common:pylib",
+        "//dsai/impl/common:pylib_common",
+        "//dsai/impl/common:pylib_nvidia",
     ],
 )
 
@@ -41,7 +42,8 @@ py_library(
         "//dsai/impl/data:pylib_types",
         requirement("protobuf3-to-dict"),
         requirement("opencv-python"),
-        "//dsai/impl/common:pylib",
+        "//dsai/impl/common:pylib_common",
+        "//dsai/impl/common:pylib_nvidia",
         "//dsai/impl/data_converter/protos/deepmap:pylib_util",
     ],
 )

@@ -5,7 +5,6 @@ import tqdm
 import tempfile
 import os
 
-from typing import Optional
 from pathlib import Path
 
 import click

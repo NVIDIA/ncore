@@ -30,7 +30,7 @@ py_library(
     ],
     deps = [
         ":py_proto",
-        "//dsai/impl/common:pylib",
+        "//dsai/impl/common:pylib_transformations",
         requirement("numpy"),
     ],
 )

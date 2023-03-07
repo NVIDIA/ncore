@@ -18,12 +18,12 @@ py_package(
 # Export packages by creating wheel
 py_wheel(
     name = "dsai_wheel",
-    abi = "cp310",
+    abi = "none",
     distribution = "dsai",
     homepage = "https://gitlab-master.nvidia.com/Toronto_DL_Lab/dsai",
-    platform = "linux_x86_64",
+    platform = "any",
     python_requires = ">=3.10",
-    python_tag = "cp310",
+    python_tag = "py3",
     requires = [
         "numpy",
         "dataclasses_json",
@@ -32,7 +32,7 @@ py_wheel(
         "cbor2",
         "scipy",
     ],
-    version = "0.1.12",
+    version = "0.1.13",
     deps = [
         ":dsai_pkg",
     ],

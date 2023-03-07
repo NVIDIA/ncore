@@ -10,7 +10,7 @@ py_binary(
     deps = [
         requirement("click"),
         requirement("numpy"),
-        "//dsai/impl/common:pylib",
+        "//dsai/impl/common:pylib_transformations",
         "//dsai/impl/data:pylib_data",
     ],
 )

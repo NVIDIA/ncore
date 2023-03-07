@@ -110,7 +110,7 @@ py_binary(
         requirement("numpy"),
         requirement("click"),
         requirement("tqdm"),
-        "//dsai/impl/common:pylib",
+        "//dsai/impl/common:pylib_transformations",
         "//dsai/impl/data:pylib_data",
         "//dsai/impl/data:pylib_util",
     ],
@@ -122,7 +122,6 @@ py_binary(
     deps = [
         requirement("click"),
         requirement("tqdm"),
-        "//dsai/impl/common:pylib",
         "//dsai/impl/data:pylib_data",
         "//dsai/impl/data:pylib_util",
     ],
@@ -136,7 +135,7 @@ py_binary(
         requirement("click"),
         requirement("tqdm"),
         requirement("point-cloud-utils"),
-        "//dsai/impl/common:pylib",
+        "//dsai/impl/common:pylib_transformations",
         "//dsai/impl/data:pylib_data",
     ],
 )
@@ -147,7 +146,6 @@ py_binary(
     deps = [
         requirement("click"),
         requirement("tqdm"),
-        "//dsai/impl/common:pylib",
         "//dsai/impl/common:pylib_visualization",
         "//dsai/impl/data:pylib_data",
     ],
@@ -171,7 +169,8 @@ py_binary(
     deps = [
         requirement("click"),
         requirement("pillow"),
-        "//dsai/impl/common:pylib",
+        "//dsai/impl/common:pylib_common",
+        "//dsai/impl/common:pylib_transformations",
         "//dsai/impl/data:pylib_data",
         "//dsai/impl/data:pylib_types",
         "//dsai/impl/data:pylib_util",
@@ -186,7 +185,7 @@ py_binary(
         requirement("tqdm"),
         requirement("numpy"),
         "//dsai/impl/av_utils:pylib",
-        "//dsai/impl/common:pylib",
+        "//dsai/impl/common:pylib_transformations",
         "//dsai/impl/common:pylib_visualization",
         "//dsai/impl/data:pylib_data",
         "//dsai/impl/data:pylib_types",
