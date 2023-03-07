@@ -19,20 +19,6 @@ npe_codegen_module(
     module = "libav_utils_cc",
 )
 
-cc_library(
-    name = "camera_lib",
-    srcs = [
-        "camera.cpp",
-    ],
-    hdrs = [
-        "camera.hpp",
-    ],
-    includes = ["."],
-    deps = [
-        "@eigen",
-    ],
-)
-
 cc_binary(
     name = "av_utils_cc",
     srcs = [
@@ -44,7 +30,6 @@ cc_binary(
     ],
     linkshared = True,
     deps = [
-        ":camera_lib",
         "@numpyeigen//:npe",
     ],
 )
