@@ -642,8 +642,9 @@ class PinholeCameraModel(CameraModel):
         self.dtype = dtype
         self.principal_point = self.to_torch(camera_model_parameters.principal_point).to(self.dtype)
         self.focal_length = self.to_torch(camera_model_parameters.focal_length).to(self.dtype)
-        self.radial_poly = self.to_torch(camera_model_parameters.radial_poly[:3]).to(self.dtype)
-        self.tangential_poly = self.to_torch(camera_model_parameters.tangential_poly).to(self.dtype)
+        self.radial_coeffs = self.to_torch(camera_model_parameters.radial_coeffs).to(self.dtype)
+        self.tangential_coeffs = self.to_torch(camera_model_parameters.tangential_coeffs).to(self.dtype)
+        self.thin_prism_coeffs = self.to_torch(camera_model_parameters.thin_prism_coeffs).to(self.dtype)
         self.resolution = self.to_torch(camera_model_parameters.resolution.astype(np.int32))
         self.shutter_type = camera_model_parameters.shutter_type.name
 
@@ -651,10 +652,12 @@ class PinholeCameraModel(CameraModel):
         assert self.principal_point.dtype == self.dtype
         assert self.focal_length.shape == (2, )
         assert self.focal_length.dtype == self.dtype
-        assert self.radial_poly.shape == (3, )
-        assert self.radial_poly.dtype == self.dtype
-        assert self.tangential_poly.shape == (2, )
-        assert self.tangential_poly.dtype == self.dtype
+        assert self.radial_coeffs.shape == (6, )
+        assert self.radial_coeffs.dtype == self.dtype
+        assert self.tangential_coeffs.shape == (2, )
+        assert self.tangential_coeffs.dtype == self.dtype
+        assert self.thin_prism_coeffs.shape == (4, )
+        assert self.thin_prism_coeffs.dtype == self.dtype
         assert self.resolution.shape == (2, )
         assert self.resolution.dtype == torch.int32
 
@@ -679,7 +682,7 @@ class PinholeCameraModel(CameraModel):
         valid = torch.ones_like(cam_rays[:, 0], dtype=torch.bool)
         image_points = torch.zeros_like(cam_rays[:, :2])
 
-        valid[cam_rays[:, 2] < 0.0] = False
+        valid[cam_rays[:, 2] <= 0.0] = False
         valid_idx = torch.where(valid)[0]
 
         uv_normalized = cam_rays[valid, :2] / cam_rays[valid, 2:3]  # [n,2]
@@ -708,7 +711,7 @@ class PinholeCameraModel(CameraModel):
         return image_points, valid
 
     def __compute_distortion(self, xy: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        ''' Computes the radial and tangential distortion given the camera rays '''
+        ''' Computes the radial, tangential, and thin-prism distortion given the camera rays '''
 
         # Compute the helper variables
         xy_squared = torch.pow(xy, 2)
@@ -720,14 +723,12 @@ class PinholeCameraModel(CameraModel):
         a2 = r_2 + 2 * xy_squared[:, 0]
         a3 = r_2 + 2 * xy_squared[:, 1]
 
-        icD_numerator = (1.0 + self.radial_poly[0] * r_2 + self.radial_poly[1] * r_4 + self.radial_poly[2] * r_6)
-        icD_denominator = (1.0 + self.radial_poly[3] * r_2 + self.radial_poly[4] * r_4 + self.radial_poly[5] * r_6)
+        icD_numerator = (1.0 + self.radial_coeffs[0] * r_2 + self.radial_coeffs[1] * r_4 + self.radial_coeffs[2] * r_6)
+        icD_denominator = (1.0 + self.radial_coeffs[3] * r_2 + self.radial_coeffs[4] * r_4 + self.radial_coeffs[5] * r_6)
         icD = icD_numerator / icD_denominator
 
-        delta_x = self.tangential_poly[0] * a1 + self.tangential_poly[1] * a2 + self.tangential_poly[
-            2] * r_2 + self.tangential_poly[3] * r_4
-        delta_y = self.tangential_poly[0] * a3 + self.tangential_poly[1] * a1 + self.tangential_poly[
-            4] * r_2 + self.tangential_poly[5] * r_4
+        delta_x = self.tangential_coeffs[0] * a1 + self.tangential_coeffs[1] * a2 + self.thin_prism_coeffs[0] * r_2 + self.thin_prism_coeffs[1] * r_4
+        delta_y = self.tangential_coeffs[0] * a3 + self.tangential_coeffs[1] * a1 + self.thin_prism_coeffs[2] * r_2 + self.thin_prism_coeffs[3] * r_4
 
         return icD, delta_x, delta_y
 

@@ -97,9 +97,9 @@ class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
     ''' Represents a Pinhole-specific camera model parameters '''
     principal_point: np.ndarray = util.numpy_array_field(np.float32)
     focal_length: np.ndarray = util.numpy_array_field(np.float32)
-    radial_poly: np.ndarray = util.numpy_array_field(np.float32)
-    tangential_poly: np.ndarray = util.numpy_array_field(np.float32)
-    #TODO: do we also want to add the thin prism distortion coefficients?
+    radial_coeffs: np.ndarray = util.numpy_array_field(np.float32)
+    tangential_coeffs: np.ndarray = util.numpy_array_field(np.float32)
+    thin_prism_coeffs: np.ndarray = util.numpy_array_field(np.float32)
 
     @staticmethod
     def type() -> str:
@@ -116,11 +116,14 @@ class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
         assert self.focal_length.dtype == np.dtype('float32')
         assert self.focal_length[0] > 0.0 and self.focal_length[1] > 0.0
 
-        assert self.radial_poly.shape == (6,)
-        assert self.radial_poly.dtype == np.dtype('float32')
+        assert self.radial_coeffs.shape == (6, )
+        assert self.radial_coeffs.dtype == np.dtype('float32')
 
-        assert self.tangential_poly.shape == (2, )
-        assert self.tangential_poly.dtype == np.dtype('float32')
+        assert self.tangential_coeffs.shape == (2, )
+        assert self.tangential_coeffs.dtype == np.dtype('float32')
+
+        assert self.thin_prism_coeffs.shape == (4, )
+        assert self.thin_prism_coeffs.dtype == np.dtype('float32')
 
 @dataclass
 class Poses:
@@ -177,7 +180,7 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
     #
     # In the future this field might become mandatory (deprecating old datasets)
     timestamp_us: Optional[int]
-    
+
     source: LabelSource = util.enum_field(LabelSource)
 
 
