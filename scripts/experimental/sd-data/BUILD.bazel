@@ -18,7 +18,8 @@ py_library(
         "nvidia_maglev_sd.py",
     ],
     deps = [
-        "//dsai/impl/common:pylib",
+        "//dsai/impl/common:pylib_common",
+        "//dsai/impl/common:pylib_nvidia",
         "//dsai/impl/data_converter:pylib_data_converter",
         requirement("webdataset"),
         requirement("dataclasses-json"),

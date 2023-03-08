@@ -9,7 +9,6 @@ import numpy as np
 from dsai.impl.data.data3 import ShardDataLoader, PointCloudSensor, CameraSensor
 from dsai.impl.data import types
 from dsai.impl.common.transformations import transform_point_cloud
-from dsai.impl.av_utils import rollingShutterProjection
 from dsai.impl.common.visualization import plot_points_on_image
 from dsai.impl.sensors.camera import CameraModel
 
@@ -33,9 +32,9 @@ from dsai.impl.sensors.camera import CameraModel
               help='Step used to downsample the number of frames',
               default=1)
 @click.option('--device',
-              type=click.Choice(['gpu', 'cpu', 'both']),
-              help='Device used for the computation. If gpu - projection will be done in pytorch on a gpu.',
-              default='cpu')
+              type=click.Choice(['cuda', 'cpu']),
+              help='Device used for the computation via torch',
+              default='cuda')
 def dsai_project_pc_to_img(shard_file_pattern: str, sensor_id: str, camera_id: str, start_frame: int, end_frame: int,
                            step_frame: int, device: str):
     ''' Projects the point cloud to the camera image, comparing projection w. and w/o rolling shutter compensation  '''
@@ -70,34 +69,25 @@ def dsai_project_pc_to_img(shard_file_pattern: str, sensor_id: str, camera_id: s
         T_world_sensor_start = cam_sensor.get_frame_T_world_sensor(frame_index, types.FrameTimepoint.START)
         T_world_sensor_end = cam_sensor.get_frame_T_world_sensor(frame_index, types.FrameTimepoint.END)
 
-        # Initialize the camera model
+        # Initialize the camera model on requested device
         cam_model_params = cam_sensor.get_camera_model_parameters()
-        cam_model = CameraModel.from_parameters(cam_model_params)
+        cam_model = CameraModel.from_parameters(cam_model_params, device=device)
 
-        if device in ['gpu', 'both']:
-            logger.info(f"Starting the projection with a torch GPU implementation.")
+        logger.info(f"Starting the projection with torch implementation on device={device}")
 
-            pixel_coords_gpu, trans_matrices_gpu, valid_idx_gpu = cam_model.world_points_to_pixels_rolling_shutter(pc, T_world_sensor_start, T_world_sensor_end)
+        pixel_coords_gpu, trans_matrices_gpu, valid_idx_gpu = cam_model.world_points_to_pixels_rolling_shutter(
+            pc, T_world_sensor_start, T_world_sensor_end)
 
-            pixel_coords_torch = pixel_coords_gpu.cpu().numpy()
-            trans_matrices_torch = trans_matrices_gpu.cpu().numpy()
-            valid_idx_torch = valid_idx_gpu.cpu().numpy()
-            transformed_points = transform_point_cloud(pc[valid_idx_torch,None,:], trans_matrices_torch).squeeze(1)
-            dist_rs = np.linalg.norm(transformed_points, axis=1, keepdims=True)
+        pixel_coords_torch = pixel_coords_gpu.cpu().numpy()
+        trans_matrices_torch = trans_matrices_gpu.cpu().numpy()
+        valid_idx_torch = valid_idx_gpu.cpu().numpy()
+        transformed_points = transform_point_cloud(pc[valid_idx_torch, None, :], trans_matrices_torch).squeeze(1)
+        dist_rs = np.linalg.norm(transformed_points, axis=1, keepdims=True)
 
-            plot_points_on_image(np.concatenate((pixel_coords_torch[:,:2], dist_rs),axis=1), img_frame,
-                                            "Projection with rolling shutter (torch GPU implementation)", point_size=4.0)
-        if device in ['cpu', 'both']:
-            logger.info(f"Starting the projection with a c++ CPU implementation.")
-
-            pixel_coords_rs, trans_matrices_rs, valid_idx_rs = rollingShutterProjection(pc, cam_model_params, np.stack([T_world_sensor_start, T_world_sensor_end]))
-
-            # Compute the distance to the points in the camera coordinate system
-            transformed_points = transform_point_cloud(pc[valid_idx_rs,None,:], trans_matrices_rs).squeeze(1)
-            dist_rs = np.linalg.norm(transformed_points, axis=1, keepdims=True)
-
-            plot_points_on_image(np.concatenate((pixel_coords_rs[:,:2], dist_rs),axis=1), img_frame,
-                                                "Projection with rolling shutter (c++ implementation)", point_size=4.0)
+        plot_points_on_image(np.concatenate((pixel_coords_torch[:, :2], dist_rs), axis=1),
+                             img_frame,
+                             f'Projection with rolling shutter (torch implementation @ {device})',
+                             point_size=4.0)
 
 
 if __name__ == "__main__":

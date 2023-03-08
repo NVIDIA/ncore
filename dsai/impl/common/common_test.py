@@ -3,6 +3,7 @@
 import time
 import tempfile
 import unittest
+
 import numpy as np
 
 from scipy.spatial.transform import Rotation as R
