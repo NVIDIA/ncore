@@ -17,7 +17,7 @@ class CameraModel(ABC):
     ''' Base camera model class '''
     def __init__(self):
         self.resolution: torch.Tensor
-        self.shutter_type: str
+        self.shutter_type: types.ShutterType
         self.device: str
         self.dtype: torch.dtype
 
@@ -88,8 +88,14 @@ class CameraModel(ABC):
         assert T_world_sensor_start.dtype == self.dtype
         assert T_world_sensor_end.dtype == self.dtype
 
-        # Do initial transformations using both start and mean pose to determine all candidate points and take union of valid projections as iteration starting points
+        # Always perform transformation using start pose
         init_pixel_start, valid_start = self.camera_rays_to_pixels((T_world_sensor_start[:3, :3] @ world_points.transpose(0, 1) + T_world_sensor_start[:3, 3, None]).transpose(0, 1))
+
+        # Global-shutter special case - no need for rolling-shutter compensation, use projections from start-pose as single available pose
+        if self.shutter_type == types.ShutterType.GLOBAL:
+            return init_pixel_start[valid_start], torch.tile(T_world_sensor_start, dims=(int(valid_start.sum().item()), 1, 1)), valid_start
+
+        # Do initial transformations using both start and mean pose to determine all candidate points and take union of valid projections as iteration starting points
         init_pixel_end, valid_end = self.camera_rays_to_pixels((T_world_sensor_end[:3, :3] @ world_points.transpose(0, 1) + T_world_sensor_end[:3, 3, None]).transpose(0, 1))
 
         valid = valid_start | valid_end # union of valid pixels
@@ -444,14 +450,19 @@ class CameraModel(ABC):
     def __get_interpolation_timestamp(self, points: torch.Tensor) -> torch.Tensor:
         ''' Get interpolation timestamp based on the pixel coordinates and rolling shutter type '''
 
-        if self.shutter_type == "ROLLING_TOP_TO_BOTTOM":
-            t = torch.floor(points[:, 1]) / (self.resolution[1] - 1)
-        elif self.shutter_type == "ROLLING_LEFT_TO_RIGHT":
-            t = torch.floor(points[:, 0]) / (self.resolution[0] - 1)
-        elif self.shutter_type == "ROLLING_BOTTOM_TO_TOP":
-            t = (self.resolution[1] - torch.ceil(points[:, 1])) / (self.resolution[1] - 1)
-        elif self.shutter_type == "ROLLING_RIGHT_TO_LEFT":
-            t = (self.resolution[0] - torch.ceil(points[:, 0])) / (self.resolution[0] - 1)
+        match self.shutter_type:
+            case types.ShutterType.ROLLING_TOP_TO_BOTTOM:
+                t = torch.floor(points[:, 1]) / (self.resolution[1] - 1)
+            case types.ShutterType.ROLLING_LEFT_TO_RIGHT:
+                t = torch.floor(points[:, 0]) / (self.resolution[0] - 1)
+            case types.ShutterType.ROLLING_BOTTOM_TO_TOP:
+                t = (self.resolution[1] - torch.ceil(points[:, 1])) / (self.resolution[1] - 1)
+            case types.ShutterType.ROLLING_RIGHT_TO_LEFT:
+                t = (self.resolution[0] - torch.ceil(points[:, 0])) / (self.resolution[0] - 1)
+            case _:
+                raise TypeError(
+                    f"unsupported shutter-type {self.shutter_type.name} for timestamp interpolation"
+                )
 
         return t
 
@@ -521,7 +532,7 @@ class FThetaCameraModel(CameraModel):
             device=self.device)
 
         self.resolution = self.to_torch(camera_model_parameters.resolution.astype(np.int32))
-        self.shutter_type = camera_model_parameters.shutter_type.name
+        self.shutter_type = camera_model_parameters.shutter_type
         self.max_angle = float(camera_model_parameters.max_angle)
         self.newton_iterations = newton_iterations
 
@@ -659,7 +670,7 @@ class PinholeCameraModel(CameraModel):
         self.tangential_coeffs = self.to_torch(camera_model_parameters.tangential_coeffs).to(self.dtype)
         self.thin_prism_coeffs = self.to_torch(camera_model_parameters.thin_prism_coeffs).to(self.dtype)
         self.resolution = self.to_torch(camera_model_parameters.resolution.astype(np.int32))
-        self.shutter_type = camera_model_parameters.shutter_type.name
+        self.shutter_type = camera_model_parameters.shutter_type
 
         assert self.principal_point.shape == (2, )
         assert self.principal_point.dtype == self.dtype

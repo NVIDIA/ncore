@@ -37,7 +37,7 @@ class CameraModelParameters:
         assert self.resolution.shape == (2, )
         assert self.resolution.dtype == np.dtype('uint64')
         assert self.resolution[0] > 0 and self.resolution[1] > 0
-        assert self.exposure_time_us > 0
+        assert self.exposure_time_us > 0 if self.shutter_type != ShutterType.GLOBAL else self.exposure_time_us >= 0
 
 
 @dataclass
