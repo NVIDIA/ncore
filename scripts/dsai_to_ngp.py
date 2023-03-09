@@ -177,17 +177,36 @@ def dsai_to_ngp(
                 # Extract the rolling shutter parameters representing y = a + b*x + c*y
                 rolling_shutter = RS_DIR_TO_NGP[pinhole.shutter_type.name]
 
+                if not np.isclose(pinhole.radial_coeffs[2], 0).all():
+                    logger.warn(f'Pinhole camera model of {camera_id} has non-zero radial distortion coefficient k3, '
+                                 'which might not be supported by NGP yet - exporting anyway')
+
+                if not np.isclose(pinhole.radial_coeffs[3:], 0).all():
+                    logger.warn(f'Pinhole camera model of {camera_id} has non-zero rational radial distortion coefficients [k4,k5,k6], '
+                                 'which might not be supported by NGP yet - exporting anyway')
+                
+                if not np.isclose(pinhole.thin_prism_coeffs, 0).all():
+                    logger.warn(f'Pinhole camera model of {camera_id} has non-zero thin-prism distortion coefficients [s1,s2,s3,s4], '
+                                 'which might not be supported by NGP yet - exporting anyway')
+
                 camera_data["intrinsic_data"] = {
                     "w": int(pinhole.resolution[0]),
                     "h": int(pinhole.resolution[1]),
                     "cx": float(pinhole.principal_point[0]),
                     "cy": float(pinhole.principal_point[1]),
-                    "k1": pinhole.radial_poly[0],
-                    "k2": pinhole.radial_poly[1],
-                    # Note: we are already outputting this higher-order coefficient although NGP might not use it yet
-                    "k3": pinhole.radial_poly[2],
-                    "p1": pinhole.tangential_poly[0],
-                    "p2": pinhole.tangential_poly[1],
+                    "k1": pinhole.radial_coeffs[0],
+                    "k2": pinhole.radial_coeffs[1],
+                    "p1": pinhole.tangential_coeffs[0],
+                    "p2": pinhole.tangential_coeffs[1],
+                    # Note: we are already outputting these higher-order / rational radial distortion and thin-prism coefficients, although NGP might not use it yet
+                    "k3": pinhole.radial_coeffs[2],
+                    "k4": pinhole.radial_coeffs[3],
+                    "k5": pinhole.radial_coeffs[4],
+                    "k6": pinhole.radial_coeffs[5],
+                    "s1": pinhole.thin_prism_coeffs[0],
+                    "s2": pinhole.thin_prism_coeffs[1],
+                    "s3": pinhole.thin_prism_coeffs[2],
+                    "s4": pinhole.thin_prism_coeffs[3],
                     "rolling_shutter": rolling_shutter.tolist(),
                     "camera_angle_x": fov_angle_x,
                     "camera_angle_y": fov_angle_y

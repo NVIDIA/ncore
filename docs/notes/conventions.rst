@@ -256,13 +256,27 @@ will additionally be available in ``camera_model_parameters``:
 If ``camera_model_type` = 'pinhole'`` the following intrinsic parameters
 will additionally be available in ``camera_model_parameters``:
 
-* ``principal_point`` - u and v coordinate of the principal point
+* ``principal_point`` - u and v coordinate of the principal point in
+  image coordinates (float32, [2,])
+* ``focal_length`` - focal lengths in u and v direction, resp., mapping
+  (distorted) normalized camera coordinates to image coordinates
   (float32, [2,])
-* ``focal_length`` - focal lengths in u and v direction, resp. (float32,
-  [2,])
-* ``radial_poly`` - radial distortion coefficients (float32, [6,])
-* ``tangential_poly`` - tangential distortion coefficients (float32,
-  [2,])
+* ``radial_coeffs`` - radial distortion coefficients
+  ``[k1,k2,k3,k4,k5,k6]`` parameterizing the rational radial distortion
+  factor :math:`\frac{1 + k_1r^2 + k_2r^4 + k_3r^4}{1 + k_4r^2 + k_5r^4
+  + k_6r^4}` for squared norms :math:`r^2` of normalized camera
+  coordinates (float32, [6,])
+* ``tangential_coeffs`` - tangential distortion coefficients ``[p1,p2]``
+  parameterizing the tangential distortion components
+  :math:`\begin{bmatrix} 2p_1x'y' + p_2 \left(r^2 + 2{x'}^2 \right) \\
+  p_1 \left(r^2 + 2{y'}^2 \right) + 2p_2x'y' \end{bmatrix}` for
+  normalized camera coordinates :math:`\begin{bmatrix} x' \\ y'
+  \end{bmatrix}` (float32, [2,])
+* ``thin_prism_coeffs`` - thins prism distortion coefficients
+  ``[s1,s2,s3,s4]`` parameterizing the thin prism distortion components
+  :math:`\begin{bmatrix} s_1r^2 + s_2r^4 \\ s_3r^2 + s_4r^4
+  \end{bmatrix}` for squared norms :math:`r^2` of normalized camera
+  coordinates (float32, [4,])
 
 Finally, we also save general metadata related to the session (input
 data and versioning):
