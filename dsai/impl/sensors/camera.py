@@ -65,8 +65,9 @@ class CameraModel(ABC):
             world_points: Union[torch.Tensor, np.ndarray],
             T_world_sensor_start: Union[torch.Tensor, np.ndarray],
             T_world_sensor_end: Union[torch.Tensor, np.ndarray],
-            max_iter: int = 10,
-            min_error: float = 1e-3) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            max_iterations: int = 10,
+            stop_mean_error_px: float = 1e-3,
+            stop_delta_mean_error_px: float = 1e-5) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         ''' Projects world points to corresponding pixel coordinates using *rolling-shutter compensation* of sensor motion
             
             Returns
@@ -87,54 +88,66 @@ class CameraModel(ABC):
         assert T_world_sensor_start.dtype == self.dtype
         assert T_world_sensor_end.dtype == self.dtype
 
-        # Convert the start and end rotation matrix to quaternions
-        ego_pose_s_quat = self.__rotmat_to_unitquat(T_world_sensor_start[None, :3, :3])  # [1, 4]
-        ego_pose_e_quat = self.__rotmat_to_unitquat(T_world_sensor_end[None, :3, :3])  # [1, 4]
+        # Do initial transformations using both start and mean pose to determine all candidate points and take union of valid projections as iteration starting points
+        init_pixel_start, valid_start = self.camera_rays_to_pixels((T_world_sensor_start[:3, :3] @ world_points.transpose(0, 1) + T_world_sensor_start[:3, 3, None]).transpose(0, 1))
+        init_pixel_end, valid_end = self.camera_rays_to_pixels((T_world_sensor_end[:3, :3] @ world_points.transpose(0, 1) + T_world_sensor_end[:3, 3, None]).transpose(0, 1))
 
-        mof_rot = self.__unitquat_to_rotmat(
-            self.__unitquat_slerp(ego_pose_s_quat, ego_pose_e_quat,
-                                  torch.Tensor([0.5]).to(T_world_sensor_start))).squeeze()  # [3, 3]
+        valid = valid_start | valid_end # union of valid pixels
+        init_pixel = init_pixel_end
+        init_pixel[valid_start] = init_pixel_start[valid_start] # this prefers points at the start-of-frame pose over end-of-frame points 
+                                                                # - the optimization will determine the final timestamp for each point
 
-        mof_trans = 0.5 * T_world_sensor_start[:3, 3] + 0.5 * T_world_sensor_end[:3, 3]  # [3]
+        # Exit early if no valid pixel was projected
+        if not valid.any():
+            return torch.empty((0, 2), dtype=self.dtype, device=self.device), \
+                torch.empty((0, 4, 4), dtype=self.dtype, device=self.device), \
+                torch.empty((0,), dtype=torch.int64)
 
-        # Do the initial transformation
-        cam_rays = (mof_rot @ world_points.transpose(0, 1) + mof_trans[..., None]).transpose(0, 1)
-        init_pixel, valid = self.camera_rays_to_pixels(cam_rays)
+        # Convert the start and end rotation matrix to quaternions for subsequent interpolations
+        world_sensor_s_quat = self.__rotmat_to_unitquat(T_world_sensor_start[None, :3, :3])  # [1, 4]
+        world_sensor_e_quat = self.__rotmat_to_unitquat(T_world_sensor_end[None, :3, :3])  # [1, 4]
 
         # For valid pixels, compute the new timestamp and project again
-        if valid.any():
-            pixel_rs_prev = init_pixel[valid, :].clone()
-            current_int = 0
-            error = 1e12
+        pixel_rs_prev = init_pixel[valid, :]
+        iteration = 0
+        mean_error_px = 1e12
+        while iteration < max_iterations:
+            t = self.__get_interpolation_timestamp(pixel_rs_prev)
 
-            while current_int < max_iter and error > min_error:
-                t = self.__get_interpolation_timestamp(pixel_rs_prev)
+            rot_rs = self.__unitquat_to_rotmat(self.__unitquat_slerp(world_sensor_s_quat.repeat(
+                t.shape[0], 1), world_sensor_e_quat.repeat(t.shape[0], 1), t)).squeeze()  # [n_valid, 3, 3]
 
-                rot_rs = self.__unitquat_to_rotmat(
-                    self.__unitquat_slerp(ego_pose_s_quat.repeat(t.shape[0], 1), ego_pose_e_quat.repeat(t.shape[0], 1),
-                                          t)).squeeze()  #[n_valid, 3, 3]
+            trans_rs = (1 - t)[..., None] * T_world_sensor_start[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1) + \
+                             t[..., None] * T_world_sensor_end[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1)
 
-                trans_rs = (1 - t)[..., None] * T_world_sensor_start[:3, 3:4].transpose(0, 1).repeat(
-                    t.shape[0], 1) + t[..., None] * T_world_sensor_end[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1)
+            cam_points_rs = (torch.bmm(rot_rs, world_points[valid, :, None]) + trans_rs[..., None]).squeeze(-1)
+            pixel_rs, valid_rs = self.camera_rays_to_pixels(cam_points_rs.squeeze())
 
-                cam_points_rs = (torch.bmm(rot_rs, world_points[valid, :, None]) + trans_rs[..., None]).squeeze(-1)
-                pixel_rs, valid_rs = self.camera_rays_to_pixels(cam_points_rs.squeeze())
+            # Compute mean error of projections that are still valid now and check if we are still
+            # making progress relative to previous iteration
+            if abs(
+                mean_error_px - (mean_error_px := torch.linalg.norm(pixel_rs[valid_rs] - pixel_rs_prev[valid_rs],
+                                                                    dim=1).mean())) <= stop_delta_mean_error_px:
+                break
 
-                error = torch.linalg.norm(pixel_rs - pixel_rs_prev, dim=1).mean()
-                pixel_rs_prev = pixel_rs.clone()
-                current_int += 1
+            # Check if error bound was reached
+            if mean_error_px <= stop_mean_error_px:
+                break
 
-        # Combine valid flags
-        valid_idx = valid.clone()
-        valid[valid_idx] = valid[valid_idx] & valid_rs
+            pixel_rs_prev = pixel_rs
+            iteration += 1
+
+        # Combine validity flags
+        # (valid_rs represents a strict logical subset of full valid flags, so no logical operation required)
+        valid[torch.argwhere(valid).squeeze()] = valid_rs
 
         # Generate the output matrix
-        trans_matrices = torch.empty((int(valid.sum().item()), 4, 4), dtype=self.dtype, device=self.device)
+        trans_matrices = torch.empty((int(valid_rs.sum().item()), 4, 4), dtype=self.dtype, device=self.device)
         trans_matrices[:, :3, 3] = trans_rs[valid_rs]
         trans_matrices[:, :3, :3] = rot_rs[valid_rs, ...]
         trans_matrices[:, 3] = torch.Tensor([0, 0, 0, 1])
 
-        return pixel_rs[valid_rs], trans_matrices, torch.where(valid)[0]
+        return pixel_rs[valid_rs], trans_matrices, torch.argwhere(valid).squeeze()
 
     def world_points_to_pixels_static_pose(
             self, world_points: Union[torch.Tensor, np.ndarray],
