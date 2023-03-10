@@ -91,7 +91,7 @@ class CameraModel(ABC):
         # Always perform transformation using start pose
         init_pixel_start, valid_start = self.camera_rays_to_pixels((T_world_sensor_start[:3, :3] @ world_points.transpose(0, 1) + T_world_sensor_start[:3, 3, None]).transpose(0, 1))
 
-        # Global-shutter special case - no need for rolling-shutter compensation, use unprojections from start-pose as single available pose
+        # Global-shutter special case - no need for rolling-shutter compensation, use projections from start-pose as single available pose
         if self.shutter_type == types.ShutterType.GLOBAL:
             return init_pixel_start[valid_start], torch.tile(T_world_sensor_start, dims=(int(valid_start.sum().item()), 1, 1)), valid_start
 
@@ -278,7 +278,7 @@ class CameraModel(ABC):
         
         For each image point returns 3d world rays [point, direction], represented by 3d start of ray points and 3d ray directions in the world frame
         '''
-        # Global-shutter special case - no need for rolling-shutter compensation, use projections from start-pose as single available pose
+        # Global-shutter special case - no need for rolling-shutter compensation, use unprojections from start-pose as single available pose
         if self.shutter_type == types.ShutterType.GLOBAL:
             return self.pixels_to_world_rays_static_pose(image_points, T_sensor_world_start, camera_rays)
 
