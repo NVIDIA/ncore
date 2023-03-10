@@ -2,16 +2,17 @@
 
 import unittest
 import abc
-import copy
 import itertools
 
 import numpy as np
 import scipy
+import scipy.linalg
 import parameterized
 import torch
 
-from dsai.impl.data.types import FThetaCameraModelParameters, ShutterType
-from .camera import FThetaCameraModel
+from dsai.impl.data.types import FThetaCameraModelParameters, PinholeCameraModelParameters, ShutterType
+
+from .camera import FThetaCameraModel, PinholeCameraModel
 
 
 ## Reference camera implementation
@@ -46,9 +47,6 @@ class ReferenceFThetaCamera(ReferenceCamera):
         # forward polynomial to use only as start value for newton iterations
         self._forwardPolynomial = self._determineForwardPolynomial(self._maxRadius)
 
-    def getImageSize(self):
-        return copy.deepcopy(self._imageSize)
-
     def isVisible(self, point2d):
         # potential different design decision:
         # - a single pixel has a width of 1 pixel and a height of 1 pixel
@@ -60,12 +58,6 @@ class ReferenceFThetaCamera(ReferenceCamera):
         lastPixel = self._imageSize - np.array([1, 1])
         return ((0 <= point2d[0]) and (point2d[0] <= lastPixel[0]) and (0 <= point2d[1])
                 and (point2d[1] <= lastPixel[1]))
-
-    def getPrincipalPoint(self):
-        return copy.deepcopy(self._principalPoint)
-
-    def getBackwardPolynomial(self):
-        return copy.deepcopy(self._backwardPolynomial)
 
     def setBackwardPolynomial(self, backwardPolynomial):
         self._backwardPolynomial = backwardPolynomial
@@ -129,7 +121,6 @@ class ReferenceFThetaCamera(ReferenceCamera):
     def _determineForwardPolynomial(self, maxRadius):
         linearSystemMatrix, linearSystemVector = self._getForwardPolynomialLinearSystem(maxRadius)
         coefficients = _solveLinearEquation(linearSystemMatrix, linearSystemVector)
-        # self._forwardPolynomial= coefficients
         return np.concatenate(([0.], coefficients))
 
     def _getForwardPolynomialLinearSystem(self, maxRadius):
@@ -192,18 +183,19 @@ class ReferenceFThetaCamera(ReferenceCamera):
         return radius
 
 
-@parameterized.parameterized_class(('device', 'dtype'),
-                                   itertools.product(('cpu', 'cuda'), (torch.float32, torch.float64)))
-class TestReferenceFThetaCamera(unittest.TestCase):
-    ''' Parameterized test cases validating both the reference implementation and the torch-based camera model '''
+class CommonTestCase(unittest.TestCase):
     def _compareVector(self, a, b):
         self.assertEqual(len(a), len(b))
         self.assertIsNone(np.testing.assert_array_almost_equal(a, b))
 
+
+@parameterized.parameterized_class(('device', 'dtype'),
+                                   itertools.product(('cpu', 'cuda'), (torch.float32, torch.float64)))
+class TestReferenceFThetaCamera(CommonTestCase):
+    ''' Parameterized test cases validating both the reference implementation and the torch-based camera model '''
     def test_pixel2ray(self):
         """test backward polynomial coefficients from r**1, r**2, ... r**4"""
         for orderPolynomial in range(1, 5):
-            # print("powerOfRadius= ", powerOfRadius)
             self._test_pixel2ray_orderPolynomial(orderPolynomial)
 
     def _test_pixel2ray_orderPolynomial(self, orderPolynomial):
@@ -354,8 +346,7 @@ class TestReferenceFThetaCamera(unittest.TestCase):
 
 
 def _solveLinearEquation(linearSystemMatrix, linearSystemVector):
-    solution, residues, rank, singularValues = scipy.linalg.lstsq(linearSystemMatrix, linearSystemVector)
-    # print("solution= ", solution, "max(residues)= ", numpy.max(residues))
+    solution, _, _, _ = scipy.linalg.lstsq(linearSystemMatrix, linearSystemVector)
     return solution
 
 
@@ -385,5 +376,61 @@ def ftheta_from_reference(reference_camera: ReferenceFThetaCamera, device: str,
     return FThetaCameraModel(camera_model_parameters=parameters, device=device, dtype=dtype)
 
 
+@parameterized.parameterized_class(('device', 'dtype'),
+                                   itertools.product(('cpu', 'cuda'), (torch.float32, torch.float64)))
+class TestPinholeCamera(CommonTestCase):
+
+
+    def test_pixel2ray_ray2pixel_consistency(self):
+        ''' Tests self-consistency of torch-based Pinhole camera model '''
+
+        # Waymo camera parameters
+        cam_model_params = PinholeCameraModelParameters(resolution=np.array([1920, 1280], dtype=np.uint64),
+                                                        shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
+                                                        exposure_time_us=270,
+                                                        principal_point=np.array([935.1248081874216, 635.052474560227],
+                                                                                 dtype=np.float32),
+                                                        focal_length=np.array([
+                                                            2059.0471439559833,
+                                                            2059.0471439559833,
+                                                        ],
+                                                                              dtype=np.float32),
+                                                        radial_coeffs=np.array([
+                                                            0.04239636827428756,
+                                                            -0.34165672675852826,
+                                                            0,
+                                                            0,
+                                                            0,
+                                                            0,
+                                                        ],
+                                                                               dtype=np.float32),
+                                                        tangential_coeffs=np.array(
+                                                            [0.001805535524580487, -0.00005530628187935031],
+                                                            dtype=np.float32),
+                                                        thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32))
+
+        # add additional arbitrary radial and thin-prism coeffs for this test only to guarantee code-coverage
+        cam_model_params.radial_coeffs[2:] = [0.01, 0.02, -0.01, 0.02]
+        cam_model_params.thin_prism_coeffs[:] = [0.01, 0.02, 0.02, 0.01]
+
+        cam_model = PinholeCameraModel(cam_model_params, device=self.device, dtype=self.dtype)
+
+        MAX_DEVIATION_IN_PIXEL = 0.001
+
+        # for p in [0, px] with stepsize
+        STEPSIZE = 20
+        for p in range(0, int(cam_model_params.principal_point[0]), STEPSIZE):
+            with self.subTest(p=p):
+                # very idempotence of pixel2ray(ray2pixel([p,p]))
+                expectedPoint2d = np.array([[p, p]])
+
+                # Verify torch-camera's result
+                ray3d = cam_model.pixels_to_camera_rays(cam_model.to_torch(expectedPoint2d).to(cam_model.dtype))
+                actualPoint2d, valid = cam_model.camera_rays_to_pixels(ray3d)
+                self.assertTrue(valid[0])
+                self.assertLessEqual(np.linalg.norm(expectedPoint2d - np.array(actualPoint2d.cpu())),
+                                     MAX_DEVIATION_IN_PIXEL)
+
+
 if __name__ == '__main__':
-    unittest.main(argv=['first-arg-is-ignored'], exit=False)
+    unittest.main()
