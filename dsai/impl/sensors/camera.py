@@ -115,9 +115,8 @@ class CameraModel(ABC):
 
         # For valid pixels, compute the new timestamp and project again
         pixel_rs_prev = init_pixel[valid, :]
-        iteration = 0
         mean_error_px = 1e12
-        while iteration < max_iterations:
+        for _ in range(max_iterations):
             t = self.__get_interpolation_timestamp(pixel_rs_prev)
 
             rot_rs = self.__unitquat_to_rotmat(self.__unitquat_slerp(world_sensor_s_quat.repeat(
@@ -141,7 +140,6 @@ class CameraModel(ABC):
                 break
 
             pixel_rs_prev = pixel_rs
-            iteration += 1
 
         # Combine validity flags
         # (valid_rs represents a strict logical subset of full valid flags, so no logical operation required)
@@ -691,42 +689,40 @@ class PinholeCameraModel(CameraModel):
 
     def pixels_to_camera_rays(self, image_points: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
         '''
-        Computes the camera ray for each image point
+        Computes the camera ray for each image point, performing an iterative undistortion of the nonlinear distortion model
         '''
+        
         image_points = self.to_torch(image_points).to(self.dtype)
         camera_rays = self.__iterative_undistort(image_points)
-        cam_rays = torch.cat([camera_rays, torch.ones_like(camera_rays[:, 0:1])], dim=1)
 
-        return cam_rays
+        return torch.cat([camera_rays, torch.ones_like(camera_rays[:, 0:1])], dim=1)
 
     def camera_rays_to_pixels(self, cam_rays: Union[torch.Tensor, np.ndarray]) -> Tuple[torch.Tensor, torch.Tensor]:
         '''
-        For each camera ray it computes the corresponding pixel coordinates
+        For each camera ray compute the corresponding pixel coordinates
         '''
 
         cam_rays = self.to_torch(cam_rays).to(self.dtype)
 
         # Initialize the valid flag and set all the points behind the camera plane to invalid
-        valid = torch.ones_like(cam_rays[:, 0], dtype=torch.bool)
         image_points = torch.zeros_like(cam_rays[:, :2])
 
-        valid[cam_rays[:, 2] <= 0.0] = False
+        valid = cam_rays[:, 2] > 0.0
         valid_idx = torch.where(valid)[0]
 
         uv_normalized = cam_rays[valid, :2] / cam_rays[valid, 2:3]  # [n,2]
-        icD, delta_x, delta_y = self.__compute_distortion(uv_normalized)
+        icD, delta_xy = self.__compute_distortion(uv_normalized)
 
         k_min_radial_dist = 0.8
         k_max_radial_dist = 1.2
 
         valid_radial = torch.logical_and(icD > k_min_radial_dist, icD < k_max_radial_dist)
 
-        # Apply tangential distortion
-        uND = uv_normalized[:, 0] * icD + delta_x  # [n]
-        vND = uv_normalized[:, 1] * icD + delta_y  # [n]
+        # Apply radial / tangential / thin-prism distortions
+        uvND = uv_normalized * icD[:, None] + delta_xy
 
-        image_points[valid_idx, 0] = uND * self.focal_length[0] + self.principal_point[0]
-        image_points[valid_idx, 1] = vND * self.focal_length[1] + self.principal_point[1]
+        # Project using ideal pinhole model
+        image_points[valid_idx] = uvND * self.focal_length + self.principal_point
 
         # Check if the point falls within the image
         valid_x = torch.logical_and(0.0 <= image_points[valid_idx, 0], image_points[valid_idx, 0] < self.resolution[0])
@@ -738,42 +734,38 @@ class PinholeCameraModel(CameraModel):
 
         return image_points, valid
 
-    def __compute_distortion(self, xy: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __compute_distortion(self, xy: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         ''' Computes the radial, tangential, and thin-prism distortion given the camera rays '''
 
         # Compute the helper variables
-        xy_squared = torch.pow(xy, 2)
-        xy_prod = xy[:, 0] * xy[:, 1]
+        xy_squared = torch.square(xy)
         r_2 = torch.sum(xy_squared, dim=1)
-        r_4 = r_2 * r_2
-        r_6 = r_4 * r_2
+        xy_prod = xy[:, 0] * xy[:, 1]
         a1 = 2 * xy_prod
         a2 = r_2 + 2 * xy_squared[:, 0]
         a3 = r_2 + 2 * xy_squared[:, 1]
 
-        icD_numerator = (1.0 + self.radial_coeffs[0] * r_2 + self.radial_coeffs[1] * r_4 + self.radial_coeffs[2] * r_6)
-        icD_denominator = (1.0 + self.radial_coeffs[3] * r_2 + self.radial_coeffs[4] * r_4 + self.radial_coeffs[5] * r_6)
+        icD_numerator = 1.0 + r_2 * (self.radial_coeffs[0] + r_2 * (self.radial_coeffs[1] + r_2 * self.radial_coeffs[2]))
+        icD_denominator = 1.0 + r_2 * (self.radial_coeffs[3] + r_2 * (self.radial_coeffs[4] + r_2 *self.radial_coeffs[5]))
         icD = icD_numerator / icD_denominator
 
-        delta_x = self.tangential_coeffs[0] * a1 + self.tangential_coeffs[1] * a2 + self.thin_prism_coeffs[0] * r_2 + self.thin_prism_coeffs[1] * r_4
-        delta_y = self.tangential_coeffs[0] * a3 + self.tangential_coeffs[1] * a1 + self.thin_prism_coeffs[2] * r_2 + self.thin_prism_coeffs[3] * r_4
+        delta_x = self.tangential_coeffs[0] * a1 + self.tangential_coeffs[1] * a2 + r_2 * (self.thin_prism_coeffs[0] + r_2 * self.thin_prism_coeffs[1])
+        delta_y = self.tangential_coeffs[0] * a3 + self.tangential_coeffs[1] * a1 + r_2 * (self.thin_prism_coeffs[2] + r_2 * self.thin_prism_coeffs[3])
 
-        return icD, delta_x, delta_y
+        return icD, torch.cat([delta_x[:, None], delta_y[:, None]], dim=1)
 
-    def __iterative_undistort(self, image_points: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
-        cam_rays = (image_points - self.principal_point) / self.focal_length
-        cam_rays_0 = torch.clone(cam_rays)
+    def __iterative_undistort(self, image_points: torch.Tensor, stop_mean_of_squares_error_px2: float = 1e-12, max_iterations: int = 10) -> torch.Tensor:
+        # start by unprojecting points to rays using distortion-less ideal pinhole model only
+        cam_rays_0 = (image_points - self.principal_point) / self.focal_length
+        
+        cam_rays = cam_rays_0
+        for _ in range(max_iterations):
+            # apply *inverse* of distortion to camera rays to iteratively find the rays that correspond to the *distorted* source points
+            icD, delta_xy = self.__compute_distortion(cam_rays)
 
-        c_iter = 0
-        max_iter = 20
-        error = 1e12
-        while (error > eps and c_iter < max_iter):
-            icD, delta_x, delta_y = self.__compute_distortion(cam_rays)
+            residual = cam_rays - (cam_rays := (cam_rays_0 - delta_xy) / icD[:, None])
 
-            # Get the previous values to compute the residual
-            cam_rays_prev = torch.clone(cam_rays)
-            cam_rays = (cam_rays_0 - torch.cat([delta_x[:, None], delta_y[:, None]], dim=1)) * icD[:, None]
-
-            error = torch.mean(torch.square(cam_rays - cam_rays_prev)).item()
+            if torch.mean(torch.square(residual)).item() <= stop_mean_of_squares_error_px2:
+                break
 
         return cam_rays
