@@ -68,5 +68,19 @@ def nvidia_maglev_v3(ctx, *_, **kwargs):
     NvidiaMaglevConverter.convert(config)
 
 
+@cli.command()
+@click.option('--start-timestamp-us', type=int, default=None, help="If provided, the start timestamp to restrict processing to")
+@click.option('--end-timestamp-us', type=int, default=None, help="If provided, the end timestamp to restrict processing to")
+@click.pass_context
+def carter_deepmap_v3(ctx, *_, **kwargs):
+    """NVIDIA Carter-specific data conversion (V3 format, based on DeepMap tracks)"""
+
+    from dsai.impl.data_converter.carter_deepmap3 import CarterDeepmapConverter
+
+    config = ctx.obj  # Extend base config with command-specific options
+    config += kwargs
+
+    CarterDeepmapConverter.convert(config)
+
 if __name__ == '__main__':
     cli(show_default=True)
