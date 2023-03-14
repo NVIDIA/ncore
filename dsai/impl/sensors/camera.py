@@ -453,14 +453,17 @@ class CameraModel(ABC):
         ''' Get interpolation timestamp based on the pixel coordinates and rolling shutter type '''
 
         match self.shutter_type:
+            # Round to closest integer coordinate (~ row / column index) following image coordinate
+            # convention to align pixel centers with integer image coordinates, e.g., the first pixels
+            # u/v-range is [-0.5, 0.5]
             case types.ShutterType.ROLLING_TOP_TO_BOTTOM:
-                t = torch.floor(points[:, 1]) / (self.resolution[1] - 1)
+                t = torch.round(points[:, 1]) / (self.resolution[1] - 1)
             case types.ShutterType.ROLLING_LEFT_TO_RIGHT:
-                t = torch.floor(points[:, 0]) / (self.resolution[0] - 1)
+                t = torch.round(points[:, 0]) / (self.resolution[0] - 1)
             case types.ShutterType.ROLLING_BOTTOM_TO_TOP:
-                t = (self.resolution[1] - torch.ceil(points[:, 1])) / (self.resolution[1] - 1)
+                t = (self.resolution[1] - 1 - torch.round(points[:, 1])) / (self.resolution[1] - 1)
             case types.ShutterType.ROLLING_RIGHT_TO_LEFT:
-                t = (self.resolution[0] - torch.ceil(points[:, 0])) / (self.resolution[0] - 1)
+                t = (self.resolution[0] - 1 - torch.round(points[:, 0])) / (self.resolution[0] - 1)
             case _:
                 raise TypeError(
                     f"unsupported shutter-type {self.shutter_type.name} for timestamp interpolation"
@@ -591,8 +594,12 @@ class FThetaCameraModel(CameraModel):
         image_points = scale * cam_rays[:, :2] + self.principal_point[None, :]
 
         # Extract valid points
-        valid_x = torch.logical_and(0.0 <= image_points[:, 0], image_points[:, 0] < self.resolution[0])
-        valid_y = torch.logical_and(0.0 <= image_points[:, 1], image_points[:, 1] < self.resolution[1])
+        # Note: this classifies using a margin of 0.5px around the full image boundary to be invalid, 
+        #       with the intention to keep all valid pixel coordinates positive.
+        #       Full image domain bounds: [-0.5 ... w-0.5)
+        #       Tested stricter bounds:   [ 0.0 ... w-1.0)
+        valid_x = torch.logical_and(0.0 <= image_points[:, 0], image_points[:, 0] < (self.resolution[0] - 1.0))
+        valid_y = torch.logical_and(0.0 <= image_points[:, 1], image_points[:, 1] < (self.resolution[1] - 1.0))
         valid_delta = alphas[:, 0] < self.max_angle
         valid = valid_x & valid_y & valid_delta
 
@@ -725,8 +732,12 @@ class PinholeCameraModel(CameraModel):
         image_points[valid_idx] = uvND * self.focal_length + self.principal_point
 
         # Check if the point falls within the image
-        valid_x = torch.logical_and(0.0 <= image_points[valid_idx, 0], image_points[valid_idx, 0] < self.resolution[0])
-        valid_y = torch.logical_and(0.0 <= image_points[valid_idx, 1], image_points[valid_idx, 1] < self.resolution[1])
+        # Note: this classifies using a margin of 0.5px around the full image boundary to be invalid, 
+        #       with the intention to keep all valid pixel coordinates positive.
+        #       Full image domain bounds: [-0.5 ... w-0.5)
+        #       Tested stricter bounds:   [ 0.0 ... w-1.0)
+        valid_x = torch.logical_and(0.0 <= image_points[valid_idx, 0], image_points[valid_idx, 0] < (self.resolution[0] - 1.0))
+        valid_y = torch.logical_and(0.0 <= image_points[valid_idx, 1], image_points[valid_idx, 1] < (self.resolution[1] - 1.0))
 
         # Set the points that have too large distortion or fall outside the image sensor to invalid
         valid_pts = valid_x & valid_y & valid_radial
