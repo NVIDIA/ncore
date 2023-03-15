@@ -19,9 +19,9 @@ from PIL import Image
 from scipy.optimize import curve_fit
 from numpy.polynomial.polynomial import Polynomial
 
-from dsai.impl.common.common import MaskImage, load_jsonl
+from dsai.impl.common.common import MaskImage, PoseInterpolator, load_jsonl
 from dsai.impl.av_utils import isWithin3DBBox
-from dsai.impl.common.transformations import euler_2_so3, lat_lng_alt_2_ecef, se3_inverse
+from dsai.impl.common.transformations import euler_2_so3, lat_lng_alt_2_ecef, se3_inverse, transform_bbox
 from dsai.impl.data.types import FrameLabel3, BBox3, LabelSource, TrackLabel, DynamicFlagState
 
 
@@ -363,9 +363,10 @@ class LabelProcessor:
     def parse(
         cls,
         labels_path: str,
-        sensor_meta_files: dict[str, Path], # load per sensor end-of-frame timestamps from sensor-indexer's meta files
-        start_timestamp_us: Optional[int],
-        end_timestamp_us: Optional[int],
+        sensor_meta_files: dict[str, Path],  # per sensor end-of-frame timestamps from sensor-indexer's meta files
+        T_sensor_rigs: dict[str, np.ndarray],  # per-sensor T_sensor_rig transformations
+        T_rig_world_timestamps_us: np.ndarray,  # timestamps of rig-to-world poses
+        T_rig_worlds: np.ndarray,  # rig-to-world poses
         source: LabelSource,
         logger: logging.Logger,
 
@@ -401,6 +402,9 @@ class LabelProcessor:
             for sensor_id, sensor_meta_file in sensor_meta_files.items()
         }
 
+        # Initialize pose interpolator
+        pose_interpolator = PoseInterpolator(T_rig_worlds, T_rig_world_timestamps_us)
+
         # TODO: add format selection once multiple different formats need to be supported (not required currently for single-format)
 
         # Load parquet file and convert to pandas dataframe
@@ -409,13 +413,13 @@ class LabelProcessor:
         # Fix float -> integer datatypes of track IDs / timestamps
         label_data = label_data.astype({'gt_trackline_id': 'int64', 'timestamp': 'int64'})
 
-        # Conservatively pre-filter data range based on time bounds, to speed up processing in case of restricted seek / duration data ranges
-        if end_timestamp_us:
-            # all of the rows with timestamp <= end-timestamp + 1sec
-            label_data = label_data[label_data['timestamp'].le(end_timestamp_us + cls.TIME_RANGE_MARGIN_US)]
-        if start_timestamp_us:
-            # all of the rows with start-timestamp - margin-time <= timestamp <= end-timestamp + margin-time
-            label_data = label_data[label_data['timestamp'].ge(start_timestamp_us - cls.TIME_RANGE_MARGIN_US)]
+        ## Conservatively pre-filter data range based on time bounds, to speed up processing in case of restricted seek / duration data ranges
+
+        # all of the rows with timestamp <= end-timestamp + + margin-time
+        label_data = label_data[label_data['timestamp'].le(T_rig_world_timestamps_us[-1] + cls.TIME_RANGE_MARGIN_US)]
+
+        # all of the rows with start-timestamp - margin-time <= timestamp <= end-timestamp + margin-time
+        label_data = label_data[label_data['timestamp'].ge(T_rig_world_timestamps_us[0] - cls.TIME_RANGE_MARGIN_US)]
 
         # Restrict to columns of interest to reduce memory usage (around 70% data reduction)
         label_data = label_data[[
@@ -439,7 +443,9 @@ class LabelProcessor:
             'confidence',
             'frame_number',  # used to associated labels with source-frames
         ]]
-        # Note: more recent data contains 'timestamp_origin', which can be used to distinguish between 'spin-end' or 'per-cuboid', but we store all labels within it's source frame for now
+        # Note: more recent data should contain a 'timestamp_origin',
+        # which can be used to distinguish between 'spin-end' or 'per-cuboid' and whether
+        # motion-compensation to the spin-end timestamp is required - do this unconditionally for now
 
         # Sort labels by timestamp to guarantee timestamp-sorted tracks
         label_data.sort_values(by=['timestamp'], inplace=True)
@@ -461,6 +467,32 @@ class LabelProcessor:
             label_class = row.label_name
             label_frame_timestamp_us = sensor_frame_timestamps[sensor_id][label_frame_number]
 
+            # make sure we can interpolate sensor poses for the relevant timestamps
+            if (label_timestamp_us < T_rig_world_timestamps_us[0]) or \
+               (label_frame_timestamp_us < T_rig_world_timestamps_us[0]) or \
+               (label_timestamp_us > T_rig_world_timestamps_us[-1]) or \
+               (label_frame_timestamp_us > T_rig_world_timestamps_us[-1]):
+                continue
+
+            # load bounding-box geometry (represented in sensor's frame at label-time)
+            bbox_labeltime = BBox3(centroid=(row.centroid_x, row.centroid_y, row.centroid_z),
+                                   dim=(row.dim_x, row.dim_y, row.dim_z),
+                                   rot=(
+                                       row.rot_x,
+                                       row.rot_y,
+                                       row.rot_z,
+                                   ))
+
+            # apply motion-compensation transformation to bounding box (transform bbox from sensor at label-time to sensor at frame-time)
+            T_rig_labeltime_world, T_rig_frametime_world = pose_interpolator.interpolate_to_timestamps(
+                [label_timestamp_us, label_frame_timestamp_us])
+            T_sensor_labeltime_world = T_rig_labeltime_world @ T_sensor_rigs[sensor_id]
+            T_sensor_frametime_world = T_rig_frametime_world @ T_sensor_rigs[sensor_id]
+            T_sensor_labeltime_sensor_frametime = se3_inverse(T_sensor_frametime_world) @ T_sensor_labeltime_world
+
+            bbox_frametime = BBox3.from_array(
+                transform_bbox(bbox_labeltime.to_array(), T_sensor_labeltime_sensor_frametime))
+
             # this is assuming velocity is not relative to the local sensor motion, but w.r.t. fixed scene / world
             global_speed = float(np.linalg.norm([row.velocity_x, row.velocity_y, row.velocity_z]))
 
@@ -479,13 +511,7 @@ class LabelProcessor:
                             confidence=row.confidence,
                             source=source,
                             timestamp_us=label_timestamp_us,
-                            bbox3=BBox3(centroid=(row.centroid_x, row.centroid_y, row.centroid_z),
-                                        dim=(row.dim_x, row.dim_y, row.dim_z),
-                                        rot=(
-                                            row.rot_x,
-                                            row.rot_y,
-                                            row.rot_z,
-                                        ))))
+                            bbox3=bbox_frametime))
 
             # store track label data
             if track_id not in track_labels:

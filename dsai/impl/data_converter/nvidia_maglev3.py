@@ -187,10 +187,19 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         # Perform label parsing (of global time)
         self.track_labels, self.frame_labels = LabelProcessor.parse(
-            labels_path, {
+            labels_path,
+            {
                 lidar_id: self.sequence_path / 'lidars' / lidar_rig_name / 'meta.json'
                 for lidar_id, lidar_rig_name in self.LIDARID_TO_RIGNAME.items()
-            }, self.global_start_timestamp_us, self.global_end_timestamp_us, LabelSource.AUTOLABEL, logger)
+            },
+            {
+                lidar_id: sensor_to_rig(self.sensors_calibration_data[lidar_rig_name])
+                for lidar_id, lidar_rig_name in self.LIDARID_TO_RIGNAME.items()
+            },
+            self.global_T_rig_world_timestamps_us,
+            self.global_T_rig_worlds,
+            LabelSource.AUTOLABEL,
+            logger)
 
         # Save the accumulated tracks in global time
         self.data_writer.store_labels(self.track_labels)
