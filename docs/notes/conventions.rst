@@ -75,20 +75,12 @@ camera.
 
 .. _image_coordinate_conventions:
 
-.. figure:: ../images/image_coordinates.svg
-   :figwidth: 60%
-   :width: 80%
-
-   Image coordinates convention illustrated for an image with resolution ``640x480``
-
 The image coordinate system is defined such that the u-axis points to
 the right and the v-axis down. The origin of the image coordinate system
 is in the top left corner of the image, and the units are pixels.
-Continuous pixel coordinates start with ``[0.0, 0.0]`` at the center of
+Continuous pixel coordinates start with ``[0.0, 0.0]`` at the top-left corner of
 the top-left pixel in the image, i.e., both the u and v coordinates of
-the first pixel span the range ``[−0.5, 0.5]``. This results in the
-*center* of every image pixel to have *integer* coordinates, which are
-identical to the column / row indices for that pixel.
+the first pixel span the range ``[0.0, 1.0]``.
 
 
 Shard Data Hierarchy (DSAI V3 Data Format)
@@ -252,8 +244,9 @@ If ``camera_model_type = 'f_theta'`` the following intrinsic parameters
 will additionally be available in ``camera_model_parameters``:
 
 * ``principal_point`` - u and v coordinate of the principal point,
-  following the :ref:`image coordinate conventions
-  <image_coordinate_conventions>` for pixel-centers (float32, [2,])
+  following the NVIDIA default convention where the pixel indices represent
+  the center of the pixel. NOTE: principal point will be adapted in the APIs
+  to reflect the convention described above.(float32, [2,])
 * ``reference_poly`` - indicating which of the two polynomials is the
   *reference* polynomial - the other polynomial is only an approximation
   of the inverse of the reference polynomial (str, one of
