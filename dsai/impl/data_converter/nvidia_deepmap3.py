@@ -88,6 +88,8 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
             with open(os.path.join(sequence_path, 'rig.json'), 'r') as fp:
                 self.rig = json.load(fp)
 
+            self.calibration_data = parse_rig_sensors_from_dict(self.rig)
+
             # Initialize the track aligned track record structure
             self.track_data = track_data_pb2.AlignedTrackRecords()
 
@@ -112,8 +114,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
 
     def decode_poses_timestamps(self, sequence_path):
         # Compute the transformation from the SDC (deepmap rig) to the NV rig definition
-        calibration_data = parse_rig_sensors_from_dict(self.rig)
-        T_lidar_rig = sensor_to_rig(calibration_data[self.LIDARID_TO_RIGNAME[self.LIDAR_SENSOR_ID]])
+        T_lidar_rig = sensor_to_rig(self.calibration_data[self.LIDARID_TO_RIGNAME[self.LIDAR_SENSOR_ID]])
         T_lidar_sdc = extract_sensor_2_sdc(os.path.join(sequence_path, 'to_vehicle_transform_lidar00.pb.txt'))
         T_rig_sdc = T_lidar_sdc @ np.linalg.inv(T_lidar_rig)
 
@@ -169,15 +170,15 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
         self.track_labels, self.frame_labels = LabelProcessor.parse(
             os.path.join(sequence_path, 'labels', 'autolabels.parquet'),
             {self.LIDAR_SENSOR_ID: os.path.join(sequence_path, 'labels', f'{self.LIDAR_SENSOR_ID}_meta.json')},
-            self.poses_timestamps[0], self.poses_timestamps[-1], LabelSource.AUTOLABEL, self.logger)
+            {self.LIDAR_SENSOR_ID: sensor_to_rig(self.calibration_data[self.LIDARID_TO_RIGNAME[self.LIDAR_SENSOR_ID]])},
+             self.poses_timestamps, self.poses, LabelSource.AUTOLABEL, self.logger)
 
         # Save the accumulated track
         self.data_writer.store_labels(self.track_labels)
 
     def decode_lidar(self, sequence_path):
         # Load lidar extrinsics to compute poses of the rig frame if egomotion is represented in lidar frame
-        calibration_data = parse_rig_sensors_from_dict(self.rig)
-        T_lidar_rig = sensor_to_rig(calibration_data[self.LIDARID_TO_RIGNAME[self.LIDAR_SENSOR_ID]])
+        T_lidar_rig = sensor_to_rig(self.calibration_data[self.LIDARID_TO_RIGNAME[self.LIDAR_SENSOR_ID]])
 
         # Load vehicle bounding box (defined in rig frame)
         vehicle_bbox_rig = vehicle_bbox(self.rig)
@@ -299,9 +300,6 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                                           T_sensor_rig=T_lidar_rig)
 
     def decode_cameras(self, sequence_path):
-        # Parse the rig calibration file
-        calibration_data = parse_rig_sensors_from_dict(self.rig)
-
         # Pose interpolator to obtain start / end egomotion poses
         pose_interpolator = PoseInterpolator(self.poses, self.poses_timestamps)
 
@@ -388,7 +386,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                 f'not all camera frames serialized for camera {camera_id}'
 
             # Extract the calibration metadata
-            camera_calibration_data = calibration_data[camera_rig_name]
+            camera_calibration_data = self.calibration_data[camera_rig_name]
             T_sensor_rig = sensor_to_rig(camera_calibration_data)
 
             # Estimate the forward polynomial

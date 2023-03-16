@@ -106,7 +106,7 @@ def axis_angle_2_quaternion(axis, angle, degrees=True):
         (np array): rotation given in unit quaternion [n,4]
     '''
     return axis_angle_2_so3(axis, angle, degrees).as_quat()
-    
+
 
 def so3_2_axis_angle(so3, degrees=True):
     ''' Converts the so3 representation to axis_angle
@@ -165,6 +165,31 @@ def transform_point_cloud(pc, T):
         return trans_pts.transpose()
 
 
+def transform_bbox(bbox_source: np.ndarray, T_source_target: np.ndarray) -> np.ndarray:
+    ''' Applies a rigid-transformation to a bounding box 
+     Args:
+        bbox (np.ndarray): bounding-box in source-frame parameterized by [x, y, z, length, width, height, eulerX, eulerY, eulerZ]
+        T (np.array): se3 source->target transformation matrix to apply [4,4]
+     Out:
+        (np array): transformed bounding-box [num_pts, 3] or [bs, num_pts, 3]
+     '''
+
+    # Convert bbox to corresponding pose
+    T_bbox_source = np.block(
+        [[R.from_euler('xyz', bbox_source[6:9], degrees=False).as_matrix(),
+          np.array(bbox_source[:3]).reshape((3, 1))], [np.array([0, 0, 0, 1])]])
+
+    # Apply transformation
+    T_bbox_target = T_source_target @ T_bbox_source
+
+    # Convert back to bbox parametrization
+    bbox_target = np.empty_like(bbox_source)
+    bbox_target[:3] = T_bbox_target[:3, 3]  # centroid
+    bbox_target[3:6] = bbox_source[3:6]  # dimensions stay unchanged
+    bbox_target[6:9] = R.from_matrix(T_bbox_target[:3, :3]).as_euler('xyz', degrees=False)  # orientation
+    return bbox_target
+
+
 def se3_inverse(T: np.ndarray) -> np.ndarray:
     ''' Computed the inverse of a rigid transformation 
     Args:
@@ -185,13 +210,13 @@ def local_ENU_2_ECEF_orientation(theta, phi):
     Out:
         (np.array): rotation from world pose to ECEF in so3 representation [n,3,3]
     '''
-    z_dir = np.concatenate([(np.sin(theta)*np.cos(phi))[:,None], 
-                            (np.sin(theta)*np.sin(phi))[:,None], 
+    z_dir = np.concatenate([(np.sin(theta)*np.cos(phi))[:,None],
+                            (np.sin(theta)*np.sin(phi))[:,None],
                             (np.cos(theta))[:,None] ],axis=1)
     z_dir = z_dir/np.linalg.norm(z_dir, axis=-1, keepdims=True)
 
-    y_dir = np.concatenate([-(np.cos(theta)*np.cos(phi))[:,None], 
-                            -(np.cos(theta)*np.sin(phi))[:,None], 
+    y_dir = np.concatenate([-(np.cos(theta)*np.cos(phi))[:,None],
+                            -(np.cos(theta)*np.sin(phi))[:,None],
                             (np.sin(theta))[:,None] ],axis=1)
     y_dir = y_dir/np.linalg.norm(y_dir, axis=-1, keepdims=True)
 
@@ -299,19 +324,19 @@ def lat_lng_alt_2_ecef(lat_lng_alt, orientation_axis, orientation_angle, earth_m
 
     elif earth_model == 'sphere':
         earth_radius = 6378137.0 # Earth radius in meters
-        z_dir =  np.concatenate([(np.sin(theta)*np.cos(phi))[:,None], 
-                            (np.sin(theta)*np.sin(phi))[:,None], 
+        z_dir =  np.concatenate([(np.sin(theta)*np.cos(phi))[:,None],
+                            (np.sin(theta)*np.sin(phi))[:,None],
                             (np.cos(theta))[:,None] ],axis=1)
 
         translation = (earth_radius + lat_lng_alt[:, -1])[:,None] * z_dir
-    
+
     else:
         raise ValueError ("Selected ellipsoid not implemented!")
 
     world_pose_orientation = axis_angle_2_so3(orientation_axis, orientation_angle)
 
     trans[:,:3,:3] =  R_enu_ecef @ world_pose_orientation
-    trans[:,:3,3] =  translation 
+    trans[:,:3,3] =  translation
 
     return trans
 
@@ -329,7 +354,7 @@ def ecef_2_lat_lng_alt(trans, earth_model='WGS84'):
 
     translation = trans[:,:3,3]
     rotation = trans[:,:3,:3]
-    
+
     if earth_model == 'WGS84':
         a = 6378137.0
         flattening = 1.0 / 298.257223563
@@ -367,7 +392,7 @@ def ecef_2_ENU(loc_ref_point: np.ndarray, earth_model: str ='WGS84'):
 
     # initialize the transformation to identity
     T_ecef_enu = np.eye(4)
-    
+
     if earth_model == 'WGS84':
         a = 6378137.0
         flattening = 1.0 / 298.257223563
@@ -376,12 +401,12 @@ def ecef_2_ENU(loc_ref_point: np.ndarray, earth_model: str ='WGS84'):
 
     elif earth_model == 'sphere':
         earth_radius = 6378137.0 # Earth radius in meters
-        z_dir =  np.concatenate([(np.sin(loc_ref_point[1])*np.cos(loc_ref_point[0]))[:,None], 
-                            (np.sin(loc_ref_point[1])*np.sin(loc_ref_point[0]))[:,None], 
+        z_dir =  np.concatenate([(np.sin(loc_ref_point[1])*np.cos(loc_ref_point[0]))[:,None],
+                            (np.sin(loc_ref_point[1])*np.sin(loc_ref_point[0]))[:,None],
                             (np.cos(loc_ref_point[0]))[:,None] ],axis=1)
 
         translation = ((earth_radius + loc_ref_point[:, -1])[:,None] * z_dir).reshape(3,1)
-    
+
     else:
         raise ValueError ("Selected ellipsoid not implemented!")
 

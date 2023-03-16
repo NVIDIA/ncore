@@ -154,8 +154,24 @@ class BBox3(dataclasses_json.DataClassJsonMixin):
     rot: Tuple[float, float, float]
 
     def to_array(self) -> np.ndarray:
-        ''' Convenience single-array representation '''
+        ''' Convert to convenience single-array representation '''
         return np.array(self.centroid + self.dim + self.rot, dtype=np.float32)
+
+    @classmethod
+    def from_array(cls, array: np.ndarray) -> BBox3:
+        ''' Convert from convenience single-array representation '''
+        return BBox3(centroid=(float(array[0]), float(array[1]), float(array[2])),
+                     dim=(float(array[3]), float(array[4]), float(array[5])),
+                     rot=(float(array[6]), float(array[7]), float(array[8])))
+
+    def __post_init__(self):
+        # Sanity checks
+        assert isinstance(self.centroid, tuple)
+        assert all(isinstance(i, float) for i in self.centroid)
+        assert isinstance(self.dim, tuple)
+        assert all(isinstance(i, float) for i in self.dim)
+        assert isinstance(self.rot, tuple)
+        assert all(isinstance(i, float) for i in self.rot)
 
 @unique
 class LabelSource(IntEnum):
