@@ -338,6 +338,75 @@ class TestReferenceFThetaCamera(CommonTestCase):
         self.assertAlmostEqual(actualMaxRadius, expectedMaxRadius)
 
 
+    def test_rays2imagePoints_rays2Pixels_consistency(self):
+        
+        resolution = 1000
+        principalPoint = (resolution - 1) / 2
+        baseAngle = np.radians(35)
+        backwardPolynomial = _generateBackwardPolynomial(resolution, baseAngle, 4)
+        cumulativeAngle = _computeCumulativeAngleAtImageBorder(baseAngle, 4)
+        camera = ReferenceFThetaCamera([resolution, resolution], [principalPoint, principalPoint], backwardPolynomial)
+    
+        ftheta_cam = ftheta_from_reference(camera, self.device,self.dtype)
+
+        # Points to test
+        opticalAxesRay = [0, 0, 1]
+        rightRay = [np.sin(cumulativeAngle), 0, np.cos(cumulativeAngle)]
+        bottomRay = [0, np.sin(cumulativeAngle), np.cos(cumulativeAngle)]
+
+        self._test_rays2imagePoints_rays2Pixels_consistencyTestCase(ftheta_cam, opticalAxesRay)
+        self._test_rays2imagePoints_rays2Pixels_consistencyTestCase(ftheta_cam, rightRay)
+        self._test_rays2imagePoints_rays2Pixels_consistencyTestCase(ftheta_cam, bottomRay)
+
+    def _test_rays2imagePoints_rays2Pixels_consistencyTestCase(self, ftheta_cam, cam_ray):
+
+        image_point = ftheta_cam.camera_rays_to_image_points(np.array(cam_ray, ndmin=2))[0].cpu()
+        pixel_idx = ftheta_cam.camera_rays_to_pixels(np.array(cam_ray, ndmin=2))[0].cpu()
+        self._compareVector(torch.floor(image_point), pixel_idx.float())
+
+
+    def test_imagePoints2rays_pixels2Rays_consistency(self):
+        resolution = 1000
+        principalPoint = (resolution - 1) / 2
+        baseAngle = np.radians(35)
+        backwardPolynomial = _generateBackwardPolynomial(resolution, baseAngle, 4)
+        cumulativeAngle = _computeCumulativeAngleAtImageBorder(baseAngle, 4)
+        camera = ReferenceFThetaCamera([resolution, resolution], [principalPoint, principalPoint], backwardPolynomial)
+    
+        ftheta_cam = ftheta_from_reference(camera, self.device,self.dtype)
+
+        # Points to test
+        pixel_idxs = np.random.choice(resolution-1, (100,2))
+
+        pixel_rays = ftheta_cam.pixels_to_camera_rays(pixel_idxs.astype(np.int32)).cpu()
+        image_point_rays = ftheta_cam.image_points_to_camera_rays((pixel_idxs + 0.5).astype(np.float32)).cpu()
+    
+        self._compareVector(pixel_rays, image_point_rays)
+
+
+    def test_inputs_and_input_types(self):
+        camera = ReferenceFThetaCamera(np.array([1000, 1000]), [10, 10], [0, np.radians(90) / 1000])
+        ftheta_cam = ftheta_from_reference(camera, self.device,self.dtype)
+
+        pixel = np.array([100, 100]).reshape(1,2)
+        ray = np.array([0,1,0]).reshape(1,3)
+
+        # Test invalid inputs
+        self.assertRaises(AssertionError, ftheta_cam.image_points_to_camera_rays, pixel.astype(np.int32))
+        self.assertRaises(AssertionError, ftheta_cam.pixels_to_camera_rays, pixel.astype(np.float32))
+
+        self.assertRaises(AssertionError, ftheta_cam.world_points_to_image_points_rolling_shutter, ray, np.eye(4), np.eye(4), **{'return_timestamps': True})
+        self.assertRaises(AssertionError, ftheta_cam.world_points_to_image_points_rolling_shutter, ray, np.eye(4), np.eye(4), 
+                                **{'start_timestamp_us': 100, 'end_timestamp_us': 90, 'return_timestamps': True})
+
+        self.assertRaises(AssertionError, ftheta_cam.world_points_to_image_points_rolling_shutter, ray, np.eye(4), np.eye(4), 
+                        **{'start_timestamp_us': 90.0, 'end_timestamp_us': 100.0, 'return_timestamps': True})
+        
+        # Test valid inputs
+        ftheta_cam.image_points_to_camera_rays(pixel.astype(np.float32)) 
+        ftheta_cam.pixels_to_camera_rays(pixel.astype(np.int32))
+        ftheta_cam.world_points_to_image_points_rolling_shutter(ray, np.eye(4), np.eye(4), **{'start_timestamp_us': 90, 'end_timestamp_us': 100, 'return_timestamps': True})
+
 def _solveLinearEquation(linearSystemMatrix, linearSystemVector):
     solution, _, _, _ = scipy.linalg.lstsq(linearSystemMatrix, linearSystemVector)
     return solution

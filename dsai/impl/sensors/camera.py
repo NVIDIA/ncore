@@ -130,6 +130,11 @@ class CameraModel(ABC):
             - [optional] indices of valid projections relative to the input points
             - [optional] timestamps of valid projections
          '''
+        
+        if return_timestamps:
+            assert isinstance(start_timestamp_us, int)
+            assert isinstance(end_timestamp_us, int)
+            assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
 
         tmp = self. world_points_to_image_points_rolling_shutter(world_points, T_world_sensor_start, T_world_sensor_end,
                                                         start_timestamp_us, end_timestamp_us, max_iterations, stop_mean_error_px,
@@ -144,8 +149,10 @@ class CameraModel(ABC):
     def world_points_to_pixels_static_pose(
             self, world_points: Union[torch.Tensor, np.ndarray],
             T_world_sensor: Union[torch.Tensor, np.ndarray],
+            timestamp_us: Optional[int] = None,
             return_projection_matrices: bool = True,
-            return_valid_indices: bool = True) -> CameraModel.WorldPointsToPixelsReturn:
+            return_valid_indices: bool = True,
+            return_timestamps:bool = False) -> CameraModel.WorldPointsToPixelsReturn:
         ''' Projects world points to corresponding pixel indices using a *fixed* sensor pose (not compensating for potential sensor-motion).
 
             Returns
@@ -155,20 +162,27 @@ class CameraModel(ABC):
             - [optional] timestamps of valid projections
          '''
 
-        tmp = self. world_points_to_image_points_static_pose(world_points, T_world_sensor, return_projection_matrices, return_valid_indices)
+        if return_timestamps:
+            assert isinstance(timestamp_us, int)
+        
+        tmp = self. world_points_to_image_points_static_pose(world_points, T_world_sensor, timestamp_us, 
+                                                             return_projection_matrices, return_valid_indices, return_timestamps)
 
         return self.WorldPointsToPixelsReturn(pixels=self.__image_points_to_pixel_indices(tmp.image_points),
                                               T_world_sensor=tmp.T_world_sensor,
                                               valid_indices=tmp.valid_indices,
-                                              timestamps=tmp.timestamps)   
+                                              timestamps=tmp.timestamps)
 
 
     def world_points_to_pixels_mean_pose(
             self, world_points: Union[torch.Tensor, np.ndarray],
             T_world_sensor_start: Union[torch.Tensor, np.ndarray],
             T_world_sensor_end: Union[torch.Tensor, np.ndarray],
+            start_timestamp_us: Optional[int] = None,
+            end_timestamp_us: Optional[int] = None,
             return_projection_matrices: bool = True,
-            return_valid_indices: bool = True) -> CameraModel.WorldPointsToPixelsReturn:
+            return_valid_indices: bool = True,
+            return_timestamps: bool = False) -> CameraModel.WorldPointsToPixelsReturn:
         ''' Projects world points to corresponding pixel indices using the *mean pose* of the sensor between
             the start and end poses (not compensating for potential sensor-motion).
 
@@ -178,12 +192,23 @@ class CameraModel(ABC):
             - [optional] indices of valid projections relative to the input points
             - [optional] timestamps of valid projections
          '''
+        
+        if return_timestamps:
+            assert isinstance(start_timestamp_us, int)
+            assert isinstance(end_timestamp_us, int)
+            assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+
+            timestamp_us = (end_timestamp_us + start_timestamp_us) // 2
+        
+        else:
+            timestamp_us = None
+
         return self.world_points_to_pixels_static_pose(
             world_points,
             self.__interpolate_poses(
                 self.to_torch(T_world_sensor_start).to(self.dtype),
-                self.to_torch(T_world_sensor_end).to(self.dtype), 0.5),
-            return_projection_matrices, return_valid_indices)
+                self.to_torch(T_world_sensor_end).to(self.dtype), 0.5), 
+            timestamp_us, return_projection_matrices, return_valid_indices, return_timestamps)
 
     def world_points_to_image_points_rolling_shutter(
             self,
@@ -221,10 +246,9 @@ class CameraModel(ABC):
         assert T_world_sensor_end.dtype == self.dtype
 
         if return_timestamps:
-            assert start_timestamp_us
-            assert end_timestamp_us
+            assert isinstance(start_timestamp_us, int)
+            assert isinstance(end_timestamp_us, int)
             assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
-
 
         # Always perform transformation using start pose
         init_image_points_start, valid_start = self.camera_rays_to_image_points(
@@ -323,6 +347,7 @@ class CameraModel(ABC):
     def world_points_to_image_points_static_pose(
             self, world_points: Union[torch.Tensor, np.ndarray],
             T_world_sensor: Union[torch.Tensor, np.ndarray],
+            timestamp_us: Optional[int] = None,
             return_projection_matrices: bool = True,
             return_valid_indices: bool = True,
             return_timestamps: bool = False) -> CameraModel.WorldPointsToImagePointsReturn:
@@ -345,6 +370,9 @@ class CameraModel(ABC):
         assert world_points.dtype == self.dtype
         assert T_world_sensor.dtype == self.dtype
 
+        if return_timestamps:
+            assert isinstance(timestamp_us, int)
+
         R_world_sensor = T_world_sensor[:3, :3]  # [3, 3]
         t_world_sensor = T_world_sensor[:3, 3]  # [3, 1]
 
@@ -360,10 +388,10 @@ class CameraModel(ABC):
             return_var.T_world_sensor = T_world_sensor.unsqueeze(0).repeat(int(valid.sum().item()), 1, 1)
 
         if return_valid_indices:
-            return_var.valid_indices =torch.where(valid)[0]
+            return_var.valid_indices = torch.where(valid)[0]
 
         if return_timestamps:
-            return_var.timestamps =torch.where(valid)[0]
+            return_var.timestamps = torch.tile(torch.tensor(timestamp_us), dims=(len(torch.where(valid)[0]),))
 
         return return_var
 
@@ -371,8 +399,11 @@ class CameraModel(ABC):
             self, world_points: Union[torch.Tensor, np.ndarray],
             T_world_sensor_start: Union[torch.Tensor, np.ndarray],
             T_world_sensor_end: Union[torch.Tensor, np.ndarray],
+            start_timestamp_us: Optional[int] = None,
+            end_timestamp_us: Optional[int] = None,
             return_projection_matrices: bool = True,
-            return_valid_indices: bool = True) -> CameraModel.WorldPointsToImagePointsReturn:
+            return_valid_indices: bool = True,
+            return_timestamps: bool = False) -> CameraModel.WorldPointsToImagePointsReturn:
         ''' Projects world points to corresponding image point coordinates using the *mean pose* of the sensor between
             the start and end poses (not compensating for potential sensor-motion).
 
@@ -382,13 +413,23 @@ class CameraModel(ABC):
             - [optional] indices of valid projections relative to the input points
             - [optional] timestamps of valid projections
          '''
+        
+        if return_timestamps:
+            assert isinstance(start_timestamp_us, int)
+            assert isinstance(end_timestamp_us, int)
+            assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+
+            timestamp_us = (end_timestamp_us + start_timestamp_us) // 2
+        
+        else:
+            timestamp_us = None
+        
         return self.world_points_to_image_points_static_pose(
             world_points,
             self.__interpolate_poses(
                 self.to_torch(T_world_sensor_start).to(self.dtype),
                 self.to_torch(T_world_sensor_end).to(self.dtype), 0.5),
-            return_projection_matrices, return_valid_indices)
-
+            timestamp_us, return_projection_matrices, return_valid_indices, return_timestamps)
 
     @dataclass
     class WorldRaysReturn:
@@ -398,9 +439,15 @@ class CameraModel(ABC):
     def pixels_to_world_rays_static_pose(self,
                                         pixel_idxs: Union[torch.Tensor, np.ndarray],
                                         T_sensor_world: Union[torch.Tensor, np.ndarray],
-                                        camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None) -> CameraModel.WorldRaysReturn:
-            
-        return self.image_points_to_world_rays_static_pose(self.__pixel_indices_to_image_points(pixel_idxs), T_sensor_world, camera_rays)
+                                        timestamp_us: Optional[int] = None,
+                                        camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
+                                        return_timestamps: bool = False) -> CameraModel.WorldRaysReturn:
+        
+        if return_timestamps:
+            assert isinstance(timestamp_us, int)
+    
+        return self.image_points_to_world_rays_static_pose(self.__pixel_indices_to_image_points(pixel_idxs), T_sensor_world, 
+                                                           timestamp_us, camera_rays, return_timestamps)
 
     def pixels_to_world_rays_rolling_shutter(self,
                                         pixel_idxs: Union[torch.Tensor, np.ndarray],
@@ -411,6 +458,11 @@ class CameraModel(ABC):
                                         camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
                                         return_timestamps: bool = False) -> CameraModel.WorldRaysReturn:
 
+        if return_timestamps:
+            assert isinstance(start_timestamp_us, int)
+            assert isinstance(end_timestamp_us, int)
+            assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+
         return self.image_points_to_world_rays_rolling_shutter(self.__pixel_indices_to_image_points(pixel_idxs), 
                                                                T_sensor_world_start, T_sensor_world_end,
                                                                start_timestamp_us, end_timestamp_us, camera_rays, return_timestamps)
@@ -419,16 +471,26 @@ class CameraModel(ABC):
                                         pixel_idxs: Union[torch.Tensor, np.ndarray],
                                         T_sensor_world_start: Union[torch.Tensor, np.ndarray],
                                         T_sensor_world_end: Union[torch.Tensor, np.ndarray],
-                                        camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None) -> CameraModel.WorldRaysReturn:
+                                        start_timestamp_us: Optional[int] = None,
+                                        end_timestamp_us: Optional[int] = None,
+                                        camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
+                                        return_timestamps: bool = False) -> CameraModel.WorldRaysReturn:
         
+        if return_timestamps:
+            assert isinstance(start_timestamp_us, int)
+            assert isinstance(end_timestamp_us, int)
+            assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+
         return self.image_points_to_world_rays_mean_pose(self.__pixel_indices_to_image_points(pixel_idxs), 
-                                                               T_sensor_world_start, T_sensor_world_end,
-                                                               camera_rays)
+                                                               T_sensor_world_start, T_sensor_world_end, 
+                                                               start_timestamp_us, end_timestamp_us, camera_rays, return_timestamps)
 
     def image_points_to_world_rays_static_pose(self,
                                                image_points: Union[torch.Tensor, np.ndarray],
                                                T_sensor_world: Union[torch.Tensor, np.ndarray],
-                                               camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None) -> CameraModel.WorldRaysReturn:
+                                               timestamp_us: Optional[int] = None,
+                                               camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
+                                               return_timestamps: bool = False) -> CameraModel.WorldRaysReturn:
         ''' Unprojects image points to world rays using a using a *fixed* sensor pose (not compensating for potential sensor-motion).
 
             Can optionally re-use known camera rays associated with image points.
@@ -445,6 +507,9 @@ class CameraModel(ABC):
         assert image_points.dtype == self.dtype
         assert T_sensor_world.dtype == self.dtype
 
+        if return_timestamps:
+            assert isinstance(timestamp_us, int)
+        
         # Unproject the image points to camera rays
         if camera_rays is not None:
             # Reuse provided camera rays
@@ -473,7 +538,10 @@ class CameraModel(ABC):
                                              image_points: Union[torch.Tensor, np.ndarray],
                                              T_sensor_world_start: Union[torch.Tensor, np.ndarray],
                                              T_sensor_world_end: Union[torch.Tensor, np.ndarray],
-                                             camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None) -> CameraModel.WorldRaysReturn:
+                                             start_timestamp_us: Optional[int] = None,
+                                             end_timestamp_us: Optional[int] = None,
+                                             camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
+                                             return_timestamps: bool = False) -> CameraModel.WorldRaysReturn:
         ''' Unprojects image points to world rays using the *mean pose* of the sensor between
             the start and end poses (not compensating for potential sensor-motion).
 
@@ -481,11 +549,22 @@ class CameraModel(ABC):
 
             For each image point returns 3d world rays [point, direction], represented by 3d start of ray points and 3d ray directions in the world frame
         '''
+        if return_timestamps:
+            assert isinstance(start_timestamp_us, int)
+            assert isinstance(end_timestamp_us, int)
+            assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+
+            timestamp_us = (end_timestamp_us + start_timestamp_us) // 2
+        
+        else:
+            timestamp_us = None
+
+
         return self.image_points_to_world_rays_static_pose(
             image_points,
             self.__interpolate_poses(
                 self.to_torch(T_sensor_world_start).to(self.dtype),
-                self.to_torch(T_sensor_world_end).to(self.dtype), 0.5), camera_rays)
+                self.to_torch(T_sensor_world_end).to(self.dtype), 0.5), timestamp_us, camera_rays, return_timestamps)
 
     def image_points_to_world_rays_rolling_shutter(
             self,
@@ -504,7 +583,7 @@ class CameraModel(ABC):
         '''
         # Global-shutter special case - no need for rolling-shutter compensation, use unprojections from start-pose as single available pose
         if self.shutter_type == types.ShutterType.GLOBAL:
-            return self.image_points_to_world_rays_static_pose(image_points, T_sensor_world_start, camera_rays)
+            return self.image_points_to_world_rays_static_pose(image_points, T_sensor_world_start, start_timestamp_us, camera_rays, return_timestamps)
 
         # Check if the variables are numpy, convert them to torch and send them to correct device
         image_points = self.to_torch(image_points).to(self.dtype)
@@ -520,8 +599,8 @@ class CameraModel(ABC):
         assert T_sensor_world_end.dtype == self.dtype
 
         if return_timestamps:
-            assert start_timestamp_us
-            assert end_timestamp_us
+            assert isinstance(start_timestamp_us, int)
+            assert isinstance(end_timestamp_us, int)
             assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
 
         # Unproject the image points to camera rays
@@ -820,7 +899,9 @@ class FThetaCameraModel(CameraModel):
         Computes the camera ray for each image point
         '''
 
-        image_points = self.to_torch(image_points).to(self.dtype)
+        image_points = self.to_torch(image_points)
+        assert image_points.is_floating_point(), "[CameraModel]: image_points must be floating point values"
+        image_points = image_points.to(self.dtype)
 
         image_points_dist = image_points - self.principal_point
         rdist = torch.linalg.norm(image_points_dist, axis=1, keepdims=True)
@@ -955,8 +1036,11 @@ class PinholeCameraModel(CameraModel):
         '''
         Computes the camera ray for each image point, performing an iterative undistortion of the nonlinear distortion model
         '''
+        
+        image_points = self.to_torch(image_points)
+        assert image_points.is_floating_point(), "[CameraModel]: image_points must be floating point values"
+        image_points = image_points.to(self.dtype)
 
-        image_points = self.to_torch(image_points).to(self.dtype)
         camera_rays = self.__iterative_undistort(image_points)
 
         return torch.cat([camera_rays, torch.ones_like(camera_rays[:, 0:1])], dim=1)
