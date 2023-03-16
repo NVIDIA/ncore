@@ -79,8 +79,8 @@ def dsai_project_pc_to_img(shard_file_pattern: str, sensor_id: str, camera_id: s
             pc, T_world_sensor_start, T_world_sensor_end)
 
         image_point_coords = world_point_projections.image_points.cpu().numpy()
-        trans_matrices = trans_matrices.cpu().numpy()
-        valid_idx = valid_idx.cpu().numpy()
+        trans_matrices = world_point_projections.T_world_sensor.cpu().numpy() # type: ignore
+        valid_idx = world_point_projections.valid_indices.cpu().numpy() # type: ignore
         transformed_points = transform_point_cloud(pc[valid_idx, None, :], trans_matrices).squeeze(1)
         dist_rs = np.linalg.norm(transformed_points, axis=1, keepdims=True)
 
