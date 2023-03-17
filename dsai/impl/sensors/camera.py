@@ -94,7 +94,6 @@ class CameraModel(ABC):
 
         return var.to(self.device)
 
-
     @dataclass
     class WorldPointsToPixelsReturn:
         '''
@@ -122,6 +121,7 @@ class CameraModel(ABC):
         T_world_sensors: Optional[torch.Tensor] = None
         valid_indices: Optional[torch.Tensor] = None
         timestamps_us: Optional[torch.Tensor] = None
+
     @dataclass
     class WorldRaysReturn:
         '''
@@ -335,15 +335,9 @@ class CameraModel(ABC):
 
             image_points_rs_prev = image_points_rs.image_points
 
-        if return_timestamps:
-            timestamps_us = torch.floor((1 - t)[..., None] * start_timestamp_us + t[..., None] * end_timestamp_us).to(torch.int64)
             
         # We always return image points
         return_var = self.WorldPointsToImagePointsReturn(image_points=image_points_rs.image_points[image_points_rs.valid_flag])
-
-        # Combine validity flags
-        # (valid_rs represents a strict logical subset of full valid flags, so no logical operation required)
-        valid[torch.argwhere(valid).squeeze()] = image_points_rs.valid_flag
 
         if return_T_world_sensors:
             # Generate the output matrix
@@ -355,10 +349,13 @@ class CameraModel(ABC):
             return_var.T_world_sensors = trans_matrices
 
         if return_valid_indices:
+            # Combine validity flags
+            # (valid_rs represents a strict logical subset of full valid flags, so no logical operation required)
+            valid[torch.argwhere(valid).squeeze()] = image_points_rs.valid_flag
             return_var.valid_indices = torch.argwhere(valid).squeeze()
 
         if return_timestamps:
-            return_var.timestamps_us = timestamps_us
+            return_var.timestamps_us = (torch.floor((1 - t)[..., None] * start_timestamp_us + t[..., None] * end_timestamp_us).to(torch.int64)).squeeze()
 
         return return_var
 
@@ -643,7 +640,7 @@ class CameraModel(ABC):
         return_var = self.WorldRaysReturn(world_rays=world_rays)
 
         if return_timestamps:
-            return_var.timestamps_us= torch.floor((1 - t)[..., None] * start_timestamp_us + t[..., None] * end_timestamp_us).to(torch.int64)
+            return_var.timestamps_us = (torch.floor((1 - t)[..., None] * start_timestamp_us + t[..., None] * end_timestamp_us).to(torch.int64)).squeeze()
 
         return return_var
 
