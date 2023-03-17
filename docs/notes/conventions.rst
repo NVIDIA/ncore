@@ -66,14 +66,21 @@ corresponding to a lidar spin).
    :figwidth: 40%
    :width: 80%
 
-Both camera and image coordinate systems are right-handed coordinate
-systems. The axes of the camera coordinate system are defined as
-follows, the camera looks down the +z axis, the x-axis points to the
-right, and the y-axis points down. The origin is at the optical center
-of the camera. The image coordinate system is defined such that the
-u-axis points to the right and the v-axis down. The origin of the image
-coordinate system is in the top left corner of the image, and the units
-are pixels.
+Both extrinsic camera and intrinsic image coordinate systems are
+right-handed coordinate systems. The axes of the extrinsic camera
+coordinate system are defined such that the camera's principal axis is
+along the +z axis, the x-axis points to the right, and the y-axis points
+down. The principal point corresponds to the optical center of the
+camera.
+
+.. _image_coordinate_conventions:
+
+The image coordinate system is defined such that the u-axis points to
+the right and the v-axis down. The origin of the image coordinate system
+is in the top left corner of the image, and the units are pixel s.
+Continuous pixel coordinates start with ``[0.0, 0.0]`` at the top-left corner of
+the top-left pixel in the image, i.e., both the u and v coordinates of
+the first pixel span the range ``[0.0, 1.0]``.
 
 
 Shard Data Hierarchy (DSAI V3 Data Format)
@@ -236,8 +243,14 @@ The field ``camera_model_parameters`` will unconditionally contain:
 If ``camera_model_type = 'f_theta'`` the following intrinsic parameters
 will additionally be available in ``camera_model_parameters``:
 
-* ``principal_point`` - u and v coordinate of the principal point
-  (float32, [2,])
+* ``principal_point`` - u and v coordinate of the principal point,
+  following the NVIDIA default convention for FTheta camera models
+  in which the pixel indices represent the center of the pixel
+  (not the top-left corners). NOTE: principal point coordinates
+  will be adapted internally in camera model APIs to reflect
+  the :ref:`image coordinate conventions
+  <image_coordinate_conventions>` (float32, [2,])
+
 * ``reference_poly`` - indicating which of the two polynomials is the
   *reference* polynomial - the other polynomial is only an approximation
   of the inverse of the reference polynomial (str, one of
@@ -256,8 +269,9 @@ will additionally be available in ``camera_model_parameters``:
 If ``camera_model_type` = 'pinhole'`` the following intrinsic parameters
 will additionally be available in ``camera_model_parameters``:
 
-* ``principal_point`` - u and v coordinate of the principal point in
-  image coordinates (float32, [2,])
+* ``principal_point`` - u and v coordinate of the principal point,
+  following the :ref:`image coordinate conventions
+  <image_coordinate_conventions>` (float32, [2,])
 * ``focal_length`` - focal lengths in u and v direction, resp., mapping
   (distorted) normalized camera coordinates to image coordinates
   (float32, [2,])

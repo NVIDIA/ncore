@@ -18,18 +18,18 @@ from .camera import FThetaCameraModel, PinholeCameraModel
 ## Reference camera implementation
 class ReferenceCamera(metaclass=abc.ABCMeta):
     def project(self, point3d):
-        return self.ray2pixel(point3d)
+        return self.ray2imagePoint(point3d)
 
     @abc.abstractmethod
-    def ray2pixelIfVisible(self, point3d):
+    def rays2imagePointsIfVisible(self, point3d):
         pass
 
     @abc.abstractmethod
-    def ray2pixel(self, point3d):
+    def rays2imagePoints(self, point3d):
         pass
 
     @abc.abstractmethod
-    def pixel2ray(self, pixel2d):
+    def imagePoints2rays(self, imagePoint2d):
         pass
 
 
@@ -49,36 +49,34 @@ class ReferenceFThetaCamera(ReferenceCamera):
 
     def isVisible(self, point2d):
         # potential different design decision:
-        # - a single pixel has a width of 1 pixel and a height of 1 pixel
-        # - the image coordinates point to the center of a pixel
-        # - accordingly, the upper left corner of the upper left pixel in the image
-        #   has the coordinates [-0.5, -0.5]
-        # - potentially, also the coordinate [-0.5, -0.5] would still be
-        #   considered visible
+        # a single pixel has a width of 1 pixel and a height of 1 pixel
+        # the pixel index points to the center of the pixel
+        # accordingly, the upper left corner of the upper left pixel in the image
+        # has the coordinates [-0.5, -0.5]
+        # potentially, also the coordinate [-0.5, -0.5] would still be
+        # considered visible
+
         lastPixel = self._imageSize - np.array([1, 1])
         return ((0 <= point2d[0]) and (point2d[0] <= lastPixel[0]) and (0 <= point2d[1])
                 and (point2d[1] <= lastPixel[1]))
 
+
     def setBackwardPolynomial(self, backwardPolynomial):
         self._backwardPolynomial = backwardPolynomial
 
-    def ray2pixelIfVisible(self, point3d):
+    def rays2imagePointsIfVisible(self, point3d):
         """map a 3d ray to the visible part of the image. return [] if the mapping
         is not within the image boundaries.
         """
-        point2d = self.ray2pixel(point3d)
-        if 0 < len(point2d) and self.isVisible(point2d):
-            return point2d
+        imagePoints2d = self.rays2imagePoints(point3d)
+        if 0 < len(imagePoints2d) and self.isVisible(imagePoints2d):
+            return imagePoints2d
         else:
             return []
 
-    def ray2pixel(self, point3d):
-        return self.rays2pixels(point3d)
-
-    def rays2pixels(self, points3d):
-        # vectorized version of ray2pixel
+    def rays2imagePoints(self, points3d):
         # project to unit sphere
-        rays3d = np.array(points3d, dtype=float).T
+        rays3d = np.array(points3d, dtype=float).T 
         rays3d_norm = np.linalg.norm(rays3d, axis=0)
         rays3d /= rays3d_norm
 
@@ -100,16 +98,16 @@ class ReferenceFThetaCamera(ReferenceCamera):
         # add principal point. for rays with vanishing polar angle round to principal point
         polar_mask = np.broadcast_to(np.finfo(float).eps < polars, offsets2d.shape).T
         offsets2d = offsets2d.T
-        points2d = np.full_like(offsets2d, self._principalPoint)
-        points2d[polar_mask] += offsets2d[polar_mask]
+        imagePoints2d = np.full_like(offsets2d, self._principalPoint)
+        imagePoints2d[polar_mask] += offsets2d[polar_mask]
 
-        return points2d
+        return imagePoints2d
 
-    def pixel2ray(self, pixel2d):
-        offset2d = np.array(pixel2d) - self._principalPoint
-        return self._offset2ray(offset2d)
+    def imagePoints2rays(self, imagePoints2d):
+        offsets2d = np.array(imagePoints2d) - self._principalPoint
+        return self._offsets2rays(offsets2d)
 
-    def _offset2ray(self, offset2d):
+    def _offsets2rays(self, offset2d):
         offset = np.array(offset2d)
         radius = np.linalg.norm(offset, axis=offset.ndim - 1, keepdims=True)
         theta = self._radius2angle(radius)
@@ -193,12 +191,12 @@ class CommonTestCase(unittest.TestCase):
                                    itertools.product(('cpu', 'cuda'), (torch.float32, torch.float64)))
 class TestReferenceFThetaCamera(CommonTestCase):
     ''' Parameterized test cases validating both the reference implementation and the torch-based camera model '''
-    def test_pixel2ray(self):
+    def test_imagePoints2rays(self):
         """test backward polynomial coefficients from r**1, r**2, ... r**4"""
         for orderPolynomial in range(1, 5):
-            self._test_pixel2ray_orderPolynomial(orderPolynomial)
+            self._test_imagePoints2rays_orderPolynomial(orderPolynomial)
 
-    def _test_pixel2ray_orderPolynomial(self, orderPolynomial):
+    def _test_imagePoints2rays_orderPolynomial(self, orderPolynomial):
         """test backward polynomial coefficients up to r**orderPolynomial"""
         baseAngle = np.radians(45)
         resolution = 1000
@@ -208,46 +206,46 @@ class TestReferenceFThetaCamera(CommonTestCase):
 
         camera = ReferenceFThetaCamera([resolution, resolution], [principalPoint, principalPoint], backwardPolynomial)
 
-        self._executePixels2RayTestCase(camera, [[principalPoint, principalPoint]], [[0, 0, 1]])
-        self._executePixels2RayTestCase(
+        self._executeImagePoints2RaysTestCase(camera, [[principalPoint, principalPoint]], [[0, 0, 1]])
+        self._executeImagePoints2RaysTestCase(
             camera, [[resolution - 1, principalPoint]],
             [[np.sin(cumulativeAngle), 0, np.cos(cumulativeAngle)]])
-        self._executePixels2RayTestCase(
+        self._executeImagePoints2RaysTestCase(
             camera, [[principalPoint, resolution - 1]],
             [[0, np.sin(cumulativeAngle), np.cos(cumulativeAngle)]])
 
-        self._executePixels2RayTestCase(
+        self._executeImagePoints2RaysTestCase(
             camera,
             [[principalPoint, principalPoint], [resolution - 1, principalPoint], [principalPoint, resolution - 1]],
             [[0, 0, 1], [np.sin(cumulativeAngle), 0, np.cos(cumulativeAngle)],
              [0, np.sin(cumulativeAngle), np.cos(cumulativeAngle)]])
 
-    def test_pixel2ray_shiftedPrincipalPoint(self):
+    def test_imagePoints2ray_shiftedPrincipalPoint(self):
         """test principal point shift for camera without radial distortions"""
         fov = np.radians(90)
         resolution = np.array([1000, 1000])
-        camera = ReferenceFThetaCamera(resolution, [0, 0], [0, fov / resolution[0]])
-        self._executePixels2RayTestCase(camera, [[resolution[0] / 2, 0]], [[np.sin(fov / 2), 0, np.cos(fov / 2)]])
-        self._executePixels2RayTestCase(camera, [[0, resolution[1] / 2]], [[0, np.sin(fov / 2), np.cos(fov / 2)]])
+        camera = ReferenceFThetaCamera(resolution, [10, 10], [0, fov / resolution[0]])
+        self._executeImagePoints2RaysTestCase(camera, [[ 10 + resolution[0] / 2,  10]], [[np.sin(fov / 2), 0, np.cos(fov / 2)]])
+        self._executeImagePoints2RaysTestCase(camera, [[10, 10 + resolution[1] / 2]], [[0, np.sin(fov / 2), np.cos(fov / 2)]])
 
-    def _executePixels2RayTestCase(self, camera, pixels2d, rays3dExpected):
+    def _executeImagePoints2RaysTestCase(self, camera, imagePoints2d, rays3dExpected):
         # Reference
-        for a, e in zip(camera.pixel2ray(pixels2d), rays3dExpected):
+        for a, e in zip(camera.imagePoints2rays(imagePoints2d), rays3dExpected):
             self._compareVector(a, e)
 
         # Torch-version
         for a, e in zip(
                 np.array(
                     ftheta_from_reference(camera, self.device,
-                                          self.dtype).pixels_to_camera_rays(np.array(pixels2d, ndmin=2)).cpu()),
+                                          self.dtype).image_points_to_camera_rays(np.array(imagePoints2d, ndmin=2)).cpu()),
                 np.array(rays3dExpected, ndmin=2)):
             self._compareVector(a, e)
 
-    def test_ray2pixel(self):
+    def test_rays2imagePoints(self):
         for orderPolynomial in range(1, 5):
-            self._test_ray2pixel_orderPolynomial(orderPolynomial)
+            self._test_rays2imagePoints_orderPolynomial(orderPolynomial)
 
-    def _test_ray2pixel_orderPolynomial(self, orderPolynomial):
+    def _test_rays2imagePoints_orderPolynomial(self, orderPolynomial):
         baseAngle = np.radians(35)
         # note: accuracy of 10^-7 not reached for baseAngle= 30deg
         # baseAngle= np.radians(30)
@@ -261,29 +259,27 @@ class TestReferenceFThetaCamera(CommonTestCase):
         rightRay = [np.sin(cumulativeAngle), 0, np.cos(cumulativeAngle)]
         bottomRay = [0, np.sin(cumulativeAngle), np.cos(cumulativeAngle)]
 
-        self._executeRays2PixelsTestCase(camera, [opticalAxesRay], [[principalPoint, principalPoint]])
-        self._executeRays2PixelsTestCase(camera, [rightRay], [[resolution - 1, principalPoint]])
-        self._executeRays2PixelsTestCase(camera, [bottomRay], [[principalPoint, resolution - 1]])
+        self._executeRays2ImagePointsTestCase(camera, [opticalAxesRay], [[principalPoint, principalPoint]])
+        self._executeRays2ImagePointsTestCase(camera, [rightRay], [[resolution - 1, principalPoint]])
+        self._executeRays2ImagePointsTestCase(camera, [bottomRay], [[principalPoint, resolution - 1]])
 
         rays3d = np.array([opticalAxesRay, rightRay, bottomRay])
-        pixels2dExpected = np.array([[principalPoint, principalPoint], [resolution - 1, principalPoint],
+        imagePoints2dExpected = np.array([[principalPoint, principalPoint], [resolution - 1, principalPoint],
                                      [principalPoint, resolution - 1]])
-        self._executeRays2PixelsTestCase(camera, rays3d, pixels2dExpected)
+        self._executeRays2ImagePointsTestCase(camera, rays3d, imagePoints2dExpected)
 
-    def _executeRays2PixelsTestCase(self, camera, rays3d, pixels2dExpected):
+    def _executeRays2ImagePointsTestCase(self, camera, rays3d, imagePoints2dExpected):
         # Reference
-        for a, e in zip(camera.rays2pixels(rays3d), pixels2dExpected):
+        for a, e in zip(camera.rays2imagePoints(rays3d), imagePoints2dExpected):
             self._compareVector(a, e)
 
         # Torch-version
-        for a, e in zip(
-                np.array(
-                    ftheta_from_reference(camera, self.device,
-                                          self.dtype).camera_rays_to_pixels(np.array(rays3d, ndmin=2))[0].cpu()),
-                np.array(pixels2dExpected, ndmin=2)):
-            self._compareVector(a, e)
+        a = ftheta_from_reference(camera, self.device, self.dtype).camera_rays_to_image_points(np.array(rays3d, ndmin=2))
+        e = np.array(imagePoints2dExpected, ndmin=2)
+        
+        self._compareVector(np.array(a.image_points.cpu()), e)
 
-    def test_pixel2ray_ray2pixel_consistency(self):
+    def test_imagePoints2rays_rays2imagePoints_consistency(self):
         ''' Tests self-consistency of both the reference camera and torch-based FTheta cameras, as well as
             cross-consistency of both cameras '''
         MAX_DEVIATION_IN_PIXEL = 0.001
@@ -306,10 +302,10 @@ class TestReferenceFThetaCamera(CommonTestCase):
                 expectedPoint2d = np.array([[p, p]])
 
                 # Evaluate reference camera
-                ray3d_ref = camera_ref.pixel2ray(expectedPoint2d)
+                ray3d_ref = camera_ref.imagePoints2rays(expectedPoint2d)
 
                 # Evaluate torch-camera
-                ray3d = camera_ftheta.pixels_to_camera_rays(
+                ray3d = camera_ftheta.image_points_to_camera_rays(
                     camera_ftheta.to_torch(expectedPoint2d).to(camera_ftheta.dtype))
 
                 # test that the computed rays of both cameras agree
@@ -317,12 +313,12 @@ class TestReferenceFThetaCamera(CommonTestCase):
 
                 with self.subTest(angle=np.degrees(np.arccos(ray3d_ref[0][2]))):
                     # Verify reference camera's result
-                    actualPoint2d_ref = camera_ref.ray2pixel(ray3d_ref)
+                    actualPoint2d_ref = camera_ref.rays2imagePoints(ray3d_ref)
                     self.assertLessEqual(np.linalg.norm(expectedPoint2d - actualPoint2d_ref), MAX_DEVIATION_IN_PIXEL)
 
                     # Verify torch-camera's result
-                    actualPoint2d, _ = camera_ftheta.camera_rays_to_pixels(ray3d)
-                    self.assertLessEqual(np.linalg.norm(expectedPoint2d - np.array(actualPoint2d.cpu())),
+                    image_points = camera_ftheta.camera_rays_to_image_points(ray3d)
+                    self.assertLessEqual(np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())),
                                          MAX_DEVIATION_IN_PIXEL)
 
     def test_calculateMaxRadius(self):
@@ -345,6 +341,71 @@ class TestReferenceFThetaCamera(CommonTestCase):
         self.assertAlmostEqual(actualMaxRadius, expectedMaxRadius)
 
 
+    def test_rays2imagePoints_rays2Pixels_consistency(self):
+        
+        resolution = 1000
+        principalPoint = (resolution - 1) / 2
+        baseAngle = np.radians(35)
+        backwardPolynomial = _generateBackwardPolynomial(resolution, baseAngle, 4)
+        cumulativeAngle = _computeCumulativeAngleAtImageBorder(baseAngle, 4)
+        camera = ReferenceFThetaCamera([resolution, resolution], [principalPoint, principalPoint], backwardPolynomial)
+    
+        ftheta_cam = ftheta_from_reference(camera, self.device,self.dtype)
+
+        # Points to test
+        opticalAxesRay = [0, 0, 1]
+        rightRay = [np.sin(cumulativeAngle), 0, np.cos(cumulativeAngle)]
+        bottomRay = [0, np.sin(cumulativeAngle), np.cos(cumulativeAngle)]
+
+        self._test_rays2imagePoints_rays2Pixels_consistencyTestCase(ftheta_cam, opticalAxesRay)
+        self._test_rays2imagePoints_rays2Pixels_consistencyTestCase(ftheta_cam, rightRay)
+        self._test_rays2imagePoints_rays2Pixels_consistencyTestCase(ftheta_cam, bottomRay)
+
+    def _test_rays2imagePoints_rays2Pixels_consistencyTestCase(self, ftheta_cam, cam_ray):
+
+        image_points = ftheta_cam.camera_rays_to_image_points(np.array(cam_ray, ndmin=2))
+        pixels = ftheta_cam.camera_rays_to_pixels(np.array(cam_ray, ndmin=2))
+        self._compareVector(torch.floor(image_points.image_points.cpu()), pixels.pixels.cpu().float())
+
+
+    def test_imagePoints2rays_pixels2Rays_consistency(self):
+        resolution = 1000
+        principalPoint = (resolution - 1) / 2
+        baseAngle = np.radians(35)
+        backwardPolynomial = _generateBackwardPolynomial(resolution, baseAngle, 4)
+        camera = ReferenceFThetaCamera([resolution, resolution], [principalPoint, principalPoint], backwardPolynomial)
+    
+        ftheta_cam = ftheta_from_reference(camera, self.device,self.dtype)
+
+        # Points to test
+        pixel_idxs = np.random.default_rng(seed=0).choice(resolution-1, (100,2))
+
+        pixel_rays = ftheta_cam.pixels_to_camera_rays(pixel_idxs.astype(np.int32)).cpu()
+        image_point_rays = ftheta_cam.image_points_to_camera_rays((pixel_idxs + 0.5).astype(np.float32)).cpu()
+    
+        self._compareVector(pixel_rays, image_point_rays)
+
+
+    def test_inputs_and_input_types(self):
+        camera = ReferenceFThetaCamera(np.array([1000, 1000]), [10, 10], [0, np.radians(90) / 1000])
+        ftheta_cam = ftheta_from_reference(camera, self.device,self.dtype)
+
+        pixel = np.array([100, 100]).reshape(1,2)
+        ray = np.array([0,1,0]).reshape(1,3)
+
+        # Test invalid inputs
+        self.assertRaises(AssertionError, ftheta_cam.image_points_to_camera_rays, pixel.astype(np.int32))
+        self.assertRaises(AssertionError, ftheta_cam.pixels_to_camera_rays, pixel.astype(np.float32))
+
+        self.assertRaises(AssertionError, ftheta_cam.world_points_to_image_points_shutter_pose, ray, np.eye(4), np.eye(4), **{'return_timestamps': True})
+        self.assertRaises(AssertionError, ftheta_cam.world_points_to_image_points_shutter_pose, ray, np.eye(4), np.eye(4), 
+                                **{'start_timestamp_us': 100, 'end_timestamp_us': 90, 'return_timestamps': True})
+        
+        # Test valid inputs
+        ftheta_cam.image_points_to_camera_rays(pixel.astype(np.float32)) 
+        ftheta_cam.pixels_to_camera_rays(pixel.astype(np.int32))
+        ftheta_cam.world_points_to_image_points_shutter_pose(ray, np.eye(4), np.eye(4), **{'start_timestamp_us': 90, 'end_timestamp_us': 100, 'return_timestamps': True})
+
 def _solveLinearEquation(linearSystemMatrix, linearSystemVector):
     solution, _, _, _ = scipy.linalg.lstsq(linearSystemMatrix, linearSystemVector)
     return solution
@@ -364,15 +425,19 @@ def _computeCumulativeAngleAtImageBorder(baseAngle, orderPolynomial):
 
 def ftheta_from_reference(reference_camera: ReferenceFThetaCamera, device: str,
                           dtype: torch.dtype) -> FThetaCameraModel:
+    
     parameters = FThetaCameraModelParameters(
         resolution=reference_camera._imageSize.astype(np.uint64),
         shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
         exposure_time_us=int(1641.58),
-        principal_point=reference_camera._principalPoint.astype(np.float32),
+        # Subtract the principal offset to align the image coordinate system conventions
+        # (offset will be added back during the initialization of the class) 
+        principal_point=reference_camera._principalPoint.astype(np.float32) - 0.5,
         reference_poly=FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE,
         pixeldist_to_angle_poly=np.array(reference_camera._backwardPolynomial, dtype=np.float32),
         angle_to_pixeldist_poly=np.array(reference_camera._forwardPolynomial, dtype=np.float32),
         max_angle=reference_camera._maxRadius.astype(np.float32))
+    
     return FThetaCameraModel(camera_model_parameters=parameters, device=device, dtype=dtype)
 
 
@@ -381,7 +446,7 @@ def ftheta_from_reference(reference_camera: ReferenceFThetaCamera, device: str,
 class TestPinholeCamera(CommonTestCase):
 
 
-    def test_pixel2ray_ray2pixel_consistency(self):
+    def test_imagePoints2rays_rays2imagePoints_consistency(self):
         ''' Tests self-consistency of torch-based Pinhole camera model '''
 
         # Waymo camera parameters
@@ -415,21 +480,22 @@ class TestPinholeCamera(CommonTestCase):
 
         cam_model = PinholeCameraModel(cam_model_params, device=self.device, dtype=self.dtype)
 
-        MAX_DEVIATION_IN_PIXEL = 0.001
+        MAX_DEVIATION_IN_IMAGE_COORDINATES = 0.001
 
         # for p in [0, px] with stepsize
         STEPSIZE = 20
         for p in range(0, int(cam_model_params.principal_point[0]), STEPSIZE):
             with self.subTest(p=p):
-                # very idempotence of pixel2ray(ray2pixel([p,p]))
+                # very idempotence of imagePoints2rays(rays2imagePoints([p,p]))
                 expectedPoint2d = np.array([[p, p]])
 
                 # Verify torch-camera's result
-                ray3d = cam_model.pixels_to_camera_rays(cam_model.to_torch(expectedPoint2d).to(cam_model.dtype))
-                actualPoint2d, valid = cam_model.camera_rays_to_pixels(ray3d)
-                self.assertTrue(valid[0])
-                self.assertLessEqual(np.linalg.norm(expectedPoint2d - np.array(actualPoint2d.cpu())),
-                                     MAX_DEVIATION_IN_PIXEL)
+                ray3d = cam_model.image_points_to_camera_rays(cam_model.to_torch(expectedPoint2d).to(cam_model.dtype))
+                image_points = cam_model.camera_rays_to_image_points(ray3d)
+
+                self.assertTrue(image_points.valid_flag)
+                self.assertLessEqual(np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())),
+                                     MAX_DEVIATION_IN_IMAGE_COORDINATES)
 
 
 if __name__ == '__main__':

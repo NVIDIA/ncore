@@ -75,16 +75,16 @@ def dsai_project_pc_to_img(shard_file_pattern: str, sensor_id: str, camera_id: s
 
         logger.info(f"Starting the projection with torch implementation on device={device}")
 
-        pixel_coords, trans_matrices, valid_idx = cam_model.world_points_to_pixels_rolling_shutter(
-            pc, T_world_sensor_start, T_world_sensor_end)
+        world_point_projections = cam_model.world_points_to_image_points_shutter_pose(
+            pc, T_world_sensor_start, T_world_sensor_end, return_valid_indices=True, return_T_world_sensors=True)
 
-        pixel_coords = pixel_coords.cpu().numpy()
-        trans_matrices = trans_matrices.cpu().numpy()
-        valid_idx = valid_idx.cpu().numpy()
+        image_point_coords = world_point_projections.image_points.cpu().numpy()
+        trans_matrices = world_point_projections.T_world_sensors.cpu().numpy() # type: ignore
+        valid_idx = world_point_projections.valid_indices.cpu().numpy() # type: ignore
         transformed_points = transform_point_cloud(pc[valid_idx, None, :], trans_matrices).squeeze(1)
         dist_rs = np.linalg.norm(transformed_points, axis=1, keepdims=True)
 
-        plot_points_on_image(np.concatenate((pixel_coords[:, :2], dist_rs), axis=1),
+        plot_points_on_image(np.concatenate((image_point_coords[:, :2], dist_rs), axis=1),
                              img_frame,
                              f'Projection with rolling shutter (torch implementation @ {device})',
                              point_size=4.0)
