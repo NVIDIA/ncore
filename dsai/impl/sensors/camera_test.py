@@ -49,12 +49,17 @@ class ReferenceFThetaCamera(ReferenceCamera):
 
     def isVisible(self, point2d):
         # potential different design decision:
-        # - a single pixel has a width of 1 pixel and a height of 1 pixel
-        # - the pixel index points to the upper left corner of a pixel
-        # - accordingly, the upper left corner of the upper left pixel in the image
-        #   has the coordinates [0.0, 0.0]
-        return ((0 <= point2d[0]) and (point2d[0] <=  self._imageSize[0]) and (0 <= point2d[1])
-                and (point2d[1] <=  self._imageSize[1]))
+        # a single pixel has a width of 1 pixel and a height of 1 pixel
+        # the pixel index points to the center of the pixel
+        # accordingly, the upper left corner of the upper left pixel in the image
+        # has the coordinates [-0.5, -0.5]
+        # potentially, also the coordinate [-0.5, -0.5] would still be
+        # considered visible
+
+        lastPixel = self._imageSize - np.array([1, 1])
+        return ((0 <= point2d[0]) and (point2d[0] <= lastPixel[0]) and (0 <= point2d[1])
+                and (point2d[1] <= lastPixel[1]))
+
 
     def setBackwardPolynomial(self, backwardPolynomial):
         self._backwardPolynomial = backwardPolynomial
@@ -269,12 +274,10 @@ class TestReferenceFThetaCamera(CommonTestCase):
             self._compareVector(a, e)
 
         # Torch-version
-        for a, e in zip(
-                np.array(
-                    ftheta_from_reference(camera, self.device,
-                                          self.dtype).camera_rays_to_image_points(np.array(rays3d, ndmin=2))[0].cpu()),
-                np.array(imagePoints2dExpected, ndmin=2)):
-            self._compareVector(a, e)
+        a = ftheta_from_reference(camera, self.device, self.dtype).camera_rays_to_image_points(np.array(rays3d, ndmin=2))
+        e = np.array(imagePoints2dExpected, ndmin=2)
+        
+        self._compareVector(np.array(a.image_points.cpu()), e)
 
     def test_imagePoints2rays_rays2imagePoints_consistency(self):
         ''' Tests self-consistency of both the reference camera and torch-based FTheta cameras, as well as
@@ -314,8 +317,8 @@ class TestReferenceFThetaCamera(CommonTestCase):
                     self.assertLessEqual(np.linalg.norm(expectedPoint2d - actualPoint2d_ref), MAX_DEVIATION_IN_PIXEL)
 
                     # Verify torch-camera's result
-                    image_points, _ = camera_ftheta.camera_rays_to_image_points(ray3d)
-                    self.assertLessEqual(np.linalg.norm(expectedPoint2d - np.array(image_points.cpu())),
+                    image_points = camera_ftheta.camera_rays_to_image_points(ray3d)
+                    self.assertLessEqual(np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())),
                                          MAX_DEVIATION_IN_PIXEL)
 
     def test_calculateMaxRadius(self):
@@ -360,9 +363,9 @@ class TestReferenceFThetaCamera(CommonTestCase):
 
     def _test_rays2imagePoints_rays2Pixels_consistencyTestCase(self, ftheta_cam, cam_ray):
 
-        image_point = ftheta_cam.camera_rays_to_image_points(np.array(cam_ray, ndmin=2))[0].cpu()
-        pixel_idx = ftheta_cam.camera_rays_to_pixels(np.array(cam_ray, ndmin=2))[0].cpu()
-        self._compareVector(torch.floor(image_point), pixel_idx.float())
+        image_points = ftheta_cam.camera_rays_to_image_points(np.array(cam_ray, ndmin=2))
+        pixels = ftheta_cam.camera_rays_to_pixels(np.array(cam_ray, ndmin=2))
+        self._compareVector(torch.floor(image_points.image_points.cpu()), pixels.pixels.cpu().float())
 
 
     def test_imagePoints2rays_pixels2Rays_consistency(self):
@@ -370,13 +373,12 @@ class TestReferenceFThetaCamera(CommonTestCase):
         principalPoint = (resolution - 1) / 2
         baseAngle = np.radians(35)
         backwardPolynomial = _generateBackwardPolynomial(resolution, baseAngle, 4)
-        cumulativeAngle = _computeCumulativeAngleAtImageBorder(baseAngle, 4)
         camera = ReferenceFThetaCamera([resolution, resolution], [principalPoint, principalPoint], backwardPolynomial)
     
         ftheta_cam = ftheta_from_reference(camera, self.device,self.dtype)
 
         # Points to test
-        pixel_idxs = np.random.choice(resolution-1, (100,2))
+        pixel_idxs = np.random.default_rng(seed=0).choice(resolution-1, (100,2))
 
         pixel_rays = ftheta_cam.pixels_to_camera_rays(pixel_idxs.astype(np.int32)).cpu()
         image_point_rays = ftheta_cam.image_points_to_camera_rays((pixel_idxs + 0.5).astype(np.float32)).cpu()
@@ -395,17 +397,14 @@ class TestReferenceFThetaCamera(CommonTestCase):
         self.assertRaises(AssertionError, ftheta_cam.image_points_to_camera_rays, pixel.astype(np.int32))
         self.assertRaises(AssertionError, ftheta_cam.pixels_to_camera_rays, pixel.astype(np.float32))
 
-        self.assertRaises(AssertionError, ftheta_cam.world_points_to_image_points_rolling_shutter, ray, np.eye(4), np.eye(4), **{'return_timestamps': True})
-        self.assertRaises(AssertionError, ftheta_cam.world_points_to_image_points_rolling_shutter, ray, np.eye(4), np.eye(4), 
+        self.assertRaises(AssertionError, ftheta_cam.world_points_to_image_points_shutter_pose, ray, np.eye(4), np.eye(4), **{'return_timestamps': True})
+        self.assertRaises(AssertionError, ftheta_cam.world_points_to_image_points_shutter_pose, ray, np.eye(4), np.eye(4), 
                                 **{'start_timestamp_us': 100, 'end_timestamp_us': 90, 'return_timestamps': True})
-
-        self.assertRaises(AssertionError, ftheta_cam.world_points_to_image_points_rolling_shutter, ray, np.eye(4), np.eye(4), 
-                        **{'start_timestamp_us': 90.0, 'end_timestamp_us': 100.0, 'return_timestamps': True})
         
         # Test valid inputs
         ftheta_cam.image_points_to_camera_rays(pixel.astype(np.float32)) 
         ftheta_cam.pixels_to_camera_rays(pixel.astype(np.int32))
-        ftheta_cam.world_points_to_image_points_rolling_shutter(ray, np.eye(4), np.eye(4), **{'start_timestamp_us': 90, 'end_timestamp_us': 100, 'return_timestamps': True})
+        ftheta_cam.world_points_to_image_points_shutter_pose(ray, np.eye(4), np.eye(4), **{'start_timestamp_us': 90, 'end_timestamp_us': 100, 'return_timestamps': True})
 
 def _solveLinearEquation(linearSystemMatrix, linearSystemVector):
     solution, _, _, _ = scipy.linalg.lstsq(linearSystemMatrix, linearSystemVector)
@@ -427,11 +426,12 @@ def _computeCumulativeAngleAtImageBorder(baseAngle, orderPolynomial):
 def ftheta_from_reference(reference_camera: ReferenceFThetaCamera, device: str,
                           dtype: torch.dtype) -> FThetaCameraModel:
     
-    # Subtract the principal offset which will be added back in the init function 
     parameters = FThetaCameraModelParameters(
         resolution=reference_camera._imageSize.astype(np.uint64),
         shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
         exposure_time_us=int(1641.58),
+        # Subtract the principal offset to align the image coordinate system conventions
+        # (offset will be added back during the initialization of the class) 
         principal_point=reference_camera._principalPoint.astype(np.float32) - 0.5,
         reference_poly=FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE,
         pixeldist_to_angle_poly=np.array(reference_camera._backwardPolynomial, dtype=np.float32),
@@ -491,10 +491,10 @@ class TestPinholeCamera(CommonTestCase):
 
                 # Verify torch-camera's result
                 ray3d = cam_model.image_points_to_camera_rays(cam_model.to_torch(expectedPoint2d).to(cam_model.dtype))
-                image_points, valid_indices = cam_model.camera_rays_to_image_points(ray3d)
+                image_points = cam_model.camera_rays_to_image_points(ray3d)
 
-                self.assertTrue(valid_indices)
-                self.assertLessEqual(np.linalg.norm(expectedPoint2d - np.array(image_points.cpu())),
+                self.assertTrue(image_points.valid_flag)
+                self.assertLessEqual(np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())),
                                      MAX_DEVIATION_IN_IMAGE_COORDINATES)
 
 

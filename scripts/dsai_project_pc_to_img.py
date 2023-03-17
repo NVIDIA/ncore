@@ -75,11 +75,11 @@ def dsai_project_pc_to_img(shard_file_pattern: str, sensor_id: str, camera_id: s
 
         logger.info(f"Starting the projection with torch implementation on device={device}")
 
-        world_point_projections = cam_model.world_points_to_image_points_rolling_shutter(
-            pc, T_world_sensor_start, T_world_sensor_end)
+        world_point_projections = cam_model.world_points_to_image_points_shutter_pose(
+            pc, T_world_sensor_start, T_world_sensor_end, return_valid_indices=True, return_T_world_sensors=True)
 
         image_point_coords = world_point_projections.image_points.cpu().numpy()
-        trans_matrices = world_point_projections.T_world_sensor.cpu().numpy() # type: ignore
+        trans_matrices = world_point_projections.T_world_sensors.cpu().numpy() # type: ignore
         valid_idx = world_point_projections.valid_indices.cpu().numpy() # type: ignore
         transformed_points = transform_point_cloud(pc[valid_idx, None, :], trans_matrices).squeeze(1)
         dist_rs = np.linalg.norm(transformed_points, axis=1, keepdims=True)
