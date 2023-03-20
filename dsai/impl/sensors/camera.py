@@ -164,7 +164,8 @@ class CameraModel(ABC):
             stop_delta_mean_error_px: float = 1e-5,
             return_T_world_sensors: bool = False,
             return_valid_indices: bool = False,
-            return_timestamps: bool = False) -> CameraModel.WorldPointsToPixelsReturn:
+            return_timestamps: bool = False,
+            return_all_projections: bool = False) -> CameraModel.WorldPointsToPixelsReturn:
 
         ''' Projects world points to corresponding pixel indices using *rolling-shutter compensation* of sensor motion '''
         
@@ -175,7 +176,7 @@ class CameraModel(ABC):
 
         tmp = self. world_points_to_image_points_shutter_pose(world_points, T_world_sensor_start, T_world_sensor_end,
                                                         start_timestamp_us, end_timestamp_us, max_iterations, stop_mean_error_px,
-                                                        stop_delta_mean_error_px, return_T_world_sensors, return_valid_indices, return_timestamps)
+                                                        stop_delta_mean_error_px, return_T_world_sensors, return_valid_indices, return_timestamps, return_all_projections)
 
         return self.WorldPointsToPixelsReturn(pixels=self.__image_points_to_pixel_indices(tmp.image_points),
                                               T_world_sensors=tmp.T_world_sensors,
@@ -189,14 +190,15 @@ class CameraModel(ABC):
             timestamp_us: Optional[int] = None,
             return_T_world_sensors: bool = False,
             return_valid_indices: bool = False,
-            return_timestamps:bool = False) -> CameraModel.WorldPointsToPixelsReturn:
+            return_timestamps:bool = False,
+            return_all_projections: bool = False) -> CameraModel.WorldPointsToPixelsReturn:
         ''' Projects world points to corresponding pixel indices using a *fixed* sensor pose (not compensating for potential sensor-motion). '''
 
         if return_timestamps:
             assert timestamp_us is not None
 
         tmp = self. world_points_to_image_points_static_pose(world_points, T_world_sensor, timestamp_us, 
-                                                             return_T_world_sensors, return_valid_indices, return_timestamps)
+                                                             return_T_world_sensors, return_valid_indices, return_timestamps, return_all_projections)
 
         return self.WorldPointsToPixelsReturn(pixels=self.__image_points_to_pixel_indices(tmp.image_points),
                                               T_world_sensors=tmp.T_world_sensors,
@@ -212,7 +214,8 @@ class CameraModel(ABC):
             end_timestamp_us: Optional[int] = None,
             return_T_world_sensors: bool = False,
             return_valid_indices: bool = False,
-            return_timestamps: bool = False) -> CameraModel.WorldPointsToPixelsReturn:
+            return_timestamps: bool = False,
+            return_all_projections: bool = False) -> CameraModel.WorldPointsToPixelsReturn:
         ''' Projects world points to corresponding pixel indices using the *mean pose* of the sensor between
             the start and end poses (not compensating for potential sensor-motion).
         '''
@@ -232,7 +235,7 @@ class CameraModel(ABC):
             self.__interpolate_poses(
                 self.to_torch(T_world_sensor_start).to(self.dtype),
                 self.to_torch(T_world_sensor_end).to(self.dtype), 0.5), 
-            timestamp_us, return_T_world_sensors, return_valid_indices, return_timestamps)
+            timestamp_us, return_T_world_sensors, return_valid_indices, return_timestamps, return_all_projections)
 
     def world_points_to_image_points_shutter_pose(
             self,
@@ -246,7 +249,8 @@ class CameraModel(ABC):
             stop_delta_mean_error_px: float = 1e-5,
             return_T_world_sensors: bool = False,
             return_valid_indices: bool = False,
-            return_timestamps: bool = False) -> CameraModel.WorldPointsToImagePointsReturn:
+            return_timestamps: bool = False,
+            return_all_projections: bool = False) -> CameraModel.WorldPointsToImagePointsReturn:
         ''' Projects world points to corresponding image point coordinates using *rolling-shutter compensation* of sensor motion '''
 
         # Check if the variables are numpy, convert them to torch and send them to correct device
@@ -357,6 +361,16 @@ class CameraModel(ABC):
         if return_timestamps:
             return_var.timestamps_us = (torch.floor((1 - t)[..., None] * start_timestamp_us + t[..., None] * end_timestamp_us).to(torch.int64)).squeeze()
 
+        if return_all_projections:
+            if not return_valid_indices:
+                valid[torch.argwhere(valid).squeeze()] = image_points_rs.valid_flag
+                valid_indices = torch.argwhere(valid).squeeze()
+            else:
+                valid_indices = return_var.valid_indices # type: ignore
+
+            return_var.image_points = init_image_points
+            return_var.image_points[valid_indices] = image_points_rs.image_points[image_points_rs.valid_flag]
+
         return return_var
 
     def world_points_to_image_points_static_pose(
@@ -365,7 +379,8 @@ class CameraModel(ABC):
             timestamp_us: Optional[int] = None,
             return_T_world_sensors: bool = False,
             return_valid_indices: bool = False,
-            return_timestamps: bool = False) -> CameraModel.WorldPointsToImagePointsReturn:
+            return_timestamps: bool = False,
+            return_all_projections: bool = False) -> CameraModel.WorldPointsToImagePointsReturn:
         ''' Projects world points to corresponding image point coordinates using a *fixed* sensor pose (not compensating for potential sensor-motion). '''
         
         # Check if the variables are numpy, convert them to torch and send them to correct device
@@ -401,6 +416,9 @@ class CameraModel(ABC):
         if return_timestamps:
             return_var.timestamps_us= torch.tile(torch.tensor(timestamp_us), dims=(len(torch.where(image_points.valid_flag)[0]),))
 
+        if return_all_projections:
+            return_var.image_points = image_points.image_points
+
         return return_var
 
     def world_points_to_image_points_mean_pose(
@@ -411,7 +429,8 @@ class CameraModel(ABC):
             end_timestamp_us: Optional[int] = None,
             return_T_world_sensors: bool = False,
             return_valid_indices: bool = False,
-            return_timestamps: bool = False) -> CameraModel.WorldPointsToImagePointsReturn:
+            return_timestamps: bool = False,
+            return_all_projections:bool = False) -> CameraModel.WorldPointsToImagePointsReturn:
         ''' Projects world points to corresponding image point coordinates using the *mean pose* of the sensor between
             the start and end poses (not compensating for potential sensor-motion).
         '''
@@ -431,7 +450,7 @@ class CameraModel(ABC):
             self.__interpolate_poses(
                 self.to_torch(T_world_sensor_start).to(self.dtype),
                 self.to_torch(T_world_sensor_end).to(self.dtype), 0.5),
-            timestamp_us, return_T_world_sensors, return_valid_indices, return_timestamps)
+            timestamp_us, return_T_world_sensors, return_valid_indices, return_timestamps, return_all_projections)
 
     def pixels_to_world_rays_static_pose(self,
                                         pixel_idxs: Union[torch.Tensor, np.ndarray],

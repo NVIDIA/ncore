@@ -385,6 +385,39 @@ class TestReferenceFThetaCamera(CommonTestCase):
     
         self._compareVector(pixel_rays, image_point_rays)
 
+    def test_return_all_projections(self):
+
+        resolution = 1000
+        principalPoint = (resolution - 1) / 2
+        baseAngle = np.radians(5)
+        backwardPolynomial = _generateBackwardPolynomial(resolution, baseAngle, 4)
+        cumulativeAngle = _computeCumulativeAngleAtImageBorder(baseAngle, 4)
+
+        camera = ReferenceFThetaCamera([resolution, resolution], [principalPoint, principalPoint], backwardPolynomial)
+    
+        T_world_sensor_start = np.eye(4)
+        T_world_sensor_end = np.eye(4)
+        
+        ftheta_cam = ftheta_from_reference(camera, self.device,self.dtype)
+
+        # Points to test (two 2,3 are invalid)
+        world_points = np.array([[0,0,10], [0,0,20], [50,5,10], [0,0,-10], [0,0,30]])
+
+        # Test shutter pose projection
+        image_points = ftheta_cam.world_points_to_image_points_shutter_pose(world_points, T_world_sensor_start, T_world_sensor_end)
+        image_points_all = ftheta_cam.world_points_to_image_points_shutter_pose(world_points, T_world_sensor_start, 
+                                                                                T_world_sensor_end, 
+                                                                                return_valid_indices=True, 
+                                                                                return_all_projections=True)
+        self._compareVector(image_points.image_points.cpu(), image_points_all.image_points[image_points_all.valid_indices].cpu())
+        
+        # Test single pose projection
+        image_points = ftheta_cam.world_points_to_image_points_static_pose(world_points, T_world_sensor_start)
+        image_points_all = ftheta_cam.world_points_to_image_points_static_pose(world_points, T_world_sensor_start,
+                                                                                return_valid_indices=True, 
+                                                                                return_all_projections=True)
+        
+        self._compareVector(image_points.image_points.cpu(), image_points_all.image_points[image_points_all.valid_indices].cpu())
 
     def test_inputs_and_input_types(self):
         camera = ReferenceFThetaCamera(np.array([1000, 1000]), [10, 10], [0, np.radians(90) / 1000])
@@ -436,7 +469,7 @@ def ftheta_from_reference(reference_camera: ReferenceFThetaCamera, device: str,
         reference_poly=FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE,
         pixeldist_to_angle_poly=np.array(reference_camera._backwardPolynomial, dtype=np.float32),
         angle_to_pixeldist_poly=np.array(reference_camera._forwardPolynomial, dtype=np.float32),
-        max_angle=reference_camera._maxRadius.astype(np.float32))
+        max_angle=reference_camera._radius2angle(reference_camera._maxRadius).astype(np.float32))
     
     return FThetaCameraModel(camera_model_parameters=parameters, device=device, dtype=dtype)
 
