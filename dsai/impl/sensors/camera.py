@@ -15,12 +15,13 @@ from dsai.impl.data import types
 
 class CameraModel(ABC):
     ''' Base camera model class '''
+    resolution: torch.Tensor
+    shutter_type: types.ShutterType
+    device: str
+    dtype: torch.dtype
 
     def __init__(self):
-        self.resolution: torch.Tensor
-        self.shutter_type: types.ShutterType
-        self.device: str
-        self.dtype: torch.dtype
+        pass
 
     @abstractmethod
     def image_points_to_camera_rays(self, image_points: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
@@ -318,13 +319,13 @@ class CameraModel(ABC):
             t = self.__get_interpolation_timestamp(image_points_rs_prev)
 
             rot_rs = self.__unitquat_to_rotmat(self.__unitquat_slerp(world_sensor_s_quat.repeat(
-                t.shape[0], 1), world_sensor_e_quat.repeat(t.shape[0], 1), t)).squeeze()  # [n_valid, 3, 3]
+                t.shape[0], 1), world_sensor_e_quat.repeat(t.shape[0], 1), t))  # [n_valid, 3, 3]
 
             trans_rs = (1 - t)[..., None] * T_world_sensor_start[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1) + \
                 t[..., None] * T_world_sensor_end[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1)
 
             cam_rays_rs = (torch.bmm(rot_rs, world_points[valid, :, None]) + trans_rs[..., None]).squeeze(-1)
-            image_points_rs = self.camera_rays_to_image_points(cam_rays_rs.squeeze())
+            image_points_rs = self.camera_rays_to_image_points(cam_rays_rs)
 
             # Compute mean error of projections that are still valid now and check if we are still
             # making progress relative to previous iteration
@@ -871,6 +872,7 @@ class FThetaCameraModel(CameraModel):
             min_2d_norm: Threshold for 2d image_points-distances (relative to principal point) below which the principal ray
                          is returned in ray generation (for points close to the principal point). Needs to be positive
         '''
+        super().__init__()
 
         # Check if cuda device is actually available
         if device == 'cuda' and not torch.cuda.is_available():
@@ -1027,6 +1029,7 @@ class PinholeCameraModel(CameraModel):
                  camera_model_parameters: types.PinholeCameraModelParameters,
                  device: str = 'cuda',
                  dtype: torch.dtype = torch.float32):
+        super().__init__()
 
         # Check if cuda device is actually available
         if device == 'cuda' and not torch.cuda.is_available():
