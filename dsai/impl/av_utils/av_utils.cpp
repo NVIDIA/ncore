@@ -6,35 +6,6 @@
 #include <iomanip>
 #include <array>
 
-const char* lidarUnwinding_doc = R"igl_Qu8mg5v7(
-Unwind the lidar point cloud
-)igl_Qu8mg5v7";
-npe_function(_lidarUnwinding)
-npe_doc(lidarUnwinding_doc)
-npe_arg(pointCloud, dense_double)
-npe_arg(transforms, npe_matches(pointCloud))
-npe_arg(columnIdx, dense_long)
-npe_begin_code()
-
-    // Initialize the features and local reference frames 
-    npe_Matrix_pointCloud unwoundPC(pointCloud.rows(), 6);
-    unwoundPC.setZero();
-
-    for (int i = 0; i < pointCloud.rows(); i++)
-    {
-        auto c_idx = columnIdx(i, 0);
-        
-        Eigen::Matrix<double,3,1> startPoint = transforms.template block(c_idx*4,3,3,1);
-        Eigen::Matrix<double,3,1> transformedPoint =  transforms.template block(c_idx*4,0,3,3) * pointCloud.row(i).transpose() + startPoint;
-
-        unwoundPC.template block(i,0,1,3) = startPoint.transpose();
-        unwoundPC.template block(i,3,1,3) = transformedPoint.transpose();
-    }
-
-    return npe::move(unwoundPC); 
-
-npe_end_code()
-
 Eigen::Quaternionf euler2Quaternion(const float roll, const float pitch, const float yaw)
 {
     Eigen::AngleAxisf rollAngle(roll, Eigen::Vector3f::UnitX());

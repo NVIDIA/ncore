@@ -23,7 +23,7 @@ from dsai.impl.data.data3 import ContainerDataWriter
 from dsai.impl.data.types import FrameLabel3, Poses, PinholeCameraModelParameters, ShutterType, TrackLabel
 from dsai.impl.common.common import PoseInterpolator
 from dsai.impl.common.nvidia_utils import LabelProcessor, extract_pose
-from dsai.impl.av_utils import unwind_lidar, isWithin3DBBox
+from dsai.impl.av_utils import isWithin3DBBox
 
 
 class CarterDeepmapConverter(DataConverter):
@@ -217,9 +217,9 @@ class CarterDeepmapConverter(DataConverter):
                     break  # already passed end - no need to keep on processing
 
                 raw_pc = np.concatenate([
-                    np.array(data.data.points_x)[:, None],
-                    np.array(data.data.points_y)[:, None],
-                    np.array(data.data.points_z)[:, None]
+                    np.array(data.data.points_x, dtype=np.float32)[:, None],
+                    np.array(data.data.points_y, dtype=np.float32)[:, None],
+                    np.array(data.data.points_z, dtype=np.float32)[:, None]
                 ],
                                         axis=1)
 
@@ -242,9 +242,9 @@ class CarterDeepmapConverter(DataConverter):
                 T_world_lidar = np.linalg.inv(T_lidar_rig) @ T_world_rig
 
                 # Perform per-column unwinding, transforming from lidar to world coordinates
-                transformed_pc = unwind_lidar(raw_pc,
-                                              T_column_lidar_worlds.astype(np.float64).reshape(-1, 4),
-                                              np.array(data.data.column_indices).reshape(-1, 1))
+                transformed_pc = np.empty((len(raw_pc), 6), dtype=np.float32)
+                transformed_pc[:, :3] = T_column_lidar_worlds[data.data.column_indices, :3, -1]  # N X 3 - ray start points in world space
+                transformed_pc[:, 3:] = (T_column_lidar_worlds[data.data.column_indices, :3, :3] @ raw_pc[:, :, None]).squeeze(-1) + transformed_pc[:, :3]  # N x 3 - ray end points in world space
 
                 pc_world_homogeneous = np.row_stack(
                     [transformed_pc[:, 3:6].transpose(),

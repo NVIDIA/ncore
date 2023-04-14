@@ -28,7 +28,7 @@ from dsai.impl.common.nvidia_utils import (LabelProcessor, parse_rig_sensors_fro
                                                    sensor_to_rig, extract_pose, vehicle_bbox,
                                                    camera_intrinsic_parameters, compute_fw_polynomial,
                                                    compute_ftheta_parameters, camera_car_mask)
-from dsai.impl.av_utils import unwind_lidar, isWithin3DBBox
+from dsai.impl.av_utils import isWithin3DBBox
 
 
 class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
@@ -217,9 +217,9 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                 fa_timestamp = None
 
             raw_pc = np.concatenate([
-                np.array(data.data.points_x)[:, None],
-                np.array(data.data.points_y)[:, None],
-                np.array(data.data.points_z)[:, None]
+                np.array(data.data.points_x, dtype=np.float32)[:, None],
+                np.array(data.data.points_y, dtype=np.float32)[:, None],
+                np.array(data.data.points_z, dtype=np.float32)[:, None]
             ],
                                     axis=1)
 
@@ -236,15 +236,15 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                     f'Lidar frame conversion failed for lidar frame {frame_idx} due to out-of-egomotion pose: {e}')
                 continue
             T_column_lidar_worlds = column_poses @ T_lidar_rig[None, :, :]
-            T_rig_world = column_poses[
-                -1]  # Pose of the rig at the end of the lidar spin, can be used to transform points into a local coordinate frame
+            # Pose of the rig at the end of the lidar spin, can be used to transform points into a local coordinate frame
+            T_rig_world = column_poses[-1]
             T_world_rig = np.linalg.inv(T_rig_world)
             T_world_lidar = np.linalg.inv(T_lidar_rig) @ T_world_rig
 
             # Perform per-column unwinding, transforming from lidar to world coordinates
-            transformed_pc = unwind_lidar(raw_pc,
-                                          T_column_lidar_worlds.astype(np.float64).reshape(-1, 4),
-                                          np.array(data.data.column_indices).reshape(-1, 1))
+            transformed_pc = np.empty((len(raw_pc), 6), dtype=np.float32)
+            transformed_pc[:, :3] = T_column_lidar_worlds[data.data.column_indices, :3, -1]  # N X 3 - ray start points in world space
+            transformed_pc[:, 3:] = (T_column_lidar_worlds[data.data.column_indices, :3, :3] @ raw_pc[:, :, None]).squeeze(-1) + transformed_pc[:, :3]  # N x 3 - ray end points in world space
 
             pc_world_homogeneous = np.row_stack(
                 [transformed_pc[:, 3:6].transpose(),
