@@ -25,9 +25,9 @@ from dsai.impl.data.data3 import ContainerDataWriter
 from dsai.impl.data.types import Poses, FThetaCameraModelParameters, LabelSource, ShutterType
 from dsai.impl.common.common import PoseInterpolator
 from dsai.impl.common.nvidia_utils import (LabelProcessor, parse_rig_sensors_from_dict,
-                                                   sensor_to_rig, extract_pose, vehicle_bbox,
-                                                   camera_intrinsic_parameters, compute_fw_polynomial,
-                                                   compute_ftheta_parameters, camera_car_mask)
+                                           load_maglev_lidar_indexer_frame_meta, sensor_to_rig, extract_pose,
+                                           vehicle_bbox, camera_intrinsic_parameters, compute_fw_polynomial,
+                                           compute_ftheta_parameters, camera_car_mask)
 from dsai.impl.av_utils import isWithin3DBBox
 
 
@@ -169,7 +169,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
         # Perform label parsing
         self.track_labels, self.frame_labels = LabelProcessor.parse(
             os.path.join(sequence_path, 'labels', 'autolabels.parquet'),
-            {self.LIDAR_SENSOR_ID: os.path.join(sequence_path, 'labels', f'{self.LIDAR_SENSOR_ID}_meta.json')},
+            {self.LIDAR_SENSOR_ID: load_maglev_lidar_indexer_frame_meta(Path(sequence_path) / 'labels' / f'{self.LIDAR_SENSOR_ID}_meta.json')},
             {self.LIDAR_SENSOR_ID: sensor_to_rig(self.calibration_data[self.LIDARID_TO_RIGNAME[self.LIDAR_SENSOR_ID]])},
              self.poses_timestamps, self.poses, LabelSource.AUTOLABEL, self.logger)
 
