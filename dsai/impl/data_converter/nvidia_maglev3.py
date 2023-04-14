@@ -140,8 +140,10 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Example
         # shard0_pose_timestamps = [0,1,2,3], valid pose-range-timestamps to select frame data [0,3) -> 0 <= t < 3
         # shard1_pose_timestamps = [3,4,5,6], valid pose-range-timestamps to select frame data [3,6) -> 3 <= t < 6
-
-        local_range, _ = uniform_subdivide_range(self.shard_id, self.shard_count, 0,
+        local_range, _ = uniform_subdivide_range(self.shard_id, self.shard_count,
+                                                 # *skip* first global pose unconditionally from all local-ranges to be sure we can interpolate within initial frames,
+                                                 # so first shard's pose range in the example above will really be [1,3) -> 1 <= t < 3
+                                                 1,
                                                  len(self.global_T_rig_world_timestamps_us))
         # extend local range by single non-inclusive pose to keep in local shard
         local_range_start = local_range[0]
@@ -340,6 +342,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                                          dtype=np.uint64)
             raw_frame_timestamps_us = np.array([frame_data['timestamp'] for frame_data in frames_metadata],
                                                dtype=np.uint64)
+            raw_frame_egocompensated = np.array([frame_data['ego_compensated'] for frame_data in frames_metadata],
+                                                dtype=np.bool8)
             del (frames_metadata)
 
             assert len(raw_frame_numbers) == len(raw_frame_timestamps_us)
@@ -359,6 +363,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             local_frame_numbers = raw_frame_numbers[local_range_start:local_range_end]
             local_frame_timestamps_us = raw_frame_timestamps_us[local_range_start:local_range_end] # corresponds to end-of-frame
+            local_frame_egocompensated = raw_frame_egocompensated[local_range_start:local_range_end]
             num_local_frames = len(local_frame_numbers)
 
             logger.debug(
@@ -383,13 +388,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             tar_index = json.load(open(self.sequence_path / 'lidars' / lidar_rig_name / 'frames.tar.idx.json', 'r'))
 
             ## Process all valid point clouds
-            for continous_local_frame_index, (frame_number, frame_end_timestamp_us) in \
-                tqdm.tqdm(enumerate(zip(local_frame_numbers, local_frame_timestamps_us)), total=num_local_frames):
+            for continuous_local_frame_index, (frame_number, frame_end_timestamp_us, frame_egocompensated) in \
+                tqdm.tqdm(enumerate(zip(local_frame_numbers, local_frame_timestamps_us, local_frame_egocompensated)), total=num_local_frames):
 
                 # Interpolate egomotion at frame end timestamp for sensor reference pose at end-of-spin time
-                T_sensor_world = pose_interpolator.interpolate_to_timestamps(frame_end_timestamp_us)[0] @ T_sensor_rig
-                T_world_sensor = np.linalg.inv(T_sensor_world)
-
+                T_world_sensorRef = np.linalg.inv(pose_interpolator.interpolate_to_timestamps(frame_end_timestamp_us)[0] @ T_sensor_rig)
                 # Start timer
                 timer = SimpleTimer()
 
@@ -414,7 +417,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 point_count = xyz.shape[0]
 
                 # Create 3D ray structure of 3D rays in sensor space with accompanying metadata.
-                # Colums; xyz_s, xyz_e, intensity, dynamic_flag, timestamp
+                # Columns; xyz_s, xyz_e, intensity, dynamic_flag, timestamp
                 # Dynamic flag is set to -1 if the information is not available, 0 static, 1 = dynamic
 
                 # Determine ray start-point by interpolating poses at per-point timestamps
@@ -450,17 +453,27 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
                     # Lidar frame poses for each point (will throw in case invalid timestamps are loaded) expressed in the reference sensor's frame
                     # sensor_sensorRef = world_sensorRef * sensor_world = world_sensorRef * (rig_world * sensor_rig)
-                    xyz_s_unique = T_world_sensor @ pose_interpolator.interpolate_to_timestamps(timestamp_unique) @ T_sensor_rig
-                    del(timestamp_unique)
+                    T_sensor_sensorRef_unique = T_world_sensorRef @ pose_interpolator.interpolate_to_timestamps(timestamp_unique) @ T_sensor_rig
 
-                    # Pick sensor positions (in end-of-spin pose) for each start point (blow up to original potentially non-unique timestamp range)
-                    xyz_s = xyz_s_unique[unique_timestamp_reverse_idxs, 0:3, -1]  # N x 3
-                    del(unique_timestamp_reverse_idxs)
+                    # Pick sensor positions (in end-of-spin reference pose) for each start point (blow up to original potentially non-unique timestamp range)
+                    xyz_s = T_sensor_sensorRef_unique[unique_timestamp_reverse_idxs, :3, -1]  # N x 3
+
+                    if not frame_egocompensated:
+                        # Need to motion-compensate ray end points into reference frame (they are defined in the time-dependent sensor-frames).
+                        # "Apply" the full homogeneous T_sensor_sensorRef (blowing up to non-unique version for each point) transformation by
+                        # performing rotation of source points and reusing the already extracted translation components of ray start points
+                        xyz = (T_sensor_sensorRef_unique[unique_timestamp_reverse_idxs, :3, :3]
+                               @ xyz[:, :, None]).squeeze(-1) + xyz_s  # N x 3
+
+                    del(timestamp_unique, unique_timestamp_reverse_idxs, T_sensor_sensorRef_unique)
 
                 else:
-                    if continous_local_frame_index == 0:  # Warn once in first iteration only
+                    if continuous_local_frame_index == 0:  # Warn once in first iteration only
                         logger.warn('> no lidar point timestamps available (missing \'timestamp_lo\' / '
                                     ' \'timestamp_hi\' attributes), falling back to *constant* lidar start points')
+
+                    if not frame_egocompensated:
+                        raise ValueError('egomotion-compensated input point-cloud required if no timestamps are available')
 
                     # No per-point timestamps available, fallback to using *constant*
                     # lidar origin as start point for all rays
@@ -511,7 +524,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
                 # Serialize lidar frame
                 self.data_writer.store_lidar_frame(lidar_id,
-                                                   continous_local_frame_index,
+                                                   continuous_local_frame_index,
                                                    xyz_s,
                                                    xyz_e,
                                                    intensity,
@@ -523,7 +536,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
                 time_store = timer.elapsed_sec(restart = True)
 
-                logger.debug(f'> spin {continous_local_frame_index+1}/{num_local_frames} | load/process/dynflag/store {time_load:.2f}/{time_process:.2f}/{time_dynflag:.2f}/{time_store:.2f}sec')
+                logger.debug(f'> spin {continuous_local_frame_index+1}/{num_local_frames} | load/process/dynflag/store {time_load:.2f}/{time_process:.2f}/{time_dynflag:.2f}/{time_store:.2f}sec')
 
             logger.info(f'> processed {len(local_frame_timestamps_us)} local'
                         f' point clouds [shard {self.shard_id}/{self.shard_count}]')
