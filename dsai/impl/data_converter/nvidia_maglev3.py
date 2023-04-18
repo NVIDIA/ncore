@@ -17,10 +17,11 @@ from dsai.impl.data_converter.data_converter import BaseNvidiaDataConverter
 from dsai.impl.data.data3 import ContainerDataWriter
 from dsai.impl.data.types import FThetaCameraModelParameters, LabelSource, Poses, ShutterType
 
-from dsai.impl.common.nvidia_utils import (load_maglev_camera_indexer_frame_meta, load_maglev_egomotion, load_maglev_session_id,
-                                                   parse_rig_sensors_from_dict, sensor_to_rig, LabelProcessor,
-                                                   camera_intrinsic_parameters, compute_fw_polynomial,
-                                                   compute_ftheta_parameters, camera_car_mask, vehicle_bbox)
+from dsai.impl.common.nvidia_utils import (load_maglev_camera_indexer_frame_meta, load_maglev_lidar_indexer_frame_meta,
+                                           load_maglev_egomotion, load_maglev_session_id, parse_rig_sensors_from_dict,
+                                           sensor_to_rig, LabelProcessor, camera_intrinsic_parameters,
+                                           compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask,
+                                           vehicle_bbox)
 from dsai.impl.common.common import load_jsonl, PoseInterpolator, uniform_subdivide_range, SimpleTimer
 from dsai.impl.av_utils import isWithin3DBBox
 
@@ -191,7 +192,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.track_labels, self.frame_labels = LabelProcessor.parse(
             labels_path,
             {
-                lidar_id: self.sequence_path / 'lidars' / lidar_rig_name / 'meta.json'
+                lidar_id: load_maglev_lidar_indexer_frame_meta(Path(self.sequence_path / 'lidars' / lidar_rig_name))
                 for lidar_id, lidar_rig_name in self.LIDARID_TO_RIGNAME.items()
             },
             {
@@ -337,13 +338,12 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             T_sensor_rig = sensor_to_rig(self.sensors_calibration_data[lidar_rig_name])
 
             # Load frame numbers and timestamps
-            frames_metadata = load_jsonl(self.sequence_path / 'lidars' / lidar_rig_name / 'meta.json')
-            raw_frame_numbers = np.array([frame_data['frame_number'] for frame_data in frames_metadata],
-                                         dtype=np.uint64)
-            raw_frame_timestamps_us = np.array([frame_data['timestamp'] for frame_data in frames_metadata],
-                                               dtype=np.uint64)
-            raw_frame_egocompensated = np.array([frame_data['ego_compensated'] for frame_data in frames_metadata],
-                                                dtype=np.bool8)
+            frames_metadata = load_maglev_lidar_indexer_frame_meta(self.sequence_path / 'lidars' / lidar_rig_name)
+            raw_frame_numbers = frames_metadata.frame_numbers
+            raw_frame_timestamps_us = frames_metadata.frame_endtimes_us
+            raw_frame_egocompensated = np.full_like(raw_frame_timestamps_us,
+                                                    frames_metadata.frames_egocompensated,
+                                                    dtype=np.bool8)
             del (frames_metadata)
 
             assert len(raw_frame_numbers) == len(raw_frame_timestamps_us)
@@ -393,12 +393,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
                 # Interpolate egomotion at frame end timestamp for sensor reference pose at end-of-spin time
                 T_world_sensorRef = np.linalg.inv(pose_interpolator.interpolate_to_timestamps(frame_end_timestamp_us)[0] @ T_sensor_rig)
+
                 # Start timer
                 timer = SimpleTimer()
 
-                # Load point cloud (already motion-compensated)
-
-                # Load ply file data from archive
+                # Load point clouds / ply files from archive
                 file_record = tar_index[f'./{str(frame_number)}.ply']
                 tar_file.seek(file_record['offset_data'])
                 ply_binary_data = tar_file.read(file_record['size'])
@@ -420,12 +419,23 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 # Columns; xyz_s, xyz_e, intensity, dynamic_flag, timestamp
                 # Dynamic flag is set to -1 if the information is not available, 0 static, 1 = dynamic
 
-                # Determine ray start-point by interpolating poses at per-point timestamps
+                ## Determine ray start-point by interpolating poses at per-point timestamps
+
+                # Switch on different storage variants
+                ts_lo = ts_hi = None
                 if all(key in mesh.vertex_data.custom_attributes for key in ('timestamp_lo', 'timestamp_hi')):
+                    # CSFT-based timestamp storage
+                    ts_lo = np.array(mesh.vertex_data.custom_attributes['timestamp_lo'])[unique_input_idxs].astype(np.uint32)
+                    ts_hi = np.array(mesh.vertex_data.custom_attributes['timestamp_hi'])[unique_input_idxs].astype(np.uint32)
+                if auxChannelsData := mesh.aux_data.get('auxChannelsData', None):
+                    if all(key in auxChannelsData for key in ('time_lo', 'time_hi')):
+                        # Lidar-exporter-based timestamp storage
+                        ts_lo = np.array(auxChannelsData['time_lo'])[unique_input_idxs].astype(np.uint32)
+                        ts_hi = np.array(auxChannelsData['time_hi'])[unique_input_idxs].astype(np.uint32)
+
+                if ts_lo is not None and ts_hi is not None:
                     # Perform time-dependent per sample start-point interpolation,
                     # stitching together uin64 timestamps from lo/hi parts
-                    ts_lo = np.array(mesh.vertex_data.custom_attributes["timestamp_lo"])[unique_input_idxs].astype(np.uint32)
-                    ts_hi = np.array(mesh.vertex_data.custom_attributes["timestamp_hi"])[unique_input_idxs].astype(np.uint32)
                     timestamp = (np.left_shift(ts_hi, 32, dtype=np.uint64) + ts_lo).flatten()
                     del(ts_lo, ts_hi)
 
@@ -478,7 +488,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                     # No per-point timestamps available, fallback to using *constant*
                     # lidar origin as start point for all rays
                     timestamp = np.full((point_count), frame_end_timestamp_us, dtype=np.uint64)
-                    xyz_s = np.full((point_count, 3), [0, 0, 0])  # N x 3
+                    xyz_s = np.full((point_count, 3), [0, 0, 0], dtype=np.float32)  # N x 3
 
                 del(mesh)
 

@@ -1,5 +1,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
+from __future__ import annotations
+
 import json
 import base64
 import logging
@@ -10,6 +12,7 @@ import re
 
 from typing import Optional, Tuple
 from pathlib import Path
+from dataclasses import dataclass
 
 import tqdm
 import numpy as np
@@ -363,7 +366,7 @@ class LabelProcessor:
     def parse(
         cls,
         labels_path: str,
-        sensor_meta_files: dict[str, Path],  # per sensor end-of-frame timestamps from sensor-indexer's meta files
+        sensor_metas: dict[str, LidarIndexerMeta],  # parsed per sensor meta data
         T_sensor_rigs: dict[str, np.ndarray],  # per-sensor T_sensor_rig transformations
         T_rig_world_timestamps_us: np.ndarray,  # timestamps of rig-to-world poses
         T_rig_worlds: np.ndarray,  # rig-to-world poses
@@ -396,10 +399,11 @@ class LabelProcessor:
         # Load per-frame timestamps for each sensor to associate the labels with frame IDs (given by end-of-frame timestamps)
         # (using a dict to error out on missing per-frame timestamps)
         sensor_frame_timestamps: dict[str, dict[int, int]] = {
-            sensor_id:
-            {frame_data['frame_number']: frame_data['timestamp']
-             for frame_data in load_jsonl(sensor_meta_file)}
-            for sensor_id, sensor_meta_file in sensor_meta_files.items()
+            sensor_id: {
+                int(frame_number): int(frame_endtime_us)
+                for frame_number, frame_endtime_us in zip(sensor_meta.frame_numbers, sensor_meta.frame_endtimes_us)
+            }
+            for sensor_id, sensor_meta in sensor_metas.items()
         }
 
         # Initialize pose interpolator
@@ -795,6 +799,78 @@ def load_maglev_camera_indexer_frame_meta(camera_path: Path) -> Tuple[np.ndarray
     finally:
         return raw_frame_numbers, raw_frame_timestamps_us
 
+
+@dataclass
+class LidarIndexerMeta:
+    frame_numbers: np.ndarray  # raw frame numbers mapping for frame file names
+    frame_endtimes_us: np.ndarray  # end-of-frame times
+    frames_egocompensated: bool  # if point clouds are motion-compensated
+    frame_starttimes_us: Optional[np.ndarray]  # only available from lidar-exporter meta-data
+
+
+def load_maglev_lidar_indexer_frame_meta(lidarpath_or_metafile: Path) -> LidarIndexerMeta:
+    ''' Returns meta-data of Maglev's lidar-indexer variants.
+    
+    Input can either be a path to a meta.json file (CSFT-based) or a directory path containing either
+    a meta.json file (CSFT-based) or 'spins.txt'/'toolConfigs.txt' files (lidar-exporter-based) '''
+
+    # Determine meta file path to load
+    if lidarpath_or_metafile.suffix == '.json':
+        meta_file_path = lidarpath_or_metafile
+    else:
+        meta_file_path = lidarpath_or_metafile / 'meta.json'
+
+    if meta_file_path.exists():
+        # Load CSFT-based indexed frame meta-data
+
+        frames_metadata = load_jsonl(meta_file_path)
+
+        raw_frame_numbers = np.array([frame_data['frame_number'] for frame_data in frames_metadata], dtype=np.uint64)
+        raw_frame_timestamps_us = np.array([frame_data['timestamp'] for frame_data in frames_metadata], dtype=np.uint64)
+        raw_frame_egocompensated = np.array([frame_data['ego_compensated'] for frame_data in frames_metadata],
+                                            dtype=np.bool8)
+
+        # Sanity check assumptions
+        assert np.all(
+            raw_frame_egocompensated == raw_frame_egocompensated[0]), 'expecting consistent motion-compensation state'
+
+        return LidarIndexerMeta(frame_numbers=raw_frame_numbers,
+                                frame_endtimes_us=raw_frame_timestamps_us,
+                                frames_egocompensated=bool(raw_frame_egocompensated[0]),
+                                frame_starttimes_us=None)
+
+    if (spin_file_path := lidarpath_or_metafile / 'spins.txt').exists():
+        # Load lidar-exporter-based meta-data / spins file
+
+        with open(spin_file_path, 'r') as spins_file:
+            rows = [row for row in csv.DictReader(spins_file)]
+
+        raw_lidar_idx = np.array([int(row['lidarIdx']) for row in rows], dtype=np.uint64)
+        raw_spin_idx = np.array([int(row['spinIndex']) for row in rows], dtype=np.uint64)
+        raw_start_time_us = np.array([int(row['startTime']) for row in rows], dtype=np.uint64)
+        raw_end_time_us = np.array([int(row['endTime']) for row in rows], dtype=np.uint64)
+        raw_primary_spin_idx = np.array([int(row['primarySpinIndex']) for row in rows], dtype=np.uint64)
+
+        # Determine motion-compensation property from tool configuration
+        with open(lidarpath_or_metafile / 'toolConfigs.txt', 'r') as toolconfig_file:
+            if state := re.search(r'--motionCompensate=(\d)', toolconfig_file.read()):
+                frames_egocompensated = state.group(1) == '1'
+            else:
+                raise ValueError('Can\'t determine motion-compensation state from lidar exporter tool-config')
+
+        # Sanity check assumptions
+        assert np.all(raw_lidar_idx == raw_lidar_idx[0]), 'Expecting consistent single-lidar data'
+        assert np.all(
+            raw_spin_idx == raw_primary_spin_idx), 'Expecting spin indices to be consistent with primary spins'
+
+        return LidarIndexerMeta(
+            frame_numbers=raw_spin_idx,
+            frame_starttimes_us=raw_start_time_us,
+            frame_endtimes_us=raw_end_time_us,
+            frames_egocompensated=frames_egocompensated,
+        )
+
+    raise ValueError('No viable lidar-indexer meta-data found')
 
 def load_maglev_session_id(sequence_path: Path) -> str:
     ''' Loads session-id in a strustable way '''

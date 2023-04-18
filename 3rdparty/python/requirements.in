@@ -10,7 +10,7 @@ scikit-image
 protobuf3-to-dict==0.1.5
 pandas
 pyarrow
-point-cloud-utils
+point-cloud-utils>=0.29.3
 click
 pytest
 parameterized
