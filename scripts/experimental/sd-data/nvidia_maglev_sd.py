@@ -103,7 +103,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.min_speed_km_h: Optional[float] = config.min_speed_km_h
 
     @staticmethod
-    def get_sequence_dirs(config) -> list[Path]:
+    def get_sequence_paths(config) -> list[Path]:
         return [Path(config.root_dir)]
 
     @staticmethod

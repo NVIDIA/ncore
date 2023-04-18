@@ -48,7 +48,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
         self.end_timestamp_us = config.end_timestamp_us
 
     @staticmethod
-    def get_sequence_dirs(config) -> list[Path]:
+    def get_sequence_paths(config) -> list[Path]:
         return [Path(p) for p in sorted(glob.glob(os.path.join(config.root_dir, '*/')))]
 
     @staticmethod

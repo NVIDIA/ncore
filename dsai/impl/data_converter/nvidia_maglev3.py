@@ -47,7 +47,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.skip_dynamic_flag: bool = config.skip_dynamic_flag
 
     @staticmethod
-    def get_sequence_dirs(config) -> list[Path]:
+    def get_sequence_paths(config) -> list[Path]:
         return [Path(config.root_dir)]
 
     @staticmethod
