@@ -183,7 +183,9 @@ Lidar data contains the following columns:
 * ``intensity`` - measured intensity (float32, [n]): normalized to
   ``[0.0, 1.0]`` range
 * ``dynamic_flag`` - dynamic flag (int8, [n]): ``-1`` if not evaluated,
-  ``0`` for static points, and ``1`` for dynamic points
+  ``0`` for static points, and ``1`` for dynamic points. Note: points
+  are classified as dynamic if the associated object-track is dynamic
+  at *any* point in time of the sequence
 * ``timestamp_us`` - point timestamp in microseconds (uint64, [n])
 
 Radar data contains the following columns:
@@ -319,7 +321,9 @@ Annotation data is stored in a segmented format:
 * All observations of each unique track instance is stored in a
   session-wide format in the ``/labels/track_labels`` dataset by
   *references* to the individual sensor frames that are observing the
-  track's instance.
+  track's instance. An associated ``dynamic_flag`` indicates
+  if any of the time-associated instances are dynamic at *any*
+  point in time of the sequence
 * Individual time-associated instances of each track observation (e.g.,
   3D bounding boxes in lidar frames or 2D bounding boxes in camera
   frames) are stored in the per-frame meta data of each sensor's frame.
