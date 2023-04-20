@@ -540,6 +540,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                                                    intensity,
                                                    timestamp,
                                                    dynamic_flag,
+                                                   None,
                                                    frame_labels,
                                                    T_rig_worlds,
                                                    timestamps_us)

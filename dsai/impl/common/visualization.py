@@ -1,5 +1,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
+from typing import Optional
+
 import numpy as np
 import open3d.ml.tf as ml3d
 
@@ -85,24 +87,35 @@ class LabelVisualizer:
             self.lut.add_label(value, key, self.COLOR_MAP_LABELS(id)[:3])
 
     @multimethod
-    def add_pc(self, xyz: np.ndarray, intensity: np.ndarray, dynamic_flag: np.ndarray, timestamp: np.ndarray, frame_id: int) -> None:
-        ''' Adds a single lidar point cloud to the visualizer (V2 data) '''
+    def add_pc(self, 
+               frame_id: int,
+               xyz: np.ndarray,
+               intensity: np.ndarray,
+               dynamic_flag: np.ndarray,
+               timestamp: np.ndarray,
+               semantic_class: Optional[np.ndarray]) -> None:
+        ''' Adds a single lidar point cloud to the visualizer (V3 data) '''
 
-        # normalize timestamps to floating point [0,1]
-        timestamp = (timestamp - timestamp.min())/ (timestamp.max() - timestamp.min())
-        timestamp[np.isnan(timestamp)] = 0 # first spin has same timestamp for all points
-
-        self.data.append({
+        pc = {
             'name': str(frame_id),
             'points': xyz.astype(np.float32),
-            'intensity': intensity.astype(np.float32),
-            'dynamic_flag': dynamic_flag,
-            'timestamp': timestamp.astype(np.float32)
-        })
+            'intensity':  intensity.astype(np.float32),
+            'dynamic_flag': dynamic_flag
+        }
+
+        # normalize timestamps to floating point [0,1]
+        timestamp_normalized = (timestamp - timestamp.min())/ (timestamp.max() - timestamp.min())
+        timestamp_normalized[np.isnan(timestamp_normalized)] = 0 # first spin could have same timestamp for all points
+        pc['timestamp'] = timestamp_normalized.astype(np.float32)
+
+        if semantic_class is not None:
+            pc['semantic_class'] = semantic_class
+
+        self.data.append(pc)
 
     @multimethod
     def add_labels(self, frame_labels: list[FrameLabel3]) -> None:
-        ''' Registers frame-label bounding boxes (V2 data) '''
+        ''' Registers frame-label bounding boxes (V3 data) '''
         for frame_label in frame_labels:
             self._add_bbox(bbox=frame_label.bbox3.to_array(),
                            label_class=frame_label.label_class,

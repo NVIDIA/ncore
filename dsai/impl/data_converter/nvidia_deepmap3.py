@@ -287,7 +287,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
 
             # Serialize lidar frame
             self.data_writer.store_lidar_frame(self.LIDAR_SENSOR_ID, frame_idx, xyz_s, xyz_e, intensity, timestamp,
-                                               dynamic_flag, frame_labels, T_rig_worlds, timestamps_us)
+                                               dynamic_flag, None, frame_labels, T_rig_worlds, timestamps_us)
 
             # Save the end time stamp of the lidar spin
             lidar_end_timestmap.append(frame_end_timestamp)
