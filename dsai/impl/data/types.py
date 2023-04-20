@@ -13,7 +13,7 @@ import numpy as np
 import dataclasses_json
 import PIL.Image as PILImage
 
-from . import util
+from dsai.impl.data import util
 
 ## Data classes representing stored data types
 @unique
