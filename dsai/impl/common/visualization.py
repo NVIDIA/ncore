@@ -107,7 +107,7 @@ class LabelVisualizer:
             self._add_bbox(bbox=frame_label.bbox3.to_array(),
                            label_class=frame_label.label_class,
                            identifier=frame_label.track_id,
-                           confidence=frame_label.confidence)
+                           confidence=frame_label.confidence if frame_label.confidence else 1.0)
 
     def _add_bbox(self, bbox: np.ndarray, label_class: str, identifier: str, confidence: float = 1.0) -> None:
         # TODO: This orientation seems correct to me, but we should double check it as the definition is weird

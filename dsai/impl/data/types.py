@@ -187,7 +187,7 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
     label_class: str
     bbox3: BBox3
     global_speed: float
-    confidence: float
+    confidence: Optional[float]
 
     # If available, the timestamp associated with the centroid of the label
     # (possibly an accurate in-spin time). Optional also to be
