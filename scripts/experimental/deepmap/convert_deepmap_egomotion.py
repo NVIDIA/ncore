@@ -8,10 +8,10 @@ import numpy as np
 from google.protobuf import text_format
 from protobuf_to_dict import protobuf_to_dict
 
-from dsai.impl.data_converter.protos.deepmap import track_data_pb2
-from dsai.impl.data_converter.protos.deepmap.util import extract_sensor_2_sdc
-from dsai.impl.common.nvidia_utils import extract_pose
-from dsai.impl.common.common import save_jsonl
+from ncore.impl.data_converter.protos.deepmap import track_data_pb2
+from ncore.impl.data_converter.protos.deepmap.util import extract_sensor_2_sdc
+from ncore.impl.common.nvidia_utils import extract_pose
+from ncore.impl.common.common import save_jsonl
 
 
 @click.command()

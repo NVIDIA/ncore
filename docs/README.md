@@ -4,18 +4,18 @@
 
 ## Building and Viewing
 
-DSAI's documentation is sphinx-based. A HTML version of the documentation can be build using
+NCORE's documentation is sphinx-based. A HTML version of the documentation can be build using
 
 ```
-bazel build //docs:dsai
+bazel build //docs:ncore
 ```
 
-, which will be outputted into the output folder `bazel-bin/docs/dsai_html`.
+, which will be outputted into the output folder `bazel-bin/docs/ncore_html`.
 
 The HTML version can also be directly build and opened in a web-browser by running the
 
 ```
-bazel run //docs:view_dsai
+bazel run //docs:view_ncore
 ```
 
 target.

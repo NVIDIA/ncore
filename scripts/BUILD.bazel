@@ -12,9 +12,9 @@ load("@rules_python//python:defs.bzl", "py_binary")
 
 CONVERT_RAW_DATA_DEPS = [
     requirement("click"),
-    "//dsai/impl/data_converter:pylib_nvidia_maglev",
-    "//dsai/impl/data_converter:pylib_nvidia_deepmap",
-    "//dsai/impl/data_converter:pylib_waymo_open",
+    "//ncore/impl/data_converter:pylib_nvidia_maglev",
+    "//ncore/impl/data_converter:pylib_nvidia_deepmap",
+    "//ncore/impl/data_converter:pylib_waymo_open",
 ]
 
 py_binary(
@@ -25,10 +25,10 @@ py_binary(
 
 # Image for 'convert_raw_data'
 
-# extract all transitive dependencies of dependencies under //dsai
+# extract all transitive dependencies of dependencies under //ncore
 py_layer(
     name = "convert_raw_data_common_deps_layer",
-    filter = "//dsai",
+    filter = "//ncore",
     tags = [
         "manual",
         "no-remote-cache",
@@ -36,7 +36,7 @@ py_layer(
     deps = CONVERT_RAW_DATA_DEPS,
 )
 
-# extract all external dependencies of the deps under //dsai
+# extract all external dependencies of the deps under //ncore
 py_layer(
     name = "convert_raw_data_common_external_deps_layer",
     filter = "@",
@@ -61,7 +61,7 @@ py_layer(
 py3_image(
     name = "convert_raw_data_image",
     srcs = ["convert_raw_data.py"],
-    base = "@dsai_dev_container//image",
+    base = "@ncore_dev_container//image",
     layers = [
         ":convert_raw_data_external_deps_layer",
         ":convert_raw_data_common_external_deps_layer",
@@ -72,7 +72,7 @@ py3_image(
         "manual",
         "no-remote-cache",
     ],
-    deps = [":dsai_sequence_meta"],  # include additional local targets to simplify their deployment
+    deps = [":ncore_sequence_meta"],  # include additional local targets to simplify their deployment
 )
 
 # Push image to 'production' (prod) tag - use with *CAUTION* as referenced by default in workflows
@@ -81,7 +81,7 @@ container_push(
     format = "Docker",
     image = ":convert_raw_data_image",
     registry = "nvcr.io",
-    repository = "nv-maglev/dlav/drivesim-ai",
+    repository = "nv-maglev/dlav/ncore",
     tag = "convert-raw-data-prod",
     tags = [
         "manual",
@@ -95,7 +95,7 @@ container_push(
     format = "Docker",
     image = ":convert_raw_data_image",
     registry = "nvcr.io",
-    repository = "nv-maglev/dlav/drivesim-ai",
+    repository = "nv-maglev/dlav/ncore",
     tag = "convert-raw-data-stage",
     tags = [
         "manual",
@@ -104,102 +104,102 @@ container_push(
 )
 
 py_binary(
-    name = "dsai_export_ply",
-    srcs = ["dsai_export_ply.py"],
+    name = "ncore_export_ply",
+    srcs = ["ncore_export_ply.py"],
     deps = [
         requirement("point-cloud-utils"),
         requirement("numpy"),
         requirement("click"),
         requirement("tqdm"),
-        "//dsai/impl/common:pylib_transformations",
-        "//dsai/impl/data:pylib_data",
-        "//dsai/impl/data:pylib_util",
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_util",
     ],
 )
 
 py_binary(
-    name = "dsai_export_image",
-    srcs = ["dsai_export_image.py"],
+    name = "ncore_export_image",
+    srcs = ["ncore_export_image.py"],
     deps = [
         requirement("click"),
         requirement("tqdm"),
-        "//dsai/impl/data:pylib_data",
-        "//dsai/impl/data:pylib_util",
+        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_util",
     ],
 )
 
 py_binary(
-    name = "dsai_surface_rec",
-    srcs = ["dsai_surface_rec.py"],
+    name = "ncore_surface_rec",
+    srcs = ["ncore_surface_rec.py"],
     data = ["@PoissonRecon"],
     deps = [
         requirement("click"),
         requirement("tqdm"),
         requirement("point-cloud-utils"),
-        "//dsai/impl/common:pylib_transformations",
-        "//dsai/impl/data:pylib_data",
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/data:pylib_data",
     ],
 )
 
 py_binary(
-    name = "dsai_visualize_labels",
-    srcs = ["dsai_visualize_labels.py"],
+    name = "ncore_visualize_labels",
+    srcs = ["ncore_visualize_labels.py"],
     deps = [
         requirement("click"),
         requirement("tqdm"),
-        "//dsai/impl/common:pylib_visualization",
-        "//dsai/impl/data:pylib_data",
+        "//ncore/impl/common:pylib_visualization",
+        "//ncore/impl/data:pylib_data",
     ],
 )
 
 py_binary(
-    name = "dsai_extract_segmentation",
-    srcs = ["dsai_extract_segmentation.py"],
+    name = "ncore_extract_segmentation",
+    srcs = ["ncore_extract_segmentation.py"],
     deps = [
         requirement("click"),
-        "//dsai/impl/data:pylib_data",
-        "//dsai/impl/data:pylib_util",
-        "//dsai/impl/deps/instance_segmentation:pylib",
-        "//dsai/impl/deps/semantic_segmentation:pylib",
+        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_util",
+        "//ncore/impl/deps/instance_segmentation:pylib",
+        "//ncore/impl/deps/semantic_segmentation:pylib",
     ],
 )
 
 py_binary(
-    name = "dsai_to_ngp",
-    srcs = ["dsai_to_ngp.py"],
+    name = "ncore_to_ngp",
+    srcs = ["ncore_to_ngp.py"],
     deps = [
         requirement("click"),
         requirement("pillow"),
-        "//dsai/impl/common:pylib_common",
-        "//dsai/impl/common:pylib_transformations",
-        "//dsai/impl/data:pylib_data",
-        "//dsai/impl/data:pylib_types",
-        "//dsai/impl/data:pylib_util",
+        "//ncore/impl/common:pylib_common",
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_types",
+        "//ncore/impl/data:pylib_util",
     ],
 )
 
 py_binary(
-    name = "dsai_project_pc_to_img",
-    srcs = ["dsai_project_pc_to_img.py"],
+    name = "ncore_project_pc_to_img",
+    srcs = ["ncore_project_pc_to_img.py"],
     deps = [
         requirement("click"),
         requirement("tqdm"),
         requirement("numpy"),
-        "//dsai/impl/av_utils:pylib",
-        "//dsai/impl/common:pylib_transformations",
-        "//dsai/impl/common:pylib_visualization",
-        "//dsai/impl/data:pylib_data",
-        "//dsai/impl/data:pylib_types",
-        "//dsai/impl/sensors:pylib_camera",
+        "//ncore/impl/av_utils:pylib",
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/common:pylib_visualization",
+        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_types",
+        "//ncore/impl/sensors:pylib_camera",
     ],
 )
 
 py_binary(
-    name = "dsai_sequence_meta",
-    srcs = ["dsai_sequence_meta.py"],
+    name = "ncore_sequence_meta",
+    srcs = ["ncore_sequence_meta.py"],
     deps = [
         requirement("click"),
-        "//dsai/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_data",
     ],
 )
 

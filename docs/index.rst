@@ -1,8 +1,10 @@
 .. Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-Welcome to DSAI Library Documentation!
+Welcome to the NRECore-SDK Documentation!
 
-DSAI Library provides the tools developed in the Nvidia Toronto AI Lab for data-driven simulation in autonomous driving. 
+The NRECore-SDK provides APIs, data representations, and tools to support data-driven neural reconstructions with a focus on AV data.
+
+The SDK is developed within the Nvidia Toronto AI Lab.
 
 Take a look at the Installation guide, :ref:`conventions` and Tutorials to get started. 
 

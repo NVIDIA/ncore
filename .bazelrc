@@ -9,8 +9,8 @@ build --action_env=BAZEL_LINKLIBS=-l%:libstdc++.a:-lm
 build --action_env=BAZEL_LINKOPTS=-static-libgcc
 
 # Enable local disk caching
-build --disk_cache=~/.cache/bazel/disk-cache/dsai
-build --remote_instance_name dsai
+build --disk_cache=~/.cache/bazel/disk-cache/ncore
+build --remote_instance_name ncore
 
 # Ensure that user's own PATH/LD_LIBRARY_PATH doesn't propagate into the build/test sandbox
 build --incompatible_strict_action_env

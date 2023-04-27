@@ -18,9 +18,9 @@ py_library(
         "nvidia_maglev_sd.py",
     ],
     deps = [
-        "//dsai/impl/common:pylib_common",
-        "//dsai/impl/common:pylib_nvidia",
-        "//dsai/impl/data_converter:pylib_data_converter",
+        "//ncore/impl/common:pylib_common",
+        "//ncore/impl/common:pylib_nvidia",
+        "//ncore/impl/data_converter:pylib_data_converter",
         requirement("webdataset"),
         requirement("dataclasses-json"),
     ],
@@ -39,10 +39,10 @@ py_binary(
 
 # Image for 'sd_shards'
 
-# extract all transitive dependencies of dependencies under //dsai
+# extract all transitive dependencies of dependencies under //ncore
 py_layer(
     name = "sd_shards_common_deps_layer",
-    filter = "//dsai",
+    filter = "//ncore",
     tags = [
         "manual",
         "no-remote-cache",
@@ -75,7 +75,7 @@ py_layer(
 py3_image(
     name = "sd_shards_image",
     srcs = ["sd_shards.py"],
-    base = "@dsai_dev_container//image",
+    base = "@ncore_dev_container//image",
     # Create the image by stacking the above filtered layers on top of one
     # another in the "layers" attribute. The layers are applied in order, and any
     # dependencies already added to the image will *not* be added again.
@@ -97,7 +97,7 @@ container_push(
     format = "Docker",
     image = ":sd_shards_image",
     registry = "nvcr.io",
-    repository = "nv-maglev/dlav/drivesim-ai",
+    repository = "nv-maglev/dlav/ncore",
     tag = "sd-shards-prod",
     tags = [
         "manual",
@@ -111,7 +111,7 @@ container_push(
     format = "Docker",
     image = ":sd_shards_image",
     registry = "nvcr.io",
-    repository = "nv-maglev/dlav/drivesim-ai",
+    repository = "nv-maglev/dlav/ncore",
     tag = "sd-shards-stage",
     tags = [
         "manual",

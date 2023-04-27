@@ -1,6 +1,6 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-workspace(name = "dsai-repo")
+workspace(name = "ncore-repo")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
@@ -110,11 +110,11 @@ load(
 )
 
 container_pull(
-    name = "dsai_dev_container",
+    name = "ncore_dev_container",
     timeout = 7200,
     digest = "sha256:78aed544df058c23c86fba72868f26db91d3f86a0b5c76982079fb274030fd03",
     registry = "gitlab-master.nvidia.com:5005",
-    repository = "toronto_dl_lab/dsai",
+    repository = "toronto_dl_lab/ncore",
 )
 
 ## Protobuf rules
