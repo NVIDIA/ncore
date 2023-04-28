@@ -72,7 +72,7 @@ class DataConverter(ABC):
 
         logger = logging.getLogger(__name__)
 
-        sequence_dirs = cls.get_sequence_dirs(config)
+        sequence_dirs = cls.get_sequence_paths(config)
 
         logger.info(f'Start converting {sequence_dirs} ...')
 
@@ -86,7 +86,7 @@ class DataConverter(ABC):
 
     @staticmethod
     @abstractmethod
-    def get_sequence_dirs(config) -> list[Path]:
+    def get_sequence_paths(config) -> list[Path]:
         '''
         Return sequence pathnames to process
         '''
@@ -103,9 +103,9 @@ class DataConverter(ABC):
 
 
     @abstractmethod
-    def convert_sequence(self, sequence_dir: Path) -> None:
+    def convert_sequence(self, sequence_path: Path) -> None:
         '''
-        Runs dataset-specific conversion for a sequence
+        Runs dataset-specific conversion for a sequence referenced by a directory/file path
         '''
         pass
 

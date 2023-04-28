@@ -234,6 +234,7 @@ class ContainerDataWriter:
             intensity: np.ndarray,
             timestamp_us: np.ndarray,
             dynamic_flag: np.ndarray,
+            semantic_class: Optional[np.ndarray],
 
             # label data
             frame_labels: list[types.FrameLabel3],
@@ -242,19 +243,10 @@ class ContainerDataWriter:
             T_rig_worlds: np.ndarray,
             timestamps_us: np.ndarray) -> None:
         # sanity / consistency checks
-        assert xyz_s.shape[1] == 3
-        assert xyz_s.dtype == np.dtype('float32')
+        assert xyz_e.ndim == 2
         assert xyz_e.shape[1] == 3
         assert xyz_e.dtype == np.dtype('float32')
-        assert intensity.ndim == 1
-        assert intensity.dtype == np.dtype('float32')
-        assert timestamp_us.ndim == 1
-        assert timestamp_us.dtype == np.dtype('uint64')
-        assert dynamic_flag.ndim == 1
-        assert dynamic_flag.dtype == np.dtype('int8')
-        num_points = xyz_s.shape[0]
-        assert all((xyz_s.shape[0] == num_points, xyz_e.shape[0] == num_points, intensity.shape[0] == num_points,
-                    timestamp_us.shape[0] == num_points, dynamic_flag.shape[0] == num_points))
+        num_points = xyz_e.shape[0]
 
         assert T_rig_worlds.shape == (2, 4, 4)
         assert T_rig_worlds.dtype == np.dtype('float32')
@@ -267,15 +259,34 @@ class ContainerDataWriter:
             continous_frame_index_string)
 
         # Store frame data
-        frame_group.create_dataset('xyz_s', data=xyz_s)
         frame_group.create_dataset('xyz_e', data=xyz_e)
-        frame_group.create_dataset('intensity', data=intensity)
-        frame_group.create_dataset('timestamp_us', data=timestamp_us)
-        frame_group.create_dataset('dynamic_flag', data=dynamic_flag)
+
         frame_group.create_dataset('frame_labels',
                                    dtype=object,
                                    data=[frame_label.to_dict() for frame_label in frame_labels],
                                    object_codec=numcodecs.JSON())
+        
+        assert xyz_s.shape == (num_points, 3)
+        assert xyz_s.dtype == np.dtype('float32')
+        frame_group.create_dataset('xyz_s', data=xyz_s)
+
+        assert intensity.shape == (num_points, )
+        assert intensity.dtype == np.dtype('float32')
+        frame_group.create_dataset('intensity', data=intensity)
+
+        assert timestamp_us.shape == (num_points, )
+        assert timestamp_us.dtype == np.dtype('uint64')
+        frame_group.create_dataset('timestamp_us', data=timestamp_us)
+
+        assert dynamic_flag.shape == (num_points, )
+        assert dynamic_flag.dtype == np.dtype('int8')
+        frame_group.create_dataset('dynamic_flag', data=dynamic_flag)
+
+        if semantic_class is not None:
+            assert semantic_class.shape == (num_points, )
+            assert semantic_class.dtype == np.dtype('int8')
+            frame_group.create_dataset('semantic_class', data=semantic_class)
+
         # Store pose data
         frame_group.create_dataset('T_rig_worlds', data=T_rig_worlds)
         frame_group.create_dataset('timestamps_us', data=timestamps_us)

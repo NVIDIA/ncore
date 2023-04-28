@@ -1,7 +1,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", _http_archive = "http_archive",)
-load("@bazel_tools//tools/build_defs/repo:git.bzl",  _new_git_repository = "new_git_repository")
+load("@bazel_tools//tools/build_defs/repo:git.bzl",  _new_git_repository = "new_git_repository", _git_repository = "git_repository")
 load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
 
 def http_archive(name, **kwargs):
@@ -9,6 +9,9 @@ def http_archive(name, **kwargs):
 
 def new_git_repository(name, **kwargs):
     maybe(_new_git_repository, name = name, **kwargs)
+
+def git_repository(name, **kwargs):
+    maybe(_git_repository, name = name, **kwargs)
 
 def register_repositories():
     ## 3rdparty
@@ -85,3 +88,20 @@ cc_library(
             "https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.tar.bz2",
         ],
     )
+
+    git_repository(
+        name = "waymo-open-dataset",
+        commit = "576f63526281cf403be2b6720a0d3acb4d18f41d", # tag v1.5.1
+        shallow_since = "1680923402 -0700",
+        remote = "https://github.com/waymo-research/waymo-open-dataset.git",
+        strip_prefix = "src",
+        repo_mapping = {"@wod_deps" : "@pip_deps"}
+    )
+
+    http_archive(
+    name = "rules_license",
+    sha256 = "6157e1e68378532d0241ecd15d3c45f6e5cfd98fc10846045509fb2a7cc9e381",
+    urls = [
+        "https://github.com/bazelbuild/rules_license/releases/download/0.0.4/rules_license-0.0.4.tar.gz",
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_license/releases/download/0.0.4/rules_license-0.0.4.tar.gz",
+    ],)

@@ -13,7 +13,7 @@ import numpy as np
 import dataclasses_json
 import PIL.Image as PILImage
 
-from . import util
+from dsai.impl.data import util
 
 ## Data classes representing stored data types
 @unique
@@ -173,10 +173,12 @@ class BBox3(dataclasses_json.DataClassJsonMixin):
         assert isinstance(self.rot, tuple)
         assert all(isinstance(i, float) for i in self.rot)
 
+
 @unique
 class LabelSource(IntEnum):
     ''' Enumerates different sources for labels (auto, manual, GT, synthetic etc.) '''
     AUTOLABEL = auto()
+    EXTERNAL = auto()  # Unspecified external source, e.g., from third-party data
 
 
 @dataclass
@@ -187,7 +189,7 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
     label_class: str
     bbox3: BBox3
     global_speed: float
-    confidence: float
+    confidence: Optional[float]
 
     # If available, the timestamp associated with the centroid of the label
     # (possibly an accurate in-spin time). Optional also to be

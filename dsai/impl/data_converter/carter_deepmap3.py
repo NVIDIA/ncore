@@ -52,7 +52,7 @@ class CarterDeepmapConverter(DataConverter):
         self.end_timestamp_us = config.end_timestamp_us
 
     @staticmethod
-    def get_sequence_dirs(config) -> list[Path]:
+    def get_sequence_paths(config) -> list[Path]:
         return [Path(config.root_dir)]
 
     @staticmethod
@@ -286,7 +286,7 @@ class CarterDeepmapConverter(DataConverter):
 
                 # Serialize lidar frame
                 self.data_writer.store_lidar_frame(lidar_id, frame_idx, xyz_s, xyz_e, intensity, timestamp,
-                                                   dynamic_flag, frame_labels, T_rig_worlds, timestamps_us)
+                                                   dynamic_flag, None, frame_labels, T_rig_worlds, timestamps_us)
 
                 # Save the end time stamp of the lidar spin
                 lidar_end_timestamps.append(frame_end_timestamp)

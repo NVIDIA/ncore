@@ -67,6 +67,17 @@ def nvidia_maglev_v3(ctx, *_, **kwargs):
 
     NvidiaMaglevConverter.convert(config)
 
+@cli.command()
+@click.pass_context
+def waymo_v3(ctx, *_, **kwargs):
+    """Waymo-specific data conversion (V3 format)"""
+
+    from dsai.impl.data_converter.waymo3 import WaymoConverter
+
+    config = ctx.obj  # Extend base config with command-specific options
+    config += kwargs
+
+    WaymoConverter.convert(config)
 
 @cli.command()
 @click.option('--start-timestamp-us', type=int, default=None, help="If provided, the start timestamp to restrict processing to")
