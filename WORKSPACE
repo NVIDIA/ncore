@@ -112,7 +112,7 @@ load(
 container_pull(
     name = "ncore_dev_container",
     timeout = 7200,
-    digest = "sha256:78aed544df058c23c86fba72868f26db91d3f86a0b5c76982079fb274030fd03",
+    digest = "sha256:6a665fe9ef71b9f536d1ad9a53423351e089f3bed3646684dc7617ae8ac74c7d",
     registry = "gitlab-master.nvidia.com:5005",
     repository = "toronto_dl_lab/ncore",
 )
