@@ -13,4 +13,4 @@ This bazel package defines a `:jupyter` target that starts a `jupyter_server` wi
    `http://localhost:8890/?token=c977396227f2d07b923dd53fb1a0823c38df37104ea56264`
 
 2. Load a `.ipynb` file into vscode and use the "Connect to Another Jupyter Server", pointint to the
-   reported URL of the server. This also supports adding breakpoint and debugging python-code (including internal DSAI code).
+   reported URL of the server. This also supports adding breakpoint and debugging python-code (including internal NCORE code).

@@ -1,6 +1,6 @@
 .. Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-Running NGP on DSAI data
+Running NGP on NCORE data
 =============================
 
 To reconstruct the radiance field of the static background we use the Instant-NGP. 
@@ -28,10 +28,10 @@ Generating config files
 -----------------------
 
 Instant-NGP uses `*.json` config files to initialize the parameters and image/lidar paths.
-The config files for DSAI data can be generated using the `dsai_to_ngp` target. For example, the command::
+The config files for NCORE data can be generated using the `ncore_to_ngp` target. For example, the command::
 
 
-    bazel run //scripts:dsai_to_ngp \
+    bazel run //scripts:ncore_to_ngp \
         -- \
         --root-dir=<PATH-TO-DATA> \
         --experiment-name=dummy_experiment \

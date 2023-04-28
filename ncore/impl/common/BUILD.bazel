@@ -1,0 +1,83 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_library")
+load("//bazel/pytest:defs.bzl", "pytest_test")
+
+package(default_visibility = ["//:code_package_group"])
+
+py_library(
+    name = "pylib_common",
+    srcs = [
+        "common.py",
+        "transformations.py",
+    ],
+    deps = [
+        requirement("numpy"),
+        requirement("scipy"),
+        requirement("pillow"),
+    ],
+)
+
+py_library(
+    name = "pylib_transformations",
+    srcs = [
+        "transformations.py",
+    ],
+    deps = [
+        requirement("numpy"),
+        requirement("scipy"),
+    ],
+)
+
+py_library(
+    name = "pylib_nvidia",
+    srcs = [
+        "nvidia_utils.py",
+    ],
+    deps = [
+        requirement("numpy"),
+        requirement("tqdm"),
+        requirement("pillow"),
+        requirement("scipy"),
+        requirement("pyarrow"),
+        requirement("pandas"),  # for pyarrow::to_pandas()
+        ":pylib_common",
+        ":pylib_transformations",
+        "//ncore/impl/av_utils:pylib",
+        "//ncore/impl/data:pylib_types",
+    ],
+)
+
+py_library(
+    name = "pylib_visualization",
+    srcs = [
+        "visualization.py",
+    ],
+    deps = [
+        requirement("numpy"),
+        requirement("scipy"),
+        requirement("tqdm"),
+        requirement("matplotlib"),
+        requirement("open3d"),
+        requirement("tensorflow"),  # required by open3d.ml.tf
+        requirement("multimethod"),
+        ":pylib_nvidia",
+        "//ncore/impl/data:pylib_types",
+    ],
+)
+
+pytest_test(
+    name = "test",
+    srcs = glob(["*test.py"]),
+    deps = [
+        requirement("numpy"),
+        requirement("scipy"),
+        ":pylib_common",
+        ":pylib_transformations",
+        "//ncore/impl/av_utils:pylib",
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")

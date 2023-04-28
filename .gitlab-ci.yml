@@ -6,14 +6,14 @@ variables:
 
 default:
   image:
-    name: gitlab-master.nvidia.com:5005/toronto_dl_lab/dsai:dev
+    name: gitlab-master.nvidia.com:5005/toronto_dl_lab/ncore:dev
   tags:
     - type/docker
     - os/linux
     - arch/x86_64
   before_script:
     # Fix permission as we are running as a local user
-    - git config --global --add safe.directory /builds/Toronto_DL_Lab/dsai
+    - git config --global --add safe.directory /builds/Toronto_DL_Lab/ncore
     - |
       if test -d $CI_PROJECT_DIR/.ci-keep; then
         sudo chown -R developer $CI_PROJECT_DIR/.ci-keep
@@ -59,10 +59,10 @@ pages:
   - bazelisk version
 
   # Build the HTML documentation
-  - bazelisk build //docs:dsai
+  - bazelisk build //docs:ncore
 
   # Move it to the output artifact for upload (requires root right to write)
-  - sudo mv bazel-bin/docs/dsai_html/ public/
+  - sudo mv bazel-bin/docs/ncore_html/ public/
   artifacts:
     paths:
     - public

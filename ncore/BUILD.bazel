@@ -1,0 +1,41 @@
+# Copyright (c) 2023 NVIDIA CORPORATION.  All rights reserved.
+
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
+
+# Collect all dependencies within the ncore.* subpackages to export in wheel
+py_package(
+    name = "ncore_pkg",
+    packages = ["ncore"],
+    deps = [
+        "@ncore-repo//ncore/data:pylib",
+        "@ncore-repo//ncore/data/v3:pylib",
+        "@ncore-repo//ncore/geometry:pylib",
+        "@ncore-repo//ncore/sensors:pylib",
+    ],
+)
+
+# Export packages by creating wheel
+py_wheel(
+    name = "ncore_wheel",
+    abi = "none",
+    distribution = "ncore",
+    homepage = "https://gitlab-master.nvidia.com/Toronto_DL_Lab/ncore",
+    platform = "any",
+    python_requires = ">=3.10",
+    python_tag = "py3",
+    requires = [
+        "numpy",
+        "dataclasses_json",
+        "pillow",
+        "zarr",
+        "cbor2",
+        "scipy",
+    ],
+    version = "0.3.0",
+    deps = [
+        ":ncore_pkg",
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")

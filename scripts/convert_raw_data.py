@@ -3,7 +3,7 @@
 import click
 import logging
 
-from dsai.impl.common.common import Config
+from ncore.impl.common.common import Config
 
 
 @click.group()
@@ -41,7 +41,7 @@ def cli(ctx, *_, **kwargs):
 def nvidia_deepmap_v3(ctx, *_, **kwargs):
     """NVIDIA-specific data conversion (V3 format, based on DeepMap tracks)"""
 
-    from dsai.impl.data_converter.nvidia_deepmap3 import NvidiaDeepmapConverter
+    from ncore.impl.data_converter.nvidia_deepmap3 import NvidiaDeepmapConverter
 
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
@@ -60,7 +60,7 @@ def nvidia_deepmap_v3(ctx, *_, **kwargs):
 def nvidia_maglev_v3(ctx, *_, **kwargs):
     """NVIDIA-specific data conversion (V3 format, based on Maglev data extraction)"""
 
-    from dsai.impl.data_converter.nvidia_maglev3 import NvidiaMaglevConverter
+    from ncore.impl.data_converter.nvidia_maglev3 import NvidiaMaglevConverter
 
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
@@ -72,7 +72,7 @@ def nvidia_maglev_v3(ctx, *_, **kwargs):
 def waymo_v3(ctx, *_, **kwargs):
     """Waymo-specific data conversion (V3 format)"""
 
-    from dsai.impl.data_converter.waymo3 import WaymoConverter
+    from ncore.impl.data_converter.waymo3 import WaymoConverter
 
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs
@@ -86,7 +86,7 @@ def waymo_v3(ctx, *_, **kwargs):
 def carter_deepmap_v3(ctx, *_, **kwargs):
     """NVIDIA Carter-specific data conversion (V3 format, based on DeepMap tracks)"""
 
-    from dsai.impl.data_converter.carter_deepmap3 import CarterDeepmapConverter
+    from ncore.impl.data_converter.carter_deepmap3 import CarterDeepmapConverter
 
     config = ctx.obj  # Extend base config with command-specific options
     config += kwargs

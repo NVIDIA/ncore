@@ -83,10 +83,10 @@ the top-left pixel in the image, i.e., both the u and v coordinates of
 the first pixel span the range ``[0.0, 1.0]``.
 
 
-Shard Data Hierarchy (DSAI V3 Data Format)
-------------------------------------------
+Shard Data Hierarchy (NCORE V3 Data Format)
+-------------------------------------------
 
-The per-shard data converted using DSAI V3 converters is represented as
+The per-shard data converted using NCORE V3 converters is represented as
 *self-contained* shard archives [#f2]_.
 
 Within each shard archive the data is represented in the following
@@ -339,7 +339,7 @@ Annotation data is stored in a segmented format:
          by default be an identity matrix if DeepMap poses are not used.
          The coordinate system is hence a local 3D cartesian system and
          not ECEF.
-.. [#f2] DSAI V3 data shards are represented by
+.. [#f2] NCORE V3 data shards are represented by
          [zarr](https://zarr.readthedocs.io/en/stable)
          groups within a custom ``.itar`` archive format that can be
          loaded most easily using the ``ShardDataLoader`` type, which

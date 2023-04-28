@@ -1,7 +1,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-# BUILD: docker image build -t gitlab-master.nvidia.com:5005/toronto_dl_lab/dsai:dev -f docker/Dockerfile.build .
-# PUSH:  docker push gitlab-master.nvidia.com:5005/toronto_dl_lab/dsai:dev
+# BUILD: docker image build -t gitlab-master.nvidia.com:5005/toronto_dl_lab/ncore:dev -f docker/Dockerfile.build .
+# PUSH:  docker push gitlab-master.nvidia.com:5005/toronto_dl_lab/ncore:dev
 
 FROM nvidia/cuda:11.7.0-runtime-ubuntu22.04
 

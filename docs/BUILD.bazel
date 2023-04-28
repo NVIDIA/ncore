@@ -4,15 +4,15 @@ load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("//bazel/sphinx:defs.bzl", "sphinx_html_gen", "sphinx_view")
 
 sphinx_html_gen(
-    name = "dsai",
+    name = "ncore",
     srcs = glob(["images/**"]) + glob(["notes/**"]) + glob(["_static/**"]) + glob(["_templates/**"]),
     config = "conf.py",
     index = "index.rst",
 )
 
 sphinx_view(
-    name = "view_dsai",
-    generator = "dsai",
+    name = "view_ncore",
+    generator = "ncore",
 )
 
 bzlformat_pkg(name = "bzlformat")

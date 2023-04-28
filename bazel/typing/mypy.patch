@@ -25,6 +25,6 @@ index 63bb405..0d3c3ef 100644
          requirement("mypy"),
 +        # List of dependencies that provide type-hints
 +        local_req("click"), local_req("pytest"), local_req("numpy"), local_req("sphinx"), local_req("multimethod"), local_req("jupyter_server"), local_req("dataclasses_json"), local_req("torch"),
-+        "@dsai-repo//dsai/data:pylib", "@dsai-repo//dsai/data/v3:pylib", "@dsai-repo//dsai/geometry:pylib", "@dsai-repo//dsai/sensors:pylib",
++        "@ncore-repo//ncore/data:pylib", "@ncore-repo//ncore/data/v3:pylib", "@ncore-repo//ncore/geometry:pylib", "@ncore-repo//ncore/sensors:pylib",
      ],
  )
