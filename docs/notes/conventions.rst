@@ -238,9 +238,7 @@ The field ``camera_model_parameters`` will unconditionally contain:
 
 * ``resolution`` - width and height of the image in pixels (uint32,
   [2,])
-* ``exposure_time_us`` - exposure time of the camera in microseconds
-  (uint64)
-* ``shutter_type`` - type of camera shutter (str, one of
+* ``shutter_type`` - shutter type of the camera's imaging sensor (str, one of
   [ROLLING_TOP_TO_BOTTOM, ROLLING_LEFT_TO_RIGHT, ROLLING_BOTTOM_TO_TOP,
   ROLLING_RIGHT_TO_LEFT, GLOBAL])
 
