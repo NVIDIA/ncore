@@ -314,7 +314,6 @@ class CarterDeepmapConverter(DataConverter):
                 resolution=np.array([sensor_data.intrinsics.image_width, sensor_data.intrinsics.image_height],
                                     dtype=np.uint64),
                 shutter_type=ShutterType.GLOBAL,
-                exposure_time_us=0,
                 principal_point=camera_matrix[:2, 2],
                 focal_length=camera_matrix[np.diag_indices(2)],
                 # Images are rectified already -> identity distortion

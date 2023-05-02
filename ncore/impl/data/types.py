@@ -30,14 +30,12 @@ class CameraModelParameters:
     ''' Represents parameters common to all camera models '''
     resolution: np.ndarray = util.numpy_array_field(np.uint64)
     shutter_type: ShutterType = util.enum_field(ShutterType)
-    exposure_time_us: int = 0
 
     def __post_init__(self):
         # Sanity checks
         assert self.resolution.shape == (2, )
         assert self.resolution.dtype == np.dtype('uint64')
         assert self.resolution[0] > 0 and self.resolution[1] > 0
-        assert self.exposure_time_us > 0 if self.shutter_type != ShutterType.GLOBAL else self.exposure_time_us >= 0
 
 
 @dataclass
