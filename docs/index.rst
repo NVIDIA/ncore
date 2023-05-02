@@ -23,6 +23,12 @@ Take a look at the Installation guide, :ref:`conventions` and Tutorials to get s
 
    notes/running_NGP
 
+.. toctree::
+   :maxdepth: 1
+   :caption: Python APIs:
+
+   apis/packages
+
 .. note:: 
    This project is under active development.
    

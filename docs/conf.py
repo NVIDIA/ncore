@@ -31,6 +31,11 @@ intersphinx_mapping = {
     'PyTorch': ('https://pytorch.org/docs/master/', None),
 }
 
+autodoc_default_options = {
+    'show-inheritance': False,
+    'undoc-members': False,
+}
+
 master_doc = 'index'
 
 templates_path = ['_templates']
@@ -46,5 +51,5 @@ html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 html_theme = "sphinx_rtd_theme"
 html_theme_options = {
     'collapse_navigation': False,
-    'navigation_depth': 4,
+    'navigation_depth': -1,
 }
