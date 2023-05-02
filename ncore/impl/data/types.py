@@ -18,18 +18,18 @@ from ncore.impl.data import util
 ## Data classes representing stored data types
 @unique
 class ShutterType(IntEnum):
-    ''' Enumerates different possible shutter types '''
-    ROLLING_TOP_TO_BOTTOM = auto()
-    ROLLING_LEFT_TO_RIGHT = auto()
-    ROLLING_BOTTOM_TO_TOP = auto()
-    ROLLING_RIGHT_TO_LEFT = auto()
-    GLOBAL = auto()
+    ''' Enumerates different possible camera imager shutter types '''
+    ROLLING_TOP_TO_BOTTOM = auto()  #: Rolling shutter from top to bottom of the imager
+    ROLLING_LEFT_TO_RIGHT = auto()  #: Rolling shutter from left to right of the imager
+    ROLLING_BOTTOM_TO_TOP = auto()  #: Rolling shutter from bottom to top of the imager
+    ROLLING_RIGHT_TO_LEFT = auto()  #: Rolling shutter from right to left of the imager
+    GLOBAL = auto()                 #: Instantaneous global shutter (no rolling shutter)
 
 @dataclass
 class CameraModelParameters:
     ''' Represents parameters common to all camera models '''
-    resolution: np.ndarray = util.numpy_array_field(np.uint64)
-    shutter_type: ShutterType = util.enum_field(ShutterType)
+    resolution: np.ndarray = util.numpy_array_field(np.uint64)  #: Width and height of the image in pixels (uint32, [2,])
+    shutter_type: ShutterType = util.enum_field(ShutterType)    #: Shutter type of the camera's imaging sensor
 
     def __post_init__(self):
         # Sanity checks
@@ -44,26 +44,28 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
     @unique
     class PolynomialType(IntEnum):
         ''' Enumerates different possible polynomial types '''
-        PIXELDIST_TO_ANGLE = auto()  # also known as "backward"
-        ANGLE_TO_PIXELDIST = auto()  # also known as "forward"
+        PIXELDIST_TO_ANGLE = auto()  #: Polynomial mapping pixeldistances-to-angles (also known as "backward" polynomial)
+        ANGLE_TO_PIXELDIST = auto()  #: Polynomial mapping angles-to-pixeldistances (also known as "forward" polynomial)
 
-    principal_point: np.ndarray = util.numpy_array_field(np.float32)
-    reference_poly: PolynomialType = util.enum_field(PolynomialType)
-    pixeldist_to_angle_poly: np.ndarray = util.numpy_array_field(np.float32)
-    angle_to_pixeldist_poly: np.ndarray = util.numpy_array_field(np.float32)
-    max_angle: float = 0.0
+    principal_point: np.ndarray = util.numpy_array_field(np.float32)          #: U and v coordinate of the principal point, following the NVIDIA default convention for FTheta camera models in which the pixel indices represent the center of the pixel (not the top-left corners). Principal point coordinates will be adapted internally in camera model APIs to reflect the :ref:`image coordinate conventions <image_coordinate_conventions>`
+    reference_poly: PolynomialType = util.enum_field(PolynomialType)          #: Indicating which of the two stored polynomials is the model's *reference* polynomial (the other polynomial is only an approximation)
+    pixeldist_to_angle_poly: np.ndarray = util.numpy_array_field(np.float32)  #: Coefficients of the pixeldistances-to-angles polynomial (float32, [6,])
+    angle_to_pixeldist_poly: np.ndarray = util.numpy_array_field(np.float32)  #: Coefficients of the angles-to-pixeldistances polynomial (float32, [6,])
+    max_angle: float = 0.0                                                    #: Maximal extrinsic ray angle [rad] with the principal direction (float32)
 
     @staticmethod
     def type() -> str:
+        ''' Returns a string-identitfiery of the camera model '''
         return 'ftheta'
 
-    # Aliases for polynomial members
     @property
-    def bw_poly(self):
+    def bw_poly(self) -> np.ndarray:
+        ''' Alias for the pixeldistances-to-angles polynomial '''
         return self.pixeldist_to_angle_poly
 
     @property
-    def fw_poly(self):
+    def fw_poly(self) -> np.ndarray:
+        ''' Alias for the angles-to-pixeldistances polynomial '''
         return self.angle_to_pixeldist_poly
 
     POLYNOMIAL_DEGREE = 6
@@ -93,14 +95,15 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
 @dataclass
 class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
     ''' Represents a Pinhole-specific camera model parameters '''
-    principal_point: np.ndarray = util.numpy_array_field(np.float32)
-    focal_length: np.ndarray = util.numpy_array_field(np.float32)
-    radial_coeffs: np.ndarray = util.numpy_array_field(np.float32)
-    tangential_coeffs: np.ndarray = util.numpy_array_field(np.float32)
-    thin_prism_coeffs: np.ndarray = util.numpy_array_field(np.float32)
+    principal_point: np.ndarray = util.numpy_array_field(np.float32)    #: U and v coordinate of the principal point, following the :ref:`image coordinate conventions <image_coordinate_conventions>` (float32, [2,])
+    focal_length: np.ndarray = util.numpy_array_field(np.float32)       #: Focal lengths in u and v direction, resp., mapping (distorted) normalized camera coordinates to image coordinates (float32, [2,])
+    radial_coeffs: np.ndarray = util.numpy_array_field(np.float32)      #: Radial distortion coefficients ``[k1,k2,k3,k4,k5,k6]`` parameterizing the rational radial distortion factor :math:`\frac{1 + k_1r^2 + k_2r^4 + k_3r^4}{1 + k_4r^2 + k_5r^4 + k_6r^4}` for squared norms :math:`r^2` of normalized camera coordinates (float32, [6,])
+    tangential_coeffs: np.ndarray = util.numpy_array_field(np.float32)  #: Tangential distortion coefficients ``[p1,p2]`` parameterizing the tangential distortion components :math:`\begin{bmatrix} 2p_1x'y' + p_2 \left(r^2 + 2{x'}^2 \right) \\ p_1 \left(r^2 + 2{y'}^2 \right) + 2p_2x'y' \end{bmatrix}` for normalized camera coordinates :math:`\begin{bmatrix} x' \\ y' \end{bmatrix}` (float32, [2,])
+    thin_prism_coeffs: np.ndarray = util.numpy_array_field(np.float32)  #: Thins prism distortion coefficients ``[s1,s2,s3,s4]`` parameterizing the thin prism distortion components :math:`\begin{bmatrix} s_1r^2 + s_2r^4 \\ s_3r^2 + s_4r^4 \end{bmatrix}` for squared norms :math:`r^2` of normalized camera coordinates (float32, [4,] 
 
     @staticmethod
     def type() -> str:
+        ''' Returns a string-identitfiery of the camera model '''
         return 'pinhole'
 
     def __post_init__(self):
@@ -126,9 +129,9 @@ class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
 @dataclass
 class Poses:
     ''' Represents a collection of timestamped poses (rig-to-local-world transformation) '''
-    T_rig_world_base: np.ndarray
-    T_rig_worlds: np.ndarray
-    T_rig_world_timestamps_us: np.ndarray
+    T_rig_world_base: np.ndarray #: Base rig-to-global-world SE3 transformation (float64, [4,4])
+    T_rig_worlds: np.ndarray #: All the trajectorie's rig-to-local-world SE3 transformations (float64, [N,4,4])
+    T_rig_world_timestamps_us: np.ndarray #: All timestamps the trajectories rig-to-local-world transformations (uint64, [N,])
 
     def __post_init__(self):
         # Sanity checks
@@ -147,9 +150,9 @@ class Poses:
 @dataclass
 class BBox3(dataclasses_json.DataClassJsonMixin):
     ''' Parameters of a 3D bounding-box '''
-    centroid: Tuple[float, float, float]
-    dim: Tuple[float, float, float]
-    rot: Tuple[float, float, float]
+    centroid: Tuple[float, float, float]  #: Coordinates [meters] of the bounding-box's centroid in the frame of reference 
+    dim: Tuple[float, float, float]  #: Extents [meters] of the local bounding-box dimensions in it's local frame
+    rot: Tuple[float, float, float]  #: 'XYZ' Euler rotation angles [radians] orienting the local bounding-box frame to the frame of reference
 
     def to_array(self) -> np.ndarray:
         ''' Convert to convenience single-array representation '''
@@ -175,51 +178,50 @@ class BBox3(dataclasses_json.DataClassJsonMixin):
 @unique
 class LabelSource(IntEnum):
     ''' Enumerates different sources for labels (auto, manual, GT, synthetic etc.) '''
-    AUTOLABEL = auto()
-    EXTERNAL = auto()  # Unspecified external source, e.g., from third-party data
+    AUTOLABEL = auto() #: Label originates from an autolabeling pipeline
+    EXTERNAL = auto()  #: Label originates from an unspecified external source, e.g., from third-party processes
 
 
 @dataclass
 class FrameLabel3(dataclasses_json.DataClassJsonMixin):
     ''' Description of a 3D frame-associated label '''
-    label_id: str
-    track_id: str
-    label_class: str
-    bbox3: BBox3
-    global_speed: float
-    confidence: Optional[float]
+    label_id: str                #: Identifier of the current frame label (unique among all labels)
+    track_id: str                #: Unique identifier of the object's track this label is associated with
+    label_class: str             #: String-representation of the class associated with this label
+    bbox3: BBox3                 #: Bounding-box coordinates of the object relative to the frame's coordinate system
+    global_speed: float          #: Instantaneous global speed [m/s] of the object
+    confidence: Optional[float]  #: If available, the confidence score of the label [0..1]
 
-    # If available, the timestamp associated with the centroid of the label
-    # (possibly an accurate in-spin time). Optional also to be
-    # backwards-compatible with existing datasets that don't provide
-    # this information.
-    #
-    # In the future this field might become mandatory (deprecating old datasets)
     timestamp_us: Optional[int]
+    ''' If available, the timestamp associated with the centroid of the label (possibly an accurate in-spin time).
+        Optional also to be backwards-compatible with existing datasets that don't provide
+        this information.
+    
+        In the future this field might become mandatory (deprecating old datasets) '''
 
-    source: LabelSource = util.enum_field(LabelSource)
+    source: LabelSource = util.enum_field(LabelSource)  #: The source fo the current label
 
 
 @dataclass
 class TrackLabel(dataclasses_json.DataClassJsonMixin):
     ''' Description of an object-specific track '''
-    dynamic_flag: bool
-    sensors: dict[str, list[int]]  # all frame-timestamps of the object in different sensors
+    dynamic_flag: bool             #: Indicating if the object-track is classified to be dynamic at *any* point in time of the sequence
+    sensors: dict[str, list[int]]  #: Represents all frame-timestamps of the object in different sensors
 
 
 @unique
 class DynamicFlagState(IntEnum):
     ''' Enumerates potential per-point flag values related to 'dynamic_flag' property '''
-    NOT_AVAILABLE = -1
-    STATIC = 0
-    DYNAMIC = 1
+    NOT_AVAILABLE = -1  #: No dynamic flag state is available for this point
+    STATIC = 0          #: Point is classified to be static
+    DYNAMIC = 1         #: Point is classified to be dynaic
 
 
 @unique
 class FrameTimepoint(IntEnum):
     ''' Enumerates special timepoints within a frame (values used to index into buffers) '''
-    START = 0
-    END = 1
+    START = 0  #: Requested timepoint is referencing the start time of the frame
+    END = 1    #: Requested timepoint is referencing the end time of the frame
 
 
 class EncodedImageData():
