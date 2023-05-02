@@ -2,3 +2,5 @@
 ''' Package exposing methods related to NCORE's sensor types '''
 
 from ncore.impl.sensors.camera import (CameraModel, FThetaCameraModel, PinholeCameraModel)
+
+__all__ = ['CameraModel', 'FThetaCameraModel', 'PinholeCameraModel']
