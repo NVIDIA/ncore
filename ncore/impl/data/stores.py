@@ -215,7 +215,7 @@ class IndexedTarStore(zarr._storage.store.Store):
     @unique
     class IndexType(IntEnum):
         ''' Enumerates different possible index storage types '''
-        CBOR_LZMA_V1 = auto()
+        CBOR_LZMA_XZ_V1 = auto()
 
     @classmethod
     def _load_tar_index(cls, tar_file_object: BinaryIO) -> TarRecordIndex:
@@ -239,8 +239,8 @@ class IndexedTarStore(zarr._storage.store.Store):
         tar_file_object.seek(original_file_position)
 
         match header.type:
-            case cls.IndexType.CBOR_LZMA_V1.value:
-                logging.debug(f'IndexedTarStore: lzma-compressed index load size={len(header_binary)}')
+            case cls.IndexType.CBOR_LZMA_XZ_V1.value:
+                logging.debug(f'IndexedTarStore: lzma-compressed (xz archive format) index load size={len(header_binary)}')
 
                 # load table (SOA)
                 table = cbor2.loads(lzma.LZMADecompressor().decompress(header_binary))
@@ -276,7 +276,7 @@ class IndexedTarStore(zarr._storage.store.Store):
         # Append compressed table to tar file
         with io.BytesIO() as index_buffer:
             # Compress table to in-memory buffer
-            with lzma.open(index_buffer, 'wb') as lzma_file:
+            with lzma.open(index_buffer, 'wb', format=lzma.FORMAT_XZ) as lzma_file:
                 cbor2.dump({'items': items, 'offset_datas': offset_datas, 'sizes': sizes}, lzma_file)
 
             index_binary = index_buffer.getvalue()
@@ -292,7 +292,7 @@ class IndexedTarStore(zarr._storage.store.Store):
         # Create index header block
         assert struct.calcsize(
             cls.INDEX_HEADER_FORMAT) <= tarfile.BLOCKSIZE, "Index header larger than single block size"
-        header_binary = struct.pack(cls.INDEX_HEADER_FORMAT, cls.INDEX_HEADER_MAGIC, cls.IndexType.CBOR_LZMA_V1.value,
+        header_binary = struct.pack(cls.INDEX_HEADER_FORMAT, cls.INDEX_HEADER_MAGIC, cls.IndexType.CBOR_LZMA_XZ_V1.value,
                                     index_offset, index_size)
         header_size = len(header_binary)
         logging.debug(f'IndexedTarStore: header store size={header_size}')
