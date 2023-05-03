@@ -5,7 +5,7 @@ load("//bazel/sphinx:defs.bzl", "sphinx_html_gen", "sphinx_view")
 
 sphinx_html_gen(
     name = "ncore",
-    srcs = glob(["images/**"]) + glob(["apis/**"]) + glob(["notes/**"]) + glob(["_static/**"]) + glob(["_templates/**"]),
+    srcs = glob(["images/**"]) + glob(["apis/**"]) + glob(["tutorial/**"]) + glob(["notes/**"]) + glob(["_static/**"]) + glob(["_templates/**"]),
     config = "conf.py",
     index = "index.rst",
 )

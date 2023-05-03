@@ -6,19 +6,26 @@ The NRECore-SDK provides APIs, data representations, and tools to support data-d
 
 The SDK is developed within the Nvidia Toronto AI Lab.
 
-Take a look at the :ref:`Installation guide <installation>`, Tutorials, and :ref:`conventions` to get started. 
+Take a look at the :ref:`Installation Guide <installation>`, :ref:`Tutorials <tutorials>`, and :ref:`conventions` to get started. 
 
 ================================
 
 .. toctree::
    :maxdepth: 1
-   :caption: Introduction:
+   :caption: Overview:
 
    notes/conventions
 
 .. toctree::
    :maxdepth: 1
-   :caption: Applications:
+   :caption: Tutorials:
+   :name: tutorials
+
+   tutorial/data_loading
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Tools / Applications:
 
    notes/running_NGP
 

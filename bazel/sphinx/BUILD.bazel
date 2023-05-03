@@ -11,6 +11,9 @@ py_binary(
     deps = [
         requirement("sphinx"),
         requirement("sphinx_rtd_theme"),
+        requirement("nbsphinx"),
+        requirement("pexpect"),
+        requirement("ipython"),
         "@ncore-repo//ncore/data:pylib",
         "@ncore-repo//ncore/data/v3:pylib",
         "@ncore-repo//ncore/geometry:pylib",
