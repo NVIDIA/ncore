@@ -6,8 +6,7 @@ The NRECore-SDK provides APIs, data representations, and tools to support data-d
 
 The SDK is developed within the Nvidia Toronto AI Lab.
 
-Take a look at the Installation guide, :ref:`conventions` and Tutorials to get started. 
-
+Take a look at the :ref:`Installation guide <installation>`, Tutorials, and :ref:`conventions` to get started. 
 
 ================================
 
@@ -27,11 +26,14 @@ Take a look at the Installation guide, :ref:`conventions` and Tutorials to get s
    :maxdepth: 1
    :caption: Python APIs:
 
-   apis/packages
+   apis/install
+   apis/ncore
 
 .. note:: 
    This project is under active development.
-   
+
+================================
+
 Indices and tables
 ==================
 
