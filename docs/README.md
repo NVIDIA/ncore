@@ -4,7 +4,7 @@
 
 ## Building and Viewing
 
-NCORE's documentation is sphinx-based. A HTML version of the documentation can be build using
+NCore's documentation is sphinx-based. A HTML version of the documentation can be build using
 
 ```
 bazel build //docs:ncore

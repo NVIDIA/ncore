@@ -1,7 +1,7 @@
 .. Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-Running NGP on NCORE data
-=============================
+NGP Export
+==========
 
 To reconstruct the radiance field of the static background we use the Instant-NGP. 
 
@@ -33,7 +33,8 @@ The config files for NCORE data can be generated using the `ncore_to_ngp` target
 
     bazel run //scripts:ncore_to_ngp \
         -- \
-        --root-dir=<PATH-TO-DATA> \
+        --shard-file-pattern=<SHARD_FILE_PATTERN> \
+        --output-dir=<OUTPUT_FOLDER>
         --experiment-name=dummy_experiment \
         --camera-sensor=camera_front_wide_120fov \
         --camera-sensor=camera_cross_left_120fov \
@@ -45,7 +46,7 @@ The config files for NCORE data can be generated using the `ncore_to_ngp` target
         --max-dist 200
 
 
-will generate config files for three cameras and save them in `<PATH-TO-DATA>/ngp_configs/dummy_experiment`.
+will generate config files for three cameras and save them in `<OUTPUT_FOLDER>/ngp_configs/dummy_experiment`.
 Running Instant-NGP using the generated config files will fit a model using every ***third*** frame between ***0th*** and ***200th*** frame.
 Lidar data will also be included. Due to the memory constraints, currently only ~200 images of (4k x 2k - Nvidia resolution) should be used. 
 

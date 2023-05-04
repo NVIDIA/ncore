@@ -3,8 +3,8 @@
 .. _data_conventions: 
 
 
-Conventions
-===========
+Conventions and Specification
+=============================
 
 All data has to be stored following these NCORE data specifications.
 If modules use a different convention internally, the conversion should be done within the module,
@@ -34,7 +34,7 @@ point :math:`\mathbf{p}_b` as
 
 **Global Coordinate Frame**
 
-.. figure:: ../images/ecef.png
+.. figure:: ecef.png
    :figwidth: 40%
    :width: 50%
 
@@ -48,7 +48,7 @@ reference pose is available as ``T_rig_world_base`` [#f1]_.
 
 **Rig Coordinate Frame**
 
-.. figure:: ../images/rig.png
+.. figure:: rig.png
    :figwidth: 40%
    :width: 50%
 
@@ -63,7 +63,7 @@ corresponding to a lidar spin).
 
 **Camera and Image Coordinate System**
 
-.. figure:: ../images/camera.jpg
+.. figure:: camera.jpg
    :figwidth: 40%
    :width: 80%
 
@@ -340,8 +340,8 @@ Annotation data is stored in a segmented format:
          by default be an identity matrix if DeepMap poses are not used.
          The coordinate system is hence a local 3D cartesian system and
          not ECEF.
-.. [#f2] NCORE V3 data shards are represented by
-         [zarr](https://zarr.readthedocs.io/en/stable)
+.. [#f2] NCore V3 data shards are represented by
+         `zarr <https://zarr.readthedocs.io/en/stable/>`_
          groups within a custom ``.itar`` archive format that can be
          loaded most easily using the ``ShardDataLoader`` type, which
          also supports shard concatenation to reconstruct full source
