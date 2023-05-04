@@ -1,34 +1,35 @@
 .. Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-.. _conventions: 
+.. _data_conventions: 
 
 
 Conventions
 ===========
 
+All data has to be stored following these NCORE data specifications.
+If modules use a different convention internally, the conversion should be done within the module,
+and output data should be converted back to this convention.
+
 
 Coordinate Systems and Transformations
 --------------------------------------
-There are several coordinate systems that are used in this system, by
-default we use the following conventions. All data should be
-saved/exported in the correct format, if some modules use a different
-convention internally, the conversion should be done within the module,
-and output data should be converted back to this convention.
+There are several coordinate systems that are used in practice -
+NCORE usees the following conventions.
 
 
 **Transformations between the Coordinate Systems**
 
-All the transformations are saved in the form of ``SE3`` matrices, where
+All the transformations are stored in the form of 4x4 ``SE3`` matrices, where
 the top left 3x3 elements represent the rotation matrix ``R`` and the
 first three rows of the last column denote the translation ``t`` in
-meters. They are saved using the convention ``T_a_b``, which denotes the
+meters. They are stored using the convention ``T_a_b``, which denotes the
 transformation matrix that transforms the points from the coordinate
 system ``a`` to the coordinate system ``b``. For example a point
 :math:`\mathbf{p}_a` in coordinate system ``a`` can be transformed to
 point :math:`\mathbf{p}_b` as
 
 .. math::
-    \mathbf{p}_b = \mathbf{R}_a^b * \mathbf{p}_a + \mathbf{t}_a^b
+    \mathbf{p}_b = \mathbf{R}_a^b \mathbf{p}_a + \mathbf{t}_a^b
 
 
 **Global Coordinate Frame**
@@ -82,6 +83,8 @@ Continuous pixel coordinates start with ``[0.0, 0.0]`` at the top-left corner of
 the top-left pixel in the image, i.e., both the u and v coordinates of
 the first pixel span the range ``[0.0, 1.0]``.
 
+
+.. _v3-data-format:
 
 Shard Data Hierarchy (NCORE V3 Data Format)
 -------------------------------------------
