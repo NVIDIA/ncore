@@ -24,7 +24,7 @@ Then, use CMake to build the project::
     neural-graphics-primitives$ cmake --build build --config RelWithDebInfo -j 16
 
 
-Generating config files
+Generating Config Files
 -----------------------
 
 Instant-NGP uses `*.json` config files to initialize the parameters and image/lidar paths.
