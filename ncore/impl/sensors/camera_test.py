@@ -462,7 +462,6 @@ def ftheta_from_reference(reference_camera: ReferenceFThetaCamera, device: str,
     parameters = FThetaCameraModelParameters(
         resolution=reference_camera._imageSize.astype(np.uint64),
         shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
-        exposure_time_us=int(1641.58),
         # Subtract the principal offset to align the image coordinate system conventions
         # (offset will be added back during the initialization of the class) 
         principal_point=reference_camera._principalPoint.astype(np.float32) - 0.5,
@@ -485,7 +484,6 @@ class TestPinholeCamera(CommonTestCase):
         # Waymo camera parameters
         cam_model_params = PinholeCameraModelParameters(resolution=np.array([1920, 1280], dtype=np.uint64),
                                                         shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
-                                                        exposure_time_us=270,
                                                         principal_point=np.array([935.1248081874216, 635.052474560227],
                                                                                  dtype=np.float32),
                                                         focal_length=np.array([

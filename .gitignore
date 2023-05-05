@@ -1,6 +1,7 @@
 logs/
 __pycache__/
 .vscode/
+_build/
 
 # Bazel-specific ignores
 /bazel-*

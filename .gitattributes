@@ -1,0 +1,12 @@
+docs/tutorial/data_loading.ipynb filter=lfs diff=lfs merge=lfs -text
+docs/data/camera.jpg filter=lfs diff=lfs merge=lfs -text
+docs/data/rig.png filter=lfs diff=lfs merge=lfs -text
+docs/data/ecef.png filter=lfs diff=lfs merge=lfs -text
+docs/tools/surfacerec.png filter=lfs diff=lfs merge=lfs -text
+docs/tools/proj0.png filter=lfs diff=lfs merge=lfs -text
+docs/tools/instance-seg.png filter=lfs diff=lfs merge=lfs -text
+docs/tools/pc1.png filter=lfs diff=lfs merge=lfs -text
+docs/tools/proj1.png filter=lfs diff=lfs merge=lfs -text
+docs/tools/semantic-seg.png filter=lfs diff=lfs merge=lfs -text
+docs/tools/pc0.png filter=lfs diff=lfs merge=lfs -text
+docs/tools/pc.png filter=lfs diff=lfs merge=lfs -text

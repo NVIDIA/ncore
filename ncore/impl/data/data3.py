@@ -265,7 +265,7 @@ class ContainerDataWriter:
                                    dtype=object,
                                    data=[frame_label.to_dict() for frame_label in frame_labels],
                                    object_codec=numcodecs.JSON())
-        
+
         assert xyz_s.shape == (num_points, 3)
         assert xyz_s.dtype == np.dtype('float32')
         frame_group.create_dataset('xyz_s', data=xyz_s)
@@ -294,21 +294,21 @@ class ContainerDataWriter:
 
 class Sensor:
     ''' Provides access to generic data available to all sensor types '''
-    class ShardFrame(NamedTuple):
+    class _ShardFrame(NamedTuple):
         ''' References a specific frame in a specific shard '''
         shard_index: int
         shard_frame_index: int
 
-    def _get_shard_frame(self, continous_frame_index: int) -> ShardFrame:
+    def _get_shard_frame(self, continous_frame_index: int) -> _ShardFrame:
         ''' For a given continous-frame, determine the corresponding shard-frame '''
         assert continous_frame_index >= 0 and continous_frame_index < self._shard_frame_map[-1], IndexError
 
         shard_index = int(np.searchsorted(self._shard_frame_map[1:], continous_frame_index, side='right'))
         shard_frame = int(continous_frame_index - self._shard_frame_map[shard_index])
 
-        return self.ShardFrame(shard_index, shard_frame)
+        return self._ShardFrame(shard_index, shard_frame)
 
-    def _get_continous_frame(self, shard_frame: ShardFrame) -> int:
+    def _get_continous_frame(self, shard_frame: _ShardFrame) -> int:
         ''' For a given shard-frame, determine the corresponding continous-frame '''
         return self._shard_frame_map[shard_frame.shard_index] + shard_frame.shard_frame_index
 

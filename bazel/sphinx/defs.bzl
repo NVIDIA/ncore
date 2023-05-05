@@ -37,6 +37,7 @@ def _sphinx_html_impl(ctx):
 
     args = ctx.actions.args()
     args.add("-b", "html")
+    args.add("-j", "8")
     args.add("-W")
     args.add_all(ctx.attr.args)
     args.add(root_dir)

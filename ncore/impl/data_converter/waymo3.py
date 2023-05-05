@@ -384,14 +384,9 @@ class WaymoConverter(DataConverter):
 
             frame_end_timestamps_us = []
             continuous_frame_index = 0
-            exposure_time_us = 0
             for frame in tqdm.tqdm(frames, desc=f'Process {camera_name}'):
                 ## Load current camera's image
                 image = {image.name: image for image in frame.images}[camera_id]
-
-                ## Pick constant exposure time for V3
-                if not exposure_time_us:
-                    exposure_time_us = int(image.shutter * 1e6)
 
                 ## Get frame timestamps
                 frame_start_timestamp_us = int((image.camera_trigger_time + image.shutter / 2) * 1e6)
@@ -449,7 +444,7 @@ class WaymoConverter(DataConverter):
             self.data_writer.store_camera_meta(
                 camera_name, np.array(frame_end_timestamps_us, dtype=np.uint64), T_sensor_rig,
                 PinholeCameraModelParameters(np.array([width, height], dtype=np.uint64), rolling_shutter_direction,
-                                             exposure_time_us, np.array([c_u, c_v], dtype=np.float32),
+                                             np.array([c_u, c_v], dtype=np.float32),
                                              np.array([f_u, f_v], dtype=np.float32),
                                              np.array([k1, k2, k3, 0, 0, 0], dtype=np.float32),
                                              np.array([p1, p2], dtype=np.float32),

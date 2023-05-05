@@ -15,10 +15,10 @@ from ncore.impl.data import types
 
 class CameraModel(ABC):
     ''' Base camera model class '''
-    resolution: torch.Tensor
-    shutter_type: types.ShutterType
-    device: str
-    dtype: torch.dtype
+    resolution: torch.Tensor #: Width and height of the image in pixels (uint32, [2,])
+    shutter_type: types.ShutterType #: Shutter type of the camera's imaging sensor
+    device: torch.device #: Torch device to perform computations on 
+    dtype: torch.dtype #: Torch datatype to perform computations in
 
     def __init__(self):
         pass
@@ -879,7 +879,7 @@ class FThetaCameraModel(CameraModel):
             logging.warning("Cuda device selected but not available, reverting to CPU!")
             device = 'cpu'
 
-        self.device = device
+        self.device = torch.device(device)
         self.dtype = dtype
 
         assert camera_model_parameters.reference_poly == types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, \
@@ -1036,7 +1036,7 @@ class PinholeCameraModel(CameraModel):
             logging.warning("Cuda device selected but not available, reverting to CPU!")
             device = 'cpu'
 
-        self.device = device
+        self.device = torch.device(device)
         self.dtype = dtype
         self.principal_point = self.to_torch(camera_model_parameters.principal_point).to(self.dtype)
         self.focal_length = self.to_torch(camera_model_parameters.focal_length).to(self.dtype)

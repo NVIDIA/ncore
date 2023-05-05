@@ -39,7 +39,7 @@ Create a gitlab-master personal access token with `api` scope at [link](https://
 ```
 machine gitlab-master.nvidia.com
 login oauth2
-password <TOKEN>
+password <GITLAB_TOKEN>
 ```
 
 by replacing `<TOKEN>` with the created token string.
