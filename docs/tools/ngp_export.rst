@@ -34,12 +34,12 @@ The config files for NCORE data can be generated using the `ncore_to_ngp` target
     bazel run //scripts:ncore_to_ngp \
         -- \
         --shard-file-pattern=<SHARD_FILE_PATTERN> \
-        --output-dir=<OUTPUT_FOLDER>
+        --output-dir=<OUTPUT_FOLDER> \
         --experiment-name=dummy_experiment \
-        --camera-sensor=camera_front_wide_120fov \
-        --camera-sensor=camera_cross_left_120fov \
-        --camera-sensor=camera_cross_right_120fov \
-        --lidar-sensor=lidar_gt_top_p128_v4p5 \
+        --camera-id=camera_front_wide_120fov \
+        --camera-id=camera_cross_left_120fov \
+        --camera-id=camera_cross_right_120fov \
+        --lidar-id=lidar_gt_top_p128_v4p5 \
         --start-frame 0 \
         --end-frame 200 \
         --step-frame 2 \
