@@ -32,7 +32,7 @@ py_wheel(
         "cbor2",
         "scipy",
     ],
-    version = "0.3.0",
+    version = "0.3.1",
     deps = [
         ":ncore_pkg",
     ],
