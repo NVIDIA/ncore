@@ -1,8 +1,9 @@
 # Copyright (c) 2023 NVIDIA CORPORATION.  All rights reserved.
 
 import unittest
-import abc
 import itertools
+
+from typing import Tuple
 
 import numpy as np
 import scipy
@@ -13,25 +14,7 @@ import torch
 from ncore.impl.data.types import FThetaCameraModelParameters, PinholeCameraModelParameters, ShutterType
 from ncore.impl.sensors.camera import CameraModel, FThetaCameraModel, PinholeCameraModel
 
-## Reference camera implementation
-class ReferenceCamera(metaclass=abc.ABCMeta):
-    def project(self, point3d):
-        return self.ray2imagePoint(point3d)
-
-    @abc.abstractmethod
-    def rays2imagePointsIfVisible(self, point3d):
-        pass
-
-    @abc.abstractmethod
-    def rays2imagePoints(self, point3d):
-        pass
-
-    @abc.abstractmethod
-    def imagePoints2rays(self, imagePoint2d):
-        pass
-
-
-class ReferenceFThetaCamera(ReferenceCamera):
+class ReferenceFThetaCamera():
     _FORWARD_POLYNOMIAL_ACCURACY = 0.01
 
     def __init__(self, imageSize, principalPoint, backwardPolynomial):
@@ -527,9 +510,122 @@ class TestPinholeCamera(CommonTestCase):
                                      MAX_DEVIATION_IN_IMAGE_COORDINATES)
 
 
+class ReferenceSimplePinholeCamera():
+    ''' Simple reference pinhole camera with symbolic evaluations (supporting k1,k2,k3,p1,p2) '''
+    def __init__(self, params: PinholeCameraModelParameters, dtype: np.dtype):
+        self.params = params
+        self.dtype = dtype
+
+        assert not np.any(self.params.radial_coeffs[3:]), "only supporting non-zero k1,k2,k3"
+        assert not np.any(self.params.thin_prism_coeffs), "not supporting thin-prism coeffs"
+
+    def _distortion(self, uvN):
+        ''' Computes the radial + tangential distortion given the camera rays '''
+
+        # Helper variables for primary function evaluation
+        u0u0 = uvN[0] * uvN[0]
+        u1u1 = uvN[1] * uvN[1]
+        r_2 = u0u0 + u1u1
+        uv_prod = uvN[0] * uvN[1]
+        a1 = 2 * uv_prod
+        a2 = r_2 + 2 * u0u0
+        a3 = r_2 + 2 * u1u1
+
+        icD = 1.0 + r_2 * (self.params.radial_coeffs[0] + r_2 *
+                           (self.params.radial_coeffs[1] + r_2 * self.params.radial_coeffs[2]))
+
+        delta_x = self.params.tangential_coeffs[0] * a1 + self.params.tangential_coeffs[1] * a2
+        delta_y = self.params.tangential_coeffs[0] * a3 + self.params.tangential_coeffs[1] * a1
+
+        uvND = uvN * icD + np.array([[delta_x, delta_y]], dtype=self.dtype)
+
+        # Helper variables for symbolic Jacobian evaluation
+        b1 = self.params.radial_coeffs[1] + self.params.radial_coeffs[2] * r_2
+        b11 = 2 * (self.params.radial_coeffs[0] + b1 * r_2) + r_2 * (2 * self.params.radial_coeffs[2] * r_2 + 2 * b1)
+        b2 = uvN[0] * b11
+        b3 = uvN[1] * b11
+        b4 = (self.params.radial_coeffs[0] + b1 * r_2) * r_2 + 1.0
+
+        J_uvND = np.array([[
+            2 * self.params.tangential_coeffs[0] * uvN[1] + 6 * self.params.tangential_coeffs[1] * uvN[0] +
+            uvN[0] * b2 + b4,
+            2 * self.params.tangential_coeffs[0] * uvN[0] + 2 * self.params.tangential_coeffs[1] * uvN[1] + uvN[0] * b3
+        ],
+                           [
+                               2 * self.params.tangential_coeffs[0] * uvN[0] +
+                               2 * self.params.tangential_coeffs[1] * uvN[1] + uvN[1] * b2,
+                               6 * self.params.tangential_coeffs[0] * uvN[1] +
+                               2 * self.params.tangential_coeffs[1] * uvN[0] + uvN[1] * b3 + b4
+                           ]])
+
+        return uvND, J_uvND
+
+    def _perspective_normalization(self, x: np.ndarray):
+        uvN = np.array([x[0] / x[2], x[1] / x[2]], dtype=self.dtype)
+        J_uvN = np.array([[1 / x[2], 0, -x[0] / x[2]**2], [0, 1 / x[2], -x[1] / x[2]**2]], dtype=self.dtype)
+
+        return uvN, J_uvN
+
+    def _perspective_projection(self, uvND: np.ndarray):
+        uv = uvND * self.params.focal_length + self.params.principal_point
+        J_uv = np.array([[self.params.focal_length[0], 0], [0, self.params.focal_length[1]]], dtype=self.dtype)
+
+        return uv, J_uv
+
+    def camera_ray_to_image_points(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        ''' Assumes ray is a valid projection / returns image point + Jacobian'''
+
+        uvN, J_uvN = self._perspective_normalization(x)
+
+        uvND, J_uvND = self._distortion(uvN)
+
+        uv, J_uv = self._perspective_projection(uvND)
+
+        return uv.squeeze(), J_uv @ J_uvND @ J_uvN  # Assemble full transformation's Jacobian according to chain-rule
+
+
 @parameterized.parameterized_class(('device', 'dtype'),
                                    itertools.product(('cpu', 'cuda'), (torch.float32, torch.float64)))
 class TestJacobian(CommonTestCase):
+    def test_pinhole_reference(self):
+        ''' Tests consistency of camera model Jacobians with reference implementation '''
+
+        # Distorted pinhole camera model with "simple" k1,k2,k3,p1,p2 parametrization only
+        cam_model_params = PinholeCameraModelParameters(resolution=np.array([1920, 1280], dtype=np.uint64),
+                                             shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
+                                             principal_point=np.array([935.1248081874216, 635.052474560227],
+                                                                      dtype=np.float32),
+                                             focal_length=np.array([
+                                                 2059.0471439559833,
+                                                 2059.4231439559833,
+                                             ],
+                                                                   dtype=np.float32),
+                                             radial_coeffs=np.array([
+                                                 0.04239636827428756,
+                                                 -0.34165672675852826,
+                                                 0.01,
+                                                 0,
+                                                 0,
+                                                 0,
+                                             ], dtype=np.float32),
+                                             tangential_coeffs=np.array([0.001805535524580487, -0.00005530628187935031], dtype=np.float32),
+                                             thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32))
+
+        cam_model_ref = ReferenceSimplePinholeCamera(cam_model_params, {torch.float32 : np.float32, torch.float64 : np.float64}[self.dtype])
+        cam_model = CameraModel.from_parameters(cam_model_params, device=self.device, dtype=self.dtype)
+
+        rays3d = cam_model.image_points_to_camera_rays(torch.Tensor([[20, 40], [11, 12], [15, 20],
+                                                                     [500, 500]]))  # valid rays only
+
+        for ray3d in rays3d:
+            pref, Jref = cam_model_ref.camera_ray_to_image_points(ray3d.cpu().numpy())
+
+            proj = cam_model.camera_rays_to_image_points(ray3d.unsqueeze(1).transpose(1,0), return_jacobians=True)
+
+            np.testing.assert_array_almost_equal(pref, proj.image_points.detach()[0].cpu().numpy())
+            np.testing.assert_array_almost_equal(Jref, proj.jacobians.detach()[0].cpu().numpy(), decimal=6 if self.dtype == torch.float64 else 4)
+
+
     def test_jacobian_consistency(self):
         ''' Tests consistency of camera model Jacobians with autograd results '''
 
@@ -554,7 +650,8 @@ class TestJacobian(CommonTestCase):
                                                  0,
                                              ], dtype=np.float32),
                                              tangential_coeffs=np.array([0, 0], dtype=np.float32),
-                                             thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32))),
+                                             thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32)),
+                                             device=self.device, dtype=self.dtype),
             # Waymo camera parameters
             CameraModel.from_parameters(
                 PinholeCameraModelParameters(resolution=np.array([1920, 1280], dtype=np.uint64),
@@ -577,7 +674,8 @@ class TestJacobian(CommonTestCase):
                                                                     dtype=np.float32),
                                              tangential_coeffs=np.array([0.001805535524580487, -0.00005530628187935031],
                                                                         dtype=np.float32),
-                                             thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32))),
+                                             thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32)),
+                                             device=self.device, dtype=self.dtype),
 
             # NV 120deg instance
             CameraModel.from_parameters(
@@ -594,7 +692,8 @@ class TestJacobian(CommonTestCase):
                     angle_to_pixeldist_poly=np.array(
                         [0.0, 1858.59228515625, 6.894773483276367, -53.92193603515625, 14.201756477355957, 0.0],
                         dtype=np.float32),
-                    max_angle=1.2292176485061646))
+                    max_angle=1.2292176485061646),
+                    device=self.device, dtype=self.dtype)
         ]
 
         for cam_model in cam_models:
