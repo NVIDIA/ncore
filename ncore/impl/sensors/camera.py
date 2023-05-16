@@ -966,8 +966,7 @@ class FThetaCameraModel(CameraModel):
         valid_norm = ray_norm[:, 0] > 0.0
         valid_norm_idx = torch.where(valid_norm)[0]
 
-        alphas_full = torch.atan2(torch.linalg.norm(cam_rays[valid_norm_idx, :2], axis=1, keepdims=True),
-                                  cam_rays[valid_norm_idx, 2:])
+        alphas_full = torch.atan2(ray_norm[valid_norm_idx], cam_rays[valid_norm_idx, 2:])
 
         # Limit angles to max_angle to prevent projected points to leave valid cone around max_angle.
         # In particular for omnidirectional cameras, this prevents points outside the FOV to be
