@@ -962,11 +962,10 @@ class FThetaCameraModel(CameraModel):
 
         ray_norm = self.__nummerically_stable_norm(cam_rays)
 
-        # Only process rays with non-vanishing norms
-        valid_norm = ray_norm[:, 0] > 0.0
-        valid_norm_idx = torch.where(valid_norm)[0]
-
-        alphas_full = torch.atan2(ray_norm[valid_norm_idx], cam_rays[valid_norm_idx, 2:])
+        # Make sure norm is non-vanishing (norm vanishes for points along the principal-axis)
+        ray_norm[ray_norm[:, 0] <= 0.0] = torch.finfo(self.dtype).eps
+        
+        alphas_full = torch.atan2(ray_norm[:], cam_rays[:, 2:])
 
         # Limit angles to max_angle to prevent projected points to leave valid cone around max_angle.
         # In particular for omnidirectional cameras, this prevents points outside the FOV to be
@@ -980,32 +979,28 @@ class FThetaCameraModel(CameraModel):
         delta = self.__eval_poly_inverse_horner_newton(self.bw_poly, self.dbw_poly, self.fw_poly,
                                                        self.newton_iterations, alphas)
 
-        scale = torch.ones_like(ray_norm)
-        scale[valid_norm_idx] = delta / ray_norm[valid_norm_idx]
+        scale = delta / ray_norm
         image_points = scale * cam_rays[:, :2] + self.principal_point[None, :]
 
         # Extract valid image points
-        valid_x = torch.logical_and(0.0 <= image_points[valid_norm_idx, 0], image_points[valid_norm_idx, 0] < self.resolution[0])
-        valid_y = torch.logical_and(0.0 <= image_points[valid_norm_idx, 1], image_points[valid_norm_idx, 1] < self.resolution[1])
+        valid_x = torch.logical_and(0.0 <= image_points[:, 0], image_points[:, 0] < self.resolution[0])
+        valid_y = torch.logical_and(0.0 <= image_points[:, 1], image_points[:, 1] < self.resolution[1])
         valid_delta = alphas[:, 0] < self.max_angle  # explicitly check for strictly smaller angles to classify FOV-clamped points as invalid
-        valid = valid_norm
-        valid[valid_norm_idx[~(valid_x & valid_y & valid_delta)]] = False
+        valid = valid_x & valid_y & valid_delta
 
         jacobians: Optional[torch.Tensor] = None
         if return_jacobians:
             # Evaluate Jacobians of valid points by gradients of both output dimensions
-            jacobians = torch.zeros((len(cam_rays), 2, 3), dtype=self.dtype, device=self.device)
-            jacobians[~valid_norm] = torch.tensor([[1, 0, 0], [0, 1, 0]]).to(
-                cam_rays)  # Jacobian for vanishing norm vectors (e.g., principal axis)
+            jacobians = torch.empty((len(cam_rays), 2, 3), dtype=self.dtype, device=self.device)
 
-            initial_gradient = torch.ones((len(valid_norm_idx), ), dtype=self.dtype, device=self.device)
-            image_points[valid_norm_idx, 0].backward(gradient=initial_gradient, retain_graph=True)
-            jacobians[valid_norm_idx, 0] = cam_rays.grad[valid_norm_idx, :]
+            initial_gradient = torch.ones((len(cam_rays), ), dtype=self.dtype, device=self.device)
+            image_points[:, 0].backward(gradient=initial_gradient, retain_graph=True)
+            jacobians[:, 0] = cam_rays.grad
 
             cam_rays.grad.zero_()
 
-            image_points[valid_norm_idx, 1].backward(gradient=initial_gradient)
-            jacobians[valid_norm_idx, 1] = cam_rays.grad[valid_norm_idx, :]
+            image_points[:, 1].backward(gradient=initial_gradient)
+            jacobians[:, 1] = cam_rays.grad
 
             # Cleanup for other backprop users
             cam_rays.grad.zero_()

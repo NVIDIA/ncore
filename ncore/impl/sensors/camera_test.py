@@ -701,11 +701,15 @@ class TestJacobian(CommonTestCase):
             def projection_wrapper(x):
                 return cam_model.camera_rays_to_image_points(x[None, :]).image_points.squeeze()
 
-            rays3d = cam_model.image_points_to_camera_rays(torch.Tensor([[20, 40], [11, 12], [15, 20],
-                                                                         [500, 500]]))  # valid rays
-            rays3d = torch.cat([rays3d,
-                                torch.Tensor([[1, 2, -5],
-                                              [0, 0, 0]]).to(rays3d)])  # add some "invalid" rays (behind camera / zero)
+            valid_rays3d = cam_model.image_points_to_camera_rays(
+                torch.Tensor([[20, 40], [11, 12], [15, 20], [500, 500]]))  # valid rays
+            principal_direction_rays3d = torch.Tensor([[0, 0, 1], 
+                                                       [0, 0, 5],
+                                                       [0, 0, 0.1]]).to(valid_rays3d)  # rays along the principal direction
+            invalid_rays3d = torch.Tensor([[1, 2, -5], [1, 2, 0], [0, 0, 0]]).to(
+                valid_rays3d
+            )  # some "invalid" rays (behind camera / on the center of projection plane but ouf of FOV / zero)
+            rays3d = torch.cat([valid_rays3d, principal_direction_rays3d, invalid_rays3d])
 
             # evaluate projection with jacobians
             proj = cam_model.camera_rays_to_image_points(rays3d, return_jacobians=True)
@@ -720,8 +724,8 @@ class TestJacobian(CommonTestCase):
                 np.testing.assert_array_almost_equal(Jref.cpu().numpy(), proj.jacobians[i].cpu().numpy())
 
                 self.assertTrue(
-                    proj.valid_flag[i] if i < 4 else
-                    not proj.valid_flag[i])  # First four rays should be flagged as valid, others should be invalid
+                    proj.valid_flag[i] if i < len(rays3d) - len(invalid_rays3d) else
+                    not proj.valid_flag[i])  # First rays should be flagged as valid, others should be invalid
 
 if __name__ == '__main__':
     unittest.main()
