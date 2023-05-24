@@ -950,7 +950,7 @@ class FThetaCameraModel(CameraModel):
         cam_rays = self.to_torch(cam_rays).to(self.dtype)
 
         ray_norm = self.__nummerically_stable_norm(cam_rays)
-        alphas = torch.atan2(torch.linalg.norm(cam_rays[:, :2], axis=1, keepdims=True), cam_rays[:, 2:])
+        alphas = torch.clamp(torch.atan2(torch.linalg.norm(cam_rays[:, :2], axis=1, keepdims=True), cam_rays[:, 2:]), max=self.max_angle)
         delta = self.__eval_poly_inverse_horner_newton(self.bw_poly, self.dbw_poly, self.fw_poly,
                                                        self.newton_iterations, alphas)
 
