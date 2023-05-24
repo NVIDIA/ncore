@@ -161,6 +161,12 @@ def extract_dynamic_tracks(lidar_sensor: LidarSensor, lidar_frame_range: range, 
     default=list(NVLabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC),
 )
 @click.option(
+    "--track-ftheta-max-fov-deg",
+    type=click.FloatRange(min=0.0, max_open=True),
+    help="Limit FOV for FTheta camera to this range to prevent erronous track projections (in particular for large-FOV fisheye cameras)",
+    default=190.0,
+)
+@click.option(
     "--save-test",
     is_flag=True,
     default=False,
@@ -181,6 +187,7 @@ def ncore_to_ngp(
     track_speed_thresh: float,
     track_mask_dilate_ratio: float,
     track_unconditionally_dynamic_classes: list[str],
+    track_ftheta_max_fov_deg: float,
     save_test: bool,
 ):
     # Initialize the logger
@@ -232,7 +239,8 @@ def ncore_to_ngp(
         camera_data = all_camera_data[camera_id]
 
         # Get camera intrinsic properties compatible with NGP
-        match camera_model_parameters := camera_sensor.get_camera_model_parameters():
+        camera_model_parameters = camera_sensor.get_camera_model_parameters()
+        match camera_model_parameters:
             case FThetaCameraModelParameters(
                 resolution=resolution,
                 principal_point=principal_point,
@@ -271,6 +279,10 @@ def ncore_to_ngp(
                     "rolling_shutter": rolling_shutter.tolist(),
                     "camera_angle_x": fov_angle_x,
                 }
+
+                # Restrict effective FOV for cuboid projections to prevent issues with *invalid* points projected back into the valid image domain FOV
+                # - this way they get properly classified as invalid
+                camera_model_parameters.max_angle = min(np.deg2rad(track_ftheta_max_fov_deg) / 2.0, camera_model_parameters.max_angle)
 
             case PinholeCameraModelParameters() as pinhole:
                 # Get the focal length and compute the angular field of view
@@ -319,7 +331,7 @@ def ncore_to_ngp(
                     f"unsupported camera model type {type(camera_model_parameters)}, currently supporting Ftheta/Pinhole only"
                 )
 
-        camera_model = CameraModel.from_parameters(camera_sensor.get_camera_model_parameters(),
+        camera_model = CameraModel.from_parameters(camera_model_parameters,
                                                    device='cpu' # we only project small number of points
                                                    )
 
@@ -391,6 +403,10 @@ def ncore_to_ngp(
                             return_valid_indices=True, return_T_world_sensors=True, return_all_projections=True)
 
                     if torch.numel(projection.valid_indices) > 0:
+                        # Clamped out-of-image-domain points
+                        #   - this is required for perspective cameras only
+                        #   - fisheye-cameras will project in a "clamped way" into the image-domain along
+                        #     it's internal FOV-specific bounds, but points will be marked as invalid
                         projection.image_points[:,0] = torch.clamp(projection.image_points[:,0], min=0, max=camera_model.resolution[0])
                         projection.image_points[:,1] = torch.clamp(projection.image_points[:,1], min=0, max=camera_model.resolution[1]) 
 
