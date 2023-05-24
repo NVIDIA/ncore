@@ -318,7 +318,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
 
             start_idx = np.where(
                 frame_timestamps[:, 1] > start_timestamp_us + self.CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US[camera_type] +
-                self.CAMERATYPE_TO_EXPOSURETIME_US[camera_type])[0][0]
+                2 * self.CAMERATYPE_TO_EXPOSURETIME_HALF_US[camera_type])[0][0]
             end_idx = np.where(frame_timestamps[:, 1] >= end_timestamp_us)[0]
             end_idx = end_idx[0] if len(end_idx) else len(frame_timestamps[:, 1])
 
@@ -409,6 +409,6 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
             self.data_writer.store_camera_meta(
                 camera_id, eof_camera_timestamps_us, T_sensor_rig,
                 FThetaCameraModelParameters(intrinsic[2:4].astype(np.uint64), ShutterType.ROLLING_BOTTOM_TO_TOP,
-                                            self.CAMERATYPE_TO_EXPOSURETIME_US[camera_type].item(), intrinsic[0:2],
-                                            FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE,
-                                            bw_poly, fw_poly, float(max_angle)), mask_image.get_image())
+                                            intrinsic[0:2],
+                                            FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, bw_poly,
+                                            fw_poly, float(max_angle)), mask_image.get_image())

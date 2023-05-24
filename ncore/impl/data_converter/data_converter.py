@@ -118,7 +118,6 @@ class BaseNvidiaDataConverter(DataConverter):
     ## Constants defined for *Hyperion8* sensor-set
 
     # Camera exposure times (rounded to integer US)
-    CAMERATYPE_TO_EXPOSURETIME_US = {'wide': np.uint64(1641.58), 'fisheye': np.uint64(10987.00)} # rounded to integer US
     CAMERATYPE_TO_EXPOSURETIME_HALF_US = {'wide': np.uint64(1641.58 / 2), 'fisheye': np.uint64(10987.00 / 2)} # rounded to integer US
     CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US = {'wide': np.uint64(31611.55), 'fisheye': np.uint64(32561.63)} # rounded to integer US
 

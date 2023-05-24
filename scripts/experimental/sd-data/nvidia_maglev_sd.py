@@ -135,7 +135,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Create output dir
         (self.output_dir / self.session_id).mkdir(parents=True, exist_ok=True)
 
-        # Store initial shard meta 
+        # Store initial shard meta
         self.store_shard_meta(False)
 
         # Decode data from maglev WF
@@ -290,10 +290,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             _, max_angle = compute_ftheta_parameters(np.concatenate((intrinsic, fw_poly)))
 
             camera_model_parameters = types.FThetaCameraModelParameters(
-                intrinsic[2:4].astype(np.uint64), types.ShutterType.ROLLING_TOP_TO_BOTTOM,
-                self.CAMERATYPE_TO_EXPOSURETIME_US[camera_type].item(), intrinsic[0:2],
-                types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, bw_poly, fw_poly,
-                float(max_angle))
+                intrinsic[2:4].astype(np.uint64), types.ShutterType.ROLLING_TOP_TO_BOTTOM, intrinsic[0:2],
+                types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, bw_poly, fw_poly, float(max_angle))
 
             # Assemble camera meta-data
             meta = {
