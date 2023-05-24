@@ -134,6 +134,9 @@ class BaseNvidiaDataConverter(DataConverter):
         'camera_rear_fisheye_200fov': 'camera:rear:fisheye:200fov'
     }
 
+    # Upper field-of-view limit accross all cameras (in particular for fisheye cameras)
+    MAX_CAMERA_FOV_DEG = 200.0
+
     LIDARID_TO_RIGNAME = {
         'lidar_gt_top_p128_v4p5': 'lidar:gt:top:p128:v4p5',
     }

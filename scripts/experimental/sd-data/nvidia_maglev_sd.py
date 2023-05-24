@@ -287,11 +287,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             bw_poly = intrinsic[4:]
             fw_poly = compute_fw_polynomial(intrinsic)
-            _, max_angle = compute_ftheta_parameters(np.concatenate((intrinsic, fw_poly)))
+            _, max_angle = compute_ftheta_parameters(np.concatenate((intrinsic, fw_poly)), np.deg2rad(self.MAX_CAMERA_FOV_DEG / 2))
 
             camera_model_parameters = types.FThetaCameraModelParameters(
                 intrinsic[2:4].astype(np.uint64), types.ShutterType.ROLLING_TOP_TO_BOTTOM, intrinsic[0:2],
-                types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, bw_poly, fw_poly, float(max_angle))
+                types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, bw_poly, fw_poly, max_angle)
 
             # Assemble camera meta-data
             meta = {
