@@ -55,7 +55,7 @@ def extract_dynamic_tracks(lidar_sensor: LidarSensor, lidar_frame_range: range, 
     # Extend the lidar frame range so that we cover all the images
     extended_lidar_frame_range = range(max(lidar_frame_range.start - 1, 0),
                                        min(lidar_frame_range.stop + 1,
-                                           lidar_sensor.get_frame_index_range()[-1]))
+                                           lidar_sensor.get_frames_count()))
 
     # Iterate over all lidar frames and extract ALL tracks
     for frame_idx in extended_lidar_frame_range:
@@ -221,9 +221,8 @@ def ncore_to_ngp(
         # Find the corresponding lidar frames based on their timestamps
         reference_camera_timestamps = reference_camera_sensor.get_frames_timestamps_us()
         lidar_timestamps = lidar_sensor.get_frames_timestamps_us()
-        lidar_frame_start_idx = (np.where(lidar_timestamps > reference_camera_timestamps[start_frame])[0][0] + 1)
-        lidar_frame_end_idx = (np.where(lidar_timestamps < reference_camera_timestamps[end_frame])[0][-1] + 1
-                               )  # add lidar at the end as cameras see further away
+        lidar_frame_start_idx = np.where(lidar_timestamps >= reference_camera_timestamps[start_frame])[0][0]
+        lidar_frame_end_idx = min(np.where(lidar_timestamps < reference_camera_timestamps[end_frame])[0][-1] + 1, lidar_sensor.get_frames_count()) # add lidar at the end as cameras see further away
 
         dynamic_tracks = extract_dynamic_tracks(
             lidar_sensor=lidar_sensor,
