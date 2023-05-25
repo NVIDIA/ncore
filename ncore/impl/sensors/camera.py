@@ -960,12 +960,12 @@ class FThetaCameraModel(CameraModel):
         if return_jacobians:
             cam_rays.requires_grad = True
 
-        ray_norm = self.__nummerically_stable_norm(cam_rays)
+        ray_norms = self.__nummerically_stable_norm(cam_rays)
 
         # Make sure norm is non-vanishing (norm vanishes for points along the principal-axis)
-        ray_norm[ray_norm[:, 0] <= 0.0] = torch.finfo(self.dtype).eps
+        ray_norms[ray_norms[:, 0] <= 0.0] = torch.finfo(self.dtype).eps
         
-        alphas_full = torch.atan2(ray_norm[:], cam_rays[:, 2:])
+        alphas_full = torch.atan2(ray_norms[:], cam_rays[:, 2:])
 
         # Limit angles to max_angle to prevent projected points to leave valid cone around max_angle.
         # In particular for omnidirectional cameras, this prevents points outside the FOV to be
@@ -976,17 +976,16 @@ class FThetaCameraModel(CameraModel):
         alphas = torch.clamp(alphas_full, max=self.max_angle) 
 
         # Evaluate backward polynomial
-        delta = self.__eval_poly_inverse_horner_newton(self.bw_poly, self.dbw_poly, self.fw_poly,
+        deltas = self.__eval_poly_inverse_horner_newton(self.bw_poly, self.dbw_poly, self.fw_poly,
                                                        self.newton_iterations, alphas)
 
-        scale = delta / ray_norm
-        image_points = scale * cam_rays[:, :2] + self.principal_point[None, :]
+        image_points = deltas / ray_norms * cam_rays[:, :2] + self.principal_point[None, :]
 
         # Extract valid image points
         valid_x = torch.logical_and(0.0 <= image_points[:, 0], image_points[:, 0] < self.resolution[0])
         valid_y = torch.logical_and(0.0 <= image_points[:, 1], image_points[:, 1] < self.resolution[1])
-        valid_delta = alphas[:, 0] < self.max_angle  # explicitly check for strictly smaller angles to classify FOV-clamped points as invalid
-        valid = valid_x & valid_y & valid_delta
+        valid_alphas = alphas[:, 0] < self.max_angle  # explicitly check for strictly smaller angles to classify FOV-clamped points as invalid
+        valid = valid_x & valid_y & valid_alphas
 
         jacobians: Optional[torch.Tensor] = None
         if return_jacobians:
