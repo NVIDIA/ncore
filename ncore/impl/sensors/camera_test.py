@@ -161,6 +161,17 @@ class ReferenceFThetaCamera():
             radius = c + theta * radius
         return radius
 
+class CudaCheck(unittest.TestCase):
+    def test_cuda_available(self):
+        '''
+        Some camera tests explicity check cuda-based computations 
+        (while internally falling back to CPU if cuda is not available).
+        
+        This test asserts that a cuda device is actually available to torch
+        '''
+
+        self.assertTrue(torch.cuda.is_available())
+
 
 class CommonTestCase(unittest.TestCase):
     def _compareVector(self, a, b):
