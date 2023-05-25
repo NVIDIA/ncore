@@ -32,7 +32,7 @@ before cloning the repository.
 
 [one-time operation]
 
-## Setup gitlab personal access token
+## Setup gitlab personal access token / docker credentials
 
 Create a gitlab-master personal access token with `api` scope at [link](https://gitlab-master.nvidia.com/-/profile/personal_access_tokens) and register the new toekn token in `~/.netrc` file as
 
@@ -43,6 +43,14 @@ password <GITLAB_TOKEN>
 ```
 
 by replacing `<TOKEN>` with the created token string.
+
+Additionally, the local docker daemon needs to be authenticated against gitlab's image registry via
+
+```
+docker login gitlab-master.nvidia.com:5005
+```
+
+to access development and base images.
 
 [one-time operation]
 
