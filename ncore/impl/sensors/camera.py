@@ -17,7 +17,7 @@ class CameraModel(ABC):
     ''' Base camera model class '''
     resolution: torch.Tensor #: Width and height of the image in pixels (uint32, [2,])
     shutter_type: types.ShutterType #: Shutter type of the camera's imaging sensor
-    device: torch.device #: Torch device to perform computations on 
+    device: torch.device #: Torch device to perform computations on
     dtype: torch.dtype #: Torch datatype to perform computations in
 
     def __init__(self):
@@ -31,9 +31,12 @@ class CameraModel(ABC):
         pass
 
     @abstractmethod
-    def camera_rays_to_image_points(self, cam_rays: Union[torch.Tensor, np.ndarray]) -> CameraModel.ImagePointsReturn:
+    def camera_rays_to_image_points(self,
+                                    cam_rays: Union[torch.Tensor, np.ndarray],
+                                    return_jacobians: bool = False) -> CameraModel.ImagePointsReturn:
         '''
-        For each camera ray, computes the corresponding image point coordinates and a valid flag
+        For each camera ray, computes the corresponding image point coordinates and a valid flag.
+        Optionally, the Jacobians of the per-ray transformations can be computed as well
         '''
         pass
 
@@ -48,9 +51,9 @@ class CameraModel(ABC):
         '''
         For each camera ray, computes the corresponding pixel index and a valid flag 
         '''
-        image_points = self.camera_rays_to_image_points(cam_rays) 
+        image_points = self.camera_rays_to_image_points(cam_rays)
 
-        return CameraModel.PixelsReturn(pixels=self.__image_points_to_pixel_indices(image_points.image_points), 
+        return CameraModel.PixelsReturn(pixels=self.__image_points_to_pixel_indices(image_points.image_points),
                                         valid_flag=image_points.valid_flag)
 
     @staticmethod
@@ -64,10 +67,10 @@ class CameraModel(ABC):
         match cam_model_parameters:
             case types.FThetaCameraModelParameters():
                 return FThetaCameraModel(cam_model_parameters, device, dtype)
-            
+
             case types.PinholeCameraModelParameters():
                 return PinholeCameraModel(cam_model_parameters, device, dtype)
-            
+
             case _:
                 raise TypeError(
                     f"unsupported camera model type {type(cam_model_parameters)}, currently supporting Ftheta/Pinhole only"
@@ -98,7 +101,7 @@ class CameraModel(ABC):
     @dataclass
     class WorldPointsToPixelsReturn:
         '''
-        Returns
+        Contains
             - pixel indices of the valid projections [int] (n,2)
             - [optional] world-to-sensor poses of valid projections [float] (n,4,4)
             - [optional] indices of the valid projections relative to the input points [int] (n,)
@@ -112,7 +115,7 @@ class CameraModel(ABC):
     @dataclass
     class WorldPointsToImagePointsReturn:
         '''
-        Returns
+        Contains
             - Image point coordinates of the valid projections [float] (n,2)
             - [optional] world-to-sensor poses of valid projections [float] (n,4,4)
             - [optional] indices of the valid projections relative to the input points [int] (n,)
@@ -126,7 +129,7 @@ class CameraModel(ABC):
     @dataclass
     class WorldRaysReturn:
         '''
-        Returns
+        Contains
             - rays in the world coordinate frame [float] (n,3)
             - [optional] timestamps of the returned rays [int] (n,)
         '''
@@ -136,17 +139,19 @@ class CameraModel(ABC):
     @dataclass
     class ImagePointsReturn:
         '''
-        Returns
+        Contains
             - Image point coordinates [float] (n,2)
             - valid_flag [bool] (n,)
+            - [optional] Jacobians of the projection [float] (n,2,3)
         '''
         image_points: torch.Tensor
         valid_flag: torch.Tensor
+        jacobians: Optional[torch.Tensor] = None
 
     @dataclass
     class PixelsReturn:
         '''
-        Returns
+        Contains
             - pixel indices [int] (n,2)
             - valid_flag [bool] (n,)
         '''
@@ -169,7 +174,7 @@ class CameraModel(ABC):
             return_all_projections: bool = False) -> CameraModel.WorldPointsToPixelsReturn:
 
         ''' Projects world points to corresponding pixel indices using *rolling-shutter compensation* of sensor motion '''
-        
+
         if return_timestamps:
             assert start_timestamp_us is not None
             assert end_timestamp_us is not None
@@ -182,7 +187,7 @@ class CameraModel(ABC):
         return self.WorldPointsToPixelsReturn(pixels=self.__image_points_to_pixel_indices(tmp.image_points),
                                               T_world_sensors=tmp.T_world_sensors,
                                               valid_indices=tmp.valid_indices,
-                                              timestamps_us=tmp.timestamps_us)                                
+                                              timestamps_us=tmp.timestamps_us)
 
 
     def world_points_to_pixels_static_pose(
@@ -198,7 +203,7 @@ class CameraModel(ABC):
         if return_timestamps:
             assert timestamp_us is not None
 
-        tmp = self. world_points_to_image_points_static_pose(world_points, T_world_sensor, timestamp_us, 
+        tmp = self. world_points_to_image_points_static_pose(world_points, T_world_sensor, timestamp_us,
                                                              return_T_world_sensors, return_valid_indices, return_timestamps, return_all_projections)
 
         return self.WorldPointsToPixelsReturn(pixels=self.__image_points_to_pixel_indices(tmp.image_points),
@@ -220,14 +225,14 @@ class CameraModel(ABC):
         ''' Projects world points to corresponding pixel indices using the *mean pose* of the sensor between
             the start and end poses (not compensating for potential sensor-motion).
         '''
-        
+
         if return_timestamps:
             assert start_timestamp_us is not None
             assert end_timestamp_us is not None
             assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
 
             timestamp_us = (end_timestamp_us + start_timestamp_us) // 2
-        
+
         else:
             timestamp_us = None
 
@@ -235,7 +240,7 @@ class CameraModel(ABC):
             world_points,
             self.__interpolate_poses(
                 self.to_torch(T_world_sensor_start).to(self.dtype),
-                self.to_torch(T_world_sensor_end).to(self.dtype), 0.5), 
+                self.to_torch(T_world_sensor_end).to(self.dtype), 0.5),
             timestamp_us, return_T_world_sensors, return_valid_indices, return_timestamps, return_all_projections)
 
     def world_points_to_image_points_shutter_pose(
@@ -288,7 +293,7 @@ class CameraModel(ABC):
             if return_timestamps:
                 return_var.timestamps_us= torch.tile(torch.tensor(start_timestamp_us), dims=(int(image_points_start.valid_flag.sum().item()),))
             return return_var
-        
+
         # Do initial transformations using both start and mean pose to determine all candidate points and take union of valid projections as iteration starting points
         image_points_end = self.camera_rays_to_image_points((T_world_sensor_end[: 3, : 3] @ world_points.transpose(0, 1) + T_world_sensor_end[: 3, 3, None]).transpose(0, 1))
 
@@ -340,7 +345,7 @@ class CameraModel(ABC):
 
             image_points_rs_prev = image_points_rs.image_points
 
-            
+
         # We always return image points
         return_var = self.WorldPointsToImagePointsReturn(image_points=image_points_rs.image_points[image_points_rs.valid_flag])
 
@@ -383,7 +388,7 @@ class CameraModel(ABC):
             return_timestamps: bool = False,
             return_all_projections: bool = False) -> CameraModel.WorldPointsToImagePointsReturn:
         ''' Projects world points to corresponding image point coordinates using a *fixed* sensor pose (not compensating for potential sensor-motion). '''
-        
+
         # Check if the variables are numpy, convert them to torch and send them to correct device
         world_points = self.to_torch(world_points).to(self.dtype)
         T_world_sensor = self.to_torch(T_world_sensor).to(self.dtype)
@@ -435,17 +440,17 @@ class CameraModel(ABC):
         ''' Projects world points to corresponding image point coordinates using the *mean pose* of the sensor between
             the start and end poses (not compensating for potential sensor-motion).
         '''
-        
+
         if return_timestamps:
             assert start_timestamp_us is not None
             assert end_timestamp_us is not None
             assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
 
             timestamp_us = (end_timestamp_us + start_timestamp_us) // 2
-        
+
         else:
             timestamp_us = None
-        
+
         return self.world_points_to_image_points_static_pose(
             world_points,
             self.__interpolate_poses(
@@ -459,11 +464,11 @@ class CameraModel(ABC):
                                         timestamp_us: Optional[int] = None,
                                         camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
                                         return_timestamps: bool = False) -> CameraModel.WorldRaysReturn:
-        
+
         if return_timestamps:
             assert timestamp_us is not None
-    
-        return self.image_points_to_world_rays_static_pose(self.__pixel_indices_to_image_points(pixel_idxs), T_sensor_world, 
+
+        return self.image_points_to_world_rays_static_pose(self.__pixel_indices_to_image_points(pixel_idxs), T_sensor_world,
                                                            timestamp_us, camera_rays, return_timestamps)
 
     def pixels_to_world_rays_shutter_pose(self,
@@ -480,7 +485,7 @@ class CameraModel(ABC):
             assert end_timestamp_us is not None
             assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
 
-        return self.image_points_to_world_rays_shutter_pose(self.__pixel_indices_to_image_points(pixel_idxs), 
+        return self.image_points_to_world_rays_shutter_pose(self.__pixel_indices_to_image_points(pixel_idxs),
                                                                T_sensor_world_start, T_sensor_world_end,
                                                                start_timestamp_us, end_timestamp_us, camera_rays, return_timestamps)
 
@@ -492,14 +497,14 @@ class CameraModel(ABC):
                                         end_timestamp_us: Optional[int] = None,
                                         camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
                                         return_timestamps: bool = False) -> CameraModel.WorldRaysReturn:
-        
+
         if return_timestamps:
             assert start_timestamp_us is not None
             assert end_timestamp_us is not None
             assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
 
-        return self.image_points_to_world_rays_mean_pose(self.__pixel_indices_to_image_points(pixel_idxs), 
-                                                               T_sensor_world_start, T_sensor_world_end, 
+        return self.image_points_to_world_rays_mean_pose(self.__pixel_indices_to_image_points(pixel_idxs),
+                                                               T_sensor_world_start, T_sensor_world_end,
                                                                start_timestamp_us, end_timestamp_us, camera_rays, return_timestamps)
 
     def image_points_to_world_rays_static_pose(self,
@@ -526,7 +531,7 @@ class CameraModel(ABC):
 
         if return_timestamps:
             assert timestamp_us is not None
-        
+
         # Unproject the image points to camera rays
         if camera_rays is not None:
             # Reuse provided camera rays
@@ -577,7 +582,7 @@ class CameraModel(ABC):
             assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
 
             timestamp_us = (end_timestamp_us + start_timestamp_us) // 2
-        
+
         else:
             timestamp_us = None
 
@@ -665,7 +670,7 @@ class CameraModel(ABC):
         return return_var
 
     def __pixel_indices_to_image_points(self, pixel_idxs: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
-        
+
         # Convert to torch
         pixel_idxs = self.to_torch(pixel_idxs)
 
@@ -675,7 +680,7 @@ class CameraModel(ABC):
         return pixel_idxs.to(torch.float32) + 0.5
 
     def __image_points_to_pixel_indices(self, image_points: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
-        
+
         # Convert to torch
         image_points = self.to_torch(image_points)
 
@@ -885,12 +890,12 @@ class FThetaCameraModel(CameraModel):
         assert camera_model_parameters.reference_poly == types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, \
             'currently only supporting PIXELDIST_TO_ANGLE reference polynomials'
 
-        # FThetaCameraModelParameters are defined such that the image coordinate origin corresponds to 
+        # FThetaCameraModelParameters are defined such that the image coordinate origin corresponds to
         # the center of the first pixel. To conform to the CameraModel specification (having the image
         # coordinate origin aligned with the top-left corner of the first pixel) we therefore need to
         # offset the principal point by half a pixel.
-        # Please see documentation for more information.     
-    
+        # Please see documentation for more information.
+
         self.principal_point = self.to_torch(camera_model_parameters.principal_point).to(self.dtype) + 0.5
         self.fw_poly = self.to_torch(camera_model_parameters.fw_poly).to(self.dtype)
         self.bw_poly = self.to_torch(camera_model_parameters.bw_poly).to(self.dtype)
@@ -941,7 +946,9 @@ class FThetaCameraModel(CameraModel):
 
         return cam_rays
 
-    def camera_rays_to_image_points(self, cam_rays: Union[torch.Tensor, np.ndarray]) -> CameraModel.ImagePointsReturn:
+    def camera_rays_to_image_points(self,
+                                    cam_rays: Union[torch.Tensor, np.ndarray],
+                                    return_jacobians=False) -> CameraModel.ImagePointsReturn:
         '''
         For each camera ray it computes the corresponding image point coordinates
         '''
@@ -949,8 +956,16 @@ class FThetaCameraModel(CameraModel):
         # If the input is a numpy array first convert it to torch otherwise just send to correct device
         cam_rays = self.to_torch(cam_rays).to(self.dtype)
 
-        ray_norm = self.__nummerically_stable_norm(cam_rays)
-        alphas_full = torch.atan2(ray_norm, cam_rays[:, 2:])  # Compute angle with principal direction
+        initial_requires_grad = cam_rays.requires_grad
+        if return_jacobians:
+            cam_rays.requires_grad = True
+
+        ray_norms = self.__nummerically_stable_norm(cam_rays)
+
+        # Make sure norm is non-vanishing (norm vanishes for points along the principal-axis)
+        ray_norms[ray_norms[:, 0] <= 0.0] = torch.finfo(self.dtype).eps
+        
+        alphas_full = torch.atan2(ray_norms[:], cam_rays[:, 2:])
 
         # Limit angles to max_angle to prevent projected points to leave valid cone around max_angle.
         # In particular for omnidirectional cameras, this prevents points outside the FOV to be
@@ -961,24 +976,37 @@ class FThetaCameraModel(CameraModel):
         alphas = torch.clamp(alphas_full, max=self.max_angle) 
 
         # Evaluate backward polynomial
-        delta = self.__eval_poly_inverse_horner_newton(self.bw_poly, self.dbw_poly, self.fw_poly,
+        deltas = self.__eval_poly_inverse_horner_newton(self.bw_poly, self.dbw_poly, self.fw_poly,
                                                        self.newton_iterations, alphas)
 
-        # Replace the invalid angles and prevent division by 0
-        delta[ray_norm <= 0.0] = 0.0
-        ray_norm[ray_norm <= 0.0] = 1.0
-
-        scale = delta / ray_norm
-        image_points = scale * cam_rays[:, :2] + self.principal_point[None, :]
+        image_points = deltas / ray_norms * cam_rays[:, :2] + self.principal_point[None, :]
 
         # Extract valid image points
         valid_x = torch.logical_and(0.0 <= image_points[:, 0], image_points[:, 0] < self.resolution[0])
         valid_y = torch.logical_and(0.0 <= image_points[:, 1], image_points[:, 1] < self.resolution[1])
-        valid_delta = alphas[:, 0] < self.max_angle # explicitly check for strictly smaller angles to classify FOV-clamped points as invalid
-        valid = valid_x & valid_y & valid_delta
+        valid_alphas = alphas[:, 0] < self.max_angle  # explicitly check for strictly smaller angles to classify FOV-clamped points as invalid
+        valid = valid_x & valid_y & valid_alphas
+
+        jacobians: Optional[torch.Tensor] = None
+        if return_jacobians:
+            # Evaluate Jacobians of valid points by gradients of both output dimensions
+            jacobians = torch.empty((len(cam_rays), 2, 3), dtype=self.dtype, device=self.device)
+
+            initial_gradient = torch.ones((len(cam_rays), ), dtype=self.dtype, device=self.device)
+            image_points[:, 0].backward(gradient=initial_gradient, retain_graph=True)
+            jacobians[:, 0] = cam_rays.grad
+
+            cam_rays.grad.zero_()
+
+            image_points[:, 1].backward(gradient=initial_gradient)
+            jacobians[:, 1] = cam_rays.grad
+
+            # Cleanup for other backprop users
+            cam_rays.grad.zero_()
+            cam_rays.requires_grad = initial_requires_grad
 
         # If the input was numpy, return numpy arrays as well
-        return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid)
+        return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
 
     @staticmethod
     def __eval_poly_inverse_horner_newton(poly_coefficients: torch.Tensor, poly_derivative_coefficients: torch.Tensor,
@@ -996,13 +1024,17 @@ class FThetaCameraModel(CameraModel):
 
         assert newton_iterations >= 0, 'Newton-iteration number needs to be non-negative'
 
-        for _ in range(newton_iterations):
-            # Evaluate single Newton step
-            dfdx = __eval_poly_horner(poly_derivative_coefficients, x)
-            residuals = __eval_poly_horner(poly_coefficients, x) - y
-            x -= residuals / dfdx
+        # Buffers of intermediate results to allow differentiation
+        x_iter = [torch.zeros_like(x) for _ in range(newton_iterations + 1)]
+        x_iter[0] = x
 
-        return x
+        for i in range(newton_iterations):
+            # Evaluate single Newton step
+            dfdx = __eval_poly_horner(poly_derivative_coefficients, x_iter[i])
+            residuals = __eval_poly_horner(poly_coefficients, x_iter[i]) - y
+            x_iter[i + 1] = x_iter[i] - residuals / dfdx
+
+        return x_iter[newton_iterations]
 
     @staticmethod
     def __eval_poly_horner(poly_coefficients: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
@@ -1026,10 +1058,10 @@ class FThetaCameraModel(CameraModel):
 
         # Output the norm of non-zero rays only
         non_zero_norms = max_pts > 0
-        min_max_ratio = min_pts / max_pts
+        min_max_ratio = min_pts[non_zero_norms] / max_pts[non_zero_norms]
         xy_norms[non_zero_norms,
                  None] = max_pts[non_zero_norms,
-                                 None] * torch.sqrt(1 + torch.pow(min_max_ratio[non_zero_norms, None], 2))
+                                 None] * torch.sqrt(1 + torch.pow(min_max_ratio[:, None], 2))
 
         return xy_norms
 
@@ -1073,7 +1105,7 @@ class PinholeCameraModel(CameraModel):
         '''
         Computes the camera ray for each image point, performing an iterative undistortion of the nonlinear distortion model
         '''
-        
+
         image_points = self.to_torch(image_points)
         assert image_points.is_floating_point(), "[CameraModel]: image_points must be floating point values"
         image_points = image_points.to(self.dtype)
@@ -1082,7 +1114,9 @@ class PinholeCameraModel(CameraModel):
 
         return torch.cat([camera_rays, torch.ones_like(camera_rays[:, 0:1])], dim=1)
 
-    def camera_rays_to_image_points(self, cam_rays: Union[torch.Tensor, np.ndarray]) -> CameraModel.ImagePointsReturn:
+    def camera_rays_to_image_points(self,
+                                    cam_rays: Union[torch.Tensor, np.ndarray],
+                                    return_jacobians = False) -> CameraModel.ImagePointsReturn:
         '''
         For each camera ray compute the corresponding image point coordinates
         '''
@@ -1095,8 +1129,13 @@ class PinholeCameraModel(CameraModel):
         valid = cam_rays[:, 2] > 0.0
         valid_idx = torch.where(valid)[0]
 
-        uv_normalized = cam_rays[valid, :2] / cam_rays[valid, 2:3]  # [n,2]
-        icD, delta_xy = self.__compute_distortion(uv_normalized)
+        cam_rays_valid = torch.index_select(cam_rays, 0, valid_idx)
+
+        if return_jacobians:
+            cam_rays_valid.requires_grad = True
+
+        uv_normalized = cam_rays_valid[:, :2] / cam_rays_valid[:, 2:3]  # [n,2]
+        icD, delta_x, delta_y = self.__compute_distortion(uv_normalized)
 
         k_min_radial_dist = 0.8
         k_max_radial_dist = 1.2
@@ -1104,7 +1143,7 @@ class PinholeCameraModel(CameraModel):
         valid_radial = torch.logical_and(icD > k_min_radial_dist, icD < k_max_radial_dist)
 
         # Apply radial / tangential / thin-prism distortions
-        uvND = uv_normalized * icD[:, None] + delta_xy
+        uvND = uv_normalized * icD[:, None] + torch.cat([delta_x[:, None], delta_y[:, None]], dim=1)
 
         # Project using ideal pinhole model
         image_points[valid_idx] = uvND * self.focal_length + self.principal_point
@@ -1117,9 +1156,23 @@ class PinholeCameraModel(CameraModel):
         valid_pts = valid_x & valid_y & valid_radial
         valid[valid_idx[~valid_pts]] = False
 
-        return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid)
+        jacobians: Optional[torch.Tensor] = None
+        if return_jacobians:
+            # Evaluate Jacobians of valid points by gradients of both output dimensions
+            jacobians = torch.zeros((len(cam_rays),2,3), dtype=self.dtype, device=self.device)
 
-    def __compute_distortion(self, xy: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+            initial_gradient = torch.ones((len(valid_idx),), dtype=self.dtype, device=self.device)
+            image_points[valid_idx, 0].backward(gradient=initial_gradient, retain_graph=True, inputs=cam_rays_valid)
+            jacobians[valid_idx, 0] = cam_rays_valid.grad
+
+            cam_rays_valid.grad.zero_()
+
+            image_points[valid_idx, 1].backward(gradient=initial_gradient)
+            jacobians[valid_idx, 1] = cam_rays_valid.grad
+
+        return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
+
+    def __compute_distortion(self, xy: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         ''' Computes the radial, tangential, and thin-prism distortion given the camera rays '''
 
         # Compute the helper variables
@@ -1137,7 +1190,7 @@ class PinholeCameraModel(CameraModel):
         delta_x = self.tangential_coeffs[0] * a1 + self.tangential_coeffs[1] * a2 + r_2 * (self.thin_prism_coeffs[0] + r_2 * self.thin_prism_coeffs[1])
         delta_y = self.tangential_coeffs[0] * a3 + self.tangential_coeffs[1] * a1 + r_2 * (self.thin_prism_coeffs[2] + r_2 * self.thin_prism_coeffs[3])
 
-        return icD, torch.cat([delta_x[:, None], delta_y[:, None]], dim=1)
+        return icD, delta_x, delta_y
 
     def __iterative_undistort(self, image_points: torch.Tensor, stop_mean_of_squares_error_px2: float = 1e-12, max_iterations: int = 10) -> torch.Tensor:
         # start by unprojecting points to rays using distortion-less ideal pinhole model only
@@ -1146,9 +1199,9 @@ class PinholeCameraModel(CameraModel):
         cam_rays = cam_rays_0
         for _ in range(max_iterations):
             # apply *inverse* of distortion to camera rays to iteratively find the rays that correspond to the *distorted* source points
-            icD, delta_xy = self.__compute_distortion(cam_rays)
+            icD, delta_x, delta_y = self.__compute_distortion(cam_rays)
 
-            residual = cam_rays - (cam_rays := (cam_rays_0 - delta_xy) / icD[:, None])
+            residual = cam_rays - (cam_rays := (cam_rays_0 - torch.cat([delta_x[:, None], delta_y[:, None]], dim=1)) / icD[:, None])
 
             if torch.mean(torch.square(residual)).item() <= stop_mean_of_squares_error_px2:
                 break
