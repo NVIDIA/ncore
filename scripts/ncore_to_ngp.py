@@ -210,12 +210,13 @@ def ncore_to_ngp(
 
     # Load lidar time-range and labels
     dynamic_tracks: dict[str, dict]= {}
+    lidar_sensor: LidarSensor
     if lidar_id:
         logger.info(f"Preparing dynamic objects from '{lidar_id}'")
 
         # Load sensors
-        assert isinstance(reference_camera_sensor := loader.get_sensor(camera_ids[0]), CameraSensor)
-        assert isinstance(lidar_sensor := loader.get_sensor(lidar_id), LidarSensor)
+        reference_camera_sensor = loader.get_camera_sensor(camera_ids[0])
+        lidar_sensor = loader.get_lidar_sensor(lidar_id)
 
         # Find the corresponding lidar frames based on their timestamps
         reference_camera_timestamps = reference_camera_sensor.get_frames_timestamps_us()
@@ -400,15 +401,17 @@ def ncore_to_ngp(
                             bbox_corners,
                             camera_sensor.get_frame_T_world_sensor(camera_frame_idx, FrameTimepoint.START),
                             camera_sensor.get_frame_T_world_sensor(camera_frame_idx, FrameTimepoint.END),
-                            return_valid_indices=True, return_T_world_sensors=True, return_all_projections=True)
+                            return_valid_indices=True, return_all_projections=True)
 
+                    assert projection.valid_indices is not None
                     if torch.numel(projection.valid_indices) > 0:
                         # Clamped out-of-image-domain points
                         #   - this is required for perspective cameras only
                         #   - fisheye-cameras will project in a "clamped way" into the image-domain along
                         #     it's internal FOV-specific bounds, but points will be marked as invalid
-                        projection.image_points[:,0] = torch.clamp(projection.image_points[:,0], min=0, max=camera_model.resolution[0])
-                        projection.image_points[:,1] = torch.clamp(projection.image_points[:,1], min=0, max=camera_model.resolution[1]) 
+                        res_x, res_y = camera_model.resolution[0].item(), camera_model.resolution[1].item()
+                        projection.image_points[:,0] = torch.clamp(projection.image_points[:,0], min=0, max=res_x)
+                        projection.image_points[:,1] = torch.clamp(projection.image_points[:,1], min=0, max=res_y) 
 
                         min_x, min_y = projection.image_points.min(0)[0]
                         max_x, max_y = projection.image_points.max(0)[0]
@@ -419,10 +422,10 @@ def ncore_to_ngp(
                         max_x_int, max_y_int = torch.ceil(max_x).to(torch.int32) + mask_width_padding, torch.ceil(max_y).to(torch.int32) + mask_height_padding
                         min_x_int, min_y_int = torch.floor(min_x).to(torch.int32) - mask_width_padding, torch.floor(min_y).to(torch.int32) - mask_height_padding
 
-                        min_x = torch.clamp(min_x_int, min=0, max=camera_model.resolution[0])
-                        min_y = torch.clamp(min_y_int, min=0, max=camera_model.resolution[1])
-                        max_x = torch.clamp(max_x_int, min=0, max=camera_model.resolution[0])
-                        max_y = torch.clamp(max_y_int, min=0, max=camera_model.resolution[1])
+                        min_x = torch.clamp(min_x_int, min=0, max=res_x)
+                        min_y = torch.clamp(min_y_int, min=0, max=res_y)
+                        max_x = torch.clamp(max_x_int, min=0, max=res_x)
+                        max_y = torch.clamp(max_y_int, min=0, max=res_y)
 
                         dynamic_mask[min_y:max_y, min_x:max_x] = 255
 
