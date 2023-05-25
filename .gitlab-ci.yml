@@ -53,11 +53,12 @@ build+test:
   allow_failure: false
 
 pages:
-  stage: build
+  stage: deploy
   script:
   - bazelisk version
 
   # Build the HTML documentation
+  - bazelisk clean
   - bazelisk build //docs:ncore
 
   # Move it to the output artifact for upload (requires root right to write)
@@ -65,5 +66,20 @@ pages:
   artifacts:
     paths:
     - public
+  rules:
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+
+wheel:
+  stage: deploy
+  script:
+  - bazelisk version
+
+  # Build the wheel
+  - bazelisk clean
+  - bazelisk build //ncore:ncore_wheel
+
+  # Try to deploy it (skip if version already exists)
+  - pip install twine
+  - python -m twine upload --repository-url https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi bazel-bin/ncore/*.whl --verbose --skip-existing --non-interactive
   rules:
     - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
