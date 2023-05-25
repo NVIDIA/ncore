@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 import tqdm
 import numpy as np
+import numpy.typing as npt
 import pyarrow.parquet as pq
 
 from PIL import Image
@@ -726,7 +727,7 @@ def _compute_max_angle(intrinsic):
     )
 
 
-def compute_ftheta_parameters(intrinsic):
+def compute_ftheta_parameters(intrinsic: np.ndarray, max_angle_limit_rad: float) -> Tuple[npt.NDArray[np.float32], float]:
 
     # Initialize the forward polynomial
     fw_poly = Polynomial(intrinsic[9:14])
@@ -762,7 +763,7 @@ def compute_ftheta_parameters(intrinsic):
 
     max_ray_distortion = np.asarray([val, dval], dtype=np.float32)
 
-    return max_ray_distortion, max_angle.astype(np.float32)
+    return max_ray_distortion, min(max_angle.astype(np.float32).item(), max_angle_limit_rad)
 
 
 def load_maglev_camera_indexer_frame_meta(camera_path: Path) -> Tuple[np.ndarray, np.ndarray]:

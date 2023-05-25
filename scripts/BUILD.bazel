@@ -170,11 +170,14 @@ py_binary(
     deps = [
         requirement("click"),
         requirement("pillow"),
+        requirement("torch"),
         "//ncore/impl/common:pylib_common",
+        "//ncore/impl/common:pylib_nvidia",
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_data",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data:pylib_util",
+        "//ncore/impl/sensors:pylib_camera",
     ],
 )
 

@@ -272,7 +272,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             bw_poly = intrinsic[4:]
             fw_poly = compute_fw_polynomial(intrinsic)
-            _, max_angle = compute_ftheta_parameters(np.concatenate((intrinsic, fw_poly)))
+            _, max_angle = compute_ftheta_parameters(np.concatenate((intrinsic, fw_poly)), np.deg2rad(self.MAX_CAMERA_FOV_DEG / 2))
 
             # Constant mask image, which currently only contains the ego car mask
             # TODO: extend this with dynamic object masks
@@ -287,7 +287,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 FThetaCameraModelParameters(intrinsic[2:4].astype(np.uint64), ShutterType.ROLLING_TOP_TO_BOTTOM,
                                             intrinsic[0:2],
                                             FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, bw_poly,
-                                            fw_poly, float(max_angle)), mask_image.get_image())
+                                            fw_poly, max_angle), mask_image.get_image())
 
             # Load tar file containing images
             tar_file = open(self.sequence_path / 'cameras' / camera_rig_name / 'images.tar', 'rb')

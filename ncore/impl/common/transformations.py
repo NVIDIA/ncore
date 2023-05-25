@@ -165,6 +165,25 @@ def transform_point_cloud(pc, T):
         return trans_pts.transpose()
 
 
+def bbox_pose(bbox: np.ndarray) -> np.ndarray:
+    ''' Converts an array-encoded bounding-box into a corresponding pose '''
+
+    return np.block(
+        [[R.from_euler('xyz', bbox[6:9], degrees=False).as_matrix(),
+          np.array(bbox[:3]).reshape((3, 1))], [np.array([0, 0, 0, 1])]])
+
+
+def pose_bbox(pose: np.ndarray, dimensions: np.ndarray) -> np.ndarray:
+    ''' Converts a pose with extents to an array-encoded bounding-box '''
+
+    bbox = np.empty(9, dtype = dimensions.dtype)
+    bbox[:3] = pose[:3, 3]  # centroid
+    bbox[3:6] = dimensions  # dimensions from input
+    bbox[6:9] = R.from_matrix(pose[:3, :3]).as_euler('xyz', degrees=False)  # orientation
+
+    return bbox
+
+
 def transform_bbox(bbox_source: np.ndarray, T_source_target: np.ndarray) -> np.ndarray:
     ''' Applies a rigid-transformation to a bounding box 
      Args:
@@ -175,19 +194,13 @@ def transform_bbox(bbox_source: np.ndarray, T_source_target: np.ndarray) -> np.n
      '''
 
     # Convert bbox to corresponding pose
-    T_bbox_source = np.block(
-        [[R.from_euler('xyz', bbox_source[6:9], degrees=False).as_matrix(),
-          np.array(bbox_source[:3]).reshape((3, 1))], [np.array([0, 0, 0, 1])]])
+    T_bbox_source = bbox_pose(bbox_source)
 
     # Apply transformation
     T_bbox_target = T_source_target @ T_bbox_source
 
-    # Convert back to bbox parametrization
-    bbox_target = np.empty_like(bbox_source)
-    bbox_target[:3] = T_bbox_target[:3, 3]  # centroid
-    bbox_target[3:6] = bbox_source[3:6]  # dimensions stay unchanged
-    bbox_target[6:9] = R.from_matrix(T_bbox_target[:3, :3]).as_euler('xyz', degrees=False)  # orientation
-    return bbox_target
+    # Convert back to bbox parametrization (dimensions stay unchanged)
+    return pose_bbox(T_bbox_target, bbox_source[3:6])
 
 
 def se3_inverse(T: np.ndarray) -> np.ndarray:

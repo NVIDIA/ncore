@@ -950,7 +950,17 @@ class FThetaCameraModel(CameraModel):
         cam_rays = self.to_torch(cam_rays).to(self.dtype)
 
         ray_norm = self.__nummerically_stable_norm(cam_rays)
-        alphas = torch.atan2(torch.linalg.norm(cam_rays[:, :2], axis=1, keepdims=True), cam_rays[:, 2:])
+        alphas_full = torch.atan2(ray_norm, cam_rays[:, 2:])  # Compute angle with principal direction
+
+        # Limit angles to max_angle to prevent projected points to leave valid cone around max_angle.
+        # In particular for omnidirectional cameras, this prevents points outside the FOV to be
+        # wrongly projected to in-image-domain points because of badly constrained polynominals outside
+        # the effective FOV (which is different to the image boundaries).
+        #
+        # These FOV-clamped projections will be marked as *invalid*
+        alphas = torch.clamp(alphas_full, max=self.max_angle) 
+
+        # Evaluate backward polynomial
         delta = self.__eval_poly_inverse_horner_newton(self.bw_poly, self.dbw_poly, self.fw_poly,
                                                        self.newton_iterations, alphas)
 
@@ -964,7 +974,7 @@ class FThetaCameraModel(CameraModel):
         # Extract valid image points
         valid_x = torch.logical_and(0.0 <= image_points[:, 0], image_points[:, 0] < self.resolution[0])
         valid_y = torch.logical_and(0.0 <= image_points[:, 1], image_points[:, 1] < self.resolution[1])
-        valid_delta = alphas[:, 0] < self.max_angle
+        valid_delta = alphas[:, 0] < self.max_angle # explicitly check for strictly smaller angles to classify FOV-clamped points as invalid
         valid = valid_x & valid_y & valid_delta
 
         # If the input was numpy, return numpy arrays as well
