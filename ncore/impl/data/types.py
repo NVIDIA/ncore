@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import io
-import click 
+import io 
 
 from enum import IntEnum, auto, unique
 from dataclasses import dataclass
