@@ -34,7 +34,6 @@ py_library(
         requirement("numpy"),
         requirement("dataclasses-json"),
         requirement("pillow"),
-        requirement("click"),
     ],
 )
 

@@ -251,16 +251,3 @@ class EncodedImageHandle(Protocol):
     def get_data(self) -> EncodedImageData:
         ...
 
-
-class NPArrayParamType(click.ParamType):
-    ''' Click cmdl argument type for numpy arrays '''
-    def __init__(self, dim: tuple[int, ...] = (-1,), dtype: npt.DTypeLike = np.float32):
-        super().__init__()
-        self.dim = dim
-        self.dtype = np.dtype(dtype)
-
-    def convert(self, value, param, ctx) -> np.ndarray:
-        try:
-            return np.fromstring(value.replace('[','').replace(']',''), sep=',').reshape(self.dim).astype(self.dtype)
-        except ValueError:
-            self.fail(f"{value!r} is not a valid numpy array", param, ctx)

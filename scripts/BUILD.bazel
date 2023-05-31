@@ -17,6 +17,17 @@ CONVERT_RAW_DATA_DEPS = [
     "//ncore/impl/data_converter:pylib_waymo_open",
 ]
 
+py_library(
+    name = "pylib_util",
+    srcs = [
+        "util.py",
+    ],
+    deps = [
+        requirement("numpy"),
+        requirement("click"),
+    ],
+)
+
 py_binary(
     name = "convert_raw_data",
     srcs = ["convert_raw_data.py"],
@@ -178,6 +189,7 @@ py_binary(
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data:pylib_util",
         "//ncore/impl/sensors:pylib_camera",
+        ":pylib_util",
     ],
 )
 

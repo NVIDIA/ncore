@@ -25,12 +25,12 @@ from ncore.impl.data.types import (
     FThetaCameraModelParameters,
     FrameTimepoint,
     PinholeCameraModelParameters,
-    NPArrayParamType
 )
+from scripts.util import NPArrayParamType
 from ncore.impl.sensors.camera import CameraModel
 from ncore.impl.data.util import padded_index_string
 from ncore.impl.common.common import average_camera_pose, save_pc_dat, PoseInterpolator, get_3d_bbox_coords
-from ncore.impl.common.transformations import transform_point_cloud, bbox_pose, pose_bbox, transform_bbox
+from ncore.impl.common.transformations import transform_point_cloud, bbox_pose, pose_bbox, transform_bbox, se3_inverse
 from ncore.impl.common.nvidia_utils import LabelProcessor as NVLabelProcessor
 
 # Rotation of NCORE camera frame to NGP camera frame
@@ -366,14 +366,16 @@ def ncore_to_ngp(
         # Z is the up vector in the NCORE coordinate system
         camera_data["up"] = np.array([0, 0, 1])
 
-        def nvidia_to_ngp(T_sensor_to_world: np.ndarray, inverse: bool = False) -> np.ndarray:
-            if not inverse:
-                R = T_sensor_to_world[:3, :3] @ R_NCORE_NGP
-            else:
-                R = T_sensor_to_world[:3, :3] @ R_NCORE_NGP.transpose()
-            T_sensor_to_world[:3, :3] = R
-            return T_sensor_to_world
+        def nvidia_to_ngp(T: np.ndarray) -> np.ndarray:
+            R = T[:3, :3] @ R_NCORE_NGP
+            T[:3, :3] = R
+            return T
 
+        def ngp_to_nvidia(T: np.ndarray) -> np.ndarray:
+            R = T[:3, :3] @ R_NCORE_NGP.transpose()
+            T[:3, :3] = R
+            return T
+        
         # Prepare static component of dynamic masks
         if camera_mask_image := camera_sensor.get_camera_mask_image():
             # Apply fixed number of dilations to static input
@@ -514,11 +516,11 @@ def ncore_to_ngp(
                     "transform_matrix_end": camera_data["poses_end"][i].tolist(),
                 }
             else:
-                T_rig_cam = np.linalg.inv(T_cam_rig[camera_sensor_idx])
-                T_rig_world_start =  nvidia_to_ngp(camera_data["poses_start"][i], inverse=True) @ T_rig_cam 
-                T_rig_world_end = nvidia_to_ngp(camera_data["poses_end"][i], inverse=True) @ T_rig_cam
+                T_rig_cam = se3_inverse(T_cam_rig[camera_sensor_idx])
+                T_rig_world_start =  ngp_to_nvidia(camera_data["poses_start"][i]) @ T_rig_cam 
+                T_rig_world_end = ngp_to_nvidia(camera_data["poses_end"][i]) @ T_rig_cam
 
-                T_cam_rig_translated = copy.deepcopy(T_cam_rig[camera_sensor_idx])
+                T_cam_rig_translated = T_cam_rig[camera_sensor_idx].copy()
                 T_cam_rig_translated[:3, 3:4] += translation_vector
 
                 pose_start_translated  = nvidia_to_ngp(T_rig_world_start @ T_cam_rig_translated)
