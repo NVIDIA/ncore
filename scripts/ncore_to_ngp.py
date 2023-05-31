@@ -25,6 +25,7 @@ from ncore.impl.data.types import (
     FThetaCameraModelParameters,
     FrameTimepoint,
     PinholeCameraModelParameters,
+    NPArrayParamType
 )
 from ncore.impl.sensors.camera import CameraModel
 from ncore.impl.data.util import padded_index_string
@@ -181,6 +182,12 @@ def extract_dynamic_tracks(lidar_sensor: LidarSensor, lidar_frame_range: range, 
     default=3.0,
 )
 @click.option(
+    "--translation-vector",
+    type=NPArrayParamType(dim=(3,1), dtype=np.float32),
+    default='[0,0,0]',
+    help="Translation that will be applied to the T_cam_rig transformation matrix (used to simulate novel views)",
+)
+@click.option(
     "--save-test",
     is_flag=True,
     default=False,
@@ -203,6 +210,7 @@ def ncore_to_ngp(
     track_unconditionally_dynamic_classes: list[str],
     track_ftheta_max_fov_deg: float,
     track_min_centroid_rig_distance: float,
+    translation_vector: np.ndarray,
     save_test: bool,
 ):
     # Initialize the logger
@@ -247,6 +255,7 @@ def ncore_to_ngp(
             track_unconditionally_dynamic_classes=set(track_unconditionally_dynamic_classes))
 
     all_camera_data: dict[str, dict] = defaultdict(dict)
+    T_cam_rig: list[np.ndarray] = []
     for camera_id in camera_ids:
         logger.info(f"Processing camera '{camera_id}'")
 
@@ -351,11 +360,17 @@ def ncore_to_ngp(
                                                    device='cpu' # we only project small number of points
                                                    )
 
+        # Get the camera to rig transformation 
+        T_cam_rig.append(camera_sensor.get_T_sensor_rig())
+
         # Z is the up vector in the NCORE coordinate system
         camera_data["up"] = np.array([0, 0, 1])
 
-        def nvidia_to_ngp(T_sensor_to_world):
-            R = T_sensor_to_world[:3, :3] @ R_NCORE_NGP
+        def nvidia_to_ngp(T_sensor_to_world: np.ndarray, inverse: bool = False) -> np.ndarray:
+            if not inverse:
+                R = T_sensor_to_world[:3, :3] @ R_NCORE_NGP
+            else:
+                R = T_sensor_to_world[:3, :3] @ R_NCORE_NGP.transpose()
             T_sensor_to_world[:3, :3] = R
             return T_sensor_to_world
 
@@ -371,7 +386,6 @@ def ncore_to_ngp(
 
         # Prepare all image paths (to average the pose we neglect the selected step size as all images will be used for testing) and poses
         all_image_paths: list[Path] = []
-        T_cam_rig: list[np.ndarray] = []
         poses_start: list[np.ndarray] = []
         poses_end: list[np.ndarray] = []
         for camera_frame_idx in camera_sensor.get_frame_index_range(start_frame, end_frame):
@@ -388,8 +402,6 @@ def ncore_to_ngp(
                     frame_file.write(frame_data_handle.get_encoded_image_data())
 
             all_image_paths.append(frame_file_path)
-
-            T_cam_rig.append(camera_sensor.get_T_sensor_rig())
             poses_start.append(nvidia_to_ngp(camera_sensor.get_frame_T_sensor_world(camera_frame_idx, FrameTimepoint.START)))
             poses_end.append(nvidia_to_ngp(camera_sensor.get_frame_T_sensor_world(camera_frame_idx, FrameTimepoint.END)))
 
@@ -495,12 +507,28 @@ def ncore_to_ngp(
             out_train["frames"].append(frame_data)
 
         for i, image_path in enumerate(camera_data["all_image_paths"]):
-            frame_data = {
-                "file_path": os.path.relpath(image_path, output_path_experiment),
-                "transform_matrix_start": camera_data["poses_start"][i].tolist(),
-                "transform_matrix_end": camera_data["poses_end"][i].tolist(),
-            }
+            if np.array_equal(np.zeros((3,1), dtype=np.float32), translation_vector):
+                frame_data = {
+                    "file_path": os.path.relpath(image_path, output_path_experiment),
+                    "transform_matrix_start": camera_data["poses_start"][i].tolist(),
+                    "transform_matrix_end": camera_data["poses_end"][i].tolist(),
+                }
+            else:
+                T_rig_cam = np.linalg.inv(T_cam_rig[camera_sensor_idx])
+                T_rig_world_start =  nvidia_to_ngp(camera_data["poses_start"][i], inverse=True) @ T_rig_cam 
+                T_rig_world_end = nvidia_to_ngp(camera_data["poses_end"][i], inverse=True) @ T_rig_cam
 
+                T_cam_rig_translated = copy.deepcopy(T_cam_rig[camera_sensor_idx])
+                T_cam_rig_translated[:3, 3:4] += translation_vector
+
+                pose_start_translated  = nvidia_to_ngp(T_rig_world_start @ T_cam_rig_translated)
+                pose_end_translated = nvidia_to_ngp(T_rig_world_end @ T_cam_rig_translated)
+
+                frame_data = {
+                    "file_path": os.path.relpath(image_path, output_path_experiment),
+                    "transform_matrix_start": pose_start_translated.tolist(),
+                    "transform_matrix_end": pose_end_translated.tolist(),
+                }
             out_test["frames"].append(frame_data)
 
         if camera_sensor_idx == 0 and lidar_id:
@@ -538,7 +566,12 @@ def ncore_to_ngp(
             json.dump(out_train, f, indent=2)
 
         if save_test:
-            test_camera_path = output_path_experiment / f"{camera_id}_test.json"
+            out_test["translation_vector"] = translation_vector.reshape(-1).tolist()  
+            if np.array_equal(np.zeros((3,1), dtype=np.float32), translation_vector):
+                test_camera_path = output_path_experiment / f"{camera_id}_test.json"
+            else:
+                test_camera_path = output_path_experiment / f"{camera_id}_translated_test.json"
+
             logger.info(f"Writing '{test_camera_path}'")
             with open(test_camera_path, "w") as f:
                 json.dump(out_test, f, indent=2)
