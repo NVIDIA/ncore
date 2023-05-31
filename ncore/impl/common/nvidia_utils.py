@@ -360,6 +360,9 @@ class LabelProcessor:
     # TODO: check if this user-defined velocity threshold makes sense
     GLOBAL_SPEED_DYNAMIC_THRESHOLD = 1.0 / 3.6
 
+    # Minimal label centroid to rig distance (skip potential self-classifications)
+    MIN_CENTROID_RIG_DISTANCE_METER = 3.0
+
     # Use conservative +- margin time to maintain labels at frame boundaries if filtering for time-ranges
     TIME_RANGE_MARGIN_US = int(0.1 * 1e6) # 0.1sec in usec
 
@@ -375,7 +378,8 @@ class LabelProcessor:
         logger: logging.Logger,
 
         # TODO: check if this user-defined velocity threshold makes sense
-        global_speed_dynamic_threshold: float = GLOBAL_SPEED_DYNAMIC_THRESHOLD
+        global_speed_dynamic_threshold: float = GLOBAL_SPEED_DYNAMIC_THRESHOLD,
+        min_centroid_rig_distance: float = MIN_CENTROID_RIG_DISTANCE_METER
     ) -> Tuple[dict[str, TrackLabel], dict[str, dict[int, list[FrameLabel3]]]]:
         """Parses a labels file for label tracks and per-frame labels.
 
@@ -495,8 +499,13 @@ class LabelProcessor:
             T_sensor_frametime_world = T_rig_frametime_world @ T_sensor_rigs[sensor_id]
             T_sensor_labeltime_sensor_frametime = se3_inverse(T_sensor_frametime_world) @ T_sensor_labeltime_world
 
+            # bbox in sensor at frame-time
             bbox_frametime = BBox3.from_array(
                 transform_bbox(bbox_labeltime.to_array(), T_sensor_labeltime_sensor_frametime))
+
+            # skip label if it's centroid is too close to the rig
+            if np.linalg.norm(transform_bbox(bbox_frametime.to_array(), T_sensor_rigs[sensor_id])[:3]) < min_centroid_rig_distance:
+                continue
 
             # this is assuming velocity is not relative to the local sensor motion, but w.r.t. fixed scene / world
             global_speed = float(np.linalg.norm([row.velocity_x, row.velocity_y, row.velocity_z]))
