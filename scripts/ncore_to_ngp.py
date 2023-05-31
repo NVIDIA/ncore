@@ -45,6 +45,7 @@ RS_DIR_TO_NGP = {
 
 
 def extract_dynamic_tracks(lidar_sensor: LidarSensor, lidar_frame_range: range, track_speed_thresh: float,
+                           track_min_centroid_rig_distance: float,
                            track_unconditionally_dynamic_classes: set[str]) -> dict[str, dict]:
 
     ## Extract the dynamic tracks for the given data range
@@ -58,10 +59,17 @@ def extract_dynamic_tracks(lidar_sensor: LidarSensor, lidar_frame_range: range, 
                                            lidar_sensor.get_frames_count()))
 
     # Iterate over all lidar frames and extract ALL tracks
+    T_sensor_rig = lidar_sensor.get_T_sensor_rig()
     for frame_idx in extended_lidar_frame_range:
         T_sensor_world = lidar_sensor.get_frame_T_sensor_world(frame_idx)
         labels = lidar_sensor.get_frame_labels(frame_idx)
         for label in labels:
+
+            # skip self-classifications
+            bbox_rig = transform_bbox(label.bbox3.to_array(), T_sensor_rig)
+            if np.linalg.norm(bbox_rig[:3]) < track_min_centroid_rig_distance: # skip labels that are too close to the rig center
+                continue
+
             if label.track_id in all_tracks:
                 # Extend existing track
                 all_tracks[label.track_id]['max_global_speed'] = max(all_tracks[label.track_id]['max_global_speed'], label.global_speed)
@@ -167,6 +175,12 @@ def extract_dynamic_tracks(lidar_sensor: LidarSensor, lidar_frame_range: range, 
     default=190.0,
 )
 @click.option(
+    "--track-min-centroid-rig-distance",
+    type=click.FloatRange(min=0.0, max_open=True),
+    help="Distance threshod for for cubic tracks to be considered self-classifications to skip [m]",
+    default=3.0,
+)
+@click.option(
     "--save-test",
     is_flag=True,
     default=False,
@@ -188,6 +202,7 @@ def ncore_to_ngp(
     track_mask_dilate_ratio: float,
     track_unconditionally_dynamic_classes: list[str],
     track_ftheta_max_fov_deg: float,
+    track_min_centroid_rig_distance: float,
     save_test: bool,
 ):
     # Initialize the logger
@@ -228,6 +243,7 @@ def ncore_to_ngp(
             lidar_sensor=lidar_sensor,
             lidar_frame_range=range(lidar_frame_start_idx, lidar_frame_end_idx),
             track_speed_thresh=track_speed_thresh,
+            track_min_centroid_rig_distance=track_min_centroid_rig_distance,
             track_unconditionally_dynamic_classes=set(track_unconditionally_dynamic_classes))
 
     all_camera_data: dict[str, dict] = defaultdict(dict)
