@@ -175,21 +175,115 @@ py_binary(
     ],
 )
 
+NCORE_TO_NGP_DEPS = [
+    requirement("click"),
+    requirement("pillow"),
+    requirement("torch"),
+    "//scripts:pylib_util",
+    "//ncore/impl/common:pylib_common",
+    "//ncore/impl/common:pylib_nvidia",
+    "//ncore/impl/common:pylib_transformations",
+    "//ncore/impl/data:pylib_data",
+    "//ncore/impl/data:pylib_types",
+    "//ncore/impl/data:pylib_util",
+    "//ncore/impl/sensors:pylib_camera",
+]
+
 py_binary(
     name = "ncore_to_ngp",
     srcs = ["ncore_to_ngp.py"],
-    deps = [
-        requirement("click"),
-        requirement("pillow"),
-        requirement("torch"),
-        ":pylib_util",
-        "//ncore/impl/common:pylib_common",
-        "//ncore/impl/common:pylib_nvidia",
-        "//ncore/impl/common:pylib_transformations",
-        "//ncore/impl/data:pylib_data",
-        "//ncore/impl/data:pylib_types",
-        "//ncore/impl/data:pylib_util",
-        "//ncore/impl/sensors:pylib_camera",
+    deps = NCORE_TO_NGP_DEPS,
+)
+
+# Image for 'ncore_to_ngp'
+
+# extract all "local" dependencies
+py_layer(
+    name = "ncore_to_ngp_local_deps_layer",
+    filter = "//scripts",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = NCORE_TO_NGP_DEPS,
+)
+
+# extract all transitive dependencies of dependencies under //ncore
+py_layer(
+    name = "ncore_to_ngp_common_deps_layer",
+    filter = "//ncore",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = NCORE_TO_NGP_DEPS,
+)
+
+# extract all external dependencies of the deps under //ncore
+py_layer(
+    name = "ncore_to_ngp_common_external_deps_layer",
+    filter = "@",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = [":ncore_to_ngp_common_deps_layer"],
+)
+
+# extract all external dependencies of NCORE_TO_NGP_DEPS, which is a superset of ":ncore_to_ngp_common_external_deps_layer".
+py_layer(
+    name = "ncore_to_ngp_external_deps_layer",
+    filter = "@",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = NCORE_TO_NGP_DEPS,
+)
+
+py3_image(
+    name = "ncore_to_ngp_image",
+    srcs = ["ncore_to_ngp.py"],
+    base = "@ncore_dev_container//image",
+    layers = [
+        ":ncore_to_ngp_external_deps_layer",
+        ":ncore_to_ngp_common_external_deps_layer",
+        ":ncore_to_ngp_common_deps_layer",
+        ":ncore_to_ngp_local_deps_layer",
+    ],
+    main = "ncore_to_ngp.py",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = [":ncore_sequence_meta"],  # include additional local targets to simplify their deployment
+)
+
+# Push image to 'production' (prod) tag - use with *CAUTION* as referenced by default in workflows
+container_push(
+    name = "push_ncore_to_ngp_image_prod",
+    format = "Docker",
+    image = ":ncore_to_ngp_image",
+    registry = "nvcr.io",
+    repository = "nv-maglev/dlav/ncore",
+    tag = "ncore-to-ngp-prod",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+)
+
+# Push image to 'staging' (stage) tag - useful for experimentation
+container_push(
+    name = "push_ncore_to_ngp_image_stage",
+    format = "Docker",
+    image = ":ncore_to_ngp_image",
+    registry = "nvcr.io",
+    repository = "nv-maglev/dlav/ncore",
+    tag = "ncore-to-ngp-stage",
+    tags = [
+        "manual",
+        "no-remote-cache",
     ],
 )
 
