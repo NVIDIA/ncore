@@ -569,10 +569,7 @@ def ncore_to_ngp(
 
         if save_test:
             out_test["translation_vector"] = translation_vector.reshape(-1).tolist()  
-            if np.array_equal(np.zeros((3,1), dtype=np.float32), translation_vector):
-                test_camera_path = output_path_experiment / f"{camera_id}_test.json"
-            else:
-                test_camera_path = output_path_experiment / f"{camera_id}_translated_test.json"
+            test_camera_path = output_path_experiment / f"{camera_id}_test.json"
 
             logger.info(f"Writing '{test_camera_path}'")
             with open(test_camera_path, "w") as f:
