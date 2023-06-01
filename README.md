@@ -47,10 +47,10 @@ by replacing `<TOKEN>` with the created token string.
 Additionally, the local docker daemon needs to be authenticated against gitlab's image registry via
 
 ```
-docker login gitlab-master.nvidia.com:5005
+docker login gitlab-master.nvidia.com:5005 -u oauth2
 ```
 
-to access development and base images.
+using the same `<TOKEN>` to access development and base images.
 
 [one-time operation]
 
