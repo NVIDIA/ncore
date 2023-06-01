@@ -8,7 +8,7 @@ load(
 load("@io_bazel_rules_docker//python:image.bzl", "py_layer")
 load("@io_bazel_rules_docker//python3:image.bzl", "py3_image")
 load("@pip_deps//:requirements.bzl", "requirement")
-load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 
 CONVERT_RAW_DATA_DEPS = [
     requirement("click"),
@@ -182,6 +182,7 @@ py_binary(
         requirement("click"),
         requirement("pillow"),
         requirement("torch"),
+        ":pylib_util",
         "//ncore/impl/common:pylib_common",
         "//ncore/impl/common:pylib_nvidia",
         "//ncore/impl/common:pylib_transformations",
@@ -189,7 +190,6 @@ py_binary(
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data:pylib_util",
         "//ncore/impl/sensors:pylib_camera",
-        ":pylib_util",
     ],
 )
 
