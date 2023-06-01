@@ -10,7 +10,6 @@ from typing import Optional, Protocol, Tuple
 from functools import lru_cache
 
 import numpy as np
-import numpy.typing as npt
 import dataclasses_json
 import PIL.Image as PILImage
 
@@ -249,4 +248,3 @@ class EncodedImageHandle(Protocol):
     ''' Protocol type to reference encoded image data (e.g., file-based, container-based, memory-based) '''
     def get_data(self) -> EncodedImageData:
         ...
-
