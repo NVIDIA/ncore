@@ -8,7 +8,7 @@ load(
 load("@io_bazel_rules_docker//python:image.bzl", "py_layer")
 load("@io_bazel_rules_docker//python3:image.bzl", "py3_image")
 load("@pip_deps//:requirements.bzl", "requirement")
-load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 
 CONVERT_RAW_DATA_DEPS = [
     requirement("click"),
@@ -16,6 +16,17 @@ CONVERT_RAW_DATA_DEPS = [
     "//ncore/impl/data_converter:pylib_nvidia_deepmap",
     "//ncore/impl/data_converter:pylib_waymo_open",
 ]
+
+py_library(
+    name = "pylib_util",
+    srcs = [
+        "util.py",
+    ],
+    deps = [
+        requirement("numpy"),
+        requirement("click"),
+    ],
+)
 
 py_binary(
     name = "convert_raw_data",
@@ -171,6 +182,7 @@ py_binary(
         requirement("click"),
         requirement("pillow"),
         requirement("torch"),
+        ":pylib_util",
         "//ncore/impl/common:pylib_common",
         "//ncore/impl/common:pylib_nvidia",
         "//ncore/impl/common:pylib_transformations",
