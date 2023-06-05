@@ -188,6 +188,13 @@ def extract_dynamic_tracks(lidar_sensor: LidarSensor, lidar_frame_range: range, 
     help="Translation that will be applied to the T_cam_rig transformation matrix (used to simulate novel views)",
 )
 @click.option(
+    "--sensors-prefix",
+    "sensors_prefix",
+    default=None,
+    type=str,
+    help="If provided, the prefix to prepend to each sensor-name for serialization (e.g., to facilitate merging multi-session data-exports)",
+)
+@click.option(
     "--save-test",
     is_flag=True,
     default=False,
@@ -211,6 +218,7 @@ def ncore_to_ngp(
     track_ftheta_max_fov_deg: float,
     track_min_centroid_rig_distance: float,
     translation_vector: np.ndarray,
+    sensors_prefix: Optional[str],
     save_test: bool,
 ):
     # Initialize the logger
@@ -230,6 +238,9 @@ def ncore_to_ngp(
     logger.info(f"Preparing NGP config for experiment '{experiment_name}' in '{output_path_experiment}'")
 
     assert len(camera_ids), "Require at least a single camera sensor"
+
+    if not sensors_prefix:
+        sensors_prefix = ''
 
     # Load lidar time-range and labels
     dynamic_tracks: dict[str, dict]= {}
@@ -391,7 +402,7 @@ def ncore_to_ngp(
         poses_start: list[np.ndarray] = []
         poses_end: list[np.ndarray] = []
         for camera_frame_idx in camera_sensor.get_frame_index_range(start_frame, end_frame):
-            camera_path = output_path_data / 'cameras' / camera_sensor.get_sensor_id()
+            camera_path = output_path_data / 'cameras' / (sensors_prefix + camera_sensor.get_sensor_id())
             camera_path.mkdir(parents=True, exist_ok=True)
 
             # check if camera image data was already exported / export it otherwise
@@ -539,7 +550,7 @@ def ncore_to_ngp(
             # Store lidar data as '.dat' files as required by NGP
             out_train["lidar"] = []
 
-            lidar_path = output_path_data / 'lidars' / lidar_sensor.get_sensor_id()
+            lidar_path = output_path_data / 'lidars' / (sensors_prefix + lidar_sensor.get_sensor_id())
             lidar_path.mkdir(parents=True, exist_ok=True)
             for lidar_frame_idx in range(lidar_frame_start_idx, lidar_frame_end_idx):
                 if not (dat_path := lidar_path / Path(padded_index_string(lidar_frame_idx)).with_suffix('.dat')).exists():
@@ -562,14 +573,14 @@ def ncore_to_ngp(
 
                 out_train["lidar"].append({"file_path": os.path.relpath(dat_path, output_path_experiment)})
 
-        train_camera_path = output_path_experiment / f"{camera_id}_train.json"
+        train_camera_path = output_path_experiment / f"{sensors_prefix + camera_id}_train.json"
         logger.info(f"Writing '{train_camera_path}'")
         with open(train_camera_path, "w") as f:
             json.dump(out_train, f, indent=2)
 
         if save_test:
             out_test["translation_vector"] = translation_vector.reshape(-1).tolist()  
-            test_camera_path = output_path_experiment / f"{camera_id}_test.json"
+            test_camera_path = output_path_experiment / f"{sensors_prefix + camera_id}_test.json"
 
             logger.info(f"Writing '{test_camera_path}'")
             with open(test_camera_path, "w") as f:
