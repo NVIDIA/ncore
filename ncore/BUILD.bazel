@@ -31,8 +31,9 @@ py_wheel(
         "zarr",
         "cbor2",
         "scipy",
+        "torch",
     ],
-    version = "0.3.3",
+    version = "0.3.4",
     deps = [
         ":ncore_pkg",
     ],
