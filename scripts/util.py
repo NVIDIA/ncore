@@ -7,6 +7,8 @@ import numpy.typing as npt
 
 
 class NPArrayParamType(click.ParamType):
+    name = "NPArray"
+
     ''' Click cmdl argument type for numpy arrays '''
     def __init__(self, dim: tuple[int, ...] = (-1, ), dtype: npt.DTypeLike = np.float32):
         super().__init__()
