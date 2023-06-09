@@ -31,7 +31,7 @@ from ncore.impl.data.data3 import ShardDataLoader
               required=True)
 @click.option('--output-npz',
               is_flag=True,
-              default=True,
+              default=False,
               help='If enabled, store \'ncore_map_transforms.npz\' with transformations next to the ngp-config')
 @click.option('--output-json',
               is_flag=True,
