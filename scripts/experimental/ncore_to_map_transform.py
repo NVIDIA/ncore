@@ -98,7 +98,8 @@ def ncore_to_map_transform(shard_file_pattern: str, ngp_config: str, map_ref_lat
         'map_ref_lon_deg': map_ref_lon,
         'map_ref_alt_m': map_ref_alt,
         'ngp_scale': scale,
-        'ngp_offset': offset
+        'ngp_offset': offset,
+        'sequence_id': loader.get_sequence_id()
     }
     if output_npz:
         npz_path = os.path.join(ngp_config_dir, 'ncore_map_transforms.npz')
