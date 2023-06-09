@@ -29,12 +29,10 @@ from ncore.impl.data.data3 import ShardDataLoader
               type=float,
               help='Altitude coordinate of the reference point used for the map ENU coordinate system in meters!',
               required=True)
-@click.option('--output-npz',
-              is_flag=True,
+@click.option('--output-npz/--no-output-npz',
               default=False,
               help='If enabled, store \'ncore_map_transforms.npz\' with transformations next to the ngp-config')
-@click.option('--output-json',
-              is_flag=True,
+@click.option('--output-json/--no-output-json',
               default=True,
               help='If enabled, store \'ncore_map_transforms.json\' with transformations next to the ngp-config')
 def ncore_to_map_transform(shard_file_pattern: str, ngp_config: str, map_ref_lat: float, map_ref_lon: float,
