@@ -57,6 +57,7 @@ def ncore_to_map_transform(shard_file_pattern: str, ngp_config: str, map_ref_lat
     T_ncore_ecef = loader.get_poses().T_rig_world_base
 
     # Check if the base pose is valid
+    # TODO(janickm): explicitly serialize base poses reference frame into shard data to allow for an explicit type-check here
     ncore_ecef_trans_norm = np.linalg.norm(T_ncore_ecef[:, 3])
     if ncore_ecef_trans_norm < 100:  # 100 is just a random number that is small enough to make this suspicious
         logging.warning(
