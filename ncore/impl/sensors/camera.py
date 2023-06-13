@@ -116,7 +116,7 @@ class CameraModel(ABC):
     class WorldPointsToImagePointsReturn:
         '''
         Contains
-            - Image point coordinates of the valid projections [float] (n,2)
+            - image point coordinates of the valid projections [float] (n,2)
             - [optional] world-to-sensor poses of valid projections [float] (n,4,4)
             - [optional] indices of the valid projections relative to the input points [int] (n,)
             - [optional] timestamps of the valid projections [int] (n,)
@@ -130,7 +130,7 @@ class CameraModel(ABC):
     class WorldRaysReturn:
         '''
         Contains
-            - rays in the world coordinate frame [float] (n,3)
+            - rays [point, direction] in the world coordinate frame, represented by 3d start of ray points and 3d ray directions [float] (n,6)
             - [optional] timestamps of the returned rays [int] (n,)
         '''
         world_rays: torch.Tensor
@@ -140,7 +140,7 @@ class CameraModel(ABC):
     class ImagePointsReturn:
         '''
         Contains
-            - Image point coordinates [float] (n,2)
+            - image point coordinates [float] (n,2)
             - valid_flag [bool] (n,)
             - [optional] Jacobians of the projection [float] (n,2,3)
         '''
