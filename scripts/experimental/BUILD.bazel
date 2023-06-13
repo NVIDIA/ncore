@@ -15,4 +15,19 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "ncore_rgb_ray_mesh_intersection",
+    srcs = ["ncore_rgb_ray_mesh_intersection.py"],
+    deps = [
+        requirement("click"),
+        requirement("point-cloud-utils"),
+        requirement("numpy"),
+        requirement("tqdm"),
+        requirement("scipy"),
+        requirement("pillow"),
+        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/sensors:pylib_camera",
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")
