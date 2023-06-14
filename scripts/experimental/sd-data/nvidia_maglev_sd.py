@@ -20,9 +20,9 @@ from ncore.impl.data_converter.data_converter import BaseNvidiaDataConverter
 from ncore.impl.data import types, util
 
 from ncore.impl.common.nvidia_utils import (load_maglev_camera_indexer_frame_meta, load_maglev_egomotion,
-                                                   load_maglev_session_id, parse_rig_sensors_from_dict, sensor_to_rig,
-                                                   camera_intrinsic_parameters, compute_fw_polynomial,
-                                                   compute_ftheta_parameters)
+                                            load_maglev_session_id, parse_rig_sensors_from_dict, sensor_to_rig,
+                                            camera_intrinsic_parameters, compute_fw_polynomial,
+                                            compute_ftheta_parameters)
 from ncore.impl.common.common import uniform_subdivide_range, PoseInterpolator
 
 
@@ -112,7 +112,9 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
     def store_shard_meta(self, successful: bool) -> None:
         ''' Store shard-specific meta-data '''
-        with open(self.output_dir / self.session_id / f'shard-meta-{util.padded_index_string(self.shard_id, index_digits=4)}.json', 'w') as outfile:
+        with open(
+                self.output_dir / self.session_id /
+                f'shard-meta-{util.padded_index_string(self.shard_id, index_digits=4)}.json', 'w') as outfile:
             json.dump({'shard-id': self.shard_id, 'shard-count': self.shard_count, 'successful': successful}, outfile)
 
     def convert_sequence(self, sequence_path: Path) -> None:
@@ -287,7 +289,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             bw_poly = intrinsic[4:]
             fw_poly = compute_fw_polynomial(intrinsic)
-            _, max_angle = compute_ftheta_parameters(np.concatenate((intrinsic, fw_poly)), np.deg2rad(self.MAX_CAMERA_FOV_DEG / 2))
+            _, max_angle = compute_ftheta_parameters(np.concatenate((intrinsic, fw_poly)),
+                                                     np.deg2rad(self.MAX_CAMERA_FOV_DEG / 2))
 
             camera_model_parameters = types.FThetaCameraModelParameters(
                 intrinsic[2:4].astype(np.uint64), types.ShutterType.ROLLING_TOP_TO_BOTTOM, intrinsic[0:2],

@@ -69,7 +69,8 @@ def ncore_to_map_transform(shard_file_pattern: str, ngp_config: str, map_ref_lat
 
     # Compute the transformation from the NGP coordinate system to the ECEF
     T_nerf_ngp = np.array([[0, 1, 0, 0], [0, 0, 1, 0], [1, 0, 0, 0], [0, 0, 0, 1]])
-    T_ncore_nerf = np.array([[scale, 0, 0, offset[0]], [0, scale, 0, offset[1]], [0, 0, scale, offset[2]], [0, 0, 0, 1]])
+    T_ncore_nerf = np.array([[scale, 0, 0, offset[0]], [0, scale, 0, offset[1]], [0, 0, scale, offset[2]], [0, 0, 0,
+                                                                                                            1]])
     T_ncore_ngp = T_nerf_ngp @ T_ncore_nerf
     T_ngp_ecef = T_ncore_ecef @ np.linalg.inv(T_ncore_ngp)
 

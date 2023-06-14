@@ -167,8 +167,8 @@ class CarterDeepmapConverter(DataConverter):
         start_timestamp_us = self.start_timestamp_us if self.start_timestamp_us else self.poses_timestamps_us[0]
         end_timestamp_us = self.end_timestamp_us if self.end_timestamp_us else self.poses_timestamps_us[-1]
 
-        local_pose_range = np.logical_and(start_timestamp_us <= self.poses_timestamps_us,
-                                          self.poses_timestamps_us <= end_timestamp_us)
+        local_pose_range = np.logical_and(start_timestamp_us <= self.poses_timestamps_us, self.poses_timestamps_us
+                                          <= end_timestamp_us)
 
         # Save the poses
         self.data_writer.store_poses(
@@ -243,8 +243,10 @@ class CarterDeepmapConverter(DataConverter):
 
                 # Perform per-column unwinding, transforming from lidar to world coordinates
                 transformed_pc = np.empty((len(raw_pc), 6), dtype=np.float32)
-                transformed_pc[:, :3] = T_column_lidar_worlds[data.data.column_indices, :3, -1]  # N X 3 - ray start points in world space
-                transformed_pc[:, 3:] = (T_column_lidar_worlds[data.data.column_indices, :3, :3] @ raw_pc[:, :, None]).squeeze(-1) + transformed_pc[:, :3]  # N x 3 - ray end points in world space
+                transformed_pc[:, :3] = T_column_lidar_worlds[data.data.column_indices, :3,
+                                                              -1]  # N X 3 - ray start points in world space
+                transformed_pc[:, 3:] = (T_column_lidar_worlds[data.data.column_indices, :3, :3] @ raw_pc[:, :, None]
+                                         ).squeeze(-1) + transformed_pc[:, :3]  # N x 3 - ray end points in world space
 
                 pc_world_homogeneous = np.row_stack(
                     [transformed_pc[:, 3:6].transpose(),

@@ -12,6 +12,7 @@ import dataclasses_json
 ## Constants
 INDEX_DIGITS = 6  # the number of integer digits to pad counters in output filenames
 
+
 ## Functions
 def padded_index_string(index: int, index_digits=INDEX_DIGITS) -> str:
     ''' Pads an integer with leading zeros to a fixed number of digits '''
@@ -33,7 +34,7 @@ def closest_index_sorted(sorted_array: np.ndarray, value: int) -> int:
             return idx - 1
         if abs(value - sorted_array[idx - 1]) < abs(sorted_array[idx] - value):
             return idx - 1
-    
+
     return idx
 
 

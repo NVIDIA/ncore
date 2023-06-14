@@ -579,7 +579,8 @@ class ShardDataLoader:
         assert len(shard_paths), "No shard inputs provided"
 
         # Load shards concurrently (to hide latency) and check for sequence consistency and continuity of shards
-        shards_map: dict[int, Tuple[str, zarr.Group, stores.IndexedTarStore]] = {}  # use str as the generic path / URL type
+        shards_map: dict[int, Tuple[str, zarr.Group,
+                                    stores.IndexedTarStore]] = {}  # use str as the generic path / URL type
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
 
@@ -593,11 +594,10 @@ class ShardDataLoader:
 
                 timer = common.SimpleTimer()
                 shard_store = stores.IndexedTarStore(shard_path)
-                shard_root = stores.open_compressed_consolidated(store=shard_store, mode='r') if open_consolidated else zarr.open(store=shard_store, mode='r')
+                shard_root = stores.open_compressed_consolidated(
+                    store=shard_store, mode='r') if open_consolidated else zarr.open(store=shard_store, mode='r')
 
-                logging.debug(
-                    f'ShardDataLoader: {shard_path} time_load={timer.elapsed_sec()}sec'
-                )
+                logging.debug(f'ShardDataLoader: {shard_path} time_load={timer.elapsed_sec()}sec')
 
                 return str(shard_path), shard_root, shard_store
 
@@ -659,7 +659,7 @@ class ShardDataLoader:
         for shard_store in self._shard_stores:
             shard_store.reload_resources()
 
-    def get_poses(self, start_shard_idx : Optional[int] = None, end_shard_idx : Optional[int] = None) -> types.Poses:
+    def get_poses(self, start_shard_idx: Optional[int] = None, end_shard_idx: Optional[int] = None) -> types.Poses:
         ''' Returns all timestamped poses associated with the session (default) or a range of shards [start,end) '''
 
         # Load common base pose
@@ -696,7 +696,8 @@ class ShardDataLoader:
         if not np.all(unique_idxs[:-1] < unique_idxs[1:]):
             raise ValueError(f"Concatenated pose timestamps not strictly monotonically increasing")
 
-        return types.Poses(np.array(T_rig_world_base), np.vstack(T_rig_worlds)[unique_idxs], np.hstack(T_rig_world_timestamps_us))
+        return types.Poses(np.array(T_rig_world_base),
+                           np.vstack(T_rig_worlds)[unique_idxs], np.hstack(T_rig_world_timestamps_us))
 
     def get_sequence_id(self, with_shard_range: bool = False) -> str:
         ''' Provides access to a unique identifier of the loaded shard data, optionally including the linear range of shards

@@ -38,15 +38,14 @@ def extract_pose(data, earth_model='WGS84'):
         (np.array): Transformation from SDC to ECEF coordinate system [m,4,4]
     '''
 
-    lat_lng_alt = np.array([data['lat_lng_alt']['latitude_degrees'],
-                            data['lat_lng_alt']['longitude_degrees'],
-                            data['lat_lng_alt']['altitude_meters']]).reshape(-1,3)
+    lat_lng_alt = np.array([
+        data['lat_lng_alt']['latitude_degrees'], data['lat_lng_alt']['longitude_degrees'],
+        data['lat_lng_alt']['altitude_meters']
+    ]).reshape(-1, 3)
 
-    rot_axis = np.array([data['axis_angle']['x'],
-                         data['axis_angle']['y'],
-                         data['axis_angle']['z']]).reshape(-1,3)
+    rot_axis = np.array([data['axis_angle']['x'], data['axis_angle']['y'], data['axis_angle']['z']]).reshape(-1, 3)
 
-    rot_angle = np.array(data['axis_angle']['angle_degrees']).reshape(-1,1)
+    rot_angle = np.array(data['axis_angle']['angle_degrees']).reshape(-1, 1)
 
     return lat_lng_alt_2_ecef(lat_lng_alt, rot_axis, rot_angle, earth_model)[0]
 
@@ -131,7 +130,7 @@ def sensor_to_rig(sensor) -> Optional[np.ndarray]:
     correction_R = euler_2_so3(correction_R)
 
     R = nominal_R @ correction_R
-    T =  np.array(nominal_T, dtype=np.float32) + np.array(correction_T, dtype=np.float32)
+    T = np.array(nominal_T, dtype=np.float32) + np.array(correction_T, dtype=np.float32)
 
     transform = np.eye(4, dtype=np.float32)
     transform[:3, :3] = R
@@ -142,9 +141,7 @@ def sensor_to_rig(sensor) -> Optional[np.ndarray]:
     return sensor_to_rig
 
 
-def camera_intrinsic_parameters(sensor: dict,
-                                logger: Optional[logging.Logger] = None
-                                ) -> np.ndarray:
+def camera_intrinsic_parameters(sensor: dict, logger: Optional[logging.Logger] = None) -> np.ndarray:
     """  Parses the provided rig-style camera sensor dictionary into FTheta camera intrinsic parameters.
 
     Note: currenlty only 5th-order 'pixeldistance-to-angle' ("bw-poly") FTheta are supported, possibly
@@ -157,8 +154,7 @@ def camera_intrinsic_parameters(sensor: dict,
         intrinsic: array of FTheta intrinsics [cx, cy, width, height, [bwpoly]] 
     """
 
-    assert sensor['properties'][
-        'Model'] == 'ftheta', "unsupported camera model (only supporting FTheta)"
+    assert sensor['properties']['Model'] == 'ftheta', "unsupported camera model (only supporting FTheta)"
 
     cx = float(sensor['properties']['cx'])
     cy = float(sensor['properties']['cy'])
@@ -167,21 +163,14 @@ def camera_intrinsic_parameters(sensor: dict,
 
     if 'bw-poly' in sensor['properties']:
         # Legacy 5-th order backwards-polynomial
-        bwpoly = [
-            np.float32(val) for val in sensor['properties']['bw-poly'].split()
-        ]
-        assert len(
-            bwpoly
-        ) == 5, "expecting fifth-order coefficients for 'bw-poly / 'pixeldistance-to-angle' polynomial"
+        bwpoly = [np.float32(val) for val in sensor['properties']['bw-poly'].split()]
+        assert len(bwpoly) == 5, "expecting fifth-order coefficients for 'bw-poly / 'pixeldistance-to-angle' polynomial"
     elif 'polynomial' in sensor['properties']:
         # Two-way forward / backward polynomial encoding
         assert sensor['properties']['polynomial-type'] == 'pixeldistance-to-angle', \
             f"currently only supporting 'pixeldistance-to-angle' polynomial type, received '{sensor['properties']['polynomial-type']}'"
 
-        bwpoly = [
-            np.float32(val)
-            for val in sensor['properties']['polynomial'].split()
-        ]
+        bwpoly = [np.float32(val) for val in sensor['properties']['polynomial'].split()]
 
         if len(bwpoly) > 5:
             # WAR: 6th-order polynomials are currently not supported in the software-stack, drop highest order coeffient for now
@@ -254,8 +243,7 @@ def camera_car_mask(sensor, scale_to_source_resolution=True):
     """
 
     ## Make sure this is a camera sensor that has an associated car-mask
-    assert 'protocol' in sensor and sensor['protocol'].startswith(
-        'camera'), "provided sensor is not a camera sensor"
+    assert 'protocol' in sensor and sensor['protocol'].startswith('camera'), "provided sensor is not a camera sensor"
     assert 'car-mask' in sensor, "provided camera sensor is missing an associated 'car-mask'"
 
     ## Make sure we know how to load the data
@@ -273,11 +261,10 @@ def camera_car_mask(sensor, scale_to_source_resolution=True):
     # Decode rle-16 compression
     RLE_COUNT_BYTES = 16 // 8
     RLE_COUNT_TYPE = np.uint16
-    assert len(rle16) % (RLE_COUNT_BYTES +
-                         1) == 0, "decoded base64 string is not a valid rle16 compression"
+    assert len(rle16) % (RLE_COUNT_BYTES + 1) == 0, "decoded base64 string is not a valid rle16 compression"
 
     # allocate raw output buffer
-    decoded_rle16 = np.empty(resolution[0]*resolution[1], dtype=np.uint8)
+    decoded_rle16 = np.empty(resolution[0] * resolution[1], dtype=np.uint8)
 
     # undo run-length encoding
     with np.nditer(rle16) as input_it:
@@ -296,8 +283,7 @@ def camera_car_mask(sensor, scale_to_source_resolution=True):
             input_it.iternext()
 
             # output 'value' for count times
-            decoded_rle16[decoded_rle16_position:
-                          decoded_rle16_position + count] = value
+            decoded_rle16[decoded_rle16_position:decoded_rle16_position + count] = value
             decoded_rle16_position += count
 
         assert len(decoded_rle16) == decoded_rle16_position, "RLE decoding "
@@ -309,12 +295,13 @@ def camera_car_mask(sensor, scale_to_source_resolution=True):
     if scale_to_source_resolution:
         # rescale to original resolution (DW makes sure that the downscaled mask
         # is an even subsampling of the original camera resolution)
-        width, height = camera_intrinsic_parameters(
-            sensor, None)[[2, 3]].astype(np.int32) # load original sensor resolution
+        width, height = camera_intrinsic_parameters(sensor,
+                                                    None)[[2, 3]].astype(np.int32)  # load original sensor resolution
 
-        car_mask_image = Image.fromarray(car_mask).resize((width, height)) # convert to image and perform nearest-neighor resampling
+        car_mask_image = Image.fromarray(car_mask).resize(
+            (width, height))  # convert to image and perform nearest-neighor resampling
 
-        car_mask = np.array(car_mask_image) # convert back to binary array, now in original sensor resolution
+        car_mask = np.array(car_mask_image)  # convert back to binary array, now in original sensor resolution
 
     # convert to mask image
     car_mask_image = MaskImage(car_mask.shape, initial_masks=[(car_mask, MaskImage.MaskType.EGO)])
@@ -350,8 +337,10 @@ class LabelProcessor:
 
     LABELCLASS_ID_TO_LABELCLASS_STRING: dict[int, str] = {v: k for k, v in LABELCLASS_STRING_TO_LABELCLASS_ID.items()}
 
-    LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC: set[str] = set(
-        ['pedestrian', 'stroller', 'person', 'person_group', 'rider', 'bicycle_with_rider', 'bicycle', 'CYCLIST', 'motorcycle', 'motorcycle_with_rider', 'cycle'])
+    LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC: set[str] = set([
+        'pedestrian', 'stroller', 'person', 'person_group', 'rider', 'bicycle_with_rider', 'bicycle', 'CYCLIST',
+        'motorcycle', 'motorcycle_with_rider', 'cycle'
+    ])
     LABEL_STRINGS_UNCONDITIONALLY_STATIC: set[str] = set(['unknown', 'sign'])
 
     # Label BBOX padding distance (in meters) to enlarge bounding boxes for per-point dynamic-flag assignment
@@ -364,7 +353,7 @@ class LabelProcessor:
     MIN_CENTROID_RIG_DISTANCE_METER = 3.0
 
     # Use conservative +- margin time to maintain labels at frame boundaries if filtering for time-ranges
-    TIME_RANGE_MARGIN_US = int(0.1 * 1e6) # 0.1sec in usec
+    TIME_RANGE_MARGIN_US = int(0.1 * 1e6)  # 0.1sec in usec
 
     @classmethod
     def parse(
@@ -399,7 +388,8 @@ class LabelProcessor:
 
         # Initialize labels struct for current lidar
         track_labels: dict[str, TrackLabel] = {}  # {TrackLabel} in track_labels[track_id]
-        frame_labels: dict[str, dict[int, list[FrameLabel3]]] = {}  # [FrameLabel3] in frame_labels[<sensor-id>][frame_timestamp_us]
+        frame_labels: dict[str, dict[int, list[FrameLabel3]]] = {
+        }  # [FrameLabel3] in frame_labels[<sensor-id>][frame_timestamp_us]
 
         # Load per-frame timestamps for each sensor to associate the labels with frame IDs (given by end-of-frame timestamps)
         # (using a dict to error out on missing per-frame timestamps)
@@ -504,7 +494,8 @@ class LabelProcessor:
                 transform_bbox(bbox_labeltime.to_array(), T_sensor_labeltime_sensor_frametime))
 
             # skip label if it's centroid is too close to the rig
-            if np.linalg.norm(transform_bbox(bbox_frametime.to_array(), T_sensor_rigs[sensor_id])[:3]) < min_centroid_rig_distance:
+            if np.linalg.norm(transform_bbox(bbox_frametime.to_array(),
+                                             T_sensor_rigs[sensor_id])[:3]) < min_centroid_rig_distance:
                 continue
 
             # this is assuming velocity is not relative to the local sensor motion, but w.r.t. fixed scene / world
@@ -550,15 +541,15 @@ class LabelProcessor:
 
         return track_labels, frame_labels
 
-
     @classmethod
-    def lidar_dynamic_flag(cls,
-                           sensor_id: str, # sensor id
-                           xyz: np.ndarray,  # points in sensor frame
-                           frame_timestamp_us: int,
-                           track_labels: dict[str, TrackLabel],
-                           frame_labels: dict[str, dict[int, list[FrameLabel3]]],
-                           skip_dynamic_flag: bool = False) -> Tuple[np.ndarray, list[FrameLabel3]]:
+    def lidar_dynamic_flag(
+            cls,
+            sensor_id: str,  # sensor id
+            xyz: np.ndarray,  # points in sensor frame
+            frame_timestamp_us: int,
+            track_labels: dict[str, TrackLabel],
+            frame_labels: dict[str, dict[int, list[FrameLabel3]]],
+            skip_dynamic_flag: bool = False) -> Tuple[np.ndarray, list[FrameLabel3]]:
         """ Computes per-point lidar dynamic flag by intersecting frame-associated bounding boxes of dynamic objects"""
 
         assert xyz.shape[1] == 3, "wrong point cloud shape"
@@ -566,14 +557,16 @@ class LabelProcessor:
         point_count = xyz.shape[0]
 
         # Initialize dynamic flag
-        dynamic_flag : np.ndarray = np.full(
+        dynamic_flag: np.ndarray = np.full(
             point_count,
             # initialize dynamic_flag to -1 if there are no labels at all
-            DynamicFlagState.STATIC.value if len(frame_labels) and not skip_dynamic_flag else DynamicFlagState.NOT_AVAILABLE.value,
+            DynamicFlagState.STATIC.value
+            if len(frame_labels) and not skip_dynamic_flag else DynamicFlagState.NOT_AVAILABLE.value,
             dtype=np.int8)  # N x 1
 
         # Incorporate labels, if available
-        current_frame_labels: list[FrameLabel3] = frame_labels.get(sensor_id, {}).get(frame_timestamp_us, []) # returns empty dict if no annotations available for this frame
+        current_frame_labels: list[FrameLabel3] = frame_labels.get(sensor_id, {}).get(
+            frame_timestamp_us, [])  # returns empty dict if no annotations available for this frame
 
         # Use the bounding boxes to remove dynamic objects / set dynamic flag
         for frame_label in current_frame_labels:
@@ -584,11 +577,12 @@ class LabelProcessor:
                     continue
                 bbox = frame_label.bbox3.to_array()
                 # enlarge the bounding box for the check *only*
-                bbox[3:6] += cls.LIDAR_DYNAMIC_FLAG_BBOX_PADDING_METERS  # TODO: make sure this parameter is tuned sensibly
+                bbox[
+                    3:
+                    6] += cls.LIDAR_DYNAMIC_FLAG_BBOX_PADDING_METERS  # TODO: make sure this parameter is tuned sensibly
                 dynamic_flag[isWithin3DBBox(xyz, bbox.reshape(1, -1))] = DynamicFlagState.DYNAMIC.value
 
         return dynamic_flag, current_frame_labels
-
 
 
 def backwards_polynomial(pixel_norms, intrinsic):
@@ -598,6 +592,7 @@ def backwards_polynomial(pixel_norms, intrinsic):
         ret += coeff * pixel_norms**k
 
     return ret
+
 
 def pixel_2_camera_ray(pixel_coords, intrinsic, camera_model):
     ''' Convert the pixel coordinates to a 3D ray in the camera coordinate system.
@@ -611,29 +606,30 @@ def pixel_2_camera_ray(pixel_coords, intrinsic, camera_model):
         camera_rays (np.array): rays in the camera coordinate system [n,3]
     '''
 
-    camera_rays = np.ones((pixel_coords.shape[0],3))
+    camera_rays = np.ones((pixel_coords.shape[0], 3))
 
     if camera_model == 'pinhole':
-        camera_rays[:,0] = (pixel_coords[:,0] + 0.5 - intrinsic[2]) / intrinsic[0]
-        camera_rays[:,1] = (pixel_coords[:,1] + 0.5 - intrinsic[5]) / intrinsic[4]
+        camera_rays[:, 0] = (pixel_coords[:, 0] + 0.5 - intrinsic[2]) / intrinsic[0]
+        camera_rays[:, 1] = (pixel_coords[:, 1] + 0.5 - intrinsic[5]) / intrinsic[4]
 
     elif camera_model == "f_theta":
-        pixel_offsets = np.ones((pixel_coords.shape[0],2))
-        pixel_offsets[:,0] = pixel_coords[:,0] - intrinsic[0]
-        pixel_offsets[:,1] = pixel_coords[:,1] - intrinsic[1]
+        pixel_offsets = np.ones((pixel_coords.shape[0], 2))
+        pixel_offsets[:, 0] = pixel_coords[:, 0] - intrinsic[0]
+        pixel_offsets[:, 1] = pixel_coords[:, 1] - intrinsic[1]
 
         pixel_norms = np.linalg.norm(pixel_offsets, axis=1, keepdims=True)
 
         alphas = backwards_polynomial(pixel_norms, intrinsic[4:9])
-        camera_rays[:,0:1] = (np.sin(alphas) * pixel_offsets[:,0:1]) / pixel_norms
-        camera_rays[:,1:2] = (np.sin(alphas) * pixel_offsets[:,1:2]) / pixel_norms
-        camera_rays[:,2:3] = np.cos(alphas)
+        camera_rays[:, 0:1] = (np.sin(alphas) * pixel_offsets[:, 0:1]) / pixel_norms
+        camera_rays[:, 1:2] = (np.sin(alphas) * pixel_offsets[:, 1:2]) / pixel_norms
+        camera_rays[:, 2:3] = np.cos(alphas)
 
         # special case: ray is perpendicular to image plane normal
         valid = (pixel_norms > np.finfo(np.float32).eps).squeeze()
         camera_rays[~valid, :] = (0, 0, 1)  # This is what DW sets these rays to
 
     return camera_rays
+
 
 def compute_fw_polynomial(intrinsic):
 
@@ -642,7 +638,7 @@ def compute_fw_polynomial(intrinsic):
     cxcy = np.array(intrinsic[0:2])
 
     max_value = 0.0
-    value =  np.linalg.norm(np.asarray([0.0, 0.0], dtype=cxcy.dtype) - cxcy)
+    value = np.linalg.norm(np.asarray([0.0, 0.0], dtype=cxcy.dtype) - cxcy)
     max_value = max(max_value, value)
     value = np.linalg.norm(np.asarray([0.0, img_height], dtype=cxcy.dtype) - cxcy)
     max_value = max(max_value, value)
@@ -658,7 +654,7 @@ def compute_fw_polynomial(intrinsic):
     x = step
 
     for _ in range(0, SAMPLE_COUNT):
-        p = np.asarray([cxcy[0] + x, cxcy[1]], dtype=np.float64).reshape(-1,2)
+        p = np.asarray([cxcy[0] + x, cxcy[1]], dtype=np.float64).reshape(-1, 2)
         ray = pixel_2_camera_ray(p, intrinsic, 'f_theta')
         xy_norm = np.linalg.norm(ray[0, :2])
         theta = np.arctan2(float(xy_norm), float(ray[0, 2]))
@@ -668,11 +664,12 @@ def compute_fw_polynomial(intrinsic):
 
     x = np.asarray(samples_x, dtype=np.float64)
     y = np.asarray(samples_b, dtype=np.float64)
+
     # Fit a 4th degree polynomial. The polynomial function is as follows:
 
     def f(x, b, x1, x2, x3, x4):
         """4th degree polynomial."""
-        return b + x1 * x + x2 * (x ** 2) + x3 * (x ** 3) + x4 * (x ** 4)
+        return b + x1 * x + x2 * (x**2) + x3 * (x**3) + x4 * (x**4)
 
     # The constant in the polynomial should be zero, so add the `bounds` condition.
     coeffs, _ = curve_fit(
@@ -693,10 +690,10 @@ def compute_ftheta_fov(intrinsic):
     max_x = intrinsic[2] - 1
     max_y = intrinsic[3] - 1
 
-    point_left = np.asarray([0.0, intrinsic[1]]).reshape(-1,2)
-    point_right = np.asarray([max_x, intrinsic[1]]).reshape(-1,2)
-    point_top = np.asarray([intrinsic[0], 0.0]).reshape(-1,2)
-    point_bottom = np.asarray([intrinsic[0], max_y]).reshape(-1,2)
+    point_left = np.asarray([0.0, intrinsic[1]]).reshape(-1, 2)
+    point_right = np.asarray([max_x, intrinsic[1]]).reshape(-1, 2)
+    point_top = np.asarray([intrinsic[0], 0.0]).reshape(-1, 2)
+    point_bottom = np.asarray([intrinsic[0], max_y]).reshape(-1, 2)
 
     fov_left = _get_pixel_fov(point_left, intrinsic)
     fov_right = _get_pixel_fov(point_right, intrinsic)
@@ -726,9 +723,8 @@ def _get_pixel_fov(pt, intrinsic):
 
 def _compute_max_angle(intrinsic):
 
-    p = np.asarray(
-        [[0, 0], [intrinsic[2] - 1, 0], [0, intrinsic[3] - 1], [intrinsic[2] - 1, intrinsic[3] - 1]], dtype=np.float32
-    )
+    p = np.asarray([[0, 0], [intrinsic[2] - 1, 0], [0, intrinsic[3] - 1], [intrinsic[2] - 1, intrinsic[3] - 1]],
+                   dtype=np.float32)
 
     return max(
         max(_get_pixel_fov(p[0:1, ...], intrinsic), _get_pixel_fov(p[1:2, ...], intrinsic)),
@@ -736,7 +732,8 @@ def _compute_max_angle(intrinsic):
     )
 
 
-def compute_ftheta_parameters(intrinsic: np.ndarray, max_angle_limit_rad: float) -> Tuple[npt.NDArray[np.float32], float]:
+def compute_ftheta_parameters(intrinsic: np.ndarray,
+                              max_angle_limit_rad: float) -> Tuple[npt.NDArray[np.float32], float]:
 
     # Initialize the forward polynomial
     fw_poly = Polynomial(intrinsic[9:14])
@@ -756,9 +753,7 @@ def compute_ftheta_parameters(intrinsic: np.ndarray, max_angle_limit_rad: float)
         ray_angle = max_angle.copy()
         while ray_angle >= 0.0:
             ray_angle -= deg2rad
-        raise ArithmeticError(
-            "FThetaCamera: derivative of distortion within image interior is negative"
-        )
+        raise ArithmeticError("FThetaCamera: derivative of distortion within image interior is negative")
 
     # Evaluate the forward polynomial at point (self._max_ray_angle, 0)
     # Also evaluate its derivative at the same point
@@ -766,9 +761,7 @@ def compute_ftheta_parameters(intrinsic: np.ndarray, max_angle_limit_rad: float)
     dval = fw_poly.deriv()(max_angle).item()
 
     if dval < 0:
-        raise ArithmeticError(
-            "FThetaCamera: derivative of distortion at edge of image is negative"
-        )
+        raise ArithmeticError("FThetaCamera: derivative of distortion at edge of image is negative")
 
     max_ray_distortion = np.asarray([val, dval], dtype=np.float32)
 
@@ -882,6 +875,7 @@ def load_maglev_lidar_indexer_frame_meta(lidarpath_or_metafile: Path) -> LidarIn
 
     raise ValueError('No viable lidar-indexer meta-data found')
 
+
 def load_maglev_session_id(sequence_path: Path) -> str:
     ''' Loads session-id in a strustable way '''
 
@@ -904,16 +898,18 @@ def load_maglev_session_id(sequence_path: Path) -> str:
             raise ValueError("Unable to determine trustable session_id")
 
 
-def load_maglev_egomotion(sequence_path: Path, sensors_calibration_data: dict[str, dict],
+def load_maglev_egomotion(sequence_path: Path,
+                          sensors_calibration_data: dict[str, dict],
                           egomotion_file_overwrite: Optional[Path] = None) -> Tuple[list[np.ndarray], list[int]]:
     ''' Parse a maglev-based egomotion data into timestamped global T_rig_worlds '''
 
     # Pre-compute sensor extrinsics to compute poses of the rig frame if egomotion is represented in a sensor frame
     T_rig_sensors = {
         sensor_name: se3_inverse(T_sensor_rig)
-        for sensor_name, T_sensor_rig in
-        {sensor_name: sensor_to_rig(sensors_calibration_data[sensor_name])
-         for sensor_name in sensors_calibration_data}.items() if T_sensor_rig is not None
+        for sensor_name, T_sensor_rig in {
+            sensor_name: sensor_to_rig(sensors_calibration_data[sensor_name])
+            for sensor_name in sensors_calibration_data
+        }.items() if T_sensor_rig is not None
     }
 
     # Determine egomotion source file to parse

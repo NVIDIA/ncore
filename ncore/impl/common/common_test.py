@@ -12,14 +12,13 @@ from ncore.impl.common.common import load_pkl, save_pkl, load_pc_dat, save_pc_da
 from ncore.impl.common.transformations import so3_trans_2_se3
 from ncore.impl.av_utils import isWithin3DBBox
 
+
 def test_save_load_pkl():
     """ Test to verify functionality of load_pkl / save_pkl """
     def check(obj):
         with tempfile.NamedTemporaryFile() as tmp:
             save_pkl(obj, tmp.name)
-            assert obj == load_pkl(
-                tmp.name
-            ), "serialized object not equal to de-serialized version"
+            assert obj == load_pkl(tmp.name), "serialized object not equal to de-serialized version"
 
     check({})
     check({'some': 'entry', 'some-int': 5})
@@ -49,8 +48,7 @@ class TestSaveLoadPCDat(unittest.TestCase):
 
             fallback_path = tmp.name.replace('.dat', '.dat.xz')
 
-            self.assertTrue((self.pc == load_pc_dat(fallback_path)
-                             ).all())  # make sure we can load as .dat.xz also
+            self.assertTrue((self.pc == load_pc_dat(fallback_path)).all())  # make sure we can load as .dat.xz also
 
             with self.assertRaises(FileNotFoundError):
                 load_pc_dat(fallback_path, allow_lookup_fallback=False)
@@ -60,8 +58,7 @@ class TestSaveLoadPCDat(unittest.TestCase):
 
             fallback_path = tmp.name.replace('.dat.xz', '.dat')
 
-            self.assertTrue((self.pc == load_pc_dat(fallback_path)
-                             ).all())  # make sure we can load as .dat also
+            self.assertTrue((self.pc == load_pc_dat(fallback_path)).all())  # make sure we can load as .dat also
 
             with self.assertRaises(FileNotFoundError):
                 load_pc_dat(fallback_path, allow_lookup_fallback=False)
@@ -112,8 +109,7 @@ class TestIsWithin3DBBox(unittest.TestCase):
 
         # [M, 3]
         point_in_box = np.logical_and(
-            np.logical_and(points_in_box_frames <= dim * 0.5,
-                        points_in_box_frames >= -dim * 0.5),
+            np.logical_and(points_in_box_frames <= dim * 0.5, points_in_box_frames >= -dim * 0.5),
             np.all(np.not_equal(dim, 0), axis=-1, keepdims=True))
 
         # [N, M]
@@ -125,26 +121,26 @@ class TestIsWithin3DBBox(unittest.TestCase):
             if normals is not None:
                 T_normals = np.linalg.inv(transform).transpose()
 
-                normals_in_bbox_frame = np.matmul(T_normals[0:3, 0:3], normals[point_in_box,:].transpose()).transpose() + T_normals[0:3, 3]
+                normals_in_bbox_frame = np.matmul(T_normals[0:3, 0:3],
+                                                  normals[point_in_box, :].transpose()).transpose() + T_normals[0:3, 3]
 
-
-                return points_in_box_frames[point_in_box,:], normals_in_bbox_frame/np.linalg.norm(normals_in_bbox_frame,axis=1,keepdims=True)
+                return points_in_box_frames[point_in_box, :], normals_in_bbox_frame / np.linalg.norm(
+                    normals_in_bbox_frame, axis=1, keepdims=True)
             else:
-                return points_in_box_frames[point_in_box,:]
-
+                return points_in_box_frames[point_in_box, :]
 
     def setUp(self):
-        
-        # Set the random seed 
+
+        # Set the random seed
         np.random.seed(41)
 
         # create some test point-cloud
-        self.pc = np.random.rand(100000,3).astype(np.float32) * 3.0 # increase it to [0,3] range
-        
+        self.pc = np.random.rand(100000, 3).astype(np.float32) * 3.0  # increase it to [0,3] range
+
         # create some bounding boxes
-        center = np.random.rand(100,3).astype(np.float32) * 3.0
-        dim = np.random.rand(100,3).astype(np.float32)
-        rotation = np.random.rand(100,3).astype(np.float32) * 2 * np.pi
+        center = np.random.rand(100, 3).astype(np.float32) * 3.0
+        dim = np.random.rand(100, 3).astype(np.float32)
+        rotation = np.random.rand(100, 3).astype(np.float32) * 2 * np.pi
 
         self.bboxes = np.concatenate([center, dim, rotation], axis=-1).astype(np.float32)
 
@@ -152,9 +148,10 @@ class TestIsWithin3DBBox(unittest.TestCase):
         """ Test to verify functionality of the c++ implementation (the output should be the same to python) """
         any_true = False
         for i in range(self.bboxes.shape[0]):
-            self.assertTrue((self.is_within_3d_bbox(self.pc, self.bboxes[i,:]) == isWithin3DBBox(self.pc, self.bboxes[i:i+1,:])
-                    ).all())
-            any_true = any_true or isWithin3DBBox(self.pc, self.bboxes[i:i+1,:]).any()
+            self.assertTrue(
+                (self.is_within_3d_bbox(self.pc, self.bboxes[i, :]) == isWithin3DBBox(self.pc,
+                                                                                      self.bboxes[i:i + 1, :])).all())
+            any_true = any_true or isWithin3DBBox(self.pc, self.bboxes[i:i + 1, :]).any()
 
         self.assertTrue(any_true)
 
@@ -162,18 +159,17 @@ class TestIsWithin3DBBox(unittest.TestCase):
         """ Test to verify that processing all the boxes at once is the same as doing it one by one """
         single_box = []
         for i in range(self.bboxes.shape[0]):
-            single_box.append(isWithin3DBBox(self.pc, self.bboxes[i:i+1,:]).reshape(-1,1))
+            single_box.append(isWithin3DBBox(self.pc, self.bboxes[i:i + 1, :]).reshape(-1, 1))
         single_box = np.concatenate(single_box, axis=1)
 
         self.assertTrue((single_box == isWithin3DBBox(self.pc, self.bboxes)).all())
-
 
     def test_efficiency(self):
         """ Test to verify that the cpp code is faster than python """
 
         start_time_python = time.time()
         for i in range(self.bboxes.shape[0]):
-            self.is_within_3d_bbox(self.pc, self.bboxes[i,:])
+            self.is_within_3d_bbox(self.pc, self.bboxes[i, :])
         end_time_python = time.time()
         python_duration = end_time_python - start_time_python
 
@@ -181,11 +177,14 @@ class TestIsWithin3DBBox(unittest.TestCase):
         isWithin3DBBox(self.pc, self.bboxes)
         end_time_cpp = time.time()
         cpp_duration = end_time_cpp - start_time_cpp
-        
-        print(f"\nPython implementation took {python_duration} s for {self.bboxes.shape[0]} bboxes and {self.pc.shape[0]} points.")
-        print(f"CPP implementation took {cpp_duration} s for {self.bboxes.shape[0]} bboxes and {self.pc.shape[0]} points.")
-        self.assertLess(cpp_duration, python_duration)
 
+        print(
+            f"\nPython implementation took {python_duration} s for {self.bboxes.shape[0]} bboxes and {self.pc.shape[0]} points."
+        )
+        print(
+            f"CPP implementation took {cpp_duration} s for {self.bboxes.shape[0]} bboxes and {self.pc.shape[0]} points."
+        )
+        self.assertLess(cpp_duration, python_duration)
 
     def test_invalid_arguments(self):
         """ Test to verify correct behavior on invalid input """
@@ -197,7 +196,7 @@ class TestIsWithin3DBBox(unittest.TestCase):
             isWithin3DBBox(self.pc, self.bboxes.astype(np.float64))
 
         with self.assertRaises(AssertionError):
-            isWithin3DBBox(self.pc, self.bboxes[:,:6])
+            isWithin3DBBox(self.pc, self.bboxes[:, :6])
 
 
 def test_uniform_subdivide_range():

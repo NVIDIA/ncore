@@ -12,6 +12,7 @@ from ncore.impl.common.transformations import transform_point_cloud
 from ncore.impl.common.visualization import plot_points_on_image
 from ncore.impl.sensors.camera import CameraModel
 
+
 @click.command()
 @click.option('--shard-file-pattern',
               type=str,
@@ -23,10 +24,7 @@ from ncore.impl.sensors.camera import CameraModel
               type=click.IntRange(min=0, max_open=True),
               help='Initial camera frame to be used',
               default=0)
-@click.option('--end-frame',
-              type=click.IntRange(min=-1, max_open=True),
-              help='End camera frame to be used',
-              default=-1)
+@click.option('--end-frame', type=click.IntRange(min=-1, max_open=True), help='End camera frame to be used', default=-1)
 @click.option('--step-frame',
               type=click.IntRange(min=1, max_open=True),
               help='Step used to downsample the number of frames',
@@ -36,7 +34,7 @@ from ncore.impl.sensors.camera import CameraModel
               help='Device used for the computation via torch',
               default='cuda')
 def ncore_project_pc_to_img(shard_file_pattern: str, sensor_id: str, camera_id: str, start_frame: int, end_frame: int,
-                           step_frame: int, device: str):
+                            step_frame: int, device: str):
     ''' Projects the point cloud to the camera image, comparing projection w. and w/o rolling shutter compensation  '''
 
     # Initialize the logger
@@ -75,12 +73,15 @@ def ncore_project_pc_to_img(shard_file_pattern: str, sensor_id: str, camera_id: 
 
         logger.info(f"Starting the projection with torch implementation on device={device}")
 
-        world_point_projections = cam_model.world_points_to_image_points_shutter_pose(
-            pc, T_world_sensor_start, T_world_sensor_end, return_valid_indices=True, return_T_world_sensors=True)
+        world_point_projections = cam_model.world_points_to_image_points_shutter_pose(pc,
+                                                                                      T_world_sensor_start,
+                                                                                      T_world_sensor_end,
+                                                                                      return_valid_indices=True,
+                                                                                      return_T_world_sensors=True)
 
         image_point_coords = world_point_projections.image_points.cpu().numpy()
-        trans_matrices = world_point_projections.T_world_sensors.cpu().numpy() # type: ignore
-        valid_idx = world_point_projections.valid_indices.cpu().numpy() # type: ignore
+        trans_matrices = world_point_projections.T_world_sensors.cpu().numpy()  # type: ignore
+        valid_idx = world_point_projections.valid_indices.cpu().numpy()  # type: ignore
         transformed_points = transform_point_cloud(pc[valid_idx, None, :], trans_matrices).squeeze(1)
         dist_rs = np.linalg.norm(transformed_points, axis=1, keepdims=True)
 

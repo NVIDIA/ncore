@@ -23,10 +23,7 @@ from ncore.impl.data.data3 import ShardDataLoader, PointCloudSensor
 @click.option('--output-dir', type=str, help='Path to the output folder', required=True)
 @click.option('--sensor-id', type=str, help='Sensor to construct surface from', default='lidar_gt_top_p128_v4p5')
 @click.option('--output-filename', type=str, help='Name of the output file', default="reconstructed_mesh")
-@click.option('--start-frame',
-              type=click.IntRange(min=0, max_open=True),
-              help='Initial frame to be use',
-              default=0)
+@click.option('--start-frame', type=click.IntRange(min=0, max_open=True), help='Initial frame to be use', default=0)
 @click.option('--end-frame', type=click.IntRange(min=-1, max_open=True), help='End frame to be used', default=-1)
 @click.option('--step-frame',
               type=click.IntRange(min=1, max_open=True),
@@ -47,7 +44,7 @@ from ncore.impl.data.data3 import ShardDataLoader, PointCloudSensor
     'Trimming distance to trimm unwanted parts of the mesh (everything that is further away from the input points will be removed)',
     default=0.225)
 def ncore_surface_rec(shard_file_pattern: str, output_dir: str, sensor_id: str, output_filename: str, max_dist: float,
-                     start_frame: int, end_frame: int, step_frame: int, n_neighbors: int, trim_distance: float):
+                      start_frame: int, end_frame: int, step_frame: int, n_neighbors: int, trim_distance: float):
     ''' Given a set of 3D lidar rays in space runs surface reconstruction using SPSR surface reconstruction method (https://hhoppe.com/poissonrecon.pdf) '''
 
     # Initialize the logger

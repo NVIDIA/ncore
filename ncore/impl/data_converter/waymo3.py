@@ -32,19 +32,19 @@ class WaymoConverter(DataConverter):
     """
 
     CAMERA_MAP = {
-            dataset_pb2.CameraName.FRONT: 'camera_front_50fov',
-            dataset_pb2.CameraName.FRONT_LEFT: 'camera_front_left_50fov',
-            dataset_pb2.CameraName.FRONT_RIGHT: 'camera_front_right_50fov',
-            dataset_pb2.CameraName.SIDE_LEFT: 'camera_side_left_50fov',
-            dataset_pb2.CameraName.SIDE_RIGHT: 'camera_side_right_50fov',
-        }
-    
+        dataset_pb2.CameraName.FRONT: 'camera_front_50fov',
+        dataset_pb2.CameraName.FRONT_LEFT: 'camera_front_left_50fov',
+        dataset_pb2.CameraName.FRONT_RIGHT: 'camera_front_right_50fov',
+        dataset_pb2.CameraName.SIDE_LEFT: 'camera_side_left_50fov',
+        dataset_pb2.CameraName.SIDE_RIGHT: 'camera_side_right_50fov',
+    }
+
     LIDAR_MAP = {
-            dataset_pb2.LaserName.TOP: 'lidar_top',
-            # TODO: currently only support top lidar, as motion-compensation poses for
-            # other lidars seems to be missing in the source data
-        }
-    
+        dataset_pb2.LaserName.TOP: 'lidar_top',
+        # TODO: currently only support top lidar, as motion-compensation poses for
+        # other lidars seems to be missing in the source data
+    }
+
     def __init__(self, config):
         super().__init__(config)
 
@@ -236,7 +236,7 @@ class WaymoConverter(DataConverter):
                 label_id += 1
 
             raw_frame_labels[frame.timestamp_micros] = frame_label_list
-        del(label_id)
+        del (label_id)
 
         # Initialize labels struct that gets assembled while processing each frame label
         track_labels: dict[str, TrackLabel] = {}  # {TrackLabel} in track_labels[track_id]
@@ -294,7 +294,7 @@ class WaymoConverter(DataConverter):
                 T_rig_labelstime_world = np.array(
                     tf.reshape(tf.constant(frame.pose.transform, dtype=tf.float64), [4, 4])).astype(np.float32)
                 T_rig_labelstime_sensor_frametime = T_world_sensor_end @ T_rig_labelstime_world
-                
+
                 for raw_frame_label in raw_frame_labels[frame.timestamp_micros]:
 
                     # Map label in rig space to frame label in sensor space

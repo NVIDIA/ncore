@@ -16,13 +16,8 @@ author = 'NVIDIA - Toronto AI Lab'
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.napoleon',
-    'sphinx.ext.intersphinx',
-    'sphinx.ext.mathjax',
-    'sphinx.ext.todo',
-    'nbsphinx',
-    'IPython.sphinxext.ipython_console_highlighting'
+    'sphinx.ext.autodoc', 'sphinx.ext.napoleon', 'sphinx.ext.intersphinx', 'sphinx.ext.mathjax', 'sphinx.ext.todo',
+    'nbsphinx', 'IPython.sphinxext.ipython_console_highlighting'
 ]
 
 todo_include_todos = True

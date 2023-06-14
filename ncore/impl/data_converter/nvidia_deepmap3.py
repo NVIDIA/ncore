@@ -25,9 +25,9 @@ from ncore.impl.data.data3 import ContainerDataWriter
 from ncore.impl.data.types import Poses, FThetaCameraModelParameters, LabelSource, ShutterType
 from ncore.impl.common.common import PoseInterpolator
 from ncore.impl.common.nvidia_utils import (LabelProcessor, parse_rig_sensors_from_dict,
-                                           load_maglev_lidar_indexer_frame_meta, sensor_to_rig, extract_pose,
-                                           vehicle_bbox, camera_intrinsic_parameters, compute_fw_polynomial,
-                                           compute_ftheta_parameters, camera_car_mask)
+                                            load_maglev_lidar_indexer_frame_meta, sensor_to_rig, extract_pose,
+                                            vehicle_bbox, camera_intrinsic_parameters, compute_fw_polynomial,
+                                            compute_ftheta_parameters, camera_car_mask)
 from ncore.impl.av_utils import isWithin3DBBox
 
 
@@ -159,19 +159,25 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
         start_timestamp_us = self.start_timestamp_us if self.start_timestamp_us else self.poses_timestamps[0]
         end_timestamp_us = self.end_timestamp_us if self.end_timestamp_us else self.poses_timestamps[-1]
 
-        local_pose_range = np.logical_and(start_timestamp_us <= self.poses_timestamps, self.poses_timestamps <= end_timestamp_us)
+        local_pose_range = np.logical_and(start_timestamp_us <= self.poses_timestamps, self.poses_timestamps
+                                          <= end_timestamp_us)
 
         # Save the poses
         self.data_writer.store_poses(
-            Poses(T_rig_world_base=base_pose, T_rig_worlds=self.poses[local_pose_range], T_rig_world_timestamps_us=self.poses_timestamps[local_pose_range]))
+            Poses(T_rig_world_base=base_pose,
+                  T_rig_worlds=self.poses[local_pose_range],
+                  T_rig_world_timestamps_us=self.poses_timestamps[local_pose_range]))
 
     def decode_labels(self, sequence_path):
         # Perform label parsing
         self.track_labels, self.frame_labels = LabelProcessor.parse(
-            os.path.join(sequence_path, 'labels', 'autolabels.parquet'),
-            {self.LIDAR_SENSOR_ID: load_maglev_lidar_indexer_frame_meta(Path(sequence_path) / 'labels' / f'{self.LIDAR_SENSOR_ID}_meta.json')},
+            os.path.join(sequence_path, 'labels', 'autolabels.parquet'), {
+                self.LIDAR_SENSOR_ID:
+                load_maglev_lidar_indexer_frame_meta(
+                    Path(sequence_path) / 'labels' / f'{self.LIDAR_SENSOR_ID}_meta.json')
+            },
             {self.LIDAR_SENSOR_ID: sensor_to_rig(self.calibration_data[self.LIDARID_TO_RIGNAME[self.LIDAR_SENSOR_ID]])},
-             self.poses_timestamps, self.poses, LabelSource.AUTOLABEL, self.logger)
+            self.poses_timestamps, self.poses, LabelSource.AUTOLABEL, self.logger)
 
         # Save the accumulated track
         self.data_writer.store_labels(self.track_labels)
@@ -243,8 +249,10 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
 
             # Perform per-column unwinding, transforming from lidar to world coordinates
             transformed_pc = np.empty((len(raw_pc), 6), dtype=np.float32)
-            transformed_pc[:, :3] = T_column_lidar_worlds[data.data.column_indices, :3, -1]  # N X 3 - ray start points in world space
-            transformed_pc[:, 3:] = (T_column_lidar_worlds[data.data.column_indices, :3, :3] @ raw_pc[:, :, None]).squeeze(-1) + transformed_pc[:, :3]  # N x 3 - ray end points in world space
+            transformed_pc[:, :3] = T_column_lidar_worlds[data.data.column_indices, :3,
+                                                          -1]  # N X 3 - ray start points in world space
+            transformed_pc[:, 3:] = (T_column_lidar_worlds[data.data.column_indices, :3, :3] @ raw_pc[:, :, None]
+                                     ).squeeze(-1) + transformed_pc[:, :3]  # N x 3 - ray end points in world space
 
             pc_world_homogeneous = np.row_stack(
                 [transformed_pc[:, 3:6].transpose(),
@@ -316,9 +324,9 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
             start_timestamp_us = self.start_timestamp_us if self.start_timestamp_us else self.poses_timestamps[0]
             end_timestamp_us = self.end_timestamp_us if self.end_timestamp_us else self.poses_timestamps[-1]
 
-            start_idx = np.where(
-                frame_timestamps[:, 1] > start_timestamp_us + self.CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US[camera_type] +
-                2 * self.CAMERATYPE_TO_EXPOSURETIME_HALF_US[camera_type])[0][0]
+            start_idx = np.where(frame_timestamps[:, 1] > start_timestamp_us +
+                                 self.CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US[camera_type] +
+                                 2 * self.CAMERATYPE_TO_EXPOSURETIME_HALF_US[camera_type])[0][0]
             end_idx = np.where(frame_timestamps[:, 1] >= end_timestamp_us)[0]
             end_idx = end_idx[0] if len(end_idx) else len(frame_timestamps[:, 1])
 
@@ -396,7 +404,8 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
 
             bw_poly = intrinsic[4:]
             fw_poly = compute_fw_polynomial(intrinsic)
-            _, max_angle = compute_ftheta_parameters(np.concatenate((intrinsic, fw_poly)), np.deg2rad(self.MAX_CAMERA_FOV_DEG / 2))
+            _, max_angle = compute_ftheta_parameters(np.concatenate((intrinsic, fw_poly)),
+                                                     np.deg2rad(self.MAX_CAMERA_FOV_DEG / 2))
 
             # Constant mask image, which currently only contains the ego car mask
             # TODO: extend this with dynamic object masks

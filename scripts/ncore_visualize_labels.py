@@ -35,13 +35,15 @@ def ncore_visualize_labels(shard_file_pattern, sensor_id, start_frame, end_frame
         viz = LabelVisualizer()
 
         # Import the point cloud and add it to the visualizer
-        viz.add_pc(frame_index,
-                   sensor.get_frame_data(frame_index, 'xyz_e'), 
-                   sensor.get_frame_data(frame_index, 'intensity'),
-                   sensor.get_frame_data(frame_index, 'dynamic_flag'),
-                   sensor.get_frame_data(frame_index, 'timestamp_us'),
-                   sensor.get_frame_data(frame_index, 'semantic_class') if sensor.has_frame_data(frame_index, 'semantic_class') else None,
-                   )
+        viz.add_pc(
+            frame_index,
+            sensor.get_frame_data(frame_index, 'xyz_e'),
+            sensor.get_frame_data(frame_index, 'intensity'),
+            sensor.get_frame_data(frame_index, 'dynamic_flag'),
+            sensor.get_frame_data(frame_index, 'timestamp_us'),
+            sensor.get_frame_data(frame_index, 'semantic_class') if sensor.has_frame_data(
+                frame_index, 'semantic_class') else None,
+        )
 
         viz.add_labels(sensor.get_frame_labels(frame_index))
 
