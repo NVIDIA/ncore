@@ -116,7 +116,7 @@ class CameraModel(ABC):
     class WorldPointsToImagePointsReturn:
         '''
         Contains
-            - Image point coordinates of the valid projections [float] (n,2)
+            - image point coordinates of the valid projections [float] (n,2)
             - [optional] world-to-sensor poses of valid projections [float] (n,4,4)
             - [optional] indices of the valid projections relative to the input points [int] (n,)
             - [optional] timestamps of the valid projections [int] (n,)
@@ -130,7 +130,7 @@ class CameraModel(ABC):
     class WorldRaysReturn:
         '''
         Contains
-            - rays in the world coordinate frame [float] (n,3)
+            - rays [point, direction] in the world coordinate frame, represented by 3d start of ray points and 3d ray directions [float] (n,6)
             - [optional] timestamps of the returned rays [int] (n,)
         '''
         world_rays: torch.Tensor
@@ -140,7 +140,7 @@ class CameraModel(ABC):
     class ImagePointsReturn:
         '''
         Contains
-            - Image point coordinates [float] (n,2)
+            - image point coordinates [float] (n,2)
             - valid_flag [bool] (n,)
             - [optional] Jacobians of the projection [float] (n,2,3)
         '''
@@ -480,11 +480,6 @@ class CameraModel(ABC):
                                         camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
                                         return_timestamps: bool = False) -> CameraModel.WorldRaysReturn:
 
-        if return_timestamps:
-            assert start_timestamp_us is not None
-            assert end_timestamp_us is not None
-            assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
-
         return self.image_points_to_world_rays_shutter_pose(self.__pixel_indices_to_image_points(pixel_idxs),
                                                                T_sensor_world_start, T_sensor_world_end,
                                                                start_timestamp_us, end_timestamp_us, camera_rays, return_timestamps)
@@ -625,11 +620,6 @@ class CameraModel(ABC):
         assert T_sensor_world_start.dtype == self.dtype
         assert T_sensor_world_end.dtype == self.dtype
 
-        if return_timestamps:
-            assert start_timestamp_us is not None
-            assert end_timestamp_us is not None
-            assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
-
         # Unproject the image points to camera rays
         if camera_rays is not None:
             # Reuse provided camera rays
@@ -665,7 +655,10 @@ class CameraModel(ABC):
         return_var = self.WorldRaysReturn(world_rays=world_rays)
 
         if return_timestamps:
-            return_var.timestamps_us = (torch.floor((1 - t)[..., None] * start_timestamp_us + t[..., None] * end_timestamp_us).to(torch.int64)).squeeze()
+            assert start_timestamp_us is not None
+            assert end_timestamp_us is not None
+            assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+            return_var.timestamps_us = (start_timestamp_us + torch.floor(t[..., None] * (end_timestamp_us - start_timestamp_us)).to(torch.int64)).squeeze()
 
         return return_var
 
