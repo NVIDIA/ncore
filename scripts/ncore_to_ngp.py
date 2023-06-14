@@ -16,11 +16,7 @@ import numpy as np
 import scipy
 import torch
 
-from ncore.impl.data.data3 import (
-    ShardDataLoader,
-    CameraSensor,
-    LidarSensor
-)
+from ncore.impl.data.data3 import (ShardDataLoader, CameraSensor, LidarSensor)
 from ncore.impl.data.types import (
     FThetaCameraModelParameters,
     FrameTimepoint,
@@ -56,8 +52,7 @@ def extract_dynamic_tracks(lidar_sensor: LidarSensor, lidar_frame_range: range, 
 
     # Extend the lidar frame range so that we cover all the images
     extended_lidar_frame_range = range(max(lidar_frame_range.start - 1, 0),
-                                       min(lidar_frame_range.stop + 1,
-                                           lidar_sensor.get_frames_count()))
+                                       min(lidar_frame_range.stop + 1, lidar_sensor.get_frames_count()))
 
     # Iterate over all lidar frames and extract ALL tracks
     T_sensor_rig = lidar_sensor.get_T_sensor_rig()
@@ -68,18 +63,22 @@ def extract_dynamic_tracks(lidar_sensor: LidarSensor, lidar_frame_range: range, 
 
             # skip self-classifications
             bbox_rig = transform_bbox(label.bbox3.to_array(), T_sensor_rig)
-            if np.linalg.norm(bbox_rig[:3]) < track_min_centroid_rig_distance: # skip labels that are too close to the rig center
+            if np.linalg.norm(
+                    bbox_rig[:3]) < track_min_centroid_rig_distance:  # skip labels that are too close to the rig center
                 continue
 
             if label.track_id in all_tracks:
                 # Extend existing track
-                all_tracks[label.track_id]['max_global_speed'] = max(all_tracks[label.track_id]['max_global_speed'], label.global_speed)
-                all_tracks[label.track_id]['poses'].append(bbox_pose(transform_bbox(label.bbox3.to_array(), T_sensor_world)))
+                all_tracks[label.track_id]['max_global_speed'] = max(all_tracks[label.track_id]['max_global_speed'],
+                                                                     label.global_speed)
+                all_tracks[label.track_id]['poses'].append(
+                    bbox_pose(transform_bbox(label.bbox3.to_array(), T_sensor_world)))
                 all_tracks[label.track_id]['timestamps_us'].append(label.timestamp_us)
             else:
                 # Instantiate new track
                 all_tracks[label.track_id] = {
-                    'unconditionally_dynamic': label.label_class in track_unconditionally_dynamic_classes, # Some objects are unconditionally dynamic
+                    'unconditionally_dynamic': label.label_class
+                    in track_unconditionally_dynamic_classes,  # Some objects are unconditionally dynamic
                     'max_global_speed': label.global_speed,
                     'poses': [bbox_pose(transform_bbox(label.bbox3.to_array(), T_sensor_world))],
                     'dimension': label.bbox3.to_array()[3:6],
@@ -90,11 +89,14 @@ def extract_dynamic_tracks(lidar_sensor: LidarSensor, lidar_frame_range: range, 
     # Extract ONLY the dynamic trajectories based on the speed threshold
     dynamic_tracks: dict[str, dict] = {}
     for track_id, track in all_tracks.items():
-        if (track['max_global_speed'] > track_speed_thresh or track['unconditionally_dynamic']) and len(track['timestamps_us']) > 1:
+        if (track['max_global_speed'] > track_speed_thresh or track['unconditionally_dynamic']) and len(
+                track['timestamps_us']) > 1:
             dynamic_tracks[track_id] = track
-            dynamic_tracks[track_id]['pose_interpolator'] = PoseInterpolator(np.stack(track['poses']), track['timestamps_us'])
+            dynamic_tracks[track_id]['pose_interpolator'] = PoseInterpolator(np.stack(track['poses']),
+                                                                             track['timestamps_us'])
 
     return dynamic_tracks
+
 
 @click.command()
 @click.option('--shard-file-pattern',
@@ -158,7 +160,8 @@ def extract_dynamic_tracks(lidar_sensor: LidarSensor, lidar_frame_range: range, 
 @click.option(
     "--track-mask-dilate-ratio",
     type=click.FloatRange(min=0.0, max_open=True),
-    help="Ratio for cuboid -> dynamic mask image projection (1.0 results in no dilation, values smaller than 1.0 shrink the mask)",
+    help=
+    "Ratio for cuboid -> dynamic mask image projection (1.0 results in no dilation, values smaller than 1.0 shrink the mask)",
     default=1.4,
 )
 @click.option(
@@ -172,7 +175,8 @@ def extract_dynamic_tracks(lidar_sensor: LidarSensor, lidar_frame_range: range, 
 @click.option(
     "--track-ftheta-max-fov-deg",
     type=click.FloatRange(min=0.0, max_open=True),
-    help="Limit FOV for FTheta camera to this range to prevent erronous track projections (in particular for large-FOV fisheye cameras)",
+    help=
+    "Limit FOV for FTheta camera to this range to prevent erronous track projections (in particular for large-FOV fisheye cameras)",
     default=190.0,
 )
 @click.option(
@@ -183,7 +187,7 @@ def extract_dynamic_tracks(lidar_sensor: LidarSensor, lidar_frame_range: range, 
 )
 @click.option(
     "--translation-vector",
-    type=NPArrayParamType(dim=(3,1), dtype=np.float32),
+    type=NPArrayParamType(dim=(3, 1), dtype=np.float32),
     default='[0,0,0]',
     help="Translation that will be applied to the T_cam_rig transformation matrix (used to simulate novel views)",
 )
@@ -192,7 +196,8 @@ def extract_dynamic_tracks(lidar_sensor: LidarSensor, lidar_frame_range: range, 
     "sensors_prefix",
     default=None,
     type=str,
-    help="If provided, the prefix to prepend to each sensor-name for serialization (e.g., to facilitate merging multi-session data-exports)",
+    help=
+    "If provided, the prefix to prepend to each sensor-name for serialization (e.g., to facilitate merging multi-session data-exports)",
 )
 @click.option(
     "--save-test",
@@ -231,8 +236,8 @@ def ncore_to_ngp(
     # Create output paths
     output_path_data = Path(output_dir) / loader.get_sequence_id(with_shard_range=True)
     output_path_data.mkdir(parents=True, exist_ok=True)
-    assert not (output_path_experiment := output_path_data / 'ngp_configs' / experiment_name
-               ).exists(), "Experiment with the same name already exists"
+    assert not (output_path_experiment := output_path_data / 'ngp_configs' /
+                experiment_name).exists(), "Experiment with the same name already exists"
     output_path_experiment.mkdir(parents=True)
 
     logger.info(f"Preparing NGP config for experiment '{experiment_name}' in '{output_path_experiment}'")
@@ -243,7 +248,7 @@ def ncore_to_ngp(
         sensors_prefix = ''
 
     # Load lidar time-range and labels
-    dynamic_tracks: dict[str, dict]= {}
+    dynamic_tracks: dict[str, dict] = {}
     lidar_sensor: LidarSensor
     if lidar_id:
         logger.info(f"Preparing dynamic objects from '{lidar_id}'")
@@ -256,7 +261,9 @@ def ncore_to_ngp(
         reference_camera_timestamps = reference_camera_sensor.get_frames_timestamps_us()
         lidar_timestamps = lidar_sensor.get_frames_timestamps_us()
         lidar_frame_start_idx = np.where(lidar_timestamps >= reference_camera_timestamps[start_frame])[0][0]
-        lidar_frame_end_idx = min(np.where(lidar_timestamps < reference_camera_timestamps[end_frame])[0][-1] + 1, lidar_sensor.get_frames_count()) # add lidar at the end as cameras see further away
+        lidar_frame_end_idx = min(
+            np.where(lidar_timestamps < reference_camera_timestamps[end_frame])[0][-1] + 1,
+            lidar_sensor.get_frames_count())  # add lidar at the end as cameras see further away
 
         dynamic_tracks = extract_dynamic_tracks(
             lidar_sensor=lidar_sensor,
@@ -278,12 +285,12 @@ def ncore_to_ngp(
         camera_model_parameters = camera_sensor.get_camera_model_parameters()
         match camera_model_parameters:
             case FThetaCameraModelParameters(
-                resolution=resolution,
-                principal_point=principal_point,
-                reference_poly=reference_poly,
-                pixeldist_to_angle_poly=bw_poly,
-                angle_to_pixeldist_poly=fw_poly,
-                shutter_type=shutter_type,
+                    resolution=resolution,
+                    principal_point=principal_point,
+                    reference_poly=reference_poly,
+                    pixeldist_to_angle_poly=bw_poly,
+                    angle_to_pixeldist_poly=fw_poly,
+                    shutter_type=shutter_type,
             ):
                 # This is not really the focal length, only a crude approximation, but NGP expects some value for fov (not used in training)
                 focal_length = fw_poly[1]
@@ -292,7 +299,9 @@ def ncore_to_ngp(
                 # Extract the rolling shutter parameters representing y = a + b*x + c*y
                 rolling_shutter = RS_DIR_TO_NGP[shutter_type.name]
 
-                assert len(bw_poly) == 6, "Update polynomial export in case the internal order of distortion polynomials changed"
+                assert len(
+                    bw_poly
+                ) == 6, "Update polynomial export in case the internal order of distortion polynomials changed"
                 camera_data["intrinsic_data"] = {
                     "w": int(resolution[0]),
                     "h": int(resolution[1]),
@@ -318,27 +327,30 @@ def ncore_to_ngp(
 
                 # Restrict effective FOV for cuboid projections to prevent issues with *invalid* points projected back into the valid image domain FOV
                 # - this way they get properly classified as invalid
-                camera_model_parameters.max_angle = min(np.deg2rad(track_ftheta_max_fov_deg) / 2.0, camera_model_parameters.max_angle)
+                camera_model_parameters.max_angle = min(
+                    np.deg2rad(track_ftheta_max_fov_deg) / 2.0, camera_model_parameters.max_angle)
 
             case PinholeCameraModelParameters() as pinhole:
                 # Get the focal length and compute the angular field of view
-                fov_angle_x = math.atan(pinhole.resolution[0]/(pinhole.focal_length[0]*2))*2
-                fov_angle_y = math.atan(pinhole.resolution[1]/(pinhole.focal_length[1]*2))*2
+                fov_angle_x = math.atan(pinhole.resolution[0] / (pinhole.focal_length[0] * 2)) * 2
+                fov_angle_y = math.atan(pinhole.resolution[1] / (pinhole.focal_length[1] * 2)) * 2
 
                 # Extract the rolling shutter parameters representing y = a + b*x + c*y
                 rolling_shutter = RS_DIR_TO_NGP[pinhole.shutter_type.name]
 
                 if not np.isclose(pinhole.radial_coeffs[2], 0).all():
                     logger.warn(f'Pinhole camera model of {camera_id} has non-zero radial distortion coefficient k3, '
-                                 'which might not be supported by NGP yet - exporting anyway')
+                                'which might not be supported by NGP yet - exporting anyway')
 
                 if not np.isclose(pinhole.radial_coeffs[3:], 0).all():
-                    logger.warn(f'Pinhole camera model of {camera_id} has non-zero rational radial distortion coefficients [k4,k5,k6], '
-                                 'which might not be supported by NGP yet - exporting anyway')
+                    logger.warn(
+                        f'Pinhole camera model of {camera_id} has non-zero rational radial distortion coefficients [k4,k5,k6], '
+                        'which might not be supported by NGP yet - exporting anyway')
 
                 if not np.isclose(pinhole.thin_prism_coeffs, 0).all():
-                    logger.warn(f'Pinhole camera model of {camera_id} has non-zero thin-prism distortion coefficients [s1,s2,s3,s4], '
-                                 'which might not be supported by NGP yet - exporting anyway')
+                    logger.warn(
+                        f'Pinhole camera model of {camera_id} has non-zero thin-prism distortion coefficients [s1,s2,s3,s4], '
+                        'which might not be supported by NGP yet - exporting anyway')
 
                 camera_data["intrinsic_data"] = {
                     "w": int(pinhole.resolution[0]),
@@ -367,11 +379,12 @@ def ncore_to_ngp(
                     f"unsupported camera model type {type(camera_model_parameters)}, currently supporting Ftheta/Pinhole only"
                 )
 
-        camera_model = CameraModel.from_parameters(camera_model_parameters,
-                                                   device='cpu' # we only project small number of points
-                                                   )
+        camera_model = CameraModel.from_parameters(
+            camera_model_parameters,
+            device='cpu'  # we only project small number of points
+        )
 
-        # Get the camera to rig transformation 
+        # Get the camera to rig transformation
         T_cam_rig.append(camera_sensor.get_T_sensor_rig())
 
         # Z is the up vector in the NCORE coordinate system
@@ -386,16 +399,18 @@ def ncore_to_ngp(
             R = T[:3, :3] @ R_NCORE_NGP.transpose()
             T[:3, :3] = R
             return T
-        
+
         # Prepare static component of dynamic masks
         if camera_mask_image := camera_sensor.get_camera_mask_image():
             # Apply fixed number of dilations to static input
-            ego_car_mask = scipy.ndimage.binary_dilation(np.asarray(camera_mask_image) != 0, iterations=static_camera_mask_dilations).astype(np.uint8)
+            ego_car_mask = scipy.ndimage.binary_dilation(np.asarray(camera_mask_image) != 0,
+                                                         iterations=static_camera_mask_dilations).astype(np.uint8)
             # Force all non-zero values to 255
             ego_car_mask = np.where(ego_car_mask == 0, 0, 255).astype(np.uint8)
         else:
             # Initialize as empty
-            ego_car_mask = np.zeros((camera_data['intrinsic_data']['h'], camera_data['intrinsic_data']['w']), dtype=np.uint8)
+            ego_car_mask = np.zeros((camera_data['intrinsic_data']['h'], camera_data['intrinsic_data']['w']),
+                                    dtype=np.uint8)
 
         # Prepare all image paths (to average the pose we neglect the selected step size as all images will be used for testing) and poses
         all_image_paths: list[Path] = []
@@ -406,28 +421,35 @@ def ncore_to_ngp(
             camera_path.mkdir(parents=True, exist_ok=True)
 
             # check if camera image data was already exported / export it otherwise
-            IMAGE_FORMAT='jpeg'
-            if not (frame_file_path := camera_path / Path(padded_index_string(camera_frame_idx)).with_suffix(f'.{IMAGE_FORMAT}')).exists():
+            IMAGE_FORMAT = 'jpeg'
+            if not (frame_file_path :=
+                    camera_path / Path(padded_index_string(camera_frame_idx)).with_suffix(f'.{IMAGE_FORMAT}')).exists():
                 frame_data_handle = camera_sensor.get_frame_data(camera_frame_idx)
                 frame_data_format = frame_data_handle.get_encoded_image_format()
-                assert(frame_data_format == IMAGE_FORMAT), f"update conversion script to support encoding '{frame_data_format}' images"
+                assert (frame_data_format == IMAGE_FORMAT
+                        ), f"update conversion script to support encoding '{frame_data_format}' images"
                 with open(frame_file_path, "wb") as frame_file:
                     frame_file.write(frame_data_handle.get_encoded_image_data())
 
             all_image_paths.append(frame_file_path)
-            poses_start.append(nvidia_to_ngp(camera_sensor.get_frame_T_sensor_world(camera_frame_idx, FrameTimepoint.START)))
-            poses_end.append(nvidia_to_ngp(camera_sensor.get_frame_T_sensor_world(camera_frame_idx, FrameTimepoint.END)))
+            poses_start.append(
+                nvidia_to_ngp(camera_sensor.get_frame_T_sensor_world(camera_frame_idx, FrameTimepoint.START)))
+            poses_end.append(nvidia_to_ngp(camera_sensor.get_frame_T_sensor_world(camera_frame_idx,
+                                                                                  FrameTimepoint.END)))
 
             # extend static mask with dynamic parts
-            if not (mask_file_path := frame_file_path.parent / ("dynamic_mask_" + frame_file_path.stem + '.png')).exists():
+            if not (mask_file_path := frame_file_path.parent /
+                    ("dynamic_mask_" + frame_file_path.stem + '.png')).exists():
                 dynamic_mask = ego_car_mask.copy()
 
                 # check which dynamic labels where observed at this frame's time + project
                 frame_start_timestamp_us = camera_sensor.get_frame_timestamp_us(camera_frame_idx, FrameTimepoint.START)
                 frame_end_timestamp_us = camera_sensor.get_frame_timestamp_us(camera_frame_idx, FrameTimepoint.END)
-                frame_mid_timestamp = frame_start_timestamp_us + (frame_end_timestamp_us - frame_start_timestamp_us) // 2
+                frame_mid_timestamp = frame_start_timestamp_us + (frame_end_timestamp_us -
+                                                                  frame_start_timestamp_us) // 2
                 for dynamic_track in dynamic_tracks.values():
-                    if not (dynamic_track['timestamps_us'][0] <= frame_mid_timestamp and frame_mid_timestamp <= dynamic_track['timestamps_us'][-1]):
+                    if not (dynamic_track['timestamps_us'][0] <= frame_mid_timestamp
+                            and frame_mid_timestamp <= dynamic_track['timestamps_us'][-1]):
                         continue
 
                     # interpolate track to frame mid-timestamp
@@ -438,10 +460,11 @@ def ncore_to_ngp(
                     bbox_corners = get_3d_bbox_coords(bbox)
 
                     projection = camera_model.world_points_to_image_points_shutter_pose(
-                            bbox_corners,
-                            camera_sensor.get_frame_T_world_sensor(camera_frame_idx, FrameTimepoint.START),
-                            camera_sensor.get_frame_T_world_sensor(camera_frame_idx, FrameTimepoint.END),
-                            return_valid_indices=True, return_all_projections=True)
+                        bbox_corners,
+                        camera_sensor.get_frame_T_world_sensor(camera_frame_idx, FrameTimepoint.START),
+                        camera_sensor.get_frame_T_world_sensor(camera_frame_idx, FrameTimepoint.END),
+                        return_valid_indices=True,
+                        return_all_projections=True)
 
                     assert projection.valid_indices is not None
                     if torch.numel(projection.valid_indices) > 0:
@@ -450,17 +473,21 @@ def ncore_to_ngp(
                         #   - fisheye-cameras will project in a "clamped way" into the image-domain along
                         #     it's internal FOV-specific bounds, but points will be marked as invalid
                         res_x, res_y = camera_model.resolution[0].item(), camera_model.resolution[1].item()
-                        projection.image_points[:,0] = torch.clamp(projection.image_points[:,0], min=0, max=res_x)
-                        projection.image_points[:,1] = torch.clamp(projection.image_points[:,1], min=0, max=res_y) 
+                        projection.image_points[:, 0] = torch.clamp(projection.image_points[:, 0], min=0, max=res_x)
+                        projection.image_points[:, 1] = torch.clamp(projection.image_points[:, 1], min=0, max=res_y)
 
                         min_x, min_y = projection.image_points.min(0)[0]
                         max_x, max_y = projection.image_points.max(0)[0]
 
-                        mask_width_padding = torch.ceil((max_x - min_x) * (track_mask_dilate_ratio - 1.0) / 2).to(torch.int32)
-                        mask_height_padding =  torch.ceil((max_y - min_y) * (track_mask_dilate_ratio - 1.0) / 2).to(torch.int32)
+                        mask_width_padding = torch.ceil(
+                            (max_x - min_x) * (track_mask_dilate_ratio - 1.0) / 2).to(torch.int32)
+                        mask_height_padding = torch.ceil(
+                            (max_y - min_y) * (track_mask_dilate_ratio - 1.0) / 2).to(torch.int32)
 
-                        max_x_int, max_y_int = torch.ceil(max_x).to(torch.int32) + mask_width_padding, torch.ceil(max_y).to(torch.int32) + mask_height_padding
-                        min_x_int, min_y_int = torch.floor(min_x).to(torch.int32) - mask_width_padding, torch.floor(min_y).to(torch.int32) - mask_height_padding
+                        max_x_int, max_y_int = torch.ceil(max_x).to(
+                            torch.int32) + mask_width_padding, torch.ceil(max_y).to(torch.int32) + mask_height_padding
+                        min_x_int, min_y_int = torch.floor(min_x).to(
+                            torch.int32) - mask_width_padding, torch.floor(min_y).to(torch.int32) - mask_height_padding
 
                         min_x = torch.clamp(min_x_int, min=0, max=res_x)
                         min_y = torch.clamp(min_y_int, min=0, max=res_y)
@@ -470,7 +497,7 @@ def ncore_to_ngp(
                         dynamic_mask[min_y:max_y, min_x:max_x] = 255
 
                 Image.fromarray(dynamic_mask).save(mask_file_path, bits=1, optimize=True)
-                
+
         # Train images respect step size
         all_image_train_paths: list[Path] = all_image_paths[::step_frame]
 
@@ -489,7 +516,8 @@ def ncore_to_ngp(
 
     pose_avg, extent = average_camera_pose(all_poses)
     scale_factor = 1 / ((extent / 2 + max_dist) / (aabb_scale / 2))  # So that the max far is scaled to the target scale
-    offset = -(pose_avg * scale_factor) + np.array([0.5, 0.5, 0.5])  # Instant NGP assumes that the scenes are centered at 0.5^3
+    offset = -(pose_avg * scale_factor) + np.array([0.5, 0.5, 0.5
+                                                    ])  # Instant NGP assumes that the scenes are centered at 0.5^3
 
     # Generate a config file for each of the cameras
     for camera_sensor_idx, camera_id in enumerate(camera_ids):
@@ -520,7 +548,7 @@ def ncore_to_ngp(
             out_train["frames"].append(frame_data)
 
         for i, image_path in enumerate(camera_data["all_image_paths"]):
-            if np.array_equal(np.zeros((3,1), dtype=np.float32), translation_vector):
+            if np.array_equal(np.zeros((3, 1), dtype=np.float32), translation_vector):
                 frame_data = {
                     "file_path": os.path.relpath(image_path, output_path_experiment),
                     "transform_matrix_start": camera_data["poses_start"][i].tolist(),
@@ -528,13 +556,13 @@ def ncore_to_ngp(
                 }
             else:
                 T_rig_cam = se3_inverse(T_cam_rig[camera_sensor_idx])
-                T_rig_world_start =  ngp_to_nvidia(camera_data["poses_start"][i]) @ T_rig_cam 
+                T_rig_world_start = ngp_to_nvidia(camera_data["poses_start"][i]) @ T_rig_cam
                 T_rig_world_end = ngp_to_nvidia(camera_data["poses_end"][i]) @ T_rig_cam
 
                 T_cam_rig_translated = T_cam_rig[camera_sensor_idx].copy()
                 T_cam_rig_translated[:3, 3:4] += translation_vector
 
-                pose_start_translated  = nvidia_to_ngp(T_rig_world_start @ T_cam_rig_translated)
+                pose_start_translated = nvidia_to_ngp(T_rig_world_start @ T_cam_rig_translated)
                 pose_end_translated = nvidia_to_ngp(T_rig_world_end @ T_cam_rig_translated)
 
                 frame_data = {
@@ -553,7 +581,8 @@ def ncore_to_ngp(
             lidar_path = output_path_data / 'lidars' / (sensors_prefix + lidar_sensor.get_sensor_id())
             lidar_path.mkdir(parents=True, exist_ok=True)
             for lidar_frame_idx in range(lidar_frame_start_idx, lidar_frame_end_idx):
-                if not (dat_path := lidar_path / Path(padded_index_string(lidar_frame_idx)).with_suffix('.dat')).exists():
+                if not (dat_path :=
+                        lidar_path / Path(padded_index_string(lidar_frame_idx)).with_suffix('.dat')).exists():
                     T_sensor_to_world = lidar_sensor.get_frame_T_sensor_world(lidar_frame_idx).astype(np.float32)
 
                     # Load relevant frame data for ray structure
@@ -579,7 +608,7 @@ def ncore_to_ngp(
             json.dump(out_train, f, indent=2)
 
         if save_test:
-            out_test["translation_vector"] = translation_vector.reshape(-1).tolist()  
+            out_test["translation_vector"] = translation_vector.reshape(-1).tolist()
             test_camera_path = output_path_experiment / f"{sensors_prefix + camera_id}_test.json"
 
             logger.info(f"Writing '{test_camera_path}'")

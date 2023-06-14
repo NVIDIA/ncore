@@ -84,7 +84,8 @@ class TestData3Loader(unittest.TestCase):
             self.assertTrue(lidar_sensor.has_frame_data(frame_index, 'timestamp_us'))
             self.assertTrue(lidar_sensor.has_frame_data(frame_index, 'dynamic_flag'))
             self.assertFalse(lidar_sensor.has_frame_data(frame_index, 'foo'))
-            self.assertFalse(lidar_sensor.has_frame_data(frame_index, 'semantic_class')) # the current NV test dataset doesn't have semantic_class properties
+            self.assertFalse(lidar_sensor.has_frame_data(
+                frame_index, 'semantic_class'))  # the current NV test dataset doesn't have semantic_class properties
 
             point_count = lidar_sensor.get_frame_data(frame_index, 'xyz_e').shape[0]
             self.assertEqual(

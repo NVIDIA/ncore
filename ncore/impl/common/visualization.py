@@ -13,6 +13,7 @@ from multimethod import multimethod
 from ncore.impl.data.types import FrameLabel3
 from ncore.impl.common.nvidia_utils import LabelProcessor as NvidiaLabelProcessor
 
+
 def rgba(r):
     """Generates a color based on range.
 
@@ -34,7 +35,7 @@ def plot_image(camera_image):
     plt.grid(visible=False)
 
 
-def plot_points_on_image(projected_points, camera_image, title, rgba_func =rgba, point_size=5.0):
+def plot_points_on_image(projected_points, camera_image, title, rgba_func=rgba, point_size=5.0):
     """Plots points on a camera image.
 
     Args:
@@ -87,25 +88,20 @@ class LabelVisualizer:
             self.lut.add_label(value, key, self.COLOR_MAP_LABELS(id)[:3])
 
     @multimethod
-    def add_pc(self, 
-               frame_id: int,
-               xyz: np.ndarray,
-               intensity: np.ndarray,
-               dynamic_flag: np.ndarray,
-               timestamp: np.ndarray,
-               semantic_class: Optional[np.ndarray]) -> None:
+    def add_pc(self, frame_id: int, xyz: np.ndarray, intensity: np.ndarray, dynamic_flag: np.ndarray,
+               timestamp: np.ndarray, semantic_class: Optional[np.ndarray]) -> None:
         ''' Adds a single lidar point cloud to the visualizer (V3 data) '''
 
         pc = {
             'name': str(frame_id),
             'points': xyz.astype(np.float32),
-            'intensity':  intensity.astype(np.float32),
+            'intensity': intensity.astype(np.float32),
             'dynamic_flag': dynamic_flag
         }
 
         # normalize timestamps to floating point [0,1]
-        timestamp_normalized = (timestamp - timestamp.min())/ (timestamp.max() - timestamp.min())
-        timestamp_normalized[np.isnan(timestamp_normalized)] = 0 # first spin could have same timestamp for all points
+        timestamp_normalized = (timestamp - timestamp.min()) / (timestamp.max() - timestamp.min())
+        timestamp_normalized[np.isnan(timestamp_normalized)] = 0  # first spin could have same timestamp for all points
         pc['timestamp'] = timestamp_normalized.astype(np.float32)
 
         if semantic_class is not None:

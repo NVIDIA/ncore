@@ -44,8 +44,7 @@ def save_pkl(obj, path):
         pickle.dump(obj, f)
 
 
-def load_pc_dat(file_path: str,
-                allow_lookup_fallback: bool = True) -> np.ndarray:
+def load_pc_dat(file_path: str, allow_lookup_fallback: bool = True) -> np.ndarray:
     """
     Loads binary .dat / .dat.xz files representing a 2D single-precision array.
     Serialized 2D arrays usually represent a point-clouds with columns defined as
@@ -72,8 +71,7 @@ def load_pc_dat(file_path: str,
         # The remaining data are floats saved in little endian
         # Columns usually contain: x_s, y_s, z_s, x_e, y_e, z_e, d, intensity, dynamic_flag
         # Dynamic flag is set to -1 if the information is not available, 0 static, 1 = dynamic
-        return np.array(struct.unpack('<%sf' % (n_rows * n_columns),
-                                      file.read()),
+        return np.array(struct.unpack('<%sf' % (n_rows * n_columns), file.read()),
                         dtype=np.float32).reshape(n_rows, n_columns)
 
     if file_path.endswith('.dat'):
@@ -97,9 +95,7 @@ def load_pc_dat(file_path: str,
             else:
                 raise e
     else:
-        raise ValueError(
-            "invalid file format provided, supporting .dat / .dat.xz files only"
-        )
+        raise ValueError("invalid file format provided, supporting .dat / .dat.xz files only")
 
     return lidar_data
 
@@ -123,21 +119,20 @@ def save_pc_dat(file_path: str, lidar_data: np.ndarray) -> None:
 
         file.write(struct.pack('<i', n_rows))
         file.write(struct.pack('<i', n_columns))
-        file.write(struct.pack('<%sf' % lidar_data_flat.size,
-                               *lidar_data_flat))
+        file.write(struct.pack('<%sf' % lidar_data_flat.size, *lidar_data_flat))
 
     if file_path.endswith('.dat'):
         with open(file_path, 'wb') as file:
             save(file)
     elif file_path.endswith('.dat.xz'):
-        with lzma.open(file_path, 'wb',
-                       # Use fastest possible compression mode which still gives acceptable compression rates
-                       preset=0) as lzma_file:
+        with lzma.open(
+                file_path,
+                'wb',
+                # Use fastest possible compression mode which still gives acceptable compression rates
+                preset=0) as lzma_file:
             save(lzma_file)
     else:
-        raise ValueError(
-            "invalid file format provided, supporting .dat / .dat.xz files only"
-        )
+        raise ValueError("invalid file format provided, supporting .dat / .dat.xz files only")
 
 
 def load_jsonl(jsonl_path: Union[str, Path]) -> list[dict]:
@@ -196,8 +191,8 @@ def average_camera_pose(poses):
         pose_avg: (3, 4) the average pose
     """
 
-    average_cam_position = poses[:,:3, 3].mean(0)
-    pose_min, pose_max = np.min(poses[:,:3,3],axis=0), np.max(poses[:,:3,3],axis=0)
+    average_cam_position = poses[:, :3, 3].mean(0)
+    pose_min, pose_max = np.min(poses[:, :3, 3], axis=0), np.max(poses[:, :3, 3], axis=0)
     extent_scene = np.max(pose_max - pose_min)
 
     return average_cam_position, extent_scene
@@ -217,32 +212,33 @@ class PoseInterpolator:
     '''
     def __init__(self, poses, timestamps):
 
-        self.slerp = spatial.transform.Slerp(timestamps, R.from_matrix(poses[:,:3,:3]))
-        self.f_x = interpolate.interp1d(timestamps, poses[:,0,3])
-        self.f_y = interpolate.interp1d(timestamps, poses[:,1,3])
-        self.f_z = interpolate.interp1d(timestamps, poses[:,2,3])
+        self.slerp = spatial.transform.Slerp(timestamps, R.from_matrix(poses[:, :3, :3]))
+        self.f_x = interpolate.interp1d(timestamps, poses[:, 0, 3])
+        self.f_y = interpolate.interp1d(timestamps, poses[:, 1, 3])
+        self.f_z = interpolate.interp1d(timestamps, poses[:, 2, 3])
 
-        self.last_row = np.array([0,0,0,1], dtype=np.float32).reshape(1,1,-1)
+        self.last_row = np.array([0, 0, 0, 1], dtype=np.float32).reshape(1, 1, -1)
 
     def interpolate_to_timestamps(self, ts_target):
-        x_interp = self.f_x(ts_target).reshape(-1,1,1).astype(np.float32)
-        y_interp = self.f_y(ts_target).reshape(-1,1,1).astype(np.float32)
-        z_interp = self.f_z(ts_target).reshape(-1,1,1).astype(np.float32)
-        R_interp = self.slerp(ts_target).as_matrix().reshape(-1,3,3).astype(np.float32)
+        x_interp = self.f_x(ts_target).reshape(-1, 1, 1).astype(np.float32)
+        y_interp = self.f_y(ts_target).reshape(-1, 1, 1).astype(np.float32)
+        z_interp = self.f_z(ts_target).reshape(-1, 1, 1).astype(np.float32)
+        R_interp = self.slerp(ts_target).as_matrix().reshape(-1, 3, 3).astype(np.float32)
 
-        t_interp = np.concatenate([x_interp,y_interp,z_interp],axis=-2)
+        t_interp = np.concatenate([x_interp, y_interp, z_interp], axis=-2)
 
-        return np.concatenate((np.concatenate([R_interp,t_interp],axis=-1), np.tile(self.last_row,(R_interp.shape[0],1,1))), axis=1)
+        return np.concatenate(
+            (np.concatenate([R_interp, t_interp], axis=-1), np.tile(self.last_row, (R_interp.shape[0], 1, 1))), axis=1)
 
 
 def get_2d_bbox_corners(bbox):
 
-    bbox_corners = np.zeros((4,2))
+    bbox_corners = np.zeros((4, 2))
 
-    bbox_corners[0,:] =  np.array([bbox[0] - 0.5 * bbox[2], bbox[1] - 0.5 * bbox[3]]).astype(np.int32) # TL
-    bbox_corners[1,:]  = np.array([bbox[0] - 0.5 * bbox[2], bbox[1] + 0.5 * bbox[3]]).astype(np.int32) # BL
-    bbox_corners[2,:]  = np.array([bbox[0] + 0.5 * bbox[2], bbox[1] + 0.5 * bbox[3]]).astype(np.int32) # BR
-    bbox_corners[3,:]  = np.array([bbox[0] + 0.5 * bbox[2], bbox[1] - 0.5 * bbox[3]]).astype(np.int32) # TR
+    bbox_corners[0, :] = np.array([bbox[0] - 0.5 * bbox[2], bbox[1] - 0.5 * bbox[3]]).astype(np.int32)  # TL
+    bbox_corners[1, :] = np.array([bbox[0] - 0.5 * bbox[2], bbox[1] + 0.5 * bbox[3]]).astype(np.int32)  # BL
+    bbox_corners[2, :] = np.array([bbox[0] + 0.5 * bbox[2], bbox[1] + 0.5 * bbox[3]]).astype(np.int32)  # BR
+    bbox_corners[3, :] = np.array([bbox[0] + 0.5 * bbox[2], bbox[1] - 0.5 * bbox[3]]).astype(np.int32)  # TR
 
     return bbox_corners
 
@@ -253,25 +249,25 @@ def get_3d_bbox_coords(bbox3d):
     rotation_angles = bbox3d[6:9]
 
     # Computes the coordinates of the bbox corners
-    l2 = length/2
-    w2 = width/2
-    h2 = height/2
+    l2 = length / 2
+    w2 = width / 2
+    h2 = height / 2
 
-    translation = np.array([x,y,z]).reshape(1,3)
+    translation = np.array([x, y, z]).reshape(1, 3)
 
-    P1 = np.array([-l2, -w2, -h2]) #BBR (back bottom right)
+    P1 = np.array([-l2, -w2, -h2])  #BBR (back bottom right)
     P2 = np.array([-l2, -w2, h2])  #BTR (back top right)
-    P3 = np.array([-l2, w2, h2])   #BTL (back top left)
+    P3 = np.array([-l2, w2, h2])  #BTL (back top left)
     P4 = np.array([-l2, w2, -h2])  #BBL (back bottom left)
     P5 = np.array([l2, -w2, -h2])  #FBR (front bottom right)
-    P6 = np.array([l2, -w2, h2])   #FTR (front top right)
-    P7 = np.array([l2, w2, h2])    #FTL (front top left)
-    P8 = np.array([l2, w2, -h2])   #FBL (front bottom left)
+    P6 = np.array([l2, -w2, h2])  #FTR (front top right)
+    P7 = np.array([l2, w2, h2])  #FTL (front top left)
+    P8 = np.array([l2, w2, -h2])  #FBL (front bottom left)
 
     # Get the rotation matrix from the heading angle
     rotation = R.from_euler('xyz', rotation_angles, degrees=False).as_matrix()
 
-    corners = np.stack([P1,P2,P3,P4,P5,P6,P7,P8], axis=0)
+    corners = np.stack([P1, P2, P3, P4, P5, P6, P7, P8], axis=0)
 
     corners = np.matmul(rotation, corners.transpose()).transpose() + translation
 
@@ -305,10 +301,11 @@ def compute_optimal_assignments(corr_2d_3d, corr_3d_2d, cameras):
                     n_assignments = corr_3d_2d[cam][label_3d]['2d_name'].count(label)
                     ratios_2d.append(n_assignments / corr_2d_3d[cam][label]['count'])
                     ratios_3d.append(n_assignments / n_observations)
-                    median_IoU.append(np.median(corr_3d_2d[cam][label_3d]['iou'][corr_3d_2d[cam][label_3d]['2d_name'].index(label)]))
+                    median_IoU.append(
+                        np.median(corr_3d_2d[cam][label_3d]['iou'][corr_3d_2d[cam][label_3d]['2d_name'].index(label)]))
 
-                    C[idx_3d, tmp_labels_2d.index(label)] = 200 - (10 * n_assignments * ratios_2d[-1]  * ratios_2d[-1]  * median_IoU[-1])
-
+                    C[idx_3d, tmp_labels_2d.index(label)] = 200 - (10 * n_assignments * ratios_2d[-1] * ratios_2d[-1] *
+                                                                   median_IoU[-1])
 
         row_ind, col_ind = linear_sum_assignment(C)
 
@@ -333,7 +330,7 @@ def computer_intersection_area(bbox_1, bbox_2):
     top = np.max([bbox_1[1] - bbox_1[3] * 0.5, bbox_2[1] - bbox_2[3] * 0.5])
     bottom = np.min([bbox_1[1] + bbox_1[3] * 0.5, bbox_2[1] + bbox_2[3] * 0.5])
 
-    return  (left - right) * (top - bottom)
+    return (left - right) * (top - bottom)
 
 
 def compute_iou(bbox_1, bbox_2):
@@ -342,8 +339,8 @@ def compute_iou(bbox_1, bbox_2):
     if not check_overlap(bbox_1, bbox_2):
         return 0.0
 
-    b1_area = bbox_1[2] * bbox_1[3] # Width times height
-    b2_area = bbox_2[2] * bbox_2[3] # Width times height
+    b1_area = bbox_1[2] * bbox_1[3]  # Width times height
+    b2_area = bbox_2[2] * bbox_2[3]  # Width times height
 
     # Filter if 2D bbox is bigger than 3D (3D should always be bigger as it is projected, and 2d is not amodal)
     if b2_area > b1_area:
@@ -370,7 +367,6 @@ class MaskImage:
     Properties can be set using binary input images. A pixel can only have a single property assigned.
     Output images are represented using color pallets to reduce memory footprints.
     """
-
     class MaskType(Enum):
         """ Enumerates supported mask types """
         NONE = 0
@@ -378,9 +374,7 @@ class MaskImage:
         EGO = 2
 
     # Define colors of mask types
-    mask_colors = {MaskType.NONE: [0, 0, 0],
-                   MaskType.DYNAMIC: [255, 255, 255],
-                   MaskType.EGO: [0, 0, 255]}
+    mask_colors = {MaskType.NONE: [0, 0, 0], MaskType.DYNAMIC: [255, 255, 255], MaskType.EGO: [0, 0, 255]}
     # Initialize color pallet with all color entries (flattening all individual RBG colors into pallet)
     palette = [
         color_component for mask_color in [
@@ -391,9 +385,7 @@ class MaskImage:
         ] for color_component in mask_color
     ]
 
-    def __init__(self,
-                 shape,
-                 initial_masks=None):
+    def __init__(self, shape, initial_masks=None):
         """
         Initializes a MaskImage object to a given mask shape with optional initial masks
         Args:
@@ -401,8 +393,7 @@ class MaskImage:
             initial_masks: if provided, an iterable of [(binary_mask, MaskType), ...] tuples to initialize the mask image with in order
         """
         # initialize empty mask array corresponding to NONE type of appropriate type
-        self.mask_array = np.full(
-            shape, MaskImage.MaskType.NONE.value, dtype=np.uint8)
+        self.mask_array = np.full(shape, MaskImage.MaskType.NONE.value, dtype=np.uint8)
 
         # apply initial masks if available
         if initial_masks:
@@ -417,10 +408,8 @@ class MaskImage:
             mask_type: the MaskType to set the pixels to
         """
         assert isinstance(binary_mask, np.ndarray), "expecting array as input"
-        assert isinstance(
-            mask_type, MaskImage.MaskType), "expecting MaskType as input"
-        assert binary_mask.dtype is np.dtype(
-            'bool'), "expecting binary array as input"
+        assert isinstance(mask_type, MaskImage.MaskType), "expecting MaskType as input"
+        assert binary_mask.dtype is np.dtype('bool'), "expecting binary array as input"
         assert binary_mask.shape == self.mask_array.shape, f"invalid array resolution, expecting shape {self.mask_array.shape}"
 
         # set new values for masked pixels
@@ -500,7 +489,6 @@ def uniform_subdivide_range(subdiv_id: int, subdiv_count: int, range_start: int,
 
 class Config(object):
     """ Simple dictionary holding all options as key/value pairs """
-
     def __init__(self, kwargs):
         self.__dict__ = kwargs
 

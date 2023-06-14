@@ -10,6 +10,7 @@ from typing import Optional
 
 import numpy as np
 
+
 class DataConverter(ABC):
     '''
     Base preprocessing class used to preprocess AV datasets in a canonical representation as used in the Nvidia NRECore-SDK project.
@@ -24,13 +25,11 @@ class DataConverter(ABC):
     DISCLAIMER: THIS SOURCE CODE IS NVIDIA INTERNAL/CONFIDENTIAL. DO NOT SHARE EXTERNALLY.
     IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC zgojcic@nvidia.com / JANICK MARTINEZ ESTURO janickm@nvidia.com. 
     '''
-
     def __init__(self, config):
         self.logger = logging.getLogger(__name__)
 
         self.root_dir = Path(config.root_dir)
         self.output_dir = Path(config.output_dir)
-
 
     @staticmethod
     def time_bounds(timestamps_us: list[int], seek_sec: Optional[float],
@@ -63,7 +62,6 @@ class DataConverter(ABC):
 
         return start_timestamp_us, end_timestamp_us
 
-
     @classmethod
     def convert(cls, config) -> None:
         '''
@@ -80,9 +78,8 @@ class DataConverter(ABC):
         for sequence_dir in sequence_dirs:
             converter = cls.from_config(config)
             converter.convert_sequence(sequence_dir)
-        
-        logger.info(f'Finished converting {sequence_dirs} in {config.output_dir} ...')
 
+        logger.info(f'Finished converting {sequence_dirs} in {config.output_dir} ...')
 
     @staticmethod
     @abstractmethod
@@ -92,7 +89,6 @@ class DataConverter(ABC):
         '''
         pass
 
-
     @staticmethod
     @abstractmethod
     def from_config(config) -> DataConverter:
@@ -100,7 +96,6 @@ class DataConverter(ABC):
         Return an instance of the data converter
         '''
         pass
-
 
     @abstractmethod
     def convert_sequence(self, sequence_path: Path) -> None:
@@ -118,8 +113,14 @@ class BaseNvidiaDataConverter(DataConverter):
     ## Constants defined for *Hyperion8* sensor-set
 
     # Camera exposure times (rounded to integer US)
-    CAMERATYPE_TO_EXPOSURETIME_HALF_US = {'wide': np.uint64(1641.58 / 2), 'fisheye': np.uint64(10987.00 / 2)} # rounded to integer US
-    CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US = {'wide': np.uint64(31611.55), 'fisheye': np.uint64(32561.63)} # rounded to integer US
+    CAMERATYPE_TO_EXPOSURETIME_HALF_US = {
+        'wide': np.uint64(1641.58 / 2),
+        'fisheye': np.uint64(10987.00 / 2)
+    }  # rounded to integer US
+    CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US = {
+        'wide': np.uint64(31611.55),
+        'fisheye': np.uint64(32561.63)
+    }  # rounded to integer US
 
     CAMERAID_TO_RIGNAME = {
         'camera_front_wide_120fov': 'camera:front:wide:120fov',
@@ -157,6 +158,4 @@ class BaseNvidiaDataConverter(DataConverter):
 
     # Vehicle BBOX padding distances (for each axis) and maximum distances (in meters) for point cloud measurements (to filter points on the ego-car / out invalid points)
     LIDAR_FILTER_VEHICLE_BBOX_PADDING_METERS = np.array([1.0, 0.2, 1.0], dtype=np.float32)
-    LIDARID_TO_FILTER_MAX_DISTANCE_METERS = {
-        'lidar_gt_top_p128_v4p5': 100.0 
-    }
+    LIDARID_TO_FILTER_MAX_DISTANCE_METERS = {'lidar_gt_top_p128_v4p5': 100.0}

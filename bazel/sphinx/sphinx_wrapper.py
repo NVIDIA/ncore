@@ -1,5 +1,5 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
- 
+
 import re
 import sys
 from sphinx.cmd.build import main

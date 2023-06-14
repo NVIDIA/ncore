@@ -43,7 +43,7 @@ from ncore.impl.data.util import INDEX_DIGITS
               help='Step used to downsample the number of frames',
               default=1)
 def ncore_extract_segmentation(shard_file_pattern: str, output_dir: str, camera_ids: list[str], semantic_seg: bool,
-                              instance_seg: bool, start_frame: int, end_frame: int, step_frame: int):
+                               instance_seg: bool, start_frame: int, end_frame: int, step_frame: int):
 
     # Initialize the logger
     logging.basicConfig(level=logging.INFO)

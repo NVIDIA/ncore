@@ -25,10 +25,7 @@ from ncore.impl.data.util import padded_index_string
               type=click.IntRange(min=0, max_open=True),
               help='Initial frame to be exported',
               default=0)
-@click.option('--end-frame',
-              type=click.IntRange(min=-1, max_open=True),
-              help='End frame to be exported',
-              default=-1)
+@click.option('--end-frame', type=click.IntRange(min=-1, max_open=True), help='End frame to be exported', default=-1)
 @click.option('--step-frame',
               type=click.IntRange(min=1, max_open=True),
               help='Step used to downsample the number of frames',
@@ -38,7 +35,7 @@ from ncore.impl.data.util import padded_index_string
               help='Frame to represent the point-cloud in',
               default='world')
 def ncore_export_ply(shard_file_pattern: str, output_dir: str, sensor_id: str, start_frame: int, end_frame: int,
-                    step_frame: int, frame: str):
+                     step_frame: int, frame: str):
     ''' Exports the point cloud data to the ply format with named attributes '''
 
     # Initialize the logger

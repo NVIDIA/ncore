@@ -19,7 +19,8 @@ from ncore.impl.common.common import save_jsonl
 @click.option('--input-lidar-transform', type=str, help='Path to deepmap to-vehicle-transform-lidar', required=True)
 @click.option('--output-egomotion', type=str, help='Path to converted PyCSFT egomotion.jsonl', required=True)
 @click.option('--lidar-sensor-name', type=str, help='Rig sensor name to be used in egomotion.jsonl', required=True)
-def convert_deepmap_egomotion(input_aligned_track: str, input_lidar_transform: str, output_egomotion: str, lidar_sensor_name: str):
+def convert_deepmap_egomotion(input_aligned_track: str, input_lidar_transform: str, output_egomotion: str,
+                              lidar_sensor_name: str):
     ''' Converts deepmap poses into nvidia-maglev-compatible egomotion.jsonl format '''
 
     # Initialize the logger

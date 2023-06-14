@@ -94,7 +94,8 @@ def ncore_rgb_ray_mesh_intersection(shard_file_pattern: str, mesh_path: str, cam
 
     # Get the camera frame indices from the index range
     camera_frame_indices = camera_sensor.get_frame_index_range(start_frame, end_frame, step_frame)
-    logger.info(f"Starting pc coloring. {len(camera_frame_indices)} frames will be processed and stored to {output_path}")
+    logger.info(
+        f"Starting pc coloring. {len(camera_frame_indices)} frames will be processed and stored to {output_path}")
     for camera_frame_index in tqdm.tqdm(camera_frame_indices):
 
         # Perform rolling-shutter-based world ray estimation

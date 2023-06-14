@@ -31,7 +31,7 @@ from ncore.impl.data.util import padded_index_string
               help='Step used to downsample the number of frames',
               default=1)
 def ncore_export_image(shard_file_pattern: str, output_dir: str, camera_id: str, start_frame: int, end_frame: int,
-                      step_frame: int):
+                       step_frame: int):
     ''' Exports image data to image files '''
 
     # Initialize the logger

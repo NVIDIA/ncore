@@ -14,6 +14,7 @@ import torch
 from ncore.impl.data.types import FThetaCameraModelParameters, PinholeCameraModelParameters, ShutterType
 from ncore.impl.sensors.camera import CameraModel, FThetaCameraModel, PinholeCameraModel
 
+
 class ReferenceFThetaCamera():
     _FORWARD_POLYNOMIAL_ACCURACY = 0.01
 
@@ -40,7 +41,6 @@ class ReferenceFThetaCamera():
         lastPixel = self._imageSize - np.array([1, 1])
         return ((0 <= point2d[0]) and (point2d[0] <= lastPixel[0]) and (0 <= point2d[1])
                 and (point2d[1] <= lastPixel[1]))
-
 
     def setBackwardPolynomial(self, backwardPolynomial):
         self._backwardPolynomial = backwardPolynomial
@@ -161,6 +161,7 @@ class ReferenceFThetaCamera():
             radius = c + theta * radius
         return radius
 
+
 class CudaCheck(unittest.TestCase):
     def test_cuda_available(self):
         '''
@@ -217,8 +218,10 @@ class TestReferenceFThetaCamera(CommonTestCase):
         fov = np.radians(90)
         resolution = np.array([1000, 1000])
         camera = ReferenceFThetaCamera(resolution, [10, 10], [0, fov / resolution[0]])
-        self._executeImagePoints2RaysTestCase(camera, [[ 10 + resolution[0] / 2,  10]], [[np.sin(fov / 2), 0, np.cos(fov / 2)]])
-        self._executeImagePoints2RaysTestCase(camera, [[10, 10 + resolution[1] / 2]], [[0, np.sin(fov / 2), np.cos(fov / 2)]])
+        self._executeImagePoints2RaysTestCase(camera, [[10 + resolution[0] / 2, 10]],
+                                              [[np.sin(fov / 2), 0, np.cos(fov / 2)]])
+        self._executeImagePoints2RaysTestCase(camera, [[10, 10 + resolution[1] / 2]],
+                                              [[0, np.sin(fov / 2), np.cos(fov / 2)]])
 
     def _executeImagePoints2RaysTestCase(self, camera, imagePoints2d, rays3dExpected):
         # Reference
@@ -229,7 +232,8 @@ class TestReferenceFThetaCamera(CommonTestCase):
         for a, e in zip(
                 np.array(
                     ftheta_from_reference(camera, self.device,
-                                          self.dtype).image_points_to_camera_rays(np.array(imagePoints2d, ndmin=2)).cpu()),
+                                          self.dtype).image_points_to_camera_rays(np.array(imagePoints2d,
+                                                                                           ndmin=2)).cpu()),
                 np.array(rays3dExpected, ndmin=2)):
             self._compareVector(a, e)
 
@@ -257,7 +261,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
 
         rays3d = np.array([opticalAxesRay, rightRay, bottomRay])
         imagePoints2dExpected = np.array([[principalPoint, principalPoint], [resolution - 1, principalPoint],
-                                     [principalPoint, resolution - 1]])
+                                          [principalPoint, resolution - 1]])
         self._executeRays2ImagePointsTestCase(camera, rays3d, imagePoints2dExpected)
 
     def _executeRays2ImagePointsTestCase(self, camera, rays3d, imagePoints2dExpected):
@@ -266,7 +270,8 @@ class TestReferenceFThetaCamera(CommonTestCase):
             self._compareVector(a, e)
 
         # Torch-version
-        a = ftheta_from_reference(camera, self.device, self.dtype).camera_rays_to_image_points(np.array(rays3d, ndmin=2))
+        a = ftheta_from_reference(camera, self.device, self.dtype).camera_rays_to_image_points(np.array(rays3d,
+                                                                                                        ndmin=2))
         e = np.array(imagePoints2dExpected, ndmin=2)
 
         self._compareVector(np.array(a.image_points.cpu()), e)
@@ -332,7 +337,6 @@ class TestReferenceFThetaCamera(CommonTestCase):
         actualMaxRadius = camera._maxRadius
         self.assertAlmostEqual(actualMaxRadius, expectedMaxRadius)
 
-
     def test_rays2imagePoints_rays2Pixels_consistency(self):
 
         resolution = 1000
@@ -359,7 +363,6 @@ class TestReferenceFThetaCamera(CommonTestCase):
         pixels = ftheta_cam.camera_rays_to_pixels(np.array(cam_ray, ndmin=2))
         self._compareVector(torch.floor(image_points.image_points.cpu()), pixels.pixels.cpu().float())
 
-
     def test_imagePoints2rays_pixels2Rays_consistency(self):
         resolution = 1000
         principalPoint = (resolution - 1) / 2
@@ -370,7 +373,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
         ftheta_cam = ftheta_from_reference(camera, self.device, self.dtype)
 
         # Points to test
-        pixel_idxs = np.random.default_rng(seed=0).choice(resolution-1, (100,2))
+        pixel_idxs = np.random.default_rng(seed=0).choice(resolution - 1, (100, 2))
 
         pixel_rays = ftheta_cam.pixels_to_camera_rays(pixel_idxs.astype(np.int32)).cpu()
         image_point_rays = ftheta_cam.image_points_to_camera_rays((pixel_idxs + 0.5).astype(np.float32)).cpu()
@@ -390,46 +393,62 @@ class TestReferenceFThetaCamera(CommonTestCase):
         T_world_sensor_start = np.eye(4)
         T_world_sensor_end = np.eye(4)
 
-        ftheta_cam = ftheta_from_reference(camera, self.device,self.dtype)
+        ftheta_cam = ftheta_from_reference(camera, self.device, self.dtype)
 
         # Points to test (two 2,3 are invalid)
-        world_points = np.array([[0,0,10], [0,0,20], [50,5,10], [0,0,-10], [0,0,30]])
+        world_points = np.array([[0, 0, 10], [0, 0, 20], [50, 5, 10], [0, 0, -10], [0, 0, 30]])
 
         # Test shutter pose projection
-        image_points = ftheta_cam.world_points_to_image_points_shutter_pose(world_points, T_world_sensor_start, T_world_sensor_end)
-        image_points_all = ftheta_cam.world_points_to_image_points_shutter_pose(world_points, T_world_sensor_start,
+        image_points = ftheta_cam.world_points_to_image_points_shutter_pose(world_points, T_world_sensor_start,
+                                                                            T_world_sensor_end)
+        image_points_all = ftheta_cam.world_points_to_image_points_shutter_pose(world_points,
+                                                                                T_world_sensor_start,
                                                                                 T_world_sensor_end,
                                                                                 return_valid_indices=True,
                                                                                 return_all_projections=True)
-        self._compareVector(image_points.image_points.cpu(), image_points_all.image_points[image_points_all.valid_indices].cpu())
+        self._compareVector(image_points.image_points.cpu(),
+                            image_points_all.image_points[image_points_all.valid_indices].cpu())
 
         # Test single pose projection
         image_points = ftheta_cam.world_points_to_image_points_static_pose(world_points, T_world_sensor_start)
-        image_points_all = ftheta_cam.world_points_to_image_points_static_pose(world_points, T_world_sensor_start,
-                                                                                return_valid_indices=True,
-                                                                                return_all_projections=True)
+        image_points_all = ftheta_cam.world_points_to_image_points_static_pose(world_points,
+                                                                               T_world_sensor_start,
+                                                                               return_valid_indices=True,
+                                                                               return_all_projections=True)
 
-        self._compareVector(image_points.image_points.cpu(), image_points_all.image_points[image_points_all.valid_indices].cpu())
+        self._compareVector(image_points.image_points.cpu(),
+                            image_points_all.image_points[image_points_all.valid_indices].cpu())
 
     def test_inputs_and_input_types(self):
         camera = ReferenceFThetaCamera(np.array([1000, 1000]), [10, 10], [0, np.radians(90) / 1000])
-        ftheta_cam = ftheta_from_reference(camera, self.device,self.dtype)
+        ftheta_cam = ftheta_from_reference(camera, self.device, self.dtype)
 
-        pixel = np.array([100, 100]).reshape(1,2)
-        ray = np.array([0,1,0]).reshape(1,3)
+        pixel = np.array([100, 100]).reshape(1, 2)
+        ray = np.array([0, 1, 0]).reshape(1, 3)
 
         # Test invalid inputs
         self.assertRaises(AssertionError, ftheta_cam.image_points_to_camera_rays, pixel.astype(np.int32))
         self.assertRaises(AssertionError, ftheta_cam.pixels_to_camera_rays, pixel.astype(np.float32))
 
-        self.assertRaises(AssertionError, ftheta_cam.world_points_to_image_points_shutter_pose, ray, np.eye(4), np.eye(4), **{'return_timestamps': True})
-        self.assertRaises(AssertionError, ftheta_cam.world_points_to_image_points_shutter_pose, ray, np.eye(4), np.eye(4),
-                                **{'start_timestamp_us': 100, 'end_timestamp_us': 90, 'return_timestamps': True})
+        self.assertRaises(AssertionError, ftheta_cam.world_points_to_image_points_shutter_pose, ray, np.eye(4),
+                          np.eye(4), **{'return_timestamps': True})
+        self.assertRaises(AssertionError, ftheta_cam.world_points_to_image_points_shutter_pose, ray, np.eye(4),
+                          np.eye(4), **{
+                              'start_timestamp_us': 100,
+                              'end_timestamp_us': 90,
+                              'return_timestamps': True
+                          })
 
         # Test valid inputs
         ftheta_cam.image_points_to_camera_rays(pixel.astype(np.float32))
         ftheta_cam.pixels_to_camera_rays(pixel.astype(np.int32))
-        ftheta_cam.world_points_to_image_points_shutter_pose(ray, np.eye(4), np.eye(4), **{'start_timestamp_us': 90, 'end_timestamp_us': 100, 'return_timestamps': True})
+        ftheta_cam.world_points_to_image_points_shutter_pose(
+            ray, np.eye(4), np.eye(4), **{
+                'start_timestamp_us': 90,
+                'end_timestamp_us': 100,
+                'return_timestamps': True
+            })
+
 
 def _solveLinearEquation(linearSystemMatrix, linearSystemVector):
     solution, _, _, _ = scipy.linalg.lstsq(linearSystemMatrix, linearSystemVector)
@@ -468,8 +487,6 @@ def ftheta_from_reference(reference_camera: ReferenceFThetaCamera, device: str,
 @parameterized.parameterized_class(('device', 'dtype'),
                                    itertools.product(('cpu', 'cuda'), (torch.float32, torch.float64)))
 class TestPinholeCamera(CommonTestCase):
-
-
     def test_imagePoints2rays_rays2imagePoints_consistency(self):
         ''' Tests self-consistency of torch-based Pinhole camera model '''
 
@@ -603,26 +620,32 @@ class TestJacobian(CommonTestCase):
 
         # Distorted pinhole camera model with "simple" k1,k2,k3,p1,p2 parametrization only
         cam_model_params = PinholeCameraModelParameters(resolution=np.array([1920, 1280], dtype=np.uint64),
-                                             shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
-                                             principal_point=np.array([935.1248081874216, 635.052474560227],
-                                                                      dtype=np.float32),
-                                             focal_length=np.array([
-                                                 2059.0471439559833,
-                                                 2059.4231439559833,
-                                             ],
-                                                                   dtype=np.float32),
-                                             radial_coeffs=np.array([
-                                                 0.04239636827428756,
-                                                 -0.34165672675852826,
-                                                 0.01,
-                                                 0,
-                                                 0,
-                                                 0,
-                                             ], dtype=np.float32),
-                                             tangential_coeffs=np.array([0.001805535524580487, -0.00005530628187935031], dtype=np.float32),
-                                             thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32))
+                                                        shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
+                                                        principal_point=np.array([935.1248081874216, 635.052474560227],
+                                                                                 dtype=np.float32),
+                                                        focal_length=np.array([
+                                                            2059.0471439559833,
+                                                            2059.4231439559833,
+                                                        ],
+                                                                              dtype=np.float32),
+                                                        radial_coeffs=np.array([
+                                                            0.04239636827428756,
+                                                            -0.34165672675852826,
+                                                            0.01,
+                                                            0,
+                                                            0,
+                                                            0,
+                                                        ],
+                                                                               dtype=np.float32),
+                                                        tangential_coeffs=np.array(
+                                                            [0.001805535524580487, -0.00005530628187935031],
+                                                            dtype=np.float32),
+                                                        thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32))
 
-        cam_model_ref = ReferenceSimplePinholeCamera(cam_model_params, {torch.float32 : np.float32, torch.float64 : np.float64}[self.dtype])
+        cam_model_ref = ReferenceSimplePinholeCamera(cam_model_params, {
+            torch.float32: np.float32,
+            torch.float64: np.float64
+        }[self.dtype])
         cam_model = CameraModel.from_parameters(cam_model_params, device=self.device, dtype=self.dtype)
 
         rays3d = cam_model.image_points_to_camera_rays(torch.Tensor([[20, 40], [11, 12], [15, 20],
@@ -631,80 +654,82 @@ class TestJacobian(CommonTestCase):
         for ray3d in rays3d:
             pref, Jref = cam_model_ref.camera_ray_to_image_points(ray3d.cpu().numpy())
 
-            proj = cam_model.camera_rays_to_image_points(ray3d.unsqueeze(1).transpose(1,0), return_jacobians=True)
+            proj = cam_model.camera_rays_to_image_points(ray3d.unsqueeze(1).transpose(1, 0), return_jacobians=True)
 
             np.testing.assert_array_almost_equal(pref, proj.image_points.detach()[0].cpu().numpy())
-            np.testing.assert_array_almost_equal(Jref, proj.jacobians.detach()[0].cpu().numpy(), decimal=6 if self.dtype == torch.float64 else 4)
-
+            np.testing.assert_array_almost_equal(Jref,
+                                                 proj.jacobians.detach()[0].cpu().numpy(),
+                                                 decimal=6 if self.dtype == torch.float64 else 4)
 
     def test_jacobian_consistency(self):
         ''' Tests consistency of camera model Jacobians with autograd results '''
 
         cam_models = [
             # Ideal pinhole camera parameters
-            CameraModel.from_parameters(
-                PinholeCameraModelParameters(resolution=np.array([1920, 1280], dtype=np.uint64),
-                                             shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
-                                             principal_point=np.array([935.1248081874216, 635.052474560227],
-                                                                      dtype=np.float32),
-                                             focal_length=np.array([
-                                                 2059.0471439559833,
-                                                 2059.0471439559833,
-                                             ],
-                                                                   dtype=np.float32),
-                                             radial_coeffs=np.array([
-                                                 0,
-                                                 0,
-                                                 0,
-                                                 0,
-                                                 0,
-                                                 0,
-                                             ], dtype=np.float32),
-                                             tangential_coeffs=np.array([0, 0], dtype=np.float32),
-                                             thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32)),
-                                             device=self.device, dtype=self.dtype),
+            CameraModel.from_parameters(PinholeCameraModelParameters(resolution=np.array([1920, 1280], dtype=np.uint64),
+                                                                     shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
+                                                                     principal_point=np.array(
+                                                                         [935.1248081874216, 635.052474560227],
+                                                                         dtype=np.float32),
+                                                                     focal_length=np.array([
+                                                                         2059.0471439559833,
+                                                                         2059.0471439559833,
+                                                                     ],
+                                                                                           dtype=np.float32),
+                                                                     radial_coeffs=np.array([
+                                                                         0,
+                                                                         0,
+                                                                         0,
+                                                                         0,
+                                                                         0,
+                                                                         0,
+                                                                     ],
+                                                                                            dtype=np.float32),
+                                                                     tangential_coeffs=np.array([0, 0],
+                                                                                                dtype=np.float32),
+                                                                     thin_prism_coeffs=np.array([0, 0, 0, 0],
+                                                                                                dtype=np.float32)),
+                                        device=self.device,
+                                        dtype=self.dtype),
             # Waymo camera parameters
-            CameraModel.from_parameters(
-                PinholeCameraModelParameters(resolution=np.array([1920, 1280], dtype=np.uint64),
-                                             shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
-                                             principal_point=np.array([935.1248081874216, 635.052474560227],
-                                                                      dtype=np.float32),
-                                             focal_length=np.array([
-                                                 2059.0471439559833,
-                                                 2059.0471439559833,
-                                             ],
-                                                                   dtype=np.float32),
-                                             radial_coeffs=np.array([
-                                                 0.04239636827428756,
-                                                 -0.34165672675852826,
-                                                 0,
-                                                 0,
-                                                 0,
-                                                 0,
-                                             ],
-                                                                    dtype=np.float32),
-                                             tangential_coeffs=np.array([0.001805535524580487, -0.00005530628187935031],
-                                                                        dtype=np.float32),
-                                             thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32)),
-                                             device=self.device, dtype=self.dtype),
+            CameraModel.from_parameters(PinholeCameraModelParameters(
+                resolution=np.array([1920, 1280], dtype=np.uint64),
+                shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
+                principal_point=np.array([935.1248081874216, 635.052474560227], dtype=np.float32),
+                focal_length=np.array([
+                    2059.0471439559833,
+                    2059.0471439559833,
+                ], dtype=np.float32),
+                radial_coeffs=np.array([
+                    0.04239636827428756,
+                    -0.34165672675852826,
+                    0,
+                    0,
+                    0,
+                    0,
+                ], dtype=np.float32),
+                tangential_coeffs=np.array([0.001805535524580487, -0.00005530628187935031], dtype=np.float32),
+                thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32)),
+                                        device=self.device,
+                                        dtype=self.dtype),
 
             # NV 120deg instance
-            CameraModel.from_parameters(
-                FThetaCameraModelParameters(
-                    resolution=np.array([3848, 2168], dtype=np.uint64),
-                    shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
-                    principal_point=np.array([1904.948486328125, 1090.5164794921875], dtype=np.float32),
-                    reference_poly=FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE,
-                    pixeldist_to_angle_poly=np.array([
-                        0.0, 0.0005380856455303729, -1.2021251771798802e-09, 4.5657002484267295e-12,
-                        -5.581118088908714e-16, 0.0
-                    ],
-                                                     dtype=np.float32),
-                    angle_to_pixeldist_poly=np.array(
-                        [0.0, 1858.59228515625, 6.894773483276367, -53.92193603515625, 14.201756477355957, 0.0],
-                        dtype=np.float32),
-                    max_angle=1.2292176485061646),
-                    device=self.device, dtype=self.dtype)
+            CameraModel.from_parameters(FThetaCameraModelParameters(
+                resolution=np.array([3848, 2168], dtype=np.uint64),
+                shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
+                principal_point=np.array([1904.948486328125, 1090.5164794921875], dtype=np.float32),
+                reference_poly=FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE,
+                pixeldist_to_angle_poly=np.array([
+                    0.0, 0.0005380856455303729, -1.2021251771798802e-09, 4.5657002484267295e-12, -5.581118088908714e-16,
+                    0.0
+                ],
+                                                 dtype=np.float32),
+                angle_to_pixeldist_poly=np.array(
+                    [0.0, 1858.59228515625, 6.894773483276367, -53.92193603515625, 14.201756477355957, 0.0],
+                    dtype=np.float32),
+                max_angle=1.2292176485061646),
+                                        device=self.device,
+                                        dtype=self.dtype)
         ]
 
         for cam_model in cam_models:
@@ -714,9 +739,9 @@ class TestJacobian(CommonTestCase):
 
             valid_rays3d = cam_model.image_points_to_camera_rays(
                 torch.Tensor([[20, 40], [11, 12], [15, 20], [500, 500]]))  # valid rays
-            principal_direction_rays3d = torch.Tensor([[0, 0, 1], 
-                                                       [0, 0, 5],
-                                                       [0, 0, 0.1]]).to(valid_rays3d)  # rays along the principal direction
+            principal_direction_rays3d = torch.Tensor([[0, 0, 1], [0, 0, 5],
+                                                       [0, 0,
+                                                        0.1]]).to(valid_rays3d)  # rays along the principal direction
             invalid_rays3d = torch.Tensor([[1, 2, -5], [1, 2, 0], [0, 0, 0]]).to(
                 valid_rays3d
             )  # some "invalid" rays (behind camera / on the center of projection plane but ouf of FOV / zero)
@@ -737,6 +762,7 @@ class TestJacobian(CommonTestCase):
                 self.assertTrue(
                     proj.valid_flag[i] if i < len(rays3d) - len(invalid_rays3d) else
                     not proj.valid_flag[i])  # First rays should be flagged as valid, others should be invalid
+
 
 if __name__ == '__main__':
     unittest.main()
