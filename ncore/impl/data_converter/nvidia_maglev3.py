@@ -22,7 +22,7 @@ from ncore.impl.common.nvidia_utils import (load_maglev_camera_indexer_frame_met
                                             sensor_to_rig, LabelProcessor, camera_intrinsic_parameters,
                                             compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask,
                                             vehicle_bbox)
-from ncore.impl.common.common import load_jsonl, PoseInterpolator, uniform_subdivide_range, SimpleTimer
+from ncore.impl.common.common import PoseInterpolator, uniform_subdivide_range, SimpleTimer
 from ncore.impl.av_utils import isWithin3DBBox
 
 
