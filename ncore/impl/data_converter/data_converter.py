@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from dataclasses import dataclass
 from pathlib import Path
 from abc import ABC, abstractmethod
 from typing import Optional
@@ -110,52 +111,120 @@ class BaseNvidiaDataConverter(DataConverter):
     Base class for all Nvidia-specific data converters, maintaining common definitions and logic
     '''
 
-    ## Constants defined for *Hyperion8* sensor-set
+    # Common constants
+    @dataclass(frozen=True)
+    class Constants:
+        # Vehicle BBOX padding distances (for each axis) and maximum distances (in meters) for point cloud measurements (to filter points on the ego-car / out invalid points)
+        LIDAR_FILTER_VEHICLE_BBOX_PADDING_METERS = np.array([1.0, 0.2, 1.0], dtype=np.float32)
 
-    # Camera exposure times (rounded to integer US)
-    CAMERATYPE_TO_EXPOSURETIME_HALF_US = {
-        'wide': np.uint64(1641.58 / 2),
-        'fisheye': np.uint64(10987.00 / 2)
-    }  # rounded to integer US
-    CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US = {
-        'wide': np.uint64(31611.55),
-        'fisheye': np.uint64(32561.63)
-    }  # rounded to integer US
+    # Constants for *Hyperion8* sensor-set
+    @dataclass(frozen=True)
+    class Hyperion8Constants(Constants):
+        CAMERAID_TO_RIGNAME = {
+            'camera_front_wide_120fov': 'camera:front:wide:120fov',
+            'camera_cross_left_120fov': 'camera:cross:left:120fov',
+            'camera_cross_right_120fov': 'camera:cross:right:120fov',
+            'camera_rear_left_70fov': 'camera:rear:left:70fov',
+            'camera_rear_right_70fov': 'camera:rear:right:70fov',
+            'camera_rear_tele_30fov': 'camera:rear:tele:30fov',
+            'camera_front_fisheye_200fov': 'camera:front:fisheye:200fov',
+            'camera_left_fisheye_200fov': 'camera:left:fisheye:200fov',
+            'camera_right_fisheye_200fov': 'camera:right:fisheye:200fov',
+            'camera_rear_fisheye_200fov': 'camera:rear:fisheye:200fov'
+        }
 
-    CAMERAID_TO_RIGNAME = {
-        'camera_front_wide_120fov': 'camera:front:wide:120fov',
-        'camera_cross_left_120fov': 'camera:cross:left:120fov',
-        'camera_cross_right_120fov': 'camera:cross:right:120fov',
-        'camera_rear_left_70fov': 'camera:rear:left:70fov',
-        'camera_rear_right_70fov': 'camera:rear:right:70fov',
-        'camera_rear_tele_30fov': 'camera:rear:tele:30fov',
-        'camera_front_fisheye_200fov': 'camera:front:fisheye:200fov',
-        'camera_left_fisheye_200fov': 'camera:left:fisheye:200fov',
-        'camera_right_fisheye_200fov': 'camera:right:fisheye:200fov',
-        'camera_rear_fisheye_200fov': 'camera:rear:fisheye:200fov'
-    }
+        # Upper field-of-view limit accross all cameras (in particular for fisheye cameras)
+        MAX_CAMERA_FOV_DEG = 200.0
 
-    # Upper field-of-view limit accross all cameras (in particular for fisheye cameras)
-    MAX_CAMERA_FOV_DEG = 200.0
+        # Per-camera sensor types
+        CAMERAID_TO_SENSORTYPE = {
+            'camera_front_wide_120fov': 'AR0820',
+            'camera_cross_left_120fov': 'AR0820',
+            'camera_cross_right_120fov': 'AR0820',
+            'camera_rear_left_70fov': 'AR0820',
+            'camera_rear_right_70fov': 'AR0820',
+            'camera_rear_tele_30fov': 'AR0820',
+            'camera_front_fisheye_200fov': 'IMX390',
+            'camera_left_fisheye_200fov': 'IMX390',
+            'camera_right_fisheye_200fov': 'IMX390',
+            'camera_rear_fisheye_200fov': 'IMX390',
+        }
 
-    LIDARID_TO_RIGNAME = {
-        'lidar_gt_top_p128_v4p5': 'lidar:gt:top:p128:v4p5',
-    }
+        # Sensor-specific exposure times (rounded to integer US)
+        SENSORTYPE_TO_EXPOSURETIME_HALF_US = {
+            'AR0820': np.uint64(1641.58 / 2),
+            'IMX390': np.uint64(10987.00 / 2)
+        }  # rounded to integer US
 
-    # Per-camera types
-    CAMERAID_TO_CAMERATYPE = {
-        'camera_front_wide_120fov': 'wide',
-        'camera_cross_left_120fov': 'wide',
-        'camera_cross_right_120fov': 'wide',
-        'camera_rear_left_70fov': 'wide',
-        'camera_rear_right_70fov': 'wide',
-        'camera_rear_tele_30fov': 'wide',
-        'camera_front_fisheye_200fov': 'fisheye',
-        'camera_left_fisheye_200fov': 'fisheye',
-        'camera_right_fisheye_200fov': 'fisheye',
-        'camera_rear_fisheye_200fov': 'fisheye',
-    }
+        SENSORTYPE_TO_ROLLINGSHUTTERDELAY_US = {
+            'AR0820': np.uint64(31611.55),
+            'IMX390': np.uint64(32561.63)
+        }  # rounded to integer US
 
-    # Vehicle BBOX padding distances (for each axis) and maximum distances (in meters) for point cloud measurements (to filter points on the ego-car / out invalid points)
-    LIDAR_FILTER_VEHICLE_BBOX_PADDING_METERS = np.array([1.0, 0.2, 1.0], dtype=np.float32)
-    LIDARID_TO_FILTER_MAX_DISTANCE_METERS = {'lidar_gt_top_p128_v4p5': 100.0}
+        LIDARID_TO_RIGNAME = {
+            'lidar_gt_top_p128_v4p5': 'lidar:gt:top:p128:v4p5',
+        }
+
+        LIDARID_TO_FILTER_MAX_DISTANCE_METERS = {'lidar_gt_top_p128_v4p5': 100.0}
+
+    # Constants for *Hyperion8.1* sensor-set
+    @dataclass(frozen=True)
+    class Hyperion81Constants(Constants):
+        CAMERAID_TO_RIGNAME = {
+            'camera_front_wide_120fov': 'camera:front:wide:120fov',
+            'camera_cross_left_120fov': 'camera:cross:left:120fov',
+            'camera_cross_right_120fov': 'camera:cross:right:120fov',
+            'camera_rear_left_70fov': 'camera:rear:left:70fov',
+            'camera_rear_right_70fov': 'camera:rear:right:70fov',
+            'camera_rear_tele_30fov': 'camera:rear:tele:30fov',
+            'camera_front_fisheye_200fov': 'camera:front:fisheye:200fov',
+            'camera_left_fisheye_200fov': 'camera:left:fisheye:200fov',
+            'camera_right_fisheye_200fov': 'camera:right:fisheye:200fov',
+            'camera_rear_fisheye_200fov': 'camera:rear:fisheye:200fov'
+        }
+
+        # Upper field-of-view limit accross all cameras (in particular for fisheye cameras)
+        MAX_CAMERA_FOV_DEG = 200.0
+
+        # Per-camera types
+        CAMERAID_TO_SENSORTYPE = {
+            'camera_front_wide_120fov': 'IMX728',
+            'camera_cross_left_120fov': 'IMX728',
+            'camera_cross_right_120fov': 'IMX728',
+            'camera_rear_left_70fov': 'IMX728',
+            'camera_rear_right_70fov': 'IMX728',
+            'camera_rear_tele_30fov': 'IMX728',
+            'camera_front_fisheye_200fov': 'IMX623',
+            'camera_left_fisheye_200fov': 'IMX623',
+            'camera_right_fisheye_200fov': 'IMX623',
+            'camera_rear_fisheye_200fov': 'IMX623',
+        }
+
+        # Sensor-specific exposure times (rounded to integer US)
+        SENSORTYPE_TO_EXPOSURETIME_HALF_US = {
+            'IMX728': np.uint64(10000 / 2),
+            'IMX623': np.uint64(9981 / 2)
+        }  # rounded to integer US
+
+        SENSORTYPE_TO_ROLLINGSHUTTERDELAY_US = {
+            'IMX728': np.uint64(32561.63),  # WARNING: these are unverified / same as for IMX390 for now
+            'IMX623': np.uint64(32561.63)
+        }  # rounded to integer US
+
+        LIDARID_TO_RIGNAME = {
+            'lidar_gt_top_p128': 'lidar:gt:top:p128',
+        }
+
+        LIDARID_TO_FILTER_MAX_DISTANCE_METERS = {'lidar_gt_top_p128': 100.0}
+
+    @classmethod
+    def get_constants(cls, platform_name: str) -> Hyperion8Constants | Hyperion81Constants:
+        ''' Parse platform name into constants for a given plaform '''
+
+        # Determine major platform version
+        if platform_name.startswith('hy8.1_'):
+            return cls.Hyperion81Constants()
+        elif platform_name.startswith('hy8_'):
+            return cls.Hyperion8Constants()
+        else:
+            raise ValueError(f'Unknown / unsupported platform {platform_name}')
