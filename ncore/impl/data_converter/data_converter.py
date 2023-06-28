@@ -217,6 +217,11 @@ class BaseNvidiaDataConverter(DataConverter):
 
         LIDARID_TO_FILTER_MAX_DISTANCE_METERS = {'lidar_gt_top_p128': 100.0}
 
+        def __post_init__(self):
+            # Issue warning until all exposure-parameters are verified
+            logging.warn(
+                'Timing-parameters of Hyperion81Constants not fully verified yet - results might be inaccurate!')
+
     @classmethod
     def get_constants(cls, rig_properties: dict[str, str]) -> Hyperion8Constants | Hyperion81Constants:
         ''' Parse rig properties into constants for a given plaform '''
