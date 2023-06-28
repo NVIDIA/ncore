@@ -67,7 +67,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
             with open(os.path.join(sequence_path, 'rig.json'), 'r') as fp:
                 self.rig = json.load(fp)
 
-            self.constants = self.get_constants(self.rig['rig']['properties']['platform_name'])
+            self.constants = self.get_constants(self.rig['rig']['properties'])
 
             # *Single* reference lidar sensor
             match self.constants:

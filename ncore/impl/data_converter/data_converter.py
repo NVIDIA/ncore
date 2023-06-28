@@ -218,13 +218,19 @@ class BaseNvidiaDataConverter(DataConverter):
         LIDARID_TO_FILTER_MAX_DISTANCE_METERS = {'lidar_gt_top_p128': 100.0}
 
     @classmethod
-    def get_constants(cls, platform_name: str) -> Hyperion8Constants | Hyperion81Constants:
-        ''' Parse platform name into constants for a given plaform '''
+    def get_constants(cls, rig_properties: dict[str, str]) -> Hyperion8Constants | Hyperion81Constants:
+        ''' Parse rig properties into constants for a given plaform '''
 
-        # Determine major platform version
-        if platform_name.startswith('hy8.1_'):
-            return cls.Hyperion81Constants()
-        elif platform_name.startswith('hy8_'):
-            return cls.Hyperion8Constants()
-        else:
-            raise ValueError(f'Unknown / unsupported platform {platform_name}')
+        # Determine major platform version from 'platform_name' property
+        if platform_name := rig_properties.get('platform_name', None):
+            if platform_name.startswith('hy8.1_'):
+                return cls.Hyperion81Constants()
+            elif platform_name.startswith('hy8_'):
+                return cls.Hyperion8Constants()
+
+        # Older rigs use 'layout' property
+        if layout := rig_properties.get('layout', None):
+            if layout.startswith('hyperion_8_'):
+                return cls.Hyperion8Constants()
+
+        raise ValueError(f'Unknown / unsupported platform in rig-properties {rig_properties}')

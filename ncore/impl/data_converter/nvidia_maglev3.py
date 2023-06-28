@@ -63,7 +63,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         with open(sequence_path / 'rig.json', 'r') as fp:
             self.rig = json.load(fp)
 
-        self.constants = self.get_constants(self.rig['rig']['properties']['platform_name'])
+        self.constants = self.get_constants(self.rig['rig']['properties'])
 
         self.sensors_calibration_data = parse_rig_sensors_from_dict(self.rig)
 
