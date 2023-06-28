@@ -22,7 +22,7 @@ from ncore.impl.data import types, util
 from ncore.impl.common.nvidia_utils import (load_maglev_camera_indexer_frame_meta, load_maglev_egomotion,
                                             load_maglev_session_id, parse_rig_sensors_from_dict, sensor_to_rig,
                                             camera_intrinsic_parameters, compute_fw_polynomial,
-                                            compute_ftheta_parameters)
+                                            compute_ftheta_fov)
 from ncore.impl.common.common import uniform_subdivide_range, PoseInterpolator
 
 
@@ -127,6 +127,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Read rig json file and sensor information
         with open(sequence_path / 'rig.json', 'r') as fp:
             self.rig = json.load(fp)
+
+        self.constants = self.get_constants(self.rig['rig']['properties'])
 
         self.sensors_calibration_data = parse_rig_sensors_from_dict(self.rig)
 
@@ -239,7 +241,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         }
 
         # Process all camera sensors
-        for camera_id, camera_rig_name in self.CAMERAID_TO_RIGNAME.items():
+        for camera_id, camera_rig_name in self.constants.CAMERAID_TO_RIGNAME.items():
 
             # Load crop transform for current camera, skip cameras that don't have a crop-transformation
             if not (crop_transform := CAMERAID_TO_CROPTRANSFORM.get(camera_id, None)):
@@ -248,7 +250,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             logger.info(f'Processing camera {camera_rig_name}')
 
-            camera_type = self.CAMERAID_TO_CAMERATYPE[camera_id]
+            sensor_type = self.constants.CAMERAID_TO_SENSORTYPE[camera_id]
 
             # Load frame numbers and timestamps
             raw_frame_numbers, raw_frame_timestamps_us = load_maglev_camera_indexer_frame_meta(
@@ -257,12 +259,12 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             assert len(raw_frame_numbers) == len(raw_frame_timestamps_us)
 
             # Map raw frame timestamps to end-of-frame timestamps respecting exposure times in middle of row
-            raw_frame_timestamps_us = raw_frame_timestamps_us - self.CAMERATYPE_TO_EXPOSURETIME_HALF_US[camera_type]
+            raw_frame_timestamps_us = raw_frame_timestamps_us - self.constants.SENSORTYPE_TO_EXPOSURETIME_HALF_US[sensor_type]
 
             # Get the frame range of the first and last frame relative to available egomotion poses and respecting exposure timings
             global_range_start = np.argmax(
                 raw_frame_timestamps_us -
-                self.CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US[camera_type] >= self.global_start_timestamp_us)
+                self.constants.SENSORTYPE_TO_ROLLINGSHUTTERDELAY_US[sensor_type] >= self.global_start_timestamp_us)
             global_range_end = np.argmax(raw_frame_timestamps_us > self.global_end_timestamp_us) \
                 if raw_frame_timestamps_us[-1] > self.global_end_timestamp_us else len(raw_frame_timestamps_us) # take all frames if all are within egomotion range, or determine last valid frame
 
@@ -285,12 +287,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             # Estimate the forward polynomial
             intrinsic = camera_intrinsic_parameters(
                 camera_calibration_data, logger
-            )  # TODO: make sure we return 6th-order polynomial unconditionally. Ideally also cleanup clumpsy single-array representation for intrinsics
+            )
 
             bw_poly = intrinsic[4:]
             fw_poly = compute_fw_polynomial(intrinsic)
-            _, max_angle = compute_ftheta_parameters(np.concatenate((intrinsic, fw_poly)),
-                                                     np.deg2rad(self.MAX_CAMERA_FOV_DEG / 2))
+            max_angle = min(compute_ftheta_fov(intrinsic)[2].item(), np.deg2rad(self.constants.MAX_CAMERA_FOV_DEG / 2))
 
             camera_model_parameters = types.FThetaCameraModelParameters(
                 intrinsic[2:4].astype(np.uint64), types.ShutterType.ROLLING_TOP_TO_BOTTOM, intrinsic[0:2],
@@ -342,7 +343,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                         resample=PILImage.LANCZOS)  # crop and downsample ROI
 
                     timestamps_us = np.array([
-                        frame_end_timestamp_us - self.CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US[camera_type], \
+                        frame_end_timestamp_us - self.constants.SENSORTYPE_TO_ROLLINGSHUTTERDELAY_US[sensor_type], \
                         frame_end_timestamp_us
                     ])
                     T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)

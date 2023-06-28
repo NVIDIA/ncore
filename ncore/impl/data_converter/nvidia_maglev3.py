@@ -20,9 +20,8 @@ from ncore.impl.data.types import FThetaCameraModelParameters, LabelSource, Pose
 from ncore.impl.common.nvidia_utils import (load_maglev_camera_indexer_frame_meta, load_maglev_lidar_indexer_frame_meta,
                                             load_maglev_egomotion, load_maglev_session_id, parse_rig_sensors_from_dict,
                                             sensor_to_rig, LabelProcessor, camera_intrinsic_parameters,
-                                            compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask,
-                                            vehicle_bbox)
-from ncore.impl.common.common import load_jsonl, PoseInterpolator, uniform_subdivide_range, SimpleTimer
+                                            compute_fw_polynomial, compute_ftheta_fov, camera_car_mask, vehicle_bbox)
+from ncore.impl.common.common import PoseInterpolator, uniform_subdivide_range, SimpleTimer
 from ncore.impl.av_utils import isWithin3DBBox
 
 
@@ -64,6 +63,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         with open(sequence_path / 'rig.json', 'r') as fp:
             self.rig = json.load(fp)
 
+        self.constants = self.get_constants(self.rig['rig']['properties'])
+
         self.sensors_calibration_data = parse_rig_sensors_from_dict(self.rig)
 
         # Determine session-id to be processed
@@ -74,8 +75,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.data_writer = ContainerDataWriter(
             self.output_dir / session_id,
             f'{session_id}_{self.shard_id}-{self.shard_count}',
-            list(self.CAMERAID_TO_RIGNAME.keys()),
-            list(self.LIDARID_TO_RIGNAME.keys()),
+            list(self.constants.CAMERAID_TO_RIGNAME.keys()),
+            list(self.constants.LIDARID_TO_RIGNAME.keys()),
             []  # no radars yet
             ,
             # TODO: parse these from the data
@@ -196,10 +197,10 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.track_labels, self.frame_labels = LabelProcessor.parse(
             labels_path, {
                 lidar_id: load_maglev_lidar_indexer_frame_meta(Path(self.sequence_path / 'lidars' / lidar_rig_name))
-                for lidar_id, lidar_rig_name in self.LIDARID_TO_RIGNAME.items()
+                for lidar_id, lidar_rig_name in self.constants.LIDARID_TO_RIGNAME.items()
             }, {
                 lidar_id: sensor_to_rig(self.sensors_calibration_data[lidar_rig_name])
-                for lidar_id, lidar_rig_name in self.LIDARID_TO_RIGNAME.items()
+                for lidar_id, lidar_rig_name in self.constants.LIDARID_TO_RIGNAME.items()
             }, self.global_T_rig_world_timestamps_us, self.global_T_rig_worlds, LabelSource.AUTOLABEL, logger)
 
         # Save the accumulated tracks in global time
@@ -213,10 +214,10 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         pose_interpolator = PoseInterpolator(self.global_T_rig_worlds, self.global_T_rig_world_timestamps_us)
 
         # Process all camera sensors
-        for camera_id, camera_rig_name in self.CAMERAID_TO_RIGNAME.items():
+        for camera_id, camera_rig_name in self.constants.CAMERAID_TO_RIGNAME.items():
             logger.info(f'Processing camera {camera_rig_name}')
 
-            camera_type = self.CAMERAID_TO_CAMERATYPE[camera_id]
+            sensor_type = self.constants.CAMERAID_TO_SENSORTYPE[camera_id]
 
             # Load frame numbers and timestamps
             raw_frame_numbers, raw_frame_timestamps_us = load_maglev_camera_indexer_frame_meta(
@@ -225,7 +226,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             assert len(raw_frame_numbers) == len(raw_frame_timestamps_us)
 
             # Map raw frame timestamps to end-of-frame timestamps respecting exposure times in middle of row
-            raw_frame_timestamps_us = raw_frame_timestamps_us - self.CAMERATYPE_TO_EXPOSURETIME_HALF_US[camera_type]
+            raw_frame_timestamps_us = raw_frame_timestamps_us - self.constants.SENSORTYPE_TO_EXPOSURETIME_HALF_US[
+                sensor_type]
 
             # Get the frame range of the first and last frame relative to available egomotion poses and respecting exposure timings
             global_range_start = np.argmax(raw_frame_timestamps_us >= self.global_start_timestamp_us)
@@ -266,13 +268,13 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             # Estimate the forward polynomial
             intrinsic = camera_intrinsic_parameters(
-                camera_calibration_data, logger
-            )  # TODO: make sure we return 6th-order polynomial unconditionally. Ideally also cleanup clumpsy single-array representation for intrinsics
+                camera_calibration_data,
+                logger,
+            )
 
             bw_poly = intrinsic[4:]
             fw_poly = compute_fw_polynomial(intrinsic)
-            _, max_angle = compute_ftheta_parameters(np.concatenate((intrinsic, fw_poly)),
-                                                     np.deg2rad(self.MAX_CAMERA_FOV_DEG / 2))
+            max_angle = min(compute_ftheta_fov(intrinsic)[2].item(), np.deg2rad(self.constants.MAX_CAMERA_FOV_DEG / 2))
 
             # Constant mask image, which currently only contains the ego car mask
             # TODO: extend this with dynamic object masks
@@ -305,7 +307,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 # Interpolate the start and end pose to the timestamps of the first and last row
                 timestamps_us = np.array([
                     # Snap very first frame to the start of global egomotion in case timestamp of first row is outside of global pose-range
-                    max(frame_end_timestamp_us - self.CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US[camera_type],
+                    max(frame_end_timestamp_us - self.constants.SENSORTYPE_TO_ROLLINGSHUTTERDELAY_US[sensor_type],
                         self.global_T_rig_world_timestamps_us[0]),
                     frame_end_timestamp_us
                 ])
@@ -317,7 +319,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             logger.info(f'> processed {len(local_frame_timestamps_us)} local'
                         f' images [shard {self.shard_id}/{self.shard_count}]')
 
-        logger.info(f'> processed {len(self.CAMERAID_TO_RIGNAME)} cameras')
+        logger.info(f'> processed {len(self.constants.CAMERAID_TO_RIGNAME)} cameras')
 
     def decode_lidars(self):
         logger = self.logger.getChild('decode_lidars')
@@ -328,10 +330,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         # Load vehicle bounding box (defined in rig frame)
         vehicle_bbox_rig = vehicle_bbox(self.rig)
-        vehicle_bbox_rig[3:6] += self.LIDAR_FILTER_VEHICLE_BBOX_PADDING_METERS  # pad the bounding box slightly
+        vehicle_bbox_rig[
+            3:6] += self.constants.LIDAR_FILTER_VEHICLE_BBOX_PADDING_METERS  # pad the bounding box slightly
 
         # Process all lidar sensors
-        for lidar_id, lidar_rig_name in self.LIDARID_TO_RIGNAME.items():
+        for lidar_id, lidar_rig_name in self.constants.LIDARID_TO_RIGNAME.items():
             logger.info(f'Processing lidar {lidar_rig_name}')
 
             # Load extrinsics
@@ -519,7 +522,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
                 # Compute distances and filter points based on max distance
                 valid_idxs &= np.linalg.norm(xyz_s - xyz_e,
-                                             axis=1) < self.LIDARID_TO_FILTER_MAX_DISTANCE_METERS[lidar_id]
+                                             axis=1) < self.constants.LIDARID_TO_FILTER_MAX_DISTANCE_METERS[lidar_id]
 
                 time_process = timer.elapsed_sec(restart=True)
 
@@ -560,4 +563,4 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             logger.info(f'> processed {len(local_frame_timestamps_us)} local'
                         f' point clouds [shard {self.shard_id}/{self.shard_count}]')
 
-        logger.info(f'> processed {len(self.LIDARID_TO_RIGNAME)} lidars')
+        logger.info(f'> processed {len(self.constants.LIDARID_TO_RIGNAME)} lidars')

@@ -33,8 +33,12 @@ from ncore.impl.sensors.camera import CameraModel
               type=click.Choice(['cuda', 'cpu']),
               help='Device used for the computation via torch',
               default='cuda')
+@click.option('--pose',
+              type=click.Choice(['rolling-shutter', 'mean', 'start', 'end']),
+              help='Per-pixel poses to use (rolling-shutter optimization, mean frame pose, start frame pose, end frame pose) ',
+              default='rolling-shutter')
 def ncore_project_pc_to_img(shard_file_pattern: str, sensor_id: str, camera_id: str, start_frame: int, end_frame: int,
-                            step_frame: int, device: str):
+                            step_frame: int, device: str, pose: str):
     ''' Projects the point cloud to the camera image, comparing projection w. and w/o rolling shutter compensation  '''
 
     # Initialize the logger
@@ -73,11 +77,29 @@ def ncore_project_pc_to_img(shard_file_pattern: str, sensor_id: str, camera_id: 
 
         logger.info(f"Starting the projection with torch implementation on device={device}")
 
-        world_point_projections = cam_model.world_points_to_image_points_shutter_pose(pc,
-                                                                                      T_world_sensor_start,
-                                                                                      T_world_sensor_end,
-                                                                                      return_valid_indices=True,
-                                                                                      return_T_world_sensors=True)
+        match pose:
+            case 'rolling-shutter':
+                world_point_projections = cam_model.world_points_to_image_points_shutter_pose(
+                    pc,
+                    T_world_sensor_start,
+                    T_world_sensor_end,
+                    return_valid_indices=True,
+                    return_T_world_sensors=True)
+
+            case 'mean':
+                world_point_projections = cam_model.world_points_to_image_points_mean_pose(pc,
+                                                                                           T_world_sensor_start,
+                                                                                           T_world_sensor_end,
+                                                                                           return_valid_indices=True,
+                                                                                           return_T_world_sensors=True)
+
+            case 'start':
+                world_point_projections = cam_model.world_points_to_image_points_static_pose(
+                    pc, T_world_sensor_start, return_valid_indices=True, return_T_world_sensors=True)
+
+            case 'end':
+                world_point_projections = cam_model.world_points_to_image_points_static_pose(
+                    pc, T_world_sensor_end, return_valid_indices=True, return_T_world_sensors=True)
 
         image_point_coords = world_point_projections.image_points.cpu().numpy()
         trans_matrices = world_point_projections.T_world_sensors.cpu().numpy()  # type: ignore
@@ -87,7 +109,7 @@ def ncore_project_pc_to_img(shard_file_pattern: str, sensor_id: str, camera_id: 
 
         plot_points_on_image(np.concatenate((image_point_coords[:, :2], dist_rs), axis=1),
                              img_frame,
-                             f'Projection with rolling shutter (torch implementation @ {device})',
+                             f"Projection with {pose} poses (torch implementation @ {device})",
                              point_size=4.0)
 
 

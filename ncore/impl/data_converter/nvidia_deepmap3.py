@@ -27,7 +27,7 @@ from ncore.impl.common.common import PoseInterpolator
 from ncore.impl.common.nvidia_utils import (LabelProcessor, parse_rig_sensors_from_dict,
                                             load_maglev_lidar_indexer_frame_meta, sensor_to_rig, extract_pose,
                                             vehicle_bbox, camera_intrinsic_parameters, compute_fw_polynomial,
-                                            compute_ftheta_parameters, camera_car_mask)
+                                            compute_ftheta_fov, camera_car_mask)
 from ncore.impl.av_utils import isWithin3DBBox
 
 
@@ -35,10 +35,6 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
     """
     NVIDIA-specific data converter (based on DeepMap tracks)
     """
-
-    # *Single* reference lidar sensor
-    LIDAR_SENSOR_ID = 'lidar_gt_top_p128_v4p5'
-
     def __init__(self, config):
         super().__init__(config)
 
@@ -67,12 +63,27 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
         for track in sequence_tracks:
             self.track_name = track.split(os.sep)[-2]
 
+            # Read rig json file
+            with open(os.path.join(sequence_path, 'rig.json'), 'r') as fp:
+                self.rig = json.load(fp)
+
+            self.constants = self.get_constants(self.rig['rig']['properties'])
+
+            # *Single* reference lidar sensor
+            match self.constants:
+                case self.Hyperion8Constants():
+                    self.LIDAR_SENSOR_ID = 'lidar_gt_top_p128_v4p5'
+                case self.Hyperion81Constants():
+                    self.LIDAR_SENSOR_ID = 'lidar_gt_top_p128'
+                case _:
+                    raise ValueError(f'code-update required to select main-sensor for platform {self.constants}')
+
             # ContainerDataWriter for all outputs (always single-shard)
             self.data_writer = ContainerDataWriter(
                 self.output_dir / f'{self.sequence_name}-{self.track_name}',
                 f'{self.sequence_name}-{self.track_name}',
-                list(self.CAMERAID_TO_RIGNAME.keys()),
-                list(self.LIDARID_TO_RIGNAME.keys()),
+                list(self.constants.CAMERAID_TO_RIGNAME.keys()),
+                list(self.constants.LIDARID_TO_RIGNAME.keys()),
                 # no radars yet
                 [],
                 # TODO: parse these from the data
@@ -83,10 +94,6 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                 0,
                 1,
                 False)
-
-            # Read rig json file
-            with open(os.path.join(sequence_path, 'rig.json'), 'r') as fp:
-                self.rig = json.load(fp)
 
             self.calibration_data = parse_rig_sensors_from_dict(self.rig)
 
@@ -114,7 +121,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
 
     def decode_poses_timestamps(self, sequence_path):
         # Compute the transformation from the SDC (deepmap rig) to the NV rig definition
-        T_lidar_rig = sensor_to_rig(self.calibration_data[self.LIDARID_TO_RIGNAME[self.LIDAR_SENSOR_ID]])
+        T_lidar_rig = sensor_to_rig(self.calibration_data[self.constants.LIDARID_TO_RIGNAME[self.LIDAR_SENSOR_ID]])
         T_lidar_sdc = extract_sensor_2_sdc(os.path.join(sequence_path, 'to_vehicle_transform_lidar00.pb.txt'))
         T_rig_sdc = T_lidar_sdc @ np.linalg.inv(T_lidar_rig)
 
@@ -175,20 +182,22 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                 self.LIDAR_SENSOR_ID:
                 load_maglev_lidar_indexer_frame_meta(
                     Path(sequence_path) / 'labels' / f'{self.LIDAR_SENSOR_ID}_meta.json')
-            },
-            {self.LIDAR_SENSOR_ID: sensor_to_rig(self.calibration_data[self.LIDARID_TO_RIGNAME[self.LIDAR_SENSOR_ID]])},
-            self.poses_timestamps, self.poses, LabelSource.AUTOLABEL, self.logger)
+            }, {
+                self.LIDAR_SENSOR_ID:
+                sensor_to_rig(self.calibration_data[self.constants.LIDARID_TO_RIGNAME[self.LIDAR_SENSOR_ID]])
+            }, self.poses_timestamps, self.poses, LabelSource.AUTOLABEL, self.logger)
 
         # Save the accumulated track
         self.data_writer.store_labels(self.track_labels)
 
     def decode_lidar(self, sequence_path):
         # Load lidar extrinsics to compute poses of the rig frame if egomotion is represented in lidar frame
-        T_lidar_rig = sensor_to_rig(self.calibration_data[self.LIDARID_TO_RIGNAME[self.LIDAR_SENSOR_ID]])
+        T_lidar_rig = sensor_to_rig(self.calibration_data[self.constants.LIDARID_TO_RIGNAME[self.LIDAR_SENSOR_ID]])
 
         # Load vehicle bounding box (defined in rig frame)
         vehicle_bbox_rig = vehicle_bbox(self.rig)
-        vehicle_bbox_rig[3:6] += self.LIDAR_FILTER_VEHICLE_BBOX_PADDING_METERS  # pad the bounding box slightly
+        vehicle_bbox_rig[
+            3:6] += self.constants.LIDAR_FILTER_VEHICLE_BBOX_PADDING_METERS  # pad the bounding box slightly
 
         # Initialize the pose interpolator object
         pose_interpolator = PoseInterpolator(self.poses, self.poses_timestamps)
@@ -275,7 +284,8 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
             dist = np.linalg.norm(transformed_pc[:, :3] - transformed_pc[:, 3:6], axis=1)
 
             # Filter points on the distances LIDAR_FILTER_MAX_DISTANCE (remove points that are very far away)
-            valid_idx_dist = np.less_equal(dist, self.LIDARID_TO_FILTER_MAX_DISTANCE_METERS[self.LIDAR_SENSOR_ID])
+            valid_idx_dist = np.less_equal(dist,
+                                           self.constants.LIDARID_TO_FILTER_MAX_DISTANCE_METERS[self.LIDAR_SENSOR_ID])
             valid_idx = np.logical_and(valid_idxs_vehicle_bbox, valid_idx_dist)
 
             # Subselect to valid points
@@ -312,8 +322,8 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
         pose_interpolator = PoseInterpolator(self.poses, self.poses_timestamps)
 
         # Filter the images based on the pose timestamps
-        for camera_id, camera_rig_name in self.CAMERAID_TO_RIGNAME.items():
-            camera_type = self.CAMERAID_TO_CAMERATYPE[camera_id]
+        for camera_id, camera_rig_name in self.constants.CAMERAID_TO_RIGNAME.items():
+            sensor_type = self.constants.CAMERAID_TO_SENSORTYPE[camera_id]
 
             # Get the camera timestamps
             frame_timestamps = np.genfromtxt(os.path.join(sequence_path, 'camera_data/', camera_id + '.mp4.timestamps'),
@@ -325,8 +335,8 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
             end_timestamp_us = self.end_timestamp_us if self.end_timestamp_us else self.poses_timestamps[-1]
 
             start_idx = np.where(frame_timestamps[:, 1] > start_timestamp_us +
-                                 self.CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US[camera_type] +
-                                 2 * self.CAMERATYPE_TO_EXPOSURETIME_HALF_US[camera_type])[0][0]
+                                 self.constants.SENSORTYPE_TO_ROLLINGSHUTTERDELAY_US[sensor_type] +
+                                 2 * self.constants.SENSORTYPE_TO_EXPOSURETIME_HALF_US[sensor_type])[0][0]
             end_idx = np.where(frame_timestamps[:, 1] >= end_timestamp_us)[0]
             end_idx = end_idx[0] if len(end_idx) else len(frame_timestamps[:, 1])
 
@@ -369,10 +379,10 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                 # Interpolate the start and end pose to the timestamps of the first and last row
                 timestamps_us = np.array([
                     # sof-timestamp
-                    frame_timestamp_us - self.CAMERATYPE_TO_ROLLINGSHUTTERDELAY_US[camera_type] -
-                    self.CAMERATYPE_TO_EXPOSURETIME_HALF_US[camera_type],
+                    frame_timestamp_us - self.constants.SENSORTYPE_TO_ROLLINGSHUTTERDELAY_US[sensor_type] -
+                    self.constants.SENSORTYPE_TO_EXPOSURETIME_HALF_US[sensor_type],
                     # eof-timestamp
-                    frame_timestamp_us - self.CAMERATYPE_TO_EXPOSURETIME_HALF_US[camera_type]
+                    frame_timestamp_us - self.constants.SENSORTYPE_TO_EXPOSURETIME_HALF_US[sensor_type]
                 ])
 
                 T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
@@ -398,14 +408,11 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
             T_sensor_rig = sensor_to_rig(camera_calibration_data)
 
             # Estimate the forward polynomial
-            intrinsic = camera_intrinsic_parameters(
-                camera_calibration_data, self.logger
-            )  # TODO: make sure we return 6th-order polynomial unconditionally. Ideally also cleanup clumpsy single-array representation for intrinsics
+            intrinsic = camera_intrinsic_parameters(camera_calibration_data, self.logger)
 
             bw_poly = intrinsic[4:]
             fw_poly = compute_fw_polynomial(intrinsic)
-            _, max_angle = compute_ftheta_parameters(np.concatenate((intrinsic, fw_poly)),
-                                                     np.deg2rad(self.MAX_CAMERA_FOV_DEG / 2))
+            max_angle = min(compute_ftheta_fov(intrinsic)[2].item(), np.deg2rad(self.constants.MAX_CAMERA_FOV_DEG / 2))
 
             # Constant mask image, which currently only contains the ego car mask
             # TODO: extend this with dynamic object masks
@@ -413,7 +420,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
 
             # all end-of-frame timestamps
             eof_camera_timestamps_us = (frame_timestamps[:, 1] -
-                                        self.CAMERATYPE_TO_EXPOSURETIME_HALF_US[camera_type]).flatten()
+                                        self.constants.SENSORTYPE_TO_EXPOSURETIME_HALF_US[sensor_type]).flatten()
 
             self.data_writer.store_camera_meta(
                 camera_id, eof_camera_timestamps_us, T_sensor_rig,
