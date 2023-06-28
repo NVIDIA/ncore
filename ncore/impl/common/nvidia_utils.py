@@ -144,8 +144,7 @@ def sensor_to_rig(sensor) -> Optional[np.ndarray]:
 def camera_intrinsic_parameters(sensor: dict, logger: Optional[logging.Logger] = None) -> np.ndarray:
     """  Parses the provided rig-style camera sensor dictionary into FTheta camera intrinsic parameters.
 
-    Note: currenlty only 5th-order 'pixeldistance-to-angle' ("bw-poly") FTheta are supported, possibly
-          available 6th-order term will be dropped with a warning
+    Note: Only supporting FTheta 'pixeldistance-to-angle' ("bw-poly") polynomials up to 5th order (six coefficients)
 
     Args:
         sensor: the dictionary of the sensor parameters read from the rig file
@@ -162,9 +161,9 @@ def camera_intrinsic_parameters(sensor: dict, logger: Optional[logging.Logger] =
     height = float(sensor['properties']['height'])
 
     if 'bw-poly' in sensor['properties']:
-        # Legacy 5-th order backwards-polynomial
+        # Legacy 4th order backwards-polynomial
         bwpoly = [np.float32(val) for val in sensor['properties']['bw-poly'].split()]
-        assert len(bwpoly) == 5, "expecting fifth-order coefficients for 'bw-poly / 'pixeldistance-to-angle' polynomial"
+        assert len(bwpoly) == 5, "expecting 4th-order coefficients for 'bw-poly / 'pixeldistance-to-angle' polynomial"
     elif 'polynomial' in sensor['properties']:
         # Two-way forward / backward polynomial encoding
         assert sensor['properties']['polynomial-type'] == 'pixeldistance-to-angle', \
@@ -172,15 +171,11 @@ def camera_intrinsic_parameters(sensor: dict, logger: Optional[logging.Logger] =
 
         bwpoly = [np.float32(val) for val in sensor['properties']['polynomial'].split()]
 
-        if len(bwpoly) > 5:
-            # WAR: 6th-order polynomials are currently not supported in the software-stack, drop highest order coeffient for now
-            # TODO: extend internal camera model and NGP with support for 6th-order polynomials
-            if logger:
-                logger.warn(
-                    f"> encountered higher-order distortion polynomial for camera '{sensor['name']}', restricting to 5th-order, dropping coefficients '{bwpoly[5:]}' - parsed model might be inaccurate"
-                )
-
-            bwpoly = bwpoly[:5]
+        if len(bwpoly) - 1 > 5:
+            # > 5th-order polynomials are currently not supported in the software-stack - it's not valid to simply drop higher-order terms, so exit with error for now.
+            # If required in the future, a possible workaround is to "fit" a lower-order polynomial to evaluations of the higher-order inputs, but could introduce
+            # too much approximation errors.
+            raise ValueError(f"> encountered > 5th-order distortion polynomial for camera '{sensor['name']}'")
 
         # Affine term is currently not supported, issue a warning if it differs from identity
         # TODO: properly incorporate c,d,e coefficients of affine term [c, d; e, 1] into software stack (internal camera models + NGP)
@@ -585,16 +580,21 @@ class LabelProcessor:
         return dynamic_flag, current_frame_labels
 
 
-def backwards_polynomial(pixel_norms, intrinsic):
-    ret = 0
-    for k, coeff in enumerate(intrinsic):
+def eval_polynomial(xs: np.ndarray, coeffs, use_horner=True):
+    ''' Evaluates polynomial coeffs [,D] at given points [N,1]'''
+    ret = np.zeros((len(xs), 1), dtype=xs.dtype)
 
-        ret += coeff * pixel_norms**k
+    if not use_horner:
+        for k, coeff in enumerate(coeffs):
+            ret += coeff * xs**k
+    else:
+        for coeff in reversed(coeffs):
+            ret = ret * xs + coeff
 
     return ret
 
 
-def pixel_2_camera_ray(pixel_coords, intrinsic, camera_model):
+def pixel_2_camera_ray(pixel_coords: np.ndarray, intrinsic: np.ndarray, camera_model: str):
     ''' Convert the pixel coordinates to a 3D ray in the camera coordinate system.
 
     Args:
@@ -619,7 +619,7 @@ def pixel_2_camera_ray(pixel_coords, intrinsic, camera_model):
 
         pixel_norms = np.linalg.norm(pixel_offsets, axis=1, keepdims=True)
 
-        alphas = backwards_polynomial(pixel_norms, intrinsic[4:9])
+        alphas = eval_polynomial(pixel_norms, intrinsic[4:])  # evaluate bw_poly
         camera_rays[:, 0:1] = (np.sin(alphas) * pixel_offsets[:, 0:1]) / pixel_norms
         camera_rays[:, 1:2] = (np.sin(alphas) * pixel_offsets[:, 1:2]) / pixel_norms
         camera_rays[:, 2:3] = np.cos(alphas)
@@ -665,22 +665,34 @@ def compute_fw_polynomial(intrinsic):
     x = np.asarray(samples_x, dtype=np.float64)
     y = np.asarray(samples_b, dtype=np.float64)
 
-    # Fit a 4th degree polynomial. The polynomial function is as follows:
-
-    def f(x, b, x1, x2, x3, x4):
+    def f4(x, b, x1, x2, x3, x4):
         """4th degree polynomial."""
         return b + x1 * x + x2 * (x**2) + x3 * (x**3) + x4 * (x**4)
 
+    def f5(x, b, x1, x2, x3, x4, x5):
+        """5th degree polynomial."""
+        return b + x1 * x + x2 * (x**2) + x3 * (x**3) + x4 * (x**4) + x5 * (x**5)
+
+    match bw_poly_degree := len(intrinsic[4:]) - 1:
+        case 4:
+            # Fit a 4th degree polynomial
+            f = f4
+            bounds = (
+                [0, -np.inf, -np.inf, -np.inf, -np.inf],
+                [np.finfo(np.float64).eps, np.inf, np.inf, np.inf, np.inf],
+            )
+        case 5:
+            # Fit a 5th degree polynomial
+            f = f5
+            bounds = (
+                [0, -np.inf, -np.inf, -np.inf, -np.inf, -np.inf],
+                [np.finfo(np.float64).eps, np.inf, np.inf, np.inf, np.inf, np.inf],
+            )
+        case _:
+            raise ValueError(f'Unsupported polynomial degree {bw_poly_degree}')
+
     # The constant in the polynomial should be zero, so add the `bounds` condition.
-    coeffs, _ = curve_fit(
-        f,
-        x,
-        y,
-        bounds=(
-            [0, -np.inf, -np.inf, -np.inf, -np.inf],
-            [np.finfo(np.float64).eps, np.inf, np.inf, np.inf, np.inf],
-        ),
-    )
+    coeffs, _ = curve_fit(f, x, y, bounds=bounds)
 
     return np.array([np.float32(val) if i > 0 else 0 for i, val in enumerate(coeffs)], dtype=np.float32)
 
@@ -730,42 +742,6 @@ def _compute_max_angle(intrinsic):
         max(_get_pixel_fov(p[0:1, ...], intrinsic), _get_pixel_fov(p[1:2, ...], intrinsic)),
         max(_get_pixel_fov(p[2:3, ...], intrinsic), _get_pixel_fov(p[3:4, ...], intrinsic)),
     )
-
-
-def compute_ftheta_parameters(intrinsic: np.ndarray,
-                              max_angle_limit_rad: float) -> Tuple[npt.NDArray[np.float32], float]:
-
-    # Initialize the forward polynomial
-    fw_poly = Polynomial(intrinsic[9:14])
-
-    _, _, max_angle = compute_ftheta_fov(intrinsic)
-
-    is_fw_poly_slope_negative_in_domain = False
-    ray_angle = max_angle.copy()
-    deg2rad = np.pi / 180.0
-    while ray_angle >= np.float32(0.0):
-        temp_dval = fw_poly.deriv()(max_angle).item()
-        if temp_dval < 0:
-            is_fw_poly_slope_negative_in_domain = True
-        ray_angle -= deg2rad
-
-    if is_fw_poly_slope_negative_in_domain:
-        ray_angle = max_angle.copy()
-        while ray_angle >= 0.0:
-            ray_angle -= deg2rad
-        raise ArithmeticError("FThetaCamera: derivative of distortion within image interior is negative")
-
-    # Evaluate the forward polynomial at point (self._max_ray_angle, 0)
-    # Also evaluate its derivative at the same point
-    val = fw_poly(max_angle).item()
-    dval = fw_poly.deriv()(max_angle).item()
-
-    if dval < 0:
-        raise ArithmeticError("FThetaCamera: derivative of distortion at edge of image is negative")
-
-    max_ray_distortion = np.asarray([val, dval], dtype=np.float32)
-
-    return max_ray_distortion, min(max_angle.astype(np.float32).item(), max_angle_limit_rad)
 
 
 def load_maglev_camera_indexer_frame_meta(camera_path: Path) -> Tuple[np.ndarray, np.ndarray]:

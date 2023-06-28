@@ -20,8 +20,7 @@ from ncore.impl.data.types import FThetaCameraModelParameters, LabelSource, Pose
 from ncore.impl.common.nvidia_utils import (load_maglev_camera_indexer_frame_meta, load_maglev_lidar_indexer_frame_meta,
                                             load_maglev_egomotion, load_maglev_session_id, parse_rig_sensors_from_dict,
                                             sensor_to_rig, LabelProcessor, camera_intrinsic_parameters,
-                                            compute_fw_polynomial, compute_ftheta_parameters, camera_car_mask,
-                                            vehicle_bbox)
+                                            compute_fw_polynomial, compute_ftheta_fov, camera_car_mask, vehicle_bbox)
 from ncore.impl.common.common import PoseInterpolator, uniform_subdivide_range, SimpleTimer
 from ncore.impl.av_utils import isWithin3DBBox
 
@@ -269,13 +268,13 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             # Estimate the forward polynomial
             intrinsic = camera_intrinsic_parameters(
-                camera_calibration_data, logger
-            )  # TODO: make sure we return 6th-order polynomial unconditionally. Ideally also cleanup clumpsy single-array representation for intrinsics
+                camera_calibration_data,
+                logger,
+            )
 
             bw_poly = intrinsic[4:]
             fw_poly = compute_fw_polynomial(intrinsic)
-            _, max_angle = compute_ftheta_parameters(np.concatenate((intrinsic, fw_poly)),
-                                                     np.deg2rad(self.constants.MAX_CAMERA_FOV_DEG / 2))
+            max_angle = min(compute_ftheta_fov(intrinsic)[2].item(), np.deg2rad(self.constants.MAX_CAMERA_FOV_DEG / 2))
 
             # Constant mask image, which currently only contains the ego car mask
             # TODO: extend this with dynamic object masks

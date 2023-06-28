@@ -22,7 +22,7 @@ from ncore.impl.data import types, util
 from ncore.impl.common.nvidia_utils import (load_maglev_camera_indexer_frame_meta, load_maglev_egomotion,
                                             load_maglev_session_id, parse_rig_sensors_from_dict, sensor_to_rig,
                                             camera_intrinsic_parameters, compute_fw_polynomial,
-                                            compute_ftheta_parameters)
+                                            compute_ftheta_fov)
 from ncore.impl.common.common import uniform_subdivide_range, PoseInterpolator
 
 
@@ -287,12 +287,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             # Estimate the forward polynomial
             intrinsic = camera_intrinsic_parameters(
                 camera_calibration_data, logger
-            )  # TODO: make sure we return 6th-order polynomial unconditionally. Ideally also cleanup clumpsy single-array representation for intrinsics
+            )
 
             bw_poly = intrinsic[4:]
             fw_poly = compute_fw_polynomial(intrinsic)
-            _, max_angle = compute_ftheta_parameters(np.concatenate((intrinsic, fw_poly)),
-                                                     np.deg2rad(self.constants.MAX_CAMERA_FOV_DEG / 2))
+            max_angle = min(compute_ftheta_fov(intrinsic)[2].item(), np.deg2rad(self.constants.MAX_CAMERA_FOV_DEG / 2))
 
             camera_model_parameters = types.FThetaCameraModelParameters(
                 intrinsic[2:4].astype(np.uint64), types.ShutterType.ROLLING_TOP_TO_BOTTOM, intrinsic[0:2],

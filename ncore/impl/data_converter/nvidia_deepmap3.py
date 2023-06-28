@@ -27,7 +27,7 @@ from ncore.impl.common.common import PoseInterpolator
 from ncore.impl.common.nvidia_utils import (LabelProcessor, parse_rig_sensors_from_dict,
                                             load_maglev_lidar_indexer_frame_meta, sensor_to_rig, extract_pose,
                                             vehicle_bbox, camera_intrinsic_parameters, compute_fw_polynomial,
-                                            compute_ftheta_parameters, camera_car_mask)
+                                            compute_ftheta_fov, camera_car_mask)
 from ncore.impl.av_utils import isWithin3DBBox
 
 
@@ -408,14 +408,11 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
             T_sensor_rig = sensor_to_rig(camera_calibration_data)
 
             # Estimate the forward polynomial
-            intrinsic = camera_intrinsic_parameters(
-                camera_calibration_data, self.logger
-            )  # TODO: make sure we return 6th-order polynomial unconditionally. Ideally also cleanup clumpsy single-array representation for intrinsics
+            intrinsic = camera_intrinsic_parameters(camera_calibration_data, self.logger)
 
             bw_poly = intrinsic[4:]
             fw_poly = compute_fw_polynomial(intrinsic)
-            _, max_angle = compute_ftheta_parameters(np.concatenate((intrinsic, fw_poly)),
-                                                     np.deg2rad(self.constants.MAX_CAMERA_FOV_DEG / 2))
+            max_angle = min(compute_ftheta_fov(intrinsic)[2].item(), np.deg2rad(self.constants.MAX_CAMERA_FOV_DEG / 2))
 
             # Constant mask image, which currently only contains the ego car mask
             # TODO: extend this with dynamic object masks
