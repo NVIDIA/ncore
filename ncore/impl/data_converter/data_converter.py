@@ -201,14 +201,15 @@ class BaseNvidiaDataConverter(DataConverter):
         }
 
         # Sensor-specific exposure times (rounded to integer US)
+        # (see timing measurements in https://docs.google.com/spreadsheets/d/1khZRA0J2KBQrVTBmP5Z1cqCc4lIXXQUniNv9977fDUg/edit#gid=787900965)
         SENSORTYPE_TO_EXPOSURETIME_HALF_US = {
             'IMX728': np.uint64(10000 / 2),
-            'IMX623': np.uint64(9981 / 2)
+            'IMX623': np.uint64(10000 / 2)
         }  # rounded to integer US
 
         SENSORTYPE_TO_ROLLINGSHUTTERDELAY_US = {
-            'IMX728': np.uint64(32561.63),  # WARNING: these are unverified / same as for IMX390 for now
-            'IMX623': np.uint64(32561.63)
+            'IMX728': np.uint64(30559.06582),
+            'IMX623': np.uint64(30061.61757)
         }  # rounded to integer US
 
         LIDARID_TO_RIGNAME = {
@@ -216,11 +217,6 @@ class BaseNvidiaDataConverter(DataConverter):
         }
 
         LIDARID_TO_FILTER_MAX_DISTANCE_METERS = {'lidar_gt_top_p128': 100.0}
-
-        def __post_init__(self):
-            # Issue warning until all exposure-parameters are verified
-            logging.warn(
-                'Timing-parameters of Hyperion81Constants not fully verified yet - results might be inaccurate!')
 
     @classmethod
     def get_constants(cls, rig_properties: dict[str, str]) -> Hyperion8Constants | Hyperion81Constants:
