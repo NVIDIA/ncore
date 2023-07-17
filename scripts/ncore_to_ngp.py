@@ -296,9 +296,6 @@ def ncore_to_ngp(
                 focal_length = fw_poly[1]
                 fov_angle_x = math.atan2(resolution[0], focal_length * 2) * 2
 
-                # Extract the rolling shutter parameters representing y = a + b*x + c*y
-                rolling_shutter = RS_DIR_TO_NGP[shutter_type.name]
-
                 assert len(
                     bw_poly
                 ) == 6, "Update polynomial export in case the internal order of distortion polynomials changed"
@@ -321,9 +318,12 @@ def ncore_to_ngp(
                     "ftheta_f4": float(fw_poly[4]),
                     "ftheta_f5": float(fw_poly[5]),
                     "reference_poly": reference_poly.name,
-                    "rolling_shutter": rolling_shutter.tolist(),
                     "camera_angle_x": fov_angle_x,
                 }
+
+                # Extract the rolling shutter parameters representing y = a + b*x + c*y (skip for GLOBAL shutter)
+                if shutter_type.name in RS_DIR_TO_NGP:
+                    camera_data["intrinsic_data"]["rolling_shutter"] = RS_DIR_TO_NGP[shutter_type.name].tolist()
 
                 # Restrict effective FOV for cuboid projections to prevent issues with *invalid* points projected back into the valid image domain FOV
                 # - this way they get properly classified as invalid
@@ -334,9 +334,6 @@ def ncore_to_ngp(
                 # Get the focal length and compute the angular field of view
                 fov_angle_x = math.atan(pinhole.resolution[0] / (pinhole.focal_length[0] * 2)) * 2
                 fov_angle_y = math.atan(pinhole.resolution[1] / (pinhole.focal_length[1] * 2)) * 2
-
-                # Extract the rolling shutter parameters representing y = a + b*x + c*y
-                rolling_shutter = RS_DIR_TO_NGP[pinhole.shutter_type.name]
 
                 if not np.isclose(pinhole.radial_coeffs[2], 0).all():
                     logger.warn(f'Pinhole camera model of {camera_id} has non-zero radial distortion coefficient k3, '
@@ -370,10 +367,13 @@ def ncore_to_ngp(
                     "s2": float(pinhole.thin_prism_coeffs[1]),
                     "s3": float(pinhole.thin_prism_coeffs[2]),
                     "s4": float(pinhole.thin_prism_coeffs[3]),
-                    "rolling_shutter": rolling_shutter.tolist(),
                     "camera_angle_x": fov_angle_x,
                     "camera_angle_y": fov_angle_y
                 }
+
+                # Extract the rolling shutter parameters representing y = a + b*x + c*y (skip for GLOBAL shutter)
+                if pinhole.shutter_type.name in RS_DIR_TO_NGP:
+                    camera_data["intrinsic_data"]["rolling_shutter"] = RS_DIR_TO_NGP[pinhole.shutter_type.name].tolist()
             case _:
                 raise TypeError(
                     f"unsupported camera model type {type(camera_model_parameters)}, currently supporting Ftheta/Pinhole only"
