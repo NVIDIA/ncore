@@ -283,6 +283,10 @@ class CameraModel(ABC):
             assert end_timestamp_us is not None
             assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
 
+            # Make sure timestamps have correct type (might be, e.g., np.uint64, which torch doesn't like)
+            start_timestamp_us = int(start_timestamp_us)
+            end_timestamp_us = int(end_timestamp_us)
+
         # Always perform transformation using start pose
         image_points_start = self.camera_rays_to_image_points(
             (T_world_sensor_start[:3, :3] @ world_points.transpose(0, 1) + T_world_sensor_start[:3, 3, None]).transpose(
