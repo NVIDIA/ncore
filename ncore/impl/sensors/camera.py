@@ -283,6 +283,10 @@ class CameraModel(ABC):
             assert end_timestamp_us is not None
             assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
 
+            # Make sure timestamps have correct type (might be, e.g., np.uint64, which torch doesn't like)
+            start_timestamp_us = int(start_timestamp_us)
+            end_timestamp_us = int(end_timestamp_us)
+
         # Always perform transformation using start pose
         image_points_start = self.camera_rays_to_image_points(
             (T_world_sensor_start[:3, :3] @ world_points.transpose(0, 1) + T_world_sensor_start[:3, 3, None]).transpose(
@@ -378,16 +382,16 @@ class CameraModel(ABC):
             # Combine validity flags
             # (valid_rs represents a strict logical subset of full valid flags, so no logical operation required)
             valid[torch.argwhere(valid).squeeze()] = image_points_rs.valid_flag
-            return_var.valid_indices = torch.argwhere(valid).squeeze()
+            return_var.valid_indices = torch.argwhere(valid).squeeze(1)
 
         if return_timestamps:
             return_var.timestamps_us = (torch.floor((1 - t)[..., None] * start_timestamp_us +
-                                                    t[..., None] * end_timestamp_us).to(torch.int64)).squeeze()
+                                                    t[..., None] * end_timestamp_us).to(torch.int64)).squeeze(1)
 
         if return_all_projections:
             if not return_valid_indices:
                 valid[torch.argwhere(valid).squeeze()] = image_points_rs.valid_flag
-                valid_indices = torch.argwhere(valid).squeeze()
+                valid_indices = torch.argwhere(valid).squeeze(1)
             else:
                 valid_indices = return_var.valid_indices  # type: ignore
 
