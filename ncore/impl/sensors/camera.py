@@ -378,16 +378,16 @@ class CameraModel(ABC):
             # Combine validity flags
             # (valid_rs represents a strict logical subset of full valid flags, so no logical operation required)
             valid[torch.argwhere(valid).squeeze()] = image_points_rs.valid_flag
-            return_var.valid_indices = torch.argwhere(valid).squeeze()
+            return_var.valid_indices = torch.argwhere(valid).squeeze(1)
 
         if return_timestamps:
             return_var.timestamps_us = (torch.floor((1 - t)[..., None] * start_timestamp_us +
-                                                    t[..., None] * end_timestamp_us).to(torch.int64)).squeeze()
+                                                    t[..., None] * end_timestamp_us).to(torch.int64)).squeeze(1)
 
         if return_all_projections:
             if not return_valid_indices:
                 valid[torch.argwhere(valid).squeeze()] = image_points_rs.valid_flag
-                valid_indices = torch.argwhere(valid).squeeze()
+                valid_indices = torch.argwhere(valid).squeeze(1)
             else:
                 valid_indices = return_var.valid_indices  # type: ignore
 
