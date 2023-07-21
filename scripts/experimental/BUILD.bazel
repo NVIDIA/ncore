@@ -30,4 +30,15 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "ncore_subrange",
+    srcs = ["ncore_subrange.py"],
+    deps = [
+        requirement("click"),
+        "//ncore/impl/common:pylib_nvidia",
+        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data_converter:pylib_waymo_open",
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")
