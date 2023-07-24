@@ -612,7 +612,9 @@ class ShardDataLoader:
                 shard_radar_ids = set(shard_root.attrs.get('radar_ids'))
                 shard_shard_id = shard_root.attrs.get('shard_id')
                 shard_shard_count = shard_root.attrs.get('shard_count')
-                shard_shard_version = shard_root.attrs.get('version')
+                shard_version = shard_root.attrs.get('version')
+                shard_calibration_type = shard_root.attrs.get('calibration_type')
+                shard_egomotion_type = shard_root.attrs.get('egomotion_type')
 
                 if not shards_map:
                     self._sequence_id: str = shard_sequence_id
@@ -620,7 +622,9 @@ class ShardDataLoader:
                     self._lidar_ids: set[str] = shard_lidar_ids
                     self._radar_ids: set[str] = shard_radar_ids
                     self._shard_count: int = shard_shard_count
-                    self._shard_version: str = shard_shard_version
+                    self._shard_version: str = shard_version
+                    self._calibration_type: str = shard_calibration_type
+                    self._egomotion_type: str = shard_egomotion_type
 
                 if not self._sequence_id == shard_sequence_id:
                     raise ValueError("Can't load shards from different sequences")
@@ -632,8 +636,12 @@ class ShardDataLoader:
                     raise ValueError("Can't load shards with different radar sensors")
                 if not self._shard_count == shard_shard_count:
                     raise ValueError("Can't load shards from different subdivisions")
-                if not self._shard_version == shard_shard_version:
+                if not self._shard_version == shard_version:
                     raise ValueError("Can't load shards from different data versions")
+                if not self._calibration_type == shard_calibration_type:
+                    raise ValueError("Can't load shards with different calibration types")
+                if not self._egomotion_type == shard_egomotion_type:
+                    raise ValueError("Can't load shards with different egomotion types")
 
                 if shard_shard_id in shards_map: raise ValueError("Shard ID loaded multiple times")
 
@@ -709,6 +717,14 @@ class ShardDataLoader:
         if with_shard_range:
             return f"{self._sequence_id}_{'_'.join([str(shard_id) for shard_id in self._shard_ids])}"
         return self._sequence_id
+
+    def get_calibration_type(self) -> str:
+        ''' Provides access to a calibration type identifier of the loaded shard data '''
+        return self._calibration_type
+
+    def get_egomotion_type(self) -> str:
+        ''' Provides access to a egomotion type identifier of the loaded shard data '''
+        return self._egomotion_type
 
     def get_shard_paths(self) -> list[str]:
         ''' Returns paths to loaded shards (ordered by linear shard ID) '''
