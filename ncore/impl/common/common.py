@@ -470,12 +470,12 @@ def time_bounds(timestamps_us: list[int], seek_sec: Optional[float], duration_se
     start_timestamp_us = int(timestamps_us[0])
     end_timestamp_us = int(timestamps_us[-1])
 
-    if seek_sec:
+    if seek_sec is not None:
         assert seek_sec >= 0.0, "Require positive seek time"
         start_timestamp_us += int(seek_sec * 1e6)
 
-    if duration_sec:
-        assert duration_sec >= 0.0, "Require positive duration time"
+    if duration_sec is not None:
+        assert duration_sec > 0.0, "Require positive duration time"
         end_timestamp_us = start_timestamp_us + int(duration_sec * 1e6)
 
     assert start_timestamp_us < end_timestamp_us, "Arguments lead to invalid time bounds"
