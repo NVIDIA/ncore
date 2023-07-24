@@ -1,5 +1,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
+from __future__ import annotations
+
 import pickle
 import re
 import struct
@@ -12,6 +14,7 @@ import time
 from enum import Enum
 from pathlib import Path
 from typing import Optional, Tuple, Union
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -517,6 +520,53 @@ def uniform_subdivide_range(subdiv_id: int, subdiv_count: int, range_start: int,
 
     return local_range, local_range[0] - range_start if len(local_range) else -1
 
+@dataclass(slots=True, frozen=True)
+class HalfClosedInterval:
+    ''' Represents a half closed interval [start, stop) of integers '''
+    start: int
+    stop: int
+
+    def __post_init__(self) -> None:
+        ''' Makes sure interval is well-defined '''
+        assert isinstance(self.start, int)
+        assert isinstance(self.stop, int)
+        assert self.start <= self.stop
+
+    def __contains__(self, item: int) -> bool:
+        ''' Determines if an item is contained in the interval '''
+        return self.start <= item < self.stop
+
+    def __len__(self) -> int:
+        ''' Returns the number of elements in the interval '''
+        return self.stop - self.start
+
+    def intersection(self, other: HalfClosedInterval) -> Optional[HalfClosedInterval]:
+        ''' Computes the intersection of two half-closed interval '''
+        if other.start >= self.stop or other.stop <= self.start:
+            return None
+
+        return HalfClosedInterval(max(self.start, other.start), min(self.stop, other.stop))
+
+    def overlaps(self, other: HalfClosedInterval) -> bool:
+        ''' Checks if the interval has a non-zero overlap with an other closed interval '''
+        return self.intersection(other) is not None
+
+    def cover_range(self, sorted_samples: np.ndarray) -> range:
+        ''' Given a set of *sorted* samples (not validated), return the corresponding range for samples
+            that are within the interval '''
+        if not len(sorted_samples) or len(self) == 0 or not self.intersection(
+                # generate closed integer interval [floor(sample[0]), ceil(samples[-1])+1] guaranteed to containing all samples[i]
+                HalfClosedInterval(int(np.floor(sorted_samples[0])), int(np.ceil(sorted_samples[-1])) + 1)):
+            # empty range for empty samples, empty interval, or missing intersection
+            return range(0)
+
+        # non-empty range case
+        cover_range_start = np.argmax(self.start <= sorted_samples).item()
+        cover_range_stop = np.argmin(sorted_samples < self.stop).item() \
+            if self.stop < sorted_samples[-1] \
+            else len(sorted_samples)  # full range of frames
+
+        return range(cover_range_start, cover_range_stop)
 
 class Config(object):
     """ Simple dictionary holding all options as key/value pairs """
