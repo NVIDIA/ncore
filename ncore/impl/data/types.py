@@ -65,7 +65,7 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
 
     @staticmethod
     def type() -> str:
-        ''' Returns a string-identitfiery of the camera model '''
+        ''' Returns a string-identifier of the camera model '''
         return 'ftheta'
 
     @property
@@ -129,7 +129,7 @@ class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
 
     @staticmethod
     def type() -> str:
-        ''' Returns a string-identitfiery of the camera model '''
+        ''' Returns a string-identifier of the camera model '''
         return 'pinhole'
 
     def __post_init__(self):
@@ -157,8 +157,8 @@ class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
 class Poses:
     ''' Represents a collection of timestamped poses (rig-to-local-world transformation) '''
     T_rig_world_base: np.ndarray  #: Base rig-to-global-world SE3 transformation (float64, [4,4])
-    T_rig_worlds: np.ndarray  #: All the trajectorie's rig-to-local-world SE3 transformations (float64, [N,4,4])
-    T_rig_world_timestamps_us: np.ndarray  #: All timestamps the trajectories rig-to-local-world transformations (uint64, [N,])
+    T_rig_worlds: np.ndarray  #: All rig-to-local-world SE3 transformations of the trajectory (float64, [N,4,4])
+    T_rig_world_timestamps_us: np.ndarray  #: All rig-to-local-world transformation timestamps of the trajectory (uint64, [N,])
 
     def __post_init__(self):
         # Sanity checks
@@ -244,7 +244,7 @@ class DynamicFlagState(IntEnum):
     ''' Enumerates potential per-point flag values related to 'dynamic_flag' property '''
     NOT_AVAILABLE = -1  #: No dynamic flag state is available for this point
     STATIC = 0  #: Point is classified to be static
-    DYNAMIC = 1  #: Point is classified to be dynaic
+    DYNAMIC = 1  #: Point is classified to be dynamic
 
 
 @unique
