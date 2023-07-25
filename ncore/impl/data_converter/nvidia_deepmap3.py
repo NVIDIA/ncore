@@ -22,7 +22,7 @@ from ncore.impl.data_converter.protos.deepmap import track_data_pb2, pointcloud_
 from ncore.impl.data_converter.protos.deepmap.util import extract_sensor_2_sdc
 from ncore.impl.data_converter.data_converter import BaseNvidiaDataConverter
 from ncore.impl.data.data3 import ContainerDataWriter
-from ncore.impl.data.types import Poses, FThetaCameraModelParameters, LabelSource, ShutterType
+from ncore.impl.data.types import Poses, FThetaCameraModelParameters, LabelSource, ShutterType, Tracks, TrackProperties
 from ncore.impl.common.common import PoseInterpolator
 from ncore.impl.common.nvidia_utils import (LabelProcessor, parse_rig_sensors_from_dict,
                                             load_maglev_lidar_indexer_frame_meta, sensor_to_rig, extract_pose,
@@ -187,10 +187,11 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
             }, {
                 self.LIDAR_SENSOR_ID:
                 sensor_to_rig(self.calibration_data[self.constants.LIDARID_TO_RIGNAME[self.LIDAR_SENSOR_ID]])
-            }, self.poses_timestamps, self.poses, LabelSource.AUTOLABEL, self.logger)
+            }, self.poses_timestamps, self.poses, LabelSource.AUTOLABEL)
 
         # Save the accumulated track
-        self.data_writer.store_labels(self.track_labels)
+        self.data_writer.store_tracks(Tracks(self.track_labels), TrackProperties(label_ids_unconditionally_dynamic = LabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC,
+                                                                                 label_ids_unconditionally_static = LabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_STATIC))
 
     def decode_lidar(self, sequence_path):
         # Load lidar extrinsics to compute poses of the rig frame if egomotion is represented in lidar frame

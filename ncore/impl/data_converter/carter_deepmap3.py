@@ -20,7 +20,7 @@ from ncore.impl.data_converter.protos.deepmap import track_data_pb2, pointcloud_
 from ncore.impl.data_converter.protos.deepmap.util import extract_sensor_2_sdc
 from ncore.impl.data_converter.data_converter import DataConverter
 from ncore.impl.data.data3 import ContainerDataWriter
-from ncore.impl.data.types import FrameLabel3, Poses, PinholeCameraModelParameters, ShutterType, TrackLabel
+from ncore.impl.data.types import FrameLabel3, Poses, PinholeCameraModelParameters, ShutterType, TrackLabel, Tracks, TrackProperties
 from ncore.impl.common.common import PoseInterpolator
 from ncore.impl.common.nvidia_utils import LabelProcessor, extract_pose
 from ncore.impl.av_utils import isWithin3DBBox
@@ -181,7 +181,7 @@ class CarterDeepmapConverter(DataConverter):
         self.track_labels: dict[str, TrackLabel] = {}
         self.frame_labels: dict[str, dict[int, list[FrameLabel3]]] = {}
 
-        self.data_writer.store_labels(self.track_labels)
+        self.data_writer.store_tracks(Tracks(self.track_labels), TrackProperties(label_ids_unconditionally_dynamic=set(), label_ids_unconditionally_static=set()))
 
     def decode_lidar(self):
         # Initialize the pose interpolator object

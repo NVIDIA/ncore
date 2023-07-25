@@ -234,9 +234,27 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
 
 @dataclass
 class TrackLabel(dataclasses_json.DataClassJsonMixin):
-    ''' Description of an object-specific track '''
-    dynamic_flag: bool  #: Indicating if the object-track is classified to be dynamic at *any* point in time of the sequence
-    sensors: dict[str, list[int]]  #: Represents all frame-timestamps of the object in different sensors
+    ''' Description of a individual object-specific track '''
+    sensors: dict[str, list[int]]  #: Represents all frame-timestamps (map values) of the object's observations in different sensors (map keys)
+
+
+@dataclass
+class Tracks(dataclasses_json.DataClassJsonMixin):
+    ''' Represents a collection of tracks '''
+    track_labels: dict[str, TrackLabel]  #: Represents individual object tracks (map values) referenced by `track_id`'s (map keys, same as in `FrameLabel3`)
+
+
+@dataclass
+class TrackProperties(dataclasses_json.DataClassJsonMixin):
+    ''' Represents track-associated properties common across the sequence '''
+
+    label_ids_unconditionally_dynamic: set[str]  #: Sequence-specific `label_id`s (same as in `FrameLabel3`), which are considered to be unconditionally *dynamic*
+    label_ids_unconditionally_static: set[str]  #: Sequence-specific `label_id`s (same as in `FrameLabel3`), which are considered to be unconditionally *static*
+
+    def __post_init__(self):
+        # Sanity checks
+        assert len(self.label_ids_unconditionally_dynamic & self.label_ids_unconditionally_static
+                   ) == 0, 'require mutually exclusive sets of dynamic / static label ids'
 
 
 @unique
