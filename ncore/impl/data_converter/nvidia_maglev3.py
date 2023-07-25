@@ -42,8 +42,6 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         self.egomotion_file: Optional[Path] = Path(config.egomotion_file) if config.egomotion_file else None
 
-        self.skip_dynamic_flag: bool = config.skip_dynamic_flag
-
     @staticmethod
     def get_sequence_paths(config) -> list[Path]:
         return [Path(config.root_dir)]
@@ -531,8 +529,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                                                                                xyz,
                                                                                frame_end_timestamp_us,
                                                                                self.track_labels,
-                                                                               self.frame_labels,
-                                                                               skip_dynamic_flag=self.skip_dynamic_flag)
+                                                                               self.frame_labels)
 
                 time_dynflag = timer.elapsed_sec(restart=True)
 

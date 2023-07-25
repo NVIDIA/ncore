@@ -549,8 +549,7 @@ class LabelProcessor:
             xyz: np.ndarray,  # points in sensor frame
             frame_timestamp_us: int,
             track_labels: dict[str, TrackLabel],
-            frame_labels: dict[str, dict[int, list[FrameLabel3]]],
-            skip_dynamic_flag: bool = False) -> Tuple[np.ndarray, list[FrameLabel3]]:
+            frame_labels: dict[str, dict[int, list[FrameLabel3]]]) -> Tuple[np.ndarray, list[FrameLabel3]]:
         """ Computes per-point lidar dynamic flag by intersecting frame-associated bounding boxes of dynamic objects"""
 
         assert xyz.shape[1] == 3, "wrong point cloud shape"
@@ -562,7 +561,7 @@ class LabelProcessor:
             point_count,
             # initialize dynamic_flag to -1 if there are no labels at all
             DynamicFlagState.STATIC.value
-            if len(frame_labels) and not skip_dynamic_flag else DynamicFlagState.NOT_AVAILABLE.value,
+            if len(frame_labels) else DynamicFlagState.NOT_AVAILABLE.value,
             dtype=np.int8)  # N x 1
 
         # Incorporate labels, if available
@@ -573,9 +572,6 @@ class LabelProcessor:
         for frame_label in current_frame_labels:
             # If the object is classified to be dynamic update the points that fall in that bounding box
             if track_labels[frame_label.track_id].dynamic_flag:
-                if skip_dynamic_flag:
-                    # skip dynamic flag computation (but still execute loop for potential statistics)
-                    continue
                 bbox = frame_label.bbox3.to_array()
                 # enlarge the bounding box for the check *only*
                 bbox[

@@ -71,10 +71,6 @@ def nvidia_deepmap_v3(ctx, *_, **kwargs):
               default=1,
               help="Total number of shards N to performing full dataset processing")
 @click.option('--egomotion-file', type=str, help="If provided, overwrite default egomotion file location", default=None)
-@click.option('--skip-dynamic-flag',
-              is_flag=True,
-              default=False,
-              help="Skip lidar dynamic flag computation to improve performance")
 @click.pass_context
 def nvidia_maglev_v3(ctx, *_, **kwargs):
     """NVIDIA-specific data conversion (V3 format, based on Maglev data extraction)"""
