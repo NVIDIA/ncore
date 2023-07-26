@@ -12,9 +12,10 @@ import numpy as np
 
 from ncore.impl.common.common import time_bounds, HalfClosedInterval
 from ncore.impl.data.data3 import ShardDataLoader, ContainerDataWriter
-from ncore.impl.data.types import Poses, FrameTimepoint, FrameLabel3, Tracks, TrackLabel, TrackProperties
+from ncore.impl.data.types import Poses, FrameTimepoint, FrameLabel3, Tracks, TrackLabel
 
 from ncore.impl.common.nvidia_utils import LabelProcessor as NVLabelProcessor
+from ncore.impl.data_converter.data_converter import BaseNvidiaDataConverter
 from ncore.impl.data_converter.waymo3 import WaymoConverter
 
 @dataclass(kw_only=True, slots=True, frozen=True)
@@ -25,10 +26,16 @@ class CLIBaseParams:
     output_basename: Optional[str]
     open_consolidated: bool
     store_shard_meta: bool
-    lidar_dynamic_flag_bbox_padding_meters: float
-    global_speed_dynamic_threshold: float
+    dynamic_flag_variant: str
     debug: bool
 
+@dataclass(kw_only=True, slots=True, frozen=True)
+class DynamicFlagParameters:
+    ''' Parameters used to compute dynamic flags '''
+    label_ids_unconditionally_dynamic: set[str]
+    label_ids_unconditionally_static: set[str]
+    lidar_dynamic_flag_bbox_padding_meters: float
+    global_speed_dynamic_threshold: float
 
 class SubrangeDataWriter:
     ''' Performs data subrange selection and outputs a new container with subselected data '''
@@ -40,8 +47,7 @@ class SubrangeDataWriter:
             end_timestamp_us: int,
 
             # Dynamic-flag processing parameters
-            lidar_dynamic_flag_bbox_padding_meters: float,
-            global_speed_dynamic_threshold: float,
+            dynamic_flag_parameters: DynamicFlagParameters,
 
             # Output specification
             output_dir_path: Path,
@@ -118,13 +124,6 @@ class SubrangeDataWriter:
                                                timestamps_us)
 
         ## Process lidars
-        _, source_track_properties = loader.get_tracks()
-        if not source_track_properties:
-            logging.warn('No data-specific track-properties available, using "default" track properties')
-
-            # initialize "default" set of unconditional label classes from various datasets
-            source_track_properties = TrackProperties(label_ids_unconditionally_dynamic = NVLabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC | WaymoConverter.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC,
-                                                      label_ids_unconditionally_static = NVLabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_STATIC | WaymoConverter.LABEL_STRINGS_UNCONDITIONALLY_STATIC)
 
         # Iterate once over all frames to collect surviving tracks / frame labels
         target_track_labels: dict[str, TrackLabel] = {}
@@ -160,6 +159,12 @@ class SubrangeDataWriter:
 
                     target_track_labels[track_id].sensors[lidar_id].append(source_frame_timestamp_us)
 
+        target_track_global_dynamic_flag = NVLabelProcessor.track_global_dynamic_flag(
+            target_frame_labels,
+            label_strings_unconditionally_dynamic=dynamic_flag_parameters.label_ids_unconditionally_dynamic,
+            label_strings_unconditionally_static=dynamic_flag_parameters.label_ids_unconditionally_static,
+            global_speed_dynamic_threshold=dynamic_flag_parameters.global_speed_dynamic_threshold)
+
         # Second iteration: store frames
         for lidar_id in lidar_ids:
             lidar_sensor = loader.get_lidar_sensor(lidar_id)
@@ -184,12 +189,9 @@ class SubrangeDataWriter:
                     lidar_id,
                     xyz_e,
                     timestamps_us[1],
-                    target_track_labels,
                     target_frame_labels,
-                    source_track_properties.label_ids_unconditionally_dynamic,
-                    source_track_properties.label_ids_unconditionally_static,
-                    lidar_dynamic_flag_bbox_padding_meters,
-                    global_speed_dynamic_threshold)
+                    target_track_global_dynamic_flag,
+                    lidar_dynamic_flag_bbox_padding_meters=dynamic_flag_parameters.lidar_dynamic_flag_bbox_padding_meters)
 
                 semantic_class = lidar_sensor.get_frame_data(
                     source_frame_idx, 'semantic_class') if lidar_sensor.has_frame_data(source_frame_idx, 'semantic_class') else None
@@ -206,13 +208,55 @@ class SubrangeDataWriter:
                                               timestamps_us
                                               )
 
-        data_writer.store_tracks(
-            tracks=Tracks(track_labels=target_track_labels),
-            # Reuse source-track properties
-            track_properties=source_track_properties)
+        data_writer.store_tracks(tracks=Tracks(track_labels=target_track_labels))
 
         ## Finalize output
         data_writer.finalize()
+
+
+def get_dynamic_flag_parameters(variant: str, loader: ShardDataLoader) -> DynamicFlagParameters:
+    ''' Provides the dynamic flag parameters for the chosen variant ['auto', 'nv', 'waymo']'''
+    nv_params = DynamicFlagParameters(
+        label_ids_unconditionally_dynamic=NVLabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC,
+        label_ids_unconditionally_static=NVLabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_STATIC,
+        lidar_dynamic_flag_bbox_padding_meters=NVLabelProcessor.LIDAR_DYNAMIC_FLAG_BBOX_PADDING_METERS,
+        global_speed_dynamic_threshold=NVLabelProcessor.GLOBAL_SPEED_DYNAMIC_THRESHOLD)
+
+    waymo_params = DynamicFlagParameters(
+                label_ids_unconditionally_dynamic=WaymoConverter.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC,
+                label_ids_unconditionally_static=WaymoConverter.LABEL_STRINGS_UNCONDITIONALLY_STATIC,
+                lidar_dynamic_flag_bbox_padding_meters=WaymoConverter.LIDAR_DYNAMIC_FLAG_BBOX_PADDING_METERS,
+                global_speed_dynamic_threshold=WaymoConverter.GLOBAL_SPEED_DYNAMIC_THRESHOLD)
+
+    match variant:
+        case 'nv':
+            return nv_params
+        case 'waymo':
+            return waymo_params
+        case 'auto':
+            # try by matching calibration-type
+            if input_calibration_type := loader.get_calibration_type() in ['scene-calib', 'deepmap', 'carter']:
+                logging.info('Auto-detected NV dynamic flag parameters')
+                return nv_params
+
+            if input_calibration_type in ['waymo-calibration']:
+                logging.info('Auto-detected Waymo dynamic flag parameters')
+                return waymo_params
+
+            # try by matching camera sensor-names
+            if input_sensor_ids := set(loader.get_camera_ids()) & (
+                    set(BaseNvidiaDataConverter.Hyperion8Constants.CAMERAID_TO_RIGNAME.keys())
+                    | set(BaseNvidiaDataConverter.Hyperion81Constants.CAMERAID_TO_RIGNAME.keys())):
+                logging.info('Auto-detected NV dynamic flag parameters')
+                return nv_params
+
+            if input_sensor_ids & set(WaymoConverter.CAMERA_MAP.keys()):
+                logging.info('Auto-detected Waymo dynamic flag parameters')
+                return waymo_params
+
+    raise RuntimeError(
+        "Detecting dynamic flag parameters failed, consider extending lookup or specify supported variant explicitly via '--dynamic-flag-variant' parameter"
+    )
 
 
 @click.group()
@@ -230,14 +274,12 @@ class SubrangeDataWriter:
     required=False)
 @click.option('--open-consolidated/--no-open-consolidated', default=True, help='Pre-load shard meta-data?')
 @click.option('--store-shard-meta/--no-store-shard-meta', default=True, help='Store shard meta-data along with shard?')
-@click.option('--lidar-dynamic-flag-bbox-padding-meters',
-              type=float,
-              help='Label BBOX padding distance (in meters) to enlarge bounding boxes for per-point dynamic-flag assignment',
-              default=NVLabelProcessor.LIDAR_DYNAMIC_FLAG_BBOX_PADDING_METERS)
-@click.option('--global-speed-dynamic-threshold',
-              type=float,
-              help='Speed threshold (in meters/sec) to consider a moving object globally dynamic',
-              default=NVLabelProcessor.GLOBAL_SPEED_DYNAMIC_THRESHOLD)
+@click.option(
+    '--dynamic-flag-variant',
+    type=click.Choice(['auto', 'nv', 'waymo'], case_sensitive=False),
+    default='auto',
+    help=
+    'Variant-specific parameters to use for dynamic-flag assignment (auto exit with an error if variant lookup fails)')
 @click.option("--debug", is_flag=True, default=False, help="Enables debug logging outputs")
 @click.pass_context
 def cli(ctx, **kwargs) -> None:
@@ -297,8 +339,7 @@ def offset(ctx, seek_sec: float, duration_sec: float) -> None:
         loader,
         start_timestamp_us,
         end_timestamp_us,
-        params.lidar_dynamic_flag_bbox_padding_meters,
-        params.global_speed_dynamic_threshold,
+        get_dynamic_flag_parameters(params.dynamic_flag_variant, loader),
         Path(params.output_dir),
         container_name,
         # TODO: add sensor selection

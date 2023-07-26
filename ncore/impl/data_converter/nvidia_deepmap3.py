@@ -22,7 +22,7 @@ from ncore.impl.data_converter.protos.deepmap import track_data_pb2, pointcloud_
 from ncore.impl.data_converter.protos.deepmap.util import extract_sensor_2_sdc
 from ncore.impl.data_converter.data_converter import BaseNvidiaDataConverter
 from ncore.impl.data.data3 import ContainerDataWriter
-from ncore.impl.data.types import Poses, FThetaCameraModelParameters, LabelSource, ShutterType, Tracks, TrackProperties
+from ncore.impl.data.types import Poses, FThetaCameraModelParameters, LabelSource, ShutterType, Tracks
 from ncore.impl.common.common import PoseInterpolator
 from ncore.impl.common.nvidia_utils import (LabelProcessor, parse_rig_sensors_from_dict,
                                             load_maglev_lidar_indexer_frame_meta, sensor_to_rig, extract_pose,
@@ -179,7 +179,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
 
     def decode_labels(self, sequence_path):
         # Perform label parsing
-        self.track_labels, self.frame_labels = LabelProcessor.parse(
+        self.track_labels, self.frame_labels, self.track_global_dynamic_flag = LabelProcessor.parse(
             os.path.join(sequence_path, 'labels', 'autolabels.parquet'), {
                 self.LIDAR_SENSOR_ID:
                 load_maglev_lidar_indexer_frame_meta(
@@ -190,8 +190,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
             }, self.poses_timestamps, self.poses, LabelSource.AUTOLABEL)
 
         # Save the accumulated track
-        self.data_writer.store_tracks(Tracks(self.track_labels), TrackProperties(label_ids_unconditionally_dynamic = LabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC,
-                                                                                 label_ids_unconditionally_static = LabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_STATIC))
+        self.data_writer.store_tracks(Tracks(self.track_labels))
 
     def decode_lidar(self, sequence_path):
         # Load lidar extrinsics to compute poses of the rig frame if egomotion is represented in lidar frame
@@ -302,9 +301,11 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
             T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
 
             # Use the bounding boxes to remove dynamic objects
-            dynamic_flag, frame_labels = LabelProcessor.lidar_dynamic_flag(self.LIDAR_SENSOR_ID, xyz_e,
+            dynamic_flag, frame_labels = LabelProcessor.lidar_dynamic_flag(self.LIDAR_SENSOR_ID,
+                                                                           xyz_e,
                                                                            fa_timestamp if fa_timestamp else -1,
-                                                                           self.track_labels, self.frame_labels)
+                                                                           self.frame_labels,
+                                                                           self.track_global_dynamic_flag)
 
             # Serialize lidar frame
             self.data_writer.store_lidar_frame(self.LIDAR_SENSOR_ID, frame_idx, xyz_s, xyz_e, intensity, timestamp,

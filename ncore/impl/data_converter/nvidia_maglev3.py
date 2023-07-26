@@ -15,7 +15,7 @@ import point_cloud_utils as pcu
 
 from ncore.impl.data_converter.data_converter import BaseNvidiaDataConverter
 from ncore.impl.data.data3 import ContainerDataWriter
-from ncore.impl.data.types import FThetaCameraModelParameters, LabelSource, Poses, ShutterType, Tracks, TrackProperties
+from ncore.impl.data.types import FThetaCameraModelParameters, LabelSource, Poses, ShutterType, Tracks
 
 from ncore.impl.common.nvidia_utils import (load_maglev_camera_indexer_frame_meta, load_maglev_lidar_indexer_frame_meta,
                                             load_maglev_egomotion, load_maglev_session_id, parse_rig_sensors_from_dict,
@@ -192,7 +192,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             return
 
         # Perform label parsing (of global time)
-        self.track_labels, self.frame_labels = LabelProcessor.parse(
+        self.track_labels, self.frame_labels, self.track_global_dynamic_flag = LabelProcessor.parse(
             labels_path, {
                 lidar_id: load_maglev_lidar_indexer_frame_meta(Path(self.sequence_path / 'lidars' / lidar_rig_name))
                 for lidar_id, lidar_rig_name in self.constants.LIDARID_TO_RIGNAME.items()
@@ -202,8 +202,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             }, self.global_T_rig_world_timestamps_us, self.global_T_rig_worlds, LabelSource.AUTOLABEL)
 
         # Save the accumulated tracks in global time
-        self.data_writer.store_tracks(Tracks(self.track_labels), TrackProperties(label_ids_unconditionally_dynamic = LabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC,
-                                                                                 label_ids_unconditionally_static = LabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_STATIC))
+        self.data_writer.store_tracks(Tracks(self.track_labels))
 
     def decode_cameras(self):
         logger = self.logger.getChild('decode_cameras')
@@ -529,8 +528,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 dynamic_flag, frame_labels = LabelProcessor.lidar_dynamic_flag(lidar_id,
                                                                                xyz,
                                                                                frame_end_timestamp_us,
-                                                                               self.track_labels,
-                                                                               self.frame_labels)
+                                                                               self.frame_labels,
+                                                                               self.track_global_dynamic_flag)
 
                 time_dynflag = timer.elapsed_sec(restart=True)
 

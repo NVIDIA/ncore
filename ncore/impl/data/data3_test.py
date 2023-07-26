@@ -66,9 +66,8 @@ class TestData3Loader(unittest.TestCase):
             self.assertEqual(loader.get_shard_ids(), list(range(start, end)))
 
             # check tracks API
-            tracks, track_properties = loader.get_tracks()
+            tracks = loader.get_tracks()
             self.assertEqual(len(tracks.track_labels), 21)
-            self.assertEqual(track_properties, None)  # exported data didn't contain track-properties
 
         # check all shard slice variants
         for end in range(1, len(self.all_shards) + 1):

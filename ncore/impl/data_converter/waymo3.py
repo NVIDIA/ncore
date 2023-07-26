@@ -14,7 +14,7 @@ from waymo_open_dataset import dataset_pb2, label_pb2
 
 from ncore.impl.av_utils import isWithin3DBBox
 from ncore.impl.data.data3 import ContainerDataWriter
-from ncore.impl.data.types import Poses, PinholeCameraModelParameters, ShutterType, TrackLabel, FrameLabel3, BBox3, LabelSource, DynamicFlagState, Tracks, TrackProperties
+from ncore.impl.data.types import Poses, PinholeCameraModelParameters, ShutterType, TrackLabel, FrameLabel3, BBox3, LabelSource, DynamicFlagState, Tracks
 from ncore.impl.common.common import PoseInterpolator
 from ncore.impl.common.transformations import transform_point_cloud, se3_inverse, transform_bbox
 from ncore.impl.data_converter.data_converter import DataConverter
@@ -358,8 +358,7 @@ class WaymoConverter(DataConverter):
                                               T_sensor_rig)
 
         # Save the accumulated tracks in global time
-        self.data_writer.store_tracks(Tracks(track_labels), TrackProperties(label_ids_unconditionally_dynamic = self.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC,
-                                                                            label_ids_unconditionally_static = self.LABEL_STRINGS_UNCONDITIONALLY_STATIC))
+        self.data_writer.store_tracks(Tracks(track_labels))
 
     def decode_cameras(self, frames):
         """

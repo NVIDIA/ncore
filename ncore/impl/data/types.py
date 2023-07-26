@@ -244,19 +244,6 @@ class Tracks(dataclasses_json.DataClassJsonMixin):
     track_labels: dict[str, TrackLabel]  #: Represents individual object tracks (map values) referenced by `track_id`'s (map keys, same as in `FrameLabel3`)
 
 
-@dataclass
-class TrackProperties(dataclasses_json.DataClassJsonMixin):
-    ''' Represents track-associated properties common across the sequence '''
-
-    label_ids_unconditionally_dynamic: set[str]  #: Sequence-specific `label_id`s (same as in `FrameLabel3`), which are considered to be unconditionally *dynamic*
-    label_ids_unconditionally_static: set[str]  #: Sequence-specific `label_id`s (same as in `FrameLabel3`), which are considered to be unconditionally *static*
-
-    def __post_init__(self):
-        # Sanity checks
-        assert len(self.label_ids_unconditionally_dynamic & self.label_ids_unconditionally_static
-                   ) == 0, 'require mutually exclusive sets of dynamic / static label ids'
-
-
 @unique
 class DynamicFlagState(IntEnum):
     ''' Enumerates potential per-point flag values related to 'dynamic_flag' property '''

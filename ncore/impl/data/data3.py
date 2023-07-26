@@ -121,7 +121,7 @@ class ContainerDataWriter:
         poses_grp.create_dataset('T_rig_worlds', data=poses.T_rig_worlds)
         poses_grp.create_dataset('T_rig_world_timestamps_us', data=poses.T_rig_world_timestamps_us)
 
-    def store_tracks(self, tracks: types.Tracks, track_properties: types.TrackProperties) -> None:
+    def store_tracks(self, tracks: types.Tracks) -> None:
         # Store track labels
         tracks_grp = self.container_root.require_group('tracks')
         tracks_grp.create_dataset('track_labels',
@@ -130,9 +130,6 @@ class ContainerDataWriter:
                                   # https://github.com/zarr-developers/numcodecs/pull/366
                                   data=[(k, v.to_dict()) for (k, v) in tracks.track_labels.items()],
                                   object_codec=numcodecs.JSON())
-
-        # Store meta-data
-        tracks_grp.attrs.put(track_properties.to_dict())
 
     def store_camera_meta(
             self,
@@ -777,27 +774,17 @@ class ShardDataLoader:
         ''' Returns all radar sensor ids '''
         return list(self._radar_ids)
 
-    def get_tracks(self) -> Tuple[types.Tracks, Optional[types.TrackProperties]]:
-        ''' Returns all object tracks and associated properties, if available '''
+    def get_tracks(self) -> types.Tracks:
+        ''' Returns all object tracks '''
 
         root_shard = self._shard_roots[0]  # can use first root shard as track labels are the same per shard
 
         # Backwards-compatibility: track-labels used to be stored in top-level
-        # 'labels' group / 'track_labels' dataset, without the storage additional track properties
-        if 'labels' in root_shard:
-            return types.Tracks(
-                track_labels={
-                    track_label[0]: types.TrackLabel.from_dict(track_label[1], infer_missing=True)
-                    for track_label in root_shard['labels']['track_labels']
-                }), None
+        # 'labels' group / 'track_labels' dataset
+        tracks_group = root_shard['labels'] if 'labels' in root_shard else root_shard['tracks']
 
-        tracks_group = root_shard['tracks']
-        tracks = types.Tracks(
+        return types.Tracks(
             track_labels={
                 track_label[0]: types.TrackLabel.from_dict(track_label[1], infer_missing=True)
                 for track_label in tracks_group['track_labels']
             })
-
-        track_properties = types.TrackProperties.from_dict(tracks_group.attrs, infer_missing=True)
-
-        return tracks, track_properties
