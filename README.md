@@ -79,7 +79,7 @@ with
 Execute
 
 ```
-bazel run //:update_all
+bazel run //:bzlformat_all
 ```
 
 to format all bazel source files (`//:bzlformat_missing_pkgs_fix` can be used to register new files)
