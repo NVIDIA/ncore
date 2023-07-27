@@ -224,7 +224,7 @@ class BaseNvidiaDataConverter(DataConverter):
 
         # Determine major platform version from 'platform_name' property
         if platform_name := rig_properties.get('platform_name', None):
-            if platform_name.startswith('hy8.1_'):
+            if platform_name.startswith('hy8.1_') or platform_name.startswith('hy8.1p_'):
                 return cls.Hyperion81Constants()
             elif platform_name.startswith('hy8_'):
                 return cls.Hyperion8Constants()
