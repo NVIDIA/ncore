@@ -71,7 +71,7 @@ def get_sensor_to_sensor_flu(sensor):
     return np.asarray(rot, dtype=np.float32)
 
 
-def parse_rig_sensors_from_dict(rig):
+def parse_rig_sensors_from_dict(rig) -> dict[str, dict]:
     """Parses the provided rig dictionary into a dictionary indexed by sensor name.
 
     Args:

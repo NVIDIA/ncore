@@ -67,7 +67,9 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
             with open(os.path.join(sequence_path, 'rig.json'), 'r') as fp:
                 self.rig = json.load(fp)
 
-            self.constants = self.get_constants(self.rig['rig']['properties'])
+            self.calibration_data = parse_rig_sensors_from_dict(self.rig)
+
+            self.constants = self.get_constants(self.rig['rig']['properties'], list(self.calibration_data.keys()))
 
             # *Single* reference lidar sensor
             match self.constants:
@@ -95,7 +97,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                 1,
                 False)
 
-            self.calibration_data = parse_rig_sensors_from_dict(self.rig)
+            
 
             # Initialize the track aligned track record structure
             self.track_data = track_data_pb2.AlignedTrackRecords()
