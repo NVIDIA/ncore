@@ -221,13 +221,7 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
     bbox3: BBox3  #: Bounding-box coordinates of the object relative to the frame's coordinate system
     global_speed: float  #: Instantaneous global speed [m/s] of the object
     confidence: Optional[float]  #: If available, the confidence score of the label [0..1]
-
-    timestamp_us: Optional[int]
-    ''' If available, the timestamp associated with the centroid of the label (possibly an accurate in-spin time).
-        Optional also to be backwards-compatible with existing datasets that don't provide
-        this information.
-    
-        In the future this field might become mandatory (deprecating old datasets) '''
+    timestamp_us: int # The timestamp associated with the centroid of the label (possibly an accurate in-spin time)
 
     source: LabelSource = util.enum_field(LabelSource)  #: The source fo the current label
 
