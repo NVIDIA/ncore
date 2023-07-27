@@ -7,6 +7,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from typing import Optional
 
 import numpy as np
@@ -112,13 +113,13 @@ class BaseNvidiaDataConverter(DataConverter):
     '''
 
     # Common constants
-    @dataclass(frozen=True)
+    @dataclass
     class Constants:
         # Vehicle BBOX padding distances (for each axis) and maximum distances (in meters) for point cloud measurements (to filter points on the ego-car / out invalid points)
         LIDAR_FILTER_VEHICLE_BBOX_PADDING_METERS = np.array([1.0, 0.2, 1.0], dtype=np.float32)
 
     # Constants for *Hyperion8* sensor-set
-    @dataclass(frozen=True)
+    @dataclass
     class Hyperion8Constants(Constants):
         CAMERAID_TO_RIGNAME = {
             'camera_front_wide_120fov': 'camera:front:wide:120fov',
@@ -133,7 +134,7 @@ class BaseNvidiaDataConverter(DataConverter):
             'camera_rear_fisheye_200fov': 'camera:rear:fisheye:200fov'
         }
 
-        # Upper field-of-view limit accross all cameras (in particular for fisheye cameras)
+        # Upper field-of-view limit across all cameras (in particular for fisheye cameras)
         MAX_CAMERA_FOV_DEG = 200.0
 
         # Per-camera sensor types
@@ -168,7 +169,7 @@ class BaseNvidiaDataConverter(DataConverter):
         LIDARID_TO_FILTER_MAX_DISTANCE_METERS = {'lidar_gt_top_p128_v4p5': 100.0}
 
     # Constants for *Hyperion8.1* sensor-set
-    @dataclass(frozen=True)
+    @dataclass
     class Hyperion81Constants(Constants):
         CAMERAID_TO_RIGNAME = {
             'camera_front_wide_120fov': 'camera:front:wide:120fov',
@@ -183,7 +184,7 @@ class BaseNvidiaDataConverter(DataConverter):
             'camera_rear_fisheye_200fov': 'camera:rear:fisheye:200fov'
         }
 
-        # Upper field-of-view limit accross all cameras (in particular for fisheye cameras)
+        # Upper field-of-view limit across all cameras (in particular for fisheye cameras)
         MAX_CAMERA_FOV_DEG = 200.0
 
         # Per-camera types
@@ -219,19 +220,43 @@ class BaseNvidiaDataConverter(DataConverter):
         LIDARID_TO_FILTER_MAX_DISTANCE_METERS = {'lidar_gt_top_p128': 100.0}
 
     @classmethod
-    def get_constants(cls, rig_properties: dict[str, str]) -> Hyperion8Constants | Hyperion81Constants:
-        ''' Parse rig properties into constants for a given plaform '''
+    def get_constants(cls, rig_properties: dict[str, str],
+                      rig_sensor_ids: Sequence[str]) -> Hyperion8Constants | Hyperion81Constants:
+        ''' Parse rig properties into constants for a given platform '''
+
+        constants: Optional[BaseNvidiaDataConverter.Hyperion8Constants
+                            | BaseNvidiaDataConverter.Hyperion81Constants] = None
 
         # Determine major platform version from 'platform_name' property
         if platform_name := rig_properties.get('platform_name', None):
-            if platform_name.startswith('hy8.1_'):
-                return cls.Hyperion81Constants()
+            if platform_name.startswith('hy8.1_') or platform_name.startswith('hy8.1p_'):
+                constants = cls.Hyperion81Constants()
             elif platform_name.startswith('hy8_'):
-                return cls.Hyperion8Constants()
+                constants = cls.Hyperion8Constants()
 
         # Older rigs use 'layout' property
         if layout := rig_properties.get('layout', None):
             if layout.startswith('hyperion_8_'):
-                return cls.Hyperion8Constants()
+                constants = cls.Hyperion8Constants()
 
-        raise ValueError(f'Unknown / unsupported platform in rig-properties {rig_properties}')
+        assert isinstance(constants,
+                          (BaseNvidiaDataConverter.Hyperion8Constants, BaseNvidiaDataConverter.Hyperion81Constants
+                           )), f'Unknown / unsupported platform in rig-properties {rig_properties}'
+
+        # Remove sensors that are not in 'rig_sensor_ids'
+        camera_ids_to_remove: list[str] = []
+        for camera_id, rig_sensor_id in constants.CAMERAID_TO_RIGNAME.items():
+            if rig_sensor_id not in rig_sensor_ids:
+                camera_ids_to_remove.append(camera_id)
+        for key in camera_ids_to_remove:
+            constants.CAMERAID_TO_RIGNAME.pop(key)
+            constants.CAMERAID_TO_SENSORTYPE.pop(key)
+
+        lidar_ids_to_remove: list[str] = []
+        for lidar_id, rig_sensor_id in constants.LIDARID_TO_RIGNAME.items():
+            if rig_sensor_id not in rig_sensor_ids:
+                lidar_ids_to_remove.append(lidar_id)
+        for key in lidar_ids_to_remove:
+            constants.LIDARID_TO_RIGNAME.pop(key)
+
+        return constants
