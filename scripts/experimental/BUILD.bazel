@@ -31,8 +31,8 @@ py_binary(
 )
 
 py_binary(
-    name = "ncore_subrange",
-    srcs = ["ncore_subrange.py"],
+    name = "ncore_chunk",
+    srcs = ["ncore_chunk.py"],
     deps = [
         requirement("click"),
         "//ncore/impl/common:pylib_nvidia",
