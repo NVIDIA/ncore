@@ -403,6 +403,13 @@ class LabelProcessor:
         # Load parquet file and convert to pandas dataframe
         label_data = pq.ParquetDataset(labels_path).read().to_pandas()
 
+        # WAR: H8.1 RWD cuboid tracks seems to contain invalid labels -> drop rows that contain NaN + issue warning if data was dropped
+        original_num_labels = len(label_data)
+        label_data.dropna(inplace=True)
+        if diff_rows := (original_num_labels - len(label_data)):
+            logger.warn(f'Dropped {diff_rows} rows of cuboid labels due to NaN - resulting tracks might be wrong / incomplete')
+        del(original_num_labels)
+
         # Fix float -> integer datatypes of track IDs / timestamps
         label_data = label_data.astype({'gt_trackline_id': 'int64', 'timestamp': 'int64'})
 
