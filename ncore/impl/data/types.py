@@ -220,15 +220,14 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
     label_class: str  #: String-representation of the class associated with this label
     bbox3: BBox3  #: Bounding-box coordinates of the object relative to the frame's coordinate system
     global_speed: float  #: Instantaneous global speed [m/s] of the object
+    timestamp_us: int  #: The timestamp associated with the centroid of the label (possibly an accurate in-spin time)
     confidence: Optional[float]  #: If available, the confidence score of the label [0..1]
-    timestamp_us: int # The timestamp associated with the centroid of the label (possibly an accurate in-spin time)
-
     source: LabelSource = util.enum_field(LabelSource)  #: The source fo the current label
 
 
 @dataclass
 class TrackLabel(dataclasses_json.DataClassJsonMixin):
-    ''' Description of a individual object-specific track '''
+    ''' Description of an individual object-specific track '''
     sensors: dict[str, list[int]]  #: Represents all frame-timestamps (map values) of the object's observations in different sensors (map keys)
 
 
