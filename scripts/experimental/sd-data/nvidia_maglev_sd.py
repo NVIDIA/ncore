@@ -23,7 +23,7 @@ from ncore.impl.common.nvidia_utils import (load_maglev_camera_indexer_frame_met
                                             load_maglev_session_id, parse_rig_sensors_from_dict, sensor_to_rig,
                                             camera_intrinsic_parameters, compute_fw_polynomial,
                                             compute_ftheta_fov)
-from ncore.impl.common.common import uniform_subdivide_range, PoseInterpolator
+from ncore.impl.common.common import uniform_subdivide_range, PoseInterpolator, time_bounds
 
 
 class PositionInterpolator:
@@ -173,7 +173,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.global_T_rig_worlds = np.linalg.inv(T_rig_world_base) @ self.global_T_rig_worlds
 
         # Apply and remember global time-range restrictions for dataset (used for all pose interpolation within shard)
-        global_target_start_timestamp_us, global_target_end_timestamp_us = self.time_bounds(
+        global_target_start_timestamp_us, global_target_end_timestamp_us = time_bounds(
             self.global_T_rig_world_timestamps_us, self.seek_sec, self.duration_sec)
         global_range_start = np.argmax(self.global_T_rig_world_timestamps_us >= global_target_start_timestamp_us)
         global_range_end               = np.argmin(self.global_T_rig_world_timestamps_us <= global_target_end_timestamp_us) \

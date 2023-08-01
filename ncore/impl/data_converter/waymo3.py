@@ -14,7 +14,7 @@ from waymo_open_dataset import dataset_pb2, label_pb2
 
 from ncore.impl.av_utils import isWithin3DBBox
 from ncore.impl.data.data3 import ContainerDataWriter
-from ncore.impl.data.types import Poses, PinholeCameraModelParameters, ShutterType, TrackLabel, FrameLabel3, BBox3, LabelSource, DynamicFlagState
+from ncore.impl.data.types import Poses, PinholeCameraModelParameters, ShutterType, TrackLabel, FrameLabel3, BBox3, LabelSource, DynamicFlagState, Tracks
 from ncore.impl.common.common import PoseInterpolator
 from ncore.impl.common.transformations import transform_point_cloud, se3_inverse, transform_bbox
 from ncore.impl.data_converter.data_converter import DataConverter
@@ -174,7 +174,7 @@ class WaymoConverter(DataConverter):
         label_pb2.Label.Type.TYPE_CYCLIST: 'cyclist'
     }
 
-    # Unconditionally dyamic / static label types
+    # Unconditionally dynamic / static label types
     LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC: set[str] = set([
         'pedestrian',
         'cyclist',
@@ -240,6 +240,7 @@ class WaymoConverter(DataConverter):
 
         # Initialize labels struct that gets assembled while processing each frame label
         track_labels: dict[str, TrackLabel] = {}  # {TrackLabel} in track_labels[track_id]
+        track_global_dynamic_flag: dict[str, bool] = {}  # bool in dynamic_tracks[track_id]
 
         for lidar_id, lidar_name in self.LIDAR_MAP.items():
             # Determine sensor extrinsics
@@ -321,10 +322,8 @@ class WaymoConverter(DataConverter):
 
                     # store track label data
                     if frame_label.track_id not in track_labels:
-                        track_labels[frame_label.track_id] = TrackLabel(
-                            dynamic_flag=True
-                            if frame_label.label_class in self.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else False,
-                            sensors={})
+                        track_labels[frame_label.track_id] = TrackLabel(sensors={})
+                        track_global_dynamic_flag[frame_label.track_id] = True if frame_label.label_class in self.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else False
 
                     if lidar_name not in track_labels[frame_label.track_id].sensors:
                         track_labels[frame_label.track_id].sensors[lidar_name] = []
@@ -333,15 +332,15 @@ class WaymoConverter(DataConverter):
                     track_labels[frame_label.track_id].sensors[lidar_name].append(frame_end_timestamp_us)
 
                     if frame_label.label_class not in self.LABEL_STRINGS_UNCONDITIONALLY_STATIC and frame_label.global_speed >= self.GLOBAL_SPEED_DYNAMIC_THRESHOLD:
-                        track_labels[frame_label.track_id].dynamic_flag = True
+                        track_global_dynamic_flag[frame_label.track_id] = True
 
                 ## Compute point dynamic flag
                 dynamic_flag: np.ndarray = np.full(len(xyz_e), DynamicFlagState.STATIC.value, dtype=np.int8)  # N x 1
 
                 # Use the bounding boxes to remove dynamic objects / set dynamic flag
                 for frame_label in frame_labels:
-                    # If the object is classified to be dynamic update the points that fall in that bounding box
-                    if track_labels[frame_label.track_id].dynamic_flag:
+                    # If the object is classified to be globally dynamic, update the points that fall in that bounding box
+                    if track_global_dynamic_flag[frame_label.track_id]:
                         bbox = frame_label.bbox3.to_array()
                         # enlarge the bounding box for the check *only*
                         bbox[3:6] += self.LIDAR_DYNAMIC_FLAG_BBOX_PADDING_METERS
@@ -359,7 +358,7 @@ class WaymoConverter(DataConverter):
                                               T_sensor_rig)
 
         # Save the accumulated tracks in global time
-        self.data_writer.store_labels(track_labels)
+        self.data_writer.store_tracks(Tracks(track_labels))
 
     def decode_cameras(self, frames):
         """

@@ -1,0 +1,394 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
+import logging
+
+from typing import Optional, Tuple
+from pathlib import Path
+from dataclasses import dataclass
+
+import click
+
+import numpy as np
+
+from ncore.impl.common.common import time_bounds, HalfClosedInterval
+from ncore.impl.data.data3 import ShardDataLoader, ContainerDataWriter
+from ncore.impl.data.types import Poses, FrameTimepoint, FrameLabel3, Tracks, TrackLabel
+
+from ncore.impl.common.nvidia_utils import LabelProcessor as NVLabelProcessor
+from ncore.impl.data_converter.data_converter import BaseNvidiaDataConverter
+from ncore.impl.data_converter.waymo3 import WaymoConverter
+
+
+@dataclass(kw_only=True, slots=True, frozen=True)
+class CLIBaseParams:
+    ''' Parameters passed to non-command-based CLI part '''
+    shard_file_pattern: str
+    output_dir: str
+    output_basename: Optional[str]
+    open_consolidated: bool
+    store_shard_meta: bool
+    dynamic_flag_variant: str
+    no_cameras: bool
+    camera_ids: Tuple[str]
+    no_lidars: bool
+    lidar_ids: Tuple[str]
+    no_radars: bool
+    radar_ids: Tuple[str]
+    debug: bool
+
+
+@dataclass(kw_only=True, slots=True, frozen=True)
+class DynamicFlagParameters:
+    ''' Parameters used to compute dynamic flags '''
+    label_ids_unconditionally_dynamic: set[str]
+    label_ids_unconditionally_static: set[str]
+    lidar_dynamic_flag_bbox_padding_meters: float
+    global_speed_dynamic_threshold: float
+
+
+class ChunkDataWriter:
+    ''' Performs data subrange selection re-exports a new container with subselected data '''
+    @staticmethod
+    def process(
+            # Source data + chunk range
+            loader: ShardDataLoader,
+            start_timestamp_us: int,
+            end_timestamp_us: int,
+
+            # Dynamic-flag processing parameters
+            dynamic_flag_parameters: DynamicFlagParameters,
+
+            # Output specification
+            output_dir_path: Path,
+            container_name: str,
+
+            # Sensor selection (exports all sensors of a give type if not restricted)
+            camera_ids: Optional[list[str]],
+            lidar_ids: Optional[list[str]],
+            radar_ids: Optional[list[str]],
+
+            # Meta
+            store_shard_meta: bool) -> None:
+
+        if camera_ids is None:
+            camera_ids = loader.get_camera_ids()
+        if lidar_ids is None:
+            lidar_ids = loader.get_lidar_ids()
+        if radar_ids is None:
+            radar_ids = loader.get_radar_ids()
+
+        assert start_timestamp_us < end_timestamp_us, "invalid time bounds"
+        chunk_interval_us = HalfClosedInterval(start_timestamp_us,
+                                               end_timestamp_us + 1)  # make sure to include end-timestamp in interval
+
+        logging.debug(f"Writing chunk export to {output_dir_path / (container_name + '.zarr.itar')}")
+
+        # ContainerDataWriter for all outputs (always single-shard)
+        data_writer = ContainerDataWriter(
+            output_dir_path,
+            container_name,
+            camera_ids,
+            lidar_ids,
+            radar_ids,
+            loader.get_calibration_type(),
+            loader.get_egomotion_type(),
+            loader.get_sequence_id(),
+            # always single-shard
+            0,
+            1,
+            store_shard_meta)
+
+        ## Process poses
+        source_poses = loader.get_poses()
+
+        # subselect poses
+        target_poses_range = chunk_interval_us.cover_range(source_poses.T_rig_world_timestamps_us)
+        target_poses = Poses(source_poses.T_rig_world_base, source_poses.T_rig_worlds[target_poses_range],
+                             source_poses.T_rig_world_timestamps_us[target_poses_range])
+
+        data_writer.store_poses(target_poses)
+
+        ## Process cameras
+        for camera_id in camera_ids:
+            camera_sensor = loader.get_camera_sensor(camera_id)
+
+            # subselect frames
+            source_frame_timestamps_us = camera_sensor.get_frames_timestamps_us()
+            target_frames_range = chunk_interval_us.cover_range(source_frame_timestamps_us)
+
+            # store sensor meta
+            data_writer.store_camera_meta(camera_id, source_frame_timestamps_us[target_frames_range],
+                                          camera_sensor.get_T_sensor_rig(), camera_sensor.get_camera_model_parameters(),
+                                          camera_sensor.get_camera_mask_image())
+
+            # store subselected frames
+            for chunk_frame_index, source_frame_idx in enumerate(target_frames_range):
+                T_rig_worlds = np.stack((camera_sensor.get_frame_T_rig_world(source_frame_idx, FrameTimepoint.START),
+                                         camera_sensor.get_frame_T_rig_world(source_frame_idx, FrameTimepoint.END)))
+                timestamps_us = np.stack((camera_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.START),
+                                          camera_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.END)))
+                encoded_image_data = camera_sensor.get_frame_handle(source_frame_idx).get_data()
+                data_writer.store_camera_frame(camera_id, chunk_frame_index,
+                                               encoded_image_data.get_encoded_image_data(),
+                                               encoded_image_data.get_encoded_image_format(), T_rig_worlds,
+                                               timestamps_us)
+
+        ## Process lidars
+
+        # Iterate once over all frames to collect surviving tracks / frame labels
+        target_track_labels: dict[str, TrackLabel] = {}
+        target_frame_labels: dict[str, dict[int, list[FrameLabel3]]] = {}
+        for lidar_id in lidar_ids:
+            lidar_sensor = loader.get_lidar_sensor(lidar_id)
+
+            if lidar_id not in target_frame_labels:
+                target_frame_labels[lidar_id] = {}
+
+            # subselect frames
+            source_frame_timestamps_us = lidar_sensor.get_frames_timestamps_us()
+            target_frames_range = chunk_interval_us.cover_range(source_frame_timestamps_us)
+
+            # extract labels from subselected frames
+            for source_frame_idx in target_frames_range:
+
+                source_frame_timestamp_us = int(source_frame_timestamps_us[source_frame_idx])
+
+                if source_frame_timestamp_us not in target_frame_labels[lidar_id]:
+                    target_frame_labels[lidar_id][source_frame_timestamp_us] = []
+
+                for frame_label in lidar_sensor.get_frame_labels(source_frame_idx):
+                    target_frame_labels[lidar_id][source_frame_timestamp_us].append(frame_label)
+
+                    track_id = frame_label.track_id
+
+                    if track_id not in target_track_labels:
+                        target_track_labels[track_id] = TrackLabel(sensors={})
+
+                    if lidar_id not in target_track_labels[track_id].sensors:
+                        target_track_labels[track_id].sensors[lidar_id] = []
+
+                    target_track_labels[track_id].sensors[lidar_id].append(source_frame_timestamp_us)
+
+        target_track_global_dynamic_flag = NVLabelProcessor.track_global_dynamic_flag(
+            target_frame_labels,
+            label_strings_unconditionally_dynamic=dynamic_flag_parameters.label_ids_unconditionally_dynamic,
+            label_strings_unconditionally_static=dynamic_flag_parameters.label_ids_unconditionally_static,
+            global_speed_dynamic_threshold=dynamic_flag_parameters.global_speed_dynamic_threshold)
+
+        # Second iteration: store frames
+        for lidar_id in lidar_ids:
+            lidar_sensor = loader.get_lidar_sensor(lidar_id)
+
+            # subselect frames
+            source_frame_timestamps_us = lidar_sensor.get_frames_timestamps_us()
+            target_frames_range = chunk_interval_us.cover_range(source_frame_timestamps_us)
+
+            # store sensor meta
+            data_writer.store_lidar_meta(lidar_id, source_frame_timestamps_us[target_frames_range],
+                                         lidar_sensor.get_T_sensor_rig())
+
+            # store subselected frames
+            for chunk_frame_index, source_frame_idx in enumerate(target_frames_range):
+                T_rig_worlds = np.stack((lidar_sensor.get_frame_T_rig_world(source_frame_idx, FrameTimepoint.START),
+                                         lidar_sensor.get_frame_T_rig_world(source_frame_idx, FrameTimepoint.END)))
+                timestamps_us = np.stack((lidar_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.START),
+                                          lidar_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.END)))
+
+                # re-estimate dynamic flags based on local track data
+                xyz_e = lidar_sensor.get_frame_data(source_frame_idx, 'xyz_e')
+                dynamic_flag, frame_labels = NVLabelProcessor.lidar_dynamic_flag(
+                    lidar_id,
+                    xyz_e,
+                    timestamps_us[1],
+                    target_frame_labels,
+                    target_track_global_dynamic_flag,
+                    lidar_dynamic_flag_bbox_padding_meters=dynamic_flag_parameters.
+                    lidar_dynamic_flag_bbox_padding_meters)
+
+                semantic_class = lidar_sensor.get_frame_data(source_frame_idx,
+                                                             'semantic_class') if lidar_sensor.has_frame_data(
+                                                                 source_frame_idx, 'semantic_class') else None
+                data_writer.store_lidar_frame(lidar_id, chunk_frame_index,
+                                              lidar_sensor.get_frame_data(source_frame_idx, 'xyz_s'), xyz_e,
+                                              lidar_sensor.get_frame_data(source_frame_idx, 'intensity'),
+                                              lidar_sensor.get_frame_data(source_frame_idx, 'timestamp_us'),
+                                              dynamic_flag, semantic_class, frame_labels, T_rig_worlds, timestamps_us)
+
+        data_writer.store_tracks(tracks=Tracks(track_labels=target_track_labels))
+
+        ## Finalize output
+        data_writer.finalize()
+
+
+def get_dynamic_flag_parameters(variant: str, loader: ShardDataLoader) -> DynamicFlagParameters:
+    ''' Provides the dynamic flag parameters for the chosen variant ['auto', 'nv', 'waymo']'''
+    nv_params = DynamicFlagParameters(
+        label_ids_unconditionally_dynamic=NVLabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC,
+        label_ids_unconditionally_static=NVLabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_STATIC,
+        lidar_dynamic_flag_bbox_padding_meters=NVLabelProcessor.LIDAR_DYNAMIC_FLAG_BBOX_PADDING_METERS,
+        global_speed_dynamic_threshold=NVLabelProcessor.GLOBAL_SPEED_DYNAMIC_THRESHOLD)
+
+    waymo_params = DynamicFlagParameters(
+        label_ids_unconditionally_dynamic=WaymoConverter.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC,
+        label_ids_unconditionally_static=WaymoConverter.LABEL_STRINGS_UNCONDITIONALLY_STATIC,
+        lidar_dynamic_flag_bbox_padding_meters=WaymoConverter.LIDAR_DYNAMIC_FLAG_BBOX_PADDING_METERS,
+        global_speed_dynamic_threshold=WaymoConverter.GLOBAL_SPEED_DYNAMIC_THRESHOLD)
+
+    match variant:
+        case 'nv':
+            return nv_params
+        case 'waymo':
+            return waymo_params
+        case 'auto':
+            # try by matching calibration-type
+            if input_calibration_type := loader.get_calibration_type() in ['scene-calib', 'deepmap', 'carter']:
+                logging.info('Auto-detected NV dynamic flag parameters')
+                return nv_params
+
+            if input_calibration_type in ['waymo-calibration']:
+                logging.info('Auto-detected Waymo dynamic flag parameters')
+                return waymo_params
+
+            # try by matching camera sensor-names
+            if input_sensor_ids := set(loader.get_camera_ids()) & (
+                    set(BaseNvidiaDataConverter.Hyperion8Constants.CAMERAID_TO_RIGNAME.keys())
+                    | set(BaseNvidiaDataConverter.Hyperion81Constants.CAMERAID_TO_RIGNAME.keys())):
+                logging.info('Auto-detected NV dynamic flag parameters')
+                return nv_params
+
+            if input_sensor_ids & set(WaymoConverter.CAMERA_MAP.keys()):
+                logging.info('Auto-detected Waymo dynamic flag parameters')
+                return waymo_params
+
+    raise RuntimeError(
+        "Detecting dynamic flag parameters failed, consider extending lookup or specify supported variant explicitly via '--dynamic-flag-variant' parameter"
+    )
+
+
+@click.group()
+@click.option('--shard-file-pattern',
+              type=str,
+              help='Data shard pattern to load (supports range expansion)',
+              required=True)
+@click.option('--output-dir', type=str, help='Path to the output folder', required=True)
+@click.option(
+    '--output-basename',
+    type=str,
+    default=None,
+    help=
+    'Basename of the generated file - <sequence-id>_<start-time-us>_<end-time-us> will be used by default if not provided',
+    required=False)
+@click.option('--open-consolidated/--no-open-consolidated', default=True, help='Pre-load shard meta-data?')
+@click.option('--store-shard-meta/--no-store-shard-meta', default=True, help='Store shard meta-data along with shard?')
+@click.option(
+    '--dynamic-flag-variant',
+    type=click.Choice(['auto', 'nv', 'waymo'], case_sensitive=False),
+    default='auto',
+    help=
+    'Variant-specific parameters to use for dynamic-flag assignment (auto exit with an error if variant lookup fails)')
+@click.option('--no-cameras', is_flag=True, default=False, help='Disable exporting of any camera sensor')
+@click.option('--camera-id',
+              'camera_ids',
+              multiple=True,
+              type=str,
+              help='Cameras to be exported (multiple value option, all if not specified)',
+              default=None)
+@click.option('--no-lidars', is_flag=True, default=False, help='Disable exporting of any lidar sensor')
+@click.option('--lidar-id',
+              'lidar_ids',
+              multiple=True,
+              type=str,
+              help='Lidars to be exported (multiple value option, all if not specified)',
+              default=None)
+@click.option('--no-radars', is_flag=True, default=False, help='Disable exporting of any radar sensor')
+@click.option('--radar-id',
+              'radar_ids',
+              multiple=True,
+              type=str,
+              help='Radars to be exported (multiple value option, all if not specified)',
+              default=None)
+@click.option("--debug", is_flag=True, default=False, help="Enables debug logging outputs")
+@click.pass_context
+def cli(ctx, **kwargs) -> None:
+    """ Extracts a time-based subrange of data from NCore shards and outputs the data as a new shard """
+
+    params = CLIBaseParams(**kwargs)
+
+    # Initialize basic top-level logger configuration
+    logging.basicConfig(level=logging.DEBUG if params.debug else logging.INFO,
+                        format='<%(asctime)s|%(levelname)s|%(filename)s:%(lineno)d|%(name)s> %(message)s')
+
+    ctx.obj = params
+
+
+def ncore_chunk(params: CLIBaseParams, loader: ShardDataLoader, start_timestamp_us: int, end_timestamp_us: int) -> None:
+    ''' Execute common components of chunk export '''
+    # Output container name
+    if not (container_name := params.output_basename):
+        container_name = '_'.join((str(x) for x in (loader.get_sequence_id(), start_timestamp_us, end_timestamp_us)))
+
+    # Sensor selection
+    camera_ids = list(params.camera_ids) if len(params.camera_ids) else None
+    if params.no_cameras:
+        camera_ids = []
+
+    lidar_ids = list(params.lidar_ids) if len(params.lidar_ids) else None
+    if params.no_lidars:
+        lidar_ids = []
+
+    radar_ids = list(params.radar_ids) if len(params.radar_ids) else None
+    if params.no_radars:
+        radar_ids = []
+
+    ChunkDataWriter.process(loader, start_timestamp_us, end_timestamp_us,
+                            get_dynamic_flag_parameters(params.dynamic_flag_variant, loader), Path(params.output_dir),
+                            container_name, camera_ids, lidar_ids, radar_ids, params.store_shard_meta)
+
+
+@cli.command()
+@click.option('--start-timestamp-us',
+              type=int,
+              default=None,
+              help="If provided, the start timestamp to restrict processing to")
+@click.option('--end-timestamp-us',
+              type=int,
+              default=None,
+              help="If provided, the end timestamp to restrict processing to")
+@click.pass_context
+def timestamps(ctx, start_timestamp_us: int, end_timestamp_us: int) -> None:
+    """Timestamp-based subrange selection"""
+
+    params: CLIBaseParams = ctx.obj
+
+    # determine time-ranges from seek/duration relative to data
+    loader = ShardDataLoader(ShardDataLoader.evaluate_shard_file_pattern(params.shard_file_pattern),
+                             params.open_consolidated)
+
+    ncore_chunk(params, loader, start_timestamp_us, end_timestamp_us)
+
+
+@cli.command()
+@click.option('--seek-sec',
+              type=click.FloatRange(min=0.0, max_open=True),
+              help="Time to skip for the dataset conversion (in seconds)")
+@click.option('--duration-sec',
+              type=click.FloatRange(min=0.0, max_open=True),
+              help="Restrict total duration of the dataset conversion (in seconds)")
+@click.pass_context
+def offset(ctx, seek_sec: float, duration_sec: float) -> None:
+    """Offset-based subrange selection"""
+
+    params: CLIBaseParams = ctx.obj
+
+    # determine time-ranges from seek/duration relative to data
+    loader = ShardDataLoader(ShardDataLoader.evaluate_shard_file_pattern(params.shard_file_pattern),
+                             params.open_consolidated)
+
+    start_timestamp_us, end_timestamp_us = time_bounds(loader.get_poses().T_rig_world_timestamps_us.tolist(), seek_sec,
+                                                       duration_sec)
+
+    ncore_chunk(params, loader, start_timestamp_us, end_timestamp_us)
+
+
+if __name__ == '__main__':
+    cli(show_default=True)

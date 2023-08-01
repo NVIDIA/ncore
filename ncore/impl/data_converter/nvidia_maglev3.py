@@ -15,13 +15,13 @@ import point_cloud_utils as pcu
 
 from ncore.impl.data_converter.data_converter import BaseNvidiaDataConverter
 from ncore.impl.data.data3 import ContainerDataWriter
-from ncore.impl.data.types import FThetaCameraModelParameters, LabelSource, Poses, ShutterType
+from ncore.impl.data.types import FThetaCameraModelParameters, LabelSource, Poses, ShutterType, Tracks
 
 from ncore.impl.common.nvidia_utils import (load_maglev_camera_indexer_frame_meta, load_maglev_lidar_indexer_frame_meta,
                                             load_maglev_egomotion, load_maglev_session_id, parse_rig_sensors_from_dict,
                                             sensor_to_rig, LabelProcessor, camera_intrinsic_parameters,
                                             compute_fw_polynomial, compute_ftheta_fov, camera_car_mask, vehicle_bbox)
-from ncore.impl.common.common import PoseInterpolator, uniform_subdivide_range, SimpleTimer
+from ncore.impl.common.common import PoseInterpolator, uniform_subdivide_range, SimpleTimer, time_bounds
 from ncore.impl.av_utils import isWithin3DBBox
 
 
@@ -41,8 +41,6 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.shard_count: int = config.shard_count
 
         self.egomotion_file: Optional[Path] = Path(config.egomotion_file) if config.egomotion_file else None
-
-        self.skip_dynamic_flag: bool = config.skip_dynamic_flag
 
     @staticmethod
     def get_sequence_paths(config) -> list[Path]:
@@ -122,7 +120,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.global_T_rig_worlds = np.linalg.inv(T_rig_world_base) @ self.global_T_rig_worlds
 
         # Apply and remember global time-range restrictions for dataset (used for all pose interpolation within shard)
-        global_target_start_timestamp_us, global_target_end_timestamp_us = self.time_bounds(
+        global_target_start_timestamp_us, global_target_end_timestamp_us = time_bounds(
             self.global_T_rig_world_timestamps_us, self.seek_sec, self.duration_sec)
         global_range_start = np.argmax(self.global_T_rig_world_timestamps_us >= global_target_start_timestamp_us)
         global_range_end               = np.argmin(self.global_T_rig_world_timestamps_us < global_target_end_timestamp_us) \
@@ -194,17 +192,17 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             return
 
         # Perform label parsing (of global time)
-        self.track_labels, self.frame_labels = LabelProcessor.parse(
+        self.track_labels, self.frame_labels, self.track_global_dynamic_flag = LabelProcessor.parse(
             labels_path, {
                 lidar_id: load_maglev_lidar_indexer_frame_meta(Path(self.sequence_path / 'lidars' / lidar_rig_name))
                 for lidar_id, lidar_rig_name in self.constants.LIDARID_TO_RIGNAME.items()
             }, {
                 lidar_id: sensor_to_rig(self.sensors_calibration_data[lidar_rig_name])
                 for lidar_id, lidar_rig_name in self.constants.LIDARID_TO_RIGNAME.items()
-            }, self.global_T_rig_world_timestamps_us, self.global_T_rig_worlds, LabelSource.AUTOLABEL, logger)
+            }, self.global_T_rig_world_timestamps_us, self.global_T_rig_worlds, LabelSource.AUTOLABEL)
 
         # Save the accumulated tracks in global time
-        self.data_writer.store_labels(self.track_labels)
+        self.data_writer.store_tracks(Tracks(self.track_labels))
 
     def decode_cameras(self):
         logger = self.logger.getChild('decode_cameras')
@@ -530,9 +528,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 dynamic_flag, frame_labels = LabelProcessor.lidar_dynamic_flag(lidar_id,
                                                                                xyz,
                                                                                frame_end_timestamp_us,
-                                                                               self.track_labels,
                                                                                self.frame_labels,
-                                                                               skip_dynamic_flag=self.skip_dynamic_flag)
+                                                                               self.track_global_dynamic_flag)
 
                 time_dynflag = timer.elapsed_sec(restart=True)
 

@@ -58,9 +58,16 @@ class TestData3Loader(unittest.TestCase):
                 loader.get_sequence_id(with_shard_range=True),
                 'c9b05cf4-afb9-11ec-b3c2-00044bf65fcb_' + '_'.join([str(shard_id) for shard_id in range(start, end)]))
 
+            self.assertEqual(loader.get_calibration_type(), 'scene-calib')
+            self.assertEqual(loader.get_egomotion_type(), 'lidar-egomotion')
+
             # make sure returned paths are absolute and ordered by shard-id
             self.assertEqual(loader.get_shard_paths(), [str(Path(p).absolute()) for p in self.all_shards[start:end]])
             self.assertEqual(loader.get_shard_ids(), list(range(start, end)))
+
+            # check tracks API
+            tracks = loader.get_tracks()
+            self.assertEqual(len(tracks.track_labels), 21)
 
         # check all shard slice variants
         for end in range(1, len(self.all_shards) + 1):

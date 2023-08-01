@@ -65,7 +65,7 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
 
     @staticmethod
     def type() -> str:
-        ''' Returns a string-identitfiery of the camera model '''
+        ''' Returns a string-identifier of the camera model '''
         return 'ftheta'
 
     @property
@@ -129,7 +129,7 @@ class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
 
     @staticmethod
     def type() -> str:
-        ''' Returns a string-identitfiery of the camera model '''
+        ''' Returns a string-identifier of the camera model '''
         return 'pinhole'
 
     def __post_init__(self):
@@ -157,8 +157,8 @@ class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
 class Poses:
     ''' Represents a collection of timestamped poses (rig-to-local-world transformation) '''
     T_rig_world_base: np.ndarray  #: Base rig-to-global-world SE3 transformation (float64, [4,4])
-    T_rig_worlds: np.ndarray  #: All the trajectorie's rig-to-local-world SE3 transformations (float64, [N,4,4])
-    T_rig_world_timestamps_us: np.ndarray  #: All timestamps the trajectories rig-to-local-world transformations (uint64, [N,])
+    T_rig_worlds: np.ndarray  #: All rig-to-local-world SE3 transformations of the trajectory (float64, [N,4,4])
+    T_rig_world_timestamps_us: np.ndarray  #: All rig-to-local-world transformation timestamps of the trajectory (uint64, [N,])
 
     def __post_init__(self):
         # Sanity checks
@@ -220,23 +220,21 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
     label_class: str  #: String-representation of the class associated with this label
     bbox3: BBox3  #: Bounding-box coordinates of the object relative to the frame's coordinate system
     global_speed: float  #: Instantaneous global speed [m/s] of the object
+    timestamp_us: int  #: The timestamp associated with the centroid of the label (possibly an accurate in-spin time)
     confidence: Optional[float]  #: If available, the confidence score of the label [0..1]
-
-    timestamp_us: Optional[int]
-    ''' If available, the timestamp associated with the centroid of the label (possibly an accurate in-spin time).
-        Optional also to be backwards-compatible with existing datasets that don't provide
-        this information.
-    
-        In the future this field might become mandatory (deprecating old datasets) '''
-
     source: LabelSource = util.enum_field(LabelSource)  #: The source fo the current label
 
 
 @dataclass
 class TrackLabel(dataclasses_json.DataClassJsonMixin):
-    ''' Description of an object-specific track '''
-    dynamic_flag: bool  #: Indicating if the object-track is classified to be dynamic at *any* point in time of the sequence
-    sensors: dict[str, list[int]]  #: Represents all frame-timestamps of the object in different sensors
+    ''' Description of an individual object-specific track '''
+    sensors: dict[str, list[int]]  #: Represents all frame-timestamps (map values) of the object's observations in different sensors (map keys)
+
+
+@dataclass
+class Tracks(dataclasses_json.DataClassJsonMixin):
+    ''' Represents a collection of tracks '''
+    track_labels: dict[str, TrackLabel]  #: Represents individual object tracks (map values) referenced by `track_id`'s (map keys, same as in `FrameLabel3`)
 
 
 @unique
@@ -244,7 +242,7 @@ class DynamicFlagState(IntEnum):
     ''' Enumerates potential per-point flag values related to 'dynamic_flag' property '''
     NOT_AVAILABLE = -1  #: No dynamic flag state is available for this point
     STATIC = 0  #: Point is classified to be static
-    DYNAMIC = 1  #: Point is classified to be dynaic
+    DYNAMIC = 1  #: Point is classified to be dynamic
 
 
 @unique

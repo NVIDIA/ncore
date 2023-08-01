@@ -121,12 +121,14 @@ class ContainerDataWriter:
         poses_grp.create_dataset('T_rig_worlds', data=poses.T_rig_worlds)
         poses_grp.create_dataset('T_rig_world_timestamps_us', data=poses.T_rig_world_timestamps_us)
 
-    def store_labels(self, track_labels: dict[str, types.TrackLabel]) -> None:
-        # TODO: add sanity checks on the final label structure before output
-        labels_grp = self.container_root.require_group('labels')
-        labels_grp.create_dataset('track_labels',
+    def store_tracks(self, tracks: types.Tracks) -> None:
+        # Store track labels
+        tracks_grp = self.container_root.require_group('tracks')
+        tracks_grp.create_dataset('track_labels',
                                   dtype=object,
-                                  data=[(k, v.to_dict()) for (k, v) in track_labels.items()],
+                                  # Encode as array of (key,value) pairs because of
+                                  # https://github.com/zarr-developers/numcodecs/pull/366
+                                  data=[(k, v.to_dict()) for (k, v) in tracks.track_labels.items()],
                                   object_codec=numcodecs.JSON())
 
     def store_camera_meta(
@@ -612,7 +614,9 @@ class ShardDataLoader:
                 shard_radar_ids = set(shard_root.attrs.get('radar_ids'))
                 shard_shard_id = shard_root.attrs.get('shard_id')
                 shard_shard_count = shard_root.attrs.get('shard_count')
-                shard_shard_version = shard_root.attrs.get('version')
+                shard_version = shard_root.attrs.get('version')
+                shard_calibration_type = shard_root.attrs.get('calibration_type')
+                shard_egomotion_type = shard_root.attrs.get('egomotion_type')
 
                 if not shards_map:
                     self._sequence_id: str = shard_sequence_id
@@ -620,7 +624,9 @@ class ShardDataLoader:
                     self._lidar_ids: set[str] = shard_lidar_ids
                     self._radar_ids: set[str] = shard_radar_ids
                     self._shard_count: int = shard_shard_count
-                    self._shard_version: str = shard_shard_version
+                    self._shard_version: str = shard_version
+                    self._calibration_type: str = shard_calibration_type
+                    self._egomotion_type: str = shard_egomotion_type
 
                 if not self._sequence_id == shard_sequence_id:
                     raise ValueError("Can't load shards from different sequences")
@@ -632,8 +638,12 @@ class ShardDataLoader:
                     raise ValueError("Can't load shards with different radar sensors")
                 if not self._shard_count == shard_shard_count:
                     raise ValueError("Can't load shards from different subdivisions")
-                if not self._shard_version == shard_shard_version:
+                if not self._shard_version == shard_version:
                     raise ValueError("Can't load shards from different data versions")
+                if not self._calibration_type == shard_calibration_type:
+                    raise ValueError("Can't load shards with different calibration types")
+                if not self._egomotion_type == shard_egomotion_type:
+                    raise ValueError("Can't load shards with different egomotion types")
 
                 if shard_shard_id in shards_map: raise ValueError("Shard ID loaded multiple times")
 
@@ -710,6 +720,14 @@ class ShardDataLoader:
             return f"{self._sequence_id}_{'_'.join([str(shard_id) for shard_id in self._shard_ids])}"
         return self._sequence_id
 
+    def get_calibration_type(self) -> str:
+        ''' Provides access to a calibration type identifier of the loaded shard data '''
+        return self._calibration_type
+
+    def get_egomotion_type(self) -> str:
+        ''' Provides access to a egomotion type identifier of the loaded shard data '''
+        return self._egomotion_type
+
     def get_shard_paths(self) -> list[str]:
         ''' Returns paths to loaded shards (ordered by linear shard ID) '''
         return self._shard_paths
@@ -755,3 +773,18 @@ class ShardDataLoader:
     def get_radar_ids(self) -> list[str]:
         ''' Returns all radar sensor ids '''
         return list(self._radar_ids)
+
+    def get_tracks(self) -> types.Tracks:
+        ''' Returns all object tracks '''
+
+        root_shard = self._shard_roots[0]  # can use first root shard as track labels are the same per shard
+
+        # Backwards-compatibility: track-labels used to be stored in top-level
+        # 'labels' group / 'track_labels' dataset
+        tracks_group = root_shard['labels'] if 'labels' in root_shard else root_shard['tracks']
+
+        return types.Tracks(
+            track_labels={
+                track_label[0]: types.TrackLabel.from_dict(track_label[1], infer_missing=True)
+                for track_label in tracks_group['track_labels']
+            })

@@ -20,7 +20,7 @@ from ncore.impl.data_converter.protos.deepmap import track_data_pb2, pointcloud_
 from ncore.impl.data_converter.protos.deepmap.util import extract_sensor_2_sdc
 from ncore.impl.data_converter.data_converter import DataConverter
 from ncore.impl.data.data3 import ContainerDataWriter
-from ncore.impl.data.types import FrameLabel3, Poses, PinholeCameraModelParameters, ShutterType, TrackLabel
+from ncore.impl.data.types import FrameLabel3, Poses, PinholeCameraModelParameters, ShutterType, TrackLabel, Tracks
 from ncore.impl.common.common import PoseInterpolator
 from ncore.impl.common.nvidia_utils import LabelProcessor, extract_pose
 from ncore.impl.av_utils import isWithin3DBBox
@@ -177,11 +177,12 @@ class CarterDeepmapConverter(DataConverter):
                   T_rig_world_timestamps_us=self.poses_timestamps_us[local_pose_range]))
 
     def decode_labels(self):
-        # No labels to load currently
+        # No labels / tracks to load currently
         self.track_labels: dict[str, TrackLabel] = {}
         self.frame_labels: dict[str, dict[int, list[FrameLabel3]]] = {}
+        self.track_global_dynamic_flag: dict[str, bool] = {}
 
-        self.data_writer.store_labels(self.track_labels)
+        self.data_writer.store_tracks(Tracks(self.track_labels))
 
     def decode_lidar(self):
         # Initialize the pose interpolator object
@@ -283,8 +284,7 @@ class CarterDeepmapConverter(DataConverter):
                 T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
 
                 # Use the bounding boxes to remove dynamic objects
-                dynamic_flag, frame_labels = LabelProcessor.lidar_dynamic_flag(lidar_id, xyz_e, -1, self.track_labels,
-                                                                               self.frame_labels)
+                dynamic_flag, frame_labels = LabelProcessor.lidar_dynamic_flag(lidar_id, xyz_e, -1, self.frame_labels, self.track_global_dynamic_flag)
 
                 # Serialize lidar frame
                 self.data_writer.store_lidar_frame(lidar_id, frame_idx, xyz_s, xyz_e, intensity, timestamp,

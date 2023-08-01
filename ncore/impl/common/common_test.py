@@ -8,7 +8,7 @@ import numpy as np
 
 from scipy.spatial.transform import Rotation as R
 
-from ncore.impl.common.common import load_pkl, save_pkl, load_pc_dat, save_pc_dat, uniform_subdivide_range
+from ncore.impl.common.common import load_pkl, save_pkl, load_pc_dat, save_pc_dat, uniform_subdivide_range, HalfClosedInterval
 from ncore.impl.common.transformations import so3_trans_2_se3
 from ncore.impl.av_utils import isWithin3DBBox
 
@@ -218,3 +218,93 @@ def test_uniform_subdivide_range():
     # empty range
     check(uniform_subdivide_range(subdiv_id=0, subdiv_count=1, range_start=0, range_end=0),
           (np.empty_like(np.arange(0, 0)), -1))
+
+
+class TestHalfClosedInterval(unittest.TestCase):
+    def test_init_len(self):
+        """ Test to verify HalfClosedInterval.__init__() / __len__() """
+
+        # Valid interval
+        self.assertEqual(len(HalfClosedInterval(0, 1)), 1)
+
+        # Empty interval
+        self.assertEqual(len(HalfClosedInterval(1, 1)), 0)
+
+        # Invalid interval -> exception
+        with self.assertRaises(Exception):
+            HalfClosedInterval(0, -1)
+
+    def test_contains(self):
+        """ Test to verify HalfClosedInterval.__contains__() """
+        interval_0_3 = HalfClosedInterval(0, 3)
+
+        self.assertTrue(0 in interval_0_3)
+        self.assertTrue(1 in interval_0_3)
+        self.assertTrue(2 in interval_0_3)
+        self.assertFalse(-1 in interval_0_3)
+        self.assertFalse(3 in interval_0_3)
+        self.assertFalse(4 in interval_0_3)
+
+    def test_intersection(self):
+        """ Test to verify HalfClosedInterval.intersection() """
+        interval_0_3 = HalfClosedInterval(0, 3)
+
+        # self-intersection
+        self.assertEqual(interval_0_3.intersection(interval_0_3), interval_0_3)
+
+        # non-empty intersection
+        self.assertEqual(interval_0_3.intersection(HalfClosedInterval(2, 10)), HalfClosedInterval(2, 3))
+
+        # empty intersections
+        self.assertEqual(interval_0_3.intersection(HalfClosedInterval(-5, -2)), None)
+        self.assertEqual(interval_0_3.intersection(HalfClosedInterval(3, 4)), None)
+
+    def test_overlaps(self):
+        """ Test to verify HalfClosedInterval.overlaps() """
+        interval_0_3 = HalfClosedInterval(0, 3)
+
+        # self-intersection
+        self.assertTrue(interval_0_3.overlaps(interval_0_3))
+
+        # non-empty intersection
+        self.assertTrue(interval_0_3.overlaps(HalfClosedInterval(2, 10)))
+
+        # empty intersections
+        self.assertFalse(interval_0_3.overlaps(HalfClosedInterval(-5, -2)))
+        self.assertFalse(interval_0_3.overlaps(HalfClosedInterval(3, 4)))
+
+    def test_cover_range(self):
+        """ Test to verify HalfClosedInterval.cover_range() """
+        interval_0_3 = HalfClosedInterval(0, 3)
+
+        # self-intersection
+        self.assertEqual(cover_range := interval_0_3.cover_range(test_range := np.arange(0, 3)), range(0, 3))
+        self.assertTrue([test_range[i] in interval_0_3 for i in cover_range])
+
+        # full interval cover
+        self.assertEqual(cover_range := interval_0_3.cover_range(test_range := np.arange(-5, 10)), range(5, 8))
+        self.assertTrue([test_range[i] in interval_0_3 for i in cover_range])
+
+        # subranges (partial covers)
+        self.assertEqual(cover_range := interval_0_3.cover_range(test_range := np.arange(1, 10)), range(0, 2))
+        self.assertTrue([test_range[i] in interval_0_3 for i in cover_range])
+
+        self.assertEqual(cover_range := interval_0_3.cover_range(test_range := np.arange(-5, 2)), range(5, 7))
+        self.assertTrue([test_range[i] in interval_0_3 for i in cover_range])
+
+        # no cover (left)
+        self.assertEqual(cover_range := interval_0_3.cover_range(test_range := np.arange(-5, 0)), range(0, 0))
+        self.assertFalse([test_range[i] in interval_0_3 for i in cover_range])
+
+        # no cover (right)
+        self.assertEqual(cover_range := interval_0_3.cover_range(test_range := np.arange(3, 10)), range(0, 0))
+        self.assertFalse([test_range[i] in interval_0_3 for i in cover_range])
+
+        # no samples
+        self.assertEqual(cover_range := interval_0_3.cover_range(test_range := np.arange(0, 0)), range(0, 0))
+        self.assertFalse([test_range[i] in interval_0_3 for i in cover_range])
+
+        # empty interval case
+        interval_5_5 = HalfClosedInterval(5, 5)
+        self.assertEqual(cover_range := interval_5_5.cover_range(test_range := np.arange(0, 10)), range(0, 0))
+        self.assertFalse([test_range[i] in interval_5_5 for i in cover_range])
