@@ -210,6 +210,8 @@ class LabelSource(IntEnum):
     ''' Enumerates different sources for labels (auto, manual, GT, synthetic etc.) '''
     AUTOLABEL = auto()  #: Label originates from an autolabeling pipeline
     EXTERNAL = auto()  #: Label originates from an unspecified external source, e.g., from third-party processes
+    GT_SYNTHETIC = auto()  #: Label originates from a synthetic data simulation and is considered ground-truth
+    GT_ANNOTATION = auto()  #: Label originates from manual annotation and is considered ground-truth
 
 
 @dataclass
