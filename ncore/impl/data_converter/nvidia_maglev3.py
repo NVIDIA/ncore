@@ -7,7 +7,7 @@ import json
 import tempfile
 
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import numpy as np
 import tqdm
@@ -278,24 +278,27 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             # TODO: extend this with dynamic object masks
             mask_image = camera_car_mask(camera_calibration_data)
 
-            ## Process all valid images
-
             # Local camera pose timestamps corresponding to end-of-frame timestamps
-            valid_local_camera_timestamps_us: List[np.uint64] = []
+            local_camera_timestamps_us = np.stack(local_frame_timestamps_us) \
+                if local_frame_timestamps_us.size != 0 else np.empty_like(local_frame_timestamps_us) # check that at least a single frame was processed
+
+            self.data_writer.store_camera_meta(
+                camera_id, local_camera_timestamps_us, T_sensor_rig,
+                FThetaCameraModelParameters(intrinsic[2:4].astype(np.uint64), ShutterType.ROLLING_TOP_TO_BOTTOM,
+                                            intrinsic[0:2],
+                                            FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, bw_poly,
+                                            fw_poly, max_angle), mask_image.get_image())
 
             # Load tar file containing images
             tar_file = open(self.sequence_path / 'cameras' / camera_rig_name / 'images.tar', 'rb')
             tar_index = json.load(open(self.sequence_path / 'cameras' / camera_rig_name / 'images.tar.idx.json', 'r'))
 
-            for (frame_number, frame_end_timestamp_us) in \
-                tqdm.tqdm(zip(local_frame_numbers, local_frame_timestamps_us), total=len(local_frame_numbers)):
+            ## Process all valid images
+            for continous_local_frame_index, (frame_number, frame_end_timestamp_us) in \
+                tqdm.tqdm(enumerate(zip(local_frame_numbers, local_frame_timestamps_us)), total=len(local_frame_numbers)):
 
-                # Load image file data from archive, if they exist (workaround some spurious transcoder issue)
-                if (file_key := f'./{str(frame_number)}.jpeg') not in tar_index:
-                    logger.warn(f'Missing camera frame file {file_key} - skipping frame - results might be incomplete')
-                    continue
-
-                file_record = tar_index[file_key]
+                # Load image file data from archive
+                file_record = tar_index[f'./{str(frame_number)}.jpeg']
                 tar_file.seek(file_record['offset_data'])
                 image_file_binary_data = tar_file.read(file_record['size'])
 
@@ -308,22 +311,10 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 ])
                 T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
 
-                self.data_writer.store_camera_frame(camera_id, len(valid_local_camera_timestamps_us), image_file_binary_data,
+                self.data_writer.store_camera_frame(camera_id, continous_local_frame_index, image_file_binary_data,
                                                     'jpeg', T_rig_worlds, timestamps_us)
-                
-                valid_local_camera_timestamps_us.append(frame_end_timestamp_us)
 
-            self.data_writer.store_camera_meta(
-                camera_id,
-                np.stack(valid_local_camera_timestamps_us) \
-                    if len(valid_local_camera_timestamps_us) else np.empty_like(local_frame_timestamps_us),
-                T_sensor_rig,
-                FThetaCameraModelParameters(intrinsic[2:4].astype(np.uint64), ShutterType.ROLLING_TOP_TO_BOTTOM,
-                                            intrinsic[0:2],
-                                            FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE, bw_poly,
-                                            fw_poly, max_angle), mask_image.get_image())
-
-            logger.info(f'> processed {len(valid_local_camera_timestamps_us)} local'
+            logger.info(f'> processed {len(local_frame_timestamps_us)} local'
                         f' images [shard {self.shard_id}/{self.shard_count}]')
 
         logger.info(f'> processed {len(self.constants.CAMERAID_TO_RIGNAME)} cameras')
