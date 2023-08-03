@@ -1,13 +1,21 @@
 # Copyright (c) 2023 NVIDIA CORPORATION.  All rights reserved.
 
 load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@rules_python//python:defs.bzl", "py_library")
 load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
+
+# Proxy library to include PEP 561 type-marker
+py_library(
+    name = "pylib",
+    data = ["py.typed"],
+)
 
 # Collect all dependencies within the ncore.* subpackages to export in wheel
 py_package(
     name = "ncore_pkg",
     packages = ["ncore"],
     deps = [
+        "@ncore-repo//ncore:pylib",
         "@ncore-repo//ncore/data:pylib",
         "@ncore-repo//ncore/data/v3:pylib",
         "@ncore-repo//ncore/geometry:pylib",
@@ -33,7 +41,7 @@ py_wheel(
         "scipy",
         "torch",
     ],
-    version = "0.4.2",
+    version = "0.4.3",
     deps = [
         ":ncore_pkg",
     ],
