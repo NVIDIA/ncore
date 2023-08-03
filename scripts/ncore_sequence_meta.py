@@ -60,10 +60,10 @@ def ncore_sequence_meta(shard_file_pattern: str, shard_file_skip_suffixes: Tuple
     sensor_frame_offset: dict[str, int] = defaultdict(int)
     for shard_idx, (shard_id, shard_path) in enumerate(zip(loader.get_shard_ids(), loader.get_shard_paths())):
         start_shard_idx = shard_idx
-        end_shard_idx = shard_idx + 1
+        stop_shard_idx = shard_idx + 1
 
         shard_pose_timestamps_us = loader.get_poses(start_shard_idx=start_shard_idx,
-                                                    end_shard_idx=end_shard_idx).T_rig_world_timestamps_us
+                                                    stop_shard_idx=stop_shard_idx).T_rig_world_timestamps_us
         shard = {
             'id': shard_id,
             'path': Path(shard_path).name,
@@ -84,7 +84,7 @@ def ncore_sequence_meta(shard_file_pattern: str, shard_file_skip_suffixes: Tuple
             sensor = loader.get_sensor(sensor_id)
 
             sensor_frame_timestamps_us = sensor.get_frames_timestamps_us(start_shard_idx=start_shard_idx,
-                                                                         end_shard_idx=end_shard_idx)
+                                                                         stop_shard_idx=stop_shard_idx)
             sensors[sensor_id] = {
                 'frame-range': {
                     "start-timestamp_us": int(sensor_frame_timestamps_us[0]),
