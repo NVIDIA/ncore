@@ -65,8 +65,8 @@ def register_repositories():
 
     http_archive(
         name = "test-data-v3-shards",
-        sha256 = "c881f52d0e8319bbb2fadc3433b5b0be41874741559051fc7614dd9720dacbe9",
-        urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/test-data-v3-shards/0.4/test-data-v3-shards.tar.gz"],
+        sha256 = "fce25e3cc81a019e46855c492951e34dd906330d17daad256e6d0a3a5551c425",
+        urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/test-data-v3-shards/0.5/test-data-v3-shards.tar.gz"],
     )
 
     http_archive(

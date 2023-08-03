@@ -376,27 +376,27 @@ class Sensor:
         return transformations.se3_inverse(self.get_T_sensor_rig())
 
     # Sequence-wide or shard-wide frame data
-    def get_frames_count(self, start_shard_idx: Optional[int] = None, end_shard_idx: Optional[int] = None) -> int:
-        ''' Returns number of frames for full session (default) or a range of shards [start,end) '''
+    def get_frames_count(self, start_shard_idx: Optional[int] = None, stop_shard_idx: Optional[int] = None) -> int:
+        ''' Returns number of frames for full session (default) or a range of shards [start,stop) '''
         return sum(
             len(shard_sensor_frame_timestamps_us) for shard_sensor_frame_timestamps_us in
-            self._shards_sensor_frame_timestamps_us[start_shard_idx:end_shard_idx])
+            self._shards_sensor_frame_timestamps_us[start_shard_idx:stop_shard_idx])
 
-    def get_frame_index_range(self, start_frame: int = 0, end_frame: int = -1, step_frame: int = 1) -> range:
-        ''' Returns a specific range of frame indices following range(start,end,step) conventions '''
+    def get_frame_index_range(self, start_frame: int = 0, stop_frame: int = -1, step_frame: int = 1) -> range:
+        ''' Returns a specific range of frame indices following range(start,stop,step) conventions '''
 
-        if end_frame == -1:
-            end_frame = self.get_frames_count()
+        if stop_frame == -1:
+            stop_frame = self.get_frames_count()
 
-        assert start_frame >= 0 and end_frame <= self.get_frames_count(), IndexError
+        assert start_frame >= 0 and stop_frame <= self.get_frames_count(), IndexError
 
-        return range(start_frame, end_frame, step_frame)
+        return range(start_frame, stop_frame, step_frame)
 
     def get_frames_timestamps_us(self,
                                  start_shard_idx: Optional[int] = None,
-                                 end_shard_idx: Optional[int] = None) -> np.ndarray:
-        ''' Returns all end-of-measurement frame timestamps full session (default) or a range of shards [start,end) '''
-        return np.hstack(self._shards_sensor_frame_timestamps_us[start_shard_idx:end_shard_idx])
+                                 stop_shard_idx: Optional[int] = None) -> np.ndarray:
+        ''' Returns all end-of-measurement frame timestamps full session (default) or a range of shards [start,stop) '''
+        return np.hstack(self._shards_sensor_frame_timestamps_us[start_shard_idx:stop_shard_idx])
 
     # Frame-dependent poses / timestamps
     def _get_frame_group(self, continous_frame_index: int) -> zarr.Group:
@@ -669,8 +669,8 @@ class ShardDataLoader:
         for shard_store in self._shard_stores:
             shard_store.reload_resources()
 
-    def get_poses(self, start_shard_idx: Optional[int] = None, end_shard_idx: Optional[int] = None) -> types.Poses:
-        ''' Returns all timestamped poses associated with the session (default) or a range of shards [start,end) '''
+    def get_poses(self, start_shard_idx: Optional[int] = None, stop_shard_idx: Optional[int] = None) -> types.Poses:
+        ''' Returns all timestamped poses associated with the session (default) or a range of shards [start,stop) '''
 
         # Load common base pose
         # [TODO(janickm): add consistency check on static data across all shards?]
@@ -679,7 +679,7 @@ class ShardDataLoader:
         # Concat all poses from all shards, making sure they are uniquely timestamped and sorted
         T_rig_worlds = []
         T_rig_world_timestamps_us = []
-        for shard_root in self._shard_roots[start_shard_idx:end_shard_idx]:
+        for shard_root in self._shard_roots[start_shard_idx:stop_shard_idx]:
             shard_T_rig_worlds = shard_root['poses']['T_rig_worlds'][()]
             shard_T_rig_world_timestamps_us = shard_root['poses']['T_rig_world_timestamps_us'][()]
 
