@@ -224,6 +224,17 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
     confidence: Optional[float]  #: If available, the confidence score of the label [0..1]
     source: LabelSource = util.enum_field(LabelSource)  #: The source fo the current label
 
+    def __post_init__(self):
+        # Sanity checks
+        assert isinstance(self.label_id, str)
+        assert isinstance(self.track_id, str)
+        assert isinstance(self.label_class, str)
+        assert isinstance(self.bbox3, BBox3)
+        assert isinstance(self.global_speed, float)
+        assert isinstance(self.timestamp_us, int)
+        assert isinstance(self.confidence, Optional[float])
+        assert isinstance(self.source, LabelSource)
+
 
 @dataclass
 class TrackLabel(dataclasses_json.DataClassJsonMixin):
