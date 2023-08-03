@@ -297,8 +297,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             for continous_local_frame_index, (frame_number, frame_end_timestamp_us) in \
                 tqdm.tqdm(enumerate(zip(local_frame_numbers, local_frame_timestamps_us)), total=len(local_frame_numbers)):
 
-                # Load image file data from archive
-                file_record = tar_index[f'./{str(frame_number)}.jpeg']
+                # Load image file data from archive - error out on missing frame files
+                if not (file_record := tar_index.get(file_key := f'./{str(frame_number)}.jpeg')):
+                    raise ValueError(
+                        f'Missing camera frame file {file_key} in tar archive for camera {camera_id} - camera-indexer missed to '
+                        'generate file or inconsistency within the timestamp meta-data record')
                 tar_file.seek(file_record['offset_data'])
                 image_file_binary_data = tar_file.read(file_record['size'])
 
