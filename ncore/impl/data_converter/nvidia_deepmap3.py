@@ -352,7 +352,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
             vidcap = cv2.VideoCapture(
                 path,
                 cv2.CAP_FFMPEG,
-                # set high timeout values to open video / read frames in case IO bandwith is low
+                # set high timeout values to open video / read frames in case IO bandwidth is low
                 [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 25 * 60000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 25 * 60000])
 
             if not vidcap.isOpened():

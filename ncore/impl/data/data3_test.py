@@ -28,7 +28,7 @@ class TestData3Loader(unittest.TestCase):
         self.assertEqual(len(self.all_shards), 3)
 
         def check(start, stop):
-            # Randomize shard path oder
+            # Randomize shard path order
             local_shards = self.all_shards[start:stop]
             self.random.shuffle(local_shards)
 

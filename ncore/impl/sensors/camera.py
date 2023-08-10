@@ -18,7 +18,7 @@ class CameraModel(ABC):
     resolution: torch.Tensor  #: Width and height of the image in pixels (uint32, [2,])
     shutter_type: types.ShutterType  #: Shutter type of the camera's imaging sensor
     device: torch.device  #: Torch device to perform computations on
-    dtype: torch.dtype  #: Torch datatype to perform computations in
+    dtype: torch.dtype  #: Torch floating-point datatype to perform computations in
 
     def __init__(self):
         pass
@@ -45,7 +45,7 @@ class CameraModel(ABC):
         For each pixel index computes its corresponding camera ray
         '''
 
-        return self.image_points_to_camera_rays(self.__pixel_indices_to_image_points(pixel_idxs))
+        return self.image_points_to_camera_rays(self.pixels_to_image_points(pixel_idxs))
 
     def camera_rays_to_pixels(self, cam_rays: Union[torch.Tensor, np.ndarray]) -> CameraModel.PixelsReturn:
         '''
@@ -53,7 +53,7 @@ class CameraModel(ABC):
         '''
         image_points = self.camera_rays_to_image_points(cam_rays)
 
-        return CameraModel.PixelsReturn(pixels=self.__image_points_to_pixel_indices(image_points.image_points),
+        return CameraModel.PixelsReturn(pixels=self.image_points_to_pixels(image_points.image_points),
                                         valid_flag=image_points.valid_flag)
 
     @staticmethod
@@ -188,7 +188,7 @@ class CameraModel(ABC):
                                                              return_T_world_sensors, return_valid_indices,
                                                              return_timestamps, return_all_projections)
 
-        return self.WorldPointsToPixelsReturn(pixels=self.__image_points_to_pixel_indices(tmp.image_points),
+        return self.WorldPointsToPixelsReturn(pixels=self.image_points_to_pixels(tmp.image_points),
                                               T_world_sensors=tmp.T_world_sensors,
                                               valid_indices=tmp.valid_indices,
                                               timestamps_us=tmp.timestamps_us)
@@ -211,7 +211,7 @@ class CameraModel(ABC):
                                                             return_T_world_sensors, return_valid_indices,
                                                             return_timestamps, return_all_projections)
 
-        return self.WorldPointsToPixelsReturn(pixels=self.__image_points_to_pixel_indices(tmp.image_points),
+        return self.WorldPointsToPixelsReturn(pixels=self.image_points_to_pixels(tmp.image_points),
                                               T_world_sensors=tmp.T_world_sensors,
                                               valid_indices=tmp.valid_indices,
                                               timestamps_us=tmp.timestamps_us)
@@ -494,8 +494,8 @@ class CameraModel(ABC):
         if return_timestamps:
             assert timestamp_us is not None
 
-        return self.image_points_to_world_rays_static_pose(self.__pixel_indices_to_image_points(pixel_idxs),
-                                                           T_sensor_world, timestamp_us, camera_rays, return_timestamps)
+        return self.image_points_to_world_rays_static_pose(self.pixels_to_image_points(pixel_idxs), T_sensor_world,
+                                                           timestamp_us, camera_rays, return_timestamps)
 
     def pixels_to_world_rays_shutter_pose(self,
                                           pixel_idxs: Union[torch.Tensor, np.ndarray],
@@ -506,7 +506,7 @@ class CameraModel(ABC):
                                           camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
                                           return_timestamps: bool = False) -> CameraModel.WorldRaysReturn:
 
-        return self.image_points_to_world_rays_shutter_pose(self.__pixel_indices_to_image_points(pixel_idxs),
+        return self.image_points_to_world_rays_shutter_pose(self.pixels_to_image_points(pixel_idxs),
                                                             T_sensor_world_start, T_sensor_world_end,
                                                             start_timestamp_us, end_timestamp_us, camera_rays,
                                                             return_timestamps)
@@ -525,9 +525,9 @@ class CameraModel(ABC):
             assert end_timestamp_us is not None
             assert end_timestamp_us >= start_timestamp_us, "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
 
-        return self.image_points_to_world_rays_mean_pose(self.__pixel_indices_to_image_points(pixel_idxs),
-                                                         T_sensor_world_start, T_sensor_world_end, start_timestamp_us,
-                                                         end_timestamp_us, camera_rays, return_timestamps)
+        return self.image_points_to_world_rays_mean_pose(self.pixels_to_image_points(pixel_idxs), T_sensor_world_start,
+                                                         T_sensor_world_end, start_timestamp_us, end_timestamp_us,
+                                                         camera_rays, return_timestamps)
 
     def image_points_to_world_rays_static_pose(self,
                                                image_points: Union[torch.Tensor, np.ndarray],
@@ -690,7 +690,9 @@ class CameraModel(ABC):
 
         return return_var
 
-    def __pixel_indices_to_image_points(self, pixel_idxs: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+    def pixels_to_image_points(self, pixel_idxs: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+        ''' Given integer-based pixels indices, computes corresponding continuous image point coordinates representing the *center* of each pixel.
+        '''
 
         # Convert to torch
         pixel_idxs = self.to_torch(pixel_idxs)
@@ -698,16 +700,18 @@ class CameraModel(ABC):
         assert not pixel_idxs.is_floating_point(), "[CameraModel]: Pixel indices must be integers"
 
         # Compute the image point coordinates representing the center of each pixel (shift from top left corner to the center)
-        return pixel_idxs.to(torch.float32) + 0.5
+        return pixel_idxs.to(self.dtype) + 0.5
 
-    def __image_points_to_pixel_indices(self, image_points: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+    def image_points_to_pixels(self, image_points: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+        ''' Given continuous image point coordinates, computes the corresponding pixel indices.
+        '''
 
         # Convert to torch
         image_points = self.to_torch(image_points)
 
         assert image_points.is_floating_point(), "[CameraModel]: Image points must be floating point values"
 
-        # Compute the image point coordinates representing the center of each pixel (shift from top left corner to the center)
+        # Compute the pixel indices for given image points (round to top left corner integer coordinate)
         return torch.floor(image_points).to(torch.int32)
 
     def __rotmat_to_unitquat(self, R: torch.Tensor) -> torch.Tensor:

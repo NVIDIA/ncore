@@ -176,13 +176,13 @@ def extract_dynamic_tracks(lidar_sensor: LidarSensor, lidar_frame_range: range, 
     "--track-ftheta-max-fov-deg",
     type=click.FloatRange(min=0.0, max_open=True),
     help=
-    "Limit FOV for FTheta camera to this range to prevent erronous track projections (in particular for large-FOV fisheye cameras)",
+    "Limit FOV for FTheta camera to this range to prevent erroneous track projections (in particular for large-FOV fisheye cameras)",
     default=190.0,
 )
 @click.option(
     "--track-min-centroid-rig-distance",
     type=click.FloatRange(min=0.0, max_open=True),
-    help="Distance threshod for for cubic tracks to be considered self-classifications to skip [m]",
+    help="Distance threshold for for cubic tracks to be considered self-classifications to skip [m]",
     default=3.0,
 )
 @click.option(

@@ -74,7 +74,7 @@ def ncore_to_map_transform(shard_file_pattern: str, ngp_config: str, map_ref_lat
     T_ncore_ngp = T_nerf_ngp @ T_ncore_nerf
     T_ngp_ecef = T_ncore_ecef @ np.linalg.inv(T_ncore_ngp)
 
-    # Compute the transformation from the ECEF coordiante system to the map ENU system
+    # Compute the transformation from the ECEF coordinate system to the map ENU system
     lat_long_alt = np.array([map_ref_lat, map_ref_lon, map_ref_alt]).reshape(1, 3)
     T_ecef_enu = ecef_2_ENU(lat_long_alt, earth_model='WGS84')
 

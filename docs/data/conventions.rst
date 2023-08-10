@@ -14,7 +14,7 @@ and output data should be converted back to this convention.
 Coordinate Systems and Transformations
 --------------------------------------
 There are several coordinate systems that are used in practice -
-NCORE usees the following conventions.
+NCORE uses the following conventions.
 
 
 **Transformations between the Coordinate Systems**

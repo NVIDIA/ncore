@@ -317,7 +317,7 @@ def translation_2_lat_lng_alt_ellipsoidal(translation, a, f):
 
 
 def lat_lng_alt_2_ecef(lat_lng_alt, orientation_axis, orientation_angle, earth_model='WGS84'):
-    ''' Computes the transformation from the world pose coordiante system to the earth centered earth fixed (ECEF) one
+    ''' Computes the transformation from the world pose coordinate system to the earth centered earth fixed (ECEF) one
     Args:
         lat_lng_alt (np.array): latitude, longitude and altitude coordinate (in degrees and meters) [n,3]
         orientation_axis (np.array): orientation in the local ENU coordinate system [n,3]

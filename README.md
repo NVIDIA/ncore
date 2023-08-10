@@ -34,7 +34,7 @@ before cloning the repository.
 
 ## Setup gitlab personal access token / docker credentials
 
-Create a gitlab-master personal access token with `api` scope at [link](https://gitlab-master.nvidia.com/-/profile/personal_access_tokens) and register the new toekn token in `~/.netrc` file as
+Create a gitlab-master personal access token with `api` scope at [link](https://gitlab-master.nvidia.com/-/profile/personal_access_tokens) and register the new token token in `~/.netrc` file as
 
 ```
 machine gitlab-master.nvidia.com

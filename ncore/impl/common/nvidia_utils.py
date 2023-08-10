@@ -147,7 +147,7 @@ def camera_intrinsic_parameters(sensor: dict, logger: Optional[logging.Logger] =
 
     Args:
         sensor: the dictionary of the sensor parameters read from the rig file
-        logger: if provided, the logger to issue warnings in (e.g., on not supported coeffiecients)
+        logger: if provided, the logger to issue warnings in (e.g., on not supported coefficients)
     Returns:
         intrinsic: array of FTheta intrinsics [cx, cy, width, height, [bwpoly]] 
     """
