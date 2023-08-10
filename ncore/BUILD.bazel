@@ -41,7 +41,7 @@ py_wheel(
         "scipy",
         "torch",
     ],
-    version = "0.4.3",
+    version = "0.4.4",
     deps = [
         ":ncore_pkg",
     ],
