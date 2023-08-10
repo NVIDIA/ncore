@@ -35,6 +35,7 @@ py_binary(
     srcs = ["ncore_chunk.py"],
     deps = [
         requirement("click"),
+        requirement("tqdm"),
         "//ncore/impl/common:pylib_nvidia",
         "//ncore/impl/data:pylib_data",
         "//ncore/impl/data_converter:pylib_waymo_open",

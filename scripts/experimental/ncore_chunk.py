@@ -7,6 +7,7 @@ from pathlib import Path
 from dataclasses import dataclass
 
 import click
+import tqdm
 
 import numpy as np
 
@@ -109,7 +110,7 @@ class ChunkDataWriter:
         data_writer.store_poses(target_poses)
 
         ## Process cameras
-        for camera_id in camera_ids:
+        for camera_id in tqdm.tqdm(camera_ids, desc='Cameras'):
             camera_sensor = loader.get_camera_sensor(camera_id)
 
             # subselect frames
@@ -122,7 +123,7 @@ class ChunkDataWriter:
                                           camera_sensor.get_camera_mask_image())
 
             # store subselected frames
-            for chunk_frame_index, source_frame_idx in enumerate(target_frames_range):
+            for chunk_frame_index, source_frame_idx in tqdm.tqdm(enumerate(target_frames_range), desc='Frames', leave=False):
                 T_rig_worlds = np.stack((camera_sensor.get_frame_T_rig_world(source_frame_idx, FrameTimepoint.START),
                                          camera_sensor.get_frame_T_rig_world(source_frame_idx, FrameTimepoint.END)))
                 timestamps_us = np.stack((camera_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.START),
@@ -138,7 +139,7 @@ class ChunkDataWriter:
         # Iterate once over all frames to collect surviving tracks / frame labels
         target_track_labels: dict[str, TrackLabel] = {}
         target_frame_labels: dict[str, dict[int, list[FrameLabel3]]] = {}
-        for lidar_id in lidar_ids:
+        for lidar_id in tqdm.tqdm(lidar_ids, desc='Lidar Labels'):
             lidar_sensor = loader.get_lidar_sensor(lidar_id)
 
             if lidar_id not in target_frame_labels:
@@ -149,7 +150,7 @@ class ChunkDataWriter:
             target_frames_range = chunk_interval_us.cover_range(source_frame_timestamps_us)
 
             # extract labels from subselected frames
-            for source_frame_idx in target_frames_range:
+            for source_frame_idx in tqdm.tqdm(target_frames_range, desc='Frame Labels', leave=False):
 
                 source_frame_timestamp_us = int(source_frame_timestamps_us[source_frame_idx])
 
@@ -176,7 +177,7 @@ class ChunkDataWriter:
             global_speed_dynamic_threshold=dynamic_flag_parameters.global_speed_dynamic_threshold)
 
         # Second iteration: store frames
-        for lidar_id in lidar_ids:
+        for lidar_id in tqdm.tqdm(lidar_ids, desc='Lidars'):
             lidar_sensor = loader.get_lidar_sensor(lidar_id)
 
             # subselect frames
@@ -188,7 +189,7 @@ class ChunkDataWriter:
                                          lidar_sensor.get_T_sensor_rig())
 
             # store subselected frames
-            for chunk_frame_index, source_frame_idx in enumerate(target_frames_range):
+            for chunk_frame_index, source_frame_idx in tqdm.tqdm(enumerate(target_frames_range), desc='Frames', leave=False):
                 T_rig_worlds = np.stack((lidar_sensor.get_frame_T_rig_world(source_frame_idx, FrameTimepoint.START),
                                          lidar_sensor.get_frame_T_rig_world(source_frame_idx, FrameTimepoint.END)))
                 timestamps_us = np.stack((lidar_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.START),
