@@ -18,7 +18,7 @@ index f8e990f..7ba112d 100644
  DAMAGE.
  */
  
-+// Usage of build-in `offsetof` fails in recent gcc versions on non-constant members
++// Usage of built-in `offsetof` fails in recent gcc versions on non-constant members
 +#define offsetof2(s,m) ((::size_t)&reinterpret_cast<char const volatile&>((((s*)0)->m)))
 +
  namespace VertexFactory

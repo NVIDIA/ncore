@@ -518,7 +518,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 valid_idxs = np.logical_not(
                     isWithin3DBBox(xyz_e_rig[0:3, :].transpose(), vehicle_bbox_rig.reshape(1, -1)))
 
-                # Drop homogenous dimension and transpose to match output dimension
+                # Drop homogeneous dimension and transpose to match output dimension
                 xyz_e = xyz_e[:-1, :].transpose()  # N x 3
 
                 # Compute distances and filter points based on max distance

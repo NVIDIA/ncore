@@ -37,7 +37,7 @@ message LidarRecord {
   Unwinding unwinding = 5;
   // A boolean mask for each point in a Lidar scan that is 1 if a point belongs
   // to dynamic objects.
-  // the total size of the bytes should be eqaul to
+  // the total size of the bytes should be equal to
   // ceil(total_num_points / 8), where the last byte has 0 filled if size is
   // larger than the total number of points
   // to unpack the file into flag just do

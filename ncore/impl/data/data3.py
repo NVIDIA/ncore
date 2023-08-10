@@ -570,7 +570,7 @@ class ShardDataLoader:
         ''' Initialize a ShardDataLoader for a virtual sequence represented by a list of shard files.
             
             Args:
-                shard_files: Paths / URLs to shard files to load, which need to represent a *continous* sequence
+                shard_files: Paths / URLs to shard files to load, which need to represent a *continuous* sequence
                 open_consolidated: If 'True', pre-load per-shard meta-data when opening the shards.
                                    This is advisable if shard data is accessed from *non-local*
                                    storage to prevent latencies introduced when accessing the data.
@@ -654,7 +654,7 @@ class ShardDataLoader:
             raise ValueError(f'Loading incompatible version {self._shard_version}, supporting {VERSION} only'
                              )  # TODO: this check can still be refined
 
-        # Make sure shard IDs are continous
+        # Make sure shard IDs are continuous
         self._shard_ids = sorted(list(shards_map.keys()))
         if self._shard_ids[-1] - self._shard_ids[0] + 1 != len(self._shard_ids):
             raise ValueError(f"Loading non-continous sequence of shards: {self._shard_ids}")

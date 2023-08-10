@@ -165,7 +165,7 @@ class ReferenceFThetaCamera():
 class CudaCheck(unittest.TestCase):
     def test_cuda_available(self):
         '''
-        Some camera tests explicity check cuda-based computations 
+        Some camera tests explicitly check cuda-based computations 
         (while internally falling back to CPU if cuda is not available).
         
         This test asserts that a cuda device is actually available to torch

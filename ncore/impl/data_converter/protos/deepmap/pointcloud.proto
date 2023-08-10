@@ -101,7 +101,7 @@ message PointCloudMetaData {
 
   // This indicates which coordinate system the point cloud points are in.
   // It is possible the customer software already applied the LiDAR to Vehicle
-  // coordinate system transform. We will have this flexiblity, to take the
+  // coordinate system transform. We will have this flexibility, to take the
   // point cloud in either coordinate system.
   CoordinateSystem coordinate_system = 3;
 
@@ -174,7 +174,7 @@ message PointCloud {
 // PointCloudDiff represents the latest difference between the input point
 // clouds and our HDMap. This difference is from a particular lidar scan or all
 // merged lidar scans. The localization services return points that doesn't
-// exsists in our HDMap, based on our localization result. This information can
+// exists in our HDMap, based on our localization result. This information can
 // be used for object/obstacle detection/recognition. Usually point cloud
 // differences are merged, motion compensated, in the vehicle coordinate system,
 // and at a certain timestamp, with a pose.

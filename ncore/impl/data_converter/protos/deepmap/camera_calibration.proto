@@ -33,7 +33,7 @@ message MonoCalibrationParameters {
   // cx, cy, but having a general matrix makes it easier to convert to the
   // OpenCV Mat. The camera matrix is used to project a 3D point onto the camera
   // coordinate (x, y, z), with the origin at the optical focal point, into the
-  // 2D camera pixel coordinate (u, v) with the origion at the top left of the
+  // 2D camera pixel coordinate (u, v) with the origin at the top left of the
   // image plane.
   MatrixD camera_matrix = 3;
 
@@ -46,7 +46,7 @@ message MonoCalibrationParameters {
   // http://docs.opencv.org/trunk/d9/d0c/group__calib3d.html for a detailed
   // description of these parameters. The order of these parameters is aligned
   // with OpenCV so it can be used directly after the conversion to Mat. The
-  // distortion coeffcients are used to convert a distorted (x, y) point, from
+  // distortion coefficients are used to convert a distorted (x, y) point, from
   // the camera image plane into the corrected (x, y) point.
   MatrixD distortion_coefficients = 4;
 

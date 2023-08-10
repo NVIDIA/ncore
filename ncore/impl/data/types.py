@@ -224,7 +224,7 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
     global_speed: float  #: Instantaneous global speed [m/s] of the object
     timestamp_us: int  #: The timestamp associated with the centroid of the label (possibly an accurate in-spin time)
     confidence: Optional[float]  #: If available, the confidence score of the label [0..1]
-    source: LabelSource = util.enum_field(LabelSource)  #: The source fo the current label
+    source: LabelSource = util.enum_field(LabelSource)  #: The source for the current label
 
     def __post_init__(self):
         # Sanity checks

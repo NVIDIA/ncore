@@ -23,7 +23,7 @@ from ncore.impl.data_converter.waymo_utils import parse_range_image_and_segmenta
 
 class WaymoConverter(DataConverter):
     """
-    Dataset preprossing class, which preprocess waymo-open dataset to a canonical data representation as used withing the Nvidia NRECore-SDK project.
+    Dataset preprossing class, which preprocess waymo-open dataset to a canonical data representation as used within the Nvidia NRECore-SDK project.
     Waymo-open data can be downloaded from https://waymo.com/intl/en_us/open/download/ in form of tfrecords files. Further details on the dataset are
     available in the original publication https://arxiv.org/abs/1912.04838 or the githbub repository https://github.com/waymo-research/waymo-open-dataset
 
@@ -362,7 +362,7 @@ class WaymoConverter(DataConverter):
 
     def decode_cameras(self, frames):
         """
-        Extracts the images and camera metadata for all cameras withing a single frame. Camera metadata must hold 
+        Extracts the images and camera metadata for all cameras within a single frame. Camera metadata must hold 
         the information used to compensate for rolling shutter effect and to convert RGB images to 3D RGB rays in space
         """
 
