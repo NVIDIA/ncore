@@ -363,7 +363,7 @@ class WaymoConverter(DataConverter):
     def decode_cameras(self, frames):
         """
         Extracts the images and camera metadata for all cameras withing a single frame. Camera metadata must hold 
-        the information used to compensate for rollign shutter effect and to convert RGB images to 3D RGB rays in space
+        the information used to compensate for rolling shutter effect and to convert RGB images to 3D RGB rays in space
         """
 
         calibrations = {c.name: c for c in frames[0].context.camera_calibrations}
