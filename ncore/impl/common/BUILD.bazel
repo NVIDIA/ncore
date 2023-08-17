@@ -40,6 +40,7 @@ py_library(
         requirement("numpy"),
         requirement("tqdm"),
         requirement("pillow"),
+        requirement("multimethod"),
         requirement("scipy"),
         requirement("pyarrow"),
         requirement("pandas"),  # for pyarrow::to_pandas()

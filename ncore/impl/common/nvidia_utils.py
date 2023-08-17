@@ -21,6 +21,7 @@ import pyarrow.parquet as pq
 from PIL import Image
 from scipy.optimize import curve_fit
 from scipy.spatial.transform import Rotation as R
+from multimethod import multimethod
 
 from ncore.impl.common.common import MaskImage, PoseInterpolator, load_jsonl
 from ncore.impl.av_utils import isWithin3DBBox
@@ -548,7 +549,7 @@ class LabelProcessor:
             for label_frame_timestamp_us in frame_labels[sensor_id]:
                 for frame_label in frame_labels[sensor_id][label_frame_timestamp_us]:
                     track_id, label_class, global_speed = frame_label.track_id, frame_label.label_class, frame_label.global_speed
-                    
+
                     if track_id not in track_global_dynamic_flag:
                         track_global_dynamic_flag[track_id] = True if frame_label.label_class in label_strings_unconditionally_dynamic else False
 
@@ -898,6 +899,7 @@ def load_maglev_session_id(sequence_path: Path) -> str:
             raise ValueError("Unable to determine trustable session_id")
 
 
+@multimethod
 def load_maglev_egomotion(sequence_path: Path,
                           sensors_calibration_data: dict[str, dict],
                           egomotion_file_overwrite: Optional[Path] = None) -> Tuple[list[np.ndarray], list[int]]:
@@ -920,11 +922,24 @@ def load_maglev_egomotion(sequence_path: Path,
         # Use default egomotion jsonl location
         egomotion_file = sequence_path / 'egomotion' / 'egomotion.json'
 
+    return load_maglev_egomotion(T_rig_sensors, egomotion_file)
+
+
+@load_maglev_egomotion.register
+def _(T_rig_sensors: dict[str, np.ndarray], egomotion_file: Path) -> Tuple[list[np.ndarray], list[int]]:
+    ''' Parse a maglev-based egomotion data into timestamped global T_rig_worlds '''
+
     global_T_rig_worlds = []
     global_T_rig_world_timestamps_us = []
 
-    # Use different parser implementations based on the egomotion file formats
+    # Normalize sensor names (in case "decayed" names are used as input)
+    def normalize_frame_name(sensor_name: str) -> str:
+        ''' Decay ":" -> "_" for sensor/frame names normalization '''
+        return sensor_name.replace(':', '_', -1)
 
+    T_rig_sensors = {normalize_frame_name(sensor_name): T_rig_sensor for (sensor_name, T_rig_sensor) in T_rig_sensors.items()}
+
+    # Use different parser implementations based on the egomotion file formats
     def parse_legacy_egomotion(egomotion_file: Path) -> None:
         ''' Parses "jsonl"-type of egomotion file '''
 
@@ -946,14 +961,14 @@ def load_maglev_egomotion(sequence_path: Path,
             # (actually *rigToGlobal* as they include the base pose also - this is the case for non-identity initial poses)
             # Note: there currently seems to be an inconsistency in the egomotion indexer output - keep
             #       this verified workaround logic for now (might need to be adapted if egomotion indexer is fixed)
-            if egomotion_pose_entry['in_sensor_name_frame'] == 'rig':
+            if (frame_name := normalize_frame_name(egomotion_pose_entry['in_sensor_name_frame'])) == 'rig':
                 # Pose is for the rig frame already - nothing to transform
                 pass
-            elif egomotion_pose_entry['in_sensor_name_frame'] in T_rig_sensors:
+            elif frame_name in T_rig_sensors:
                 # Convert pose in lidar frame to pose in rig frame
-                T_rig_world = T_rig_world @ T_rig_sensors[egomotion_pose_entry['in_sensor_name_frame']]
+                T_rig_world = T_rig_world @ T_rig_sensors[frame_name]
             else:
-                raise ValueError(f"Unsupported source ego frame {egomotion_pose_entry['in_sensor_name_frame']}")
+                raise ValueError(f"Unsupported source ego frame {frame_name}")
 
             # Sanity check on data-type
             assert T_rig_world.dtype is np.dtype('float64'), \
@@ -985,14 +1000,14 @@ def load_maglev_egomotion(sequence_path: Path,
             # (actually *rigToGlobal* as they include the base pose also - this is the case for non-identity initial poses)
             # Note: there currently seems to be an inconsistency in the egomotion indexer output - keep
             #       this verified workaround logic for now (might need to be adapted if egomotion indexer is fixed)
-            if egomotion_json['coordinate_frame'] == 'rig':
+            if (frame_name := normalize_frame_name(egomotion_json['coordinate_frame'])) == 'rig':
                 # Pose is for the rig frame already - nothing to transform
                 pass
-            elif egomotion_json['coordinate_frame'] in T_rig_sensors:
+            elif frame_name in T_rig_sensors:
                 # Convert pose in lidar frame to pose in rig frame
-                T_rig_world = T_rig_world @ T_rig_sensors[egomotion_json['coordinate_frame']]
+                T_rig_world = T_rig_world @ T_rig_sensors[frame_name]
             else:
-                raise ValueError(f"Unsupported source ego frame {egomotion_json['coordinate_frame']}")
+                raise ValueError(f"Unsupported source ego frame {frame_name}")
 
             global_T_rig_worlds.append(T_rig_world)
             global_T_rig_world_timestamps_us.append(T_rig_world_timestamp_us)
