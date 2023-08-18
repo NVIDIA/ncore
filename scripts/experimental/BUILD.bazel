@@ -1,6 +1,12 @@
 # Copyright (c) 2023 NVIDIA CORPORATION.  All rights reserved.
 
 load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load(
+    "@io_bazel_rules_docker//container:container.bzl",
+    "container_push",
+)
+load("@io_bazel_rules_docker//python:image.bzl", "py_layer")
+load("@io_bazel_rules_docker//python3:image.bzl", "py3_image")
 load("@pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary")
 
@@ -30,15 +36,108 @@ py_binary(
     ],
 )
 
-py_binary(
-    name = "ncore_chunk",
-    srcs = ["ncore_chunk.py"],
-    deps = [
+NCORE_CHUNK_DEPS = [
         requirement("click"),
         requirement("tqdm"),
         "//ncore/impl/common:pylib_nvidia",
         "//ncore/impl/data:pylib_data",
         "//ncore/impl/data_converter:pylib_waymo_open",
+]
+
+py_binary(
+    name = "ncore_chunk",
+    srcs = ["ncore_chunk.py"],
+    deps = NCORE_CHUNK_DEPS,
+)
+
+# Image for 'ncore_chunk'
+
+# extract all "local" dependencies
+py_layer(
+    name = "ncore_chunk_local_deps_layer",
+    filter = "//scripts",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = NCORE_CHUNK_DEPS,
+)
+
+# extract all transitive dependencies of dependencies under //ncore
+py_layer(
+    name = "ncore_chunk_common_deps_layer",
+    filter = "//ncore",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = NCORE_CHUNK_DEPS,
+)
+
+# extract all external dependencies of the deps under //ncore
+py_layer(
+    name = "ncore_chunk_common_external_deps_layer",
+    filter = "@",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = [":ncore_chunk_common_deps_layer"],
+)
+
+# extract all external dependencies of NCORE_CHUNK_DEPS, which is a superset of ":ncore_chunk_common_external_deps_layer".
+py_layer(
+    name = "ncore_chunk_external_deps_layer",
+    filter = "@",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = NCORE_CHUNK_DEPS,
+)
+
+py3_image(
+    name = "ncore_chunk_image",
+    srcs = ["ncore_chunk.py"],
+    base = "@ncore_dev_container//image",
+    layers = [
+        ":ncore_chunk_external_deps_layer",
+        ":ncore_chunk_common_external_deps_layer",
+        ":ncore_chunk_common_deps_layer",
+        ":ncore_chunk_local_deps_layer",
+    ],
+    main = "ncore_chunk.py",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+)
+
+# Push image to 'production' (prod) tag - use with *CAUTION* as referenced by default in workflows
+container_push(
+    name = "push_ncore_chunk_image_prod",
+    format = "Docker",
+    image = ":ncore_chunk_image",
+    registry = "nvcr.io",
+    repository = "nv-maglev/dlav/ncore",
+    tag = "ncore-chunk-prod",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+)
+
+# Push image to 'staging' (stage) tag - useful for experimentation
+container_push(
+    name = "push_ncore_chunk_image_stage",
+    format = "Docker",
+    image = ":ncore_chunk_image",
+    registry = "nvcr.io",
+    repository = "nv-maglev/dlav/ncore",
+    tag = "ncore-chunk-stage",
+    tags = [
+        "manual",
+        "no-remote-cache",
     ],
 )
 
