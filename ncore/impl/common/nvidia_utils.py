@@ -983,17 +983,28 @@ def _(T_rig_sensors: dict[str, np.ndarray], egomotion_file: Path) -> Tuple[list[
         with open(egomotion_file, "r") as fp:
             egomotion_json = json.load(fp)
 
-        for egomotion_pose_entry in egomotion_json['tf_frame_world']:  # will throw for "old" json-l format
-            if not egomotion_pose_entry.get("valid", True):  # entries seem to be "implicitly" valid if key is missing
+        for egomotion_pose_entry in (egomotion_json['tf_frame_world'] if 'tf_frame_world' in egomotion_json else
+                                     # fallback for current deepmap format
+                                     egomotion_json['poses']):  # will throw for "old" json-l format
+            if not egomotion_pose_entry.get('valid', True):  # entries seem to be "implicitly" valid if key is missing
                 continue
 
             # Note: make sure all poses information is represented as f64 to have sufficient
             #       precision in case poses are representing global / map-associated coordinates
             T_rig_world_timestamp_us = int(egomotion_pose_entry['timestamp'])
 
+            quat = (
+                egomotion_pose_entry['q_xyzw'] if 'q_xyzw' in egomotion_pose_entry else
+                # fallback for current deepmap format
+                egomotion_pose_entry['quaternion'])
+            t = (
+                egomotion_pose_entry['t'] if 't' in egomotion_pose_entry else
+                # fallback for current deepmap format
+                egomotion_pose_entry["translation"])
+
             T_rig_world = np.block([[
-                R.from_quat(np.asarray(egomotion_pose_entry["q_xyzw"], dtype=np.float64)).as_matrix(),
-                np.asarray(egomotion_pose_entry["t"], dtype=np.float64)[:, np.newaxis]
+                R.from_quat(np.asarray(quat, dtype=np.float64)).as_matrix(),
+                np.asarray(t, dtype=np.float64)[:, np.newaxis]
             ], [np.array([0., 0., 0., 1.])]])
 
             # Make sure poses represent *rigToWorld* transformations
