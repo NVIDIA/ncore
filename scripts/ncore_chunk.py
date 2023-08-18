@@ -401,17 +401,16 @@ def get_poses(loader: ShardDataLoader, egomotion_file: Optional[str]) -> Poses:
                  T_rig_worlds=T_rig_worlds,
                  T_rig_world_timestamps_us=T_rig_world_timestamps_us)
 
+
 @cli.command()
 @click.option('--start-timestamp-us',
               type=int,
-              default=None,
               help="If provided, the start timestamp to restrict processing to")
 @click.option('--end-timestamp-us',
               type=int,
-              default=None,
               help="If provided, the end timestamp to restrict processing to")
 @click.pass_context
-def timestamps(ctx, start_timestamp_us: int, end_timestamp_us: int) -> None:
+def timestamps(ctx, start_timestamp_us: int | None, end_timestamp_us: int | None) -> None:
     """Timestamp-based subrange selection"""
 
     params: CLIBaseParams = ctx.obj
@@ -422,7 +421,9 @@ def timestamps(ctx, start_timestamp_us: int, end_timestamp_us: int) -> None:
 
     poses = get_poses(loader, params.egomotion_file)
 
-    ncore_chunk(params, loader, poses, start_timestamp_us, end_timestamp_us)
+    ncore_chunk(params, loader, poses,
+                start_timestamp_us if start_timestamp_us else int(poses.T_rig_world_timestamps_us[0]),
+                end_timestamp_us if end_timestamp_us else int(poses.T_rig_world_timestamps_us[-1]))
 
 
 @cli.command()
@@ -433,7 +434,7 @@ def timestamps(ctx, start_timestamp_us: int, end_timestamp_us: int) -> None:
               type=click.FloatRange(min=0.0, max_open=True),
               help="Restrict total duration of the dataset conversion (in seconds)")
 @click.pass_context
-def offset(ctx, seek_sec: float, duration_sec: float) -> None:
+def offset(ctx, seek_sec: float | None, duration_sec: float | None) -> None:
     """Offset-based subrange selection"""
 
     params: CLIBaseParams = ctx.obj
