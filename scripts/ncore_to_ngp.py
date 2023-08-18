@@ -471,7 +471,7 @@ def ncore_to_ngp(
                         # Clamped out-of-image-domain points
                         #   - this is required for perspective cameras only
                         #   - fisheye-cameras will project in a "clamped way" into the image-domain along
-                        #     it's internal FOV-specific bounds, but points will be marked as invalid
+                        #     its internal FOV-specific bounds, but points will be marked as invalid
                         res_x, res_y = camera_model.resolution[0].item(), camera_model.resolution[1].item()
                         projection.image_points[:, 0] = torch.clamp(projection.image_points[:, 0], min=0, max=res_x)
                         projection.image_points[:, 1] = torch.clamp(projection.image_points[:, 1], min=0, max=res_y)

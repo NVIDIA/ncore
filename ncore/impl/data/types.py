@@ -179,7 +179,7 @@ class BBox3(dataclasses_json.DataClassJsonMixin):
     ''' Parameters of a 3D bounding-box '''
     centroid: Tuple[float, float,
                     float]  #: Coordinates [meters] of the bounding-box's centroid in the frame of reference
-    dim: Tuple[float, float, float]  #: Extents [meters] of the local bounding-box dimensions in it's local frame
+    dim: Tuple[float, float, float]  #: Extents [meters] of the local bounding-box dimensions in its local frame
     rot: Tuple[
         float, float,
         float]  #: 'XYZ' Euler rotation angles [radians] orienting the local bounding-box frame to the frame of reference

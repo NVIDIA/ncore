@@ -172,7 +172,7 @@ def camera_intrinsic_parameters(sensor: dict, logger: Optional[logging.Logger] =
         bwpoly = [np.float32(val) for val in sensor['properties']['polynomial'].split()]
 
         if len(bwpoly) - 1 > 5:
-            # > 5th-order polynomials are currently not supported in the software-stack - it's not valid to simply drop higher-order terms, so exit with error for now.
+            # > 5th-order polynomials are currently not supported in the software-stack - it is not valid to simply drop higher-order terms, so exit with error for now.
             # If required in the future, a possible workaround is to "fit" a lower-order polynomial to evaluations of the higher-order inputs, but could introduce
             # too much approximation errors.
             raise ValueError(f"> encountered > 5th-order distortion polynomial for camera '{sensor['name']}'")
@@ -489,7 +489,7 @@ class LabelProcessor:
             bbox_frametime = BBox3.from_array(
                 transform_bbox(bbox_labeltime.to_array(), T_sensor_labeltime_sensor_frametime))
 
-            # skip label if it's centroid is too close to the rig
+            # skip label if its centroid is too close to the rig
             if np.linalg.norm(transform_bbox(bbox_frametime.to_array(),
                                              T_sensor_rigs[sensor_id])[:3]) < min_centroid_rig_distance:
                 continue

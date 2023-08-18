@@ -127,7 +127,7 @@ class ChunkDataWriter:
                 timestamps_us = np.stack((camera_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.START),
                                           camera_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.END)))
 
-                # allow skipping first frame in case it's start time is not within egomotion range
+                # allow skipping first frame in case its start time is not within egomotion range
                 if chunk_frame_index == 0 and timestamps_us[0] < source_poses.T_rig_world_timestamps_us[0]:
                     logging.warning(f'Skipping first frame of camera {camera_id} as not in egomotion time-range')
                     continue
@@ -205,7 +205,7 @@ class ChunkDataWriter:
                 timestamps_us = np.stack((lidar_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.START),
                                           lidar_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.END)))
 
-                # allow skipping first frame in case it's start time is not within egomotion range
+                # allow skipping first frame in case its start time is not within egomotion range
                 if chunk_frame_index == 0 and timestamps_us[0] < source_poses.T_rig_world_timestamps_us[0]:
                     logging.warning(f'Skipping first frame of lidar {lidar_id} as not in egomotion time-range')
                     continue

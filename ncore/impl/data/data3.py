@@ -103,7 +103,7 @@ class ContainerDataWriter:
 
     # To be called after all data was added
     def finalize(self) -> Path:
-        '''Closes container and returns it's path (optionally also writes shard meta data if requested)'''
+        '''Closes container and returns its path (optionally also writes shard meta data if requested)'''
 
         # Make sure the shard file is consolidated
         stores.consolidate_compressed_metadata(self.container_store)
@@ -740,7 +740,7 @@ class ShardDataLoader:
         return self._shard_ids
 
     def get_sensor(self, sensor_id: str) -> Union[CameraSensor, LidarSensor, RadarSensor]:
-        ''' Provides access to a specific sensor given it's sensor-id '''
+        ''' Provides access to a specific sensor given its sensor-id '''
         if sensor_id in self._camera_ids:
             return self.get_camera_sensor(sensor_id)
         if sensor_id in self._lidar_ids:
@@ -754,7 +754,7 @@ class ShardDataLoader:
         return self.get_camera_ids() + self.get_lidar_ids() + self.get_radar_ids()
 
     def get_camera_sensor(self, camera_id) -> CameraSensor:
-        ''' Provides access to a specific camera sensor given it's sensor-id '''
+        ''' Provides access to a specific camera sensor given its sensor-id '''
         return CameraSensor(camera_id, CAMERAS_BASE_GROUP, self._shard_roots)
 
     def get_camera_ids(self) -> list[str]:
@@ -762,7 +762,7 @@ class ShardDataLoader:
         return list(self._camera_ids)
 
     def get_lidar_sensor(self, lidar_id) -> LidarSensor:
-        ''' Provides access to a specific lidar sensor given it's sensor-id '''
+        ''' Provides access to a specific lidar sensor given its sensor-id '''
         return LidarSensor(lidar_id, LIDARS_BASE_GROUP, self._shard_roots)
 
     def get_lidar_ids(self) -> list[str]:
@@ -770,7 +770,7 @@ class ShardDataLoader:
         return list(self._lidar_ids)
 
     def get_radar_sensor(self, radar_id) -> RadarSensor:
-        ''' Provides access to a specific radar sensor given it's sensor-id '''
+        ''' Provides access to a specific radar sensor given its sensor-id '''
         return RadarSensor(radar_id, RADARS_BASE_GROUP, self._shard_roots)
 
     def get_radar_ids(self) -> list[str]:

@@ -197,7 +197,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         assert self.local_start_timestamp_us >= self.global_start_timestamp_us
         assert self.local_end_timestamp_us <= self.global_end_timestamp_us
 
-        # Log base pose to share it more easily with downstream teams (it's serialized also explicitly)
+        # Log base pose to share it more easily with downstream teams (it is serialized also explicitly)
         with np.printoptions(floatmode='unique', linewidth=200):  # print in highest precision
             logger.info(
                 f'> processed {len(local_range)} / {global_range_end - global_range_start} local / global poses, using base pose:\n{T_rig_world_base}'
