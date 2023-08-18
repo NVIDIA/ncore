@@ -243,7 +243,7 @@ class ChunkDataWriter:
         data_writer.store_tracks(tracks=Tracks(track_labels=target_track_labels))
 
         ## Finalize output
-        data_writer.finalize()
+        logging.info(f'Wrote chunk to {data_writer.finalize()}')
 
 
 def get_dynamic_flag_parameters(variant: str, loader: ShardDataLoader) -> DynamicFlagParameters:

@@ -49,6 +49,7 @@ class ContainerDataWriter:
 
         self.output_dir_path = output_dir_path
         self.container_name = container_name
+        self.output_container_path = self.output_dir_path / f'{self.container_name}.zarr.itar'
 
         self.sequence_id = sequence_id
         self.shard_id = shard_id
@@ -58,8 +59,7 @@ class ContainerDataWriter:
 
         # Initialize container file (indexed tar file)
         self.output_dir_path.mkdir(parents=True, exist_ok=True)
-        self.container_store = stores.IndexedTarStore(self.output_dir_path / f'{self.container_name}.zarr.itar',
-                                                      mode='w')
+        self.container_store = stores.IndexedTarStore(self.output_container_path, mode='w')
         self.container_root = zarr.group(store=self.container_store)
 
         # Store dataset associated meta-data
@@ -102,7 +102,8 @@ class ContainerDataWriter:
             json.dump({'shard-id': self.shard_id, 'shard-count': self.shard_count, 'successful': successful}, outfile)
 
     # To be called after all data was added
-    def finalize(self) -> None:
+    def finalize(self) -> Path:
+        '''Closes container and returns it's path (optionally also writes shard meta data if requested)'''
 
         # Make sure the shard file is consolidated
         stores.consolidate_compressed_metadata(self.container_store)
@@ -113,6 +114,8 @@ class ContainerDataWriter:
         # Mark shard as successful
         if self.store_shard_meta:
             self._store_shard_meta(True)
+
+        return self.output_container_path
 
     # Individual 'store*' methods performing data sanity checks and serialize consistent output formats
     def store_poses(self, poses: types.Poses) -> None:
