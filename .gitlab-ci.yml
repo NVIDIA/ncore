@@ -12,6 +12,7 @@ default:
     - arch/x86_64
   before_script:
     # Fix permission as we are running as a local user
+    - sudo chown -R developer /home/developer
     - git config --global --add safe.directory /builds/Toronto_DL_Lab/ncore
     - |
       if test -d $CI_PROJECT_DIR/.ci-keep; then

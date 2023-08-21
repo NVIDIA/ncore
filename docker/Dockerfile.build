@@ -1,9 +1,9 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-# BUILD: docker image build -t gitlab-master.nvidia.com:5005/toronto_dl_lab/ncore:dev -f docker/Dockerfile.build .
+# BUILD: DOCKER_BUILDKIT=1 docker image build -t gitlab-master.nvidia.com:5005/toronto_dl_lab/ncore:dev -f docker/Dockerfile.build .
 # PUSH:  docker push gitlab-master.nvidia.com:5005/toronto_dl_lab/ncore:dev
 
-FROM nvidia/cuda:11.7.0-runtime-ubuntu22.04
+FROM nvidia/cuda:11.7.1-runtime-ubuntu22.04
 
 LABEL maintainer="Janick Martinez Esturo <janickm@nvidia.com>"
 
@@ -25,7 +25,7 @@ RUN \
    # Add python -> python3 symlink (required for bazel-build image entrypoints)
    ln -s /usr/bin/python3 /usr/bin/python
 
-ARG BAZELISK_VERSION=v1.16.0
+ARG BAZELISK_VERSION=v1.17.0
 RUN \
     # Install bazelisk
     wget https://github.com/bazelbuild/bazelisk/releases/download/$BAZELISK_VERSION/bazelisk-linux-amd64 -O /usr/local/bin/bazelisk && \
@@ -33,6 +33,6 @@ RUN \
 
 # Run as developer user
 RUN \
-    useradd --create-home --groups sudo developer && \
+    useradd --system --create-home --groups sudo developer && \
     echo "developer ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 USER developer
