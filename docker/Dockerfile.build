@@ -1,6 +1,6 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-# BUILD: docker image build -t gitlab-master.nvidia.com:5005/toronto_dl_lab/ncore:dev -f docker/Dockerfile.build .
+# BUILD: DOCKER_BUILDKIT=1 docker image build -t gitlab-master.nvidia.com:5005/toronto_dl_lab/ncore:dev -f docker/Dockerfile.build .
 # PUSH:  docker push gitlab-master.nvidia.com:5005/toronto_dl_lab/ncore:dev
 
 FROM nvidia/cuda:11.7.1-runtime-ubuntu22.04
@@ -33,6 +33,6 @@ RUN \
 
 # Run as developer user
 RUN \
-    useradd --create-home --groups sudo developer && \
+    useradd --system --create-home --groups sudo developer && \
     echo "developer ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 USER developer
