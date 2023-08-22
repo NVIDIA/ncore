@@ -903,7 +903,13 @@ def load_maglev_session_id(sequence_path: Path) -> str:
 def load_maglev_egomotion(sequence_path: Path,
                           sensors_calibration_data: dict[str, dict],
                           egomotion_file_overwrite: Optional[Path] = None) -> Tuple[list[np.ndarray], list[int]]:
-    ''' Parse a maglev-based egomotion data into timestamped global T_rig_worlds '''
+    '''Parse a maglev-based egomotion data into timestamped global T_rig_worlds 
+    
+    The NV maglev 'egomotion.json' / 'egomotion.jsonl' format has gone through a couple of iterations,
+    but we still support all "flavours" in a backwards compatible-way in NCore.
+    The last major iteration is discussed in https://jirasw.nvidia.com/browse/GTS-7657 / https://jirasw.nvidia.com/browse/GTS-7646 
+    and was merged to NDAS with https://git-av.nvidia.com/r/c/ndas/+/133793 
+    '''
 
     # Pre-compute sensor extrinsics to compute poses of the rig frame if egomotion is represented in a sensor frame
     T_rig_sensors = {
