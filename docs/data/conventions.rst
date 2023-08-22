@@ -282,8 +282,8 @@ will additionally be available in ``camera_model_parameters``:
   (float32, [2,])
 * ``radial_coeffs`` - radial distortion coefficients
   ``[k1,k2,k3,k4,k5,k6]`` parameterizing the rational radial distortion
-  factor :math:`\frac{1 + k_1r^2 + k_2r^4 + k_3r^4}{1 + k_4r^2 + k_5r^4
-  + k_6r^4}` for squared norms :math:`r^2` of normalized camera
+  factor :math:`\frac{1 + k_1r^2 + k_2r^4 + k_3r^6}{1 + k_4r^2 + k_5r^4
+  + k_6r^6}` for squared norms :math:`r^2` of normalized camera
   coordinates (float32, [6,])
 * ``tangential_coeffs`` - tangential distortion coefficients ``[p1,p2]``
   parameterizing the tangential distortion components
