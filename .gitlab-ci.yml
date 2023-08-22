@@ -36,6 +36,11 @@ default:
     - echo "build --disk_cache=$CI_PROJECT_DIR/.ci-keep/cache" >> .bazelrc.user
     - echo "test  --disk_cache=$CI_PROJECT_DIR/.ci-keep/cache" >> .bazelrc.user
 
+    # Make use of local mypy cache 
+    - mkdir -p $CI_PROJECT_DIR/.ci-keep/.mypy_cache
+    - echo "build --sandbox_writable_path=$CI_PROJECT_DIR/.ci-keep/.mypy_cache" >> .bazelrc.user
+    - echo "build --action_env=MYPY_CACHE_DIR=$CI_PROJECT_DIR/.ci-keep/.mypy_cache" >> .bazelrc.user
+
     # Setup persistent output folder
     - echo ".ci-keep" >> .bazelignore
     - echo "startup --output_base $CI_PROJECT_DIR/.ci-keep/output" >> .bazelrc.user
