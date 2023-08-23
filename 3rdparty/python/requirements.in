@@ -44,3 +44,5 @@ dataclasses_json
 multimethod
 
 webdataset
+
+polyscope
