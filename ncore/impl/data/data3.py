@@ -49,6 +49,7 @@ class ContainerDataWriter:
 
         self.output_dir_path = output_dir_path
         self.container_name = container_name
+        self.output_container_path = self.output_dir_path / f'{self.container_name}.zarr.itar'
 
         self.sequence_id = sequence_id
         self.shard_id = shard_id
@@ -58,8 +59,7 @@ class ContainerDataWriter:
 
         # Initialize container file (indexed tar file)
         self.output_dir_path.mkdir(parents=True, exist_ok=True)
-        self.container_store = stores.IndexedTarStore(self.output_dir_path / f'{self.container_name}.zarr.itar',
-                                                      mode='w')
+        self.container_store = stores.IndexedTarStore(self.output_container_path, mode='w')
         self.container_root = zarr.group(store=self.container_store)
 
         # Store dataset associated meta-data
@@ -102,7 +102,8 @@ class ContainerDataWriter:
             json.dump({'shard-id': self.shard_id, 'shard-count': self.shard_count, 'successful': successful}, outfile)
 
     # To be called after all data was added
-    def finalize(self) -> None:
+    def finalize(self) -> Path:
+        '''Closes container and returns its path (optionally also writes shard meta data if requested)'''
 
         # Make sure the shard file is consolidated
         stores.consolidate_compressed_metadata(self.container_store)
@@ -113,6 +114,8 @@ class ContainerDataWriter:
         # Mark shard as successful
         if self.store_shard_meta:
             self._store_shard_meta(True)
+
+        return self.output_container_path
 
     # Individual 'store*' methods performing data sanity checks and serialize consistent output formats
     def store_poses(self, poses: types.Poses) -> None:
@@ -737,7 +740,7 @@ class ShardDataLoader:
         return self._shard_ids
 
     def get_sensor(self, sensor_id: str) -> Union[CameraSensor, LidarSensor, RadarSensor]:
-        ''' Provides access to a specific sensor given it's sensor-id '''
+        ''' Provides access to a specific sensor given its sensor-id '''
         if sensor_id in self._camera_ids:
             return self.get_camera_sensor(sensor_id)
         if sensor_id in self._lidar_ids:
@@ -751,7 +754,7 @@ class ShardDataLoader:
         return self.get_camera_ids() + self.get_lidar_ids() + self.get_radar_ids()
 
     def get_camera_sensor(self, camera_id) -> CameraSensor:
-        ''' Provides access to a specific camera sensor given it's sensor-id '''
+        ''' Provides access to a specific camera sensor given its sensor-id '''
         return CameraSensor(camera_id, CAMERAS_BASE_GROUP, self._shard_roots)
 
     def get_camera_ids(self) -> list[str]:
@@ -759,7 +762,7 @@ class ShardDataLoader:
         return list(self._camera_ids)
 
     def get_lidar_sensor(self, lidar_id) -> LidarSensor:
-        ''' Provides access to a specific lidar sensor given it's sensor-id '''
+        ''' Provides access to a specific lidar sensor given its sensor-id '''
         return LidarSensor(lidar_id, LIDARS_BASE_GROUP, self._shard_roots)
 
     def get_lidar_ids(self) -> list[str]:
@@ -767,7 +770,7 @@ class ShardDataLoader:
         return list(self._lidar_ids)
 
     def get_radar_sensor(self, radar_id) -> RadarSensor:
-        ''' Provides access to a specific radar sensor given it's sensor-id '''
+        ''' Provides access to a specific radar sensor given its sensor-id '''
         return RadarSensor(radar_id, RADARS_BASE_GROUP, self._shard_roots)
 
     def get_radar_ids(self) -> list[str]:

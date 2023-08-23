@@ -161,7 +161,7 @@ class WaymoConverter(DataConverter):
         # Save the poses
         self.data_writer.store_poses(self.poses)
 
-        # Log base pose to share it more easily with downstream teams (it's serialized also explicitly)
+        # Log base pose to share it more easily with downstream teams (it is serialized also explicitly)
         with np.printoptions(floatmode='unique', linewidth=200):  # print in highest precision
             self.logger.info(f'> processed {len(T_rig_worlds)} poses, using base pose:\n{T_rig_world_base}')
 

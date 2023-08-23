@@ -171,7 +171,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Save the poses
         self.data_writer.store_poses(Poses(T_rig_world_base, local_T_rig_worlds, local_T_rig_world_timestamps_us))
 
-        # Log base pose to share it more easily with downstream teams (it's serialized also explicitly)
+        # Log base pose to share it more easily with downstream teams (it is serialized also explicitly)
         with np.printoptions(floatmode='unique', linewidth=200):  # print in highest precision
             logger.info(
                 f'> processed {local_range_end - local_range_start} / {global_range_end - global_range_start} local / global poses, using base pose:\n{T_rig_world_base}'

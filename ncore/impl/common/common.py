@@ -172,7 +172,7 @@ def save_jsonl(file_path: str, object_list: list[dict]) -> None:
 def platform_cpu_count(upper_limit: Optional[int] = None) -> int:
     """ Determines CPU count in MagLev-compatible way (with an optional upper limit) """
 
-    # Check if we are running in a MagLev workflow and return it's CPU limits, otherwise fall back to regular CPU count
+    # Check if we are running in a MagLev workflow and return its CPU limits, otherwise fall back to regular CPU count
     cpu_count = int(os.environ.get('WORKFLOW_CPU_LIMITS', str(os.cpu_count())))
 
     if upper_limit:

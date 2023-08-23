@@ -21,6 +21,7 @@ import pyarrow.parquet as pq
 from PIL import Image
 from scipy.optimize import curve_fit
 from scipy.spatial.transform import Rotation as R
+from multimethod import multimethod
 
 from ncore.impl.common.common import MaskImage, PoseInterpolator, load_jsonl
 from ncore.impl.av_utils import isWithin3DBBox
@@ -171,7 +172,7 @@ def camera_intrinsic_parameters(sensor: dict, logger: Optional[logging.Logger] =
         bwpoly = [np.float32(val) for val in sensor['properties']['polynomial'].split()]
 
         if len(bwpoly) - 1 > 5:
-            # > 5th-order polynomials are currently not supported in the software-stack - it's not valid to simply drop higher-order terms, so exit with error for now.
+            # > 5th-order polynomials are currently not supported in the software-stack - it is not valid to simply drop higher-order terms, so exit with error for now.
             # If required in the future, a possible workaround is to "fit" a lower-order polynomial to evaluations of the higher-order inputs, but could introduce
             # too much approximation errors.
             raise ValueError(f"> encountered > 5th-order distortion polynomial for camera '{sensor['name']}'")
@@ -488,7 +489,7 @@ class LabelProcessor:
             bbox_frametime = BBox3.from_array(
                 transform_bbox(bbox_labeltime.to_array(), T_sensor_labeltime_sensor_frametime))
 
-            # skip label if it's centroid is too close to the rig
+            # skip label if its centroid is too close to the rig
             if np.linalg.norm(transform_bbox(bbox_frametime.to_array(),
                                              T_sensor_rigs[sensor_id])[:3]) < min_centroid_rig_distance:
                 continue
@@ -548,7 +549,7 @@ class LabelProcessor:
             for label_frame_timestamp_us in frame_labels[sensor_id]:
                 for frame_label in frame_labels[sensor_id][label_frame_timestamp_us]:
                     track_id, label_class, global_speed = frame_label.track_id, frame_label.label_class, frame_label.global_speed
-                    
+
                     if track_id not in track_global_dynamic_flag:
                         track_global_dynamic_flag[track_id] = True if frame_label.label_class in label_strings_unconditionally_dynamic else False
 
@@ -898,10 +899,17 @@ def load_maglev_session_id(sequence_path: Path) -> str:
             raise ValueError("Unable to determine trustable session_id")
 
 
+@multimethod
 def load_maglev_egomotion(sequence_path: Path,
                           sensors_calibration_data: dict[str, dict],
                           egomotion_file_overwrite: Optional[Path] = None) -> Tuple[list[np.ndarray], list[int]]:
-    ''' Parse a maglev-based egomotion data into timestamped global T_rig_worlds '''
+    '''Parse a maglev-based egomotion data into timestamped global T_rig_worlds 
+    
+    The NV maglev 'egomotion.json' / 'egomotion.jsonl' format has gone through a couple of iterations,
+    but we still support all "flavours" in a backwards compatible-way in NCore.
+    The last major iteration is discussed in https://jirasw.nvidia.com/browse/GTS-7657 / https://jirasw.nvidia.com/browse/GTS-7646 
+    and was merged to NDAS with https://git-av.nvidia.com/r/c/ndas/+/133793 
+    '''
 
     # Pre-compute sensor extrinsics to compute poses of the rig frame if egomotion is represented in a sensor frame
     T_rig_sensors = {
@@ -920,11 +928,24 @@ def load_maglev_egomotion(sequence_path: Path,
         # Use default egomotion jsonl location
         egomotion_file = sequence_path / 'egomotion' / 'egomotion.json'
 
+    return load_maglev_egomotion(T_rig_sensors, egomotion_file)
+
+
+@load_maglev_egomotion.register
+def _(T_rig_sensors: dict[str, np.ndarray], egomotion_file: Path) -> Tuple[list[np.ndarray], list[int]]:
+    ''' Parse a maglev-based egomotion data into timestamped global T_rig_worlds '''
+
     global_T_rig_worlds = []
     global_T_rig_world_timestamps_us = []
 
-    # Use different parser implementations based on the egomotion file formats
+    # Normalize sensor names (in case "decayed" names are used as input)
+    def normalize_frame_name(sensor_name: str) -> str:
+        ''' Decay ":" -> "_" for sensor/frame names normalization '''
+        return sensor_name.replace(':', '_', -1)
 
+    T_rig_sensors = {normalize_frame_name(sensor_name): T_rig_sensor for (sensor_name, T_rig_sensor) in T_rig_sensors.items()}
+
+    # Use different parser implementations based on the egomotion file formats
     def parse_legacy_egomotion(egomotion_file: Path) -> None:
         ''' Parses "jsonl"-type of egomotion file '''
 
@@ -946,14 +967,14 @@ def load_maglev_egomotion(sequence_path: Path,
             # (actually *rigToGlobal* as they include the base pose also - this is the case for non-identity initial poses)
             # Note: there currently seems to be an inconsistency in the egomotion indexer output - keep
             #       this verified workaround logic for now (might need to be adapted if egomotion indexer is fixed)
-            if egomotion_pose_entry['in_sensor_name_frame'] == 'rig':
+            if (frame_name := normalize_frame_name(egomotion_pose_entry['in_sensor_name_frame'])) == 'rig':
                 # Pose is for the rig frame already - nothing to transform
                 pass
-            elif egomotion_pose_entry['in_sensor_name_frame'] in T_rig_sensors:
+            elif frame_name in T_rig_sensors:
                 # Convert pose in lidar frame to pose in rig frame
-                T_rig_world = T_rig_world @ T_rig_sensors[egomotion_pose_entry['in_sensor_name_frame']]
+                T_rig_world = T_rig_world @ T_rig_sensors[frame_name]
             else:
-                raise ValueError(f"Unsupported source ego frame {egomotion_pose_entry['in_sensor_name_frame']}")
+                raise ValueError(f"Unsupported source ego frame {frame_name}")
 
             # Sanity check on data-type
             assert T_rig_world.dtype is np.dtype('float64'), \
@@ -968,31 +989,42 @@ def load_maglev_egomotion(sequence_path: Path,
         with open(egomotion_file, "r") as fp:
             egomotion_json = json.load(fp)
 
-        for egomotion_pose_entry in egomotion_json['tf_frame_world']:  # will throw for "old" json-l format
-            if not egomotion_pose_entry.get("valid", True):  # entries seem to be "implicitly" valid if key is missing
+        for egomotion_pose_entry in (egomotion_json['tf_frame_world'] if 'tf_frame_world' in egomotion_json else
+                                     # fallback for current deepmap format
+                                     egomotion_json['poses']):  # will throw for "old" json-l format
+            if not egomotion_pose_entry.get('valid', True):  # entries seem to be "implicitly" valid if key is missing
                 continue
 
             # Note: make sure all poses information is represented as f64 to have sufficient
             #       precision in case poses are representing global / map-associated coordinates
             T_rig_world_timestamp_us = int(egomotion_pose_entry['timestamp'])
 
+            quat = (
+                egomotion_pose_entry['q_xyzw'] if 'q_xyzw' in egomotion_pose_entry else
+                # fallback for current deepmap format
+                egomotion_pose_entry['quaternion'])
+            t = (
+                egomotion_pose_entry['t'] if 't' in egomotion_pose_entry else
+                # fallback for current deepmap format
+                egomotion_pose_entry["translation"])
+
             T_rig_world = np.block([[
-                R.from_quat(np.asarray(egomotion_pose_entry["q_xyzw"], dtype=np.float64)).as_matrix(),
-                np.asarray(egomotion_pose_entry["t"], dtype=np.float64)[:, np.newaxis]
+                R.from_quat(np.asarray(quat, dtype=np.float64)).as_matrix(),
+                np.asarray(t, dtype=np.float64)[:, np.newaxis]
             ], [np.array([0., 0., 0., 1.])]])
 
             # Make sure poses represent *rigToWorld* transformations
             # (actually *rigToGlobal* as they include the base pose also - this is the case for non-identity initial poses)
             # Note: there currently seems to be an inconsistency in the egomotion indexer output - keep
             #       this verified workaround logic for now (might need to be adapted if egomotion indexer is fixed)
-            if egomotion_json['coordinate_frame'] == 'rig':
+            if (frame_name := normalize_frame_name(egomotion_json['coordinate_frame'])) == 'rig':
                 # Pose is for the rig frame already - nothing to transform
                 pass
-            elif egomotion_json['coordinate_frame'] in T_rig_sensors:
+            elif frame_name in T_rig_sensors:
                 # Convert pose in lidar frame to pose in rig frame
-                T_rig_world = T_rig_world @ T_rig_sensors[egomotion_json['coordinate_frame']]
+                T_rig_world = T_rig_world @ T_rig_sensors[frame_name]
             else:
-                raise ValueError(f"Unsupported source ego frame {egomotion_json['coordinate_frame']}")
+                raise ValueError(f"Unsupported source ego frame {frame_name}")
 
             global_T_rig_worlds.append(T_rig_world)
             global_T_rig_world_timestamps_us.append(T_rig_world_timestamp_us)
