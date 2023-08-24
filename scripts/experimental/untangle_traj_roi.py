@@ -25,7 +25,7 @@ class CLIParams:
     skip_sessions: tuple[str]
     untangle_max_split_time_sec: float
     max_chunk_time_sec: float | None
-    output_dir: str
+    output_dir: str | None
     visualize: bool
     verbose: bool
 
@@ -68,11 +68,11 @@ class TrajectoryChunk:
               type=str,
               help='Session-id\'s to be skipped',
               default=None)
-@click.option('--output-dir', type=str, help='Path to the output folder', required=True)
+@click.option('--output-dir', type=str, help='If provided, the path to the output folder to export untangled chunks to')
 @click.option("--visualize", is_flag=True, default=False, help="Enable rendering of untangled chunks")
 @click.option("--verbose", is_flag=True, default=False, help="Enable verbose logging outputs")
 def untangle_traj_roi(**kwargs) -> None:
-    """Untangle + visualize deepmap ROI-associated egomotion data"""
+    """A tool to untangle, filter, re-export and visualize deepmap ROI-associated egomotion data"""
 
     # Parse params
     params = CLIParams(**kwargs)
@@ -178,6 +178,10 @@ def untangle_traj_roi(**kwargs) -> None:
                                       cmap='jet')
 
         ps.show()
+
+    if params.output_dir is None:
+        # exit early if not exporting
+        return
 
     # store results
     output_path = Path(params.output_dir)
