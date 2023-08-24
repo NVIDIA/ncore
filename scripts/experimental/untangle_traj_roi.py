@@ -22,6 +22,7 @@ class CLIParams:
     ''' Parameters passed to CLI '''
     source_dir: str
     roi_id: str
+    skip_sessions: tuple[str]
     untangle_max_split_time_sec: float
     max_chunk_time_sec: float | None
     output_dir: str
@@ -61,6 +62,12 @@ class TrajectoryChunk:
     'Max consecutive time difference between poses to split / untangle trajectories into individual chunks [due to DeepMap\'s data mixing these into a single representation] (sec)',
     required=True)
 @click.option('--max-chunk-time-sec', type=float, default=None, help='Max individual chunk time (sec)')
+@click.option('--skip-session',
+              'skip_sessions',
+              multiple=True,
+              type=str,
+              help='Session-id\'s to be skipped',
+              default=None)
 @click.option('--output-dir', type=str, help='Path to the output folder', required=True)
 @click.option("--visualize", is_flag=True, default=False, help="Enable rendering of untangled chunks")
 @click.option("--verbose", is_flag=True, default=False, help="Enable verbose logging outputs")
@@ -93,6 +100,10 @@ def untangle_traj_roi(**kwargs) -> None:
             raise ValueError("Unable to determine trustable session_id")
 
         logging.debug(session_id)
+
+        if session_id in params.skip_sessions:
+            logging.info(f"Skipping session {session_id} from skip-list")
+            continue
 
         # load egomotion
         with open(json_path, "r") as fp:
