@@ -246,7 +246,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 f'camera {camera_rig_name} | local_range_start {local_range_start} / local_range_end {local_range_end} | '
                 f'{self.local_start_timestamp_us} <= t < {self.local_end_timestamp_us}')
 
-            assert global_frame_timestamps_us[0] <= local_frame_timestamps_us[0]
+            assert global_frame_timestamps_us[0] <= local_frame_timestamps_us[
+                0], "Inconsistent timestamp ranges / data-integrity, potentially the sensor didn't record for the full sequence-length"
             assert local_frame_timestamps_us[1] <= global_frame_timestamps_us[-1]  # note: global bounds are inclusive
 
             assert self.local_start_timestamp_us <= local_frame_timestamps_us[0]
@@ -375,7 +376,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 f'lidar {lidar_rig_name} | local_range_start {local_range_start} / local_range_end {local_range_end} | '
                 f'{self.local_start_timestamp_us} <= t < {self.local_end_timestamp_us}')
 
-            assert global_frame_timestamps_us[0] <= local_frame_timestamps_us[0]
+            assert global_frame_timestamps_us[0] <= local_frame_timestamps_us[
+                0], "Inconsistent timestamp ranges / data-integrity, potentially the sensor didn't record for the full sequence-length"
             assert local_frame_timestamps_us[1] <= global_frame_timestamps_us[-1]  # note: global bounds are inclusive
 
             assert self.local_start_timestamp_us <= local_frame_timestamps_us[0]
