@@ -30,4 +30,17 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "untangle_traj_roi",
+    srcs = ["untangle_traj_roi.py"],
+    deps = [
+        requirement("click"),
+        requirement("polyscope"),
+        requirement("tqdm"),
+        requirement("numpy"),
+        "//ncore/impl/common:pylib_nvidia",
+        "//ncore/impl/common:pylib_transformations",
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")
