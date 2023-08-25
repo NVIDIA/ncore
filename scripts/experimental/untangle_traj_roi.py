@@ -164,18 +164,17 @@ def untangle_traj_roi(**kwargs) -> None:
         for i, trajectory_chunk in enumerate(trajectory_chunks):
             world_common_positions = trajectory_chunk.common_poses[:, :3, 3]
 
-            curve = ps.register_curve_network(
+            ps.register_curve_network(
                 '_'.join([params.roi_id, trajectory_chunk.source_session_id,
                           str(trajectory_chunk.chunk_in_session_id)]),
                 world_common_positions,
                 "line",
                 enabled=True,
                 radius=0.001,
-            )
-            curve.add_scalar_quantity("normalized_time",
-                                      np.linspace(0.0, 1.0, num=len(trajectory_chunk.timestamps_us)),
-                                      enabled=True,
-                                      cmap='jet')
+            ).add_scalar_quantity("normalized_time",
+                                  np.linspace(0.0, 1.0, num=len(trajectory_chunk.timestamps_us)),
+                                  enabled=True,
+                                  cmap='jet')
 
         ps.show()
 
