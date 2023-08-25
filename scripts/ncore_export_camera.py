@@ -32,10 +32,11 @@ from ncore.impl.data.util import padded_index_string
               type=click.IntRange(min=1, max_open=True),
               help='Step used to downsample the number of frames',
               default=1)
-@click.option("--encode-video", is_flag=True, default=False, help="Encode video from frames")
+@click.option("--encode-images/--no-encode-images", is_flag=True, default=True, help="Encode image files for frames")
+@click.option("--encode-video", is_flag=True, default=False, help="Encode video of frames")
 @click.option("--encode-video-fps", type=int, default=30, help="Frame-rate for video encoding")
 def ncore_export_camera(shard_file_pattern: str, output_dir: str, camera_id: str, start_frame: int, end_frame: int,
-                        step_frame: int, encode_video: bool, encode_video_fps: int):
+                        step_frame: int, encode_images: bool, encode_video: bool, encode_video_fps: int):
     ''' Exports camera frames to image files, and optionally encodes frames to a video file '''
 
     # Initialize the logger
@@ -53,27 +54,27 @@ def ncore_export_camera(shard_file_pattern: str, output_dir: str, camera_id: str
     indices = sensor.get_frame_index_range(start_frame, end_frame, step_frame)
     logger.info(f"Starting image export for '{camera_id}' into '{output_path}'. {len(indices)} files will be exported")
 
+    # Instantiate video encoder if requested
     video_writer: cv2.VideoWriter | None = None
     video_path = None
     if encode_video:
         w, h = sensor.get_camera_model_parameters().resolution[:]
         video_writer = cv2.VideoWriter(str(video_path := (output_path / camera_id).with_suffix('.mp4')),
-                                       cv2.VideoWriter_fourcc(*'mp4v'),
-                                       encode_video_fps,
-                                       (int(w), int(h)))
+                                       cv2.VideoWriter_fourcc(*'mp4v'), encode_video_fps, (int(w), int(h)))
 
-    image_paths: list[str] = []
     for frame_index in tqdm.tqdm(indices):
         # Load encoded frame data
         image_data = sensor.get_frame_data(frame_index)
 
-        # Store encoded frame data to file
-        image_paths.append(
-            str(output_path /
-                Path(padded_index_string(frame_index)).with_suffix(f'.{image_data.get_encoded_image_format()}')))
-        with open(image_paths[-1], 'wb') as f:
-            f.write(image_data.get_encoded_image_data())
+        # Store encoded frame data to image files
+        if encode_images:
+            with open(
+                    output_path /
+                    Path(padded_index_string(frame_index)).with_suffix(f'.{image_data.get_encoded_image_format()}'),
+                    'wb') as f:
+                f.write(image_data.get_encoded_image_data())
 
+        # Encode frame to video
         if video_writer:
             image_rbg = np.asarray(image_data.get_decoded_image())
             image_bgr = image_rbg[..., ::-1]  # invert last dimension from RGB -> BGR (reverse RGB)
