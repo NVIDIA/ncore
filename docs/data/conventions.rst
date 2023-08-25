@@ -229,7 +229,7 @@ the sensor-group or individual datasets:
 
 * ``T_sensor_rig``- SE3 transformation matrix from the sensor to the rig
   coordinate system (float32, [4,4])
-* ``frame_timestamps_us`` - end-of-frame timestamps of the all sensor
+* ``frame_timestamps_us`` - end-of-frame timestamps of all the sensor's
   frames in microseconds (uint64, [J,])
 
 *Cameras*:
