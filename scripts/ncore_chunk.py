@@ -26,7 +26,6 @@ class CLIBaseParams:
     output_dir: str
     output_basename: Optional[str]
     open_consolidated: bool
-    store_shard_meta: bool
     dynamic_flag_variant: str
     no_cameras: bool
     camera_ids: Tuple[str]
@@ -67,10 +66,7 @@ class ChunkDataWriter:
             # Sensor selection (exports all sensors of a give type if not restricted)
             camera_ids: Optional[list[str]],
             lidar_ids: Optional[list[str]],
-            radar_ids: Optional[list[str]],
-
-            # Meta
-            store_shard_meta: bool) -> None:
+            radar_ids: Optional[list[str]]) -> None:
 
         if camera_ids is None:
             camera_ids = loader.get_camera_ids()
@@ -98,7 +94,7 @@ class ChunkDataWriter:
             # always single-shard
             0,
             1,
-            store_shard_meta)
+            False)
 
         ## Process poses
 
@@ -305,7 +301,6 @@ def get_dynamic_flag_parameters(variant: str, loader: ShardDataLoader) -> Dynami
     'Basename of the generated file - <sequence-id>_<start-time-us>_<end-time-us> will be used by default if not provided',
     required=False)
 @click.option('--open-consolidated/--no-open-consolidated', default=True, help='Pre-load shard meta-data?')
-@click.option('--store-shard-meta/--no-store-shard-meta', default=True, help='Store shard meta-data along with shard?')
 @click.option(
     '--dynamic-flag-variant',
     type=click.Choice(['auto', 'nv', 'waymo'], case_sensitive=False),
@@ -369,7 +364,7 @@ def ncore_chunk(params: CLIBaseParams, loader: ShardDataLoader, poses: Poses, st
 
     ChunkDataWriter.process(loader, poses, start_timestamp_us, end_timestamp_us,
                             get_dynamic_flag_parameters(params.dynamic_flag_variant, loader), Path(params.output_dir),
-                            container_name, camera_ids, lidar_ids, radar_ids, params.store_shard_meta)
+                            container_name, camera_ids, lidar_ids, radar_ids)
 
 
 def get_poses(loader: ShardDataLoader, egomotion_file: Optional[str]) -> Poses:
