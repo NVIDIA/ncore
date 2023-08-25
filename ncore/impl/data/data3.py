@@ -486,6 +486,8 @@ class CameraSensor(Sensor):
             return types.FThetaCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters)
         if self._sensor_meta.camera_model_type == 'pinhole':
             return types.PinholeCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters)
+        if self._sensor_meta.camera_model_type == 'fisheye':
+            return types.FisheyeCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters)
         raise ValueError
 
     # Camera Mask

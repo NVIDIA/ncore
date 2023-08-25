@@ -235,7 +235,7 @@ the sensor-group or individual datasets:
 *Cameras*:
 
 * ``camera_model_type`` - camera model type (str, one of [ftheta,
-  pinhole])
+  pinhole, fisheye])
 
 The field ``camera_model_parameters`` will unconditionally contain:
 
@@ -278,8 +278,8 @@ will additionally be available in ``camera_model_parameters``:
   following the :ref:`image coordinate conventions
   <image_coordinate_conventions>` (float32, [2,])
 * ``focal_length`` - focal lengths in u and v direction, resp., mapping
-  (distorted) normalized camera coordinates to image coordinates
-  (float32, [2,])
+  (distorted) normalized camera coordinates to image coordinates relative
+  to the principal point (float32, [2,])
 * ``radial_coeffs`` - radial distortion coefficients
   ``[k1,k2,k3,k4,k5,k6]`` parameterizing the rational radial distortion
   factor :math:`\frac{1 + k_1r^2 + k_2r^4 + k_3r^6}{1 + k_4r^2 + k_5r^4
@@ -296,6 +296,29 @@ will additionally be available in ``camera_model_parameters``:
   :math:`\begin{bmatrix} s_1r^2 + s_2r^4 \\ s_3r^2 + s_4r^4
   \end{bmatrix}` for squared norms :math:`r^2` of normalized camera
   coordinates (float32, [4,])
+
+If ``camera_model_type` = 'fisheye'`` the following intrinsic parameters
+will additionally be available in ``camera_model_parameters``:
+
+* ``variant`` - fisheye camera model variant (str, one of [OPENCV])
+* ``principal_point`` - u and v coordinate of the principal point,
+  following the :ref:`image coordinate conventions
+  <image_coordinate_conventions>` (float32, [2,])
+* ``focal_length`` - focal lengths in u and v direction, resp., mapping
+  (distorted) normalized camera coordinates to image coordinates relative
+  to the principal point (float32, [2,])
+* ``radial_coeffs`` - radial distortion coefficients, interpreted
+  according to ``variant``:
+
+  * if ``variant`` is ``'OPENCV'``, ``radial_coeffs`` represent
+    OpenCV-style ``[k1,k2,k3,k4]`` coefficients parameterizing the
+    fisheye distortion polynomial :math:`\theta(1 + k_1\theta^2 +
+    k_2\theta^4 + k_3\theta^6 + k_4\theta^8)` for extrinsic camera ray
+    angles :math:`\theta` with the principal direction (float32, [4,])
+* ``alpha`` - anisotropic skew factor between u an v image coordinates 
+  (unitless, zero to disable) (float32)
+* ``max_angle`` - maximal extrinsic ray angle [rad] with the principal
+  direction (float32)
 
 Finally, we also save general metadata related to the session (input
 data and versioning):

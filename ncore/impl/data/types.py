@@ -110,13 +110,13 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
 
 @dataclass
 class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
-    ''' Represents a Pinhole-specific camera model parameters '''
+    ''' Represents Pinhole-specific (OpenCV-like) camera model parameters '''
     principal_point: np.ndarray = util.numpy_array_field(
         np.float32
     )  #: U and v coordinate of the principal point, following the :ref:`image coordinate conventions <image_coordinate_conventions>` (float32, [2,])
     focal_length: np.ndarray = util.numpy_array_field(
         np.float32
-    )  #: Focal lengths in u and v direction, resp., mapping (distorted) normalized camera coordinates to image coordinates (float32, [2,])
+    )  #: Focal lengths in u and v direction, resp., mapping (distorted) normalized camera coordinates to image coordinates relative to the principal point (float32, [2,])
     radial_coeffs: np.ndarray = util.numpy_array_field(
         np.float32
     )  #: Radial distortion coefficients ``[k1,k2,k3,k4,k5,k6]`` parameterizing the rational radial distortion factor :math:`\frac{1 + k_1r^2 + k_2r^4 + k_3r^6}{1 + k_4r^2 + k_5r^4 + k_6r^6}` for squared norms :math:`r^2` of normalized camera coordinates (float32, [6,])
@@ -153,8 +153,64 @@ class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
         assert self.thin_prism_coeffs.dtype == np.dtype('float32')
 
 
+@dataclass
+class FisheyeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
+    ''' Represents Fisheye-specific camera model parameters '''
+    @unique
+    class Variant(IntEnum):
+        ''' Enumerates different possible fisheye camera model parametrizations '''
+        OPENCV = auto(
+        )  #: Radial distortion coefficients `radial_coeffs` represent OpenCV-specific ``[k1,k2,k3,k4]`` coefficients to parameterize the
+        #  fisheye distortion polynomial as :math:`\theta(1 + k_1\theta^2 + k_2\theta^4 + k_3\theta^6 + k_4\theta^8)`
+        #  for extrinsic camera ray angles :math:`\theta` with the principal direction (float32, [4,])
+
+    variant: Variant = util.enum_field(Variant)  #: Variant of the fisheye camera model parametrization
+
+    principal_point: np.ndarray = util.numpy_array_field(
+        np.float32
+    )  #: U and v coordinate of the principal point, following the :ref:`image coordinate conventions <image_coordinate_conventions>` (float32, [2,])
+    focal_length: np.ndarray = util.numpy_array_field(
+        np.float32
+    )  #: Focal lengths in u and v direction, resp., mapping (distorted) normalized camera coordinates to image coordinates relative to the principal point (float32, [2,])
+    radial_coeffs: np.ndarray = util.numpy_array_field(
+        np.float32
+    )  #: Radial distortion coefficients parameterizing the fisheye distortion polynomial (interpretation according to the `variant` field)
+    alpha: float = 0.0  #: Anisotropic skew factor between u an v image coordinates (unitless, zero to disable) (float32)
+    max_angle: float = 0.0  #: Maximal extrinsic ray angle [rad] with the principal direction (float32)
+
+    @staticmethod
+    def type() -> str:
+        ''' Returns a string-identifier of the camera model '''
+        return 'fisheye'
+
+    def __post_init__(self):
+        # Sanity checks
+        super().__post_init__()
+        assert self.principal_point.shape == (2, )
+        assert self.principal_point.dtype == np.dtype('float32')
+        assert self.principal_point[0] > 0.0 and self.principal_point[1] > 0.0
+
+        assert self.focal_length.shape == (2, )
+        assert self.focal_length.dtype == np.dtype('float32')
+        assert self.focal_length[0] > 0.0 and self.focal_length[1] > 0.0
+
+        match self.variant:
+            case self.Variant.OPENCV:
+                assert self.radial_coeffs.shape == (4, )
+            case _:
+                raise ValueError(f'Unknown fisheye camera model variant {self.variant}')
+        assert self.radial_coeffs.dtype == np.dtype('float32')
+
+        assert isinstance(self.alpha, float)
+
+        assert self.max_angle > 0.0
+
+
 # Represents the collection of all concrete camera model parameter type
-ConcreteCameraModelParametersUnion = Union[FThetaCameraModelParameters, PinholeCameraModelParameters]
+ConcreteCameraModelParametersUnion = Union[FThetaCameraModelParameters,
+                                           PinholeCameraModelParameters,
+                                           FisheyeCameraModelParameters]
+
 
 @dataclass
 class Poses:
