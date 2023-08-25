@@ -129,11 +129,13 @@ py_binary(
 )
 
 py_binary(
-    name = "ncore_export_image",
-    srcs = ["ncore_export_image.py"],
+    name = "ncore_export_camera",
+    srcs = ["ncore_export_camera.py"],
     deps = [
         requirement("click"),
         requirement("tqdm"),
+        requirement("numpy"),
+        requirement("opencv-python"),
         "//ncore/impl/data:pylib_data",
         "//ncore/impl/data:pylib_util",
     ],
