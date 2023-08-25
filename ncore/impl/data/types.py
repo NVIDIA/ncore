@@ -119,7 +119,7 @@ class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
     )  #: Focal lengths in u and v direction, resp., mapping (distorted) normalized camera coordinates to image coordinates (float32, [2,])
     radial_coeffs: np.ndarray = util.numpy_array_field(
         np.float32
-    )  #: Radial distortion coefficients ``[k1,k2,k3,k4,k5,k6]`` parameterizing the rational radial distortion factor :math:`\frac{1 + k_1r^2 + k_2r^4 + k_3r^4}{1 + k_4r^2 + k_5r^4 + k_6r^4}` for squared norms :math:`r^2` of normalized camera coordinates (float32, [6,])
+    )  #: Radial distortion coefficients ``[k1,k2,k3,k4,k5,k6]`` parameterizing the rational radial distortion factor :math:`\frac{1 + k_1r^2 + k_2r^4 + k_3r^6}{1 + k_4r^2 + k_5r^4 + k_6r^6}` for squared norms :math:`r^2` of normalized camera coordinates (float32, [6,])
     tangential_coeffs: np.ndarray = util.numpy_array_field(
         np.float32
     )  #: Tangential distortion coefficients ``[p1,p2]`` parameterizing the tangential distortion components :math:`\begin{bmatrix} 2p_1x'y' + p_2 \left(r^2 + 2{x'}^2 \right) \\ p_1 \left(r^2 + 2{y'}^2 \right) + 2p_2x'y' \end{bmatrix}` for normalized camera coordinates :math:`\begin{bmatrix} x' \\ y' \end{bmatrix}` (float32, [2,])
