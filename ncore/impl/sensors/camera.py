@@ -57,8 +57,7 @@ class CameraModel(ABC):
                                         valid_flag=image_points.valid_flag)
 
     @staticmethod
-    def from_parameters(cam_model_parameters: Union[types.FThetaCameraModelParameters,
-                                                    types.PinholeCameraModelParameters],
+    def from_parameters(cam_model_parameters: types.ConcreteCameraModelParametersUnion,
                         device: str = 'cuda',
                         dtype: torch.dtype = torch.float32) -> CameraModel:
         '''

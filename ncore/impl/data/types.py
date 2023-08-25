@@ -6,7 +6,7 @@ import io
 
 from enum import IntEnum, auto, unique
 from dataclasses import dataclass
-from typing import Optional, Protocol, Tuple
+from typing import Optional, Protocol, Tuple, Union
 from functools import lru_cache
 
 import numpy as np
@@ -152,6 +152,9 @@ class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
         assert self.thin_prism_coeffs.shape == (4, )
         assert self.thin_prism_coeffs.dtype == np.dtype('float32')
 
+
+# Represents the collection of all concrete camera model parameter type
+ConcreteCameraModelParametersUnion = Union[FThetaCameraModelParameters, PinholeCameraModelParameters]
 
 @dataclass
 class Poses:

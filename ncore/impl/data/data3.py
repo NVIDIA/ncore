@@ -145,7 +145,7 @@ class ContainerDataWriter:
             T_sensor_rig: np.ndarray,
 
             # intrinsics
-            camera_model_parameters: Union[types.FThetaCameraModelParameters, types.PinholeCameraModelParameters],
+            camera_model_parameters: types.ConcreteCameraModelParametersUnion,
 
             # sensor constants
             mask_image: Optional[PILImage.Image]) -> None:
@@ -480,7 +480,7 @@ class CameraSensor(Sensor):
 
     # Intrinsics
     def get_camera_model_parameters(
-            self) -> Union[types.FThetaCameraModelParameters, types.PinholeCameraModelParameters]:
+            self) -> types.ConcreteCameraModelParametersUnion:
         ''' Returns parameters specific to the camera's intrinsic model '''
         if self._sensor_meta.camera_model_type == 'ftheta':
             return types.FThetaCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters)
