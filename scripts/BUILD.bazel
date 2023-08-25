@@ -10,6 +10,8 @@ load("@io_bazel_rules_docker//python3:image.bzl", "py3_image")
 load("@pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 
+#################################################################
+
 CONVERT_RAW_DATA_DEPS = [
     requirement("click"),
     "//ncore/impl/data_converter:pylib_nvidia_maglev",
@@ -114,6 +116,8 @@ container_push(
     ],
 )
 
+#################################################################
+
 py_binary(
     name = "ncore_export_ply",
     srcs = ["ncore_export_ply.py"],
@@ -128,18 +132,104 @@ py_binary(
     ],
 )
 
+#################################################################
+
+NCORE_EXPORT_CAMERA_DEPS = [
+    requirement("click"),
+    requirement("tqdm"),
+    requirement("numpy"),
+    requirement("opencv-python"),
+    "//ncore/impl/data:pylib_data",
+    "//ncore/impl/data:pylib_util",
+]
+
 py_binary(
     name = "ncore_export_camera",
     srcs = ["ncore_export_camera.py"],
-    deps = [
-        requirement("click"),
-        requirement("tqdm"),
-        requirement("numpy"),
-        requirement("opencv-python"),
-        "//ncore/impl/data:pylib_data",
-        "//ncore/impl/data:pylib_util",
+    deps = NCORE_EXPORT_CAMERA_DEPS,
+)
+
+# Image for 'ncore_export_camera'
+
+# extract all transitive dependencies of dependencies under //ncore
+py_layer(
+    name = "ncore_export_camera_common_deps_layer",
+    filter = "//ncore",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = CONVERT_RAW_DATA_DEPS,
+)
+
+# extract all external dependencies of the deps under //ncore
+py_layer(
+    name = "ncore_export_camera_common_external_deps_layer",
+    filter = "@",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = [":ncore_export_camera_common_deps_layer"],
+)
+
+# extract all external dependencies of CONVERT_RAW_DATA_DEPS, which is a superset of ":ncore_export_camera_common_external_deps_layer".
+py_layer(
+    name = "ncore_export_camera_external_deps_layer",
+    filter = "@",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = CONVERT_RAW_DATA_DEPS,
+)
+
+py3_image(
+    name = "ncore_export_camera_image",
+    srcs = ["ncore_export_camera.py"],
+    base = "@ncore_dev_container//image",
+    layers = [
+        ":ncore_export_camera_external_deps_layer",
+        ":ncore_export_camera_common_external_deps_layer",
+        ":ncore_export_camera_common_deps_layer",
+    ],
+    main = "ncore_export_camera.py",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+    deps = [":ncore_sequence_meta"],  # include additional local targets to simplify their deployment
+)
+
+# Push image to 'production' (prod) tag - use with *CAUTION* as referenced by default in workflows
+container_push(
+    name = "push_ncore_export_camera_image_prod",
+    format = "Docker",
+    image = ":ncore_export_camera_image",
+    registry = "nvcr.io",
+    repository = "nv-maglev/dlav/ncore",
+    tag = "ncore-export-camera-prod",
+    tags = [
+        "manual",
+        "no-remote-cache",
     ],
 )
+
+# Push image to 'staging' (stage) tag - useful for experimentation
+container_push(
+    name = "push_ncore_export_camera_image_stage",
+    format = "Docker",
+    image = ":ncore_export_camera_image",
+    registry = "nvcr.io",
+    repository = "nv-maglev/dlav/ncore",
+    tag = "ncore-export-camera-stage",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+)
+
+#################################################################
 
 py_binary(
     name = "ncore_surface_rec",
@@ -154,6 +244,8 @@ py_binary(
     ],
 )
 
+#################################################################
+
 py_binary(
     name = "ncore_visualize_labels",
     srcs = ["ncore_visualize_labels.py"],
@@ -164,6 +256,8 @@ py_binary(
         "//ncore/impl/data:pylib_data",
     ],
 )
+
+#################################################################
 
 py_binary(
     name = "ncore_extract_segmentation",
@@ -176,6 +270,8 @@ py_binary(
         "//ncore/impl/deps/semantic_segmentation:pylib",
     ],
 )
+
+#################################################################
 
 NCORE_TO_NGP_DEPS = [
     requirement("click"),
@@ -289,6 +385,8 @@ container_push(
     ],
 )
 
+#################################################################
+
 py_binary(
     name = "ncore_project_pc_to_img",
     srcs = ["ncore_project_pc_to_img.py"],
@@ -305,6 +403,8 @@ py_binary(
     ],
 )
 
+#################################################################
+
 py_binary(
     name = "ncore_sequence_meta",
     srcs = ["ncore_sequence_meta.py"],
@@ -313,6 +413,8 @@ py_binary(
         "//ncore/impl/data:pylib_data",
     ],
 )
+
+#################################################################
 
 NCORE_CHUNK_DEPS = [
     requirement("click"),
@@ -358,7 +460,7 @@ py_layer(
     filter = "@",
     tags = [
         "manual",
-        "no-remote-cache",
+        "nncore_sequence_metao-remote-cache",
     ],
     deps = [":ncore_chunk_common_deps_layer"],
 )
@@ -418,5 +520,7 @@ container_push(
         "no-remote-cache",
     ],
 )
+
+#################################################################
 
 bzlformat_pkg(name = "bzlformat")
