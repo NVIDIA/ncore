@@ -109,7 +109,7 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
 
 
 @dataclass
-class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
+class OpenCVPinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
     ''' Represents Pinhole-specific (OpenCV-like) camera model parameters '''
     principal_point: np.ndarray = util.numpy_array_field(
         np.float32
@@ -130,7 +130,7 @@ class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
     @staticmethod
     def type() -> str:
         ''' Returns a string-identifier of the camera model '''
-        return 'pinhole'
+        return 'opencv-pinhole'
 
     def __post_init__(self):
         # Sanity checks
@@ -154,7 +154,7 @@ class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
 
 
 @dataclass
-class FisheyeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
+class OpenCVFisheyeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
     ''' Represents Fisheye-specific (OpenCV-like) camera model parameters '''
     principal_point: np.ndarray = util.numpy_array_field(
         np.float32
@@ -172,7 +172,7 @@ class FisheyeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
     @staticmethod
     def type() -> str:
         ''' Returns a string-identifier of the camera model '''
-        return 'fisheye'
+        return 'opencv-fisheye'
 
     def __post_init__(self):
         # Sanity checks
@@ -193,8 +193,8 @@ class FisheyeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
 
 # Represents the collection of all concrete camera model parameter type
 ConcreteCameraModelParametersUnion = Union[FThetaCameraModelParameters,
-                                           PinholeCameraModelParameters,
-                                           FisheyeCameraModelParameters]
+                                           OpenCVPinholeCameraModelParameters,
+                                           OpenCVFisheyeCameraModelParameters]
 
 
 @dataclass

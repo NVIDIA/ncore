@@ -20,8 +20,8 @@ from ncore.impl.data.data3 import (ShardDataLoader, CameraSensor, LidarSensor)
 from ncore.impl.data.types import (
     FThetaCameraModelParameters,
     FrameTimepoint,
-    PinholeCameraModelParameters,
-    FisheyeCameraModelParameters,
+    OpenCVPinholeCameraModelParameters,
+    OpenCVFisheyeCameraModelParameters,
 )
 from scripts.util import NPArrayParamType
 from ncore.impl.sensors.camera import CameraModel
@@ -331,7 +331,7 @@ def ncore_to_ngp(
                 camera_model_parameters.max_angle = min(
                     np.deg2rad(track_camera_max_fov_deg) / 2.0, camera_model_parameters.max_angle)
 
-            case PinholeCameraModelParameters() as pinhole:
+            case OpenCVPinholeCameraModelParameters() as pinhole:
                 # Get the focal length and compute the angular field of view
                 fov_angle_x = math.atan(pinhole.resolution[0] / (pinhole.focal_length[0] * 2)) * 2
                 fov_angle_y = math.atan(pinhole.resolution[1] / (pinhole.focal_length[1] * 2)) * 2
@@ -376,7 +376,7 @@ def ncore_to_ngp(
                 if pinhole.shutter_type.name in RS_DIR_TO_NGP:
                     camera_data["intrinsic_data"]["rolling_shutter"] = RS_DIR_TO_NGP[pinhole.shutter_type.name].tolist()
 
-            case FisheyeCameraModelParameters() as fisheye:
+            case OpenCVFisheyeCameraModelParameters() as fisheye:
                 # Get the focal length and compute the angular field of view
                 fov_angle_x = math.atan(fisheye.resolution[0] / (fisheye.focal_length[0] * 2)) * 2
                 fov_angle_y = math.atan(fisheye.resolution[1] / (fisheye.focal_length[1] * 2)) * 2

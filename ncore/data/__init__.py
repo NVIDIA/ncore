@@ -2,7 +2,7 @@
 ''' Package exposing methods related to NCORE's data types '''
 
 from ncore.impl.data.types import (Poses, FrameTimepoint, CameraModelParameters, ShutterType,
-                                   FThetaCameraModelParameters, PinholeCameraModelParameters, FisheyeCameraModelParameters, Tracks, TrackLabel, FrameLabel3,
+                                   FThetaCameraModelParameters, OpenCVPinholeCameraModelParameters, OpenCVFisheyeCameraModelParameters, Tracks, TrackLabel, FrameLabel3,
                                    BBox3, LabelSource, DynamicFlagState)
 
 from ncore.impl.data.util import (padded_index_string)
@@ -14,8 +14,8 @@ __all__ = [
     'CameraModelParameters',
     'ShutterType',
     'FThetaCameraModelParameters',
-    'PinholeCameraModelParameters',
-    'FisheyeCameraModelParameters',
+    'OpenCVPinholeCameraModelParameters',
+    'OpenCVFisheyeCameraModelParameters',
     'Tracks',
     'TrackLabel',
     'FrameLabel3',

@@ -12,8 +12,8 @@ import parameterized
 import torch
 import cv2
 
-from ncore.impl.data.types import FThetaCameraModelParameters, PinholeCameraModelParameters, FisheyeCameraModelParameters, ShutterType
-from ncore.impl.sensors.camera import CameraModel, FThetaCameraModel, PinholeCameraModel, FisheyeCameraModel
+from ncore.impl.data.types import FThetaCameraModelParameters, OpenCVPinholeCameraModelParameters, OpenCVFisheyeCameraModelParameters, ShutterType
+from ncore.impl.sensors.camera import CameraModel, FThetaCameraModel, OpenCVPinholeCameraModel, OpenCVFisheyeCameraModel
 
 
 class ReferenceFThetaCamera():
@@ -492,34 +492,30 @@ class TestPinholeCamera(CommonTestCase):
         ''' Tests self-consistency of torch-based Pinhole camera model '''
 
         # Waymo camera parameters
-        cam_model_params = PinholeCameraModelParameters(resolution=np.array([1920, 1280], dtype=np.uint64),
-                                                        shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
-                                                        principal_point=np.array([935.1248081874216, 635.052474560227],
-                                                                                 dtype=np.float32),
-                                                        focal_length=np.array([
-                                                            2059.0471439559833,
-                                                            2059.0471439559833,
-                                                        ],
-                                                                              dtype=np.float32),
-                                                        radial_coeffs=np.array([
-                                                            0.04239636827428756,
-                                                            -0.34165672675852826,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                        ],
-                                                                               dtype=np.float32),
-                                                        tangential_coeffs=np.array(
-                                                            [0.001805535524580487, -0.00005530628187935031],
-                                                            dtype=np.float32),
-                                                        thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32))
+        cam_model_params = OpenCVPinholeCameraModelParameters(
+            resolution=np.array([1920, 1280], dtype=np.uint64),
+            shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
+            principal_point=np.array([935.1248081874216, 635.052474560227], dtype=np.float32),
+            focal_length=np.array([
+                2059.0471439559833,
+                2059.0471439559833,
+            ], dtype=np.float32),
+            radial_coeffs=np.array([
+                0.04239636827428756,
+                -0.34165672675852826,
+                0,
+                0,
+                0,
+                0,
+            ], dtype=np.float32),
+            tangential_coeffs=np.array([0.001805535524580487, -0.00005530628187935031], dtype=np.float32),
+            thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32))
 
         # add additional arbitrary radial and thin-prism coeffs for this test only to guarantee code-coverage
         cam_model_params.radial_coeffs[2:] = [0.01, 0.02, -0.01, 0.02]
         cam_model_params.thin_prism_coeffs[:] = [0.01, 0.02, 0.02, 0.01]
 
-        cam_model = PinholeCameraModel(cam_model_params, device=self.device, dtype=self.dtype)
+        cam_model = OpenCVPinholeCameraModel(cam_model_params, device=self.device, dtype=self.dtype)
 
         MAX_DEVIATION_IN_IMAGE_COORDINATES = 0.001
 
@@ -541,7 +537,7 @@ class TestPinholeCamera(CommonTestCase):
 
 class ReferenceSimplePinholeCamera():
     ''' Simple reference pinhole camera with symbolic evaluations (supporting k1,k2,k3,p1,p2) '''
-    def __init__(self, params: PinholeCameraModelParameters, dtype: np.dtype):
+    def __init__(self, params: OpenCVPinholeCameraModelParameters, dtype: np.dtype):
         self.params = params
         self.dtype = dtype
 
@@ -620,28 +616,24 @@ class TestJacobian(CommonTestCase):
         ''' Tests consistency of camera model Jacobians with reference implementation '''
 
         # Distorted pinhole camera model with "simple" k1,k2,k3,p1,p2 parametrization only
-        cam_model_params = PinholeCameraModelParameters(resolution=np.array([1920, 1280], dtype=np.uint64),
-                                                        shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
-                                                        principal_point=np.array([935.1248081874216, 635.052474560227],
-                                                                                 dtype=np.float32),
-                                                        focal_length=np.array([
-                                                            2059.0471439559833,
-                                                            2059.4231439559833,
-                                                        ],
-                                                                              dtype=np.float32),
-                                                        radial_coeffs=np.array([
-                                                            0.04239636827428756,
-                                                            -0.34165672675852826,
-                                                            0.01,
-                                                            0,
-                                                            0,
-                                                            0,
-                                                        ],
-                                                                               dtype=np.float32),
-                                                        tangential_coeffs=np.array(
-                                                            [0.001805535524580487, -0.00005530628187935031],
-                                                            dtype=np.float32),
-                                                        thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32))
+        cam_model_params = OpenCVPinholeCameraModelParameters(
+            resolution=np.array([1920, 1280], dtype=np.uint64),
+            shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
+            principal_point=np.array([935.1248081874216, 635.052474560227], dtype=np.float32),
+            focal_length=np.array([
+                2059.0471439559833,
+                2059.4231439559833,
+            ], dtype=np.float32),
+            radial_coeffs=np.array([
+                0.04239636827428756,
+                -0.34165672675852826,
+                0.01,
+                0,
+                0,
+                0,
+            ], dtype=np.float32),
+            tangential_coeffs=np.array([0.001805535524580487, -0.00005530628187935031], dtype=np.float32),
+            thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32))
 
         cam_model_ref = ReferenceSimplePinholeCamera(cam_model_params, {
             torch.float32: np.float32,
@@ -667,33 +659,28 @@ class TestJacobian(CommonTestCase):
 
         cam_models = [
             # Ideal pinhole camera parameters
-            CameraModel.from_parameters(PinholeCameraModelParameters(resolution=np.array([1920, 1280], dtype=np.uint64),
-                                                                     shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
-                                                                     principal_point=np.array(
-                                                                         [935.1248081874216, 635.052474560227],
-                                                                         dtype=np.float32),
-                                                                     focal_length=np.array([
-                                                                         2059.0471439559833,
-                                                                         2059.0471439559833,
-                                                                     ],
-                                                                                           dtype=np.float32),
-                                                                     radial_coeffs=np.array([
-                                                                         0,
-                                                                         0,
-                                                                         0,
-                                                                         0,
-                                                                         0,
-                                                                         0,
-                                                                     ],
-                                                                                            dtype=np.float32),
-                                                                     tangential_coeffs=np.array([0, 0],
-                                                                                                dtype=np.float32),
-                                                                     thin_prism_coeffs=np.array([0, 0, 0, 0],
-                                                                                                dtype=np.float32)),
+            CameraModel.from_parameters(OpenCVPinholeCameraModelParameters(
+                resolution=np.array([1920, 1280], dtype=np.uint64),
+                shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
+                principal_point=np.array([935.1248081874216, 635.052474560227], dtype=np.float32),
+                focal_length=np.array([
+                    2059.0471439559833,
+                    2059.0471439559833,
+                ], dtype=np.float32),
+                radial_coeffs=np.array([
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                ], dtype=np.float32),
+                tangential_coeffs=np.array([0, 0], dtype=np.float32),
+                thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32)),
                                         device=self.device,
                                         dtype=self.dtype),
             # Waymo camera parameters
-            CameraModel.from_parameters(PinholeCameraModelParameters(
+            CameraModel.from_parameters(OpenCVPinholeCameraModelParameters(
                 resolution=np.array([1920, 1280], dtype=np.uint64),
                 shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
                 principal_point=np.array([935.1248081874216, 635.052474560227], dtype=np.float32),
@@ -734,21 +721,22 @@ class TestJacobian(CommonTestCase):
 
             # External costumer fisheye model
             CameraModel.from_parameters(
-                FisheyeCameraModelParameters(resolution=np.array([3848, 2168], dtype=np.uint64),
-                                             shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
-                                             principal_point=np.array([1928.184506, 1083.862789], dtype=np.float32),
-                                             focal_length=np.array([
-                                                 1913.76478,
-                                                 1913.99708,
-                                             ], dtype=np.float32),
-                                             radial_coeffs=np.array([
-                                                 -0.030093122,
-                                                 -0.005103817,
-                                                 -0.000849622,
-                                                 0.001079542,
-                                             ],
-                                                                    dtype=np.float32),
-                                             max_angle=np.deg2rad(140 / 2)))
+                OpenCVFisheyeCameraModelParameters(resolution=np.array([3848, 2168], dtype=np.uint64),
+                                                   shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
+                                                   principal_point=np.array([1928.184506, 1083.862789],
+                                                                            dtype=np.float32),
+                                                   focal_length=np.array([
+                                                       1913.76478,
+                                                       1913.99708,
+                                                   ], dtype=np.float32),
+                                                   radial_coeffs=np.array([
+                                                       -0.030093122,
+                                                       -0.005103817,
+                                                       -0.000849622,
+                                                       0.001079542,
+                                                   ],
+                                                                          dtype=np.float32),
+                                                   max_angle=np.deg2rad(140 / 2)))
         ]
 
         for cam_model in cam_models:
@@ -794,25 +782,25 @@ class TestFisheyeCamera(CommonTestCase):
         np.set_printoptions(floatmode='unique', linewidth=200, suppress=True)
 
         # Real-world customer camera parameters
-        self.cam_model_params = FisheyeCameraModelParameters(resolution=np.array([3848, 2168], dtype=np.uint64),
-                                                             shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
-                                                             principal_point=np.array([1928.184506, 1083.862789],
-                                                                                      dtype=np.float32),
-                                                             focal_length=np.array([
-                                                                 1913.76478,
-                                                                 1913.99708,
-                                                             ],
-                                                                                   dtype=np.float32),
-                                                             radial_coeffs=np.array([
-                                                                 -0.030093122,
-                                                                 -0.005103817,
-                                                                 -0.000849622,
-                                                                 0.001079542,
-                                                             ],
-                                                                                    dtype=np.float32),
-                                                             max_angle=np.deg2rad(140 / 2))
+        self.cam_model_params = OpenCVFisheyeCameraModelParameters(resolution=np.array([3848, 2168], dtype=np.uint64),
+                                                                   shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
+                                                                   principal_point=np.array([1928.184506, 1083.862789],
+                                                                                            dtype=np.float32),
+                                                                   focal_length=np.array([
+                                                                       1913.76478,
+                                                                       1913.99708,
+                                                                   ],
+                                                                                         dtype=np.float32),
+                                                                   radial_coeffs=np.array([
+                                                                       -0.030093122,
+                                                                       -0.005103817,
+                                                                       -0.000849622,
+                                                                       0.001079542,
+                                                                   ],
+                                                                                          dtype=np.float32),
+                                                                   max_angle=np.deg2rad(140 / 2))
 
-        self.cam_model = FisheyeCameraModel(self.cam_model_params, device=self.device, dtype=self.dtype)
+        self.cam_model = OpenCVFisheyeCameraModel(self.cam_model_params, device=self.device, dtype=self.dtype)
 
         if self.dtype == torch.float64:
             self.np_dtype = np.float64
@@ -832,7 +820,7 @@ class TestFisheyeCamera(CommonTestCase):
     def test_opencv_reference(self):
         ''' Tests self-consistency of torch-based fisheye camera model, as well as consistency with OpenCV reference implementation '''
         def ray_to_image_point_opencv(ray: Union[np.ndarray, list[float]],
-                                      cam_model_params: FisheyeCameraModelParameters):
+                                      cam_model_params: OpenCVFisheyeCameraModelParameters):
             '''Evaluate OpenCV's 'fisheye' model for a single ray-to-image projection'''
 
             ray = np.array(ray, dtype=self.np_dtype)

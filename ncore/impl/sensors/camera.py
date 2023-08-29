@@ -67,15 +67,15 @@ class CameraModel(ABC):
             case types.FThetaCameraModelParameters():
                 return FThetaCameraModel(cam_model_parameters, device, dtype)
 
-            case types.PinholeCameraModelParameters():
-                return PinholeCameraModel(cam_model_parameters, device, dtype)
+            case types.OpenCVPinholeCameraModelParameters():
+                return OpenCVPinholeCameraModel(cam_model_parameters, device, dtype)
 
-            case types.FisheyeCameraModelParameters():
-                return FisheyeCameraModel(cam_model_parameters, device, dtype)
+            case types.OpenCVFisheyeCameraModelParameters():
+                return OpenCVFisheyeCameraModel(cam_model_parameters, device, dtype)
 
             case _:
                 raise TypeError(
-                    f"unsupported camera model type {type(cam_model_parameters)}, currently supporting Ftheta/Pinhole/Fisheye only"
+                    f"unsupported camera model type {type(cam_model_parameters)}, currently supporting Ftheta/OpenCV-Pinhole/OpenCV-Fisheye only"
                 )
 
     def to_torch(self, var: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
@@ -1093,9 +1093,9 @@ class FThetaCameraModel(CameraModel):
         return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
 
 
-class PinholeCameraModel(CameraModel):
+class OpenCVPinholeCameraModel(CameraModel):
     def __init__(self,
-                 camera_model_parameters: types.PinholeCameraModelParameters,
+                 camera_model_parameters: types.OpenCVPinholeCameraModelParameters,
                  device: str = 'cuda',
                  dtype: torch.dtype = torch.float32):
         super().__init__()
@@ -1243,9 +1243,9 @@ class PinholeCameraModel(CameraModel):
 
         return cam_rays
 
-class FisheyeCameraModel(CameraModel):
+class OpenCVFisheyeCameraModel(CameraModel):
     def __init__(self,
-                 camera_model_parameters: types.FisheyeCameraModelParameters,
+                 camera_model_parameters: types.OpenCVFisheyeCameraModelParameters,
                  device: str = 'cuda',
                  dtype: torch.dtype = torch.float32,
                  newton_iterations: int = 5,

@@ -20,7 +20,7 @@ from ncore.impl.data_converter.protos.deepmap import track_data_pb2, pointcloud_
 from ncore.impl.data_converter.protos.deepmap.util import extract_sensor_2_sdc
 from ncore.impl.data_converter.data_converter import DataConverter
 from ncore.impl.data.data3 import ContainerDataWriter
-from ncore.impl.data.types import FrameLabel3, Poses, PinholeCameraModelParameters, ShutterType, TrackLabel, Tracks
+from ncore.impl.data.types import FrameLabel3, Poses, OpenCVPinholeCameraModelParameters, ShutterType, TrackLabel, Tracks
 from ncore.impl.common.common import PoseInterpolator
 from ncore.impl.common.nvidia_utils import LabelProcessor, extract_pose
 from ncore.impl.av_utils import isWithin3DBBox
@@ -312,7 +312,7 @@ class CarterDeepmapConverter(DataConverter):
 
             # Intrinsics
             camera_matrix = np.array(sensor_data.intrinsics.camera_matrix.data, dtype=np.float32).reshape((3, 3))
-            camera_model = PinholeCameraModelParameters(
+            camera_model = OpenCVPinholeCameraModelParameters(
                 resolution=np.array([sensor_data.intrinsics.image_width, sensor_data.intrinsics.image_height],
                                     dtype=np.uint64),
                 shutter_type=ShutterType.GLOBAL,

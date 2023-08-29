@@ -235,7 +235,7 @@ the sensor-group or individual datasets:
 *Cameras*:
 
 * ``camera_model_type`` - camera model type (str, one of [ftheta,
-  pinhole, fisheye])
+  opencv-pinhole, opencv-fisheye])
 
 The field ``camera_model_parameters`` will unconditionally contain:
 
@@ -245,7 +245,7 @@ The field ``camera_model_parameters`` will unconditionally contain:
   [ROLLING_TOP_TO_BOTTOM, ROLLING_LEFT_TO_RIGHT, ROLLING_BOTTOM_TO_TOP,
   ROLLING_RIGHT_TO_LEFT, GLOBAL])
 
-If ``camera_model_type = 'f_theta'`` the following intrinsic parameters
+If ``camera_model_type = 'ftheta'`` the following intrinsic parameters
 will additionally be available in ``camera_model_parameters``:
 
 * ``principal_point`` - u and v coordinate of the principal point,
@@ -271,7 +271,7 @@ will additionally be available in ``camera_model_parameters``:
 * ``max_angle`` - maximal extrinsic ray angle [rad] with the principal
   direction (float32)
 
-If ``camera_model_type` = 'pinhole'`` the following intrinsic parameters
+If ``camera_model_type` = 'opencv-pinhole'`` the following intrinsic parameters
 will additionally be available in ``camera_model_parameters``:
 
 * ``principal_point`` - u and v coordinate of the principal point,
@@ -297,7 +297,7 @@ will additionally be available in ``camera_model_parameters``:
   \end{bmatrix}` for squared norms :math:`r^2` of normalized camera
   coordinates (float32, [4,])
 
-If ``camera_model_type` = 'fisheye'`` the following intrinsic parameters
+If ``camera_model_type` = 'opencv-fisheye'`` the following intrinsic parameters
 will additionally be available in ``camera_model_parameters``:
 
 * ``principal_point`` - u and v coordinate of the principal point,
