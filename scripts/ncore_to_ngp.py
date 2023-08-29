@@ -21,6 +21,7 @@ from ncore.impl.data.types import (
     FThetaCameraModelParameters,
     FrameTimepoint,
     PinholeCameraModelParameters,
+    FisheyeCameraModelParameters,
 )
 from scripts.util import NPArrayParamType
 from ncore.impl.sensors.camera import CameraModel
@@ -173,10 +174,10 @@ def extract_dynamic_tracks(lidar_sensor: LidarSensor, lidar_frame_range: range, 
     default=list(NVLabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC),
 )
 @click.option(
-    "--track-ftheta-max-fov-deg",
+    "--track-camera-max-fov-deg",
     type=click.FloatRange(min=0.0, max_open=True),
     help=
-    "Limit FOV for FTheta camera to this range to prevent erroneous track projections (in particular for large-FOV fisheye cameras)",
+    "Limit FOV for omnidirectional camera models (like FTheta / OpenCVFisheye) to this range to prevent erroneous track projections (in particular for large-FOV fisheye cameras)",
     default=190.0,
 )
 @click.option(
@@ -220,7 +221,7 @@ def ncore_to_ngp(
     track_speed_thresh: float,
     track_mask_dilate_ratio: float,
     track_unconditionally_dynamic_classes: list[str],
-    track_ftheta_max_fov_deg: float,
+    track_camera_max_fov_deg: float,
     track_min_centroid_rig_distance: float,
     translation_vector: np.ndarray,
     sensors_prefix: Optional[str],
@@ -328,7 +329,7 @@ def ncore_to_ngp(
                 # Restrict effective FOV for cuboid projections to prevent issues with *invalid* points projected back into the valid image domain FOV
                 # - this way they get properly classified as invalid
                 camera_model_parameters.max_angle = min(
-                    np.deg2rad(track_ftheta_max_fov_deg) / 2.0, camera_model_parameters.max_angle)
+                    np.deg2rad(track_camera_max_fov_deg) / 2.0, camera_model_parameters.max_angle)
 
             case PinholeCameraModelParameters() as pinhole:
                 # Get the focal length and compute the angular field of view
@@ -374,9 +375,37 @@ def ncore_to_ngp(
                 # Extract the rolling shutter parameters representing y = a + b*x + c*y (skip for GLOBAL shutter)
                 if pinhole.shutter_type.name in RS_DIR_TO_NGP:
                     camera_data["intrinsic_data"]["rolling_shutter"] = RS_DIR_TO_NGP[pinhole.shutter_type.name].tolist()
+
+            case FisheyeCameraModelParameters() as fisheye:
+                # Get the focal length and compute the angular field of view
+                fov_angle_x = math.atan(fisheye.resolution[0] / (fisheye.focal_length[0] * 2)) * 2
+                fov_angle_y = math.atan(fisheye.resolution[1] / (fisheye.focal_length[1] * 2)) * 2
+
+                camera_data["intrinsic_data"] = {
+                    "w": int(fisheye.resolution[0]),
+                    "h": int(fisheye.resolution[1]),
+                    "cx": float(fisheye.principal_point[0]),
+                    "cy": float(fisheye.principal_point[1]),
+                    "k1": float(fisheye.radial_coeffs[0]),
+                    "k2": float(fisheye.radial_coeffs[1]),
+                    "k3": float(fisheye.radial_coeffs[2]),
+                    "k4": float(fisheye.radial_coeffs[3]),
+                    "is_fisheye": True,
+                    "camera_angle_x": fov_angle_x,
+                    "camera_angle_y": fov_angle_y
+                }
+
+                # Extract the rolling shutter parameters representing y = a + b*x + c*y (skip for GLOBAL shutter)
+                if fisheye.shutter_type.name in RS_DIR_TO_NGP:
+                    camera_data["intrinsic_data"]["rolling_shutter"] = RS_DIR_TO_NGP[fisheye.shutter_type.name].tolist()
+
+                # Restrict effective FOV for cuboid projections to prevent issues with *invalid* points projected back into the valid image domain FOV
+                # - this way they get properly classified as invalid
+                camera_model_parameters.max_angle = min(
+                    np.deg2rad(track_camera_max_fov_deg) / 2.0, camera_model_parameters.max_angle)
             case _:
                 raise TypeError(
-                    f"unsupported camera model type {type(camera_model_parameters)}, currently supporting Ftheta/Pinhole only"
+                    f"unsupported camera model type {type(camera_model_parameters)}, currently supporting Ftheta/OpenCV-Pinhole/OpenCV-Fisheye only"
                 )
 
         camera_model = CameraModel.from_parameters(
