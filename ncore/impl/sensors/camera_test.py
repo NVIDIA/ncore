@@ -3,16 +3,17 @@
 import unittest
 import itertools
 
-from typing import Tuple
+from typing import Tuple, Union
 
 import numpy as np
 import scipy
 import scipy.linalg
 import parameterized
 import torch
+import cv2
 
-from ncore.impl.data.types import FThetaCameraModelParameters, PinholeCameraModelParameters, ShutterType
-from ncore.impl.sensors.camera import CameraModel, FThetaCameraModel, PinholeCameraModel
+from ncore.impl.data.types import FThetaCameraModelParameters, PinholeCameraModelParameters, FisheyeCameraModelParameters, ShutterType
+from ncore.impl.sensors.camera import CameraModel, FThetaCameraModel, PinholeCameraModel, FisheyeCameraModel
 
 
 class ReferenceFThetaCamera():
@@ -729,7 +730,25 @@ class TestJacobian(CommonTestCase):
                     dtype=np.float32),
                 max_angle=1.2292176485061646),
                                         device=self.device,
-                                        dtype=self.dtype)
+                                        dtype=self.dtype),
+
+            # External costumer fisheye model
+            CameraModel.from_parameters(
+                FisheyeCameraModelParameters(resolution=np.array([3848, 2168], dtype=np.uint64),
+                                             shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
+                                             principal_point=np.array([1928.184506, 1083.862789], dtype=np.float32),
+                                             focal_length=np.array([
+                                                 1913.76478,
+                                                 1913.99708,
+                                             ], dtype=np.float32),
+                                             radial_coeffs=np.array([
+                                                 -0.030093122,
+                                                 -0.005103817,
+                                                 -0.000849622,
+                                                 0.001079542,
+                                             ],
+                                                                    dtype=np.float32),
+                                             max_angle=np.deg2rad(140 / 2)))
         ]
 
         for cam_model in cam_models:
@@ -762,6 +781,98 @@ class TestJacobian(CommonTestCase):
                 self.assertTrue(
                     proj.valid_flag[i] if i < len(rays3d) - len(invalid_rays3d) else
                     not proj.valid_flag[i])  # First rays should be flagged as valid, others should be invalid
+
+
+@parameterized.parameterized_class(('device', 'dtype'),
+                                   itertools.product(('cpu', 'cuda'), (torch.float32, torch.float64)))
+class TestFisheyeCamera(CommonTestCase):
+    MAX_DEVIATION_IN_IMAGE_COORDINATES = 0.001
+    MAX_DEVIATION_IN_RAY_COORDINATES = 0.001
+
+    def setUp(self):
+        # Make printed errors more representable numerically
+        np.set_printoptions(floatmode='unique', linewidth=200, suppress=True)
+
+        # Real-world customer camera parameters
+        self.cam_model_params = FisheyeCameraModelParameters(resolution=np.array([3848, 2168], dtype=np.uint64),
+                                                             shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
+                                                             principal_point=np.array([1928.184506, 1083.862789],
+                                                                                      dtype=np.float32),
+                                                             focal_length=np.array([
+                                                                 1913.76478,
+                                                                 1913.99708,
+                                                             ],
+                                                                                   dtype=np.float32),
+                                                             radial_coeffs=np.array([
+                                                                 -0.030093122,
+                                                                 -0.005103817,
+                                                                 -0.000849622,
+                                                                 0.001079542,
+                                                             ],
+                                                                                    dtype=np.float32),
+                                                             max_angle=np.deg2rad(140 / 2))
+
+        self.cam_model = FisheyeCameraModel(self.cam_model_params, device=self.device, dtype=self.dtype)
+
+        if self.dtype == torch.float64:
+            self.np_dtype = np.float64
+        elif self.dtype == torch.float32:
+            self.np_dtype = np.float32
+
+    def test_special_cases(self):
+        ''' Validate a few special cases '''
+
+        # make sure the principal point gets unprojected to the principal axis
+        ray3d = self.cam_model.image_points_to_camera_rays(
+            torch.from_numpy(self.cam_model_params.principal_point).reshape(1, 2))
+
+        self.assertLessEqual(np.linalg.norm(ray3d.cpu().numpy() - np.array([0, 0, 1])),
+                             self.MAX_DEVIATION_IN_RAY_COORDINATES)
+
+    def test_opencv_reference(self):
+        ''' Tests self-consistency of torch-based fisheye camera model, as well as consistency with OpenCV reference implementation '''
+        def ray_to_image_point_opencv(ray: Union[np.ndarray, list[float]],
+                                      cam_model_params: FisheyeCameraModelParameters):
+            '''Evaluate OpenCV's 'fisheye' model for a single ray-to-image projection'''
+
+            ray = np.array(ray, dtype=self.np_dtype)
+            assert ray.size == 3
+
+            # Parameterizing identity extrinsics
+            rvec = np.array([0.0, 0.0, 0.0], dtype=self.np_dtype)
+            tvec = np.array([0.0, 0.0, 0.0], dtype=self.np_dtype)
+
+            # Camera matrix
+            K = np.array([[cam_model_params.focal_length[0], 0, cam_model_params.principal_point[0]],
+                          [0, cam_model_params.focal_length[1], cam_model_params.principal_point[1]], [0, 0, 1]],
+                         dtype=self.np_dtype)
+            d = cam_model_params.radial_coeffs.astype(self.np_dtype)  # distortion parameters [k1, k2, k3, k4]
+            alpha = 0.0  # skew factor
+
+            p, _ = cv2.fisheye.projectPoints(ray.astype(self.np_dtype).reshape(1, 1, 3), rvec, tvec, K, d, None,
+                                             alpha)  # second returned value are Jacobians, can't be disabled
+
+            return p.reshape(1, 2)
+
+        # for p in [0, px] with stepsize
+        STEPSIZE = 20
+        for p in range(0, int(self.cam_model_params.principal_point[0]), STEPSIZE):
+            with self.subTest(p=p):
+                # 1. very idempotence imagePoints2rays(rays2imagePoints([p,p])) torch-camera's result
+                expectedPoint2d = np.array([[p, p]])
+
+                ray3d = self.cam_model.image_points_to_camera_rays(
+                    self.cam_model.to_torch(expectedPoint2d).to(self.dtype))
+                image_points = self.cam_model.camera_rays_to_image_points(ray3d)
+
+                self.assertTrue(image_points.valid_flag)
+                self.assertLessEqual(np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())),
+                                     self.MAX_DEVIATION_IN_IMAGE_COORDINATES)
+
+                # 2. verify consistency with OpenCV reference (one-way is sufficient)
+                image_point_opencv = ray_to_image_point_opencv(ray3d.cpu().numpy(), self.cam_model_params)
+                self.assertLessEqual(np.linalg.norm(image_point_opencv - np.array(image_points.image_points.cpu())),
+                                     self.MAX_DEVIATION_IN_IMAGE_COORDINATES)
 
 
 if __name__ == '__main__':

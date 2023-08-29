@@ -70,9 +70,12 @@ class CameraModel(ABC):
             case types.PinholeCameraModelParameters():
                 return PinholeCameraModel(cam_model_parameters, device, dtype)
 
+            case types.FisheyeCameraModelParameters():
+                return FisheyeCameraModel(cam_model_parameters, device, dtype)
+
             case _:
                 raise TypeError(
-                    f"unsupported camera model type {type(cam_model_parameters)}, currently supporting Ftheta/Pinhole only"
+                    f"unsupported camera model type {type(cam_model_parameters)}, currently supporting Ftheta/Pinhole/Fisheye only"
                 )
 
     def to_torch(self, var: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
@@ -885,6 +888,63 @@ class CameraModel(ABC):
 
         return interp_pose
 
+    @staticmethod
+    def _numerically_stable_xy_norm(cam_rays: torch.Tensor) -> torch.Tensor:
+        ''' Evaluate the norm in a numerically stable manner '''
+
+        xy_norms = torch.zeros_like(cam_rays[:, 0]).unsqueeze(1)  # Zero rays stay with zero norm
+
+        abs_pts = torch.abs(cam_rays[:, :2])
+        min_pts = torch.min(abs_pts, dim=1, keepdim=True).values
+        max_pts = torch.max(abs_pts, dim=1, keepdim=True).values
+
+        # Output the norm of non-zero rays only
+        non_zero_norms = max_pts > 0
+        min_max_ratio = min_pts[non_zero_norms] / max_pts[non_zero_norms]
+        xy_norms[non_zero_norms,
+                 None] = max_pts[non_zero_norms, None] * torch.sqrt(1 + torch.pow(min_max_ratio[:, None], 2))
+
+        return xy_norms
+
+    @staticmethod
+    def _eval_poly_horner(poly_coefficients: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+        ''' Evaluates a polynomial y=f(x) (given by poly_coefficients) at points x using
+            numerically stable Horner scheme '''
+
+        y = torch.zeros_like(x)
+        for fi in torch.flip(poly_coefficients, dims=(0, )):
+            y = y * x + fi
+
+        return y
+
+    @staticmethod
+    def _eval_poly_inverse_horner_newton(poly_coefficients: torch.Tensor, poly_derivative_coefficients: torch.Tensor,
+                                         inverse_poly_approximation_coefficients: torch.Tensor, newton_iterations: int,
+                                         y: torch.Tensor) -> torch.Tensor:
+        ''' Evaluates the inverse x = f^{-1}(y) of a reference polynomial y=f(x) (given by poly_coefficients) at points y
+            using numerically stable Horner scheme and Newton iterations starting from an approximate solution \\hat{x} = \\hat{f}^{-1}(y)
+            (given by inverse_poly_approximation_coefficients) and the polynomials derivative df/dx (given by poly_derivative_coefficients)
+        '''
+
+        _eval_poly_horner = FThetaCameraModel._eval_poly_horner
+
+        x = _eval_poly_horner(inverse_poly_approximation_coefficients,
+                               y)  # approximation / starting points - also returned for zero iterations
+
+        assert newton_iterations >= 0, 'Newton-iteration number needs to be non-negative'
+
+        # Buffers of intermediate results to allow differentiation
+        x_iter = [torch.zeros_like(x) for _ in range(newton_iterations + 1)]
+        x_iter[0] = x
+
+        for i in range(newton_iterations):
+            # Evaluate single Newton step
+            dfdx = _eval_poly_horner(poly_derivative_coefficients, x_iter[i])
+            residuals = _eval_poly_horner(poly_coefficients, x_iter[i]) - y
+            x_iter[i + 1] = x_iter[i] - residuals / dfdx
+
+        return x_iter[newton_iterations]
+
 
 class FThetaCameraModel(CameraModel):
     def __init__(self,
@@ -959,7 +1019,8 @@ class FThetaCameraModel(CameraModel):
         image_points_dist = image_points - self.principal_point
         rdist = torch.linalg.norm(image_points_dist, axis=1, keepdims=True)
 
-        alphas = self.__eval_poly_horner(self.bw_poly, rdist)
+        # Evaluate backward polynomial
+        alphas = self._eval_poly_horner(self.bw_poly, rdist)
 
         # Compute the camera rays and set the ones at the image center to [0,0,1]
         cam_rays = torch.hstack(
@@ -982,26 +1043,26 @@ class FThetaCameraModel(CameraModel):
         if return_jacobians:
             cam_rays.requires_grad = True
 
-        ray_norms = self.__nummerically_stable_norm(cam_rays)
+        ray_xy_norms = self._numerically_stable_xy_norm(cam_rays)
 
         # Make sure norm is non-vanishing (norm vanishes for points along the principal-axis)
-        ray_norms[ray_norms[:, 0] <= 0.0] = torch.finfo(self.dtype).eps
+        ray_xy_norms[ray_xy_norms[:, 0] <= 0.0] = torch.finfo(self.dtype).eps
 
-        alphas_full = torch.atan2(ray_norms[:], cam_rays[:, 2:])
+        alphas_full = torch.atan2(ray_xy_norms[:], cam_rays[:, 2:])
 
         # Limit angles to max_angle to prevent projected points to leave valid cone around max_angle.
         # In particular for omnidirectional cameras, this prevents points outside the FOV to be
-        # wrongly projected to in-image-domain points because of badly constrained polynominals outside
+        # wrongly projected to in-image-domain points because of badly constrained polynomials outside
         # the effective FOV (which is different to the image boundaries).
         #
         # These FOV-clamped projections will be marked as *invalid*
         alphas = torch.clamp(alphas_full, max=self.max_angle)
 
-        # Evaluate backward polynomial
-        deltas = self.__eval_poly_inverse_horner_newton(self.bw_poly, self.dbw_poly, self.fw_poly,
-                                                        self.newton_iterations, alphas)
+        # Evaluate forward polynomial
+        deltas = self._eval_poly_inverse_horner_newton(self.bw_poly, self.dbw_poly, self.fw_poly,
+                                                       self.newton_iterations, alphas)
 
-        image_points = deltas / ray_norms * cam_rays[:, :2] + self.principal_point[None, :]
+        image_points = deltas / ray_xy_norms * cam_rays[:, :2] + self.principal_point[None, :]
 
         # Extract valid image points
         valid_x = torch.logical_and(0.0 <= image_points[:, 0], image_points[:, 0] < self.resolution[0])
@@ -1030,62 +1091,6 @@ class FThetaCameraModel(CameraModel):
 
         # If the input was numpy, return numpy arrays as well
         return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
-
-    @staticmethod
-    def __eval_poly_inverse_horner_newton(poly_coefficients: torch.Tensor, poly_derivative_coefficients: torch.Tensor,
-                                          inverse_poly_approximation_coefficients: torch.Tensor, newton_iterations: int,
-                                          y: torch.Tensor) -> torch.Tensor:
-        ''' Evaluates the inverse x = f^{-1}(y) of a reference polynomial y=f(x) (given by poly_coefficients) at points y
-            using numerically stable Horner scheme and Newton iterations starting from an approximate solution \\hat{x} = \\hat{f}^{-1}(y)
-            (given by inverse_poly_approximation_coefficients) and the polynomials derivative df/dx (given by poly_derivative_coefficients)
-        '''
-
-        __eval_poly_horner = FThetaCameraModel.__eval_poly_horner
-
-        x = __eval_poly_horner(inverse_poly_approximation_coefficients,
-                               y)  # approximation / starting points - also returned for zero iterations
-
-        assert newton_iterations >= 0, 'Newton-iteration number needs to be non-negative'
-
-        # Buffers of intermediate results to allow differentiation
-        x_iter = [torch.zeros_like(x) for _ in range(newton_iterations + 1)]
-        x_iter[0] = x
-
-        for i in range(newton_iterations):
-            # Evaluate single Newton step
-            dfdx = __eval_poly_horner(poly_derivative_coefficients, x_iter[i])
-            residuals = __eval_poly_horner(poly_coefficients, x_iter[i]) - y
-            x_iter[i + 1] = x_iter[i] - residuals / dfdx
-
-        return x_iter[newton_iterations]
-
-    @staticmethod
-    def __eval_poly_horner(poly_coefficients: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
-        ''' Evaluates a polynomial y=f(x) (given by poly_coefficients) at points x using
-            numerically stable Horner scheme '''
-
-        y = torch.zeros_like(x)
-        for fi in torch.flip(poly_coefficients, dims=(0, )):
-            y = y * x + fi
-
-        return y
-
-    def __nummerically_stable_norm(self, cam_rays: torch.Tensor) -> torch.Tensor:
-        ''' Evaluate the norm in a numarically stable manner '''
-
-        xy_norms = torch.zeros_like(cam_rays[:, 0]).unsqueeze(1)  # Zero rays stay with zero norm
-
-        abs_pts = torch.abs(cam_rays[:, :2])
-        min_pts = torch.min(abs_pts, dim=1, keepdim=True).values
-        max_pts = torch.max(abs_pts, dim=1, keepdim=True).values
-
-        # Output the norm of non-zero rays only
-        non_zero_norms = max_pts > 0
-        min_max_ratio = min_pts[non_zero_norms] / max_pts[non_zero_norms]
-        xy_norms[non_zero_norms,
-                 None] = max_pts[non_zero_norms, None] * torch.sqrt(1 + torch.pow(min_max_ratio[:, None], 2))
-
-        return xy_norms
 
 
 class PinholeCameraModel(CameraModel):
@@ -1237,3 +1242,133 @@ class PinholeCameraModel(CameraModel):
                 break
 
         return cam_rays
+
+class FisheyeCameraModel(CameraModel):
+    def __init__(self,
+                 camera_model_parameters: types.FisheyeCameraModelParameters,
+                 device: str = 'cuda',
+                 dtype: torch.dtype = torch.float32,
+                 newton_iterations: int = 5,
+                 min_2d_norm: float = 1e-6):
+        super().__init__()
+
+        # Check if cuda device is actually available
+        if device == 'cuda' and not torch.cuda.is_available():
+            logging.warning("Cuda device selected but not available, reverting to CPU!")
+            device = 'cpu'
+
+        self.device = torch.device(device)
+        self.dtype = dtype
+        self.principal_point = self.to_torch(camera_model_parameters.principal_point).to(self.dtype)
+        self.focal_length = self.to_torch(camera_model_parameters.focal_length).to(self.dtype)
+        self.resolution = self.to_torch(camera_model_parameters.resolution.astype(np.int32))
+        self.shutter_type = camera_model_parameters.shutter_type
+        self.max_angle = float(camera_model_parameters.max_angle)
+        self.newton_iterations = newton_iterations
+
+        # 2D pixel-distance threshold
+        assert min_2d_norm > 0, 'require positive minimum norm threshold'
+        self.min_2d_norm = torch.tensor(min_2d_norm, dtype=self.dtype, device=self.device)
+
+        assert self.principal_point.shape == (2, )
+        assert self.principal_point.dtype == self.dtype
+        assert self.focal_length.shape == (2, )
+        assert self.focal_length.dtype == self.dtype
+        assert self.resolution.shape == (2, )
+        assert self.resolution.dtype == torch.int32
+
+        k1, k2, k3, k4 = camera_model_parameters.radial_coeffs[:]
+        # ninth-degree forward polynomial (mapping angles to normalized distances) theta + k1*theta^3 + k2*theta^5 + k3*theta^7 + k4*theta^9
+        self.forward_poly = torch.tensor([0, 1, 0, k1, 0, k2, 0, k3, 0, k4], dtype=self.dtype, device=self.device)
+        # eighth-degree differential of forward polynomial 1 + 3*k1*theta^2 + 5*k2*theta^4 + 7*k3*theta^8 + 9*k4*theta^8
+        self.dforward_poly = torch.tensor([1, 0, 3*k1, 0, 5*k2, 0, 7*k3, 0, 9*k4], dtype=self.dtype, device=self.device)
+
+        # approximate backward poly (mapping normalized distances to angles) *very crudely* by linear interpolation / equidistant angle model (also assuming image-centered principal point)
+        max_normalized_dist = np.max(camera_model_parameters.resolution / 2 / camera_model_parameters.focal_length)
+        self.approx_backward_poly = torch.tensor([0, self.max_angle / max_normalized_dist], dtype=self.dtype, device=self.device)
+
+    def image_points_to_camera_rays(self, image_points: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+        '''
+        Computes the camera ray for each image point, performing an iterative undistortion of the nonlinear distortion model
+        '''
+
+        image_points = self.to_torch(image_points)
+        assert image_points.is_floating_point(), "[CameraModel]: image_points must be floating point values"
+        image_points = image_points.to(self.dtype)
+
+        normalized_image_points = (image_points - self.principal_point) / self.focal_length
+        deltas = torch.linalg.norm(normalized_image_points, axis=1, keepdims=True)
+
+        # Evaluate backward polynomial as the inverse of the forward one
+        thetas = self._eval_poly_inverse_horner_newton(self.forward_poly, self.dforward_poly, self.approx_backward_poly,
+                                                       self.newton_iterations, deltas)
+
+        # Compute the camera rays and set the ones at the image center to [0,0,1]
+        cam_rays = torch.hstack(
+            (torch.sin(thetas) * normalized_image_points / torch.maximum(deltas, self.min_2d_norm), torch.cos(thetas)))
+        cam_rays[deltas.flatten() < self.min_2d_norm, :] = torch.tensor([[0, 0, 1]]).to(normalized_image_points)
+
+        return cam_rays
+
+    def camera_rays_to_image_points(self,
+                                    cam_rays: Union[torch.Tensor, np.ndarray],
+                                    return_jacobians=False
+                                    ) -> CameraModel.ImagePointsReturn:
+        '''
+        For each camera ray compute the corresponding image point coordinates
+        '''
+
+        # If the input is a numpy array first convert it to torch otherwise just send to correct device
+        cam_rays = self.to_torch(cam_rays).to(self.dtype)
+
+        initial_requires_grad = cam_rays.requires_grad
+        if return_jacobians:
+            cam_rays.requires_grad = True
+
+        ray_xy_norms = self._numerically_stable_xy_norm(cam_rays)
+
+        # Make sure norm is non-vanishing (norm vanishes for points along the principal-axis)
+        ray_xy_norms[ray_xy_norms[:, 0] <= 0.0] = torch.finfo(self.dtype).eps
+
+        thetas_full = torch.atan2(ray_xy_norms[:], cam_rays[:, 2:])
+
+        # Limit angles to max_angle to prevent projected points to leave valid cone around max_angle.
+        # In particular for omnidirectional cameras, this prevents points outside the FOV to be
+        # wrongly projected to in-image-domain points because of badly constrained polynomials outside
+        # the effective FOV (which is different to the image boundaries).
+        #
+        # These FOV-clamped projections will be marked as *invalid*
+        thetas = torch.clamp(thetas_full, max=self.max_angle)
+
+        # Evaluate forward polynomial
+        deltas = self._eval_poly_horner(
+            self.forward_poly, thetas
+        )  # these correspond to the radial distances to the principal point in the normalized image domain (up to focal length scales)
+
+        image_points = self.focal_length * (deltas / ray_xy_norms * cam_rays[:, :2]) + self.principal_point[None, :]
+
+        # Extract valid image points (projections into image domain and within max angle range)
+        valid_x = torch.logical_and(0.0 <= image_points[:, 0], image_points[:, 0] < self.resolution[0])
+        valid_y = torch.logical_and(0.0 <= image_points[:, 1], image_points[:, 1] < self.resolution[1])
+        valid_alphas = thetas[:, 0] < self.max_angle  # explicitly check for strictly smaller angles to classify FOV-clamped points as invalid
+        valid = valid_x & valid_y & valid_alphas
+
+        jacobians: Optional[torch.Tensor] = None
+        if return_jacobians:
+            # Evaluate Jacobians of valid points by gradients of both output dimensions
+            jacobians = torch.empty((len(cam_rays), 2, 3), dtype=self.dtype, device=self.device)
+
+            initial_gradient = torch.ones((len(cam_rays), ), dtype=self.dtype, device=self.device)
+            image_points[:, 0].backward(gradient=initial_gradient, retain_graph=True)
+            jacobians[:, 0] = cam_rays.grad
+
+            cam_rays.grad.zero_()
+
+            image_points[:, 1].backward(gradient=initial_gradient)
+            jacobians[:, 1] = cam_rays.grad
+
+            # Cleanup for other backprop users
+            cam_rays.grad.zero_()
+            cam_rays.requires_grad = initial_requires_grad
+
+        return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)

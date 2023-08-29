@@ -26,6 +26,7 @@ pytest_test(
     ],
     deps = [
         requirement("numpy"),
+        requirement("opencv-python"),
         requirement("parameterized"),
         requirement("scipy"),
         ":pylib_camera",
