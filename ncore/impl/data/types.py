@@ -155,17 +155,7 @@ class PinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
 
 @dataclass
 class FisheyeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
-    ''' Represents Fisheye-specific camera model parameters '''
-    @unique
-    class Variant(IntEnum):
-        ''' Enumerates different possible fisheye camera model parametrizations '''
-        OPENCV = auto(
-        )  #: Radial distortion coefficients `radial_coeffs` represent OpenCV-specific ``[k1,k2,k3,k4]`` coefficients to parameterize the
-        #  fisheye distortion polynomial as :math:`\theta(1 + k_1\theta^2 + k_2\theta^4 + k_3\theta^6 + k_4\theta^8)`
-        #  for extrinsic camera ray angles :math:`\theta` with the principal direction (float32, [4,])
-
-    variant: Variant = util.enum_field(Variant)  #: Variant of the fisheye camera model parametrization
-
+    ''' Represents Fisheye-specific (OpenCV-like) camera model parameters '''
     principal_point: np.ndarray = util.numpy_array_field(
         np.float32
     )  #: U and v coordinate of the principal point, following the :ref:`image coordinate conventions <image_coordinate_conventions>` (float32, [2,])
@@ -174,7 +164,9 @@ class FisheyeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
     )  #: Focal lengths in u and v direction, resp., mapping (distorted) normalized camera coordinates to image coordinates relative to the principal point (float32, [2,])
     radial_coeffs: np.ndarray = util.numpy_array_field(
         np.float32
-    )  #: Radial distortion coefficients parameterizing the fisheye distortion polynomial (interpretation according to the `variant` field)
+    )  #: Radial distortion coefficients `radial_coeffs` represent OpenCV-like ``[k1,k2,k3,k4]`` coefficients to parameterize the
+       #  fisheye distortion polynomial as :math:`\theta(1 + k_1\theta^2 + k_2\theta^4 + k_3\theta^6 + k_4\theta^8)`
+       #  for extrinsic camera ray angles :math:`\theta` with the principal direction (float32, [4,])
     alpha: float = 0.0  #: Anisotropic skew factor between u an v image coordinates (unitless, zero to disable) (float32)
     max_angle: float = 0.0  #: Maximal extrinsic ray angle [rad] with the principal direction (float32)
 
@@ -194,11 +186,7 @@ class FisheyeCameraModelParameters(CameraModelParameters, dataclasses_json.DataC
         assert self.focal_length.dtype == np.dtype('float32')
         assert self.focal_length[0] > 0.0 and self.focal_length[1] > 0.0
 
-        match self.variant:
-            case self.Variant.OPENCV:
-                assert self.radial_coeffs.shape == (4, )
-            case _:
-                raise ValueError(f'Unknown fisheye camera model variant {self.variant}')
+        assert self.radial_coeffs.shape == (4, )
         assert self.radial_coeffs.dtype == np.dtype('float32')
 
         assert isinstance(self.alpha, float)
