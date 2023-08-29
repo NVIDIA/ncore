@@ -842,9 +842,8 @@ class TestFisheyeCamera(CommonTestCase):
 
             return p.reshape(1, 2)
 
-        # for p in [0, px] with stepsize
-        STEPSIZE = 20
-        for p in range(0, int(self.cam_model_params.principal_point[0]), STEPSIZE):
+        # for p in [0, px]
+        for i, p in enumerate(np.linspace(0.0, self.cam_model_params.principal_point[0], num=50, endpoint=True)):
             with self.subTest(p=p):
                 # 1. very idempotence imagePoints2rays(rays2imagePoints([p,p])) torch-camera's result
                 expectedPoint2d = np.array([[p, p]])
@@ -853,7 +852,9 @@ class TestFisheyeCamera(CommonTestCase):
                     self.cam_model.to_torch(expectedPoint2d).to(self.dtype))
                 image_points = self.cam_model.camera_rays_to_image_points(ray3d)
 
-                self.assertTrue(image_points.valid_flag)
+                if i > 0:
+                    # avoid 'valid' prevision issues if points get re-projected right onto each side of the image boundary for p=[0,0]
+                    self.assertTrue(image_points.valid_flag)
                 self.assertLessEqual(np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())),
                                      self.MAX_DEVIATION_IN_IMAGE_COORDINATES)
 
