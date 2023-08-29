@@ -311,8 +311,6 @@ will additionally be available in ``camera_model_parameters``:
   fisheye distortion polynomial :math:`\theta(1 + k_1\theta^2 +
   k_2\theta^4 + k_3\theta^6 + k_4\theta^8)` for extrinsic camera ray
   angles :math:`\theta` with the principal direction (float32, [4,])
-* ``alpha`` - anisotropic skew factor between u an v image coordinates 
-  (unitless, zero to disable) (float32)
 * ``max_angle`` - maximal extrinsic ray angle [rad] with the principal
   direction (float32)
 
