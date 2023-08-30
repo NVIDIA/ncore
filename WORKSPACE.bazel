@@ -22,12 +22,14 @@ python_register_multi_toolchains(
     name = "python",
     default_version = "3.10",
     python_versions = [
+        "3.8",
         "3.10",
     ],
 )
 
 # Local pip dependencies
 load("@python//3.10:defs.bzl", interpreter_3_10 = "interpreter")
+load("@python//3.8:defs.bzl", interpreter_3_8 = "interpreter")
 load("@rules_python//python:pip.bzl", "package_annotation", "pip_parse")
 
 pip_parse(
@@ -50,10 +52,21 @@ cc_library(
     requirements_lock = "//3rdparty/python:requirements_3_10.txt",
 )
 
-# Initialize repositories for all packages in 3rdparty/python/requirements.txt
 load("@pip_deps//:requirements.bzl", "install_deps")
 
 install_deps()
+
+pip_parse(
+    name = "pip_deps_3_8",
+    timeout = 3600,
+    python_interpreter_target = interpreter_3_8,
+    quiet = False,
+    requirements_lock = "//3rdparty/python:requirements_3_8.txt",
+)
+
+load("@pip_deps_3_8//:requirements.bzl", install_pip_deps_3_8 = "install_deps")
+
+install_pip_deps_3_8()
 
 # mypy-integration
 http_archive(

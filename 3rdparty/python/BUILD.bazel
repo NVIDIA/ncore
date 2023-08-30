@@ -2,6 +2,7 @@
 
 load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@python//3.10:defs.bzl", compile_pip_requirements_3_10 = "compile_pip_requirements")
+load("@python//3.8:defs.bzl", compile_pip_requirements_3_8 = "compile_pip_requirements")
 
 # Check that our compiled pip requirements are up-to-date
 compile_pip_requirements_3_10(
@@ -10,6 +11,17 @@ compile_pip_requirements_3_10(
     extra_args = ["--allow-unsafe"],
     requirements_in = "requirements_3_10.in",
     requirements_txt = "requirements_3_10.txt",
+    tags = [
+        "manual",
+    ],
+)
+
+compile_pip_requirements_3_8(
+    name = "requirements_3_8",
+    timeout = "eternal",
+    extra_args = ["--allow-unsafe"],
+    requirements_in = "requirements_3_8.in",
+    requirements_txt = "requirements_3_8.txt",
     tags = [
         "manual",
     ],
