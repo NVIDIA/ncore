@@ -5,7 +5,7 @@
 load("@rules_python//python:defs.bzl", "py_test")
 load("@pip_deps//:requirements.bzl", "requirement")
 load("@pip_deps_3_8//:requirements.bzl", requirement_3_8 = "requirement")
-load("@python//3.10:defs.bzl", py_test_3_8 = "py_test")
+load("@python//3.8:defs.bzl", py_test_3_8 = "py_test")
 
 def pytest_test(name, srcs, deps = [], args = [], **kwargs):
     """
@@ -35,9 +35,9 @@ def pytest_test_3_8(name, srcs, deps = [], args = [], **kwargs):
     py_test_3_8(
         name = name,
         srcs = [
-            "@nre_repo//bazel/pytest:pytest_wrapper.py",
+            "//bazel/pytest:pytest_wrapper.py",
         ] + srcs,
-        main = "@nre_repo//bazel/pytest:pytest_wrapper.py",
+        main = "//bazel/pytest:pytest_wrapper.py",
         args = [
             "--capture=no",
         ] + args + ["$(location :%s)" % x for x in srcs],

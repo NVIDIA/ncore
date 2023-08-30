@@ -3,7 +3,7 @@
 import unittest
 import itertools
 
-from typing import Tuple, Union
+from typing import Tuple, Union, List
 
 import numpy as np
 import scipy
@@ -819,7 +819,7 @@ class TestFisheyeCamera(CommonTestCase):
 
     def test_opencv_reference(self):
         ''' Tests self-consistency of torch-based fisheye camera model, as well as consistency with OpenCV reference implementation '''
-        def ray_to_image_point_opencv(ray: Union[np.ndarray, list[float]],
+        def ray_to_image_point_opencv(ray: Union[np.ndarray, List[float]],
                                       cam_model_params: OpenCVFisheyeCameraModelParameters):
             '''Evaluate OpenCV's 'fisheye' model for a single ray-to-image projection'''
 

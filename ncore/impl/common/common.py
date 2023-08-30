@@ -10,6 +10,7 @@ import lzma
 import io
 import os
 import time
+import sys
 
 from enum import Enum
 from pathlib import Path
@@ -520,7 +521,13 @@ def uniform_subdivide_range(subdiv_id: int, subdiv_count: int, range_start: int,
 
     return local_range, local_range[0] - range_start if len(local_range) else -1
 
-@dataclass(slots=True, frozen=True)
+
+@dataclass(**({
+    "slots": True,
+    "frozen": True
+} if sys.version_info >= (3, 10) else {
+    "frozen": True
+}))
 class HalfClosedInterval:
     ''' Represents a half closed interval [start, stop) of integers '''
     start: int

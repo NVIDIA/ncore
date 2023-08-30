@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import io
+import sys
 
 from enum import IntEnum, auto, unique
 from dataclasses import dataclass
-from typing import Optional, Protocol, Tuple, Union
+from typing import Optional, Protocol, Tuple, Union, List, Dict
 from functools import lru_cache
 
 import numpy as np
@@ -108,6 +109,13 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
         assert self.max_angle > 0.0
 
 
+if sys.version_info <= (3, 9):
+    # Older python versions have issues with type-hints for nested types in
+    # combination with typing.get_type_hints() (used by, e.g., 'dataclasses_json')
+    # - alias these globally as a workaround
+    PolynomialType = FThetaCameraModelParameters.PolynomialType
+
+
 @dataclass
 class OpenCVPinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
     ''' Represents Pinhole-specific (OpenCV-like) camera model parameters '''
@@ -165,8 +173,8 @@ class OpenCVFisheyeCameraModelParameters(CameraModelParameters, dataclasses_json
     radial_coeffs: np.ndarray = util.numpy_array_field(
         np.float32
     )  #: Radial distortion coefficients `radial_coeffs` represent OpenCV-like ``[k1,k2,k3,k4]`` coefficients to parameterize the
-       #  fisheye distortion polynomial as :math:`\theta(1 + k_1\theta^2 + k_2\theta^4 + k_3\theta^6 + k_4\theta^8)`
-       #  for extrinsic camera ray angles :math:`\theta` with the principal direction (float32, [4,])
+    #  fisheye distortion polynomial as :math:`\theta(1 + k_1\theta^2 + k_2\theta^4 + k_3\theta^6 + k_4\theta^8)`
+    #  for extrinsic camera ray angles :math:`\theta` with the principal direction (float32, [4,])
     max_angle: float = 0.0  #: Maximal extrinsic ray angle [rad] with the principal direction (float32)
 
     @staticmethod
@@ -278,20 +286,23 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
         assert isinstance(self.bbox3, BBox3)
         assert isinstance(self.global_speed, float)
         assert isinstance(self.timestamp_us, int)
-        assert isinstance(self.confidence, Optional[float])
+        if sys.version_info >= (3, 10):
+            assert isinstance(self.confidence, Optional[float])
+        else:
+            assert isinstance(self.confidence, (type(None), float))
         assert isinstance(self.source, LabelSource)
 
 
 @dataclass
 class TrackLabel(dataclasses_json.DataClassJsonMixin):
     ''' Description of an individual object-specific track '''
-    sensors: dict[str, list[int]]  #: Represents all frame-timestamps (map values) of the object's observations in different sensors (map keys)
+    sensors: Dict[str, List[int]]  #: Represents all frame-timestamps (map values) of the object's observations in different sensors (map keys)
 
 
 @dataclass
 class Tracks(dataclasses_json.DataClassJsonMixin):
     ''' Represents a collection of tracks '''
-    track_labels: dict[str, TrackLabel]  #: Represents individual object tracks (map values) referenced by `track_id`'s (map keys, same as in `FrameLabel3`)
+    track_labels: Dict[str, TrackLabel]  #: Represents individual object tracks (map values) referenced by `track_id`'s (map keys, same as in `FrameLabel3`)
 
 
 @unique

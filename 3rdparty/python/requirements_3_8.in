@@ -1,3 +1,19 @@
 # Copyright (c) 2023 NVIDIA CORPORATION.  All rights reserved.
 
+# To run tests
 pytest
+parameterized
+
+# Public API dependencies
+numpy
+dataclasses-json
+pillow
+zarr
+cbor2
+scipy
+
+--find-links https://download.pytorch.org/whl/torch_stable.html
+torch==1.12.1+cu116
+
+# secondary dependencies used in tests
+opencv-python

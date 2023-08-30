@@ -2,6 +2,7 @@
 
 load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@pip_deps//:requirements.bzl", "requirement")
+load("@pip_deps_3_8//:requirements.bzl", requirement_3_8 = "requirement")
 load("@rules_python//python:defs.bzl", "py_library")
 load("//bazel/pytest:defs.bzl", "pytest_test")
 
@@ -21,6 +22,19 @@ py_library(
 )
 
 py_library(
+    name = "pylib_common_3_8",
+    srcs = [
+        "common.py",
+        "transformations.py",
+    ],
+    deps = [
+        requirement_3_8("numpy"),
+        requirement_3_8("scipy"),
+        requirement_3_8("pillow"),
+    ],
+)
+
+py_library(
     name = "pylib_transformations",
     srcs = [
         "transformations.py",
@@ -28,6 +42,17 @@ py_library(
     deps = [
         requirement("numpy"),
         requirement("scipy"),
+    ],
+)
+
+py_library(
+    name = "pylib_transformations_3_8",
+    srcs = [
+        "transformations.py",
+    ],
+    deps = [
+        requirement_3_8("numpy"),
+        requirement_3_8("scipy"),
     ],
 )
 
