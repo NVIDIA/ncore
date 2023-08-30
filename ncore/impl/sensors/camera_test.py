@@ -721,7 +721,7 @@ class TestJacobian(CommonTestCase):
 
             # External costumer fisheye model
             CameraModel.from_parameters(
-                OpenCVFisheyeCameraModelParameters(resolution=np.array([3848, 2168], dtype=np.uint64),
+                OpenCVFisheyeCameraModelParameters(resolution=np.array([3840, 2160], dtype=np.uint64),
                                                    shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
                                                    principal_point=np.array([1928.184506, 1083.862789],
                                                                             dtype=np.float32),
@@ -782,7 +782,7 @@ class TestFisheyeCamera(CommonTestCase):
         np.set_printoptions(floatmode='unique', linewidth=200, suppress=True)
 
         # Real-world customer camera parameters
-        self.cam_model_params = OpenCVFisheyeCameraModelParameters(resolution=np.array([3848, 2168], dtype=np.uint64),
+        self.cam_model_params = OpenCVFisheyeCameraModelParameters(resolution=np.array([3840, 2160], dtype=np.uint64),
                                                                    shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
                                                                    principal_point=np.array([1928.184506, 1083.862789],
                                                                                             dtype=np.float32),
