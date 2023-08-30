@@ -15,11 +15,11 @@ py_package(
     name = "ncore_pkg",
     packages = ["ncore"],
     deps = [
-        "@ncore-repo//ncore:pylib",
-        "@ncore-repo//ncore/data:pylib",
-        "@ncore-repo//ncore/data/v3:pylib",
-        "@ncore-repo//ncore/geometry:pylib",
-        "@ncore-repo//ncore/sensors:pylib",
+        "@ncore_repo//ncore:pylib",
+        "@ncore_repo//ncore/data:pylib",
+        "@ncore_repo//ncore/data/v3:pylib",
+        "@ncore_repo//ncore/geometry:pylib",
+        "@ncore_repo//ncore/sensors:pylib",
     ],
 )
 
