@@ -1248,7 +1248,7 @@ class OpenCVFisheyeCameraModel(CameraModel):
                  camera_model_parameters: types.OpenCVFisheyeCameraModelParameters,
                  device: str = 'cuda',
                  dtype: torch.dtype = torch.float32,
-                 newton_iterations: int = 5,
+                 newton_iterations: int = 3,
                  min_2d_norm: float = 1e-6):
         super().__init__()
 
