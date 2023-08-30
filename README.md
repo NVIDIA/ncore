@@ -84,6 +84,16 @@ bazel run //:bzlformat_all
 
 to format all bazel source files (`//:bzlformat_missing_pkgs_fix` can be used to register new files)
 
+## Format all code files
+
+Execute
+
+```
+bazel run @aspect_rules_format//format
+```
+
+to format all source files. Use `bazel run @aspect_rules_format//format -- --mode check` to only check for code-formatting violations.
+
 ## Example of building / running a target with bazel
 
 Build targets can be seamlessly build and executed using the bazel driver (either `bazel` or `bazelisk`) via, e.g.,
