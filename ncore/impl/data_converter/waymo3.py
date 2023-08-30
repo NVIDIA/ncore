@@ -14,7 +14,7 @@ from waymo_open_dataset import dataset_pb2, label_pb2
 
 from ncore.impl.av_utils import isWithin3DBBox
 from ncore.impl.data.data3 import ContainerDataWriter
-from ncore.impl.data.types import Poses, PinholeCameraModelParameters, ShutterType, TrackLabel, FrameLabel3, BBox3, LabelSource, DynamicFlagState, Tracks
+from ncore.impl.data.types import Poses, OpenCVPinholeCameraModelParameters, ShutterType, TrackLabel, FrameLabel3, BBox3, LabelSource, DynamicFlagState, Tracks
 from ncore.impl.common.common import PoseInterpolator
 from ncore.impl.common.transformations import transform_point_cloud, se3_inverse, transform_bbox
 from ncore.impl.data_converter.data_converter import DataConverter
@@ -442,9 +442,9 @@ class WaymoConverter(DataConverter):
 
             self.data_writer.store_camera_meta(
                 camera_name, np.array(frame_end_timestamps_us, dtype=np.uint64), T_sensor_rig,
-                PinholeCameraModelParameters(np.array([width, height], dtype=np.uint64), rolling_shutter_direction,
-                                             np.array([c_u, c_v], dtype=np.float32),
-                                             np.array([f_u, f_v], dtype=np.float32),
-                                             np.array([k1, k2, k3, 0, 0, 0], dtype=np.float32),
-                                             np.array([p1, p2], dtype=np.float32),
-                                             np.array([0, 0, 0, 0], dtype=np.float32)), None)
+                OpenCVPinholeCameraModelParameters(np.array([width, height], dtype=np.uint64),
+                                                   rolling_shutter_direction, np.array([c_u, c_v], dtype=np.float32),
+                                                   np.array([f_u, f_v], dtype=np.float32),
+                                                   np.array([k1, k2, k3, 0, 0, 0], dtype=np.float32),
+                                                   np.array([p1, p2], dtype=np.float32),
+                                                   np.array([0, 0, 0, 0], dtype=np.float32)), None)

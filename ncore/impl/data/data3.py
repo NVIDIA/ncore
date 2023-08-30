@@ -145,7 +145,7 @@ class ContainerDataWriter:
             T_sensor_rig: np.ndarray,
 
             # intrinsics
-            camera_model_parameters: Union[types.FThetaCameraModelParameters, types.PinholeCameraModelParameters],
+            camera_model_parameters: types.ConcreteCameraModelParametersUnion,
 
             # sensor constants
             mask_image: Optional[PILImage.Image]) -> None:
@@ -479,13 +479,18 @@ class CameraSensor(Sensor):
         return np.asarray(self.get_frame_image(continous_frame_index))
 
     # Intrinsics
-    def get_camera_model_parameters(
-            self) -> Union[types.FThetaCameraModelParameters, types.PinholeCameraModelParameters]:
+    def get_camera_model_parameters(self) -> types.ConcreteCameraModelParametersUnion:
         ''' Returns parameters specific to the camera's intrinsic model '''
         if self._sensor_meta.camera_model_type == 'ftheta':
             return types.FThetaCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters)
-        if self._sensor_meta.camera_model_type == 'pinhole':
-            return types.PinholeCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters)
+        if self._sensor_meta.camera_model_type in [
+                'opencv-pinhole',
+                # keep 'pinhole' for backwards-compatibility with existing data
+                'pinhole'
+        ]:
+            return types.OpenCVPinholeCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters)
+        if self._sensor_meta.camera_model_type == 'opencv-pinhole':
+            return types.OpenCVFisheyeCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters)
         raise ValueError
 
     # Camera Mask
