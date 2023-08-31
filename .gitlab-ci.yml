@@ -54,7 +54,7 @@ build+test:
     - bazelisk run //:bzlformat_missing_pkgs_test
 
     # Check code format [disabled temporarily - code-format-only MR will be provided subsequently]
-    #- bazelisk run @aspect_rules_format//format -- --mode check
+    - bazelisk run @aspect_rules_format//format -- --mode check
 
     # Build+test all remaining targets
     - bazelisk build ...

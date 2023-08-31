@@ -16,34 +16,43 @@ from ncore.impl.data.util import INDEX_DIGITS
 
 
 @click.command()
-@click.option('--shard-file-pattern',
-              type=str,
-              help='Data shard pattern to load (supports range expansion)',
-              required=True)
-@click.option('--output-dir',
-              type=str,
-              help="Path to the output folder (will be prefixed by camera sensor id)",
-              required=True)
-@click.option('--camera-id',
-              '-c',
-              'camera_ids',
-              multiple=True,
-              type=str,
-              help='Cameras to be used (multiple value option, all if not specified)',
-              default=None)
-@click.option('--semantic-seg', is_flag=True, default=False, help="Perform semantic segmentation")
-@click.option('--instance-seg', is_flag=True, default=False, help="Perform instance segmentation")
-@click.option('--start-frame',
-              type=click.IntRange(min=0, max_open=True),
-              help='Initial frame to be segmented',
-              default=0)
-@click.option('--end-frame', type=click.IntRange(min=-1, max_open=True), help='End frame to be exported', default=-1)
-@click.option('--step-frame',
-              type=click.IntRange(min=1, max_open=True),
-              help='Step used to downsample the number of frames',
-              default=1)
-def ncore_extract_segmentation(shard_file_pattern: str, output_dir: str, camera_ids: list[str], semantic_seg: bool,
-                               instance_seg: bool, start_frame: int, end_frame: int, step_frame: int):
+@click.option(
+    "--shard-file-pattern", type=str, help="Data shard pattern to load (supports range expansion)", required=True
+)
+@click.option(
+    "--output-dir", type=str, help="Path to the output folder (will be prefixed by camera sensor id)", required=True
+)
+@click.option(
+    "--camera-id",
+    "-c",
+    "camera_ids",
+    multiple=True,
+    type=str,
+    help="Cameras to be used (multiple value option, all if not specified)",
+    default=None,
+)
+@click.option("--semantic-seg", is_flag=True, default=False, help="Perform semantic segmentation")
+@click.option("--instance-seg", is_flag=True, default=False, help="Perform instance segmentation")
+@click.option(
+    "--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial frame to be segmented", default=0
+)
+@click.option("--end-frame", type=click.IntRange(min=-1, max_open=True), help="End frame to be exported", default=-1)
+@click.option(
+    "--step-frame",
+    type=click.IntRange(min=1, max_open=True),
+    help="Step used to downsample the number of frames",
+    default=1,
+)
+def ncore_extract_segmentation(
+    shard_file_pattern: str,
+    output_dir: str,
+    camera_ids: list[str],
+    semantic_seg: bool,
+    instance_seg: bool,
+    start_frame: int,
+    end_frame: int,
+    step_frame: int,
+):
 
     # Initialize the logger
     logging.basicConfig(level=logging.INFO)
@@ -56,7 +65,7 @@ def ncore_extract_segmentation(shard_file_pattern: str, output_dir: str, camera_
         camera_ids = loader.get_camera_ids()
 
     for camera_id in camera_ids:
-        assert isinstance(camera_sensor := loader.get_sensor(camera_id), CameraSensor), 'only camera sensors supported'
+        assert isinstance(camera_sensor := loader.get_sensor(camera_id), CameraSensor), "only camera sensors supported"
 
         # set up output paths
         output_path = Path(output_dir) / camera_sensor.get_sensor_id()
@@ -68,11 +77,11 @@ def ncore_extract_segmentation(shard_file_pattern: str, output_dir: str, camera_
         ]
 
         if semantic_seg:
-            logger.info(f'Running semantic segmentation on {len(image_handles)} images of camera {camera_id}')
+            logger.info(f"Running semantic segmentation on {len(image_handles)} images of camera {camera_id}")
             run_semantic_segmentation(image_handles, output_path, INDEX_DIGITS)
 
         if instance_seg:
-            logger.info(f'Running instance segmentation on {len(image_handles)} images of camera {camera_id}')
+            logger.info(f"Running instance segmentation on {len(image_handles)} images of camera {camera_id}")
             run_instance_segmentation(image_handles, output_path, INDEX_DIGITS)
 
 

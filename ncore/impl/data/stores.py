@@ -21,8 +21,8 @@ import numcodecs
 
 
 class IndexedTarStore(zarr._storage.store.Store):
-    """ A zarr store over *indexed* tar files
-    
+    """A zarr store over *indexed* tar files
+
     Parameters
     ----------
     itar_path : string
@@ -40,28 +40,28 @@ class IndexedTarStore(zarr._storage.store.Store):
         ...     z = zarr.zeros((10, 10), chunks=(5, 5), store=store)
         ...     z[...] = 42
         ...     # no need to call store.close()
-    
+
     """
 
     _erasable = False
 
     @dataclass
-    class TarRecord():
-        """ A file record within a tar file """
+    class TarRecord:
+        """A file record within a tar file"""
 
         offset_data: int
         size: int
 
     @dataclass
-    class TarRecordIndex():
-        """ All file records within a tar file """
+    class TarRecordIndex:
+        """All file records within a tar file"""
 
         records: Dict[str, IndexedTarStore.TarRecord] = field(default_factory=dict)
 
-    def __init__(self, itar_path: Union[str, Path], mode: Literal['r', 'w'] = 'r'):
+    def __init__(self, itar_path: Union[str, Path], mode: Literal["r", "w"] = "r"):
 
-        if mode not in ['r', 'w']:
-            raise ValueError('TarRecordIndex: only r/w modes supported')
+        if mode not in ["r", "w"]:
+            raise ValueError("TarRecordIndex: only r/w modes supported")
 
         # store properties
         itar_path = Path(itar_path).absolute()
@@ -76,19 +76,19 @@ class IndexedTarStore(zarr._storage.store.Store):
         # open file object and tar file
 
         # require file to be both writeable and readable when writing
-        self.tar_file_object: Union[io.BufferedReader,
-                                    io.BufferedRandom] = open(itar_path, 'wb+') if self.mode == 'w' else open(
-                                        itar_path, 'rb')
+        self.tar_file_object: Union[io.BufferedReader, io.BufferedRandom] = (
+            open(itar_path, "wb+") if self.mode == "w" else open(itar_path, "rb")
+        )
         self.tar_file = tarfile.TarFile(fileobj=self.tar_file_object, mode=self.mode)
 
         # init / load index table
-        if mode == 'r':
+        if mode == "r":
             self.index = self._load_tar_index(self.tar_file_object)
         else:
             self.index = self.TarRecordIndex()
 
     def __delitem__(self, _: str):
-        raise NotImplementedError('Deleting items is not supported')
+        raise NotImplementedError("Deleting items is not supported")
 
     def __iter__(self) -> Iterator[str]:
         with self.mutex:
@@ -120,12 +120,12 @@ class IndexedTarStore(zarr._storage.store.Store):
             return value
 
     def __setitem__(self, item: str, value):
-        if self.mode != 'w':
+        if self.mode != "w":
             raise zarr.errors.ReadOnlyError
 
         with self.mutex:
             if item in self.index.records:
-                raise ValueError(f'{item} already exists, update is not supported')
+                raise ValueError(f"{item} already exists, update is not supported")
 
             value_bytes: bytes = numcodecs.compat.ensure_bytes(value)
             value_size: int = len(value_bytes)
@@ -155,7 +155,8 @@ class IndexedTarStore(zarr._storage.store.Store):
                 # Effective start of the data in the tar file (current tar file position + header-size)
                 header_start_position + header_size,
                 # Length of the data
-                value_size)
+                value_size,
+            )
 
             self.index.records[item] = record
 
@@ -166,20 +167,20 @@ class IndexedTarStore(zarr._storage.store.Store):
         self.close()
 
     def close(self):
-        """ Needs to be called after finishing updating the store """
+        """Needs to be called after finishing updating the store"""
         with self.mutex:
             # Closing the tar file appends two finishing blocks to the end of the file
             # if in write mode, but doesn't close the internal file object yet
             self.tar_file.close()
 
-            if self.mode == 'w':
+            if self.mode == "w":
                 # Add index if writing
                 self._save_tar_index(self.tar_file_object, self.index)
 
             self.tar_file_object.close()
 
     def reload_resources(self):
-        """ Reloads the tar file object *only* - useful to re-initialize the store in multi-process 'fork()' settings """
+        """Reloads the tar file object *only* - useful to re-initialize the store in multi-process 'fork()' settings"""
         with self.mutex:
             # get current tar file path and seek positions
             itar_path = self.tar_file_object.name
@@ -187,7 +188,7 @@ class IndexedTarStore(zarr._storage.store.Store):
 
             # reload file (require file to be both writeable and readable when writing)
             self.tar_file_object.close()
-            self.tar_file_object = open(itar_path, 'wb+') if self.mode == 'w' else open(itar_path, 'rb')
+            self.tar_file_object = open(itar_path, "wb+") if self.mode == "w" else open(itar_path, "rb")
             self.tar_file.fileobj = self.tar_file_object
 
             # seek to previous position
@@ -203,10 +204,11 @@ class IndexedTarStore(zarr._storage.store.Store):
     # IndexType   - I  - unsigned int       - 4bytes
     # IndexOffset - Q  - unsigned long long - 8bytes
     # IndexSize   - I  - unsigned int       - 4bytes
-    INDEX_HEADER_FORMAT = '<4sIQI'
+    INDEX_HEADER_FORMAT = "<4sIQI"
 
     class IndexHeader(NamedTuple):
-        ''' A decoded index header '''
+        """A decoded index header"""
+
         magic: bytes
         type: int
         offset: int
@@ -214,12 +216,13 @@ class IndexedTarStore(zarr._storage.store.Store):
 
     @unique
     class IndexType(IntEnum):
-        ''' Enumerates different possible index storage types '''
+        """Enumerates different possible index storage types"""
+
         CBOR_LZMA_XZ_V1 = auto()
 
     @classmethod
     def _load_tar_index(cls, tar_file_object: BinaryIO) -> TarRecordIndex:
-        ''' Loads a tar record index from the end of a tar file object '''
+        """Loads a tar record index from the end of a tar file object"""
 
         # Load header
         original_file_position = tar_file_object.tell()
@@ -231,7 +234,7 @@ class IndexedTarStore(zarr._storage.store.Store):
 
         # Check magic bytes
         if header.magic != cls.INDEX_HEADER_MAGIC:
-            raise ValueError('IndexedTarStore: invalid index header, can\'t load indexed tar file')
+            raise ValueError("IndexedTarStore: invalid index header, can't load indexed tar file")
 
         # Load index based on type
         tar_file_object.seek(header.offset)
@@ -239,14 +242,13 @@ class IndexedTarStore(zarr._storage.store.Store):
         tar_file_object.seek(original_file_position)
 
         if header.type == cls.IndexType.CBOR_LZMA_XZ_V1.value:
-            logging.debug(
-                f'IndexedTarStore: lzma-compressed (xz archive format) index load size={len(header_binary)}')
+            logging.debug(f"IndexedTarStore: lzma-compressed (xz archive format) index load size={len(header_binary)}")
 
             # load table (SOA)
             table = cbor2.loads(lzma.LZMADecompressor().decompress(header_binary))
-            items = table['items']
-            offset_datas = table['offset_datas']
-            sizes = table['sizes']
+            items = table["items"]
+            offset_datas = table["offset_datas"]
+            sizes = table["sizes"]
         else:
             raise TypeError(f"IndexedTarStore: unsupported header type {header.type}")
 
@@ -255,7 +257,8 @@ class IndexedTarStore(zarr._storage.store.Store):
 
     @classmethod
     def _save_tar_index(cls, tar_file_object: BinaryIO, index: TarRecordIndex):
-        ''' Saves a tar record index at the end of a tar file object (needs to be finalized / have two empty blocks appended already) '''
+        """Saves a tar record index at the end of a tar file object (needs to be finalized / have two empty blocks appended already)"""
+
         def fill_block():
             # Fill up block with zeros
             _, remainder = divmod(tar_file_object.tell(), tarfile.BLOCKSIZE)
@@ -276,13 +279,13 @@ class IndexedTarStore(zarr._storage.store.Store):
         # Append compressed table to tar file
         with io.BytesIO() as index_buffer:
             # Compress table to in-memory buffer
-            with lzma.open(index_buffer, 'wb', format=lzma.FORMAT_XZ) as lzma_file:
-                cbor2.dump({'items': items, 'offset_datas': offset_datas, 'sizes': sizes}, lzma_file)
+            with lzma.open(index_buffer, "wb", format=lzma.FORMAT_XZ) as lzma_file:
+                cbor2.dump({"items": items, "offset_datas": offset_datas, "sizes": sizes}, lzma_file)
 
             index_binary = index_buffer.getvalue()
             index_size = len(index_binary)
 
-            logging.debug(f'IndexedTarStore lzma-compressed index store size={index_size}')
+            logging.debug(f"IndexedTarStore lzma-compressed index store size={index_size}")
 
             # Append buffer to tar file
             tar_file_object.write(index_binary)
@@ -290,12 +293,18 @@ class IndexedTarStore(zarr._storage.store.Store):
             fill_block()
 
         # Create index header block
-        assert struct.calcsize(
-            cls.INDEX_HEADER_FORMAT) <= tarfile.BLOCKSIZE, "Index header larger than single block size"
-        header_binary = struct.pack(cls.INDEX_HEADER_FORMAT, cls.INDEX_HEADER_MAGIC,
-                                    cls.IndexType.CBOR_LZMA_XZ_V1.value, index_offset, index_size)
+        assert (
+            struct.calcsize(cls.INDEX_HEADER_FORMAT) <= tarfile.BLOCKSIZE
+        ), "Index header larger than single block size"
+        header_binary = struct.pack(
+            cls.INDEX_HEADER_FORMAT,
+            cls.INDEX_HEADER_MAGIC,
+            cls.IndexType.CBOR_LZMA_XZ_V1.value,
+            index_offset,
+            index_size,
+        )
         header_size = len(header_binary)
-        logging.debug(f'IndexedTarStore: header store size={header_size}')
+        logging.debug(f"IndexedTarStore: header store size={header_size}")
 
         # Append index header to tar file
         tar_file_object.write(header_binary)
@@ -303,7 +312,7 @@ class IndexedTarStore(zarr._storage.store.Store):
 
 
 def consolidate_compressed_metadata(store: zarr.BaseStore, metadata_key=".zmetadata.cbor.xz"):
-    """ Consolidate all metadata for groups and arrays within the given store
+    """Consolidate all metadata for groups and arrays within the given store
     into a single compressed cbor resource and put it under the given key.
 
     See Also
@@ -317,31 +326,27 @@ def consolidate_compressed_metadata(store: zarr.BaseStore, metadata_key=".zmetad
     if version == 2:
 
         def is_zarr_key(key):
-            return (key.endswith('.zarray') or key.endswith('.zgroup') or key.endswith('.zattrs'))
+            return key.endswith(".zarray") or key.endswith(".zgroup") or key.endswith(".zattrs")
 
     else:
         raise NotImplementedError("Only supporting V2 stores")
 
     # Collect all meta-data
     out = {
-        'zarr_consolidated_format': 1,
-        'metadata': {
-            key: zarr.util.json_loads(store[key])
-            for key in store if is_zarr_key(key)
-        }
+        "zarr_consolidated_format": 1,
+        "metadata": {key: zarr.util.json_loads(store[key]) for key in store if is_zarr_key(key)},
     }
 
     with io.BytesIO() as metadata_buffer:
         # Compress meta-data to in-memory buffer
-        with lzma.open(metadata_buffer, 'wb') as lzma_file:
+        with lzma.open(metadata_buffer, "wb") as lzma_file:
             cbor2.dump(out, lzma_file)
 
         store[metadata_key] = metadata_buffer.getvalue()
 
 
 class ConsolidatedCompressedMetadataStore(zarr.storage.ConsolidatedMetadataStore):
-    """ A layer over other storage, where the metadata has been consolidated into a single compressed key.
-    """
+    """A layer over other storage, where the metadata has been consolidated into a single compressed key."""
 
     # Overwrite constructor to perform decompression of metadata
     def __init__(self, store: zarr.StoreLike, metadata_key=".zmetadata.cbor.xz"):
@@ -351,19 +356,18 @@ class ConsolidatedCompressedMetadataStore(zarr.storage.ConsolidatedMetadataStore
         meta = cbor2.loads(lzma.LZMADecompressor().decompress(self.store[metadata_key]))
 
         # check format of consolidated metadata
-        consolidated_format = meta.get('zarr_consolidated_format', None)
+        consolidated_format = meta.get("zarr_consolidated_format", None)
         if consolidated_format != 1:
-            raise zarr.MetadataError('unsupported zarr consolidated metadata format: %s' % consolidated_format)
+            raise zarr.MetadataError("unsupported zarr consolidated metadata format: %s" % consolidated_format)
 
         # decode metadata
         self.meta_store: zarr.Store = zarr.KVStore(meta["metadata"])
 
 
-def open_compressed_consolidated(store: zarr.StoreLike,
-                                 metadata_key=".zmetadata.cbor.xz",
-                                 mode="r+",
-                                 **kwargs) -> zarr.hierarchy.Group:
-    """ Open group using metadata previously consolidated and compressed into a single key.
+def open_compressed_consolidated(
+    store: zarr.StoreLike, metadata_key=".zmetadata.cbor.xz", mode="r+", **kwargs
+) -> zarr.hierarchy.Group:
+    """Open group using metadata previously consolidated and compressed into a single key.
 
     See Also
     --------
@@ -372,15 +376,14 @@ def open_compressed_consolidated(store: zarr.StoreLike,
     """
 
     # normalize parameters
-    zarr_version = kwargs.get('zarr_version')
-    store = zarr.storage.normalize_store_arg(store,
-                                             storage_options=kwargs.get("storage_options"),
-                                             mode=mode,
-                                             zarr_version=zarr_version)
-    if mode not in {'r', 'r+'}:
+    zarr_version = kwargs.get("zarr_version")
+    store = zarr.storage.normalize_store_arg(
+        store, storage_options=kwargs.get("storage_options"), mode=mode, zarr_version=zarr_version
+    )
+    if mode not in {"r", "r+"}:
         raise ValueError("invalid mode, expected either 'r' or 'r+'; found {!r}".format(mode))
 
-    path = kwargs.pop('path', None)
+    path = kwargs.pop("path", None)
     if store._store_version == 2:
         ConsolidatedStoreClass = ConsolidatedCompressedMetadataStore
     else:
@@ -390,5 +393,5 @@ def open_compressed_consolidated(store: zarr.StoreLike,
     meta_store = ConsolidatedStoreClass(store, metadata_key=metadata_key)
 
     # pass through
-    chunk_store = kwargs.pop('chunk_store', None) or store
+    chunk_store = kwargs.pop("chunk_store", None) or store
     return zarr.convenience.open(store=meta_store, chunk_store=chunk_store, mode=mode, path=path, **kwargs)

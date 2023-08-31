@@ -20,7 +20,14 @@ from ncore.impl.data_converter.protos.deepmap import track_data_pb2, pointcloud_
 from ncore.impl.data_converter.protos.deepmap.util import extract_sensor_2_sdc
 from ncore.impl.data_converter.data_converter import DataConverter
 from ncore.impl.data.data3 import ContainerDataWriter
-from ncore.impl.data.types import FrameLabel3, Poses, OpenCVPinholeCameraModelParameters, ShutterType, TrackLabel, Tracks
+from ncore.impl.data.types import (
+    FrameLabel3,
+    Poses,
+    OpenCVPinholeCameraModelParameters,
+    ShutterType,
+    TrackLabel,
+    Tracks,
+)
 from ncore.impl.common.common import PoseInterpolator
 from ncore.impl.common.nvidia_utils import LabelProcessor, extract_pose
 from ncore.impl.av_utils import isWithin3DBBox
@@ -32,8 +39,8 @@ class CarterDeepmapConverter(DataConverter):
     """
 
     # Sensor specifications
-    CAMERA_SENSOR_IDS = ['camera00', 'camera01']
-    LIDAR_SENSOR_IDS = ['lidar00']
+    CAMERA_SENSOR_IDS = ["camera00", "camera01"]
+    LIDAR_SENSOR_IDS = ["lidar00"]
     LIDAR_FILTER_MAX_DISTANCE_METERS = 150.0
 
     @dataclass
@@ -71,32 +78,34 @@ class CarterDeepmapConverter(DataConverter):
             self.track_dir = track_dir
             self.track_name = track_dir.name
 
-            self.logger.info(f'Processing track {self.track_name}')
+            self.logger.info(f"Processing track {self.track_name}")
 
             # ContainerDataWriter for all outputs (always single-shard)
             self.data_writer = ContainerDataWriter(
-                self.output_dir / f'{self.sequence_name}-{self.track_name}',
-                f'{self.sequence_name}-{self.track_name}',
+                self.output_dir / f"{self.sequence_name}-{self.track_name}",
+                f"{self.sequence_name}-{self.track_name}",
                 self.CAMERA_SENSOR_IDS,
                 self.LIDAR_SENSOR_IDS,
                 # no radars yet
                 [],
                 # TODO: parse these from the data
-                'carter',
-                'deepmap',
-                f'{self.sequence_name}-{self.track_name}',
+                "carter",
+                "deepmap",
+                f"{self.sequence_name}-{self.track_name}",
                 # always single-shard
                 0,
                 1,
-                False)
+                False,
+            )
 
             # Initialize the track aligned track record structure
             self.track_data = track_data_pb2.AlignedTrackRecords()
 
             # Read in the track record data from a proto file
             # This includes camera_records and lidar_records (see track_record proto for more detail)
-            with open(os.path.join(track_dir, 'aligned_track_records_segment_from0_to18446744073709551615.pb.txt'),
-                      'r') as f:
+            with open(
+                os.path.join(track_dir, "aligned_track_records_segment_from0_to18446744073709551615.pb.txt"), "r"
+            ) as f:
                 text_format.Parse(f.read(), self.track_data)
 
             # Extract all the lidar paths, timestamps and poses from the track record
@@ -126,30 +135,32 @@ class CarterDeepmapConverter(DataConverter):
         def decode_record(sensor_type, sensor_record):
             sensor_data = CarterDeepmapConverter.SensorData()
 
-            for frame in sensor_record['records']:
-                sensor_data.frame_timestamps_us.append(frame['timestamp_microseconds'])
-                sensor_data.frame_file_paths.append(frame['file_path'])
+            for frame in sensor_record["records"]:
+                sensor_data.frame_timestamps_us.append(frame["timestamp_microseconds"])
+                sensor_data.frame_file_paths.append(frame["file_path"])
 
-                if 'pose' in frame:
-                    self.poses_timestamps_us.append(frame['timestamp_microseconds'])
-                    self.poses.append(extract_pose(frame['pose']))
+                if "pose" in frame:
+                    self.poses_timestamps_us.append(frame["timestamp_microseconds"])
+                    self.poses.append(extract_pose(frame["pose"]))
 
             sensor_data.extrinsics = extract_sensor_2_sdc(
-                self.sequence_path / sensor_record[f'{sensor_type}_to_vehicle_transform_path']).astype(np.float32)
+                self.sequence_path / sensor_record[f"{sensor_type}_to_vehicle_transform_path"]
+            ).astype(np.float32)
 
-            if sensor_type == 'camera':
+            if sensor_type == "camera":
                 sensor_data.intrinsics = camera_calibration_pb2.MonoCalibrationParameters()
-                with open(self.sequence_path / sensor_record['mono_calibration_parameters_path'], 'r') as f:
+                with open(self.sequence_path / sensor_record["mono_calibration_parameters_path"], "r") as f:
                     text_format.Parse(f.read(), sensor_data.intrinsics)
 
             return sensor_data
 
         # Decode poses and sensor-specific data
-        for sensor_id, sensor_record in zip(CarterDeepmapConverter.LIDAR_SENSOR_IDS, self.track_data['lidar_records']):
-            self.sensor_datas[sensor_id] = decode_record('lidar', sensor_record)
-        for sensor_id, sensor_record in zip(CarterDeepmapConverter.CAMERA_SENSOR_IDS,
-                                            self.track_data['camera_records']):
-            self.sensor_datas[sensor_id] = decode_record('camera', sensor_record)
+        for sensor_id, sensor_record in zip(CarterDeepmapConverter.LIDAR_SENSOR_IDS, self.track_data["lidar_records"]):
+            self.sensor_datas[sensor_id] = decode_record("lidar", sensor_record)
+        for sensor_id, sensor_record in zip(
+            CarterDeepmapConverter.CAMERA_SENSOR_IDS, self.track_data["camera_records"]
+        ):
+            self.sensor_datas[sensor_id] = decode_record("camera", sensor_record)
 
         # Stack, sort the poses and make them unique
         self.poses = np.stack(self.poses)
@@ -167,14 +178,18 @@ class CarterDeepmapConverter(DataConverter):
         start_timestamp_us = self.start_timestamp_us if self.start_timestamp_us else self.poses_timestamps_us[0]
         end_timestamp_us = self.end_timestamp_us if self.end_timestamp_us else self.poses_timestamps_us[-1]
 
-        local_pose_range = np.logical_and(start_timestamp_us <= self.poses_timestamps_us, self.poses_timestamps_us
-                                          <= end_timestamp_us)
+        local_pose_range = np.logical_and(
+            start_timestamp_us <= self.poses_timestamps_us, self.poses_timestamps_us <= end_timestamp_us
+        )
 
         # Save the poses
         self.data_writer.store_poses(
-            Poses(T_rig_world_base=base_pose,
-                  T_rig_worlds=self.poses[local_pose_range],
-                  T_rig_world_timestamps_us=self.poses_timestamps_us[local_pose_range]))
+            Poses(
+                T_rig_world_base=base_pose,
+                T_rig_worlds=self.poses[local_pose_range],
+                T_rig_world_timestamps_us=self.poses_timestamps_us[local_pose_range],
+            )
+        )
 
     def decode_labels(self):
         # No labels / tracks to load currently
@@ -198,7 +213,8 @@ class CarterDeepmapConverter(DataConverter):
             bbox_centroid = T_lidar_rig[:3, 3]  # center box around lidar sensor
             bbox_dimensions = np.array([0.75, 0.75, 0.75], dtype=np.float32)
             bbox_orientation = np.zeros(
-                3, dtype=np.float32)  # vehicle bbox is aligned with the rig, i.e., is an axis-aligned bbox
+                3, dtype=np.float32
+            )  # vehicle bbox is aligned with the rig, i.e., is an axis-aligned bbox
 
             vehicle_bbox_rig = np.hstack([bbox_centroid, bbox_dimensions, bbox_orientation])
 
@@ -207,7 +223,7 @@ class CarterDeepmapConverter(DataConverter):
             for frame_file_path in tqdm.tqdm(sensor_data.frame_file_paths):
                 # Load the point cloud data
                 data = pointcloud_pb2.PointCloud()
-                with open(self.sequence_path / frame_file_path, 'rb') as f:
+                with open(self.sequence_path / frame_file_path, "rb") as f:
                     data.ParseFromString(f.read())
 
                 frame_end_timestamp = data.meta_data.end_timestamp_microseconds
@@ -217,12 +233,14 @@ class CarterDeepmapConverter(DataConverter):
                 if self.end_timestamp_us and frame_end_timestamp > self.end_timestamp_us:
                     break  # already passed end - no need to keep on processing
 
-                raw_pc = np.concatenate([
-                    np.array(data.data.points_x, dtype=np.float32)[:, None],
-                    np.array(data.data.points_y, dtype=np.float32)[:, None],
-                    np.array(data.data.points_z, dtype=np.float32)[:, None]
-                ],
-                                        axis=1)
+                raw_pc = np.concatenate(
+                    [
+                        np.array(data.data.points_x, dtype=np.float32)[:, None],
+                        np.array(data.data.points_y, dtype=np.float32)[:, None],
+                        np.array(data.data.points_z, dtype=np.float32)[:, None],
+                    ],
+                    axis=1,
+                )
 
                 # [0 .. 255] -> [0.0 .. 1.0]
                 intensities = np.frombuffer(data.data.intensities, dtype=np.uint8).astype(np.float32) / 255.0
@@ -234,7 +252,8 @@ class CarterDeepmapConverter(DataConverter):
                     column_poses = pose_interpolator.interpolate_to_timestamps(column_timestamps)
                 except Exception as e:  # work on python 3.x
                     self.logger.warn(
-                        f'Lidar frame conversion failed for lidar frame {frame_idx} due to out-of-egomotion pose: {e}')
+                        f"Lidar frame conversion failed for lidar frame {frame_idx} due to out-of-egomotion pose: {e}"
+                    )
                     continue
                 T_column_lidar_worlds = column_poses @ T_lidar_rig[None, :, :]
                 # Pose of the rig at the end of the lidar spin, can be used to transform points into a local coordinate frame
@@ -244,27 +263,32 @@ class CarterDeepmapConverter(DataConverter):
 
                 # Perform per-column unwinding, transforming from lidar to world coordinates
                 transformed_pc = np.empty((len(raw_pc), 6), dtype=np.float32)
-                transformed_pc[:, :3] = T_column_lidar_worlds[data.data.column_indices, :3,
-                                                              -1]  # N X 3 - ray start points in world space
-                transformed_pc[:, 3:] = (T_column_lidar_worlds[data.data.column_indices, :3, :3] @ raw_pc[:, :, None]
-                                         ).squeeze(-1) + transformed_pc[:, :3]  # N x 3 - ray end points in world space
+                transformed_pc[:, :3] = T_column_lidar_worlds[
+                    data.data.column_indices, :3, -1
+                ]  # N X 3 - ray start points in world space
+                transformed_pc[:, 3:] = (
+                    T_column_lidar_worlds[data.data.column_indices, :3, :3] @ raw_pc[:, :, None]
+                ).squeeze(-1) + transformed_pc[
+                    :, :3
+                ]  # N x 3 - ray end points in world space
 
                 pc_world_homogeneous = np.row_stack(
-                    [transformed_pc[:, 3:6].transpose(),
-                     np.ones(transformed_pc.shape[0], dtype=np.float32)])  # 4 x N
+                    [transformed_pc[:, 3:6].transpose(), np.ones(transformed_pc.shape[0], dtype=np.float32)]
+                )  # 4 x N
                 pc_rig = (T_world_rig @ pc_world_homogeneous)[:-1, :].transpose()  # N x 3
                 pc_lidar = (T_world_lidar @ pc_world_homogeneous)[:-1, :].transpose()  # N x 3
 
                 pc_start_world_homogeneous = np.row_stack(
-                    [transformed_pc[:, 0:3].transpose(),
-                     np.ones(transformed_pc.shape[0], dtype=np.float32)])  # 4 x N
+                    [transformed_pc[:, 0:3].transpose(), np.ones(transformed_pc.shape[0], dtype=np.float32)]
+                )  # 4 x N
                 pc_start_lidar = (T_world_lidar @ pc_start_world_homogeneous)[:-1, :].transpose()  # N x 3
 
                 timestamps = column_timestamps[data.data.column_indices]
 
                 # Filter outs points that are inside the vehicles bounding-box
                 valid_idxs_vehicle_bbox = np.logical_not(
-                    isWithin3DBBox(pc_rig.astype(np.float32), vehicle_bbox_rig.reshape(1, -1)))
+                    isWithin3DBBox(pc_rig.astype(np.float32), vehicle_bbox_rig.reshape(1, -1))
+                )
 
                 # Filter points based on distances
                 dist = np.linalg.norm(transformed_pc[:, :3] - transformed_pc[:, 3:6], axis=1)
@@ -284,11 +308,24 @@ class CarterDeepmapConverter(DataConverter):
                 T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
 
                 # Use the bounding boxes to remove dynamic objects
-                dynamic_flag, frame_labels = LabelProcessor.lidar_dynamic_flag(lidar_id, xyz_e, -1, self.frame_labels, self.track_global_dynamic_flag)
+                dynamic_flag, frame_labels = LabelProcessor.lidar_dynamic_flag(
+                    lidar_id, xyz_e, -1, self.frame_labels, self.track_global_dynamic_flag
+                )
 
                 # Serialize lidar frame
-                self.data_writer.store_lidar_frame(lidar_id, frame_idx, xyz_s, xyz_e, intensity, timestamp,
-                                                   dynamic_flag, None, frame_labels, T_rig_worlds, timestamps_us)
+                self.data_writer.store_lidar_frame(
+                    lidar_id,
+                    frame_idx,
+                    xyz_s,
+                    xyz_e,
+                    intensity,
+                    timestamp,
+                    dynamic_flag,
+                    None,
+                    frame_labels,
+                    T_rig_worlds,
+                    timestamps_us,
+                )
 
                 # Save the end time stamp of the lidar spin
                 lidar_end_timestamps.append(frame_end_timestamp)
@@ -296,9 +333,11 @@ class CarterDeepmapConverter(DataConverter):
                 frame_idx += 1
 
             # Save sensor meta data
-            self.data_writer.store_lidar_meta(lidar_id=lidar_id,
-                                              frame_timestamps_us=np.array(lidar_end_timestamps, dtype=np.uint64),
-                                              T_sensor_rig=T_lidar_rig)
+            self.data_writer.store_lidar_meta(
+                lidar_id=lidar_id,
+                frame_timestamps_us=np.array(lidar_end_timestamps, dtype=np.uint64),
+                T_sensor_rig=T_lidar_rig,
+            )
 
     def decode_cameras(self):
         # Pose interpolator to obtain start / end egomotion poses
@@ -313,22 +352,24 @@ class CarterDeepmapConverter(DataConverter):
             # Intrinsics
             camera_matrix = np.array(sensor_data.intrinsics.camera_matrix.data, dtype=np.float32).reshape((3, 3))
             camera_model = OpenCVPinholeCameraModelParameters(
-                resolution=np.array([sensor_data.intrinsics.image_width, sensor_data.intrinsics.image_height],
-                                    dtype=np.uint64),
+                resolution=np.array(
+                    [sensor_data.intrinsics.image_width, sensor_data.intrinsics.image_height], dtype=np.uint64
+                ),
                 shutter_type=ShutterType.GLOBAL,
                 principal_point=camera_matrix[:2, 2],
                 focal_length=camera_matrix[np.diag_indices(2)],
                 # Images are rectified already -> identity distortion
-                radial_coeffs=np.zeros((6, ), dtype=np.float32),
-                tangential_coeffs=np.zeros((2, ), dtype=np.float32),
-                thin_prism_coeffs=np.zeros((4, ), dtype=np.float32),
+                radial_coeffs=np.zeros((6,), dtype=np.float32),
+                tangential_coeffs=np.zeros((2,), dtype=np.float32),
+                thin_prism_coeffs=np.zeros((4,), dtype=np.float32),
             )
 
             frame_end_timestamps_us = []
             continuous_frame_idx = 0
-            for frame_file_path, frame_timestamp_us in tqdm.tqdm(zip(sensor_data.frame_file_paths,
-                                                                     sensor_data.frame_timestamps_us),
-                                                                 total=len(sensor_data.frame_file_paths)):
+            for frame_file_path, frame_timestamp_us in tqdm.tqdm(
+                zip(sensor_data.frame_file_paths, sensor_data.frame_timestamps_us),
+                total=len(sensor_data.frame_file_paths),
+            ):
 
                 if frame_timestamp_us < self.poses_timestamps_us[0]:
                     continue  # no pose for this frame yet
@@ -341,22 +382,25 @@ class CarterDeepmapConverter(DataConverter):
                     break  # already passed end - no need to keep on processing
 
                 # Load the image frame data
-                with open(frame_file_path := self.sequence_path / frame_file_path, 'rb') as f:
+                with open(frame_file_path := self.sequence_path / frame_file_path, "rb") as f:
                     image_file_binary_data = f.read()
 
                 # Interpolate the common start/end pose to the frame's single timestamp (global-shutter)
                 timestamps_us = np.array([frame_timestamp_us, frame_timestamp_us], dtype=np.uint64)
                 T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
 
-                self.data_writer.store_camera_frame(camera_id, continuous_frame_idx, image_file_binary_data, 'jpeg',
-                                                    T_rig_worlds, timestamps_us)
+                self.data_writer.store_camera_frame(
+                    camera_id, continuous_frame_idx, image_file_binary_data, "jpeg", T_rig_worlds, timestamps_us
+                )
 
                 frame_end_timestamps_us.append(frame_timestamp_us)  # single timestamp is end-of-frame timestamp
 
                 continuous_frame_idx += 1
 
-            self.data_writer.store_camera_meta(camera_id,
-                                               frame_timestamps_us=np.array(frame_end_timestamps_us, dtype=np.uint64),
-                                               T_sensor_rig=T_camera_rig,
-                                               camera_model_parameters=camera_model,
-                                               mask_image=None)
+            self.data_writer.store_camera_meta(
+                camera_id,
+                frame_timestamps_us=np.array(frame_end_timestamps_us, dtype=np.uint64),
+                T_sensor_rig=T_camera_rig,
+                camera_model_parameters=camera_model,
+                mask_image=None,
+            )

@@ -2,6 +2,6 @@
 
 
 def test_import_package():
-    """ Make sure package can be imported  """
+    """Make sure package can be imported"""
 
     import ncore.sensors

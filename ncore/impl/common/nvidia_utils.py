@@ -29,23 +29,26 @@ from ncore.impl.common.transformations import euler_2_so3, lat_lng_alt_2_ecef, s
 from ncore.impl.data.types import FrameLabel3, BBox3, LabelSource, TrackLabel, DynamicFlagState
 
 
-def extract_pose(data, earth_model='WGS84'):
-    ''' Extract the pose of the SDC  
+def extract_pose(data, earth_model="WGS84"):
+    """Extract the pose of the SDC
 
     Args:
         data (dict): pose data
     Out:
         (np.array): Transformation from SDC to ECEF coordinate system [m,4,4]
-    '''
+    """
 
-    lat_lng_alt = np.array([
-        data['lat_lng_alt']['latitude_degrees'], data['lat_lng_alt']['longitude_degrees'],
-        data['lat_lng_alt']['altitude_meters']
-    ]).reshape(-1, 3)
+    lat_lng_alt = np.array(
+        [
+            data["lat_lng_alt"]["latitude_degrees"],
+            data["lat_lng_alt"]["longitude_degrees"],
+            data["lat_lng_alt"]["altitude_meters"],
+        ]
+    ).reshape(-1, 3)
 
-    rot_axis = np.array([data['axis_angle']['x'], data['axis_angle']['y'], data['axis_angle']['z']]).reshape(-1, 3)
+    rot_axis = np.array([data["axis_angle"]["x"], data["axis_angle"]["y"], data["axis_angle"]["z"]]).reshape(-1, 3)
 
-    rot_angle = np.array(data['axis_angle']['angle_degrees']).reshape(-1, 1)
+    rot_angle = np.array(data["axis_angle"]["angle_degrees"]).reshape(-1, 1)
 
     return lat_lng_alt_2_ecef(lat_lng_alt, rot_axis, rot_angle, earth_model)[0]
 
@@ -119,10 +122,10 @@ def sensor_to_rig(sensor) -> Optional[np.ndarray]:
     correction_T = np.zeros(3, dtype=np.float32)
     correction_R = np.zeros(3, dtype=np.float32)
 
-    if ("correction_rig_T" in sensor.keys()):
+    if "correction_rig_T" in sensor.keys():
         correction_T = sensor["correction_rig_T"]
 
-    if ("correction_sensor_R_FLU" in sensor.keys()):
+    if "correction_sensor_R_FLU" in sensor.keys():
         assert "roll-pitch-yaw" in sensor["correction_sensor_R_FLU"].keys(), str(sensor["correction_sensor_R_FLU"])
         correction_R = sensor["correction_sensor_R_FLU"]["roll-pitch-yaw"]
 
@@ -142,7 +145,7 @@ def sensor_to_rig(sensor) -> Optional[np.ndarray]:
 
 
 def camera_intrinsic_parameters(sensor: dict, logger: Optional[logging.Logger] = None) -> np.ndarray:
-    """  Parses the provided rig-style camera sensor dictionary into FTheta camera intrinsic parameters.
+    """Parses the provided rig-style camera sensor dictionary into FTheta camera intrinsic parameters.
 
     Note: Only supporting FTheta 'pixeldistance-to-angle' ("bw-poly") polynomials up to 5th order (six coefficients)
 
@@ -150,26 +153,27 @@ def camera_intrinsic_parameters(sensor: dict, logger: Optional[logging.Logger] =
         sensor: the dictionary of the sensor parameters read from the rig file
         logger: if provided, the logger to issue warnings in (e.g., on not supported coefficients)
     Returns:
-        intrinsic: array of FTheta intrinsics [cx, cy, width, height, [bwpoly]] 
+        intrinsic: array of FTheta intrinsics [cx, cy, width, height, [bwpoly]]
     """
 
-    assert sensor['properties']['Model'] == 'ftheta', "unsupported camera model (only supporting FTheta)"
+    assert sensor["properties"]["Model"] == "ftheta", "unsupported camera model (only supporting FTheta)"
 
-    cx = float(sensor['properties']['cx'])
-    cy = float(sensor['properties']['cy'])
-    width = float(sensor['properties']['width'])
-    height = float(sensor['properties']['height'])
+    cx = float(sensor["properties"]["cx"])
+    cy = float(sensor["properties"]["cy"])
+    width = float(sensor["properties"]["width"])
+    height = float(sensor["properties"]["height"])
 
-    if 'bw-poly' in sensor['properties']:
+    if "bw-poly" in sensor["properties"]:
         # Legacy 4th order backwards-polynomial
-        bwpoly = [np.float32(val) for val in sensor['properties']['bw-poly'].split()]
+        bwpoly = [np.float32(val) for val in sensor["properties"]["bw-poly"].split()]
         assert len(bwpoly) == 5, "expecting 4th-order coefficients for 'bw-poly / 'pixeldistance-to-angle' polynomial"
-    elif 'polynomial' in sensor['properties']:
+    elif "polynomial" in sensor["properties"]:
         # Two-way forward / backward polynomial encoding
-        assert sensor['properties']['polynomial-type'] == 'pixeldistance-to-angle', \
-            f"currently only supporting 'pixeldistance-to-angle' polynomial type, received '{sensor['properties']['polynomial-type']}'"
+        assert (
+            sensor["properties"]["polynomial-type"] == "pixeldistance-to-angle"
+        ), f"currently only supporting 'pixeldistance-to-angle' polynomial type, received '{sensor['properties']['polynomial-type']}'"
 
-        bwpoly = [np.float32(val) for val in sensor['properties']['polynomial'].split()]
+        bwpoly = [np.float32(val) for val in sensor["properties"]["polynomial"].split()]
 
         if len(bwpoly) - 1 > 5:
             # > 5th-order polynomials are currently not supported in the software-stack - it is not valid to simply drop higher-order terms, so exit with error for now.
@@ -179,8 +183,12 @@ def camera_intrinsic_parameters(sensor: dict, logger: Optional[logging.Logger] =
 
         # Affine term is currently not supported, issue a warning if it differs from identity
         # TODO: properly incorporate c,d,e coefficients of affine term [c, d; e, 1] into software stack (internal camera models + NGP)
-        A = np.matrix([[np.float32(sensor['properties'].get('c', 1.0)), np.float32(sensor['properties'].get('d', 0.0))], \
-                        [np.float32(sensor['properties'].get('e', 0.0)), np.float32(1.0)]])
+        A = np.matrix(
+            [
+                [np.float32(sensor["properties"].get("c", 1.0)), np.float32(sensor["properties"].get("d", 0.0))],
+                [np.float32(sensor["properties"].get("e", 0.0)), np.float32(1.0)],
+            ]
+        )
 
         if (A != np.identity(2, dtype=np.float32)).any():
             if logger:
@@ -197,7 +205,7 @@ def camera_intrinsic_parameters(sensor: dict, logger: Optional[logging.Logger] =
 
 
 def vehicle_bbox(rig: dict) -> np.ndarray:
-    """ Parses the vehicle's bounding-box from the 'vehicle' property
+    """Parses the vehicle's bounding-box from the 'vehicle' property
         of a rig and converts it into NCORE bbox conventions.
 
     Args:
@@ -206,14 +214,15 @@ def vehicle_bbox(rig: dict) -> np.ndarray:
         bbox: The vehicles bounding-box represented in the rig frame
     """
 
-    body = rig['rig']['vehicle']['value']['body']
+    body = rig["rig"]["vehicle"]["value"]["body"]
 
-    bbox_position = np.array(body['boundingBoxPosition'],
-                             dtype=np.float32)  # defined as 'midpoint of rear bottom edge' in rig frame
+    bbox_position = np.array(
+        body["boundingBoxPosition"], dtype=np.float32
+    )  # defined as 'midpoint of rear bottom edge' in rig frame
 
-    length = body['length']
-    width = body['width']
-    height = body['height']
+    length = body["length"]
+    width = body["width"]
+    height = body["height"]
 
     # only offsets in x/z are required to determine centroid, as bbox_position is already centered laterally
     centroid = bbox_position + np.array([length / 2, 0.0, height / 2], dtype=np.float32)
@@ -226,7 +235,7 @@ def vehicle_bbox(rig: dict) -> np.ndarray:
 def camera_car_mask(sensor, scale_to_source_resolution=True):
     """Parses a camera car-mask image from a rig-style camera sensor dictionary.
 
-       Supports car masks encoded in 
+       Supports car masks encoded in
          - 'data/rle16-base64' (base64 string encoding of a 16bit RLE compression)
        formats
 
@@ -238,17 +247,17 @@ def camera_car_mask(sensor, scale_to_source_resolution=True):
     """
 
     ## Make sure this is a camera sensor that has an associated car-mask
-    assert 'protocol' in sensor and sensor['protocol'].startswith('camera'), "provided sensor is not a camera sensor"
-    assert 'car-mask' in sensor, "provided camera sensor is missing an associated 'car-mask'"
+    assert "protocol" in sensor and sensor["protocol"].startswith("camera"), "provided sensor is not a camera sensor"
+    assert "car-mask" in sensor, "provided camera sensor is missing an associated 'car-mask'"
 
     ## Make sure we know how to load the data
-    car_mask_obj = sensor['car-mask']
-    assert 'data/rle16-base64' in car_mask_obj, "unsupported car-mask encoding"
-    assert 'resolution' in car_mask_obj, "car-mask is missing image resolution"
+    car_mask_obj = sensor["car-mask"]
+    assert "data/rle16-base64" in car_mask_obj, "unsupported car-mask encoding"
+    assert "resolution" in car_mask_obj, "car-mask is missing image resolution"
 
     ## Load the data
-    resolution = np.array(car_mask_obj['resolution'])
-    rle16_base64 = car_mask_obj['data/rle16-base64']
+    resolution = np.array(car_mask_obj["resolution"])
+    rle16_base64 = car_mask_obj["data/rle16-base64"]
 
     # Decode base64 part
     rle16 = np.frombuffer(base64.b64decode(rle16_base64), dtype=np.uint8)
@@ -278,7 +287,7 @@ def camera_car_mask(sensor, scale_to_source_resolution=True):
             input_it.iternext()
 
             # output 'value' for count times
-            decoded_rle16[decoded_rle16_position:decoded_rle16_position + count] = value
+            decoded_rle16[decoded_rle16_position : decoded_rle16_position + count] = value
             decoded_rle16_position += count
 
         assert len(decoded_rle16) == decoded_rle16_position, "RLE decoding "
@@ -290,11 +299,13 @@ def camera_car_mask(sensor, scale_to_source_resolution=True):
     if scale_to_source_resolution:
         # rescale to original resolution (DW makes sure that the downscaled mask
         # is an even subsampling of the original camera resolution)
-        width, height = camera_intrinsic_parameters(sensor,
-                                                    None)[[2, 3]].astype(np.int32)  # load original sensor resolution
+        width, height = camera_intrinsic_parameters(sensor, None)[[2, 3]].astype(
+            np.int32
+        )  # load original sensor resolution
 
         car_mask_image = Image.fromarray(car_mask).resize(
-            (width, height))  # convert to image and perform nearest-neighor resampling
+            (width, height)
+        )  # convert to image and perform nearest-neighor resampling
 
         car_mask = np.array(car_mask_image)  # convert back to binary array, now in original sensor resolution
 
@@ -305,40 +316,51 @@ def camera_car_mask(sensor, scale_to_source_resolution=True):
 
 
 class LabelProcessor:
-    """ Base class providing facilities to parse / process NV labels into common NCORE format (V3) """
+    """Base class providing facilities to parse / process NV labels into common NCORE format (V3)"""
 
     LABELCLASS_STRING_TO_LABELCLASS_ID: dict[str, int] = {
-        'unknown': 0,
-        'automobile': 1,
-        'pedestrian': 2,
-        'sign': 3,
-        'CYCLIST': 4,
-        'heavy_truck': 5,
-        'bus': 6,
-        'other_vehicle': 7,
-        'motorcycle': 8,
-        'motorcycle_with_rider': 9,
-        'person': 10,
-        'rider': 11,
-        'bicycle_with_rider': 12,
-        'bicycle': 13,
-        'stroller': 14,
-        'person_group': 15,
-        'unclassifiable_vehicle': 16,
-        'cycle': 17,
-        'trailer': 18,
-        'protruding_object': 19,
-        'animal': 20,
-        'train_or_tram_car': 21
+        "unknown": 0,
+        "automobile": 1,
+        "pedestrian": 2,
+        "sign": 3,
+        "CYCLIST": 4,
+        "heavy_truck": 5,
+        "bus": 6,
+        "other_vehicle": 7,
+        "motorcycle": 8,
+        "motorcycle_with_rider": 9,
+        "person": 10,
+        "rider": 11,
+        "bicycle_with_rider": 12,
+        "bicycle": 13,
+        "stroller": 14,
+        "person_group": 15,
+        "unclassifiable_vehicle": 16,
+        "cycle": 17,
+        "trailer": 18,
+        "protruding_object": 19,
+        "animal": 20,
+        "train_or_tram_car": 21,
     }
 
     LABELCLASS_ID_TO_LABELCLASS_STRING: dict[int, str] = {v: k for k, v in LABELCLASS_STRING_TO_LABELCLASS_ID.items()}
 
-    LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC: set[str] = set([
-        'pedestrian', 'stroller', 'person', 'person_group', 'rider', 'bicycle_with_rider', 'bicycle', 'CYCLIST',
-        'motorcycle', 'motorcycle_with_rider', 'cycle'
-    ])
-    LABEL_STRINGS_UNCONDITIONALLY_STATIC: set[str] = set(['unknown', 'sign'])
+    LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC: set[str] = set(
+        [
+            "pedestrian",
+            "stroller",
+            "person",
+            "person_group",
+            "rider",
+            "bicycle_with_rider",
+            "bicycle",
+            "CYCLIST",
+            "motorcycle",
+            "motorcycle_with_rider",
+            "cycle",
+        ]
+    )
+    LABEL_STRINGS_UNCONDITIONALLY_STATIC: set[str] = set(["unknown", "sign"])
 
     # Label BBOX padding distance (in meters) to enlarge bounding boxes for per-point dynamic-flag assignment
     LIDAR_DYNAMIC_FLAG_BBOX_PADDING_METERS = 3.0
@@ -361,8 +383,7 @@ class LabelProcessor:
         T_rig_world_timestamps_us: np.ndarray,  # timestamps of rig-to-world poses
         T_rig_worlds: np.ndarray,  # rig-to-world poses
         source: LabelSource,
-
-        min_centroid_rig_distance: float = MIN_CENTROID_RIG_DISTANCE_METER
+        min_centroid_rig_distance: float = MIN_CENTROID_RIG_DISTANCE_METER,
     ) -> Tuple[dict[str, TrackLabel], dict[str, dict[int, list[FrameLabel3]]], dict[str, bool]]:
         """Parses a labels file for label tracks and per-frame labels.
 
@@ -382,7 +403,9 @@ class LabelProcessor:
 
         # Initialize labels struct for current lidar
         track_labels: dict[str, TrackLabel] = {}  # {TrackLabel} in track_labels[track_id]
-        frame_labels: dict[str, dict[int, list[FrameLabel3]]] = {}  # [FrameLabel3] in frame_labels[<sensor-id>][frame_timestamp_us]
+        frame_labels: dict[
+            str, dict[int, list[FrameLabel3]]
+        ] = {}  # [FrameLabel3] in frame_labels[<sensor-id>][frame_timestamp_us]
 
         # Load per-frame timestamps for each sensor to associate the labels with frame IDs (given by end-of-frame timestamps)
         # (using a dict to error out on missing per-frame timestamps)
@@ -406,48 +429,52 @@ class LabelProcessor:
         original_num_labels = len(label_data)
         label_data.dropna(inplace=True)
         if diff_rows := (original_num_labels - len(label_data)):
-            logging.warn(f'Dropped {diff_rows} rows of cuboid labels due to NaN - resulting tracks might be wrong / incomplete')
-        del(original_num_labels)
+            logging.warn(
+                f"Dropped {diff_rows} rows of cuboid labels due to NaN - resulting tracks might be wrong / incomplete"
+            )
+        del original_num_labels
 
         # Fix float -> integer datatypes of track IDs / timestamps
-        label_data = label_data.astype({'gt_trackline_id': 'int64', 'timestamp': 'int64'})
+        label_data = label_data.astype({"gt_trackline_id": "int64", "timestamp": "int64"})
 
         ## Conservatively pre-filter data range based on time bounds, to speed up processing in case of restricted seek / duration data ranges
 
         # all of the rows with timestamp <= end-timestamp + + margin-time
-        label_data = label_data[label_data['timestamp'].le(T_rig_world_timestamps_us[-1] + cls.TIME_RANGE_MARGIN_US)]
+        label_data = label_data[label_data["timestamp"].le(T_rig_world_timestamps_us[-1] + cls.TIME_RANGE_MARGIN_US)]
 
         # all of the rows with start-timestamp - margin-time <= timestamp <= end-timestamp + margin-time
-        label_data = label_data[label_data['timestamp'].ge(T_rig_world_timestamps_us[0] - cls.TIME_RANGE_MARGIN_US)]
+        label_data = label_data[label_data["timestamp"].ge(T_rig_world_timestamps_us[0] - cls.TIME_RANGE_MARGIN_US)]
 
         # Restrict to columns of interest to reduce memory usage (around 70% data reduction)
-        label_data = label_data[[
-            'label_name',
-            'sensor_name',
-            'gt_trackline_id',
-            'timestamp',
-            'label_id',
-            'velocity_x',
-            'velocity_y',
-            'velocity_z',
-            'centroid_x',
-            'centroid_y',
-            'centroid_z',
-            'dim_x',
-            'dim_y',
-            'dim_z',
-            'rot_x',
-            'rot_y',
-            'rot_z',
-            'confidence',
-            'frame_number',  # used to associated labels with source-frames
-        ]]
+        label_data = label_data[
+            [
+                "label_name",
+                "sensor_name",
+                "gt_trackline_id",
+                "timestamp",
+                "label_id",
+                "velocity_x",
+                "velocity_y",
+                "velocity_z",
+                "centroid_x",
+                "centroid_y",
+                "centroid_z",
+                "dim_x",
+                "dim_y",
+                "dim_z",
+                "rot_x",
+                "rot_y",
+                "rot_z",
+                "confidence",
+                "frame_number",  # used to associated labels with source-frames
+            ]
+        ]
         # Note: more recent data should contain a 'timestamp_origin',
         # which can be used to distinguish between 'spin-end' or 'per-cuboid' and whether
         # motion-compensation to the spin-end timestamp is required - do this unconditionally for now
 
         # Sort labels by timestamp to guarantee timestamp-sorted tracks
-        label_data.sort_values(by=['timestamp'], inplace=True)
+        label_data.sort_values(by=["timestamp"], inplace=True)
 
         for row in tqdm.tqdm(label_data.itertuples(), total=len(label_data)):
             if not row.label_name in cls.LABELCLASS_STRING_TO_LABELCLASS_ID.keys():
@@ -463,35 +490,43 @@ class LabelProcessor:
             label_frame_timestamp_us = sensor_frame_timestamps[sensor_id][label_frame_number]
 
             # make sure we can interpolate sensor poses for the relevant timestamps
-            if (label_timestamp_us < T_rig_world_timestamps_us[0]) or \
-               (label_frame_timestamp_us < T_rig_world_timestamps_us[0]) or \
-               (label_timestamp_us > T_rig_world_timestamps_us[-1]) or \
-               (label_frame_timestamp_us > T_rig_world_timestamps_us[-1]):
+            if (
+                (label_timestamp_us < T_rig_world_timestamps_us[0])
+                or (label_frame_timestamp_us < T_rig_world_timestamps_us[0])
+                or (label_timestamp_us > T_rig_world_timestamps_us[-1])
+                or (label_frame_timestamp_us > T_rig_world_timestamps_us[-1])
+            ):
                 continue
 
             # load bounding-box geometry (represented in sensor's frame at label-time)
-            bbox_labeltime = BBox3(centroid=(row.centroid_x, row.centroid_y, row.centroid_z),
-                                   dim=(row.dim_x, row.dim_y, row.dim_z),
-                                   rot=(
-                                       row.rot_x,
-                                       row.rot_y,
-                                       row.rot_z,
-                                   ))
+            bbox_labeltime = BBox3(
+                centroid=(row.centroid_x, row.centroid_y, row.centroid_z),
+                dim=(row.dim_x, row.dim_y, row.dim_z),
+                rot=(
+                    row.rot_x,
+                    row.rot_y,
+                    row.rot_z,
+                ),
+            )
 
             # apply motion-compensation transformation to bounding box (transform bbox from sensor at label-time to sensor at frame-time)
             T_rig_labeltime_world, T_rig_frametime_world = pose_interpolator.interpolate_to_timestamps(
-                [label_timestamp_us, label_frame_timestamp_us])
+                [label_timestamp_us, label_frame_timestamp_us]
+            )
             T_sensor_labeltime_world = T_rig_labeltime_world @ T_sensor_rigs[sensor_id]
             T_sensor_frametime_world = T_rig_frametime_world @ T_sensor_rigs[sensor_id]
             T_sensor_labeltime_sensor_frametime = se3_inverse(T_sensor_frametime_world) @ T_sensor_labeltime_world
 
             # bbox in sensor at frame-time
             bbox_frametime = BBox3.from_array(
-                transform_bbox(bbox_labeltime.to_array(), T_sensor_labeltime_sensor_frametime))
+                transform_bbox(bbox_labeltime.to_array(), T_sensor_labeltime_sensor_frametime)
+            )
 
             # skip label if its centroid is too close to the rig
-            if np.linalg.norm(transform_bbox(bbox_frametime.to_array(),
-                                             T_sensor_rigs[sensor_id])[:3]) < min_centroid_rig_distance:
+            if (
+                np.linalg.norm(transform_bbox(bbox_frametime.to_array(), T_sensor_rigs[sensor_id])[:3])
+                < min_centroid_rig_distance
+            ):
                 continue
 
             # this is assuming velocity is not relative to the local sensor motion, but w.r.t. fixed scene / world
@@ -505,14 +540,17 @@ class LabelProcessor:
                 frame_labels[sensor_id][label_frame_timestamp_us] = []
 
             frame_labels[sensor_id][label_frame_timestamp_us].append(
-                FrameLabel3(label_id=row.label_id,
-                            track_id=track_id,
-                            label_class=label_class,
-                            global_speed=global_speed,
-                            confidence=row.confidence,
-                            source=source,
-                            timestamp_us=label_timestamp_us,
-                            bbox3=bbox_frametime))
+                FrameLabel3(
+                    label_id=row.label_id,
+                    track_id=track_id,
+                    label_class=label_class,
+                    global_speed=global_speed,
+                    confidence=row.confidence,
+                    source=source,
+                    timestamp_us=label_timestamp_us,
+                    bbox3=bbox_frametime,
+                )
+            )
 
             # store track label data
             if track_id not in track_labels:
@@ -531,34 +569,42 @@ class LabelProcessor:
     @staticmethod
     def track_global_dynamic_flag(
         frame_labels: dict[str, dict[int, list[FrameLabel3]]],
-
         # Static + defaulted parameters: allow reusing logic externally with different parameters (e.g., in tools / other data-converters)
         label_strings_unconditionally_dynamic: set[str] = LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC,
         label_strings_unconditionally_static: set[str] = LABEL_STRINGS_UNCONDITIONALLY_STATIC,
-        global_speed_dynamic_threshold: float = GLOBAL_SPEED_DYNAMIC_THRESHOLD
+        global_speed_dynamic_threshold: float = GLOBAL_SPEED_DYNAMIC_THRESHOLD,
     ) -> dict[str, bool]:
-        """ Computes global per-track dynamic flag states (to be used, e.g., for lidar-point dynamic flag assignment) """
+        """Computes global per-track dynamic flag states (to be used, e.g., for lidar-point dynamic flag assignment)"""
 
         track_global_dynamic_flag: dict[str, bool] = {}  # bool in dynamic_tracks[track_id]
 
         # Load overwrites from environment variable NCORE_LABEL_TRACKIDS_FORCE_STATIC
         # in the format NCORE_LABEL_TRACKIDS_FORCE_STATIC='0286dd552c9bea9a69ecb3759e7b94777635514b 0716d9708d321ffb6a00818614779e779925365c' (white-space separated IDs)
-        trackids_force_static = set([int(id) for id in os.environ.get('NCORE_LABEL_TRACKIDS_FORCE_STATIC', '').split()])
+        trackids_force_static = set([int(id) for id in os.environ.get("NCORE_LABEL_TRACKIDS_FORCE_STATIC", "").split()])
 
         for sensor_id in frame_labels:
             for label_frame_timestamp_us in frame_labels[sensor_id]:
                 for frame_label in frame_labels[sensor_id][label_frame_timestamp_us]:
-                    track_id, label_class, global_speed = frame_label.track_id, frame_label.label_class, frame_label.global_speed
+                    track_id, label_class, global_speed = (
+                        frame_label.track_id,
+                        frame_label.label_class,
+                        frame_label.global_speed,
+                    )
 
                     if track_id not in track_global_dynamic_flag:
-                        track_global_dynamic_flag[track_id] = True if frame_label.label_class in label_strings_unconditionally_dynamic else False
+                        track_global_dynamic_flag[track_id] = (
+                            True if frame_label.label_class in label_strings_unconditionally_dynamic else False
+                        )
 
-                    if label_class not in label_strings_unconditionally_static and global_speed >= global_speed_dynamic_threshold:
+                    if (
+                        label_class not in label_strings_unconditionally_static
+                        and global_speed >= global_speed_dynamic_threshold
+                    ):
                         track_global_dynamic_flag[track_id] = True
 
                     if track_id in trackids_force_static:
                         logging.debug(
-                            f'> forcing track_id={track_id} to be static (timestamp={label_frame_timestamp_us}, estimated global_speed={global_speed})'
+                            f"> forcing track_id={track_id} to be static (timestamp={label_frame_timestamp_us}, estimated global_speed={global_speed})"
                         )
                         track_global_dynamic_flag[track_id] = False
 
@@ -566,16 +612,15 @@ class LabelProcessor:
 
     @staticmethod
     def lidar_dynamic_flag(
-            sensor_id: str,  # sensor id
-            xyz: np.ndarray,  # points in sensor frame
-            frame_timestamp_us: int,
-            frame_labels: dict[str, dict[int, list[FrameLabel3]]],
-            track_global_dynamic_flag: dict[str, bool],
-
-            # Static + defaulted parameters: allow reusing logic externally with different parameters (e.g., in tools / other data-converters)
-            lidar_dynamic_flag_bbox_padding_meters = LIDAR_DYNAMIC_FLAG_BBOX_PADDING_METERS,
-        ) -> Tuple[np.ndarray, list[FrameLabel3]]:
-        """ Computes per-point lidar dynamic flag by intersecting frame-associated bounding boxes of dynamic objects"""
+        sensor_id: str,  # sensor id
+        xyz: np.ndarray,  # points in sensor frame
+        frame_timestamp_us: int,
+        frame_labels: dict[str, dict[int, list[FrameLabel3]]],
+        track_global_dynamic_flag: dict[str, bool],
+        # Static + defaulted parameters: allow reusing logic externally with different parameters (e.g., in tools / other data-converters)
+        lidar_dynamic_flag_bbox_padding_meters=LIDAR_DYNAMIC_FLAG_BBOX_PADDING_METERS,
+    ) -> Tuple[np.ndarray, list[FrameLabel3]]:
+        """Computes per-point lidar dynamic flag by intersecting frame-associated bounding boxes of dynamic objects"""
 
         assert xyz.shape[1] == 3, "wrong point cloud shape"
 
@@ -585,13 +630,14 @@ class LabelProcessor:
         dynamic_flag: np.ndarray = np.full(
             point_count,
             # initialize dynamic_flag to -1 if there are no labels at all
-            DynamicFlagState.STATIC.value
-            if len(frame_labels) else DynamicFlagState.NOT_AVAILABLE.value,
-            dtype=np.int8)  # N x 1
+            DynamicFlagState.STATIC.value if len(frame_labels) else DynamicFlagState.NOT_AVAILABLE.value,
+            dtype=np.int8,
+        )  # N x 1
 
         # Incorporate labels, if available
         current_frame_labels: list[FrameLabel3] = frame_labels.get(sensor_id, {}).get(
-            frame_timestamp_us, [])  # returns empty dict if no annotations available for this frame
+            frame_timestamp_us, []
+        )  # returns empty dict if no annotations available for this frame
 
         # Use the bounding boxes to remove dynamic objects / set dynamic flag
         for frame_label in current_frame_labels:
@@ -606,7 +652,7 @@ class LabelProcessor:
 
 
 def eval_polynomial(xs: np.ndarray, coeffs, use_horner=True):
-    ''' Evaluates polynomial coeffs [,D] at given points [N,1]'''
+    """Evaluates polynomial coeffs [,D] at given points [N,1]"""
     ret = np.zeros((len(xs), 1), dtype=xs.dtype)
 
     if not use_horner:
@@ -620,7 +666,7 @@ def eval_polynomial(xs: np.ndarray, coeffs, use_horner=True):
 
 
 def pixel_2_camera_ray(pixel_coords: np.ndarray, intrinsic: np.ndarray, camera_model: str):
-    ''' Convert the pixel coordinates to a 3D ray in the camera coordinate system.
+    """Convert the pixel coordinates to a 3D ray in the camera coordinate system.
 
     Args:
         pixel_coords (np.array): pixel coordinates of the selected points [n,2]
@@ -629,11 +675,11 @@ def pixel_2_camera_ray(pixel_coords: np.ndarray, intrinsic: np.ndarray, camera_m
 
     Out:
         camera_rays (np.array): rays in the camera coordinate system [n,3]
-    '''
+    """
 
     camera_rays = np.ones((pixel_coords.shape[0], 3))
 
-    if camera_model == 'pinhole':
+    if camera_model == "pinhole":
         camera_rays[:, 0] = (pixel_coords[:, 0] + 0.5 - intrinsic[2]) / intrinsic[0]
         camera_rays[:, 1] = (pixel_coords[:, 1] + 0.5 - intrinsic[5]) / intrinsic[4]
 
@@ -680,7 +726,7 @@ def compute_fw_polynomial(intrinsic):
 
     for _ in range(0, SAMPLE_COUNT):
         p = np.asarray([cxcy[0] + x, cxcy[1]], dtype=np.float64).reshape(-1, 2)
-        ray = pixel_2_camera_ray(p, intrinsic, 'f_theta')
+        ray = pixel_2_camera_ray(p, intrinsic, "f_theta")
         xy_norm = np.linalg.norm(ray[0, :2])
         theta = np.arctan2(float(xy_norm), float(ray[0, 2]))
         samples_x.append(theta)
@@ -714,7 +760,7 @@ def compute_fw_polynomial(intrinsic):
                 [np.finfo(np.float64).eps, np.inf, np.inf, np.inf, np.inf, np.inf],
             )
         case _:
-            raise ValueError(f'Unsupported polynomial degree {bw_poly_degree}')
+            raise ValueError(f"Unsupported polynomial degree {bw_poly_degree}")
 
     # The constant in the polynomial should be zero, so add the `bounds` condition.
     coeffs, _ = curve_fit(f, x, y, bounds=bounds)
@@ -753,15 +799,16 @@ def _get_pixel_fov(pt, intrinsic):
     Returns:
         fov (float): the FOV of the pixel.
     """
-    ray = pixel_2_camera_ray(pt, intrinsic, 'f_theta')
+    ray = pixel_2_camera_ray(pt, intrinsic, "f_theta")
     fov = np.arctan2(np.linalg.norm(ray[:, :2], axis=1), ray[:, 2])
     return fov
 
 
 def _compute_max_angle(intrinsic):
 
-    p = np.asarray([[0, 0], [intrinsic[2] - 1, 0], [0, intrinsic[3] - 1], [intrinsic[2] - 1, intrinsic[3] - 1]],
-                   dtype=np.float32)
+    p = np.asarray(
+        [[0, 0], [intrinsic[2] - 1, 0], [0, intrinsic[3] - 1], [intrinsic[2] - 1, intrinsic[3] - 1]], dtype=np.float32
+    )
 
     return max(
         max(_get_pixel_fov(p[0:1, ...], intrinsic), _get_pixel_fov(p[1:2, ...], intrinsic)),
@@ -770,9 +817,9 @@ def _compute_max_angle(intrinsic):
 
 
 def load_maglev_camera_indexer_frame_meta(camera_path: Path) -> Tuple[np.ndarray, np.ndarray]:
-    ''' Returns *raw* frame numbers and timestamps from meta-data of Maglev's camera-indexer '''
+    """Returns *raw* frame numbers and timestamps from meta-data of Maglev's camera-indexer"""
 
-    frames_metadata = load_jsonl(camera_path / 'meta.json')
+    frames_metadata = load_jsonl(camera_path / "meta.json")
 
     # WAR: Due to a bug in 'meta.json' generation it is not subsampled, but 'frames.csv' is if it exists - so incorporate
     #      this data instead along with timestamps from 'meta.json'.
@@ -780,25 +827,25 @@ def load_maglev_camera_indexer_frame_meta(camera_path: Path) -> Tuple[np.ndarray
     #      so revert to the regular meta data.
     try:
         # Figure out which frames were actually indexed
-        with open(camera_path / 'frames.csv', 'r') as frames_file:
+        with open(camera_path / "frames.csv", "r") as frames_file:
             raw_frame_numbers = np.array([row[0] for row in csv.reader(frames_file)], dtype=np.uint64)
 
         # Construct frame number to timestamp map
         frame_timestamps_map_us = {
-            frame_metadata['frame_number']: frame_metadata['timestamp']
-            for frame_metadata in frames_metadata
+            frame_metadata["frame_number"]: frame_metadata["timestamp"] for frame_metadata in frames_metadata
         }
         # Evaluate timestamps map for exported frames
         raw_frame_timestamps_us = np.array(
-            [frame_timestamps_map_us[raw_frame_number] for raw_frame_number in raw_frame_numbers], dtype=np.uint64)
+            [frame_timestamps_map_us[raw_frame_number] for raw_frame_number in raw_frame_numbers], dtype=np.uint64
+        )
 
     except FileNotFoundError:
         # Special case: if 'frames.csv' doesn't exists the camera indexer exported all frames, so load
         #               all frames from the 'meta.json' file
 
         # Load all data from 'meta.json' - default case assuming 'meta.json' is subsampled to all existing frames
-        raw_frame_numbers = np.array([frame_data['frame_number'] for frame_data in frames_metadata], dtype=np.uint64)
-        raw_frame_timestamps_us = np.array([frame_data['timestamp'] for frame_data in frames_metadata], dtype=np.uint64)
+        raw_frame_numbers = np.array([frame_data["frame_number"] for frame_data in frames_metadata], dtype=np.uint64)
+        raw_frame_timestamps_us = np.array([frame_data["timestamp"] for frame_data in frames_metadata], dtype=np.uint64)
 
     finally:
         return raw_frame_numbers, raw_frame_timestamps_us
@@ -813,59 +860,64 @@ class LidarIndexerMeta:
 
 
 def load_maglev_lidar_indexer_frame_meta(lidarpath_or_metafile: Path) -> LidarIndexerMeta:
-    ''' Returns meta-data of Maglev's lidar-indexer variants.
-    
+    """Returns meta-data of Maglev's lidar-indexer variants.
+
     Input can either be a path to a meta.json file (CSFT-based) or a directory path containing either
-    a meta.json file (CSFT-based) or 'spins.txt'/'toolConfigs.txt' files (lidar-exporter-based) '''
+    a meta.json file (CSFT-based) or 'spins.txt'/'toolConfigs.txt' files (lidar-exporter-based)"""
 
     # Determine meta file path to load
-    if lidarpath_or_metafile.suffix == '.json':
+    if lidarpath_or_metafile.suffix == ".json":
         meta_file_path = lidarpath_or_metafile
     else:
-        meta_file_path = lidarpath_or_metafile / 'meta.json'
+        meta_file_path = lidarpath_or_metafile / "meta.json"
 
     if meta_file_path.exists():
         # Load CSFT-based indexed frame meta-data
 
         frames_metadata = load_jsonl(meta_file_path)
 
-        raw_frame_numbers = np.array([frame_data['frame_number'] for frame_data in frames_metadata], dtype=np.uint64)
-        raw_frame_timestamps_us = np.array([frame_data['timestamp'] for frame_data in frames_metadata], dtype=np.uint64)
-        raw_frame_egocompensated = np.array([frame_data['ego_compensated'] for frame_data in frames_metadata],
-                                            dtype=np.bool8)
+        raw_frame_numbers = np.array([frame_data["frame_number"] for frame_data in frames_metadata], dtype=np.uint64)
+        raw_frame_timestamps_us = np.array([frame_data["timestamp"] for frame_data in frames_metadata], dtype=np.uint64)
+        raw_frame_egocompensated = np.array(
+            [frame_data["ego_compensated"] for frame_data in frames_metadata], dtype=np.bool8
+        )
 
         # Sanity check assumptions
         assert np.all(
-            raw_frame_egocompensated == raw_frame_egocompensated[0]), 'expecting consistent motion-compensation state'
+            raw_frame_egocompensated == raw_frame_egocompensated[0]
+        ), "expecting consistent motion-compensation state"
 
-        return LidarIndexerMeta(frame_numbers=raw_frame_numbers,
-                                frame_endtimes_us=raw_frame_timestamps_us,
-                                frames_egocompensated=bool(raw_frame_egocompensated[0]),
-                                frame_starttimes_us=None)
+        return LidarIndexerMeta(
+            frame_numbers=raw_frame_numbers,
+            frame_endtimes_us=raw_frame_timestamps_us,
+            frames_egocompensated=bool(raw_frame_egocompensated[0]),
+            frame_starttimes_us=None,
+        )
 
-    if (spin_file_path := lidarpath_or_metafile / 'spins.txt').exists():
+    if (spin_file_path := lidarpath_or_metafile / "spins.txt").exists():
         # Load lidar-exporter-based meta-data / spins file
 
-        with open(spin_file_path, 'r') as spins_file:
+        with open(spin_file_path, "r") as spins_file:
             rows = [row for row in csv.DictReader(spins_file)]
 
-        raw_lidar_idx = np.array([int(row['lidarIdx']) for row in rows], dtype=np.uint64)
-        raw_spin_idx = np.array([int(row['spinIndex']) for row in rows], dtype=np.uint64)
-        raw_start_time_us = np.array([int(row['startTime']) for row in rows], dtype=np.uint64)
-        raw_end_time_us = np.array([int(row['endTime']) for row in rows], dtype=np.uint64)
-        raw_primary_spin_idx = np.array([int(row['primarySpinIndex']) for row in rows], dtype=np.uint64)
+        raw_lidar_idx = np.array([int(row["lidarIdx"]) for row in rows], dtype=np.uint64)
+        raw_spin_idx = np.array([int(row["spinIndex"]) for row in rows], dtype=np.uint64)
+        raw_start_time_us = np.array([int(row["startTime"]) for row in rows], dtype=np.uint64)
+        raw_end_time_us = np.array([int(row["endTime"]) for row in rows], dtype=np.uint64)
+        raw_primary_spin_idx = np.array([int(row["primarySpinIndex"]) for row in rows], dtype=np.uint64)
 
         # Determine motion-compensation property from tool configuration
-        with open(lidarpath_or_metafile / 'toolConfigs.txt', 'r') as toolconfig_file:
-            if state := re.search(r'--motionCompensate=(\d)', toolconfig_file.read()):
-                frames_egocompensated = state.group(1) == '1'
+        with open(lidarpath_or_metafile / "toolConfigs.txt", "r") as toolconfig_file:
+            if state := re.search(r"--motionCompensate=(\d)", toolconfig_file.read()):
+                frames_egocompensated = state.group(1) == "1"
             else:
-                raise ValueError('Can\'t determine motion-compensation state from lidar exporter tool-config')
+                raise ValueError("Can't determine motion-compensation state from lidar exporter tool-config")
 
         # Sanity check assumptions
-        assert np.all(raw_lidar_idx == raw_lidar_idx[0]), 'Expecting consistent single-lidar data'
+        assert np.all(raw_lidar_idx == raw_lidar_idx[0]), "Expecting consistent single-lidar data"
         assert np.all(
-            raw_spin_idx == raw_primary_spin_idx), 'Expecting spin indices to be consistent with primary spins'
+            raw_spin_idx == raw_primary_spin_idx
+        ), "Expecting spin indices to be consistent with primary spins"
 
         return LidarIndexerMeta(
             frame_numbers=raw_spin_idx,
@@ -874,25 +926,25 @@ def load_maglev_lidar_indexer_frame_meta(lidarpath_or_metafile: Path) -> LidarIn
             frames_egocompensated=frames_egocompensated,
         )
 
-    raise ValueError('No viable lidar-indexer meta-data found')
+    raise ValueError("No viable lidar-indexer meta-data found")
 
 
 def load_maglev_session_id(sequence_path: Path) -> str:
-    ''' Loads session-id in a strustable way '''
+    """Loads session-id in a strustable way"""
 
     # Note: session_id in loaded rig meta might not reflect the actual current session due to bugs
     #       in the rig generation, prefer loading correct ID from session-data directly
 
     # Find `aux_info` from session-data
-    session_data_path = sequence_path / 'session_data'
-    assert session_data_path.exists(), f'{session_data_path} doesn\'t exist'
+    session_data_path = sequence_path / "session_data"
+    assert session_data_path.exists(), f"{session_data_path} doesn't exist"
 
-    aux_infos = list(session_data_path.glob('**/aux_info'))
+    aux_infos = list(session_data_path.glob("**/aux_info"))
     assert len(aux_infos), f"no 'aux_info' found in {session_data_path}"
 
     # Parse first `aux_info` (session-id is the same in all of them)
-    with open(aux_infos[0], 'r') as fp:
-        match = re.search(r'uuid: (\w{8}-\w{4}-\w{4}-\w{4}-\w{12})', fp.read())
+    with open(aux_infos[0], "r") as fp:
+        match = re.search(r"uuid: (\w{8}-\w{4}-\w{4}-\w{4}-\w{12})", fp.read())
         if match:
             return match[1]
         else:
@@ -900,16 +952,16 @@ def load_maglev_session_id(sequence_path: Path) -> str:
 
 
 @multimethod
-def load_maglev_egomotion(sequence_path: Path,
-                          sensors_calibration_data: dict[str, dict],
-                          egomotion_file_overwrite: Optional[Path] = None) -> Tuple[list[np.ndarray], list[int]]:
-    '''Parse a maglev-based egomotion data into timestamped global T_rig_worlds 
-    
+def load_maglev_egomotion(
+    sequence_path: Path, sensors_calibration_data: dict[str, dict], egomotion_file_overwrite: Optional[Path] = None
+) -> Tuple[list[np.ndarray], list[int]]:
+    """Parse a maglev-based egomotion data into timestamped global T_rig_worlds
+
     The NV maglev 'egomotion.json' / 'egomotion.jsonl' format has gone through a couple of iterations,
     but we still support all "flavours" in a backwards compatible-way in NCore.
-    The last major iteration is discussed in https://jirasw.nvidia.com/browse/GTS-7657 / https://jirasw.nvidia.com/browse/GTS-7646 
-    and was merged to NDAS with https://git-av.nvidia.com/r/c/ndas/+/133793 
-    '''
+    The last major iteration is discussed in https://jirasw.nvidia.com/browse/GTS-7657 / https://jirasw.nvidia.com/browse/GTS-7646
+    and was merged to NDAS with https://git-av.nvidia.com/r/c/ndas/+/133793
+    """
 
     # Pre-compute sensor extrinsics to compute poses of the rig frame if egomotion is represented in a sensor frame
     T_rig_sensors = {
@@ -917,7 +969,8 @@ def load_maglev_egomotion(sequence_path: Path,
         for sensor_name, T_sensor_rig in {
             sensor_name: sensor_to_rig(sensors_calibration_data[sensor_name])
             for sensor_name in sensors_calibration_data
-        }.items() if T_sensor_rig is not None
+        }.items()
+        if T_sensor_rig is not None
     }
 
     # Determine egomotion source file to parse
@@ -926,48 +979,52 @@ def load_maglev_egomotion(sequence_path: Path,
         egomotion_file = egomotion_file_overwrite
     else:
         # Use default egomotion jsonl location
-        egomotion_file = sequence_path / 'egomotion' / 'egomotion.json'
+        egomotion_file = sequence_path / "egomotion" / "egomotion.json"
 
     return load_maglev_egomotion(T_rig_sensors, egomotion_file)
 
 
 @load_maglev_egomotion.register
 def _(T_rig_sensors: dict[str, np.ndarray], egomotion_file: Path) -> Tuple[list[np.ndarray], list[int]]:
-    ''' Parse a maglev-based egomotion data into timestamped global T_rig_worlds '''
+    """Parse a maglev-based egomotion data into timestamped global T_rig_worlds"""
 
     global_T_rig_worlds = []
     global_T_rig_world_timestamps_us = []
 
     # Normalize sensor names (in case "decayed" names are used as input)
     def normalize_frame_name(sensor_name: str) -> str:
-        ''' Decay ":" -> "_" for sensor/frame names normalization '''
-        return sensor_name.replace(':', '_', -1)
+        """Decay ":" -> "_" for sensor/frame names normalization"""
+        return sensor_name.replace(":", "_", -1)
 
-    T_rig_sensors = {normalize_frame_name(sensor_name): T_rig_sensor for (sensor_name, T_rig_sensor) in T_rig_sensors.items()}
+    T_rig_sensors = {
+        normalize_frame_name(sensor_name): T_rig_sensor for (sensor_name, T_rig_sensor) in T_rig_sensors.items()
+    }
 
     # Use different parser implementations based on the egomotion file formats
     def parse_legacy_egomotion(egomotion_file: Path) -> None:
-        ''' Parses "jsonl"-type of egomotion file '''
+        """Parses "jsonl"-type of egomotion file"""
 
         for egomotion_pose_entry in load_jsonl(egomotion_file):
             # Skip invalid poses
             if not egomotion_pose_entry[
-                    'valid']:  # this will fail / throw an exception on non-jsonl egomotion file formats
+                "valid"
+            ]:  # this will fail / throw an exception on non-jsonl egomotion file formats
                 continue
 
             # Note: there is additional data like lat/long and sensor-related information
             #       which could be used in the future
             # Note: make sure all poses information is represented as f64 to have sufficient
             #       precision in case poses are representing global / map-associated coordinates
-            T_rig_world_timestamp_us = int(egomotion_pose_entry['timestamp'])
-            T_rig_world = np.asfarray(egomotion_pose_entry['pose'].split(' '), dtype=np.float64).reshape(
-                (4, 4)).transpose()
+            T_rig_world_timestamp_us = int(egomotion_pose_entry["timestamp"])
+            T_rig_world = (
+                np.asfarray(egomotion_pose_entry["pose"].split(" "), dtype=np.float64).reshape((4, 4)).transpose()
+            )
 
             # Make sure poses represent *rigToWorld* transformations
             # (actually *rigToGlobal* as they include the base pose also - this is the case for non-identity initial poses)
             # Note: there currently seems to be an inconsistency in the egomotion indexer output - keep
             #       this verified workaround logic for now (might need to be adapted if egomotion indexer is fixed)
-            if (frame_name := normalize_frame_name(egomotion_pose_entry['in_sensor_name_frame'])) == 'rig':
+            if (frame_name := normalize_frame_name(egomotion_pose_entry["in_sensor_name_frame"])) == "rig":
                 # Pose is for the rig frame already - nothing to transform
                 pass
             elif frame_name in T_rig_sensors:
@@ -977,47 +1034,63 @@ def _(T_rig_sensors: dict[str, np.ndarray], egomotion_file: Path) -> Tuple[list[
                 raise ValueError(f"Unsupported source ego frame {frame_name}")
 
             # Sanity check on data-type
-            assert T_rig_world.dtype is np.dtype('float64'), \
-                "Require pose to be double-precision (to support globally aligned / map-associated)"
+            assert T_rig_world.dtype is np.dtype(
+                "float64"
+            ), "Require pose to be double-precision (to support globally aligned / map-associated)"
 
             global_T_rig_worlds.append(T_rig_world)
             global_T_rig_world_timestamps_us.append(T_rig_world_timestamp_us)
 
     def parse_egomotion(egomotion_file: Path) -> None:
-        ''' Parses "json"-type of egomotion file '''
+        """Parses "json"-type of egomotion file"""
 
         with open(egomotion_file, "r") as fp:
             egomotion_json = json.load(fp)
 
-        for egomotion_pose_entry in (egomotion_json['tf_frame_world'] if 'tf_frame_world' in egomotion_json else
-                                     # fallback for current deepmap format
-                                     egomotion_json['poses']):  # will throw for "old" json-l format
-            if not egomotion_pose_entry.get('valid', True):  # entries seem to be "implicitly" valid if key is missing
+        for egomotion_pose_entry in (
+            egomotion_json["tf_frame_world"]
+            if "tf_frame_world" in egomotion_json
+            else
+            # fallback for current deepmap format
+            egomotion_json["poses"]
+        ):  # will throw for "old" json-l format
+            if not egomotion_pose_entry.get("valid", True):  # entries seem to be "implicitly" valid if key is missing
                 continue
 
             # Note: make sure all poses information is represented as f64 to have sufficient
             #       precision in case poses are representing global / map-associated coordinates
-            T_rig_world_timestamp_us = int(egomotion_pose_entry['timestamp'])
+            T_rig_world_timestamp_us = int(egomotion_pose_entry["timestamp"])
 
             quat = (
-                egomotion_pose_entry['q_xyzw'] if 'q_xyzw' in egomotion_pose_entry else
+                egomotion_pose_entry["q_xyzw"]
+                if "q_xyzw" in egomotion_pose_entry
+                else
                 # fallback for current deepmap format
-                egomotion_pose_entry['quaternion'])
+                egomotion_pose_entry["quaternion"]
+            )
             t = (
-                egomotion_pose_entry['t'] if 't' in egomotion_pose_entry else
+                egomotion_pose_entry["t"]
+                if "t" in egomotion_pose_entry
+                else
                 # fallback for current deepmap format
-                egomotion_pose_entry["translation"])
+                egomotion_pose_entry["translation"]
+            )
 
-            T_rig_world = np.block([[
-                R.from_quat(np.asarray(quat, dtype=np.float64)).as_matrix(),
-                np.asarray(t, dtype=np.float64)[:, np.newaxis]
-            ], [np.array([0., 0., 0., 1.])]])
+            T_rig_world = np.block(
+                [
+                    [
+                        R.from_quat(np.asarray(quat, dtype=np.float64)).as_matrix(),
+                        np.asarray(t, dtype=np.float64)[:, np.newaxis],
+                    ],
+                    [np.array([0.0, 0.0, 0.0, 1.0])],
+                ]
+            )
 
             # Make sure poses represent *rigToWorld* transformations
             # (actually *rigToGlobal* as they include the base pose also - this is the case for non-identity initial poses)
             # Note: there currently seems to be an inconsistency in the egomotion indexer output - keep
             #       this verified workaround logic for now (might need to be adapted if egomotion indexer is fixed)
-            if (frame_name := normalize_frame_name(egomotion_json['coordinate_frame'])) == 'rig':
+            if (frame_name := normalize_frame_name(egomotion_json["coordinate_frame"])) == "rig":
                 # Pose is for the rig frame already - nothing to transform
                 pass
             elif frame_name in T_rig_sensors:
@@ -1036,8 +1109,9 @@ def _(T_rig_sensors: dict[str, np.ndarray], egomotion_file: Path) -> Tuple[list[
         # Old egomotion jsonl format
         parse_legacy_egomotion(egomotion_file)
 
-    assert all(global_T_rig_world_timestamps_us[i] < global_T_rig_world_timestamps_us[i + 1]
-               for i in range(len(global_T_rig_world_timestamps_us) -
-                              1)), 'pose timestamps not monotonically increasing'
+    assert all(
+        global_T_rig_world_timestamps_us[i] < global_T_rig_world_timestamps_us[i + 1]
+        for i in range(len(global_T_rig_world_timestamps_us) - 1)
+    ), "pose timestamps not monotonically increasing"
 
     return global_T_rig_worlds, global_T_rig_world_timestamps_us
