@@ -11,7 +11,7 @@ import logging
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import BinaryIO, Iterator, Literal, NamedTuple, Union
+from typing import BinaryIO, Iterator, Literal, NamedTuple, Union, Dict
 from threading import RLock
 from enum import IntEnum, auto, unique
 
@@ -56,7 +56,7 @@ class IndexedTarStore(zarr._storage.store.Store):
     class TarRecordIndex():
         """ All file records within a tar file """
 
-        records: dict[str, IndexedTarStore.TarRecord] = field(default_factory=dict)
+        records: Dict[str, IndexedTarStore.TarRecord] = field(default_factory=dict)
 
     def __init__(self, itar_path: Union[str, Path], mode: Literal['r', 'w'] = 'r'):
 

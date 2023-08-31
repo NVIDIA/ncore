@@ -14,7 +14,7 @@ import sys
 
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, List
 from dataclasses import dataclass
 
 import numpy as np
@@ -139,7 +139,7 @@ def save_pc_dat(file_path: str, lidar_data: np.ndarray) -> None:
         raise ValueError("invalid file format provided, supporting .dat / .dat.xz files only")
 
 
-def load_jsonl(jsonl_path: Union[str, Path]) -> list[dict]:
+def load_jsonl(jsonl_path: Union[str, Path]) -> List[dict]:
     """
     Loads a jsonl (json-lines) file (each line corresponds to a serialized json object) - see jsonlines.org
 
@@ -157,7 +157,7 @@ def load_jsonl(jsonl_path: Union[str, Path]) -> list[dict]:
     return object_list
 
 
-def save_jsonl(file_path: str, object_list: list[dict]) -> None:
+def save_jsonl(file_path: str, object_list: List[dict]) -> None:
     """
     Saves a list of json-serializable objects into a jsonl (json-lines) file (each line corresponds to a serialized json object) - see jsonlines.org
 
@@ -457,7 +457,7 @@ class SimpleTimer:
         return elapsed
 
 
-def time_bounds(timestamps_us: list[int], seek_sec: Optional[float], duration_sec: Optional[float]) -> tuple[int, int]:
+def time_bounds(timestamps_us: List[int], seek_sec: Optional[float], duration_sec: Optional[float]) -> tuple[int, int]:
     """
     Determine start and end timestamps given optional seek and duration times
 
