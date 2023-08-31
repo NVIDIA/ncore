@@ -2,9 +2,14 @@
 
 __version__ = "1.0.0"
 
+import sys
+
 import numpy as np
 
-from . import libav_utils_cc  # type: ignore
+if sys.version_info >= (3, 9):
+    from . import libav_utils_cc as av_utils_cc # type: ignore
+else:
+    from . import libav_utils_cc_3_8 as av_utils_cc # type: ignore
 
 
 def isWithin3DBBox(pc: np.ndarray, bboxes: np.ndarray) -> np.ndarray:
@@ -13,4 +18,4 @@ def isWithin3DBBox(pc: np.ndarray, bboxes: np.ndarray) -> np.ndarray:
     assert len(bboxes.shape) == 2, "bboxes need to be a 2D numpy array"
     assert bboxes.shape[1] == 9, "bboxes need to be a 2D numpy array"
 
-    return libav_utils_cc._isWithin3DBoundingBox(pc, bboxes)
+    return av_utils_cc._isWithin3DBoundingBox(pc, bboxes)

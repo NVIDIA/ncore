@@ -15,11 +15,11 @@ py_package(
     name = "ncore_pkg",
     packages = ["ncore"],
     deps = [
-        "@ncore-repo//ncore:pylib",
-        "@ncore-repo//ncore/data:pylib",
-        "@ncore-repo//ncore/data/v3:pylib",
-        "@ncore-repo//ncore/geometry:pylib",
-        "@ncore-repo//ncore/sensors:pylib",
+        "@ncore_repo//ncore:pylib",
+        "@ncore_repo//ncore/data:pylib",
+        "@ncore_repo//ncore/data/v3:pylib",
+        "@ncore_repo//ncore/geometry:pylib",
+        "@ncore_repo//ncore/sensors:pylib",
     ],
 )
 
@@ -30,18 +30,18 @@ py_wheel(
     distribution = "ncore",
     homepage = "https://gitlab-master.nvidia.com/Toronto_DL_Lab/ncore",
     platform = "any",
-    python_requires = ">=3.10",
+    python_requires = ">=3.8",
     python_tag = "py3",
     requires = [
         "numpy",
-        "dataclasses_json",
+        "dataclasses_json>=0.2.11",
         "pillow",
         "zarr",
         "cbor2",
         "scipy",
         "torch",
     ],
-    version = "0.5.0",
+    version = "0.6.0",
     deps = [
         ":ncore_pkg",
     ],

@@ -14,10 +14,10 @@ py_binary(
         requirement("nbsphinx"),
         requirement("pexpect"),
         requirement("ipython"),
-        "@ncore-repo//ncore/data:pylib",
-        "@ncore-repo//ncore/data/v3:pylib",
-        "@ncore-repo//ncore/geometry:pylib",
-        "@ncore-repo//ncore/sensors:pylib",
+        "@ncore_repo//ncore/data:pylib",
+        "@ncore_repo//ncore/data/v3:pylib",
+        "@ncore_repo//ncore/geometry:pylib",
+        "@ncore_repo//ncore/sensors:pylib",
     ],
 )
 

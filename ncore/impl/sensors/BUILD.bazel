@@ -2,8 +2,9 @@
 
 load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@pip_deps//:requirements.bzl", "requirement")
+load("@pip_deps_3_8//:requirements.bzl", requirement_3_8 = "requirement")
 load("@rules_python//python:defs.bzl", "py_library")
-load("//bazel/pytest:defs.bzl", "pytest_test")
+load("//bazel/pytest:defs.bzl", "pytest_test", "pytest_test_3_8")
 
 package(default_visibility = ["//:code_package_group"])
 
@@ -19,6 +20,18 @@ py_library(
     ],
 )
 
+py_library(
+    name = "pylib_camera_3_8",
+    srcs = [
+        "camera.py",
+    ],
+    deps = [
+        requirement_3_8("numpy"),
+        requirement_3_8("torch"),
+        "//ncore/impl/data:pylib_types_3_8",
+    ],
+)
+
 pytest_test(
     name = "pytest_camera",
     srcs = [
@@ -31,6 +44,21 @@ pytest_test(
         requirement("scipy"),
         ":pylib_camera",
         "//ncore/impl/data:pylib_types",
+    ],
+)
+
+pytest_test_3_8(
+    name = "pytest_camera_3_8",
+    srcs = [
+        "camera_test.py",
+    ],
+    deps = [
+        requirement_3_8("numpy"),
+        requirement_3_8("opencv-python"),
+        requirement_3_8("parameterized"),
+        requirement_3_8("scipy"),
+        ":pylib_camera_3_8",
+        "//ncore/impl/data:pylib_types_3_8",
     ],
 )
 

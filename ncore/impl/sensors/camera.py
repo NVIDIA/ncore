@@ -63,20 +63,16 @@ class CameraModel(ABC):
         '''
         Initialize a generic camera model class from camera model parameters
         '''
-        match cam_model_parameters:
-            case types.FThetaCameraModelParameters():
-                return FThetaCameraModel(cam_model_parameters, device, dtype)
-
-            case types.OpenCVPinholeCameraModelParameters():
-                return OpenCVPinholeCameraModel(cam_model_parameters, device, dtype)
-
-            case types.OpenCVFisheyeCameraModelParameters():
-                return OpenCVFisheyeCameraModel(cam_model_parameters, device, dtype)
-
-            case _:
-                raise TypeError(
-                    f"unsupported camera model type {type(cam_model_parameters)}, currently supporting Ftheta/OpenCV-Pinhole/OpenCV-Fisheye only"
-                )
+        if isinstance(cam_model_parameters,types.FThetaCameraModelParameters):
+            return FThetaCameraModel(cam_model_parameters, device, dtype)
+        elif isinstance(cam_model_parameters,types.OpenCVPinholeCameraModelParameters):
+            return OpenCVPinholeCameraModel(cam_model_parameters, device, dtype)
+        elif isinstance(cam_model_parameters,types.OpenCVFisheyeCameraModelParameters):
+            return OpenCVFisheyeCameraModel(cam_model_parameters, device, dtype)
+        else:
+            raise TypeError(
+                f"unsupported camera model type {type(cam_model_parameters)}, currently supporting Ftheta/OpenCV-Pinhole/OpenCV-Fisheye only"
+            )
 
     def to_torch(self, var: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
         ''' Converts an input array / tensor to a tensor on the camera's device '''
@@ -841,22 +837,21 @@ class CameraModel(ABC):
     def __get_interpolation_timestamp(self, image_points: torch.Tensor) -> torch.Tensor:
         ''' Get interpolation timestamp based on the image point coordinates and rolling shutter type '''
 
-        match self.shutter_type:
         # Floor/Ceil the continuous image points to the row / column index following the image coordinate
         # convention that index defines the top left corner of each pixel, e.g., the first pixels
         # u/v-range is [0.0, 1.0]
-            case types.ShutterType.ROLLING_TOP_TO_BOTTOM:
-                t = torch.floor(image_points[:, 1]) / (self.resolution[1] - 1)
-            case types.ShutterType.ROLLING_LEFT_TO_RIGHT:
-                t = torch.floor(image_points[:, 0]) / (self.resolution[0] - 1)
-            case types.ShutterType.ROLLING_BOTTOM_TO_TOP:
-                t = (self.resolution[1] - torch.ceil(image_points[:, 1])) / (self.resolution[1] - 1)
-            case types.ShutterType.ROLLING_RIGHT_TO_LEFT:
-                t = (self.resolution[0] - torch.ceil(image_points[:, 0])) / (self.resolution[0] - 1)
-            case types.ShutterType.GLOBAL:
-                t = torch.zeros_like(image_points[:, 0])
-            case _:
-                raise TypeError(f"unsupported shutter-type {self.shutter_type.name} for timestamp interpolation")
+        if self.shutter_type == types.ShutterType.ROLLING_TOP_TO_BOTTOM:
+            t = torch.floor(image_points[:, 1]) / (self.resolution[1] - 1)
+        elif self.shutter_type == types.ShutterType.ROLLING_LEFT_TO_RIGHT:
+            t = torch.floor(image_points[:, 0]) / (self.resolution[0] - 1)
+        elif self.shutter_type ==  types.ShutterType.ROLLING_BOTTOM_TO_TOP:
+            t = (self.resolution[1] - torch.ceil(image_points[:, 1])) / (self.resolution[1] - 1)
+        elif self.shutter_type ==  types.ShutterType.ROLLING_RIGHT_TO_LEFT:
+            t = (self.resolution[0] - torch.ceil(image_points[:, 0])) / (self.resolution[0] - 1)
+        elif self.shutter_type ==  types.ShutterType.GLOBAL:
+            t = torch.zeros_like(image_points[:, 0])
+        else:
+            raise TypeError(f"unsupported shutter-type {self.shutter_type.name} for timestamp interpolation")
 
         return t
 

@@ -27,7 +27,7 @@ def register_repositories():
 
     new_git_repository(
         name = "numpyeigen",
-        build_file = "@ncore-repo//3rdparty/numpyeigen:numpyeigen.BUILD",
+        build_file = "@ncore_repo//3rdparty/numpyeigen:numpyeigen.BUILD",
         commit = "e2ac64034fde35cb70da39aaefbf5331df6015f7",
         remote = "https://github.com/fwilliams/numpyeigen",
         shallow_since = "1673738105 -0500",
@@ -35,7 +35,7 @@ def register_repositories():
 
     new_git_repository(
         name = "numpyeigen_pybind11",
-        build_file = "@ncore-repo//3rdparty/numpyeigen_pybind11:numpyeigen_pybind11.BUILD",
+        build_file = "@ncore_repo//3rdparty/numpyeigen_pybind11:numpyeigen_pybind11.BUILD",
         commit = "c230777e92be50e509f955e025d1f56f42e847fa",
         remote = "https://github.com/fwilliams/pybind11",
         shallow_since = "1688567160 -0400",

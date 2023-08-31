@@ -1,0 +1,13 @@
+diff --git i/requirements.bzl w/requirements.bzl
+index 9f144eb..6a8eadf 100644
+--- i/requirements.bzl
++++ w/requirements.bzl
+@@ -4,7 +4,7 @@
+ from //:requirements_lock.txt
+ """
+ 
+-load("@python3//:defs.bzl", "interpreter")
++load("@python_3_10//:defs.bzl", "interpreter")
+ load("@rules_python//python/pip_install:pip_repository.bzl", "whl_library")
+ 
+ all_requirements = ["@aspect_rules_format_pypi_black//:pkg", "@aspect_rules_format_pypi_click//:pkg", "@aspect_rules_format_pypi_mypy_extensions//:pkg", "@aspect_rules_format_pypi_pathspec//:pkg", "@aspect_rules_format_pypi_platformdirs//:pkg", "@aspect_rules_format_pypi_tomli//:pkg"]
