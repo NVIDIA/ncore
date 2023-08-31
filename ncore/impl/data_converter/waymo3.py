@@ -14,11 +14,25 @@ from waymo_open_dataset import dataset_pb2, label_pb2
 
 from ncore.impl.av_utils import isWithin3DBBox
 from ncore.impl.data.data3 import ContainerDataWriter
-from ncore.impl.data.types import Poses, OpenCVPinholeCameraModelParameters, ShutterType, TrackLabel, FrameLabel3, BBox3, LabelSource, DynamicFlagState, Tracks
+from ncore.impl.data.types import (
+    Poses,
+    OpenCVPinholeCameraModelParameters,
+    ShutterType,
+    TrackLabel,
+    FrameLabel3,
+    BBox3,
+    LabelSource,
+    DynamicFlagState,
+    Tracks,
+)
 from ncore.impl.common.common import PoseInterpolator
 from ncore.impl.common.transformations import transform_point_cloud, se3_inverse, transform_bbox
 from ncore.impl.data_converter.data_converter import DataConverter
-from ncore.impl.data_converter.waymo_utils import parse_range_image_and_segmentations, convert_range_image_to_point_cloud, extrapolate_pose_based_on_velocity
+from ncore.impl.data_converter.waymo_utils import (
+    parse_range_image_and_segmentations,
+    convert_range_image_to_point_cloud,
+    extrapolate_pose_based_on_velocity,
+)
 
 
 class WaymoConverter(DataConverter):
@@ -28,19 +42,19 @@ class WaymoConverter(DataConverter):
     available in the original publication https://arxiv.org/abs/1912.04838 or the githbub repository https://github.com/waymo-research/waymo-open-dataset
 
     DISCLAIMER: THIS SOURCE CODE IS NVIDIA INTERNAL/CONFIDENTIAL. DO NOT SHARE EXTERNALLY.
-    IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC zgojcic@nvidia.com / JANICK MARTINEZ ESTURO <janickm@nvidia.com>. 
+    IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC zgojcic@nvidia.com / JANICK MARTINEZ ESTURO <janickm@nvidia.com>.
     """
 
     CAMERA_MAP = {
-        dataset_pb2.CameraName.FRONT: 'camera_front_50fov',
-        dataset_pb2.CameraName.FRONT_LEFT: 'camera_front_left_50fov',
-        dataset_pb2.CameraName.FRONT_RIGHT: 'camera_front_right_50fov',
-        dataset_pb2.CameraName.SIDE_LEFT: 'camera_side_left_50fov',
-        dataset_pb2.CameraName.SIDE_RIGHT: 'camera_side_right_50fov',
+        dataset_pb2.CameraName.FRONT: "camera_front_50fov",
+        dataset_pb2.CameraName.FRONT_LEFT: "camera_front_left_50fov",
+        dataset_pb2.CameraName.FRONT_RIGHT: "camera_front_right_50fov",
+        dataset_pb2.CameraName.SIDE_LEFT: "camera_side_left_50fov",
+        dataset_pb2.CameraName.SIDE_RIGHT: "camera_side_right_50fov",
     }
 
     LIDAR_MAP = {
-        dataset_pb2.LaserName.TOP: 'lidar_top',
+        dataset_pb2.LaserName.TOP: "lidar_top",
         # TODO: currently only support top lidar, as motion-compensation poses for
         # other lidars seems to be missing in the source data
     }
@@ -52,24 +66,24 @@ class WaymoConverter(DataConverter):
 
     @staticmethod
     def get_sequence_paths(config) -> list[Path]:
-        return [p for p in sorted(Path(config.root_dir).glob('*.tfrecord'))]
+        return [p for p in sorted(Path(config.root_dir).glob("*.tfrecord"))]
 
     @staticmethod
     def from_config(config) -> DataConverter:
         return WaymoConverter(config)
 
     def convert_sequence(self, sequence_path: Path) -> None:
-        '''
+        """
         Runs dataset-specific conversion for a sequence
-        '''
+        """
         self.logger.info(sequence_path)
 
-        dataset = tf.data.TFRecordDataset(sequence_path, compression_type='')
+        dataset = tf.data.TFRecordDataset(sequence_path, compression_type="")
 
         # Check that all frames in the dataset have the same sequence name (i.e. belong to the same sequence)
         # and deserialize into memory
         frames: list[dataset_pb2.Frame] = []
-        sequence_name = ''
+        sequence_name = ""
         for data in dataset:
             frame = dataset_pb2.Frame()
             frame.ParseFromString(bytearray(data.numpy()))
@@ -86,13 +100,14 @@ class WaymoConverter(DataConverter):
             [camera for camera in self.CAMERA_MAP.values()],
             [lidar for lidar in self.LIDAR_MAP.values()],
             [],
-            'waymo-calibration',
-            'waymo-egomotion',
+            "waymo-calibration",
+            "waymo-egomotion",
             sequence_name,
             # single shard
             0,
             1,
-            False)
+            False,
+        )
 
         # Decode poses
         self.decode_poses(frames)
@@ -118,9 +133,11 @@ class WaymoConverter(DataConverter):
                 # Confirmed in issue https://github.com/waymo-research/waymo-open-dataset/issues/464
                 # That this pose and timestamp are corresponding
                 T_rig_worlds_array.append(
-                    np.array(tf.reshape(tf.constant(image.pose.transform, dtype=tf.float64), [4, 4])))
-                T_rig_world_timestamps_us_array.append(int(image.pose_timestamp *
-                                                           1e6))  # Convert the poses to microseconds (rounding decimal)
+                    np.array(tf.reshape(tf.constant(image.pose.transform, dtype=tf.float64), [4, 4]))
+                )
+                T_rig_world_timestamps_us_array.append(
+                    int(image.pose_timestamp * 1e6)
+                )  # Convert the poses to microseconds (rounding decimal)
 
                 # Extrapolate pose points on the boundaries using velocity information to allow interpolation at lidar timestamps
                 dt_us = 0.0
@@ -133,28 +150,33 @@ class WaymoConverter(DataConverter):
 
                 if dt_us:
                     T_rig_world = T_rig_worlds_array[-1]
-                    velocity_global = np.array([image.velocity.v_x, image.velocity.v_y, image.velocity.v_z],
-                                               dtype=np.float32).reshape(3, 1)
-                    omega_vehicle = np.array([image.velocity.w_x, image.velocity.w_y, image.velocity.w_z],
-                                             dtype=np.float32).reshape(3, 1)
+                    velocity_global = np.array(
+                        [image.velocity.v_x, image.velocity.v_y, image.velocity.v_z], dtype=np.float32
+                    ).reshape(3, 1)
+                    omega_vehicle = np.array(
+                        [image.velocity.w_x, image.velocity.w_y, image.velocity.w_z], dtype=np.float32
+                    ).reshape(3, 1)
                     omega_world = np.matmul(T_rig_world[:3, :3], omega_vehicle)
 
                     T_rig_worlds_array.append(
-                        extrapolate_pose_based_on_velocity(T_rig_world, velocity_global, omega_world, dt_us / 1e6))
+                        extrapolate_pose_based_on_velocity(T_rig_world, velocity_global, omega_world, dt_us / 1e6)
+                    )
                     T_rig_world_timestamps_us_array.append(T_rig_world_timestamps_us_array[-1] + dt_us)
 
         # make unique + sort + stack all poses (common canonical format convention)
-        T_rig_world_timestamps_us, unique_indices = np.unique(np.array(T_rig_world_timestamps_us_array,
-                                                                       dtype=np.uint64),
-                                                              return_index=True)
+        T_rig_world_timestamps_us, unique_indices = np.unique(
+            np.array(T_rig_world_timestamps_us_array, dtype=np.uint64), return_index=True
+        )
         T_rig_worlds = np.stack(T_rig_worlds_array)[unique_indices]
 
         # Use identity base pose as waymo data is already shifted
-        T_rig_world_base = np.eye(4, dtype='float64')
+        T_rig_world_base = np.eye(4, dtype="float64")
 
-        self.poses = Poses(T_rig_world_base=T_rig_world_base,
-                           T_rig_worlds=T_rig_worlds,
-                           T_rig_world_timestamps_us=T_rig_world_timestamps_us)
+        self.poses = Poses(
+            T_rig_world_base=T_rig_world_base,
+            T_rig_worlds=T_rig_worlds,
+            T_rig_world_timestamps_us=T_rig_world_timestamps_us,
+        )
 
         self.pose_interpolator = PoseInterpolator(self.poses.T_rig_worlds, self.poses.T_rig_world_timestamps_us)
 
@@ -162,24 +184,26 @@ class WaymoConverter(DataConverter):
         self.data_writer.store_poses(self.poses)
 
         # Log base pose to share it more easily with downstream teams (it is serialized also explicitly)
-        with np.printoptions(floatmode='unique', linewidth=200):  # print in highest precision
-            self.logger.info(f'> processed {len(T_rig_worlds)} poses, using base pose:\n{T_rig_world_base}')
+        with np.printoptions(floatmode="unique", linewidth=200):  # print in highest precision
+            self.logger.info(f"> processed {len(T_rig_worlds)} poses, using base pose:\n{T_rig_world_base}")
 
     # Label IDs to label type strings
     LABEL_TYPE_STRING_MAP = {
-        label_pb2.Label.Type.TYPE_UNKNOWN: 'unknown',
-        label_pb2.Label.Type.TYPE_VEHICLE: 'vehicle',
-        label_pb2.Label.Type.TYPE_PEDESTRIAN: 'pedestrian',
-        label_pb2.Label.Type.TYPE_SIGN: 'sign',
-        label_pb2.Label.Type.TYPE_CYCLIST: 'cyclist'
+        label_pb2.Label.Type.TYPE_UNKNOWN: "unknown",
+        label_pb2.Label.Type.TYPE_VEHICLE: "vehicle",
+        label_pb2.Label.Type.TYPE_PEDESTRIAN: "pedestrian",
+        label_pb2.Label.Type.TYPE_SIGN: "sign",
+        label_pb2.Label.Type.TYPE_CYCLIST: "cyclist",
     }
 
     # Unconditionally dynamic / static label types
-    LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC: set[str] = set([
-        'pedestrian',
-        'cyclist',
-    ])
-    LABEL_STRINGS_UNCONDITIONALLY_STATIC: set[str] = set(['sign'])
+    LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC: set[str] = set(
+        [
+            "pedestrian",
+            "cyclist",
+        ]
+    )
+    LABEL_STRINGS_UNCONDITIONALLY_STATIC: set[str] = set(["sign"])
 
     # Velocity threshold to classify moving objects as dynamic
     GLOBAL_SPEED_DYNAMIC_THRESHOLD = 1.0 / 3.6
@@ -212,7 +236,7 @@ class WaymoConverter(DataConverter):
 
         label_id = 0
         raw_frame_labels: dict[int, list[RawFrameLabel3]] = {}  # timestamp to label in vehicle frame
-        for frame in tqdm.tqdm(frames, desc='Parse frame labels'):
+        for frame in tqdm.tqdm(frames, desc="Parse frame labels"):
             frame_label_list: list[RawFrameLabel3] = []
 
             for label in frame.laser_labels:
@@ -223,20 +247,32 @@ class WaymoConverter(DataConverter):
                         track_id=label.id,
                         label_class=self.LABEL_TYPE_STRING_MAP[label.type],
                         bbox3=BBox3.from_array(
-                            np.array([
-                                box.center_x, box.center_y, box.center_z, box.length, box.width, box.height, 0, 0,
-                                box.heading
-                            ],
-                                     dtype=np.float32)),
+                            np.array(
+                                [
+                                    box.center_x,
+                                    box.center_y,
+                                    box.center_z,
+                                    box.length,
+                                    box.width,
+                                    box.height,
+                                    0,
+                                    0,
+                                    box.heading,
+                                ],
+                                dtype=np.float32,
+                            )
+                        ),
                         # Velocity is given in the global frame -> map to frame-independent speed
                         global_speed=float(
-                            np.linalg.norm(np.array([label.metadata.speed_x, label.metadata.speed_y],
-                                                    dtype=np.float32)))))
+                            np.linalg.norm(np.array([label.metadata.speed_x, label.metadata.speed_y], dtype=np.float32))
+                        ),
+                    )
+                )
 
                 label_id += 1
 
             raw_frame_labels[frame.timestamp_micros] = frame_label_list
-        del (label_id)
+        del label_id
 
         # Initialize labels struct that gets assembled while processing each frame label
         track_labels: dict[str, TrackLabel] = {}  # {TrackLabel} in track_labels[track_id]
@@ -250,7 +286,7 @@ class WaymoConverter(DataConverter):
             assert len(frames) > 1  # require at least two frames to compute frame bound timestamps
             frame_end_timestamps_us = []
             continuous_frame_index = 0
-            for i, frame in tqdm.tqdm(enumerate(frames), desc=f'Process {lidar_name}', total=len(frames)):
+            for i, frame in tqdm.tqdm(enumerate(frames), desc=f"Process {lidar_name}", total=len(frames)):
                 # Get frame timestamps
                 frame_start_timestamp_us = raw_frame_start_timestamps_us[i]
                 if i < len(frames) - 1:
@@ -258,20 +294,22 @@ class WaymoConverter(DataConverter):
                     frame_end_timestamp_us = raw_frame_start_timestamps_us[i + 1]
                 else:
                     # approximate last end-of-spin time
-                    frame_end_timestamp_us = raw_frame_start_timestamps_us[i] + (raw_frame_start_timestamps_us[i] -
-                                                                                 raw_frame_start_timestamps_us[i - 1])
+                    frame_end_timestamp_us = raw_frame_start_timestamps_us[i] + (
+                        raw_frame_start_timestamps_us[i] - raw_frame_start_timestamps_us[i - 1]
+                    )
 
                 timestamps_us = np.array([frame_start_timestamp_us, frame_end_timestamp_us], dtype=np.uint64)
 
                 # Extract the range image and corresponding poses for all rays
-                range_image, segmentation, range_image_top_pose = parse_range_image_and_segmentations(frame,
-                                                                                                      lidar_id,
-                                                                                                      ri_index=0)
+                range_image, segmentation, range_image_top_pose = parse_range_image_and_segmentations(
+                    frame, lidar_id, ri_index=0
+                )
 
                 # Convert the range image to a ego-motion compensated 3D rays in sequence coordinate frame
                 # (motion-compensated to start frame time)
                 points_world, segmentations, point_timestamps_us = convert_range_image_to_point_cloud(
-                    frame, lidar_id, range_image, segmentation, range_image_top_pose, timestamps_us)
+                    frame, lidar_id, range_image, segmentation, range_image_top_pose, timestamps_us
+                )
 
                 # Pick semantic_class if available in current frame
                 semantic_class = segmentations[:, 1].astype(np.int8) if (segmentations is not None) else None  # N x 1
@@ -293,37 +331,44 @@ class WaymoConverter(DataConverter):
                 # Process frame labels (defined in frame-associated rig frame)
                 frame_labels: list[FrameLabel3] = []
                 T_rig_labelstime_world = np.array(
-                    tf.reshape(tf.constant(frame.pose.transform, dtype=tf.float64), [4, 4])).astype(np.float32)
+                    tf.reshape(tf.constant(frame.pose.transform, dtype=tf.float64), [4, 4])
+                ).astype(np.float32)
                 T_rig_labelstime_sensor_frametime = T_world_sensor_end @ T_rig_labelstime_world
 
                 for raw_frame_label in raw_frame_labels[frame.timestamp_micros]:
 
                     # Map label in rig space to frame label in sensor space
                     bbox3_sensor = BBox3.from_array(
-                        transform_bbox(raw_frame_label.bbox3.to_array(), T_rig_labelstime_sensor_frametime))
+                        transform_bbox(raw_frame_label.bbox3.to_array(), T_rig_labelstime_sensor_frametime)
+                    )
 
                     # Approximate measurement time by azimuth angle of centroid in sensor's x/y plane
                     # and performing linear interpolation between start / end times
                     azimuth_rad = np.arctan2(bbox3_sensor.centroid[0], bbox3_sensor.centroid[1])
-                    t = 1 - (azimuth_rad + np.pi) / (2 * np.pi
-                                                     )  # clockwise spinning (largest azimuth are measured first)
+                    t = 1 - (azimuth_rad + np.pi) / (
+                        2 * np.pi
+                    )  # clockwise spinning (largest azimuth are measured first)
                     frame_label_timestamp = int(timestamps_us[0]) + int(t * (timestamps_us[1] - timestamps_us[0]))
 
-                    frame_label = FrameLabel3(label_id=raw_frame_label.label_id,
-                                              track_id=raw_frame_label.track_id,
-                                              label_class=raw_frame_label.label_class,
-                                              bbox3=bbox3_sensor,
-                                              global_speed=raw_frame_label.global_speed,
-                                              confidence=None,
-                                              timestamp_us=frame_label_timestamp,
-                                              source=LabelSource.EXTERNAL)
+                    frame_label = FrameLabel3(
+                        label_id=raw_frame_label.label_id,
+                        track_id=raw_frame_label.track_id,
+                        label_class=raw_frame_label.label_class,
+                        bbox3=bbox3_sensor,
+                        global_speed=raw_frame_label.global_speed,
+                        confidence=None,
+                        timestamp_us=frame_label_timestamp,
+                        source=LabelSource.EXTERNAL,
+                    )
 
                     frame_labels.append(frame_label)
 
                     # store track label data
                     if frame_label.track_id not in track_labels:
                         track_labels[frame_label.track_id] = TrackLabel(sensors={})
-                        track_global_dynamic_flag[frame_label.track_id] = True if frame_label.label_class in self.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else False
+                        track_global_dynamic_flag[frame_label.track_id] = (
+                            True if frame_label.label_class in self.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else False
+                        )
 
                     if lidar_name not in track_labels[frame_label.track_id].sensors:
                         track_labels[frame_label.track_id].sensors[lidar_name] = []
@@ -331,7 +376,10 @@ class WaymoConverter(DataConverter):
                     # append frame timestamp into *sorted* list (frames are processed sorted by timestamp)
                     track_labels[frame_label.track_id].sensors[lidar_name].append(frame_end_timestamp_us)
 
-                    if frame_label.label_class not in self.LABEL_STRINGS_UNCONDITIONALLY_STATIC and frame_label.global_speed >= self.GLOBAL_SPEED_DYNAMIC_THRESHOLD:
+                    if (
+                        frame_label.label_class not in self.LABEL_STRINGS_UNCONDITIONALLY_STATIC
+                        and frame_label.global_speed >= self.GLOBAL_SPEED_DYNAMIC_THRESHOLD
+                    ):
                         track_global_dynamic_flag[frame_label.track_id] = True
 
                 ## Compute point dynamic flag
@@ -347,22 +395,33 @@ class WaymoConverter(DataConverter):
                         dynamic_flag[isWithin3DBBox(xyz_e, bbox.reshape(1, -1))] = DynamicFlagState.DYNAMIC.value
 
                 # Serialize lidar frame
-                self.data_writer.store_lidar_frame(lidar_name, continuous_frame_index, xyz_s, xyz_e, intensity,
-                                                   point_timestamps_us, dynamic_flag, semantic_class, frame_labels,
-                                                   T_rig_worlds, timestamps_us)
+                self.data_writer.store_lidar_frame(
+                    lidar_name,
+                    continuous_frame_index,
+                    xyz_s,
+                    xyz_e,
+                    intensity,
+                    point_timestamps_us,
+                    dynamic_flag,
+                    semantic_class,
+                    frame_labels,
+                    T_rig_worlds,
+                    timestamps_us,
+                )
 
                 continuous_frame_index += 1
 
             # Store all static sensor data
-            self.data_writer.store_lidar_meta(lidar_name, np.array(frame_end_timestamps_us, dtype=np.uint64),
-                                              T_sensor_rig)
+            self.data_writer.store_lidar_meta(
+                lidar_name, np.array(frame_end_timestamps_us, dtype=np.uint64), T_sensor_rig
+            )
 
         # Save the accumulated tracks in global time
         self.data_writer.store_tracks(Tracks(track_labels))
 
     def decode_cameras(self, frames):
         """
-        Extracts the images and camera metadata for all cameras within a single frame. Camera metadata must hold 
+        Extracts the images and camera metadata for all cameras within a single frame. Camera metadata must hold
         the information used to compensate for rolling shutter effect and to convert RGB images to 3D RGB rays in space
         """
 
@@ -378,12 +437,13 @@ class WaymoConverter(DataConverter):
             # - waymo camera: principal axis along the +x axis, the y-axis points to the left, and the z-axis points up
             # to
             # - NCORE camera: principal axis along the +z axis, the x-axis points to the right, and the y-axis points down
-            T_sensor_rig[:3, :3] = T_sensor_rig[:3, :3] @ np.array([[0, 0, 1], [-1, 0, 0], [0, -1, 0]],
-                                                                   dtype=np.float32)
+            T_sensor_rig[:3, :3] = T_sensor_rig[:3, :3] @ np.array(
+                [[0, 0, 1], [-1, 0, 0], [0, -1, 0]], dtype=np.float32
+            )
 
             frame_end_timestamps_us = []
             continuous_frame_index = 0
-            for frame in tqdm.tqdm(frames, desc=f'Process {camera_name}'):
+            for frame in tqdm.tqdm(frames, desc=f"Process {camera_name}"):
                 ## Load current camera's image
                 image = {image.name: image for image in frame.images}[camera_id]
 
@@ -399,27 +459,38 @@ class WaymoConverter(DataConverter):
                 # Velocity is provided in the world reference frame and the ang. velocity is in SDC / rig frame
                 # https://github.com/waymo-research/waymo-open-dataset/issues/462
                 T_rig_world = np.array(tf.reshape(tf.constant(image.pose.transform, dtype=tf.float32), [4, 4]))
-                velocity_global = np.array([image.velocity.v_x, image.velocity.v_y, image.velocity.v_z],
-                                           dtype=np.float32).reshape(3, 1)
-                omega_vehicle = np.array([image.velocity.w_x, image.velocity.w_y, image.velocity.w_z],
-                                         dtype=np.float32).reshape(3, 1)
+                velocity_global = np.array(
+                    [image.velocity.v_x, image.velocity.v_y, image.velocity.v_z], dtype=np.float32
+                ).reshape(3, 1)
+                omega_vehicle = np.array(
+                    [image.velocity.w_x, image.velocity.w_y, image.velocity.w_z], dtype=np.float32
+                ).reshape(3, 1)
                 omega_world = np.matmul(T_rig_world[:3, :3], omega_vehicle)
 
                 # Extrapolate the pose to the start and end timestamp of the image frame considering the (angular) velocity at the time of the acquisition
-                T_rig_worlds = np.stack([
-                    extrapolate_pose_based_on_velocity(T_rig_world, velocity_global, omega_world,
-                                                       (image.camera_trigger_time + image.shutter / 2) -
-                                                       image.pose_timestamp),
-                    extrapolate_pose_based_on_velocity(T_rig_world, velocity_global, omega_world,
-                                                       (image.camera_readout_done_time - image.shutter / 2) -
-                                                       image.pose_timestamp)
-                ])
+                T_rig_worlds = np.stack(
+                    [
+                        extrapolate_pose_based_on_velocity(
+                            T_rig_world,
+                            velocity_global,
+                            omega_world,
+                            (image.camera_trigger_time + image.shutter / 2) - image.pose_timestamp,
+                        ),
+                        extrapolate_pose_based_on_velocity(
+                            T_rig_world,
+                            velocity_global,
+                            omega_world,
+                            (image.camera_readout_done_time - image.shutter / 2) - image.pose_timestamp,
+                        ),
+                    ]
+                )
 
                 frame_end_timestamps_us.append(frame_end_timestamp_us)
 
                 # Store the image and its metadata
-                self.data_writer.store_camera_frame(camera_name, continuous_frame_index, image.image, 'jpeg',
-                                                    T_rig_worlds, timestamps_us)
+                self.data_writer.store_camera_frame(
+                    camera_name, continuous_frame_index, image.image, "jpeg", T_rig_worlds, timestamps_us
+                )
                 continuous_frame_index += 1
 
             # Extract intrinsic data
@@ -441,10 +512,17 @@ class WaymoConverter(DataConverter):
                     raise TypeError(f"unsupported shutter direction {calibration.rolling_shutter_direction}")
 
             self.data_writer.store_camera_meta(
-                camera_name, np.array(frame_end_timestamps_us, dtype=np.uint64), T_sensor_rig,
-                OpenCVPinholeCameraModelParameters(np.array([width, height], dtype=np.uint64),
-                                                   rolling_shutter_direction, np.array([c_u, c_v], dtype=np.float32),
-                                                   np.array([f_u, f_v], dtype=np.float32),
-                                                   np.array([k1, k2, k3, 0, 0, 0], dtype=np.float32),
-                                                   np.array([p1, p2], dtype=np.float32),
-                                                   np.array([0, 0, 0, 0], dtype=np.float32)), None)
+                camera_name,
+                np.array(frame_end_timestamps_us, dtype=np.uint64),
+                T_sensor_rig,
+                OpenCVPinholeCameraModelParameters(
+                    np.array([width, height], dtype=np.uint64),
+                    rolling_shutter_direction,
+                    np.array([c_u, c_v], dtype=np.float32),
+                    np.array([f_u, f_v], dtype=np.float32),
+                    np.array([k1, k2, k3, 0, 0, 0], dtype=np.float32),
+                    np.array([p1, p2], dtype=np.float32),
+                    np.array([0, 0, 0, 0], dtype=np.float32),
+                ),
+                None,
+            )

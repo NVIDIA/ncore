@@ -14,30 +14,38 @@ from ncore.impl.data.util import padded_index_string
 
 
 @click.command()
-@click.option('--shard-file-pattern',
-              type=str,
-              help='Data shard pattern to load (supports range expansion)',
-              required=True)
-@click.option('--output-dir', type=str, help='Path to the output folder', required=True)
-@click.option('--camera-id',
-              type=str,
-              help='Camera sensor to export image frames for',
-              default='camera_front_wide_120fov')
-@click.option('--start-frame',
-              type=click.IntRange(min=0, max_open=True),
-              help='Initial frame to be exported',
-              default=0)
-@click.option('--end-frame', type=click.IntRange(min=-1, max_open=True), help='End frame to be exported', default=-1)
-@click.option('--step-frame',
-              type=click.IntRange(min=1, max_open=True),
-              help='Step used to downsample the number of frames',
-              default=1)
+@click.option(
+    "--shard-file-pattern", type=str, help="Data shard pattern to load (supports range expansion)", required=True
+)
+@click.option("--output-dir", type=str, help="Path to the output folder", required=True)
+@click.option(
+    "--camera-id", type=str, help="Camera sensor to export image frames for", default="camera_front_wide_120fov"
+)
+@click.option(
+    "--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial frame to be exported", default=0
+)
+@click.option("--end-frame", type=click.IntRange(min=-1, max_open=True), help="End frame to be exported", default=-1)
+@click.option(
+    "--step-frame",
+    type=click.IntRange(min=1, max_open=True),
+    help="Step used to downsample the number of frames",
+    default=1,
+)
 @click.option("--encode-images/--no-encode-images", is_flag=True, default=True, help="Encode image files for frames")
 @click.option("--encode-video", is_flag=True, default=False, help="Encode video of frames")
 @click.option("--encode-video-fps", type=int, default=30, help="Frame-rate for video encoding")
-def ncore_export_camera(shard_file_pattern: str, output_dir: str, camera_id: str, start_frame: int, end_frame: int,
-                        step_frame: int, encode_images: bool, encode_video: bool, encode_video_fps: int):
-    ''' Exports camera frames to image files, and optionally encodes frames to a video file '''
+def ncore_export_camera(
+    shard_file_pattern: str,
+    output_dir: str,
+    camera_id: str,
+    start_frame: int,
+    end_frame: int,
+    step_frame: int,
+    encode_images: bool,
+    encode_video: bool,
+    encode_video_fps: int,
+):
+    """Exports camera frames to image files, and optionally encodes frames to a video file"""
 
     # Initialize the logger
     logging.basicConfig(level=logging.INFO)
@@ -45,7 +53,7 @@ def ncore_export_camera(shard_file_pattern: str, output_dir: str, camera_id: str
 
     shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
     loader = ShardDataLoader(shards)
-    assert isinstance(sensor := loader.get_sensor(camera_id), CameraSensor), 'only camera sensors supported'
+    assert isinstance(sensor := loader.get_sensor(camera_id), CameraSensor), "only camera sensors supported"
 
     # Create output path
     output_path = Path(output_dir)
@@ -59,8 +67,12 @@ def ncore_export_camera(shard_file_pattern: str, output_dir: str, camera_id: str
     video_path = None
     if encode_video:
         w, h = sensor.get_camera_model_parameters().resolution[:]
-        video_writer = cv2.VideoWriter(str(video_path := (output_path / camera_id).with_suffix('.mp4')),
-                                       cv2.VideoWriter_fourcc(*'mp4v'), encode_video_fps, (int(w), int(h)))
+        video_writer = cv2.VideoWriter(
+            str(video_path := (output_path / camera_id).with_suffix(".mp4")),
+            cv2.VideoWriter_fourcc(*"mp4v"),
+            encode_video_fps,
+            (int(w), int(h)),
+        )
 
     for frame_index in tqdm.tqdm(indices):
         # Load encoded frame data
@@ -69,9 +81,10 @@ def ncore_export_camera(shard_file_pattern: str, output_dir: str, camera_id: str
         # Store encoded frame data to image files
         if encode_images:
             with open(
-                    output_path /
-                    Path(padded_index_string(frame_index)).with_suffix(f'.{image_data.get_encoded_image_format()}'),
-                    'wb') as f:
+                output_path
+                / Path(padded_index_string(frame_index)).with_suffix(f".{image_data.get_encoded_image_format()}"),
+                "wb",
+            ) as f:
                 f.write(image_data.get_encoded_image_data())
 
         # Encode frame to video

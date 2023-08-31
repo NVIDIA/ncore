@@ -7,7 +7,7 @@ IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC <z
 
 NOTE: This codebase is under active development and the APIs may thus still change. If you build upon this repository, consider forking it to prevent such issues.
 
-# Installation 
+# Installation
 
 ## Install system-packages
 
@@ -64,9 +64,9 @@ git clone https://gitlab-master.nvidia.com/toronto_dL_lab/ncore.git
 
 The repository is using `bazel` as the core build-system (see `.bazelversion` for the required version).
 
-The correct `bazel` version can either be installed locally, or incorporated automatically with the [bazelisk](https://github.com/bazelbuild/bazelisk) wrapper 
+The correct `bazel` version can either be installed locally, or incorporated automatically with the [bazelisk](https://github.com/bazelbuild/bazelisk) wrapper
 
-with 
+with
 
 `go install github.com/bazelbuild/bazelisk@latest`
 
@@ -124,7 +124,7 @@ A remote debugger client can then be attached to this process. For instance, in 
 
 The repository makes use of `mypy` for static-code validation of the important components.
 These are executed as part of aspects associated with all python targets.
-In order to speed up _local_ execution of `mypy`, consider making use of a *persistent* user-cache available to `mypy` (as due to the way bazel sandboxes are setup, `mypy` is not able to access an external cache folder for faster analysis).
+In order to speed up _local_ execution of `mypy`, consider making use of a _persistent_ user-cache available to `mypy` (as due to the way bazel sandboxes are setup, `mypy` is not able to access an external cache folder for faster analysis).
 
 To enable separate local mypy caching, we are using a patched version which enables using local cache folders, which can be enabled by setting
 

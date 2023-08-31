@@ -6,7 +6,8 @@ from .util import closest_index_sorted
 
 
 class TestClosestIndexSorted(unittest.TestCase):
-    ''' Test to verify functionality of closest_index_sorted '''
+    """Test to verify functionality of closest_index_sorted"""
+
     def test_empty(self):
 
         with self.assertRaises(ValueError):
@@ -29,15 +30,13 @@ class TestClosestIndexSorted(unittest.TestCase):
         check(sorted_timestamp_array, sorted_timestamp_array[0] - 1, 0)  # slightly smaller than first
         check(sorted_timestamp_array, sorted_timestamp_array[0] + 1, 0)  # slightly larger than first
 
-        check(sorted_timestamp_array,  \
-              sorted_timestamp_array[-1],
-              len(sorted_timestamp_array) - 1)  # exact last
-        check(sorted_timestamp_array, \
-              sorted_timestamp_array[-1] - 1,
-              len(sorted_timestamp_array) - 1)  # slightly smaller than last
-        check(sorted_timestamp_array, \
-              sorted_timestamp_array[-1] + 1,
-              len(sorted_timestamp_array) - 1)  # slightly larger than last
+        check(sorted_timestamp_array, sorted_timestamp_array[-1], len(sorted_timestamp_array) - 1)  # exact last
+        check(
+            sorted_timestamp_array, sorted_timestamp_array[-1] - 1, len(sorted_timestamp_array) - 1
+        )  # slightly smaller than last
+        check(
+            sorted_timestamp_array, sorted_timestamp_array[-1] + 1, len(sorted_timestamp_array) - 1
+        )  # slightly larger than last
 
         for idx in range(len(sorted_timestamp_array)):
             check(sorted_timestamp_array, sorted_timestamp_array[idx], idx)  # exact hit

@@ -7,9 +7,9 @@ import sys
 import numpy as np
 
 if sys.version_info >= (3, 9):
-    from . import libav_utils_cc as av_utils_cc # type: ignore
+    from . import libav_utils_cc as av_utils_cc  # type: ignore
 else:
-    from . import libav_utils_cc_3_8 as av_utils_cc # type: ignore
+    from . import libav_utils_cc_3_8 as av_utils_cc  # type: ignore
 
 
 def isWithin3DBBox(pc: np.ndarray, bboxes: np.ndarray) -> np.ndarray:

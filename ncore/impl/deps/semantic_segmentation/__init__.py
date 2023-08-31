@@ -33,24 +33,30 @@ def run_semantic_segmentation(image_handles: list[Tuple[int, EncodedImageHandle]
             # Resize if the image is to large
             if w > 1920 or h > 1280:
                 img = img.resize((w // 2, h // 2), Image.LANCZOS)
-            img.save(os.path.join(temp_dir, f'{padded_index_string(img_id, index_digits=index_digits)}.{img_format}'),
-                     quality=100,
-                     subsampling=0)
+            img.save(
+                os.path.join(temp_dir, f"{padded_index_string(img_id, index_digits=index_digits)}.{img_format}"),
+                quality=100,
+                subsampling=0,
+            )
 
-        args =  f'--dataset cityscapes --cv 0 --fp16 --bs_val 1 --eval folder ' \
-                '--eval_folder {} --n_scales 0.5,1.0,2.0 '\
-                '--snapshot external/semantic-segmentation-models/cityscapes_ocrnet.HRNet_Mscale_outstanding-turtle.pth '\
-                '--arch ocrnet.HRNet_Mscale --result_dir {}'.format(temp_dir, os.path.join(temp_dir,'semantic_seg'))
+        args = (
+            f"--dataset cityscapes --cv 0 --fp16 --bs_val 1 --eval folder "
+            "--eval_folder {} --n_scales 0.5,1.0,2.0 "
+            "--snapshot external/semantic-segmentation-models/cityscapes_ocrnet.HRNet_Mscale_outstanding-turtle.pth "
+            "--arch ocrnet.HRNet_Mscale --result_dir {}".format(temp_dir, os.path.join(temp_dir, "semantic_seg"))
+        )
 
         # Run the semantic segmentation
-        cmd = 'external/semantic-segmentation/train ' + args
+        cmd = "external/semantic-segmentation/train " + args
         subprocess.Popen(cmd, shell=True).wait()
 
         predictions = sorted(
-            glob.glob(os.path.join(temp_dir, 'semantic_seg', 'best_images', f"{'?'*index_digits}_prediction.png")))
+            glob.glob(os.path.join(temp_dir, "semantic_seg", "best_images", f"{'?'*index_digits}_prediction.png"))
+        )
 
         assert len(predictions) == len(
-            img_res), "Number of semantic segmentation predictions is not the same as the number of input images"
+            img_res
+        ), "Number of semantic segmentation predictions is not the same as the number of input images"
 
         for (idx, pred_img), image_handle in zip(enumerate(predictions), image_handles):
             img = Image.open(pred_img)
@@ -60,6 +66,7 @@ def run_semantic_segmentation(image_handles: list[Tuple[int, EncodedImageHandle]
             if w != img_res[idx][0] or h != img_res[idx][1]:
                 img = img.resize(img_res[idx], Image.LANCZOS)
 
-            save_path = (output_dir /
-                         f"{padded_index_string(image_handle[0], index_digits=index_digits)}_sem").with_suffix('.png')
+            save_path = (
+                output_dir / f"{padded_index_string(image_handle[0], index_digits=index_digits)}_sem"
+            ).with_suffix(".png")
             img.save(save_path)

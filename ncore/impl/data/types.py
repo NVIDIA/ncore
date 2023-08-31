@@ -20,7 +20,8 @@ from ncore.impl.data import util
 ## Data classes representing stored data types
 @unique
 class ShutterType(IntEnum):
-    ''' Enumerates different possible camera imager shutter types '''
+    """Enumerates different possible camera imager shutter types"""
+
     ROLLING_TOP_TO_BOTTOM = auto()  #: Rolling shutter from top to bottom of the imager
     ROLLING_LEFT_TO_RIGHT = auto()  #: Rolling shutter from left to right of the imager
     ROLLING_BOTTOM_TO_TOP = auto()  #: Rolling shutter from bottom to top of the imager
@@ -30,25 +31,30 @@ class ShutterType(IntEnum):
 
 @dataclass
 class CameraModelParameters:
-    ''' Represents parameters common to all camera models '''
+    """Represents parameters common to all camera models"""
+
     resolution: np.ndarray = util.numpy_array_field(
-        np.uint64)  #: Width and height of the image in pixels (uint32, [2,])
+        np.uint64
+    )  #: Width and height of the image in pixels (uint32, [2,])
     shutter_type: ShutterType = util.enum_field(ShutterType)  #: Shutter type of the camera's imaging sensor
 
     def __post_init__(self):
         # Sanity checks
-        assert self.resolution.shape == (2, )
-        assert self.resolution.dtype == np.dtype('uint64')
+        assert self.resolution.shape == (2,)
+        assert self.resolution.dtype == np.dtype("uint64")
         assert self.resolution[0] > 0 and self.resolution[1] > 0
 
 
 @dataclass
 class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
-    ''' Represents FTheta-specific camera model parameters '''
+    """Represents FTheta-specific camera model parameters"""
+
     @unique
     class PolynomialType(IntEnum):
-        ''' Enumerates different possible polynomial types '''
-        PIXELDIST_TO_ANGLE = auto(
+        """Enumerates different possible polynomial types"""
+
+        PIXELDIST_TO_ANGLE = (
+            auto()
         )  #: Polynomial mapping pixeldistances-to-angles (also known as "backward" polynomial)
         ANGLE_TO_PIXELDIST = auto()  #: Polynomial mapping angles-to-pixeldistances (also known as "forward" polynomial)
 
@@ -59,24 +65,26 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
         PolynomialType
     )  #: Indicating which of the two stored polynomials is the model's *reference* polynomial (the other polynomial is only an approximation)
     pixeldist_to_angle_poly: np.ndarray = util.numpy_array_field(
-        np.float32)  #: Coefficients of the pixeldistances-to-angles polynomial (float32, [6,])
+        np.float32
+    )  #: Coefficients of the pixeldistances-to-angles polynomial (float32, [6,])
     angle_to_pixeldist_poly: np.ndarray = util.numpy_array_field(
-        np.float32)  #: Coefficients of the angles-to-pixeldistances polynomial (float32, [6,])
+        np.float32
+    )  #: Coefficients of the angles-to-pixeldistances polynomial (float32, [6,])
     max_angle: float = 0.0  #: Maximal extrinsic ray angle [rad] with the principal direction (float32)
 
     @staticmethod
     def type() -> str:
-        ''' Returns a string-identifier of the camera model '''
-        return 'ftheta'
+        """Returns a string-identifier of the camera model"""
+        return "ftheta"
 
     @property
     def bw_poly(self) -> np.ndarray:
-        ''' Alias for the pixeldistances-to-angles polynomial '''
+        """Alias for the pixeldistances-to-angles polynomial"""
         return self.pixeldist_to_angle_poly
 
     @property
     def fw_poly(self) -> np.ndarray:
-        ''' Alias for the angles-to-pixeldistances polynomial '''
+        """Alias for the angles-to-pixeldistances polynomial"""
         return self.angle_to_pixeldist_poly
 
     POLYNOMIAL_DEGREE = 6
@@ -84,27 +92,31 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
     def __post_init__(self):
         # Sanity checks
         super().__post_init__()
-        assert self.principal_point.shape == (2, )
-        assert self.principal_point.dtype == np.dtype('float32')
+        assert self.principal_point.shape == (2,)
+        assert self.principal_point.dtype == np.dtype("float32")
         assert self.principal_point[0] >= 0.0 and self.principal_point[1] >= 0.0
 
         assert self.pixeldist_to_angle_poly.ndim == 1
         assert len(self.pixeldist_to_angle_poly) <= self.POLYNOMIAL_DEGREE
-        assert self.pixeldist_to_angle_poly.dtype == np.dtype('float32')
+        assert self.pixeldist_to_angle_poly.dtype == np.dtype("float32")
 
         assert self.angle_to_pixeldist_poly.ndim == 1
         assert len(self.angle_to_pixeldist_poly) <= self.POLYNOMIAL_DEGREE
-        assert self.angle_to_pixeldist_poly.dtype == np.dtype('float32')
+        assert self.angle_to_pixeldist_poly.dtype == np.dtype("float32")
 
         # pad polynomials to full size
-        self.pixeldist_to_angle_poly = np.pad(self.pixeldist_to_angle_poly,
-                                              (0, self.POLYNOMIAL_DEGREE - len(self.pixeldist_to_angle_poly)),
-                                              mode='constant',
-                                              constant_values=0.0)
-        self.angle_to_pixeldist_poly = np.pad(self.angle_to_pixeldist_poly,
-                                              (0, self.POLYNOMIAL_DEGREE - len(self.angle_to_pixeldist_poly)),
-                                              mode='constant',
-                                              constant_values=0.0)
+        self.pixeldist_to_angle_poly = np.pad(
+            self.pixeldist_to_angle_poly,
+            (0, self.POLYNOMIAL_DEGREE - len(self.pixeldist_to_angle_poly)),
+            mode="constant",
+            constant_values=0.0,
+        )
+        self.angle_to_pixeldist_poly = np.pad(
+            self.angle_to_pixeldist_poly,
+            (0, self.POLYNOMIAL_DEGREE - len(self.angle_to_pixeldist_poly)),
+            mode="constant",
+            constant_values=0.0,
+        )
 
         assert self.max_angle > 0.0
 
@@ -118,7 +130,8 @@ if sys.version_info <= (3, 9):
 
 @dataclass
 class OpenCVPinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
-    ''' Represents Pinhole-specific (OpenCV-like) camera model parameters '''
+    """Represents Pinhole-specific (OpenCV-like) camera model parameters"""
+
     principal_point: np.ndarray = util.numpy_array_field(
         np.float32
     )  #: U and v coordinate of the principal point, following the :ref:`image coordinate conventions <image_coordinate_conventions>` (float32, [2,])
@@ -137,33 +150,34 @@ class OpenCVPinholeCameraModelParameters(CameraModelParameters, dataclasses_json
 
     @staticmethod
     def type() -> str:
-        ''' Returns a string-identifier of the camera model '''
-        return 'opencv-pinhole'
+        """Returns a string-identifier of the camera model"""
+        return "opencv-pinhole"
 
     def __post_init__(self):
         # Sanity checks
         super().__post_init__()
-        assert self.principal_point.shape == (2, )
-        assert self.principal_point.dtype == np.dtype('float32')
+        assert self.principal_point.shape == (2,)
+        assert self.principal_point.dtype == np.dtype("float32")
         assert self.principal_point[0] > 0.0 and self.principal_point[1] > 0.0
 
-        assert self.focal_length.shape == (2, )
-        assert self.focal_length.dtype == np.dtype('float32')
+        assert self.focal_length.shape == (2,)
+        assert self.focal_length.dtype == np.dtype("float32")
         assert self.focal_length[0] > 0.0 and self.focal_length[1] > 0.0
 
-        assert self.radial_coeffs.shape == (6, )
-        assert self.radial_coeffs.dtype == np.dtype('float32')
+        assert self.radial_coeffs.shape == (6,)
+        assert self.radial_coeffs.dtype == np.dtype("float32")
 
-        assert self.tangential_coeffs.shape == (2, )
-        assert self.tangential_coeffs.dtype == np.dtype('float32')
+        assert self.tangential_coeffs.shape == (2,)
+        assert self.tangential_coeffs.dtype == np.dtype("float32")
 
-        assert self.thin_prism_coeffs.shape == (4, )
-        assert self.thin_prism_coeffs.dtype == np.dtype('float32')
+        assert self.thin_prism_coeffs.shape == (4,)
+        assert self.thin_prism_coeffs.dtype == np.dtype("float32")
 
 
 @dataclass
 class OpenCVFisheyeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
-    ''' Represents Fisheye-specific (OpenCV-like) camera model parameters '''
+    """Represents Fisheye-specific (OpenCV-like) camera model parameters"""
+
     principal_point: np.ndarray = util.numpy_array_field(
         np.float32
     )  #: U and v coordinate of the principal point, following the :ref:`image coordinate conventions <image_coordinate_conventions>` (float32, [2,])
@@ -179,35 +193,36 @@ class OpenCVFisheyeCameraModelParameters(CameraModelParameters, dataclasses_json
 
     @staticmethod
     def type() -> str:
-        ''' Returns a string-identifier of the camera model '''
-        return 'opencv-fisheye'
+        """Returns a string-identifier of the camera model"""
+        return "opencv-fisheye"
 
     def __post_init__(self):
         # Sanity checks
         super().__post_init__()
-        assert self.principal_point.shape == (2, )
-        assert self.principal_point.dtype == np.dtype('float32')
+        assert self.principal_point.shape == (2,)
+        assert self.principal_point.dtype == np.dtype("float32")
         assert self.principal_point[0] > 0.0 and self.principal_point[1] > 0.0
 
-        assert self.focal_length.shape == (2, )
-        assert self.focal_length.dtype == np.dtype('float32')
+        assert self.focal_length.shape == (2,)
+        assert self.focal_length.dtype == np.dtype("float32")
         assert self.focal_length[0] > 0.0 and self.focal_length[1] > 0.0
 
-        assert self.radial_coeffs.shape == (4, )
-        assert self.radial_coeffs.dtype == np.dtype('float32')
+        assert self.radial_coeffs.shape == (4,)
+        assert self.radial_coeffs.dtype == np.dtype("float32")
 
         assert self.max_angle > 0.0
 
 
 # Represents the collection of all concrete camera model parameter type
-ConcreteCameraModelParametersUnion = Union[FThetaCameraModelParameters,
-                                           OpenCVPinholeCameraModelParameters,
-                                           OpenCVFisheyeCameraModelParameters]
+ConcreteCameraModelParametersUnion = Union[
+    FThetaCameraModelParameters, OpenCVPinholeCameraModelParameters, OpenCVFisheyeCameraModelParameters
+]
 
 
 @dataclass
 class Poses:
-    ''' Represents a collection of timestamped poses (rig-to-local-world transformation) '''
+    """Represents a collection of timestamped poses (rig-to-local-world transformation)"""
+
     T_rig_world_base: np.ndarray  #: Base rig-to-global-world SE3 transformation (float64, [4,4])
     T_rig_worlds: np.ndarray  #: All rig-to-local-world SE3 transformations of the trajectory (float64, [N,4,4])
     T_rig_world_timestamps_us: np.ndarray  #: All rig-to-local-world transformation timestamps of the trajectory (uint64, [N,])
@@ -215,37 +230,41 @@ class Poses:
     def __post_init__(self):
         # Sanity checks
         assert self.T_rig_world_base.shape == (4, 4)
-        assert self.T_rig_world_base.dtype == np.dtype('float64')
+        assert self.T_rig_world_base.dtype == np.dtype("float64")
 
         assert self.T_rig_worlds.shape[1:] == (4, 4)
-        assert self.T_rig_worlds.dtype == np.dtype('float64')
+        assert self.T_rig_worlds.dtype == np.dtype("float64")
 
         assert self.T_rig_world_timestamps_us.ndim == 1
-        assert self.T_rig_world_timestamps_us.dtype == np.dtype('uint64')
+        assert self.T_rig_world_timestamps_us.dtype == np.dtype("uint64")
 
         assert self.T_rig_worlds.shape[0] == self.T_rig_world_timestamps_us.shape[0]
 
 
 @dataclass
 class BBox3(dataclasses_json.DataClassJsonMixin):
-    ''' Parameters of a 3D bounding-box '''
-    centroid: Tuple[float, float,
-                    float]  #: Coordinates [meters] of the bounding-box's centroid in the frame of reference
+    """Parameters of a 3D bounding-box"""
+
+    centroid: Tuple[
+        float, float, float
+    ]  #: Coordinates [meters] of the bounding-box's centroid in the frame of reference
     dim: Tuple[float, float, float]  #: Extents [meters] of the local bounding-box dimensions in its local frame
     rot: Tuple[
-        float, float,
-        float]  #: 'XYZ' Euler rotation angles [radians] orienting the local bounding-box frame to the frame of reference
+        float, float, float
+    ]  #: 'XYZ' Euler rotation angles [radians] orienting the local bounding-box frame to the frame of reference
 
     def to_array(self) -> np.ndarray:
-        ''' Convert to convenience single-array representation '''
+        """Convert to convenience single-array representation"""
         return np.array(self.centroid + self.dim + self.rot, dtype=np.float32)
 
     @classmethod
     def from_array(cls, array: np.ndarray) -> BBox3:
-        ''' Convert from convenience single-array representation '''
-        return BBox3(centroid=(float(array[0]), float(array[1]), float(array[2])),
-                     dim=(float(array[3]), float(array[4]), float(array[5])),
-                     rot=(float(array[6]), float(array[7]), float(array[8])))
+        """Convert from convenience single-array representation"""
+        return BBox3(
+            centroid=(float(array[0]), float(array[1]), float(array[2])),
+            dim=(float(array[3]), float(array[4]), float(array[5])),
+            rot=(float(array[6]), float(array[7]), float(array[8])),
+        )
 
     def __post_init__(self):
         # Sanity checks
@@ -259,7 +278,8 @@ class BBox3(dataclasses_json.DataClassJsonMixin):
 
 @unique
 class LabelSource(IntEnum):
-    ''' Enumerates different sources for labels (auto, manual, GT, synthetic etc.) '''
+    """Enumerates different sources for labels (auto, manual, GT, synthetic etc.)"""
+
     AUTOLABEL = auto()  #: Label originates from an autolabeling pipeline
     EXTERNAL = auto()  #: Label originates from an unspecified external source, e.g., from third-party processes
     GT_SYNTHETIC = auto()  #: Label originates from a synthetic data simulation and is considered ground-truth
@@ -268,7 +288,8 @@ class LabelSource(IntEnum):
 
 @dataclass
 class FrameLabel3(dataclasses_json.DataClassJsonMixin):
-    ''' Description of a 3D frame-associated label '''
+    """Description of a 3D frame-associated label"""
+
     label_id: str  #: Identifier of the current frame label (unique among all labels)
     track_id: str  #: Unique identifier of the object's track this label is associated with
     label_class: str  #: String-representation of the class associated with this label
@@ -295,19 +316,26 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
 
 @dataclass
 class TrackLabel(dataclasses_json.DataClassJsonMixin):
-    ''' Description of an individual object-specific track '''
-    sensors: Dict[str, List[int]]  #: Represents all frame-timestamps (map values) of the object's observations in different sensors (map keys)
+    """Description of an individual object-specific track"""
+
+    sensors: Dict[
+        str, List[int]
+    ]  #: Represents all frame-timestamps (map values) of the object's observations in different sensors (map keys)
 
 
 @dataclass
 class Tracks(dataclasses_json.DataClassJsonMixin):
-    ''' Represents a collection of tracks '''
-    track_labels: Dict[str, TrackLabel]  #: Represents individual object tracks (map values) referenced by `track_id`'s (map keys, same as in `FrameLabel3`)
+    """Represents a collection of tracks"""
+
+    track_labels: Dict[
+        str, TrackLabel
+    ]  #: Represents individual object tracks (map values) referenced by `track_id`'s (map keys, same as in `FrameLabel3`)
 
 
 @unique
 class DynamicFlagState(IntEnum):
-    ''' Enumerates potential per-point flag values related to 'dynamic_flag' property '''
+    """Enumerates potential per-point flag values related to 'dynamic_flag' property"""
+
     NOT_AVAILABLE = -1  #: No dynamic flag state is available for this point
     STATIC = 0  #: Point is classified to be static
     DYNAMIC = 1  #: Point is classified to be dynamic
@@ -315,32 +343,35 @@ class DynamicFlagState(IntEnum):
 
 @unique
 class FrameTimepoint(IntEnum):
-    ''' Enumerates special timepoints within a frame (values used to index into buffers) '''
+    """Enumerates special timepoints within a frame (values used to index into buffers)"""
+
     START = 0  #: Requested timepoint is referencing the start time of the frame
     END = 1  #: Requested timepoint is referencing the end time of the frame
 
 
-class EncodedImageData():
-    ''' Represents encoded image data of a specific format in memory '''
+class EncodedImageData:
+    """Represents encoded image data of a specific format in memory"""
+
     def __init__(self, encoded_image_data: bytes, encoded_image_format: str):
         self._encoded_image_data = encoded_image_data
         self._encoded_image_format = encoded_image_format
 
     def get_encoded_image_data(self) -> bytes:
-        ''' Returns encoded image data '''
+        """Returns encoded image data"""
         return self._encoded_image_data
 
     def get_encoded_image_format(self) -> str:
-        ''' Returns encoded image format '''
+        """Returns encoded image format"""
         return self._encoded_image_format
 
     @lru_cache(maxsize=1)
     def get_decoded_image(self) -> PILImage.Image:
-        ''' Returns decoded image from image data '''
+        """Returns decoded image from image data"""
         return PILImage.open(io.BytesIO(self.get_encoded_image_data()), formats=[self.get_encoded_image_format()])
 
 
 class EncodedImageHandle(Protocol):
-    ''' Protocol type to reference encoded image data (e.g., file-based, container-based, memory-based) '''
+    """Protocol type to reference encoded image data (e.g., file-based, container-based, memory-based)"""
+
     def get_data(self) -> EncodedImageData:
         ...

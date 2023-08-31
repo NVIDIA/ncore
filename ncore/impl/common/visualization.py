@@ -17,12 +17,12 @@ from ncore.impl.common.nvidia_utils import LabelProcessor as NvidiaLabelProcesso
 def rgba(r):
     """Generates a color based on range.
 
-	Args:
-		r: the range value of a given point.
-	Returns:
-		The color for a given range
-	"""
-    c = plt.get_cmap('jet')((r % 50.0) / 50.0)
+    Args:
+            r: the range value of a given point.
+    Returns:
+            The color for a given range
+    """
+    c = plt.get_cmap("jet")((r % 50.0) / 50.0)
     c = list(c)
     c[-1] = 0.5  # alpha
     return c
@@ -59,21 +59,21 @@ def plot_points_on_image(projected_points, camera_image, title, rgba_func=rgba, 
 
     plt.title(title)
     plt.scatter(xs, ys, c=colors, s=point_size, edgecolors="none")
-    plt.axis('off')
+    plt.axis("off")
     plt.grid(visible=False)
     plt.show()
 
 
 class LabelVisualizer:
     # Get the color map for the NVIDIA labels
-    COLOR_MAP_LABELS = cm.get_cmap('tab20')
+    COLOR_MAP_LABELS = cm.get_cmap("tab20")
 
     # TODO: currently only works for NVIDIA classes
     LABELCLASS_STRING_TO_LABELCLASS_ID = NvidiaLabelProcessor.LABELCLASS_STRING_TO_LABELCLASS_ID
     LABELCLASS_ID_TO_LABELCLASS_STRING = NvidiaLabelProcessor.LABELCLASS_ID_TO_LABELCLASS_STRING
 
     def __init__(self) -> None:
-        """ 
+        """
         Visualizes the point cloud together with the labels. Currently only supports NVIDIA (classes)
         """
 
@@ -88,49 +88,61 @@ class LabelVisualizer:
             self.lut.add_label(value, key, self.COLOR_MAP_LABELS(id)[:3])
 
     @multimethod
-    def add_pc(self, frame_id: int, xyz: np.ndarray, intensity: np.ndarray, dynamic_flag: np.ndarray,
-               timestamp: np.ndarray, semantic_class: Optional[np.ndarray]) -> None:
-        ''' Adds a single lidar point cloud to the visualizer (V3 data) '''
+    def add_pc(
+        self,
+        frame_id: int,
+        xyz: np.ndarray,
+        intensity: np.ndarray,
+        dynamic_flag: np.ndarray,
+        timestamp: np.ndarray,
+        semantic_class: Optional[np.ndarray],
+    ) -> None:
+        """Adds a single lidar point cloud to the visualizer (V3 data)"""
 
         pc = {
-            'name': str(frame_id),
-            'points': xyz.astype(np.float32),
-            'intensity': intensity.astype(np.float32),
-            'dynamic_flag': dynamic_flag
+            "name": str(frame_id),
+            "points": xyz.astype(np.float32),
+            "intensity": intensity.astype(np.float32),
+            "dynamic_flag": dynamic_flag,
         }
 
         # normalize timestamps to floating point [0,1]
         timestamp_normalized = (timestamp - timestamp.min()) / (timestamp.max() - timestamp.min())
         timestamp_normalized[np.isnan(timestamp_normalized)] = 0  # first spin could have same timestamp for all points
-        pc['timestamp'] = timestamp_normalized.astype(np.float32)
+        pc["timestamp"] = timestamp_normalized.astype(np.float32)
 
         if semantic_class is not None:
-            pc['semantic_class'] = semantic_class
+            pc["semantic_class"] = semantic_class
 
         self.data.append(pc)
 
     @multimethod
     def add_labels(self, frame_labels: list[FrameLabel3]) -> None:
-        ''' Registers frame-label bounding boxes (V3 data) '''
+        """Registers frame-label bounding boxes (V3 data)"""
         for frame_label in frame_labels:
-            self._add_bbox(bbox=frame_label.bbox3.to_array(),
-                           label_class=frame_label.label_class,
-                           identifier=frame_label.track_id,
-                           confidence=frame_label.confidence if frame_label.confidence else 1.0)
+            self._add_bbox(
+                bbox=frame_label.bbox3.to_array(),
+                label_class=frame_label.label_class,
+                identifier=frame_label.track_id,
+                confidence=frame_label.confidence if frame_label.confidence else 1.0,
+            )
 
     def _add_bbox(self, bbox: np.ndarray, label_class: str, identifier: str, confidence: float = 1.0) -> None:
         # TODO: This orientation seems correct to me, but we should double check it as the definition is weird
 
-        orientation = R.from_euler('xyz', bbox[6:9], degrees=False).as_matrix()
+        orientation = R.from_euler("xyz", bbox[6:9], degrees=False).as_matrix()
         self.bounding_boxes.append(
-            ml3d.vis.BoundingBox3D(center=bbox[:3],
-                                   front=orientation[:, 0],
-                                   up=orientation[:, 2],
-                                   left=orientation[:, 1],
-                                   size=np.array([bbox[4], bbox[5], bbox[3]]),
-                                   label_class=label_class,
-                                   confidence=confidence,
-                                   identifier=identifier))
+            ml3d.vis.BoundingBox3D(
+                center=bbox[:3],
+                front=orientation[:, 0],
+                up=orientation[:, 2],
+                left=orientation[:, 1],
+                size=np.array([bbox[4], bbox[5], bbox[3]]),
+                label_class=label_class,
+                confidence=confidence,
+                identifier=identifier,
+            )
+        )
 
     def show(self) -> None:
         self.vis.visualize(self.data, self.lut, self.bounding_boxes)

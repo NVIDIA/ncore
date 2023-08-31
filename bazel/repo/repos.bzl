@@ -1,7 +1,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-load("@bazel_tools//tools/build_defs/repo:http.bzl", _http_archive = "http_archive",)
-load("@bazel_tools//tools/build_defs/repo:git.bzl",  _new_git_repository = "new_git_repository", _git_repository = "git_repository")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", _http_archive = "http_archive")
+load("@bazel_tools//tools/build_defs/repo:git.bzl", _git_repository = "git_repository", _new_git_repository = "new_git_repository")
 load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
 
 def http_archive(name, **kwargs):
@@ -91,17 +91,18 @@ cc_library(
 
     git_repository(
         name = "waymo-open-dataset",
-        commit = "576f63526281cf403be2b6720a0d3acb4d18f41d", # tag v1.5.1
+        commit = "576f63526281cf403be2b6720a0d3acb4d18f41d",  # tag v1.5.1
         shallow_since = "1680923402 -0700",
         remote = "https://github.com/waymo-research/waymo-open-dataset.git",
         strip_prefix = "src",
-        repo_mapping = {"@wod_deps" : "@pip_deps"}
+        repo_mapping = {"@wod_deps": "@pip_deps"},
     )
 
     http_archive(
-    name = "rules_license",
-    sha256 = "6157e1e68378532d0241ecd15d3c45f6e5cfd98fc10846045509fb2a7cc9e381",
-    urls = [
-        "https://github.com/bazelbuild/rules_license/releases/download/0.0.4/rules_license-0.0.4.tar.gz",
-        "https://mirror.bazel.build/github.com/bazelbuild/rules_license/releases/download/0.0.4/rules_license-0.0.4.tar.gz",
-    ],)
+        name = "rules_license",
+        sha256 = "6157e1e68378532d0241ecd15d3c45f6e5cfd98fc10846045509fb2a7cc9e381",
+        urls = [
+            "https://github.com/bazelbuild/rules_license/releases/download/0.0.4/rules_license-0.0.4.tar.gz",
+            "https://mirror.bazel.build/github.com/bazelbuild/rules_license/releases/download/0.0.4/rules_license-0.0.4.tar.gz",
+        ],
+    )

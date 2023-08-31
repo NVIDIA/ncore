@@ -12,31 +12,47 @@ from ncore.impl.data.data3 import ShardDataLoader
 
 
 @click.command()
-@click.option('--shard-file-pattern',
-              type=str,
-              help='Data shard pattern to load (supports range expansion)',
-              required=True)
-@click.option('--ngp-config', type=str, help='Path to ngp config file with scale and translation', required=True)
-@click.option('--map-ref-lat',
-              type=float,
-              help='Latitude coordinate of the reference point used for the map ENU coordinate system in degrees!',
-              required=True)
-@click.option('--map-ref-lon',
-              type=float,
-              help='Longitude coordinate of the reference point used for the map ENU coordinate system in degrees!',
-              required=True)
-@click.option('--map-ref-alt',
-              type=float,
-              help='Altitude coordinate of the reference point used for the map ENU coordinate system in meters!',
-              required=True)
-@click.option('--output-npz/--no-output-npz',
-              default=False,
-              help='If enabled, store \'ncore_map_transforms.npz\' with transformations next to the ngp-config')
-@click.option('--output-json/--no-output-json',
-              default=True,
-              help='If enabled, store \'ncore_map_transforms.json\' with transformations next to the ngp-config')
-def ncore_to_map_transform(shard_file_pattern: str, ngp_config: str, map_ref_lat: float, map_ref_lon: float,
-                           map_ref_alt: float, output_npz: bool, output_json: bool):
+@click.option(
+    "--shard-file-pattern", type=str, help="Data shard pattern to load (supports range expansion)", required=True
+)
+@click.option("--ngp-config", type=str, help="Path to ngp config file with scale and translation", required=True)
+@click.option(
+    "--map-ref-lat",
+    type=float,
+    help="Latitude coordinate of the reference point used for the map ENU coordinate system in degrees!",
+    required=True,
+)
+@click.option(
+    "--map-ref-lon",
+    type=float,
+    help="Longitude coordinate of the reference point used for the map ENU coordinate system in degrees!",
+    required=True,
+)
+@click.option(
+    "--map-ref-alt",
+    type=float,
+    help="Altitude coordinate of the reference point used for the map ENU coordinate system in meters!",
+    required=True,
+)
+@click.option(
+    "--output-npz/--no-output-npz",
+    default=False,
+    help="If enabled, store 'ncore_map_transforms.npz' with transformations next to the ngp-config",
+)
+@click.option(
+    "--output-json/--no-output-json",
+    default=True,
+    help="If enabled, store 'ncore_map_transforms.json' with transformations next to the ngp-config",
+)
+def ncore_to_map_transform(
+    shard_file_pattern: str,
+    ngp_config: str,
+    map_ref_lat: float,
+    map_ref_lon: float,
+    map_ref_alt: float,
+    output_npz: bool,
+    output_json: bool,
+):
 
     assert os.path.exists(ngp_config), "Provided NGP config file doesn't exist."
 
@@ -64,48 +80,50 @@ def ncore_to_map_transform(shard_file_pattern: str, ngp_config: str, map_ref_lat
 
     # Read the NGP config file and extract the scale and offset
     ngp_config_dict = json.load(open(ngp_config))
-    scale = ngp_config_dict['scale']
-    offset = ngp_config_dict['offset']
+    scale = ngp_config_dict["scale"]
+    offset = ngp_config_dict["offset"]
 
     # Compute the transformation from the NGP coordinate system to the ECEF
     T_nerf_ngp = np.array([[0, 1, 0, 0], [0, 0, 1, 0], [1, 0, 0, 0], [0, 0, 0, 1]])
-    T_ncore_nerf = np.array([[scale, 0, 0, offset[0]], [0, scale, 0, offset[1]], [0, 0, scale, offset[2]], [0, 0, 0,
-                                                                                                            1]])
+    T_ncore_nerf = np.array(
+        [[scale, 0, 0, offset[0]], [0, scale, 0, offset[1]], [0, 0, scale, offset[2]], [0, 0, 0, 1]]
+    )
     T_ncore_ngp = T_nerf_ngp @ T_ncore_nerf
     T_ngp_ecef = T_ncore_ecef @ np.linalg.inv(T_ncore_ngp)
 
     # Compute the transformation from the ECEF coordinate system to the map ENU system
     lat_long_alt = np.array([map_ref_lat, map_ref_lon, map_ref_alt]).reshape(1, 3)
-    T_ecef_enu = ecef_2_ENU(lat_long_alt, earth_model='WGS84')
+    T_ecef_enu = ecef_2_ENU(lat_long_alt, earth_model="WGS84")
 
     # Print out the transformation matrices
-    with np.printoptions(floatmode='unique', linewidth=200, suppress=True):  # print in highest precision
+    with np.printoptions(floatmode="unique", linewidth=200, suppress=True):  # print in highest precision
         logger.info(f"T_ngp_ecef:\n{T_ngp_ecef}")
         logger.info(f"T_ecef_enu:\n{T_ecef_enu}")
         logger.info(f"T_ncore_ecef:\n{T_ncore_ecef}")
         logger.info(f"T_ngp_enu:\n{T_ecef_enu @ T_ngp_ecef}")  # should be used to transform a NeRF
-        logger.info(f"T_ncore_enu:\n{T_ecef_enu @ T_ncore_ecef}"
-                    )  # should be used to transform a mesh / "local" world coordinates
+        logger.info(
+            f"T_ncore_enu:\n{T_ecef_enu @ T_ncore_ecef}"
+        )  # should be used to transform a mesh / "local" world coordinates
 
     # Save the transformations
     ngp_config_dir = os.path.dirname(ngp_config)
     output_data = {
-        'T_ngp_ecef': T_ngp_ecef,
-        'T_ecef_enu': T_ecef_enu,
-        'T_ncore_ecef': T_ncore_ecef,
-        'map_ref_lat_deg': map_ref_lat,
-        'map_ref_lon_deg': map_ref_lon,
-        'map_ref_alt_m': map_ref_alt,
-        'ngp_scale': scale,
-        'ngp_offset': offset,
-        'sequence_id': loader.get_sequence_id()
+        "T_ngp_ecef": T_ngp_ecef,
+        "T_ecef_enu": T_ecef_enu,
+        "T_ncore_ecef": T_ncore_ecef,
+        "map_ref_lat_deg": map_ref_lat,
+        "map_ref_lon_deg": map_ref_lon,
+        "map_ref_alt_m": map_ref_alt,
+        "ngp_scale": scale,
+        "ngp_offset": offset,
+        "sequence_id": loader.get_sequence_id(),
     }
     if output_npz:
-        npz_path = os.path.join(ngp_config_dir, 'ncore_map_transforms.npz')
+        npz_path = os.path.join(ngp_config_dir, "ncore_map_transforms.npz")
         np.savez(npz_path, **output_data)
-        logger.info(f'Outputted {npz_path}')
+        logger.info(f"Outputted {npz_path}")
     if output_json:
-        json_path = os.path.join(ngp_config_dir, 'ncore_map_transforms.json')
+        json_path = os.path.join(ngp_config_dir, "ncore_map_transforms.json")
         with open(json_path, "w") as f:
             json.dump(
                 {
@@ -114,9 +132,10 @@ def ncore_to_map_transform(shard_file_pattern: str, ngp_config: str, map_ref_lat
                     for (key, value) in output_data.items()
                 },
                 f,
-                indent=2)
-        logger.info(f'Outputted {json_path}')
+                indent=2,
+            )
+        logger.info(f"Outputted {json_path}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     ncore_to_map_transform()
