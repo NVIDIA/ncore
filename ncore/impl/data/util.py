@@ -1,13 +1,13 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-import math
-
-from typing import Any
 from dataclasses import field
+from typing import TYPE_CHECKING
 
-import numpy as np
-import numpy.typing as npt
 import dataclasses_json
+import numpy as np
+
+if TYPE_CHECKING:
+    import numpy.typing as npt
 
 ## Constants
 INDEX_DIGITS = 6  # the number of integer digits to pad counters in output filenames
@@ -38,7 +38,7 @@ def closest_index_sorted(sorted_array: np.ndarray, value: int) -> int:
     return idx
 
 
-def numpy_array_field(datatype: npt.DTypeLike, default=None):
+def numpy_array_field(datatype: 'npt.DTypeLike', default=None):
     ''' Provides encoder / decoder functionality for numpy arrays into field types compatible with dataclass-JSON '''
     def decoder(*args, **kwargs):
         return np.array(*args, dtype=datatype, **kwargs)
