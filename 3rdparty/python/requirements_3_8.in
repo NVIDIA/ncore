@@ -6,7 +6,7 @@ parameterized
 
 # Public API dependencies
 numpy
-dataclasses-json
+dataclasses-json>=0.2.11 # deserialization fails with earlier versions
 pillow
 zarr
 cbor2

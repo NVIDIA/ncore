@@ -39,7 +39,7 @@ sphinx
 sphinx_rtd_theme
 nbsphinx
 
-dataclasses_json
+dataclasses-json>=0.2.11 # deserialization fails with earlier versions
 
 multimethod
 
