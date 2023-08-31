@@ -59,6 +59,18 @@ install_deps()
 pip_parse(
     name = "pip_deps_3_8",
     timeout = 3600,
+    annotations = {
+        "numpy": package_annotation(
+            additive_build_content = """
+# Make numpy headers available to C++ rules
+cc_library(
+    name = 'numpy',
+    includes = ['site-packages/numpy/core/include'],
+    hdrs = glob(['site-packages/numpy/core/include/numpy/*.h']),
+)
+""",
+        ),
+    },
     python_interpreter_target = interpreter_3_8,
     quiet = False,
     requirements_lock = "//3rdparty/python:requirements_3_8.txt",

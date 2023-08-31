@@ -2,6 +2,7 @@
 
 load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@pip_deps//:requirements.bzl", "requirement")
+load("@pip_deps_3_8//:requirements.bzl", requirement_3_8 = "requirement")
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_python//python:defs.bzl", "py_library")
 load("//3rdparty/numpyeigen:npe_add_module.bzl", "npe_codegen_function", "npe_codegen_module")
@@ -19,6 +20,13 @@ npe_codegen_module(
     module = "libav_utils_cc",
 )
 
+npe_codegen_module(
+    name = "av_utils_codegen_module_3_8",
+    src = ":av_utils.cpp",
+    out = ":av_utils_module_3_8.cpp",
+    module = "libav_utils_cc_3_8",
+)
+
 cc_binary(
     name = "av_utils_cc",
     srcs = [
@@ -31,6 +39,21 @@ cc_binary(
     linkshared = True,
     deps = [
         "@numpyeigen//:npe",
+    ],
+)
+
+cc_binary(
+    name = "av_utils_cc_3_8",
+    srcs = [
+        ":av_utils_function.cpp",
+        ":av_utils_module_3_8.cpp",
+    ],
+    copts = [
+        "-std=c++14",
+    ],
+    linkshared = True,
+    deps = [
+        "@numpyeigen//:npe_3_8",
     ],
 )
 
@@ -48,6 +71,23 @@ py_library(
     deps = [
         requirement("numpy"),
         "//ncore/impl/data:pylib_types",
+    ],
+)
+
+py_library(
+    name = "pylib_3_8",
+    srcs = [
+        "__init__.py",
+    ],
+    data = [
+        ":av_utils_cc_3_8",
+    ],
+    visibility = [
+        "//:code_package_group",
+    ],
+    deps = [
+        requirement_3_8("numpy"),
+        "//ncore/impl/data:pylib_types_3_8",
     ],
 )
 
