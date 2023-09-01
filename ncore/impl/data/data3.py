@@ -523,7 +523,7 @@ class CameraSensor(Sensor):
             "pinhole",
         ]:
             return types.OpenCVPinholeCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters)
-        if self._sensor_meta.camera_model_type == "opencv-pinhole":
+        if self._sensor_meta.camera_model_type == "opencv-fisheye":
             return types.OpenCVFisheyeCameraModelParameters.from_dict(self._sensor_meta.camera_model_parameters)
         raise ValueError
 
