@@ -92,7 +92,7 @@ class ChunkDataWriter:
             radar_ids,
             loader.get_calibration_type(),
             loader.get_egomotion_type(),
-            loader.get_sequence_id(),
+            container_name,
             # always single-shard
             0,
             1,
