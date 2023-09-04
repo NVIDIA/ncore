@@ -77,24 +77,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.constants = self.get_constants(self.rig["rig"]["properties"], list(self.sensors_calibration_data.keys()))
 
         # Determine session-id to be processed
-        session_id = load_maglev_session_id(self.sequence_path)
-        self.logger.info(f"Converting session {session_id} [shard {self.shard_id}/{self.shard_count}]")
-
-        # DataWriter for all outputs
-        self.data_writer = ContainerDataWriter(
-            self.output_dir / session_id,
-            f"{session_id}_{self.shard_id}-{self.shard_count}",
-            list(self.constants.CAMERAID_TO_RIGNAME.keys()),
-            list(self.constants.LIDARID_TO_RIGNAME.keys()),
-            [],  # no radars yet
-            # TODO: parse these from the data
-            "scene-calib",
-            "lidar-egomotion",
-            session_id,
-            self.shard_id,
-            self.shard_count,
-            True,
-        )
+        self.session_id = load_maglev_session_id(self.sequence_path)
+        self.logger.info(f"Converting session {self.session_id} [shard {self.shard_id}/{self.shard_count}]")
 
         # Decode data from maglev
         self.decode_poses()
@@ -113,11 +97,26 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         logger.info(f"Loading poses")
 
         # Load timestamped poses variables
-        self.global_T_rig_worlds, self.global_T_rig_world_timestamps_us = load_maglev_egomotion(
+        self.global_T_rig_worlds, self.global_T_rig_world_timestamps_us, egomotion_type = load_maglev_egomotion(
             self.sequence_path, self.sensors_calibration_data, self.egomotion_file
         )
 
         assert len(self.global_T_rig_worlds), "No valid egomotion poses loaded"
+
+        # DataWriter for all outputs (instantiated after parsing poses to know the egomotion_type)
+        self.data_writer = ContainerDataWriter(
+            self.output_dir / self.session_id,
+            f"{self.session_id}_{self.shard_id}-{self.shard_count}",
+            list(self.constants.CAMERAID_TO_RIGNAME.keys()),
+            list(self.constants.LIDARID_TO_RIGNAME.keys()),
+            [],  # no radars yet
+            "scene-calib",
+            egomotion_type,
+            self.session_id,
+            self.shard_id,
+            self.shard_count,
+            True,
+        )
 
         # Stack all poses (common canonical format convention)
         self.global_T_rig_worlds = np.stack(self.global_T_rig_worlds)

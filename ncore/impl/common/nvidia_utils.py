@@ -954,7 +954,7 @@ def load_maglev_session_id(sequence_path: Path) -> str:
 @multimethod
 def load_maglev_egomotion(
     sequence_path: Path, sensors_calibration_data: dict[str, dict], egomotion_file_overwrite: Optional[Path] = None
-) -> Tuple[list[np.ndarray], list[int]]:
+) -> Tuple[list[np.ndarray], list[int], str]:
     """Parse a maglev-based egomotion data into timestamped global T_rig_worlds
 
     The NV maglev 'egomotion.json' / 'egomotion.jsonl' format has gone through a couple of iterations,
@@ -985,9 +985,10 @@ def load_maglev_egomotion(
 
 
 @load_maglev_egomotion.register
-def _(T_rig_sensors: dict[str, np.ndarray], egomotion_file: Path) -> Tuple[list[np.ndarray], list[int]]:
+def _(T_rig_sensors: dict[str, np.ndarray], egomotion_file: Path) -> Tuple[list[np.ndarray], list[int], str]:
     """Parse a maglev-based egomotion data into timestamped global T_rig_worlds"""
 
+    # Variables we are parsing into
     global_T_rig_worlds = []
     global_T_rig_world_timestamps_us = []
 
@@ -1001,8 +1002,12 @@ def _(T_rig_sensors: dict[str, np.ndarray], egomotion_file: Path) -> Tuple[list[
     }
 
     # Use different parser implementations based on the egomotion file formats
-    def parse_legacy_egomotion(egomotion_file: Path) -> None:
+    def parse_legacy_egomotion(egomotion_file: Path) -> str:
         """Parses "jsonl"-type of egomotion file"""
+
+        # empty string egomotion_type identifier will be returned in case there are no poses at all -
+        # otherwise the first pose's frame will be used as an identifier
+        egomotion_type = str("")
 
         for egomotion_pose_entry in load_jsonl(egomotion_file):
             # Skip invalid poses
@@ -1041,11 +1046,19 @@ def _(T_rig_sensors: dict[str, np.ndarray], egomotion_file: Path) -> Tuple[list[
             global_T_rig_worlds.append(T_rig_world)
             global_T_rig_world_timestamps_us.append(T_rig_world_timestamp_us)
 
-    def parse_egomotion(egomotion_file: Path) -> None:
+            if not len(egomotion_type):
+                # pick first frame name as egomotion type string, as legacy format doesn't contain variant-specific information
+                egomotion_type += f"egomotion-{frame_name}"
+
+        return egomotion_type
+
+    def parse_egomotion(egomotion_file: Path) -> str:
         """Parses "json"-type of egomotion file"""
 
         with open(egomotion_file, "r") as fp:
             egomotion_json = json.load(fp)
+
+        egomotion_type = str(egomotion_json["egomotion_type"])
 
         for egomotion_pose_entry in (
             egomotion_json["tf_frame_world"]
@@ -1102,16 +1115,18 @@ def _(T_rig_sensors: dict[str, np.ndarray], egomotion_file: Path) -> Tuple[list[
             global_T_rig_worlds.append(T_rig_world)
             global_T_rig_world_timestamps_us.append(T_rig_world_timestamp_us)
 
+        return egomotion_type
+
     try:
         # New egomotion json file format
-        parse_egomotion(egomotion_file)
+        egomotion_type = parse_egomotion(egomotion_file)
     except json.decoder.JSONDecodeError:
         # Old egomotion jsonl format
-        parse_legacy_egomotion(egomotion_file)
+        egomotion_type = parse_legacy_egomotion(egomotion_file)
 
     assert all(
         global_T_rig_world_timestamps_us[i] < global_T_rig_world_timestamps_us[i + 1]
         for i in range(len(global_T_rig_world_timestamps_us) - 1)
     ), "pose timestamps not monotonically increasing"
 
-    return global_T_rig_worlds, global_T_rig_world_timestamps_us
+    return global_T_rig_worlds, global_T_rig_world_timestamps_us, egomotion_type

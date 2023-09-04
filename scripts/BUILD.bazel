@@ -198,7 +198,6 @@ py3_image(
         "manual",
         "no-remote-cache",
     ],
-    deps = [":ncore_sequence_meta"],  # include additional local targets to simplify their deployment
 )
 
 # Push image to 'production' (prod) tag - use with *CAUTION* as referenced by default in workflows
@@ -354,7 +353,6 @@ py3_image(
         "manual",
         "no-remote-cache",
     ],
-    deps = [":ncore_sequence_meta"],  # include additional local targets to simplify their deployment
 )
 
 # Push image to 'production' (prod) tag - use with *CAUTION* as referenced by default in workflows
@@ -460,7 +458,7 @@ py_layer(
     filter = "@",
     tags = [
         "manual",
-        "nncore_sequence_metao-remote-cache",
+        "no-remote-cache",
     ],
     deps = [":ncore_chunk_common_deps_layer"],
 )
@@ -491,6 +489,7 @@ py3_image(
         "manual",
         "no-remote-cache",
     ],
+    deps = [":ncore_sequence_meta"],  # include additional local targets to simplify their deployment
 )
 
 # Push image to 'production' (prod) tag - use with *CAUTION* as referenced by default in workflows
