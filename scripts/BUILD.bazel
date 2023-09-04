@@ -460,7 +460,7 @@ py_layer(
     filter = "@",
     tags = [
         "manual",
-        "nncore_sequence_metao-remote-cache",
+        "no-remote-cache",
     ],
     deps = [":ncore_chunk_common_deps_layer"],
 )
