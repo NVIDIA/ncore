@@ -35,6 +35,7 @@ class CLIParams:
 class TrajectoryChunk:
     source_session_id: str
     source_egomotion_json: dict
+    source_egomotion_type: str
     source_start_pose_idx: int
     source_stop_pose_idx: int
     chunk_in_session_id: int
@@ -107,7 +108,7 @@ def untangle_traj_roi(**kwargs) -> None:
         with open(json_path, "r") as fp:
             egomotion_json = json.load(fp)
 
-        global_T_rig_worlds, T_rig_world_timestamps_us = load_maglev_egomotion(
+        global_T_rig_worlds, T_rig_world_timestamps_us, egomotion_type = load_maglev_egomotion(
             T_rig_sensors, json_path  # type: ignore
         )  # type: ignore
 
@@ -133,6 +134,7 @@ def untangle_traj_roi(**kwargs) -> None:
                         TrajectoryChunk(
                             source_session_id=session_id,
                             source_egomotion_json=egomotion_json,
+                            source_egomotion_type=egomotion_type,
                             source_start_pose_idx=start_pose,
                             source_stop_pose_idx=splitpoint,
                             chunk_in_session_id=chunk_in_session_id,
@@ -147,6 +149,7 @@ def untangle_traj_roi(**kwargs) -> None:
                 TrajectoryChunk(
                     source_session_id=session_id,
                     source_egomotion_json=egomotion_json,
+                    source_egomotion_type=egomotion_type,
                     source_start_pose_idx=0,
                     source_stop_pose_idx=len(global_T_rig_worlds),
                     chunk_in_session_id=0,

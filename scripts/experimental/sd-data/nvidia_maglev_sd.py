@@ -169,7 +169,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         logger.info(f"Loading poses")
 
         # Load timestamped poses variables
-        self.global_T_rig_worlds, self.global_T_rig_world_timestamps_us = load_maglev_egomotion(
+        self.global_T_rig_worlds, self.global_T_rig_world_timestamps_us, _ = load_maglev_egomotion(
             self.sequence_path, self.sensors_calibration_data
         )
 

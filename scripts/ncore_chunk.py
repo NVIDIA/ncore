@@ -56,6 +56,7 @@ class ChunkDataWriter:
         # Source data + chunk range
         loader: ShardDataLoader,
         source_poses: Poses,
+        source_egomotion_type: str,
         start_timestamp_us: int,
         end_timestamp_us: int,
         # Dynamic-flag processing parameters
@@ -91,7 +92,7 @@ class ChunkDataWriter:
             lidar_ids,
             radar_ids,
             loader.get_calibration_type(),
-            loader.get_egomotion_type(),
+            source_egomotion_type,
             container_name,
             # always single-shard
             0,
@@ -393,7 +394,12 @@ def cli(ctx, **kwargs) -> None:
 
 
 def ncore_chunk(
-    params: CLIBaseParams, loader: ShardDataLoader, poses: Poses, start_timestamp_us: int, end_timestamp_us: int
+    params: CLIBaseParams,
+    loader: ShardDataLoader,
+    poses: Poses,
+    egomotion_type: str,
+    start_timestamp_us: int,
+    end_timestamp_us: int,
 ) -> None:
     """Execute common components of chunk export"""
     # Output container name
@@ -416,6 +422,7 @@ def ncore_chunk(
     ChunkDataWriter.process(
         loader,
         poses,
+        egomotion_type,
         start_timestamp_us,
         end_timestamp_us,
         get_dynamic_flag_parameters(params.dynamic_flag_variant, loader),
@@ -427,18 +434,20 @@ def ncore_chunk(
     )
 
 
-def get_poses(loader: ShardDataLoader, egomotion_file: Optional[str]) -> Poses:
+def get_poses(loader: ShardDataLoader, egomotion_file: Optional[str]) -> Tuple[Poses, str]:
     """Loads poses to be used as reference time-range (either from source data or egomotion-file overwrite)"""
     if not egomotion_file:
         # No overwrite
-        return loader.get_poses()
+        return loader.get_poses(), loader.get_egomotion_type()
 
     # Load sensor extrinsics
     T_rig_sensors_base = {
         sensor_id: loader.get_sensor(sensor_id).get_T_rig_sensor() for sensor_id in loader.get_sensor_ids()
     }
 
-    T_rig_worlds, T_rig_world_timestamps_us = load_maglev_egomotion(T_rig_sensors_base, Path(egomotion_file))
+    T_rig_worlds, T_rig_world_timestamps_us, egomotion_type = load_maglev_egomotion(
+        T_rig_sensors_base, Path(egomotion_file)
+    )
 
     assert len(T_rig_worlds), "No valid egomotion poses loaded"
 
@@ -451,10 +460,13 @@ def get_poses(loader: ShardDataLoader, egomotion_file: Optional[str]) -> Poses:
     T_rig_worlds = np.linalg.inv(T_rig_world_base) @ T_rig_worlds
 
     # Assemble Poses struct
-    return Poses(
-        T_rig_world_base=T_rig_world_base,
-        T_rig_worlds=T_rig_worlds,
-        T_rig_world_timestamps_us=T_rig_world_timestamps_us,
+    return (
+        Poses(
+            T_rig_world_base=T_rig_world_base,
+            T_rig_worlds=T_rig_worlds,
+            T_rig_world_timestamps_us=T_rig_world_timestamps_us,
+        ),
+        egomotion_type,
     )
 
 
@@ -472,12 +484,13 @@ def timestamps(ctx, start_timestamp_us: int | None, end_timestamp_us: int | None
         ShardDataLoader.evaluate_shard_file_pattern(params.shard_file_pattern), params.open_consolidated
     )
 
-    poses = get_poses(loader, params.egomotion_file)
+    poses, egomotion_type = get_poses(loader, params.egomotion_file)
 
     ncore_chunk(
         params,
         loader,
         poses,
+        egomotion_type,
         start_timestamp_us if start_timestamp_us else int(poses.T_rig_world_timestamps_us[0]),
         end_timestamp_us if end_timestamp_us else int(poses.T_rig_world_timestamps_us[-1]),
     )
@@ -505,11 +518,11 @@ def offset(ctx, seek_sec: float | None, duration_sec: float | None) -> None:
         ShardDataLoader.evaluate_shard_file_pattern(params.shard_file_pattern), params.open_consolidated
     )
 
-    poses = get_poses(loader, params.egomotion_file)
+    poses, egomotion_type = get_poses(loader, params.egomotion_file)
 
     start_timestamp_us, end_timestamp_us = time_bounds(poses.T_rig_world_timestamps_us.tolist(), seek_sec, duration_sec)
 
-    ncore_chunk(params, loader, poses, start_timestamp_us, end_timestamp_us)
+    ncore_chunk(params, loader, poses, egomotion_type, start_timestamp_us, end_timestamp_us)
 
 
 if __name__ == "__main__":
