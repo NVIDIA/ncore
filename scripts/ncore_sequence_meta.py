@@ -61,7 +61,10 @@ def ncore_sequence_meta(
         },
         "shard-ids": loader.get_shard_ids(),
     }
-    sequence_start_timestamp_us = sequence_pose_timestamps_us[0]
+    sequence_start_timestamp_us, sequence_end_timestamp_us = (
+        sequence_pose_timestamps_us[0],
+        sequence_pose_timestamps_us[-1],
+    )
 
     ## Shard-wide information
     shards = []
@@ -74,6 +77,13 @@ def ncore_sequence_meta(
         shard_pose_timestamps_us = loader.get_poses(
             start_shard_idx=start_shard_idx, stop_shard_idx=stop_shard_idx
         ).T_rig_world_timestamps_us
+
+        # sanity checks
+        assert (
+            sequence_start_timestamp_us <= shard_pose_timestamps_us[0]
+            and shard_pose_timestamps_us[-1] <= sequence_end_timestamp_us
+        ), f"shard {shard_idx} pose timestamps inconsistent with sequence pose timestamps"
+
         shard = {
             "id": shard_id,
             "path": Path(shard_path).name,
@@ -96,6 +106,13 @@ def ncore_sequence_meta(
             sensor_frame_timestamps_us = sensor.get_frames_timestamps_us(
                 start_shard_idx=start_shard_idx, stop_shard_idx=stop_shard_idx
             )
+
+            # sanity checks
+            assert (
+                sequence_start_timestamp_us <= sensor_frame_timestamps_us[0]
+                and sensor_frame_timestamps_us[-1] <= sequence_end_timestamp_us
+            ), f"sensor {sensor_id} frame timestamps inconsistent with sequence pose timestamps"
+
             sensors[sensor_id] = {
                 "frame-range": {
                     "start-timestamp_us": int(sensor_frame_timestamps_us[0]),
