@@ -219,13 +219,23 @@ class PoseInterpolator:
     """
 
     def __init__(self, poses, timestamps):
-
         self.slerp = spatial.transform.Slerp(timestamps, R.from_matrix(poses[:, :3, :3]))
         self.f_x = interpolate.interp1d(timestamps, poses[:, 0, 3])
         self.f_y = interpolate.interp1d(timestamps, poses[:, 1, 3])
         self.f_z = interpolate.interp1d(timestamps, poses[:, 2, 3])
 
         self.last_row = np.array([0, 0, 0, 1], dtype=np.float32).reshape(1, 1, -1)
+
+        self.start_timestamp = timestamps[0]
+        self.end_timestamp = timestamps[-1]
+
+    def in_range(self, ts) -> bool:
+        """Returns true if all provided timestamps (scalar or array-like) are within the interpolation range"""
+        return (
+            np.logical_and(self.start_timestamp <= (ts_array := np.asarray(ts)), ts_array <= self.end_timestamp)
+            .all()
+            .item()
+        )
 
     def interpolate_to_timestamps(self, ts_target):
         x_interp = self.f_x(ts_target).reshape(-1, 1, 1).astype(np.float32)
