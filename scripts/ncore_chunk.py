@@ -102,16 +102,26 @@ class ChunkDataWriter:
 
         ## Process poses
 
-        # global pose range for simplified interpolation
-        pose_interpolator = PoseInterpolator(source_poses.T_rig_worlds, source_poses.T_rig_world_timestamps_us)
-
         # subselect poses
         target_poses_range = chunk_interval_us.cover_range(source_poses.T_rig_world_timestamps_us)
+
+        assert (
+            len(target_poses_range) > 1
+        ), "insufficient pose samples - too restrictive time-range, require at least two poses"
+
         target_poses = Poses(
             source_poses.T_rig_world_base,
             source_poses.T_rig_worlds[target_poses_range],
             source_poses.T_rig_world_timestamps_us[target_poses_range],
         )
+
+        # this is the slightly tighter interval (compared to chunk-interval) for which egomotion poses can be interpolated
+        pose_interval_us = HalfClosedInterval(
+            int(target_poses.T_rig_world_timestamps_us[0]), int(target_poses.T_rig_world_timestamps_us[-1] + 1)
+        )  # make sure to include end-timestamp in interval
+
+        # use pose interpolator over *target* pose range to make sure all frame-associated poses are within egomotion range
+        pose_interpolator = PoseInterpolator(target_poses.T_rig_worlds, target_poses.T_rig_world_timestamps_us)
 
         data_writer.store_poses(target_poses)
 
@@ -121,7 +131,7 @@ class ChunkDataWriter:
 
             # subselect frames
             source_frame_timestamps_us = camera_sensor.get_frames_timestamps_us()
-            target_frames_range = chunk_interval_us.cover_range(source_frame_timestamps_us)
+            target_frames_range = pose_interval_us.cover_range(source_frame_timestamps_us)
 
             # store subselected frames
             chunk_frame_index = 0
@@ -134,9 +144,12 @@ class ChunkDataWriter:
                     )
                 )
 
-                # allow skipping first frame in case its start time is not within egomotion range
-                if chunk_frame_index == 0 and timestamps_us[0] < source_poses.T_rig_world_timestamps_us[0]:
-                    logging.warning(f"Skipping first frame of camera {camera_id} as not in egomotion time-range")
+                # allow skipping frames (usually at start / end of range due to mixed sensor / pose frequencies) in case they are not within egomotion time-range
+                if not pose_interpolator.in_range(timestamps_us):
+                    logging.warning(
+                        f"Skipping frame of camera {camera_id} as frame timestamps {timestamps_us} not "
+                        f"in egomotion time-range [{pose_interpolator.start_timestamp}-{pose_interpolator.start_timestamp}]"
+                    )
                     continue
 
                 T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
@@ -176,12 +189,20 @@ class ChunkDataWriter:
 
             # subselect frames
             source_frame_timestamps_us = lidar_sensor.get_frames_timestamps_us()
-            target_frames_range = chunk_interval_us.cover_range(source_frame_timestamps_us)
+            target_frames_range = pose_interval_us.cover_range(source_frame_timestamps_us)
 
             # extract labels from subselected frames
             for source_frame_idx in tqdm.tqdm(target_frames_range, desc="Frame Labels", leave=False):
 
                 source_frame_timestamp_us = int(source_frame_timestamps_us[source_frame_idx])
+
+                # allow skipping frames (usually at start / end of range due to mixed sensor / pose frequencies) in case they are not within egomotion time-range
+                if not pose_interpolator.in_range(source_frame_timestamp_us):
+                    logging.warning(
+                        f"Skipping frame labels of lidar {lidar_id} as frame timestamps {source_frame_timestamp_us} not "
+                        f"in egomotion time-range [{pose_interpolator.start_timestamp}-{pose_interpolator.start_timestamp}]"
+                    )
+                    continue
 
                 if source_frame_timestamp_us not in target_frame_labels[lidar_id]:
                     target_frame_labels[lidar_id][source_frame_timestamp_us] = []
@@ -212,7 +233,7 @@ class ChunkDataWriter:
 
             # subselect frames
             source_frame_timestamps_us = lidar_sensor.get_frames_timestamps_us()
-            target_frames_range = chunk_interval_us.cover_range(source_frame_timestamps_us)
+            target_frames_range = pose_interval_us.cover_range(source_frame_timestamps_us)
 
             # store subselected frames
             chunk_frame_index = 0
@@ -225,9 +246,12 @@ class ChunkDataWriter:
                     )
                 )
 
-                # allow skipping first frame in case its start time is not within egomotion range
-                if chunk_frame_index == 0 and timestamps_us[0] < source_poses.T_rig_world_timestamps_us[0]:
-                    logging.warning(f"Skipping first frame of lidar {lidar_id} as not in egomotion time-range")
+                # allow skipping frames (usually at start / end of range due to mixed sensor / pose frequencies) in case they are not within egomotion time-range
+                if not pose_interpolator.in_range(timestamps_us):
+                    logging.warning(
+                        f"Skipping frame of lidar {lidar_id} as frame timestamps {timestamps_us} not "
+                        f"in egomotion time-range [{pose_interpolator.start_timestamp}-{pose_interpolator.start_timestamp}]"
+                    )
                     continue
 
                 T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
