@@ -336,6 +336,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                     max_angle,
                 ),
                 mask_image.get_image(),
+                {},
             )
 
             # Load tar file containing images
@@ -370,7 +371,13 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
 
                 self.data_writer.store_camera_frame(
-                    camera_id, continous_local_frame_index, image_file_binary_data, "jpeg", T_rig_worlds, timestamps_us
+                    camera_id,
+                    continous_local_frame_index,
+                    image_file_binary_data,
+                    "jpeg",
+                    T_rig_worlds,
+                    timestamps_us,
+                    {},
                 )
 
             logger.info(
@@ -459,7 +466,12 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 )  # note: local bounds are inclusive in this end-case
 
             # Store all static sensor data
-            self.data_writer.store_lidar_meta(lidar_id, local_frame_timestamps_us, T_sensor_rig)
+            self.data_writer.store_lidar_meta(
+                lidar_id,
+                local_frame_timestamps_us,
+                T_sensor_rig,
+                {},
+            )
 
             # Load tar file containing frames
             tar_file = open(self.sequence_path / "lidars" / lidar_rig_name / "frames.tar", "rb")
@@ -648,6 +660,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                     frame_labels,
                     T_rig_worlds,
                     timestamps_us,
+                    {},
                 )
 
                 time_store = timer.elapsed_sec(restart=True)

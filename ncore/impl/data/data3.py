@@ -163,6 +163,8 @@ class ContainerDataWriter:
         camera_model_parameters: types.ConcreteCameraModelParametersUnion,
         # sensor constants
         mask_image: Optional[PILImage.Image],
+        # generic sensor meta-data (name-value pairs, *not* dimension / dtype validated)
+        generic_meta_data: Dict[str, np.ndarray],
     ) -> None:
         assert T_sensor_rig.shape == (4, 4)
         assert T_sensor_rig.dtype == np.dtype("float32")
@@ -171,13 +173,14 @@ class ContainerDataWriter:
 
         # Store meta data
         camera_grp = self.container_root[SENSORS_BASE_GROUP][CAMERAS_BASE_GROUP][camera_id]
-        camera_grp.attrs.put(
-            {
-                "T_sensor_rig": T_sensor_rig.tolist(),
-                "camera_model_type": camera_model_parameters.type(),
-                "camera_model_parameters": camera_model_parameters.to_dict(),
-            }
-        )
+        meta_data = {
+            "T_sensor_rig": T_sensor_rig.tolist(),
+            "camera_model_type": camera_model_parameters.type(),
+            "camera_model_parameters": camera_model_parameters.to_dict(),
+        }
+        # encode generic meta-data (not dimension / dtype checked)
+        meta_data["generic_meta_data"] = {name: value.tolist() for name, value in generic_meta_data.items()}
+        camera_grp.attrs.put(meta_data)
 
         # Store timestamps
         camera_grp.create_dataset("frame_timestamps_us", data=frame_timestamps_us)
@@ -195,13 +198,15 @@ class ContainerDataWriter:
         self,
         # data indexing
         camera_id: str,
-        continous_frame_index: int,
+        continuous_frame_index: int,
         # image data
         image_file_binary_data: bytes,
         image_file_format: str,
         # poses
         T_rig_worlds: np.ndarray,
         timestamps_us: np.ndarray,
+        # generic per-frame data (key-value pairs, *not* dimension / dtype validated)
+        generic_data: Dict[str, np.ndarray],
     ) -> None:
         # sanity / consistency checks
         assert T_rig_worlds.shape == (2, 4, 4)
@@ -210,18 +215,24 @@ class ContainerDataWriter:
         assert timestamps_us.dtype == np.dtype("uint64")
 
         # Initialize frame
-        continous_frame_index_string = util.padded_index_string(continous_frame_index)
+        continuous_frame_index_string = util.padded_index_string(continuous_frame_index)
         frame_group = self.container_root[SENSORS_BASE_GROUP][CAMERAS_BASE_GROUP][camera_id].require_group(
-            continous_frame_index_string
+            continuous_frame_index_string
         )
 
         # Store image data
         frame_group.create_dataset("image", data=np.asarray(image_file_binary_data), compressor=None).attrs[
             "format"
         ] = image_file_format
+
         # Store pose data
         frame_group.create_dataset("T_rig_worlds", data=T_rig_worlds)
         frame_group.create_dataset("timestamps_us", data=timestamps_us)
+
+        # Store additional generic frame data (not dimension / dtype checked)
+        frame_generic_data_group = frame_group.require_group("generic_data")
+        for name, value in generic_data.items():
+            frame_generic_data_group.create_dataset(name, data=value)
 
     def store_lidar_meta(
         self,
@@ -230,6 +241,8 @@ class ContainerDataWriter:
         frame_timestamps_us: np.ndarray,
         # extrinsics
         T_sensor_rig: np.ndarray,
+        # generic sensor meta-data (name-value pairs, *not* dimension / dtype validated)
+        generic_meta_data: Dict[str, np.ndarray],
     ) -> None:
         assert T_sensor_rig.shape == (4, 4)
         assert T_sensor_rig.dtype == np.dtype("float32")
@@ -238,7 +251,10 @@ class ContainerDataWriter:
 
         # Store meta data
         lidar_grp = self.container_root[SENSORS_BASE_GROUP][LIDARS_BASE_GROUP][lidar_id]
-        lidar_grp.attrs.put({"T_sensor_rig": T_sensor_rig.tolist()})
+        meta_data = {"T_sensor_rig": T_sensor_rig.tolist()}
+        # encode generic meta-data (not dimension / dtype checked)
+        meta_data["generic_meta_data"] = {name: value.tolist() for name, value in generic_meta_data.items()}
+        lidar_grp.attrs.put(meta_data)
 
         # Store timestamps
         lidar_grp.create_dataset("frame_timestamps_us", data=frame_timestamps_us)
@@ -247,7 +263,7 @@ class ContainerDataWriter:
         self,
         # data indexing
         lidar_id: str,
-        continous_frame_index: int,
+        continuous_frame_index: int,
         # point-cloud data
         xyz_s: np.ndarray,
         xyz_e: np.ndarray,
@@ -260,6 +276,8 @@ class ContainerDataWriter:
         # poses
         T_rig_worlds: np.ndarray,
         timestamps_us: np.ndarray,
+        # generic per-frame data (key-value pairs, *not* dimension / dtype validated)
+        generic_data: Dict[str, np.ndarray],
     ) -> None:
         # sanity / consistency checks
         assert xyz_e.ndim == 2
@@ -273,9 +291,9 @@ class ContainerDataWriter:
         assert timestamps_us.dtype == np.dtype("uint64")
 
         # Initialize frame
-        continous_frame_index_string = util.padded_index_string(continous_frame_index)
+        continuous_frame_index_string = util.padded_index_string(continuous_frame_index)
         frame_group = self.container_root[SENSORS_BASE_GROUP][LIDARS_BASE_GROUP][lidar_id].require_group(
-            continous_frame_index_string
+            continuous_frame_index_string
         )
 
         # Store frame data
@@ -313,6 +331,11 @@ class ContainerDataWriter:
         frame_group.create_dataset("T_rig_worlds", data=T_rig_worlds)
         frame_group.create_dataset("timestamps_us", data=timestamps_us)
 
+        # Store additional generic frame data (not dimension / dtype checked)
+        frame_generic_data_group = frame_group.require_group("generic_data")
+        for name, value in generic_data.items():
+            frame_generic_data_group.create_dataset(name, data=value)
+
 
 class Sensor:
     """Provides access to generic data available to all sensor types"""
@@ -323,17 +346,17 @@ class Sensor:
         shard_index: int
         shard_frame_index: int
 
-    def _get_shard_frame(self, continous_frame_index: int) -> _ShardFrame:
-        """For a given continous-frame, determine the corresponding shard-frame"""
-        assert continous_frame_index >= 0 and continous_frame_index < self._shard_frame_map[-1], IndexError
+    def _get_shard_frame(self, continuous_frame_index: int) -> _ShardFrame:
+        """For a given continuous-frame, determine the corresponding shard-frame"""
+        assert continuous_frame_index >= 0 and continuous_frame_index < self._shard_frame_map[-1], IndexError
 
-        shard_index = int(np.searchsorted(self._shard_frame_map[1:], continous_frame_index, side="right"))
-        shard_frame = int(continous_frame_index - self._shard_frame_map[shard_index])
+        shard_index = int(np.searchsorted(self._shard_frame_map[1:], continuous_frame_index, side="right"))
+        shard_frame = int(continuous_frame_index - self._shard_frame_map[shard_index])
 
         return self._ShardFrame(shard_index, shard_frame)
 
-    def _get_continous_frame(self, shard_frame: _ShardFrame) -> int:
-        """For a given shard-frame, determine the corresponding continous-frame"""
+    def _get_continuous_frame(self, shard_frame: _ShardFrame) -> int:
+        """For a given shard-frame, determine the corresponding continuous-frame"""
         return self._shard_frame_map[shard_frame.shard_index] + shard_frame.shard_frame_index
 
     def __init__(self, sensor_id: str, sensor_group: str, shard_roots: List[zarr.Group]):
@@ -407,6 +430,29 @@ class Sensor:
         """Returns constant rig-to-sensor pose"""
         return transformations.se3_inverse(self.get_T_sensor_rig())
 
+    # Generic sensor meta-data
+    def get_generic_meta_data_names(self) -> List[str]:
+        """List of all generic sensor meta-data property names"""
+
+        if "generic_meta_data" not in self._sensor_meta.__dict__:
+            # Backwards-compatibility for data that didn't store generic_meta_data
+            return []
+
+        return list(self._sensor_meta.generic_meta_data.keys())
+
+    def has_generic_meta_data(self, name: str) -> bool:
+        """Signals if named generic sensor meta-data property exists"""
+
+        return name in self.get_generic_meta_data_names()
+
+    def get_generic_meta_data(self, name: str) -> np.ndarray:
+        """Returns named generic sensor meta-data property"""
+
+        if not self.has_generic_meta_data(name):
+            raise ValueError(f"Sensor {self._sensor_id} is missing generic meta-data '{name}'")
+
+        return np.asarray(self._sensor_meta.generic_meta_data[name])
+
     # Sequence-wide or shard-wide frame data
     def get_frames_count(self, start_shard_idx: Optional[int] = None, stop_shard_idx: Optional[int] = None) -> int:
         """Returns number of frames for full session (default) or a range of shards [start,stop)"""
@@ -433,53 +479,77 @@ class Sensor:
         """Returns all end-of-measurement frame timestamps full session (default) or a range of shards [start,stop)"""
         return np.hstack(self._shards_sensor_frame_timestamps_us[start_shard_idx:stop_shard_idx])
 
-    # Frame-dependent poses / timestamps
-    def _get_frame_group(self, continous_frame_index: int) -> zarr.Group:
+    # Frame-dependent poses / timestamps / data
+    def _get_frame_group(self, continuous_frame_index: int) -> zarr.Group:
         """Returns the zarr group for a specific frame"""
 
-        shard_frame = self._get_shard_frame(continous_frame_index)
+        shard_frame = self._get_shard_frame(continuous_frame_index)
 
         return self._shard_roots[shard_frame.shard_index][SENSORS_BASE_GROUP][self._sensor_group][self._sensor_id][
             util.padded_index_string(shard_frame.shard_frame_index)
         ]
 
     def get_frame_T_rig_world(
-        self, continous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END
+        self, continuous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END
     ) -> np.ndarray:
         """Returns start/end rig-to-world pose of specific frame"""
 
-        return self._get_frame_group(continous_frame_index)["T_rig_worlds"][frame_timepoint.value]
+        return self._get_frame_group(continuous_frame_index)["T_rig_worlds"][frame_timepoint.value]
 
     def get_frame_T_world_rig(
-        self, continous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END
+        self, continuous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END
     ) -> np.ndarray:
         """Returns start/end world-to-rig pose of specific frame"""
-        return transformations.se3_inverse(self.get_frame_T_rig_world(continous_frame_index, frame_timepoint))
+        return transformations.se3_inverse(self.get_frame_T_rig_world(continuous_frame_index, frame_timepoint))
 
     def get_frame_T_sensor_world(
-        self, continous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END
+        self, continuous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END
     ) -> np.ndarray:
         """Returns start/end sensor-to-world pose of specific frame"""
 
-        return self.get_frame_T_rig_world(continous_frame_index, frame_timepoint) @ self.get_T_sensor_rig()
+        return self.get_frame_T_rig_world(continuous_frame_index, frame_timepoint) @ self.get_T_sensor_rig()
 
     def get_frame_T_world_sensor(
-        self, continous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END
+        self, continuous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END
     ) -> np.ndarray:
         """Returns start/end world-to-sensor pose of specific frame"""
-        return transformations.se3_inverse(self.get_frame_T_sensor_world(continous_frame_index, frame_timepoint))
+        return transformations.se3_inverse(self.get_frame_T_sensor_world(continuous_frame_index, frame_timepoint))
 
     def get_frame_timestamp_us(
-        self, continous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END
+        self, continuous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END
     ) -> int:
         """Returns timestamp of specific frame timepoints"""
 
-        return self._get_frame_group(continous_frame_index)["timestamps_us"][frame_timepoint.value]
+        return self._get_frame_group(continuous_frame_index)["timestamps_us"][frame_timepoint.value]
 
     def get_closest_frame_index(self, timestamp_us: int) -> int:
         """Given a timestamp, returns the frame index of the closes frame"""
 
         return util.closest_index_sorted(self.get_frames_timestamps_us(), timestamp_us)
+
+    def get_frame_generic_data_names(self, continuous_frame_index: int) -> List[str]:
+        """List of all generic frame-data names"""
+
+        if "generic_data" not in (frame_group := self._get_frame_group(continuous_frame_index)):
+            # Backwards-compatibility for data that didn't store generic_data
+            return []
+
+        return list(frame_group["generic_data"].keys())
+
+    def has_frame_generic_data(self, continuous_frame_index: int, name: str) -> bool:
+        """Signals if named generic frame-data exists"""
+
+        return name in self.get_frame_generic_data_names(continuous_frame_index)
+
+    def get_frame_generic_data(self, continuous_frame_index: int, name: str) -> np.ndarray:
+        """Returns generic frame-data for a specific frame and name"""
+
+        if not self.has_frame_generic_data(continuous_frame_index, name):
+            raise ValueError(
+                f"Sensor {self._sensor_id} is missing generic meta-data '{name}' for frame {continuous_frame_index}"
+            )
+
+        return self._get_frame_group(continuous_frame_index)["generic_data"][name][()]
 
 
 class CameraSensor(Sensor):
@@ -496,21 +566,21 @@ class CameraSensor(Sensor):
             """Loads the referenced encoded image data to memory"""
             return types.EncodedImageData(self._image_dataset[()], self._image_dataset.attrs["format"])
 
-    def get_frame_handle(self, continous_frame_index: int) -> EncodedImageDataHandle:
+    def get_frame_handle(self, continuous_frame_index: int) -> EncodedImageDataHandle:
         """Returns the frame's encoded image data"""
-        return self.EncodedImageDataHandle(self._get_frame_group(continous_frame_index)["image"])
+        return self.EncodedImageDataHandle(self._get_frame_group(continuous_frame_index)["image"])
 
-    def get_frame_data(self, continous_frame_index: int) -> types.EncodedImageData:
+    def get_frame_data(self, continuous_frame_index: int) -> types.EncodedImageData:
         """Returns the frame's encoded image data"""
-        return self.get_frame_handle(continous_frame_index).get_data()
+        return self.get_frame_handle(continuous_frame_index).get_data()
 
-    def get_frame_image(self, continous_frame_index: int) -> PILImage.Image:
+    def get_frame_image(self, continuous_frame_index: int) -> PILImage.Image:
         """Returns the frame's decoded image data"""
-        return self.get_frame_data(continous_frame_index).get_decoded_image()
+        return self.get_frame_data(continuous_frame_index).get_decoded_image()
 
-    def get_frame_image_array(self, continous_frame_index: int) -> np.ndarray:
+    def get_frame_image_array(self, continuous_frame_index: int) -> np.ndarray:
         """Returns decoded image data as array [W,H,C]"""
-        return np.asarray(self.get_frame_image(continous_frame_index))
+        return np.asarray(self.get_frame_image(continuous_frame_index))
 
     # Intrinsics
     def get_camera_model_parameters(self) -> types.ConcreteCameraModelParametersUnion:
@@ -545,26 +615,26 @@ class CameraSensor(Sensor):
 class PointCloudSensor(Sensor):
     """Provides access to sensor's measuring point-clouds"""
 
-    def has_frame_data(self, continous_frame_index: int, name: str) -> bool:
+    def has_frame_data(self, continuous_frame_index: int, name: str) -> bool:
         """Signals if specifically named frame-data property exists"""
 
-        return name in self._get_frame_group(continous_frame_index)
+        return name in self._get_frame_group(continuous_frame_index)
 
-    def get_frame_data(self, continous_frame_index: int, name: str) -> np.ndarray:
-        """Returns frame-data for a specific frame and column-name"""
+    def get_frame_data(self, continuous_frame_index: int, name: str) -> np.ndarray:
+        """Returns frame-data for a specific frame and name"""
 
-        return self._get_frame_group(continous_frame_index)[name][()]
+        return self._get_frame_group(continuous_frame_index)[name][()]
 
 
 class LidarSensor(PointCloudSensor):
     """Provides access to lidar-specific sensor-data"""
 
-    def get_frame_labels(self, continous_frame_index: int) -> List[types.FrameLabel3]:
+    def get_frame_labels(self, continuous_frame_index: int) -> List[types.FrameLabel3]:
         """Returns frame-labels for a specific frame"""
 
         return [
             types.FrameLabel3.from_dict(frame_label, infer_missing=True)
-            for frame_label in self._get_frame_group(continous_frame_index)["frame_labels"]
+            for frame_label in self._get_frame_group(continuous_frame_index)["frame_labels"]
         ]
 
 
@@ -713,7 +783,7 @@ class ShardDataLoader:
         # Make sure shard IDs are continuous
         self._shard_ids = sorted(list(shards_map.keys()))
         if self._shard_ids[-1] - self._shard_ids[0] + 1 != len(self._shard_ids):
-            raise ValueError(f"Loading non-continous sequence of shards: {self._shard_ids}")
+            raise ValueError(f"Loading non-continuous sequence of shards: {self._shard_ids}")
 
         # *Linear* sequences of shards
         self._shard_paths = [shards_map[shard_id][0] for shard_id in self._shard_ids]

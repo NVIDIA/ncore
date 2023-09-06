@@ -325,6 +325,7 @@ class CarterDeepmapConverter(DataConverter):
                     frame_labels,
                     T_rig_worlds,
                     timestamps_us,
+                    {},
                 )
 
                 # Save the end time stamp of the lidar spin
@@ -337,6 +338,7 @@ class CarterDeepmapConverter(DataConverter):
                 lidar_id=lidar_id,
                 frame_timestamps_us=np.array(lidar_end_timestamps, dtype=np.uint64),
                 T_sensor_rig=T_lidar_rig,
+                generic_meta_data={},
             )
 
     def decode_cameras(self):
@@ -390,7 +392,13 @@ class CarterDeepmapConverter(DataConverter):
                 T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
 
                 self.data_writer.store_camera_frame(
-                    camera_id, continuous_frame_idx, image_file_binary_data, "jpeg", T_rig_worlds, timestamps_us
+                    camera_id,
+                    continuous_frame_idx,
+                    image_file_binary_data,
+                    "jpeg",
+                    T_rig_worlds,
+                    timestamps_us,
+                    {},
                 )
 
                 frame_end_timestamps_us.append(frame_timestamp_us)  # single timestamp is end-of-frame timestamp
@@ -403,4 +411,5 @@ class CarterDeepmapConverter(DataConverter):
                 T_sensor_rig=T_camera_rig,
                 camera_model_parameters=camera_model,
                 mask_image=None,
+                generic_meta_data={},
             )

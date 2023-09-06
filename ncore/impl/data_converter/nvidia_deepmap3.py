@@ -352,6 +352,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                 frame_labels,
                 T_rig_worlds,
                 timestamps_us,
+                {},
             )
 
             # Save the end time stamp of the lidar spin
@@ -364,6 +365,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
             lidar_id=self.LIDAR_SENSOR_ID,
             frame_timestamps_us=np.array(lidar_end_timestmap, dtype=np.uint64),
             T_sensor_rig=T_lidar_rig,
+            generic_meta_data={},
         )
 
     def decode_cameras(self, sequence_path):
@@ -453,7 +455,13 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                     )  # encode image as jpeg
 
                     self.data_writer.store_camera_frame(
-                        camera_id, continous_frame_index, buffer.getvalue(), FORMAT, T_rig_worlds, timestamps_us
+                        camera_id,
+                        continous_frame_index,
+                        buffer.getvalue(),
+                        FORMAT,
+                        T_rig_worlds,
+                        timestamps_us,
+                        {},
                     )
 
                 success, image_bgr = vidcap.read()
@@ -498,4 +506,5 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                     max_angle,
                 ),
                 mask_image.get_image(),
+                {},
             )

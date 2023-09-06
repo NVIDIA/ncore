@@ -90,6 +90,11 @@ class TestData3Loader(unittest.TestCase):
             lidar_sensor.get_sensor_id(), loader.get_lidar_sensor("lidar_gt_top_p128_v4p5").get_sensor_id()
         )
 
+        # We currently don't store generic meta data in NV data
+        self.assertEqual(lidar_sensor.get_generic_meta_data_names(), [])
+        self.assertFalse(lidar_sensor.has_generic_meta_data("nonexisting"))
+        self.assertRaises(ValueError, lidar_sensor.get_generic_meta_data, "nonexisting")
+
         # Load all data
         for frame_index in lidar_sensor.get_frame_index_range():
             self.assertTrue(lidar_sensor.has_frame_data(frame_index, "xyz_s"))
@@ -115,6 +120,11 @@ class TestData3Loader(unittest.TestCase):
                 len(lidar_sensor.get_frame_labels(frame_index)), 0, f"no labels for lidar frame {frame_index}"
             )
 
+            # We currently don't store generic frame data in NV data
+            self.assertEqual(lidar_sensor.get_frame_generic_data_names(frame_index), [])
+            self.assertFalse(lidar_sensor.has_frame_generic_data(frame_index, "nonexisting"))
+            self.assertRaises(ValueError, lidar_sensor.get_frame_generic_data, frame_index, "nonexisting")
+
     def test_shard_sensor_camera(self):
         self.assertEqual(len(self.all_shards), 3)
         loader = ShardDataLoader(self.all_shards)
@@ -125,12 +135,22 @@ class TestData3Loader(unittest.TestCase):
             camera_sensor.get_sensor_id(), loader.get_camera_sensor("camera_cross_left_120fov").get_sensor_id()
         )
 
+        # We currently don't store generic meta data in NV data
+        self.assertEqual(camera_sensor.get_generic_meta_data_names(), [])
+        self.assertFalse(camera_sensor.has_generic_meta_data("nonexisting"))
+        self.assertRaises(ValueError, camera_sensor.get_generic_meta_data, "nonexisting")
+
         self.assertIsInstance(camera_sensor.get_camera_model_parameters(), FThetaCameraModelParameters)
         self.assertEqual(camera_sensor.get_camera_mask_image().size, (3848, 2168))
 
         # Decode all camera frames
         for frame_index in camera_sensor.get_frame_index_range():
             self.assertEqual(camera_sensor.get_frame_image(frame_index).size, (3848, 2168))
+
+            # We currently don't store generic frame data in NV data
+            self.assertEqual(camera_sensor.get_frame_generic_data_names(frame_index), [])
+            self.assertFalse(camera_sensor.has_frame_generic_data(frame_index, "nonexisting"))
+            self.assertRaises(ValueError, camera_sensor.get_frame_generic_data, frame_index, "nonexisting")
 
     def test_shard_sensor(self):
         self.assertEqual(len(self.all_shards), 3)
