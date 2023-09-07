@@ -139,6 +139,8 @@ pytest_test(
     deps = [
         ":pylib_data",
         requirement("parameterized"),
+        requirement("pillow"),
+        requirement("scipy"),
     ],
 )
 
@@ -151,6 +153,8 @@ pytest_test_3_8(
     deps = [
         ":pylib_data_3_8",
         requirement_3_8("parameterized"),
+        requirement_3_8("pillow"),
+        requirement_3_8("scipy"),
     ],
 )
 
