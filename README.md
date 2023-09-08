@@ -64,7 +64,14 @@ git clone https://gitlab-master.nvidia.com/toronto_dL_lab/ncore.git
 
 The repository is using `bazel` as the core build-system (see `.bazelversion` for the required version).
 
-The correct `bazel` version can be invoked most easily using the official `bazelisk` wrapper (see installation instructions at [bazelisk](https://github.com/bazelbuild/bazelisk#installation)).
+The correct `bazel` version is most easily invoked using the official `bazelisk` wrapper.
+
+`bazelisk` can be installed with one of the methods listed at [bazelisk-installation](https://github.com/bazelbuild/bazelisk#installation), or simply by running:
+
+```
+sudo wget -O /usr/local/bin/bazel https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64
+sudo chmod +x /usr/local/bin/bazel
+```
 
 # Execution
 
