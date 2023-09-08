@@ -353,7 +353,7 @@ class WaymoConverter(DataConverter):
                 xyz_e_second = transform_point_cloud(points_world_second[:, 3:6], T_world_sensor_end).astype(
                     np.float32
                 )  # S x 3
-                # normalize intensity (https://github.com/ouster-lidar/ouster_example/issues/488)
+                # normalize intensity (https://github.com/ouster-lidar/ouster_example/issues/488) to [0,1]
                 intensity = np.tanh(points_world[:, 6])  # N
                 intensity_second = np.tanh(points_world_second[:, 6])  # S
                 elongation = points_world[:, 7]  # N
