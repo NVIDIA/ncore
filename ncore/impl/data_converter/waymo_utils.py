@@ -97,14 +97,19 @@ def convert_range_image_to_point_cloud(
       points: [N, 8] list of 3d lidar points of length 8, floats (signals: start-ray-point, end-ray-point, intensity, elongation).
       segs: [N, 2] list of point instance-IDs / semantic_classes (if available)
       timestamps: [N] list of point timestamps, unsigned-integers
+      range_image_indices: [N, 2] per-point indices in the original range-image
+      inclinations: [H] per-row ray inclinations [rad]
+      azimuths: [W] per-column ray azimuths [rad]
+
     """
-    cartesian_range_image, timestamps_full = convert_range_image_to_cartesian(
+    cartesian_range_image, timestamps_full, inclinations, azimuths = convert_range_image_to_cartesian(
         frame, laser_name, range_image, range_image_top_pose, start_end_timestamps
     )
 
     points: np.ndarray = np.empty(0)
     segs: Optional[np.ndarray] = None
     timestamps: np.ndarray = np.empty(0)
+    range_image_indices: np.ndarray = np.empty(0)
 
     for c in frame.context.laser_calibrations:
         if c.name != laser_name:
@@ -113,18 +118,29 @@ def convert_range_image_to_point_cloud(
         range_image_tensor = tf.reshape(tf.convert_to_tensor(value=range_image.data), range_image.shape.dims)
         range_image_mask = range_image_tensor[..., 0] > 0  # filter points based on positive range
 
-        points_tensor = tf.gather_nd(cartesian_range_image, tf.compat.v1.where(range_image_mask))
+        range_image_indices_tensor = tf.compat.v1.where(range_image_mask)
+
+        points_tensor = tf.gather_nd(cartesian_range_image, range_image_indices_tensor)
         points = points_tensor.numpy()
 
         if segmentation:
             seq_tensor = tf.reshape(tf.convert_to_tensor(value=segmentation.data), segmentation.shape.dims)
-            seg_points_tensor = tf.gather_nd(seq_tensor, tf.compat.v1.where(range_image_mask))
+            seg_points_tensor = tf.gather_nd(seq_tensor, range_image_indices_tensor)
             segs = seg_points_tensor.numpy()
 
-        timestamps_tensor = tf.gather_nd(timestamps_full, tf.compat.v1.where(range_image_mask))
+        timestamps_tensor = tf.gather_nd(timestamps_full, range_image_indices_tensor)
         timestamps = timestamps_tensor.numpy()
 
-    return points, segs, timestamps
+        range_image_indices = range_image_indices_tensor.numpy().astype(np.uint32)
+
+    return (
+        points,
+        segs,
+        timestamps,
+        range_image_indices,
+        inclinations.numpy().astype(np.float32),
+        azimuths.numpy().astype(np.float32),
+    )
 
 
 def convert_range_image_to_cartesian(frame, laser_name, range_image, range_image_top_pose, start_end_timestamps):
@@ -180,7 +196,7 @@ def convert_range_image_to_cartesian(frame, laser_name, range_image, range_image
             pixel_pose_local = tf.expand_dims(pixel_pose_local, axis=0)
             frame_pose_local = tf.expand_dims(frame_pose, axis=0)
 
-        range_image_cartesian, range_image_timestamps = extract_point_cloud_from_range_image(
+        range_image_cartesian, range_image_timestamps, azimuths = extract_point_cloud_from_range_image(
             tf.expand_dims(range_image_tensor[..., 0], axis=0),
             tf.expand_dims(extrinsic, axis=0),
             tf.expand_dims(tf.convert_to_tensor(value=beam_inclinations), axis=0),
@@ -200,8 +216,9 @@ def convert_range_image_to_cartesian(frame, laser_name, range_image, range_image
         )
 
         timestamps = tf.squeeze(range_image_timestamps, axis=0)
+        azimuths = tf.squeeze(azimuths, axis=0)
 
-    return cartesian_range_images, timestamps
+    return cartesian_range_images, timestamps, beam_inclinations, azimuths
 
 
 def extract_point_cloud_from_range_image(
@@ -236,7 +253,7 @@ def extract_point_cloud_from_range_image(
     with tf.compat.v1.name_scope(
         scope, "ExtractPointCloudFromRangeImage", [range_image, extrinsic, inclination, pixel_pose, frame_pose]
     ):
-        range_image_polar = compute_range_image_polar(range_image, extrinsic, inclination, dtype=dtype)
+        range_image_polar, azimuths = compute_range_image_polar(range_image, extrinsic, inclination, dtype=dtype)
         range_image_cartesian, timestamps = compute_range_image_cartesian(
             range_image_polar,
             extrinsic,
@@ -247,7 +264,7 @@ def extract_point_cloud_from_range_image(
             return_local_coordinates=False,
         )
 
-        return range_image_cartesian, timestamps
+        return range_image_cartesian, timestamps, azimuths
 
 
 def compute_inclination(inclination_range, height, scope=None):
@@ -306,7 +323,7 @@ def compute_range_image_polar(range_image, extrinsic, inclination, dtype=tf.floa
         # [B, H, W]
         inclination_tile = tf.tile(inclination[:, :, tf.newaxis], [1, 1, width])
         range_image_polar = tf.stack([azimuth_tile, inclination_tile, range_image], axis=-1)
-        return tf.cast(range_image_polar, dtype=range_image_dtype)
+        return tf.cast(range_image_polar, dtype=range_image_dtype), azimuth
 
 
 def compute_range_image_cartesian(

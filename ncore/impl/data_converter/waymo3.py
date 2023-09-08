@@ -217,7 +217,7 @@ class WaymoConverter(DataConverter):
         motion of the ego-car (lidar unwinding)
         """
 
-        ## Collect  calibrations
+        ## Collect calibrations
         calibrations = {c.name: c for c in frames[0].context.laser_calibrations}
 
         ## Collect frame start timestamps
@@ -282,6 +282,10 @@ class WaymoConverter(DataConverter):
             # Determine sensor extrinsics
             T_sensor_rig = np.array(calibrations[lidar_id].extrinsic.transform, dtype=np.float32).reshape(4, 4)
 
+            # Range image properties / intrinsics
+            inclinations_rad = np.empty(0)
+            azimuths_rad = np.empty(0)
+
             # Collect all lidar per-frame data
             assert len(frames) > 1  # require at least two frames to compute frame bound timestamps
             frame_end_timestamps_us = []
@@ -305,14 +309,36 @@ class WaymoConverter(DataConverter):
                     frame, lidar_id, ri_index=0
                 )
 
-                # Convert the range image to a ego-motion compensated 3D rays in sequence coordinate frame
+                range_image_second, _, _ = parse_range_image_and_segmentations(frame, lidar_id, ri_index=1)
+
+                # Convert the range image to a ego-motion compensated 3D rays in sequence world coordinate frame
                 # (motion-compensated to start frame time)
-                points_world, segmentations, point_timestamps_us = convert_range_image_to_point_cloud(
+                (
+                    points_world,
+                    segmentation,
+                    point_timestamps_us,
+                    range_image_indices,  # N x 2
+                    inclinations_rad,
+                    azimuths_rad,
+                ) = convert_range_image_to_point_cloud(
                     frame, lidar_id, range_image, segmentation, range_image_top_pose, timestamps_us
                 )
 
+                (points_world_second, _, _, range_image_indices_second, _, _,) = convert_range_image_to_point_cloud(
+                    frame, lidar_id, range_image_second, None, range_image_top_pose, timestamps_us
+                )
+
+                # perform primary <-> secondary ray matching via linear indices (as every secondary ray has a parent primary ray)
+                range_image_width = azimuths_rad.size
+                linear_indices_primary = range_image_indices[:, 0] + range_image_indices[:, 1] * range_image_width
+                linear_indices_second = (
+                    range_image_indices_second[:, 0] + range_image_indices_second[:, 1] * range_image_width
+                )
+
+                primary_indices = np.where(linear_indices_second[:, None] == linear_indices_primary[None, :])[1]  # S
+
                 # Pick semantic_class if available in current frame
-                semantic_class = segmentations[:, 1].astype(np.int8) if (segmentations is not None) else None  # N x 1
+                semantic_class = segmentation[:, 1].astype(np.int8) if (segmentation is not None) else None  # N
 
                 frame_end_timestamps_us.append(frame_end_timestamp_us)
 
@@ -324,22 +350,26 @@ class WaymoConverter(DataConverter):
 
                 xyz_s = transform_point_cloud(points_world[:, :3], T_world_sensor_end).astype(np.float32)  # N x 3
                 xyz_e = transform_point_cloud(points_world[:, 3:6], T_world_sensor_end).astype(np.float32)  # N x 3
-                intensity = np.tanh(
-                    points_world[:, 6]
-                )  # N x 1 normalize intensity (https://github.com/ouster-lidar/ouster_example/issues/488)
+                xyz_e_second = transform_point_cloud(points_world_second[:, 3:6], T_world_sensor_end).astype(
+                    np.float32
+                )  # S x 3
+                # normalize intensity (https://github.com/ouster-lidar/ouster_example/issues/488) to [0,1]
+                intensity = np.tanh(points_world[:, 6])  # N
+                intensity_second = np.tanh(points_world_second[:, 6])  # S
+                elongation = points_world[:, 7]  # N
+                elongation_second = points_world_second[:, 7]  # S
 
                 # Process frame labels (defined in frame-associated rig frame)
                 frame_labels: list[FrameLabel3] = []
                 T_rig_labelstime_world = np.array(
                     tf.reshape(tf.constant(frame.pose.transform, dtype=tf.float64), [4, 4])
                 ).astype(np.float32)
-                T_rig_labelstime_sensor_frametime = T_world_sensor_end @ T_rig_labelstime_world
+                T_rig_labelstime_sensor_end = T_world_sensor_end @ T_rig_labelstime_world
 
                 for raw_frame_label in raw_frame_labels[frame.timestamp_micros]:
-
                     # Map label in rig space to frame label in sensor space
                     bbox3_sensor = BBox3.from_array(
-                        transform_bbox(raw_frame_label.bbox3.to_array(), T_rig_labelstime_sensor_frametime)
+                        transform_bbox(raw_frame_label.bbox3.to_array(), T_rig_labelstime_sensor_end)
                     )
 
                     # Approximate measurement time by azimuth angle of centroid in sensor's x/y plane
@@ -407,13 +437,34 @@ class WaymoConverter(DataConverter):
                     frame_labels,
                     T_rig_worlds,
                     timestamps_us,
+                    {
+                        # primary ray data
+                        "elongation": elongation.reshape(-1).astype(np.float32),  # N
+                        "range_image_indices": range_image_indices.reshape((-1, 2)).astype(
+                            np.uint32
+                        ),  # N x 2 (indices into HxW source range image)
+                        # secondary ray data
+                        "primary_indices": primary_indices.reshape(-1).astype(
+                            np.uint32
+                        ),  # S (indices of the primary parent ray)
+                        "xyz_e_second": xyz_e_second.reshape((-1, 3)).astype(np.float32),  # S x 3
+                        "intensity_second": intensity_second.reshape(-1).astype(np.float32),  # S
+                        "elongation_second": elongation_second.reshape(-1).astype(np.float32),  # S
+                    },
                 )
 
                 continuous_frame_index += 1
 
             # Store all static sensor data
             self.data_writer.store_lidar_meta(
-                lidar_name, np.array(frame_end_timestamps_us, dtype=np.uint64), T_sensor_rig
+                lidar_name,
+                np.array(frame_end_timestamps_us, dtype=np.uint64),
+                T_sensor_rig,
+                {
+                    # angles associated with range-image "pixels"
+                    "inclinations_rad": inclinations_rad.reshape(-1).astype(np.float32),  # H (one per range-image row)
+                    "azimuths_rad": azimuths_rad.reshape(-1).astype(np.float32),  # W (one per range-image column)
+                },
             )
 
         # Save the accumulated tracks in global time
@@ -489,7 +540,13 @@ class WaymoConverter(DataConverter):
 
                 # Store the image and its metadata
                 self.data_writer.store_camera_frame(
-                    camera_name, continuous_frame_index, image.image, "jpeg", T_rig_worlds, timestamps_us
+                    camera_name,
+                    continuous_frame_index,
+                    image.image,
+                    "jpeg",
+                    T_rig_worlds,
+                    timestamps_us,
+                    {},
                 )
                 continuous_frame_index += 1
 
@@ -525,4 +582,5 @@ class WaymoConverter(DataConverter):
                     np.array([0, 0, 0, 0], dtype=np.float32),
                 ),
                 None,
+                {},
             )

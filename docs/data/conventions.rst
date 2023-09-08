@@ -113,17 +113,23 @@ dataset hierarchy [#f3]_:
       │   ⁞   │
       │   ⁞   ├── {mask} () |Sx
       │   ⁞   │
+      │   ⁞   ├── {generic_meta_data}...
+      │   ⁞   │
       │   ⁞   ├── 000000
       │   ⁞   │   ├── T_rig_worlds (2, 4, 4) float32
       │   ⁞   │   ├── timestamps_us (2,) uint64
       │   ⁞   │   │
-      │   ⁞   │   └── image () |Sx
+      │   ⁞   │   ├── image () |Sx
+      │   ⁞   │   │      
+      │   ⁞   │   └── {generic_data}...
       │   ⁞   │
       │   ⁞   └── 000001...
       │
       ├── lidars
       │   ├── lidar_gt_top_p128_v4p5
       │   ⁞   ├── frame_timestamps_us (K,) uint64
+      │   ⁞   │
+      │   ⁞   ├── {generic_meta_data}...
       │   ⁞   │
       │   ⁞   ├── 000000
       │   ⁞   │   ├── T_rig_worlds (2, 4, 4) float32
@@ -136,13 +142,19 @@ dataset hierarchy [#f3]_:
       │   ⁞   │   ├── intensity (N,) float32
       │   ⁞   │   ├── timestamp_us (N,) uint64
       │   ⁞   │   ├── xyz_e (N, 3) float32
-      │   ⁞   │   └── xyz_s (N, 3) float32
+      │   ⁞   │   ├── xyz_s (N, 3) float32
+      │   ⁞   │   │
+      │   ⁞   │   └── {generic_data}...
       │   ⁞   │
       │   ⁞   └── 000001...
       │
       └── {radars}
           ├── radar_corner_front_left
-          ⁞   └── 000000
+          ⁞   ├── frame_timestamps_us (K,) uint64
+          ⁞   │
+          ⁞   ├── {generic_meta_data}...
+          ⁞   │
+          ⁞   └── 000000...
 
 For instance, the dataset representing the encoded image of the first
 frame of the camera with ID ``camera_front_wide_120fov`` is referenced
@@ -221,9 +233,12 @@ all frames:
 * ``T_rig_worlds`` - SE3 transformation matrices from the rig to the
   world coordinate system at the start and end timestamp of the frame
   (float32, [2,4,4])
+* ``generic_data`` - a group with non-enforced dataset members
+  (usually data-source dependent, encoding data-source specific
+  per-frame data not common to all data-sources)
 
-For individual sensors we also save session-wise either as attributes of
-the sensor-group or individual datasets:
+For individual sensor types, we also save sequence-wide sensor-specific
+meta data either as attributes of the sensor-group or individual datasets:
 
 *All Sensors*:
 
@@ -231,6 +246,9 @@ the sensor-group or individual datasets:
   coordinate system (float32, [4,4])
 * ``frame_timestamps_us`` - end-of-frame timestamps of all the sensor's
   frames in microseconds (uint64, [J,])
+* ``generic_meta_data`` - a group with non-enforced members
+  (usually data-source dependent, encoding data-source specific sensor
+  meta data not common to all data-sources)
 
 *Cameras*:
 

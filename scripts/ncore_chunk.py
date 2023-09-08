@@ -155,6 +155,12 @@ class ChunkDataWriter:
                 T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
 
                 encoded_image_data = camera_sensor.get_frame_handle(source_frame_idx).get_data()
+
+                generic_data = {
+                    name: camera_sensor.get_frame_generic_data(source_frame_idx, name)
+                    for name in camera_sensor.get_frame_generic_data_names(source_frame_idx)
+                }
+
                 data_writer.store_camera_frame(
                     camera_id,
                     chunk_frame_index,
@@ -162,18 +168,24 @@ class ChunkDataWriter:
                     encoded_image_data.get_encoded_image_format(),
                     T_rig_worlds,
                     timestamps_us,
+                    generic_data,
                 )
 
                 chunk_frame_index += 1
                 chunk_frame_end_timestamps_us.append(timestamps_us[1])
 
             # store sensor meta
+            generic_meta_data = {
+                name: camera_sensor.get_generic_meta_data(name) for name in camera_sensor.get_generic_meta_data_names()
+            }
+
             data_writer.store_camera_meta(
                 camera_id,
                 np.array(chunk_frame_end_timestamps_us, dtype=np.uint64),
                 camera_sensor.get_T_sensor_rig(),
                 camera_sensor.get_camera_model_parameters(),
                 camera_sensor.get_camera_mask_image(),
+                generic_meta_data,
             )
 
         ## Process lidars
@@ -272,6 +284,12 @@ class ChunkDataWriter:
                     if lidar_sensor.has_frame_data(source_frame_idx, "semantic_class")
                     else None
                 )
+
+                generic_data = {
+                    name: lidar_sensor.get_frame_generic_data(source_frame_idx, name)
+                    for name in lidar_sensor.get_frame_generic_data_names(source_frame_idx)
+                }
+
                 data_writer.store_lidar_frame(
                     lidar_id,
                     chunk_frame_index,
@@ -284,14 +302,22 @@ class ChunkDataWriter:
                     frame_labels,
                     T_rig_worlds,
                     timestamps_us,
+                    generic_data,
                 )
 
                 chunk_frame_index += 1
                 chunk_frame_end_timestamps_us.append(timestamps_us[1])
 
         # store sensor meta
+        generic_meta_data = {
+            name: lidar_sensor.get_generic_meta_data(name) for name in lidar_sensor.get_generic_meta_data_names()
+        }
+
         data_writer.store_lidar_meta(
-            lidar_id, np.array(chunk_frame_end_timestamps_us, dtype=np.uint64), lidar_sensor.get_T_sensor_rig()
+            lidar_id,
+            np.array(chunk_frame_end_timestamps_us, dtype=np.uint64),
+            lidar_sensor.get_T_sensor_rig(),
+            generic_meta_data,
         )
 
         # store tracks
