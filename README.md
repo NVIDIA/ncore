@@ -64,13 +64,7 @@ git clone https://gitlab-master.nvidia.com/toronto_dL_lab/ncore.git
 
 The repository is using `bazel` as the core build-system (see `.bazelversion` for the required version).
 
-The correct `bazel` version can either be installed locally, or incorporated automatically with the [bazelisk](https://github.com/bazelbuild/bazelisk) wrapper
-
-with
-
-`go install github.com/bazelbuild/bazelisk@latest`
-
-(make sure to also add `$(go env GOPATH)/bin` to your local `PATH` environment variable).
+The correct `bazel` version can be invoked most easily using the official `bazelisk` wrapper (see installation instructions at [bazelisk](https://github.com/bazelbuild/bazelisk#installation)).
 
 # Execution
 
