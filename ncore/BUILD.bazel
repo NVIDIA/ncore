@@ -34,14 +34,14 @@ py_wheel(
     python_tag = "py3",
     requires = [
         "numpy",
-        "dataclasses_json>=0.2.11",
+        "dataclasses_json>=0.2.12",
         "pillow",
-        "zarr",
+        "zarr>=2.12.0",
         "cbor2",
         "scipy",
         "torch",
     ],
-    version = "0.6.3",
+    version = "0.6.4",
     deps = [
         ":ncore_pkg",
     ],
