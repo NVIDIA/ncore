@@ -383,7 +383,7 @@ class MaskImage:
     Image encoding *per-pixel* annotation mask types:
 
         - dynamic [255, 255, 255] - e.g., dynamic vehicles / objects
-        - ego     [0, 255, 0] - pixels corresponding to projections of the ego vehicle
+        - ego     [0, 0, 255] - pixels corresponding to projections of the ego vehicle
 
     Properties can be set using binary input images. A pixel can only have a single property assigned.
     Output images are represented using color pallets to reduce memory footprints.
