@@ -463,15 +463,17 @@ class Sensor:
             ]
         )
 
-    def get_frame_index_range(self, start_frame: int = 0, stop_frame: int = -1, step_frame: int = 1) -> range:
-        """Returns a specific range of frame indices following range(start,stop,step) conventions"""
+    def get_frame_index_range(
+        self,
+        start_frame_index: Optional[int] = None,
+        stop_frame_index: Optional[int] = None,
+        step_frame_index: Optional[int] = None,
+    ) -> range:
+        """Returns a (potentially empty) range of frame indices following start:stop:step slice conventions,
+        defaulting to full frame index range for absent range bound specifiers
+        """
 
-        if stop_frame == -1:
-            stop_frame = self.get_frames_count()
-
-        assert start_frame >= 0 and stop_frame <= self.get_frames_count(), IndexError
-
-        return range(start_frame, stop_frame, step_frame)
+        return range(*slice(start_frame_index, stop_frame_index, step_frame_index).indices(self.get_frames_count()))
 
     def get_frames_timestamps_us(
         self, start_shard_idx: Optional[int] = None, stop_shard_idx: Optional[int] = None

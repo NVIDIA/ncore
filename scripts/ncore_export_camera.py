@@ -3,6 +3,7 @@
 import logging
 
 from pathlib import Path
+from typing import Optional
 
 import click
 import tqdm
@@ -22,14 +23,16 @@ from ncore.impl.data.util import padded_index_string
     "--camera-id", type=str, help="Camera sensor to export image frames for", default="camera_front_wide_120fov"
 )
 @click.option(
-    "--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial frame to be exported", default=0
+    "--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial frame to be exported", default=None
 )
-@click.option("--end-frame", type=click.IntRange(min=-1, max_open=True), help="End frame to be exported", default=-1)
+@click.option(
+    "--stop-frame", type=click.IntRange(min=0, max_open=True), help="Past-the-end frame to be exported", default=None
+)
 @click.option(
     "--step-frame",
     type=click.IntRange(min=1, max_open=True),
     help="Step used to downsample the number of frames",
-    default=1,
+    default=None,
 )
 @click.option("--encode-images/--no-encode-images", is_flag=True, default=True, help="Encode image files for frames")
 @click.option("--encode-video", is_flag=True, default=False, help="Encode video of frames")
@@ -38,9 +41,9 @@ def ncore_export_camera(
     shard_file_pattern: str,
     output_dir: str,
     camera_id: str,
-    start_frame: int,
-    end_frame: int,
-    step_frame: int,
+    start_frame: Optional[int],
+    stop_frame: Optional[int],
+    step_frame: Optional[int],
     encode_images: bool,
     encode_video: bool,
     encode_video_fps: int,
@@ -59,7 +62,7 @@ def ncore_export_camera(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    indices = sensor.get_frame_index_range(start_frame, end_frame, step_frame)
+    indices = sensor.get_frame_index_range(start_frame, stop_frame, step_frame)
     logger.info(f"Starting image export for '{camera_id}' into '{output_path}'. {len(indices)} files will be exported")
 
     # Instantiate video encoder if requested

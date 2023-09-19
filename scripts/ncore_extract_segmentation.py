@@ -2,7 +2,7 @@
 
 import logging
 
-from typing import Tuple
+from typing import Optional, Tuple
 from pathlib import Path
 
 import click
@@ -34,14 +34,16 @@ from ncore.impl.data.util import INDEX_DIGITS
 @click.option("--semantic-seg", is_flag=True, default=False, help="Perform semantic segmentation")
 @click.option("--instance-seg", is_flag=True, default=False, help="Perform instance segmentation")
 @click.option(
-    "--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial frame to be segmented", default=0
+    "--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial frame to be segmented", default=None
 )
-@click.option("--end-frame", type=click.IntRange(min=-1, max_open=True), help="End frame to be exported", default=-1)
+@click.option(
+    "--stop-frame", type=click.IntRange(min=0, max_open=True), help="Past-the-end frame to be exported", default=None
+)
 @click.option(
     "--step-frame",
     type=click.IntRange(min=1, max_open=True),
     help="Step used to downsample the number of frames",
-    default=1,
+    default=None,
 )
 def ncore_extract_segmentation(
     shard_file_pattern: str,
@@ -49,9 +51,9 @@ def ncore_extract_segmentation(
     camera_ids: list[str],
     semantic_seg: bool,
     instance_seg: bool,
-    start_frame: int,
-    end_frame: int,
-    step_frame: int,
+    start_frame: Optional[int],
+    stop_frame: Optional[int],
+    step_frame: Optional[int],
 ):
 
     # Initialize the logger
@@ -73,7 +75,7 @@ def ncore_extract_segmentation(
 
         image_handles: list[Tuple[int, EncodedImageHandle]] = [
             (i, camera_sensor.get_frame_handle(i))
-            for i in camera_sensor.get_frame_index_range(start_frame, end_frame, step_frame)
+            for i in camera_sensor.get_frame_index_range(start_frame, stop_frame, step_frame)
         ]
 
         if semantic_seg:

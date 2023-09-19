@@ -3,6 +3,7 @@
 import logging
 
 from pathlib import Path
+from typing import Optional
 
 import click
 import tqdm
@@ -23,13 +24,15 @@ from ncore.impl.data.util import padded_index_string
 )
 @click.option("--mesh-path", type=str, help="Path to the reconstructed mesh", required=True)
 @click.option("--camera-id", type=str, help="Camera sensor to be used for projection.", required=True)
-@click.option("--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial frame to be use", default=0)
-@click.option("--end-frame", type=click.IntRange(min=-1, max_open=True), help="End frame to be used", default=-1)
+@click.option("--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial frame to be use", default=None)
+@click.option(
+    "--stop-frame", type=click.IntRange(min=0, max_open=True), help="Past-the-end frame to be used", default=None
+)
 @click.option(
     "--step-frame",
     type=click.IntRange(min=1, max_open=True),
     help="Step used to downsample the number of frames",
-    default=1,
+    default=None,
 )
 @click.option(
     "--static-camera-mask-dilations",
@@ -42,9 +45,9 @@ def ncore_rgb_ray_mesh_intersection(
     shard_file_pattern: str,
     mesh_path: str,
     camera_id: str,
-    start_frame: int,
-    end_frame: int,
-    step_frame: int,
+    start_frame: Optional[int],
+    stop_frame: Optional[int],
+    step_frame: Optional[int],
     static_camera_mask_dilations: int,
     output_dir: str,
 ):
@@ -102,7 +105,7 @@ def ncore_rgb_ray_mesh_intersection(
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Get the camera frame indices from the index range
-    camera_frame_indices = camera_sensor.get_frame_index_range(start_frame, end_frame, step_frame)
+    camera_frame_indices = camera_sensor.get_frame_index_range(start_frame, stop_frame, step_frame)
     logger.info(
         f"Starting pc coloring. {len(camera_frame_indices)} frames will be processed and stored to {output_path}"
     )
