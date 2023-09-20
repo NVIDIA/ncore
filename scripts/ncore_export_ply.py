@@ -62,7 +62,7 @@ def ncore_export_ply(
     output_path = Path(output_dir)
 
     indices = sensor.get_frame_index_range(start_frame, stop_frame, step_frame)
-    logger.info(f"Starting '.ply' export. {len(indices)} files will be exported.")
+    logger.info(f"Starting '.ply' export. {len(indices)} frames will be exported.")
 
     for frame_index in tqdm.tqdm(indices):
 
