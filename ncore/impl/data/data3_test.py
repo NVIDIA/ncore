@@ -192,6 +192,16 @@ class TestData3Loader(unittest.TestCase):
         self.assertEqual(len(sensor.get_frames_timestamps_us(0, 2)), 7)
 
         self.assertEqual(sensor.get_frame_index_range(), range(0, 9, 1))
+        self.assertEqual(sensor.get_frame_index_range(None, None, None), range(0, 9, 1))
+        self.assertEqual(sensor.get_frame_index_range(0, 9, 1), range(0, 9, 1))
+        self.assertEqual(sensor.get_frame_index_range(0), range(0, 9, 1))
+        self.assertEqual(sensor.get_frame_index_range(1, 3, None), range(1, 3, 1))
+        self.assertEqual(sensor.get_frame_index_range(1, None, 2), range(1, 9, 2))
+        self.assertEqual(sensor.get_frame_index_range(1, -1, 1), range(1, 8, 1))  # negative slice arguments
+        self.assertEqual(sensor.get_frame_index_range(-2), range(7, 9, 1))
+        self.assertEqual(sensor.get_frame_index_range(-2, None, -1), range(7, -1, -1))
+        self.assertEqual(sensor.get_frame_index_range(10), range(9, 9, 1))  # empty ranges
+        self.assertEqual(sensor.get_frame_index_range(20), range(9, 9, 1))
 
         # Check that all sensor timestamps are strictly monotonically increasing
         self.assertTrue(np.all((timestamps := sensor.get_frames_timestamps_us())[:-1] < timestamps[1:]))

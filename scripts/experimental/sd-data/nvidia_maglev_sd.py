@@ -192,14 +192,14 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             self.global_T_rig_world_timestamps_us, self.seek_sec, self.duration_sec
         )
         global_range_start = np.argmax(self.global_T_rig_world_timestamps_us >= global_target_start_timestamp_us)
-        global_range_end = (
+        global_range_stop = (
             np.argmin(self.global_T_rig_world_timestamps_us <= global_target_end_timestamp_us)
             if global_target_end_timestamp_us < self.global_T_rig_world_timestamps_us[-1]
             else len(self.global_T_rig_world_timestamps_us)
         )  # full range of poses or restriction
-        self.global_T_rig_worlds = self.global_T_rig_worlds[global_range_start:global_range_end]
+        self.global_T_rig_worlds = self.global_T_rig_worlds[global_range_start:global_range_stop]
         self.global_T_rig_world_timestamps_us = self.global_T_rig_world_timestamps_us[
-            global_range_start:global_range_end
+            global_range_start:global_range_stop
         ]
         self.global_start_timestamp_us = self.global_T_rig_world_timestamps_us[0]
         self.global_end_timestamp_us = self.global_T_rig_world_timestamps_us[-1]
@@ -219,7 +219,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Log base pose to share it more easily with downstream teams (it is serialized also explicitly)
         with np.printoptions(floatmode="unique", linewidth=200):  # print in highest precision
             logger.info(
-                f"> processed {len(local_range)} / {global_range_end - global_range_start} local / global poses, using base pose:\n{T_rig_world_base}"
+                f"> processed {len(local_range)} / {global_range_stop - global_range_start} local / global poses, using base pose:\n{T_rig_world_base}"
             )
 
     def decode_cameras(self):

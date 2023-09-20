@@ -13,23 +13,25 @@ from ncore.impl.data.data3 import ShardDataLoader, LidarSensor
 )
 @click.option("--sensor-id", type=str, help="Sensor to visualize labels for", default="lidar_gt_top_p128_v4p5")
 @click.option(
-    "--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial frame to be visualized", default=0
+    "--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial frame to be visualized", default=None
 )
-@click.option("--end-frame", type=click.IntRange(min=-1, max_open=True), help="End frame to be visualized", default=-1)
+@click.option(
+    "--stop-frame", type=click.IntRange(min=0, max_open=True), help="Past-the-end frame to be visualized", default=None
+)
 @click.option(
     "--step-frame",
     type=click.IntRange(min=1, max_open=True),
     help="Step used to downsample the number of frames",
-    default=1,
+    default=None,
 )
-def ncore_visualize_labels(shard_file_pattern, sensor_id, start_frame, end_frame, step_frame):
+def ncore_visualize_labels(shard_file_pattern, sensor_id, start_frame, stop_frame, step_frame):
 
     shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
     loader = ShardDataLoader(shards)
     sensor = loader.get_sensor(sensor_id)
     assert isinstance(sensor, LidarSensor), "only lidar sensors supported"
 
-    for frame_index in tqdm.tqdm(sensor.get_frame_index_range(start_frame, end_frame, step_frame)):
+    for frame_index in tqdm.tqdm(sensor.get_frame_index_range(start_frame, stop_frame, step_frame)):
 
         # Initialize the visualizer
         viz = LabelVisualizer()

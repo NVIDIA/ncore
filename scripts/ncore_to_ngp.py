@@ -124,7 +124,7 @@ def extract_dynamic_tracks(
 @click.option(
     "--end-frame",
     type=click.IntRange(min=-1, max_open=True),
-    help="End camera frame to be used",
+    help="End camera frame to be used (-1 for all frames)",
     default=-1,
 )
 @click.option(
@@ -461,7 +461,8 @@ def ncore_to_ngp(
         all_image_paths: list[Path] = []
         poses_start: list[np.ndarray] = []
         poses_end: list[np.ndarray] = []
-        for camera_frame_idx in camera_sensor.get_frame_index_range(start_frame, end_frame):
+        stop_frame = end_frame if end_frame != -1 else None
+        for camera_frame_idx in camera_sensor.get_frame_index_range(start_frame, stop_frame):
             camera_path = output_path_data / "cameras" / (sensors_prefix + camera_sensor.get_sensor_id())
             camera_path.mkdir(parents=True, exist_ok=True)
 

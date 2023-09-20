@@ -2,6 +2,8 @@
 
 import logging
 
+from typing import Optional
+
 import click
 import tqdm
 import numpy as np
@@ -20,14 +22,16 @@ from ncore.impl.sensors.camera import CameraModel
 @click.option("--sensor-id", type=str, help="Sensor whose point cloud will be projected", required=True)
 @click.option("--camera-id", type=str, help="Sensor to export ply files for", required=True)
 @click.option(
-    "--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial camera frame to be used", default=0
+    "--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial camera frame to be used", default=None
 )
-@click.option("--end-frame", type=click.IntRange(min=-1, max_open=True), help="End camera frame to be used", default=-1)
+@click.option(
+    "--stop-frame", type=click.IntRange(min=0, max_open=True), help="Past-the-end frame to be exported", default=None
+)
 @click.option(
     "--step-frame",
     type=click.IntRange(min=1, max_open=True),
     help="Step used to downsample the number of frames",
-    default=1,
+    default=None,
 )
 @click.option(
     "--device", type=click.Choice(["cuda", "cpu"]), help="Device used for the computation via torch", default="cuda"
@@ -42,9 +46,9 @@ def ncore_project_pc_to_img(
     shard_file_pattern: str,
     sensor_id: str,
     camera_id: str,
-    start_frame: int,
-    end_frame: int,
-    step_frame: int,
+    start_frame: Optional[int],
+    stop_frame: Optional[int],
+    step_frame: Optional[int],
     device: str,
     pose: str,
 ):
@@ -62,7 +66,7 @@ def ncore_project_pc_to_img(
     assert isinstance(cam_sensor, CameraSensor), "only image sensors are supported as the target sensor"
 
     # Get the camera frame indices from the index range
-    indices = cam_sensor.get_frame_index_range(start_frame, end_frame, step_frame)
+    indices = cam_sensor.get_frame_index_range(start_frame, stop_frame, step_frame)
     logger.info(f"Starting the pc projection. {len(indices)} frames will be processed.")
     for frame_index in tqdm.tqdm(indices):
 

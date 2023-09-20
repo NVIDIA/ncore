@@ -6,6 +6,7 @@ import tempfile
 import os
 
 from pathlib import Path
+from typing import Optional
 
 import click
 import numpy as np
@@ -22,13 +23,15 @@ from ncore.impl.data.data3 import ShardDataLoader, PointCloudSensor
 @click.option("--output-dir", type=str, help="Path to the output folder", required=True)
 @click.option("--sensor-id", type=str, help="Sensor to construct surface from", default="lidar_gt_top_p128_v4p5")
 @click.option("--output-filename", type=str, help="Name of the output file", default="reconstructed_mesh")
-@click.option("--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial frame to be use", default=0)
-@click.option("--end-frame", type=click.IntRange(min=-1, max_open=True), help="End frame to be used", default=-1)
+@click.option("--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial frame to be use", default=None)
+@click.option(
+    "--stop-frame", type=click.IntRange(min=0, max_open=True), help="Past-the-end frame to be used", default=None
+)
 @click.option(
     "--step-frame",
     type=click.IntRange(min=1, max_open=True),
     help="Step used to downsample the number of frames",
-    default=1,
+    default=None,
 )
 @click.option(
     "--max-dist", type=float, help="Ignore fused points greater than this distance from the ego vehicle", default=100.0
@@ -48,9 +51,9 @@ def ncore_surface_rec(
     sensor_id: str,
     output_filename: str,
     max_dist: float,
-    start_frame: int,
-    end_frame: int,
-    step_frame: int,
+    start_frame: Optional[int],
+    stop_frame: Optional[int],
+    step_frame: Optional[int],
     n_neighbors: int,
     trim_distance: float,
 ):
@@ -71,7 +74,7 @@ def ncore_surface_rec(
         sensor_id,
         max_dist=max_dist,
         start_frame=start_frame,
-        end_frame=end_frame,
+        stop_frame=stop_frame,
         step_frame=step_frame,
     )
 
@@ -105,7 +108,7 @@ def ncore_surface_rec(
     pcu.save_mesh_vfnc(str(output_path / f"{output_filename}.ply"), v, f[f_mask], n, c)
 
 
-def load_fused_pc(shard_file_pattern, sensor_id, max_dist=-1, start_frame=0, end_frame=-1, step_frame=1):
+def load_fused_pc(shard_file_pattern, sensor_id, max_dist=-1, start_frame=None, stop_frame=None, step_frame=None):
     """Load the individual point cloud spins and accumulates them to a single point cloud
 
     Args:
@@ -113,8 +116,8 @@ def load_fused_pc(shard_file_pattern, sensor_id, max_dist=-1, start_frame=0, end
         sensor_id (str): PointCloudSensor to load data from
         max_dist (float): Ignore fused points greater than this distance from the ego vehicle
         start_frame (int): Start fusing input points at this index
-        end_frame (int): Stop fusing input points after this index (-1 = use all frames up to the last)
-        step_frame (int): Determines the temporal downsampling rate  (if 1 all frames will be used)
+        stop_frame (int): Stop fusing input points after this index (None = use all frames up to the last)
+        step_frame (int): Determines the temporal downsampling rate  (if None all frames will be used)
     """
 
     # Load point-cloud data
@@ -126,7 +129,7 @@ def load_fused_pc(shard_file_pattern, sensor_id, max_dist=-1, start_frame=0, end
     all_pts = []
     all_dirs = []
 
-    for frame_index in tqdm.tqdm(sensor.get_frame_index_range(start_frame, end_frame, step_frame)):
+    for frame_index in tqdm.tqdm(sensor.get_frame_index_range(start_frame, stop_frame, step_frame)):
         T_sensor_to_world = sensor.get_frame_T_sensor_world(frame_index)
         points = transform_point_cloud(sensor.get_frame_data(frame_index, "xyz_e"), T_sensor_to_world)
         dirs = transform_point_cloud(sensor.get_frame_data(frame_index, "xyz_s"), T_sensor_to_world) - points

@@ -393,10 +393,10 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                 + self.constants.SENSORTYPE_TO_ROLLINGSHUTTERDELAY_US[sensor_type]
                 + 2 * self.constants.SENSORTYPE_TO_EXPOSURETIME_HALF_US[sensor_type]
             )[0][0]
-            end_idx = np.where(frame_timestamps[:, 1] >= end_timestamp_us)[0]
-            end_idx = end_idx[0] if len(end_idx) else len(frame_timestamps[:, 1])
+            stop_idx = np.where(frame_timestamps[:, 1] >= end_timestamp_us)[0]
+            stop_idx = stop_idx[0] if len(stop_idx) else len(frame_timestamps[:, 1])
 
-            frame_timestamps = frame_timestamps[start_idx:end_idx, :]
+            frame_timestamps = frame_timestamps[start_idx:stop_idx, :]
 
             # Extract all relevant images
             path = os.path.join(sequence_path, "camera_data/", camera_id + ".mp4")

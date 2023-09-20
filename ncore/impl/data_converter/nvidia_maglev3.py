@@ -135,14 +135,14 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             self.global_T_rig_world_timestamps_us, self.seek_sec, self.duration_sec
         )
         global_range_start = np.argmax(self.global_T_rig_world_timestamps_us >= global_target_start_timestamp_us)
-        global_range_end = (
+        global_range_stop = (
             np.argmin(self.global_T_rig_world_timestamps_us < global_target_end_timestamp_us)
             if global_target_end_timestamp_us < self.global_T_rig_world_timestamps_us[-1]
             else len(self.global_T_rig_world_timestamps_us)
         )  # full range of poses or restriction
-        self.global_T_rig_worlds = self.global_T_rig_worlds[global_range_start:global_range_end]
+        self.global_T_rig_worlds = self.global_T_rig_worlds[global_range_start:global_range_stop]
         self.global_T_rig_world_timestamps_us = self.global_T_rig_world_timestamps_us[
-            global_range_start:global_range_end
+            global_range_start:global_range_stop
         ]
         self.global_start_timestamp_us = self.global_T_rig_world_timestamps_us[0]
         self.global_end_timestamp_us = self.global_T_rig_world_timestamps_us[-1]
@@ -166,20 +166,20 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         )
         # extend local range by single non-inclusive pose to keep in local shard
         local_range_start = local_range[0]
-        local_range_end = min(
+        local_range_stop = min(
             # non-extended local range end
             (local_range[-1] + 1)
             # extend by single additional non-inclusive pose
             + 1,
             len(self.global_T_rig_world_timestamps_us),
         )
-        local_T_rig_worlds = self.global_T_rig_worlds[local_range_start:local_range_end]
-        local_T_rig_world_timestamps_us = self.global_T_rig_world_timestamps_us[local_range_start:local_range_end]
+        local_T_rig_worlds = self.global_T_rig_worlds[local_range_start:local_range_stop]
+        local_T_rig_world_timestamps_us = self.global_T_rig_world_timestamps_us[local_range_start:local_range_stop]
         self.local_start_timestamp_us = local_T_rig_world_timestamps_us[0]
         self.local_end_timestamp_us = local_T_rig_world_timestamps_us[-1]
 
         logger.debug(
-            f"shard {self.shard_id+1}/{self.shard_count} | local_range_start {local_range_start} / local_range_end {local_range_end} | "
+            f"shard {self.shard_id+1}/{self.shard_count} | local_range_start {local_range_start} / local_range_stop {local_range_stop} | "
             f"{self.local_start_timestamp_us} <= t < {self.local_end_timestamp_us}"
         )
 
@@ -192,7 +192,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Log base pose to share it more easily with downstream teams (it is serialized also explicitly)
         with np.printoptions(floatmode="unique", linewidth=200):  # print in highest precision
             logger.info(
-                f"> processed {local_range_end - local_range_start} / {global_range_end - global_range_start} local / global poses, using base pose:\n{T_rig_world_base}"
+                f"> processed {local_range_stop - local_range_start} / {global_range_stop - global_range_start} local / global poses, using base pose:\n{T_rig_world_base}"
             )
 
     def decode_labels(self):
@@ -255,27 +255,27 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             # Get the frame range of the first and last frame relative to available egomotion poses and respecting exposure timings
             global_range_start = np.argmax(raw_frame_timestamps_us >= self.global_start_timestamp_us)
-            global_range_end = (
+            global_range_stop = (
                 np.argmin(raw_frame_timestamps_us < self.global_end_timestamp_us)
                 if raw_frame_timestamps_us[-1] > self.global_end_timestamp_us
                 else len(raw_frame_timestamps_us)
             )  # take all frames if all are within egomotion range, or determine last valid frame
 
-            global_frame_timestamps_us = raw_frame_timestamps_us[global_range_start:global_range_end]
+            global_frame_timestamps_us = raw_frame_timestamps_us[global_range_start:global_range_stop]
 
             # Subsample frames to valid local ranges
             local_range_start = np.argmax(raw_frame_timestamps_us >= self.local_start_timestamp_us)
-            local_range_end = (
+            local_range_stop = (
                 np.argmin(raw_frame_timestamps_us < self.local_end_timestamp_us)
                 if raw_frame_timestamps_us[-1] > self.local_end_timestamp_us
                 else len(raw_frame_timestamps_us)
             )
 
-            local_frame_numbers = raw_frame_numbers[local_range_start:local_range_end]
-            local_frame_timestamps_us = raw_frame_timestamps_us[local_range_start:local_range_end]
+            local_frame_numbers = raw_frame_numbers[local_range_start:local_range_stop]
+            local_frame_timestamps_us = raw_frame_timestamps_us[local_range_start:local_range_stop]
 
             logger.debug(
-                f"camera {camera_rig_name} | local_range_start {local_range_start} / local_range_end {local_range_end} | "
+                f"camera {camera_rig_name} | local_range_start {local_range_start} / local_range_stop {local_range_stop} | "
                 f"{self.local_start_timestamp_us} <= t < {self.local_end_timestamp_us}"
             )
 
@@ -420,32 +420,32 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
             # Get the frame range of the first and last frame relative to available egomotion poses
             global_range_start = np.argmax(raw_frame_timestamps_us >= self.global_start_timestamp_us)
-            global_range_end = (
+            global_range_stop = (
                 np.argmin(raw_frame_timestamps_us < self.global_end_timestamp_us)
                 if raw_frame_timestamps_us[-1] > self.global_end_timestamp_us
                 else len(raw_frame_timestamps_us)
             )
 
-            global_frame_numbers = raw_frame_numbers[global_range_start:global_range_end]
-            global_frame_timestamps_us = raw_frame_timestamps_us[global_range_start:global_range_end]
+            global_frame_numbers = raw_frame_numbers[global_range_start:global_range_stop]
+            global_frame_timestamps_us = raw_frame_timestamps_us[global_range_start:global_range_stop]
 
             # Subsample frames to valid local ranges
             local_range_start = np.argmax(raw_frame_timestamps_us >= self.local_start_timestamp_us)
-            local_range_end = (
+            local_range_stop = (
                 np.argmin(raw_frame_timestamps_us < self.local_end_timestamp_us)
                 if raw_frame_timestamps_us[-1] > self.local_end_timestamp_us
                 else len(raw_frame_timestamps_us)
             )
 
-            local_frame_numbers = raw_frame_numbers[local_range_start:local_range_end]
+            local_frame_numbers = raw_frame_numbers[local_range_start:local_range_stop]
             local_frame_timestamps_us = raw_frame_timestamps_us[
-                local_range_start:local_range_end
+                local_range_start:local_range_stop
             ]  # corresponds to end-of-frame
-            local_frame_egocompensated = raw_frame_egocompensated[local_range_start:local_range_end]
+            local_frame_egocompensated = raw_frame_egocompensated[local_range_start:local_range_stop]
             num_local_frames = len(local_frame_numbers)
 
             logger.debug(
-                f"lidar {lidar_rig_name} | local_range_start {local_range_start} / local_range_end {local_range_end} | "
+                f"lidar {lidar_rig_name} | local_range_start {local_range_start} / local_range_stop {local_range_stop} | "
                 f"{self.local_start_timestamp_us} <= t < {self.local_end_timestamp_us}"
             )
 

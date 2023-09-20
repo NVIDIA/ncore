@@ -5,6 +5,7 @@ import logging
 import tqdm
 
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 from point_cloud_utils import TriangleMesh
@@ -21,14 +22,16 @@ from ncore.impl.data.util import padded_index_string
 @click.option("--output-dir", type=str, help="Path to the output folder", required=True)
 @click.option("--sensor-id", type=str, help="Sensor to export ply files for", default="lidar_gt_top_p128_v4p5")
 @click.option(
-    "--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial frame to be exported", default=0
+    "--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial frame to be exported", default=None
 )
-@click.option("--end-frame", type=click.IntRange(min=-1, max_open=True), help="End frame to be exported", default=-1)
+@click.option(
+    "--stop-frame", type=click.IntRange(min=0, max_open=True), help="Past-the-end frame to be exported", default=None
+)
 @click.option(
     "--step-frame",
     type=click.IntRange(min=1, max_open=True),
     help="Step used to downsample the number of frames",
-    default=1,
+    default=None,
 )
 @click.option(
     "--frame",
@@ -40,9 +43,9 @@ def ncore_export_ply(
     shard_file_pattern: str,
     output_dir: str,
     sensor_id: str,
-    start_frame: int,
-    end_frame: int,
-    step_frame: int,
+    start_frame: Optional[int],
+    stop_frame: Optional[int],
+    step_frame: Optional[int],
     frame: str,
 ):
     """Exports the point cloud data to the ply format with named attributes"""
@@ -58,7 +61,7 @@ def ncore_export_ply(
 
     output_path = Path(output_dir)
 
-    indices = sensor.get_frame_index_range(start_frame, end_frame, step_frame)
+    indices = sensor.get_frame_index_range(start_frame, stop_frame, step_frame)
     logger.info(f"Starting '.ply' export. {len(indices)} files will be exported.")
 
     for frame_index in tqdm.tqdm(indices):
