@@ -63,7 +63,7 @@ def ncore_export_camera(
     output_path.mkdir(parents=True, exist_ok=True)
 
     indices = sensor.get_frame_index_range(start_frame, stop_frame, step_frame)
-    logger.info(f"Starting image export for '{camera_id}' into '{output_path}'. {len(indices)} files will be exported")
+    logger.info(f"Starting frame export for '{camera_id}' into '{output_path}'. {len(indices)} frames will be exported")
 
     # Instantiate video encoder if requested
     video_writer: cv2.VideoWriter | None = None
