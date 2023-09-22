@@ -107,9 +107,9 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.data_writer = ContainerDataWriter(
             self.output_dir / self.session_id,
             f"{self.session_id}_{self.shard_id}-{self.shard_count}",
-            list(self.constants.CAMERAID_TO_RIGNAME.keys()),
-            list(self.constants.LIDARID_TO_RIGNAME.keys()),
-            [],  # no radars yet
+            self.get_active_camera_ids(list(self.constants.CAMERAID_TO_RIGNAME.keys())),
+            self.get_active_lidar_ids(list(self.constants.LIDARID_TO_RIGNAME.keys())),
+            self.get_active_radar_ids([]),  # no radars yet
             "scene-calib",
             egomotion_type,
             self.session_id,
@@ -235,8 +235,12 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Pose interpolator to obtain start / end egomotion poses
         pose_interpolator = PoseInterpolator(self.global_T_rig_worlds, self.global_T_rig_world_timestamps_us)
 
-        # Process all camera sensors
-        for camera_id, camera_rig_name in self.constants.CAMERAID_TO_RIGNAME.items():
+        # Process all active camera sensors
+        for camera_id, camera_rig_name in {
+            sensor_id: sensor_rig_name
+            for sensor_id, sensor_rig_name in self.constants.CAMERAID_TO_RIGNAME.items()
+            if sensor_id in self.data_writer.camera_ids
+        }.items():
             logger.info(f"Processing camera {camera_rig_name}")
 
             sensor_type = self.constants.CAMERAID_TO_SENSORTYPE[camera_id]
@@ -344,7 +348,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             tar_index = json.load(open(self.sequence_path / "cameras" / camera_rig_name / "images.tar.idx.json", "r"))
 
             ## Process all valid images
-            for continous_local_frame_index, (frame_number, frame_end_timestamp_us) in tqdm.tqdm(
+            for continuous_local_frame_index, (frame_number, frame_end_timestamp_us) in tqdm.tqdm(
                 enumerate(zip(local_frame_numbers, local_frame_timestamps_us)), total=len(local_frame_numbers)
             ):
 
@@ -372,7 +376,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
                 self.data_writer.store_camera_frame(
                     camera_id,
-                    continous_local_frame_index,
+                    continuous_local_frame_index,
                     image_file_binary_data,
                     "jpeg",
                     T_rig_worlds,
@@ -385,7 +389,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 f" images [shard {self.shard_id}/{self.shard_count}]"
             )
 
-        logger.info(f"> processed {len(self.constants.CAMERAID_TO_RIGNAME)} cameras")
+        logger.info(f"> processed {len(self.data_writer.camera_ids)} cameras")
 
     def decode_lidars(self):
         logger = self.logger.getChild("decode_lidars")
@@ -400,8 +404,12 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             3:6
         ] += self.constants.LIDAR_FILTER_VEHICLE_BBOX_PADDING_METERS  # pad the bounding box slightly
 
-        # Process all lidar sensors
-        for lidar_id, lidar_rig_name in self.constants.LIDARID_TO_RIGNAME.items():
+        # Process all active lidar sensors
+        for lidar_id, lidar_rig_name in {
+            sensor_id: sensor_rig_name
+            for sensor_id, sensor_rig_name in self.constants.LIDARID_TO_RIGNAME.items()
+            if sensor_id in self.data_writer.lidar_ids
+        }.items():
             logger.info(f"Processing lidar {lidar_rig_name}")
 
             # Load extrinsics
@@ -674,4 +682,4 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 f" point clouds [shard {self.shard_id}/{self.shard_count}]"
             )
 
-        logger.info(f"> processed {len(self.constants.LIDARID_TO_RIGNAME)} lidars")
+        logger.info(f"> processed {len(self.data_writer.lidar_ids)} lidars")

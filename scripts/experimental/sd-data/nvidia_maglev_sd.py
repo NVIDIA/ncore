@@ -265,9 +265,12 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             ),
         }
 
-        # Process all camera sensors
-        for camera_id, camera_rig_name in self.constants.CAMERAID_TO_RIGNAME.items():
-
+        # Process all active camera sensors
+        for camera_id, camera_rig_name in {
+            sensor_id: sensor_rig_name
+            for sensor_id, sensor_rig_name in self.constants.CAMERAID_TO_RIGNAME.items()
+            if sensor_id in self.get_active_camera_ids(list(self.constants.CAMERAID_TO_RIGNAME.keys()))
+        }.items():
             # Load crop transform for current camera, skip cameras that don't have a crop-transformation
             if not (crop_transform := CAMERAID_TO_CROPTRANSFORM.get(camera_id, None)):
                 logger.info(f"Skipping camera {camera_rig_name}")

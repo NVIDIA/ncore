@@ -93,10 +93,9 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
             self.data_writer = ContainerDataWriter(
                 self.output_dir / f"{self.sequence_name}-{self.track_name}",
                 f"{self.sequence_name}-{self.track_name}",
-                list(self.constants.CAMERAID_TO_RIGNAME.keys()),
-                list(self.constants.LIDARID_TO_RIGNAME.keys()),
-                # no radars yet
-                [],
+                self.get_active_camera_ids(list(self.constants.CAMERAID_TO_RIGNAME.keys())),
+                self.get_active_lidar_ids(list(self.constants.LIDARID_TO_RIGNAME.keys())),
+                self.get_active_radar_ids([]),  # no radars yet
                 # TODO: parse these from the data
                 "scene-calib",
                 "deepmap",
@@ -208,10 +207,17 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
             LabelSource.AUTOLABEL,
         )
 
-        # Save the accumulated track
-        self.data_writer.store_tracks(Tracks(self.track_labels))
+        # Save the accumulated track only if the single supported lidar sensor is actually active
+        if self.LIDAR_SENSOR_ID in self.data_writer.lidar_ids:
+            self.data_writer.store_tracks(Tracks(self.track_labels))
+        else:
+            self.data_writer.store_tracks(Tracks({}))
 
     def decode_lidar(self, sequence_path):
+        if self.LIDAR_SENSOR_ID not in self.data_writer.lidar_ids:
+            # single lidar is deactivated
+            return
+
         # Load lidar extrinsics to compute poses of the rig frame if egomotion is represented in lidar frame
         T_lidar_rig = sensor_to_rig(self.calibration_data[self.constants.LIDARID_TO_RIGNAME[self.LIDAR_SENSOR_ID]])
 
@@ -372,9 +378,15 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
         # Pose interpolator to obtain start / end egomotion poses
         pose_interpolator = PoseInterpolator(self.poses, self.poses_timestamps)
 
-        # Filter the images based on the pose timestamps
-        for camera_id, camera_rig_name in self.constants.CAMERAID_TO_RIGNAME.items():
+        # Process all active cameras
+        for camera_id, camera_rig_name in {
+            sensor_id: sensor_rig_name
+            for sensor_id, sensor_rig_name in self.constants.CAMERAID_TO_RIGNAME.items()
+            if sensor_id in self.data_writer.camera_ids
+        }.items():
             sensor_type = self.constants.CAMERAID_TO_SENSORTYPE[camera_id]
+
+            # Filter the images based on the pose timestamps
 
             # Get the camera timestamps
             frame_timestamps = np.genfromtxt(

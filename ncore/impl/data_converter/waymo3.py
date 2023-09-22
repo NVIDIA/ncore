@@ -37,7 +37,7 @@ from ncore.impl.data_converter.waymo_utils import (
 
 class WaymoConverter(DataConverter):
     """
-    Dataset preprossing class, which preprocess waymo-open dataset to a canonical data representation as used within the Nvidia NRECore-SDK project.
+    Dataset preprocessing class, which preprocess waymo-open dataset to a canonical data representation as used within the Nvidia NRECore-SDK project.
     Waymo-open data can be downloaded from https://waymo.com/intl/en_us/open/download/ in form of tfrecords files. Further details on the dataset are
     available in the original publication https://arxiv.org/abs/1912.04838 or the githbub repository https://github.com/waymo-research/waymo-open-dataset
 
@@ -97,9 +97,9 @@ class WaymoConverter(DataConverter):
         self.data_writer = ContainerDataWriter(
             self.output_dir / sequence_name,
             sequence_name,
-            [camera for camera in self.CAMERA_MAP.values()],
-            [lidar for lidar in self.LIDAR_MAP.values()],
-            [],
+            self.get_active_camera_ids([camera for camera in self.CAMERA_MAP.values()]),
+            self.get_active_lidar_ids([lidar for lidar in self.LIDAR_MAP.values()]),
+            self.get_active_radar_ids([]),
             "waymo-calibration",
             "waymo-egomotion",
             sequence_name,
@@ -278,7 +278,10 @@ class WaymoConverter(DataConverter):
         track_labels: dict[str, TrackLabel] = {}  # {TrackLabel} in track_labels[track_id]
         track_global_dynamic_flag: dict[str, bool] = {}  # bool in dynamic_tracks[track_id]
 
-        for lidar_id, lidar_name in self.LIDAR_MAP.items():
+        for lidar_id, lidar_ncore_id in self.LIDAR_MAP.items():
+            if lidar_ncore_id not in self.data_writer.lidar_ids:
+                continue  # skip sensor if not active
+
             # Determine sensor extrinsics
             T_sensor_rig = np.array(calibrations[lidar_id].extrinsic.transform, dtype=np.float32).reshape(4, 4)
 
@@ -290,7 +293,7 @@ class WaymoConverter(DataConverter):
             assert len(frames) > 1  # require at least two frames to compute frame bound timestamps
             frame_end_timestamps_us = []
             continuous_frame_index = 0
-            for i, frame in tqdm.tqdm(enumerate(frames), desc=f"Process {lidar_name}", total=len(frames)):
+            for i, frame in tqdm.tqdm(enumerate(frames), desc=f"Process {lidar_ncore_id}", total=len(frames)):
                 # Get frame timestamps
                 frame_start_timestamp_us = raw_frame_start_timestamps_us[i]
                 if i < len(frames) - 1:
@@ -400,11 +403,11 @@ class WaymoConverter(DataConverter):
                             True if frame_label.label_class in self.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC else False
                         )
 
-                    if lidar_name not in track_labels[frame_label.track_id].sensors:
-                        track_labels[frame_label.track_id].sensors[lidar_name] = []
+                    if lidar_ncore_id not in track_labels[frame_label.track_id].sensors:
+                        track_labels[frame_label.track_id].sensors[lidar_ncore_id] = []
 
                     # append frame timestamp into *sorted* list (frames are processed sorted by timestamp)
-                    track_labels[frame_label.track_id].sensors[lidar_name].append(frame_end_timestamp_us)
+                    track_labels[frame_label.track_id].sensors[lidar_ncore_id].append(frame_end_timestamp_us)
 
                     if (
                         frame_label.label_class not in self.LABEL_STRINGS_UNCONDITIONALLY_STATIC
@@ -426,7 +429,7 @@ class WaymoConverter(DataConverter):
 
                 # Serialize lidar frame
                 self.data_writer.store_lidar_frame(
-                    lidar_name,
+                    lidar_ncore_id,
                     continuous_frame_index,
                     xyz_s,
                     xyz_e,
@@ -457,7 +460,7 @@ class WaymoConverter(DataConverter):
 
             # Store all static sensor data
             self.data_writer.store_lidar_meta(
-                lidar_name,
+                lidar_ncore_id,
                 np.array(frame_end_timestamps_us, dtype=np.uint64),
                 T_sensor_rig,
                 {
@@ -478,7 +481,10 @@ class WaymoConverter(DataConverter):
 
         calibrations = {c.name: c for c in frames[0].context.camera_calibrations}
 
-        for camera_id, camera_name in self.CAMERA_MAP.items():
+        for camera_id, camera_ncore_id in self.CAMERA_MAP.items():
+            if camera_ncore_id not in self.data_writer.camera_ids:
+                continue  # skip sensor if not active
+
             ## Get the calibration data
             calibration = calibrations[camera_id]
 
@@ -494,7 +500,7 @@ class WaymoConverter(DataConverter):
 
             frame_end_timestamps_us = []
             continuous_frame_index = 0
-            for frame in tqdm.tqdm(frames, desc=f"Process {camera_name}"):
+            for frame in tqdm.tqdm(frames, desc=f"Process {camera_ncore_id}"):
                 ## Load current camera's image
                 image = {image.name: image for image in frame.images}[camera_id]
 
@@ -540,7 +546,7 @@ class WaymoConverter(DataConverter):
 
                 # Store the image and its metadata
                 self.data_writer.store_camera_frame(
-                    camera_name,
+                    camera_ncore_id,
                     continuous_frame_index,
                     image.image,
                     "jpeg",
@@ -569,7 +575,7 @@ class WaymoConverter(DataConverter):
                     raise TypeError(f"unsupported shutter direction {calibration.rolling_shutter_direction}")
 
             self.data_writer.store_camera_meta(
-                camera_name,
+                camera_ncore_id,
                 np.array(frame_end_timestamps_us, dtype=np.uint64),
                 T_sensor_rig,
                 OpenCVPinholeCameraModelParameters(
