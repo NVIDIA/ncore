@@ -118,13 +118,13 @@ def extract_dynamic_tracks(
 @click.option(
     "--start-frame",
     type=click.IntRange(min=0, max_open=True),
-    help="Initial camera frame to be use",
+    help="Initial camera frame to export",
     default=0,
 )
 @click.option(
     "--end-frame",
     type=click.IntRange(min=-1, max_open=True),
-    help="End camera frame to be used (-1 for all frames)",
+    help="Last camera frame to export (-1 for all frames)",
     default=-1,
 )
 @click.option(
@@ -134,11 +134,24 @@ def extract_dynamic_tracks(
     default=1,
 )
 @click.option(
+    "--start-timestamp-us",
+    type=click.IntRange(min=0, max_open=True),
+    help="First timestamp of export range (if provided, start-frame will be ignored)",
+    default=None,
+)
+@click.option(
+    "--end-timestamp-us",
+    type=click.IntRange(min=0, max_open=True),
+    help="Last timestamp of export range (if provided, end-frame will be ignored)",
+    default=None,
+)
+@click.option(
     "--camera-id",
     "camera_ids",
     multiple=True,
     type=str,
-    help="Cameras to be used (multiple value option, front wide camera if not specified)",
+    help="Cameras to be used (multiple value option, front wide camera if not specified) "
+    "- the first camera is considered to be the reference camera frames number parameters are relative to",
     default=["camera_front_wide_120fov"],
 )
 @click.option(
@@ -219,6 +232,8 @@ def ncore_to_ngp(
     start_frame: int,
     end_frame: int,
     step_frame: int,
+    start_timestamp_us: Optional[int],
+    end_timestamp_us: Optional[int],
     camera_ids: list[str],
     max_dist: float,
     static_camera_mask_dilations: int,
@@ -255,6 +270,21 @@ def ncore_to_ngp(
     if not sensors_prefix:
         sensors_prefix = ""
 
+    # Determine timestamp range
+    reference_camera_sensor = loader.get_camera_sensor(camera_ids[0])
+    reference_camera_timestamps = reference_camera_sensor.get_frames_timestamps_us()
+
+    logger.info(
+        f"Inputs: start_timestamp_us={start_timestamp_us}, "
+        f"end_timestamp_us={end_timestamp_us}, start_frame={start_frame}, "
+        f"end_frame={end_frame}"
+    )
+    if start_timestamp_us is None:
+        start_timestamp_us = reference_camera_timestamps[start_frame]
+    if end_timestamp_us is None:
+        end_timestamp_us = reference_camera_timestamps[end_frame]
+    logger.info(f"Timestamp range that will be processed: [{start_timestamp_us}, {end_timestamp_us}]")
+
     # Load lidar time-range and labels
     dynamic_tracks: dict[str, dict] = {}
     lidar_sensor: LidarSensor
@@ -262,21 +292,19 @@ def ncore_to_ngp(
         logger.info(f"Preparing dynamic objects from '{lidar_id}'")
 
         # Load sensors
-        reference_camera_sensor = loader.get_camera_sensor(camera_ids[0])
         lidar_sensor = loader.get_lidar_sensor(lidar_id)
 
         # Find the corresponding lidar frames based on their timestamps
-        reference_camera_timestamps = reference_camera_sensor.get_frames_timestamps_us()
         lidar_timestamps = lidar_sensor.get_frames_timestamps_us()
-        lidar_frame_start_idx = np.where(lidar_timestamps >= reference_camera_timestamps[start_frame])[0][0]
-        lidar_frame_end_idx = min(
-            np.where(lidar_timestamps < reference_camera_timestamps[end_frame])[0][-1] + 1,
+        lidar_frame_start_idx = np.where(lidar_timestamps >= start_timestamp_us)[0][0]
+        lidar_frame_stop_idx = min(
+            np.where(lidar_timestamps <= end_timestamp_us)[0][-1] + 1,
             lidar_sensor.get_frames_count(),
-        )  # add lidar at the end as cameras see further away
+        )
 
         dynamic_tracks = extract_dynamic_tracks(
             lidar_sensor=lidar_sensor,
-            lidar_frame_range=range(lidar_frame_start_idx, lidar_frame_end_idx),
+            lidar_frame_range=range(lidar_frame_start_idx, lidar_frame_stop_idx),
             track_speed_thresh=track_speed_thresh,
             track_min_centroid_rig_distance=track_min_centroid_rig_distance,
             track_unconditionally_dynamic_classes=set(track_unconditionally_dynamic_classes),
@@ -457,12 +485,19 @@ def ncore_to_ngp(
                 (camera_data["intrinsic_data"]["h"], camera_data["intrinsic_data"]["w"]), dtype=np.uint8
             )
 
+        # Get camera frame range
+        camera_timestamps = camera_sensor.get_frames_timestamps_us()
+        camera_frame_start_idx = np.where(camera_timestamps >= start_timestamp_us)[0][0]
+        camera_frame_stop_idx = min(
+            np.where(camera_timestamps <= end_timestamp_us)[0][-1] + 1,
+            camera_sensor.get_frames_count(),
+        )
+
         # Prepare all image paths (to average the pose we neglect the selected step size as all images will be used for testing) and poses
         all_image_paths: list[Path] = []
         poses_start: list[np.ndarray] = []
         poses_end: list[np.ndarray] = []
-        stop_frame = end_frame if end_frame != -1 else None
-        for camera_frame_idx in camera_sensor.get_frame_index_range(start_frame, stop_frame):
+        for camera_frame_idx in camera_sensor.get_frame_index_range(camera_frame_start_idx, camera_frame_stop_idx):
             camera_path = output_path_data / "cameras" / (sensors_prefix + camera_sensor.get_sensor_id())
             camera_path.mkdir(parents=True, exist_ok=True)
 
@@ -643,7 +678,7 @@ def ncore_to_ngp(
 
             lidar_path = output_path_data / "lidars" / (sensors_prefix + lidar_sensor.get_sensor_id())
             lidar_path.mkdir(parents=True, exist_ok=True)
-            for lidar_frame_idx in range(lidar_frame_start_idx, lidar_frame_end_idx):
+            for lidar_frame_idx in range(lidar_frame_start_idx, lidar_frame_stop_idx):
                 if not (
                     dat_path := lidar_path / Path(padded_index_string(lidar_frame_idx)).with_suffix(".dat")
                 ).exists():
