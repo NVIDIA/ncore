@@ -84,10 +84,9 @@ class CarterDeepmapConverter(DataConverter):
             self.data_writer = ContainerDataWriter(
                 self.output_dir / f"{self.sequence_name}-{self.track_name}",
                 f"{self.sequence_name}-{self.track_name}",
-                self.CAMERA_SENSOR_IDS,
-                self.LIDAR_SENSOR_IDS,
-                # no radars yet
-                [],
+                self.get_active_camera_ids(self.CAMERA_SENSOR_IDS),
+                self.get_active_lidar_ids(self.LIDAR_SENSOR_IDS),
+                self.get_active_radar_ids([]),  # no radars yet
                 # TODO: parse these from the data
                 "carter",
                 "deepmap",
@@ -155,12 +154,18 @@ class CarterDeepmapConverter(DataConverter):
             return sensor_data
 
         # Decode poses and sensor-specific data
-        for sensor_id, sensor_record in zip(CarterDeepmapConverter.LIDAR_SENSOR_IDS, self.track_data["lidar_records"]):
-            self.sensor_datas[sensor_id] = decode_record("lidar", sensor_record)
         for sensor_id, sensor_record in zip(
-            CarterDeepmapConverter.CAMERA_SENSOR_IDS, self.track_data["camera_records"]
+            CarterDeepmapConverter.LIDAR_SENSOR_IDS,
+            self.track_data["lidar_records"],
         ):
-            self.sensor_datas[sensor_id] = decode_record("camera", sensor_record)
+            if sensor_id in self.data_writer.lidar_ids:
+                self.sensor_datas[sensor_id] = decode_record("lidar", sensor_record)
+        for sensor_id, sensor_record in zip(
+            CarterDeepmapConverter.CAMERA_SENSOR_IDS,
+            self.track_data["camera_records"],
+        ):
+            if sensor_id in self.data_writer.camera_ids:
+                self.sensor_datas[sensor_id] = decode_record("camera", sensor_record)
 
         # Stack, sort the poses and make them unique
         self.poses = np.stack(self.poses)
@@ -203,7 +208,7 @@ class CarterDeepmapConverter(DataConverter):
         # Initialize the pose interpolator object
         pose_interpolator = PoseInterpolator(self.poses, self.poses_timestamps_us)
 
-        for lidar_id in self.LIDAR_SENSOR_IDS:
+        for lidar_id in self.data_writer.lidar_ids:
             sensor_data = self.sensor_datas[lidar_id]
 
             # Extrinsics
@@ -345,7 +350,7 @@ class CarterDeepmapConverter(DataConverter):
         # Pose interpolator to obtain start / end egomotion poses
         pose_interpolator = PoseInterpolator(self.poses, self.poses_timestamps_us)
 
-        for camera_id in self.CAMERA_SENSOR_IDS:
+        for camera_id in self.data_writer.camera_ids:
             sensor_data = self.sensor_datas[camera_id]
 
             # Extrinsics

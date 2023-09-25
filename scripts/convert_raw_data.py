@@ -10,6 +10,33 @@ from ncore.impl.common.common import Config
 @click.option("--root-dir", type=str, help="Path to the raw data sequences", required=True)
 @click.option("--output-dir", type=str, help="Path where the converted data will be saved", required=True)
 @click.option("--debug", is_flag=True, default=False, help="Enables debug logging outputs")
+@click.option("--no-cameras", is_flag=True, default=False, help="Disable exporting any camera sensor")
+@click.option(
+    "--camera-id",
+    "camera_ids",
+    multiple=True,
+    type=str,
+    help="Cameras to be exported (multiple value option, all if not specified)",
+    default=None,
+)
+@click.option("--no-lidars", is_flag=True, default=False, help="Disable exporting any lidar sensor")
+@click.option(
+    "--lidar-id",
+    "lidar_ids",
+    multiple=True,
+    type=str,
+    help="Lidars to be exported (multiple value option, all if not specified)",
+    default=None,
+)
+@click.option("--no-radars", is_flag=True, default=False, help="Disable exporting any radar sensor")
+@click.option(
+    "--radar-id",
+    "radar_ids",
+    multiple=True,
+    type=str,
+    help="Radars to be exported (multiple value option, all if not specified)",
+    default=None,
+)
 @click.pass_context
 def cli(ctx, *_, **kwargs):
     """Data Preprocessing Pipeline

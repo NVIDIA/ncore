@@ -34,6 +34,50 @@ class DataConverter(ABC):
         self.root_dir = Path(config.root_dir)
         self.output_dir = Path(config.output_dir)
 
+        # External sensor selection overwrites
+        # Store `None`` for `_active_<sensor>_ids` in case all sensors should be used, as the
+        # actual full list of sensor ids will be passed via `get_active_<sensor>_ids()`
+        # at conversion time (as for some data-converters the set of sensors
+        # is only available after dataset introspection)
+        self._active_camera_ids = list(config.camera_ids) if len(config.camera_ids) else None
+        if config.no_cameras:
+            self._active_camera_ids = []
+
+        self._active_lidar_ids = list(config.lidar_ids) if len(config.lidar_ids) else None
+        if config.no_lidars:
+            self._active_lidar_ids = []
+
+        self._active_radar_ids = list(config.radar_ids) if len(config.radar_ids) else None
+        if config.no_radars:
+            self._active_radar_ids = []
+
+    @staticmethod
+    def _get_active_sensor_ids(
+        sensor_type: str, active_sensor_ids: Optional[list[str]], all_sensor_ids: list[str]
+    ) -> list[str]:
+        """Performs generic sensor subselection and asserts active-sensors are a subset of all sensors"""
+        if active_sensor_ids is None:
+            return all_sensor_ids
+
+        # Make sure active sensors are a subset of all sensors
+        assert set(active_sensor_ids).issubset(
+            all_sensor_ids
+        ), f"Selected active {sensor_type} sensors {active_sensor_ids} not a subset of all available sensors {all_sensor_ids}"
+
+        return active_sensor_ids
+
+    def get_active_camera_ids(self, all_camera_ids: list[str]) -> list[str]:
+        """Returns config-specified subselection of active camera ids or all camera ids if no subselection was performed"""
+        return self._get_active_sensor_ids("camera", self._active_camera_ids, all_camera_ids)
+
+    def get_active_lidar_ids(self, all_lidar_ids: list[str]) -> list[str]:
+        """Returns config-specified subselection of active lidar ids or all lidar ids if no subselection was performed"""
+        return self._get_active_sensor_ids("lidar", self._active_lidar_ids, all_lidar_ids)
+
+    def get_active_radar_ids(self, all_radar_ids: list[str]) -> list[str]:
+        """Returns config-specified subselection of active radar ids or all radar ids if no subselection was performed"""
+        return self._get_active_sensor_ids("radar", self._active_radar_ids, all_radar_ids)
+
     @classmethod
     def convert(cls, config) -> None:
         """
@@ -46,7 +90,7 @@ class DataConverter(ABC):
 
         logger.info(f"Start converting {sequence_dirs} ...")
 
-        # create new instance of converter for each task and execute synchonously
+        # create new instance of converter for each task and execute synchronously
         for sequence_dir in sequence_dirs:
             converter = cls.from_config(config)
             converter.convert_sequence(sequence_dir)
