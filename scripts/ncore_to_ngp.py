@@ -118,13 +118,13 @@ def extract_dynamic_tracks(
 @click.option(
     "--start-frame",
     type=click.IntRange(min=0, max_open=True),
-    help="Initial camera frame to be use",
+    help="Initial camera frame to export",
     default=0,
 )
 @click.option(
     "--end-frame",
     type=click.IntRange(min=-1, max_open=True),
-    help="End camera frame to be used (-1 for all frames)",
+    help="Last camera frame to export (-1 for all frames)",
     default=-1,
 )
 @click.option(
@@ -136,13 +136,13 @@ def extract_dynamic_tracks(
 @click.option(
     "--start-timestamp-us",
     type=click.IntRange(min=0, max_open=True),
-    help="Initial sensor timestamp to process (if provided, start-frame will be ignored)",
+    help="First timestamp of export range (if provided, start-frame will be ignored)",
     default=None,
 )
 @click.option(
     "--end-timestamp-us",
     type=click.IntRange(min=0, max_open=True),
-    help="End sensor timestamp to process (if provided, end-frame will be ignored)",
+    help="Last timestamp of export range (if provided, end-frame will be ignored)",
     default=None,
 )
 @click.option(
