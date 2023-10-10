@@ -35,6 +35,12 @@ from ncore.impl.data.util import padded_index_string
     default=None,
 )
 @click.option("--encode-images/--no-encode-images", is_flag=True, default=True, help="Encode image files for frames")
+@click.option(
+    "--timestamp-image-names/--no-timestamp-image-names",
+    is_flag=True,
+    default=False,
+    help="Store image with timestamp filenames or frame-index filenames",
+)
 @click.option("--encode-video", is_flag=True, default=False, help="Encode video of frames")
 @click.option("--encode-video-fps", type=int, default=30, help="Frame-rate for video encoding")
 def ncore_export_camera(
@@ -45,6 +51,7 @@ def ncore_export_camera(
     stop_frame: Optional[int],
     step_frame: Optional[int],
     encode_images: bool,
+    timestamp_image_names: bool,
     encode_video: bool,
     encode_video_fps: int,
 ):
@@ -83,9 +90,14 @@ def ncore_export_camera(
 
         # Store encoded frame data to image files
         if encode_images:
+            fname = (
+                padded_index_string(frame_index)
+                if not timestamp_image_names
+                else str(sensor.get_frame_timestamp_us(frame_index))
+            )
+
             with open(
-                output_path
-                / Path(padded_index_string(frame_index)).with_suffix(f".{image_data.get_encoded_image_format()}"),
+                output_path / Path(fname).with_suffix(f".{image_data.get_encoded_image_format()}"),
                 "wb",
             ) as f:
                 f.write(image_data.get_encoded_image_data())
