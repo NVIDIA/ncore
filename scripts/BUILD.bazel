@@ -353,6 +353,7 @@ py3_image(
         "manual",
         "no-remote-cache",
     ],
+    deps = ["//scripts/experimental:ncore_to_map_transform"],  # include additional local targets to simplify their deployment
 )
 
 # Push image to 'production' (prod) tag - use with *CAUTION* as referenced by default in workflows

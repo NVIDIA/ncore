@@ -4,6 +4,8 @@ load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary")
 
+package(default_visibility = ["//:code_package_group"])
+
 py_binary(
     name = "ncore_to_map_transform",
     srcs = ["ncore_to_map_transform.py"],
