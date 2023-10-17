@@ -4,19 +4,6 @@ load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary")
 
-package(default_visibility = ["//:code_package_group"])
-
-py_binary(
-    name = "ncore_to_map_transform",
-    srcs = ["ncore_to_map_transform.py"],
-    deps = [
-        requirement("click"),
-        requirement("numpy"),
-        "//ncore/impl/common:pylib_transformations",
-        "//ncore/impl/data:pylib_data",
-    ],
-)
-
 py_binary(
     name = "ncore_rgb_ray_mesh_intersection",
     srcs = ["ncore_rgb_ray_mesh_intersection.py"],
