@@ -353,6 +353,7 @@ py3_image(
         "manual",
         "no-remote-cache",
     ],
+    deps = ["//scripts:ncore_to_map_transform"],  # include additional local targets to simplify their deployment
 )
 
 # Push image to 'production' (prod) tag - use with *CAUTION* as referenced by default in workflows
@@ -408,6 +409,19 @@ py_binary(
     srcs = ["ncore_sequence_meta.py"],
     deps = [
         requirement("click"),
+        "//ncore/impl/data:pylib_data",
+    ],
+)
+
+#################################################################
+
+py_binary(
+    name = "ncore_to_map_transform",
+    srcs = ["ncore_to_map_transform.py"],
+    deps = [
+        requirement("click"),
+        requirement("numpy"),
+        "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_data",
     ],
 )
