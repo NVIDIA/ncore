@@ -10,6 +10,7 @@ default:
     - type/docker
     - os/linux
     - arch/x86_64
+    - gpu
   before_script:
     # Fix permission as we are running as a local user
     - sudo chown -R developer /home/developer
