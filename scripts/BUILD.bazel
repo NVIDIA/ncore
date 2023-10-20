@@ -292,6 +292,17 @@ py_binary(
     deps = NCORE_TO_NGP_DEPS,
 )
 
+# self-contained python zip file for target
+filegroup(
+    name = "ncore_to_ngp_zip",
+    srcs = [":ncore_to_ngp"],
+    output_group = "python_zip_file",
+    tags = [
+        "manual",
+        "no-remote-cache",
+    ],
+)
+
 # Image for 'ncore_to_ngp'
 
 # extract all "local" dependencies
@@ -423,6 +434,17 @@ py_binary(
         requirement("numpy"),
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_data",
+    ],
+)
+
+# self-contained python zip file for target
+filegroup(
+    name = "ncore_to_map_transform_zip",
+    srcs = [":ncore_to_map_transform"],
+    output_group = "python_zip_file",
+    tags = [
+        "manual",
+        "no-remote-cache",
     ],
 )
 
