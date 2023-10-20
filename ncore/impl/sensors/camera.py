@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple, Union
@@ -1298,18 +1299,29 @@ class OpenCVPinholeCameraModel(CameraModel):
             cam_rays_valid.requires_grad = True
 
         uv_normalized = cam_rays_valid[:, :2] / cam_rays_valid[:, 2:3]  # [n,2]
-        icD, delta_x, delta_y = self.__compute_distortion(uv_normalized)
+        icD, delta_x, delta_y, r_2 = self.__compute_distortion(uv_normalized)
 
         k_min_radial_dist = 0.8
         k_max_radial_dist = 1.2
 
         valid_radial = torch.logical_and(icD > k_min_radial_dist, icD < k_max_radial_dist)
 
-        # Apply radial / tangential / thin-prism distortions
-        uvND = uv_normalized * icD[:, None] + torch.cat([delta_x[:, None], delta_y[:, None]], dim=1)
+        # Project using ideal pinhole model (apply radial / tangential / thin-prism distortions)
+        # in case radial distortion is within limits
+        uvND = uv_normalized[valid_radial] * icD[valid_radial, None] + torch.cat(
+            [delta_x[valid_radial, None], delta_y[valid_radial, None]], dim=1
+        )
+        image_points[valid_idx[valid_radial]] = uvND * self.focal_length + self.principal_point
 
-        # Project using ideal pinhole model
-        image_points[valid_idx] = uvND * self.focal_length + self.principal_point
+        # If the radial distortion is out-of-limits, the computed coordinates will be unreasonable
+        # (might even flip signs) - check on which side of the image we overshoot, and set the coordinates
+        # out of the image bounds accordingly. The coordinates will be clipped to
+        # viable range and direction but the exact values cannot be trusted / are still invalid
+        roi_clipping_radius = math.hypot(self.resolution[0], self.resolution[1])
+        image_points[valid_idx[~valid_radial]] = (
+            uv_normalized[~valid_radial] * 1 / torch.sqrt(r_2[~valid_radial, None]) * roi_clipping_radius
+            + self.principal_point
+        )
 
         # Check if the image points fall within the image
         valid_x = torch.logical_and(0.0 <= image_points[valid_idx, 0], image_points[valid_idx, 0] < self.resolution[0])
@@ -1335,7 +1347,7 @@ class OpenCVPinholeCameraModel(CameraModel):
 
         return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
 
-    def __compute_distortion(self, xy: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __compute_distortion(self, xy: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Computes the radial, tangential, and thin-prism distortion given the camera rays"""
 
         # Compute the helper variables
@@ -1365,7 +1377,7 @@ class OpenCVPinholeCameraModel(CameraModel):
             + r_2 * (self.thin_prism_coeffs[2] + r_2 * self.thin_prism_coeffs[3])
         )
 
-        return icD, delta_x, delta_y
+        return icD, delta_x, delta_y, r_2
 
     def __iterative_undistort(
         self, image_points: torch.Tensor, stop_mean_of_squares_error_px2: float = 1e-12, max_iterations: int = 10
@@ -1376,7 +1388,7 @@ class OpenCVPinholeCameraModel(CameraModel):
         cam_rays = cam_rays_0
         for _ in range(max_iterations):
             # apply *inverse* of distortion to camera rays to iteratively find the rays that correspond to the *distorted* source points
-            icD, delta_x, delta_y = self.__compute_distortion(cam_rays)
+            icD, delta_x, delta_y, _ = self.__compute_distortion(cam_rays)
 
             residual = cam_rays - (
                 cam_rays := (cam_rays_0 - torch.cat([delta_x[:, None], delta_y[:, None]], dim=1)) / icD[:, None]
