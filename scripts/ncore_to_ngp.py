@@ -48,6 +48,7 @@ def extract_dynamic_tracks(
     track_speed_thresh: float,
     track_min_centroid_rig_distance: float,
     track_unconditionally_dynamic_classes: set[str],
+    track_extrapolate: bool,
 ) -> dict[str, dict]:
 
     ## Extract the dynamic tracks for the given data range
@@ -101,10 +102,31 @@ def extract_dynamic_tracks(
         if (track["max_global_speed"] > track_speed_thresh or track["unconditionally_dynamic"]) and len(
             track["timestamps_us"]
         ) > 1:
+            # initialize track-associated pose-interpolator
+            poses: list[np.ndarray] = track["poses"]
+            timestamps_us: list[int] = track["timestamps_us"]
+
+            # perform pose extrapolation by one instance into the past / future if enabled
+            if track_extrapolate:
+                # extrapolate first pose to the past
+                poses.insert(
+                    0,
+                    # extrapolate into pre-time P = (P_1 @ P_0^-1)^-1 @ P_0 = (P_0 @ P_1^-1) @ P_0
+                    (poses[0] @ se3_inverse(poses[1])) @ poses[0],
+                )
+                timestamps_us.insert(0, timestamps_us[0] - (timestamps_us[1] - timestamps_us[0]))
+
+                # extrapolate last pose to the future
+                poses.append(
+                    # extrapolate into post-time P = (P_N @ P_{N-1}^-1) @ P_N
+                    (poses[-1] @ se3_inverse(poses[-2]))
+                    @ poses[-1],
+                )
+                timestamps_us.append(timestamps_us[-1] + (timestamps_us[-1] - timestamps_us[-2]))
+
+            track["pose_interpolator"] = PoseInterpolator(np.stack(poses), timestamps_us)
+
             dynamic_tracks[track_id] = track
-            dynamic_tracks[track_id]["pose_interpolator"] = PoseInterpolator(
-                np.stack(track["poses"]), track["timestamps_us"]
-            )
 
     return dynamic_tracks
 
@@ -195,6 +217,12 @@ def extract_dynamic_tracks(
     default=list(NVLabelProcessor.LABEL_STRINGS_UNCONDITIONALLY_DYNAMIC),
 )
 @click.option(
+    "--track-extrapolate/--no-track-extrapolate",
+    is_flag=True,
+    default=True,
+    help="Extrapolate label pose of track once at the start / end (to improve interpolation coverage)",
+)
+@click.option(
     "--track-camera-max-fov-deg",
     type=click.FloatRange(min=0.0, max_open=True),
     help="Limit FOV for omnidirectional camera models (like FTheta / OpenCVFisheye) to this range to prevent erroneous track projections (in particular for large-FOV fisheye cameras)",
@@ -242,6 +270,7 @@ def ncore_to_ngp(
     track_speed_thresh: float,
     track_mask_dilate_ratio: float,
     track_unconditionally_dynamic_classes: list[str],
+    track_extrapolate: bool,
     track_camera_max_fov_deg: float,
     track_min_centroid_rig_distance: float,
     translation_vector: np.ndarray,
@@ -308,6 +337,7 @@ def ncore_to_ngp(
             track_speed_thresh=track_speed_thresh,
             track_min_centroid_rig_distance=track_min_centroid_rig_distance,
             track_unconditionally_dynamic_classes=set(track_unconditionally_dynamic_classes),
+            track_extrapolate=track_extrapolate,
         )
 
     all_camera_data: dict[str, dict] = defaultdict(dict)
