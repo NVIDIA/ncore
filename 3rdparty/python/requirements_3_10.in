@@ -4,6 +4,7 @@ protobuf<4.0
 tqdm
 scipy
 matplotlib>=3.6.2
+pyside6
 runx
 opencv-python
 scikit-image
