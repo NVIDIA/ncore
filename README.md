@@ -19,6 +19,12 @@ sudo apt-get install gcc g++ clang libgl1 xz-utils
 
 Alternatively, builds can be executed within the `gitlab-master.nvidia.com:5005/toronto_dl_lab/ncore:dev` docker image, which has these packages pre-installed.
 
+Additionally, the following packages should be installed as dependencies for scripts:
+
+```
+sudo apt-get install qt6-base-dev libxcb-cursor0
+```
+
 ## Install / setup git-lfs
 
 Large files within the repository are tracked via the `git-lfs` extension. To install the package and register git-lfs, execute
