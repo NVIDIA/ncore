@@ -404,6 +404,7 @@ py_binary(
         requirement("click"),
         requirement("tqdm"),
         requirement("numpy"),
+        requirement("pyside6"),  # required to open Qt6 windows
         "//ncore/impl/av_utils:pylib",
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/common:pylib_visualization",
