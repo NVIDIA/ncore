@@ -4,6 +4,7 @@ import logging
 
 from pathlib import Path
 from dataclasses import dataclass
+from typing import Dict
 
 import numpy as np
 import tqdm
@@ -11,9 +12,10 @@ import tqdm
 import tensorflow.compat.v1 as tf
 
 from waymo_open_dataset import dataset_pb2, label_pb2
+from waymo_open_dataset.protos import camera_segmentation_pb2  # type: ignore
 
 from ncore.impl.av_utils import isWithin3DBBox
-from ncore.impl.data.data3 import ContainerDataWriter
+from ncore.impl.data.data3 import ContainerDataWriter, JsonLike
 from ncore.impl.data.types import (
     Poses,
     OpenCVPinholeCameraModelParameters,
@@ -188,7 +190,7 @@ class WaymoConverter(DataConverter):
             self.logger.info(f"> processed {len(T_rig_worlds)} poses, using base pose:\n{T_rig_world_base}")
 
     # Label IDs to label type strings
-    LABEL_TYPE_STRING_MAP = {
+    LIDAR_LABEL_CLASS_ID_STRING_MAP = {
         label_pb2.Label.Type.TYPE_UNKNOWN: "unknown",
         label_pb2.Label.Type.TYPE_VEHICLE: "vehicle",
         label_pb2.Label.Type.TYPE_PEDESTRIAN: "pedestrian",
@@ -245,7 +247,7 @@ class WaymoConverter(DataConverter):
                     RawFrameLabel3(
                         label_id=str(label_id),
                         track_id=label.id,
-                        label_class=self.LABEL_TYPE_STRING_MAP[label.type],
+                        label_class=self.LIDAR_LABEL_CLASS_ID_STRING_MAP[label.type],
                         bbox3=BBox3.from_array(
                             np.array(
                                 [
@@ -465,18 +467,87 @@ class WaymoConverter(DataConverter):
                 np.array(frame_end_timestamps_us, dtype=np.uint64),
                 T_sensor_rig,
                 {
-                    # angles associated with range-image "pixels"
-                    "inclinations_rad": inclinations_rad.reshape(-1)
-                    .astype(np.float32)
-                    .tolist(),  # H (one per range-image row)
-                    "azimuths_rad": azimuths_rad.reshape(-1)
-                    .astype(np.float32)
-                    .tolist(),  # W (one per range-image column)
+                    "waymo": {
+                        "label-class-string-id-map": {
+                            label_string: label_id
+                            for label_id, label_string in self.LIDAR_LABEL_CLASS_ID_STRING_MAP.items()
+                        }
+                    },
+                    "angles": {
+                        # angles associated with range-image "pixels"
+                        "inclinations_rad": inclinations_rad.reshape(-1)
+                        .astype(np.float32)
+                        .tolist(),  # H (one per range-image row)
+                        "azimuths_rad": azimuths_rad.reshape(-1)
+                        .astype(np.float32)
+                        .tolist(),  # W (one per range-image column)
+                    },
                 },
             )
 
         # Save the accumulated tracks in global time
         self.data_writer.store_tracks(Tracks(track_labels))
+
+    # Semantic classes labels for camera segmentation
+    CAMERA_LABEL_CLASS_ID_STRING_MAP: Dict[int, str] = {
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_UNDEFINED: "UNDEFINED",
+        # The Waymo vehicle.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_EGO_VEHICLE: "EGO_VEHICLE",
+        # Small vehicle such as a sedan, SUV, pickup truck, minivan or golf cart.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_CAR: "CAR",
+        # Large vehicle that carries cargo.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_TRUCK: "TRUCK",
+        # Large vehicle that carries more than 8 passengers.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_BUS: "BUS",
+        # Large vehicle that is not a truck or a bus.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_OTHER_LARGE_VEHICLE: "OTHER_LARGE_VEHICLE",
+        # Bicycle with no rider.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_BICYCLE: "BICYCLE",
+        # Motorcycle with no rider.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_MOTORCYCLE: "MOTORCYCLE",
+        # Trailer attached to another vehicle or horse.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_TRAILER: "TRAILER",
+        # Pedestrian. Does not include objects associated with the pedestrian, such as suitcases, strollers or cars.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_PEDESTRIAN: "PEDESTRIAN",
+        # Bicycle with rider.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_CYCLIST: "CYCLIST",
+        # Motorcycle with rider.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_MOTORCYCLIST: "MOTORCYCLIST",
+        # Birds, including ones on the ground.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_BIRD: "BIRD",
+        # Animal on the ground such as a dog, cat, cow, etc.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_GROUND_ANIMAL: "GROUND_ANIMAL",
+        # Cone or short pole related to construction.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_CONSTRUCTION_CONE_POLE: "CONSTRUCTION_CONE_POLE",
+        # Permanent horizontal and vertical lamp pole, traffic sign pole, etc.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_POLE: "POLE",
+        # Large object carried/pushed/dragged by a pedestrian.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_PEDESTRIAN_OBJECT: "PEDESTRIAN_OBJECT",
+        # Sign related to traffic, including front and back facing signs.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_SIGN: "SIGN",
+        # The box that contains traffic lights regardless of front or back facing.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_TRAFFIC_LIGHT: "TRAFFIC_LIGHT",
+        # Permanent building and walls, including solid fences.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_BUILDING: "BUILDING",
+        # Drivable road with proper markings, including parking lots and gas stations.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_ROAD: "ROAD",
+        # Marking on the road that is parallel to the ego vehicle and defines lanes.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_LANE_MARKER: "LANE_MARKER",
+        # All markings on the road other than lane markers.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_ROAD_MARKER: "ROAD_MARKER",
+        # Paved walkable surface for pedestrians, including curbs.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_SIDEWALK: "SIDEWALK",
+        # Vegetation including tree trunks, tree branches, bushes, tall grasses, flowers and so on.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_VEGETATION: "VEGETATION",
+        # The sky, including clouds.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_SKY: "SKY",
+        # Other horizontal surfaces that are drivable or walkable.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_GROUND: "GROUND",
+        # Object that is not permanent in its current position and does not belong to any of the above classes.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_DYNAMIC: "DYNAMIC",
+        # Object that is permanent in its current position and does not belong to any of the above classes.
+        camera_segmentation_pb2.CameraSegmentation.Type.TYPE_STATIC: "STATIC",
+    }
 
     def decode_cameras(self, frames):
         """
@@ -549,6 +620,28 @@ class WaymoConverter(DataConverter):
 
                 frame_end_timestamps_us.append(frame_end_timestamp_us)
 
+                # Parse panoptic segmentation, if available
+                generic_data: Dict[str, np.ndarray] = {}
+                generic_meta_data: Dict[str, JsonLike] = {}
+
+                if (
+                    hasattr(image, "camera_segmentation_label")
+                    and hasattr(camera_segmentation_label := image.camera_segmentation_label, "panoptic_label_divisor")
+                    and (panoptic_label_divisor := camera_segmentation_label.panoptic_label_divisor) > 0
+                    and hasattr(camera_segmentation_label, "panoptic_label")
+                ):
+                    # Store the original waymo png segmentation data
+
+                    # A uint16 png byte-encoded image, with the same resolution as the corresponding
+                    # camera image. Each pixel contains a panoptic segmentation label, which is
+                    # computed as:
+                    # semantic_class_id * panoptic_label_divisor + instance_id.
+                    # We set instance_id = 0 for pixels for which there is no instance_id.
+                    generic_data["panoptic_label_png"] = np.frombuffer(
+                        camera_segmentation_label.panoptic_label, dtype=np.uint8
+                    )
+                    generic_meta_data["panoptic_label_divisor"] = panoptic_label_divisor
+
                 # Store the image and its metadata
                 self.data_writer.store_camera_frame(
                     camera_ncore_id,
@@ -557,9 +650,10 @@ class WaymoConverter(DataConverter):
                     "jpeg",
                     T_rig_worlds,
                     timestamps_us,
-                    {},
-                    {},
+                    generic_data,
+                    generic_meta_data,
                 )
+
                 continuous_frame_index += 1
 
             # Extract intrinsic data
@@ -594,5 +688,12 @@ class WaymoConverter(DataConverter):
                     np.array([0, 0, 0, 0], dtype=np.float32),
                 ),
                 None,
-                {},
+                {
+                    "waymo": {
+                        "label-class-string-id-map": {
+                            label_string: label_id
+                            for label_id, label_string in self.CAMERA_LABEL_CLASS_ID_STRING_MAP.items()
+                        }
+                    }
+                },
             )

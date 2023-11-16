@@ -70,6 +70,8 @@ py_library(
     deps = [
         ":pylib_data_converter",
         "@waymo-open-dataset//waymo_open_dataset:dataset_proto_py_pb2",
+        "@waymo-open-dataset//waymo_open_dataset:label_proto_py_pb2",
+        "@waymo-open-dataset//waymo_open_dataset/protos:camera_segmentation_proto_py_pb2",
         requirement("tensorflow"),
         requirement("numpy"),
         requirement("tqdm"),
