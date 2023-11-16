@@ -454,6 +454,7 @@ class WaymoConverter(DataConverter):
                         "intensity_second": intensity_second.reshape(-1).astype(np.float32),  # S
                         "elongation_second": elongation_second.reshape(-1).astype(np.float32),  # S
                     },
+                    {},
                 )
 
                 continuous_frame_index += 1
@@ -465,8 +466,12 @@ class WaymoConverter(DataConverter):
                 T_sensor_rig,
                 {
                     # angles associated with range-image "pixels"
-                    "inclinations_rad": inclinations_rad.reshape(-1).astype(np.float32),  # H (one per range-image row)
-                    "azimuths_rad": azimuths_rad.reshape(-1).astype(np.float32),  # W (one per range-image column)
+                    "inclinations_rad": inclinations_rad.reshape(-1)
+                    .astype(np.float32)
+                    .tolist(),  # H (one per range-image row)
+                    "azimuths_rad": azimuths_rad.reshape(-1)
+                    .astype(np.float32)
+                    .tolist(),  # W (one per range-image column)
                 },
             )
 
@@ -552,6 +557,7 @@ class WaymoConverter(DataConverter):
                     "jpeg",
                     T_rig_worlds,
                     timestamps_us,
+                    {},
                     {},
                 )
                 continuous_frame_index += 1

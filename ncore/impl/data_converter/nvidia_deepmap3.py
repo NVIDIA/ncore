@@ -359,6 +359,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                 T_rig_worlds,
                 timestamps_us,
                 {},
+                {},
             )
 
             # Save the end time stamp of the lidar spin
@@ -473,6 +474,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                         FORMAT,
                         T_rig_worlds,
                         timestamps_us,
+                        {},
                         {},
                     )
 

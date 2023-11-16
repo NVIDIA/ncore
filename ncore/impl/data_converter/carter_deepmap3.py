@@ -331,6 +331,7 @@ class CarterDeepmapConverter(DataConverter):
                     T_rig_worlds,
                     timestamps_us,
                     {},
+                    {},
                 )
 
                 # Save the end time stamp of the lidar spin
@@ -403,6 +404,7 @@ class CarterDeepmapConverter(DataConverter):
                     "jpeg",
                     T_rig_worlds,
                     timestamps_us,
+                    {},
                     {},
                 )
 

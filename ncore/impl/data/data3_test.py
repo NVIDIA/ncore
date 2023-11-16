@@ -96,9 +96,7 @@ class TestData3Loader(unittest.TestCase):
         )
 
         # We currently don't store generic meta data in NV data
-        self.assertEqual(lidar_sensor.get_generic_meta_data_names(), [])
-        self.assertFalse(lidar_sensor.has_generic_meta_data("nonexisting"))
-        self.assertRaises(ValueError, lidar_sensor.get_generic_meta_data, "nonexisting")
+        self.assertEqual(lidar_sensor.get_generic_meta_data(), {})
 
         # Load all data
         for frame_index in lidar_sensor.get_frame_index_range():
@@ -126,6 +124,7 @@ class TestData3Loader(unittest.TestCase):
             )
 
             # We currently don't store generic frame data in NV data
+            self.assertEqual(lidar_sensor.get_frame_generic_meta_data(frame_index), {})
             self.assertEqual(lidar_sensor.get_frame_generic_data_names(frame_index), [])
             self.assertFalse(lidar_sensor.has_frame_generic_data(frame_index, "nonexisting"))
             self.assertRaises(ValueError, lidar_sensor.get_frame_generic_data, frame_index, "nonexisting")
@@ -141,9 +140,7 @@ class TestData3Loader(unittest.TestCase):
         )
 
         # We currently don't store generic meta data in NV data
-        self.assertEqual(camera_sensor.get_generic_meta_data_names(), [])
-        self.assertFalse(camera_sensor.has_generic_meta_data("nonexisting"))
-        self.assertRaises(ValueError, camera_sensor.get_generic_meta_data, "nonexisting")
+        self.assertEqual(camera_sensor.get_generic_meta_data(), {})
 
         self.assertIsInstance(camera_sensor.get_camera_model_parameters(), FThetaCameraModelParameters)
         self.assertEqual(camera_sensor.get_camera_mask_image().size, (3848, 2168))
@@ -153,6 +150,7 @@ class TestData3Loader(unittest.TestCase):
             self.assertEqual(camera_sensor.get_frame_image(frame_index).size, (3848, 2168))
 
             # We currently don't store generic frame data in NV data
+            self.assertEqual(camera_sensor.get_frame_generic_meta_data(frame_index), {})
             self.assertEqual(camera_sensor.get_frame_generic_data_names(frame_index), [])
             self.assertFalse(camera_sensor.has_frame_generic_data(frame_index, "nonexisting"))
             self.assertRaises(ValueError, camera_sensor.get_frame_generic_data, frame_index, "nonexisting")
@@ -490,7 +488,7 @@ class TestData3Reload(unittest.TestCase):
                 max_angle=np.deg2rad(140 / 2),
             ),
             None,
-            ref_camera_generic_meta_data := {"some-meta-data": np.random.rand(3, 2)},
+            ref_camera_generic_meta_data := {"some-meta-data": np.random.rand(3, 2).tolist()},
         )
 
         with io.BytesIO() as buffer:
@@ -506,6 +504,7 @@ class TestData3Reload(unittest.TestCase):
                 T_rig_worlds.astype(np.float32),
                 T_rig_world_timestamps_us,
                 ref_camera_generic_data0 := {"some-frame-data": np.random.rand(6, 2)},
+                ref_camera_generic_metadata0 := {"some-frame-meta-data": {"something": 1, "else": 2}},
             )
 
         with io.BytesIO() as buffer:
@@ -521,6 +520,7 @@ class TestData3Reload(unittest.TestCase):
                 T_rig_worlds.astype(np.float32),
                 T_rig_world_timestamps_us,
                 ref_camera_generic_data1 := {"some-frame-data": np.random.rand(6, 2)},
+                ref_camera_generic_metadata1 := {"some-more-frame-meta-data": {"even": True, "more": None}},
             )
 
         # Store lidar data
@@ -533,7 +533,7 @@ class TestData3Reload(unittest.TestCase):
                     [np.array([0, 0, 0, 1])],
                 ]
             ).astype(np.float32),
-            ref_lidar_generic_meta_data := {"some-meta-data": np.random.rand(3, 2)},
+            ref_lidar_generic_meta_data := {"some-meta-data": np.random.rand(3, 2).tolist()},
         )
 
         writer.store_lidar_frame(
@@ -549,6 +549,7 @@ class TestData3Reload(unittest.TestCase):
             T_rig_worlds.astype(np.float32),
             T_rig_world_timestamps_us,
             ref_lidar_generic_data0 := {"some-frame-data": np.random.rand(6, 3)},
+            ref_lidar_generic_metadata0 := {"some-frame-meta-data": {"random-data": np.random.rand(6, 3).tolist()}},
         )
 
         writer.store_lidar_frame(
@@ -564,6 +565,7 @@ class TestData3Reload(unittest.TestCase):
             T_rig_worlds.astype(np.float32),
             T_rig_world_timestamps_us,
             ref_lidar_generic_data1 := {"some-frame-data": np.random.rand(6, 3)},
+            ref_lidar_generic_metadata1 := {"some-frame-meta-data": {"random-data": np.random.rand(6, 3).tolist()}},
         )
 
         shard_path = writer.finalize()
@@ -586,17 +588,10 @@ class TestData3Reload(unittest.TestCase):
         # Check cameras
         camera_sensor = loader.get_camera_sensor(ref_camera_id)
         self.assertIsNone(np.testing.assert_array_equal(camera_sensor.get_T_sensor_rig(), ref_camera_extrinsics))
-        self.assertEqual(
-            names := camera_sensor.get_generic_meta_data_names(), list(ref_camera_generic_meta_data.keys())
-        )
-        for name in names:
-            self.assertIsNone(
-                np.testing.assert_array_equal(
-                    camera_sensor.get_generic_meta_data(name), ref_camera_generic_meta_data[name]
-                )
-            )
+        self.assertEqual(camera_sensor.get_generic_meta_data(), ref_camera_generic_meta_data)
 
         self.assertIsNone(np.testing.assert_array_equal(camera_sensor.get_frame_image_array(0), ref_image_rgb0))
+        self.assertEqual(camera_sensor.get_frame_generic_meta_data(0), ref_camera_generic_metadata0)
         self.assertEqual(names := camera_sensor.get_frame_generic_data_names(0), list(ref_camera_generic_data0.keys()))
         for name in names:
             self.assertIsNone(
@@ -606,6 +601,7 @@ class TestData3Reload(unittest.TestCase):
             )
 
         self.assertIsNone(np.testing.assert_array_equal(camera_sensor.get_frame_image_array(1), ref_image_rgb1))
+        self.assertEqual(camera_sensor.get_frame_generic_meta_data(1), ref_camera_generic_metadata1)
         self.assertEqual(names := camera_sensor.get_frame_generic_data_names(1), list(ref_camera_generic_data1.keys()))
         for name in names:
             self.assertIsNone(
@@ -617,13 +613,7 @@ class TestData3Reload(unittest.TestCase):
         # Check lidars
         lidar_sensor = loader.get_lidar_sensor(ref_lidar_id)
         self.assertIsNone(np.testing.assert_array_equal(lidar_sensor.get_T_sensor_rig(), ref_lidar_extrinsics))
-        self.assertEqual(names := lidar_sensor.get_generic_meta_data_names(), list(ref_lidar_generic_meta_data.keys()))
-        for name in names:
-            self.assertIsNone(
-                np.testing.assert_array_equal(
-                    lidar_sensor.get_generic_meta_data(name), ref_lidar_generic_meta_data[name]
-                )
-            )
+        self.assertEqual(lidar_sensor.get_generic_meta_data(), ref_lidar_generic_meta_data)
 
         self.assertIsNone(np.testing.assert_array_equal(lidar_sensor.get_frame_data(0, "xyz_s"), ref_lidar_xyz_s0))
         self.assertIsNone(np.testing.assert_array_equal(lidar_sensor.get_frame_data(0, "xyz_e"), ref_lidar_xyz_e0))
@@ -636,6 +626,7 @@ class TestData3Reload(unittest.TestCase):
         self.assertIsNone(
             np.testing.assert_array_equal(lidar_sensor.get_frame_data(0, "dynamic_flag"), ref_lidar_dynamic_flag0)
         )
+        self.assertEqual(lidar_sensor.get_frame_generic_meta_data(0), ref_lidar_generic_metadata0)
         self.assertEqual(names := lidar_sensor.get_frame_generic_data_names(0), list(ref_lidar_generic_data0.keys()))
         for name in names:
             self.assertIsNone(
@@ -655,6 +646,7 @@ class TestData3Reload(unittest.TestCase):
         self.assertIsNone(
             np.testing.assert_array_equal(lidar_sensor.get_frame_data(1, "dynamic_flag"), ref_lidar_dynamic_flag1)
         )
+        self.assertEqual(lidar_sensor.get_frame_generic_meta_data(1), ref_lidar_generic_metadata1)
         self.assertEqual(names := lidar_sensor.get_frame_generic_data_names(1), list(ref_lidar_generic_data1.keys()))
         for name in names:
             self.assertIsNone(

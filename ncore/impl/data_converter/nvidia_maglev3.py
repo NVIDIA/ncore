@@ -382,6 +382,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                     T_rig_worlds,
                     timestamps_us,
                     {},
+                    {},
                 )
 
             logger.info(
@@ -668,6 +669,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                     frame_labels,
                     T_rig_worlds,
                     timestamps_us,
+                    {},
                     {},
                 )
 
