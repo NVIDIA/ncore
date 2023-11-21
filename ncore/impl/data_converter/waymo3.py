@@ -467,11 +467,9 @@ class WaymoConverter(DataConverter):
                 np.array(frame_end_timestamps_us, dtype=np.uint64),
                 T_sensor_rig,
                 {
-                    "waymo": {
-                        "label-class-string-id-map": {
-                            label_string: label_id
-                            for label_id, label_string in self.LIDAR_LABEL_CLASS_ID_STRING_MAP.items()
-                        }
+                    "label-class-string-id-map": {
+                        label_string: label_id
+                        for label_id, label_string in self.LIDAR_LABEL_CLASS_ID_STRING_MAP.items()
                     },
                     "angles": {
                         # angles associated with range-image "pixels"
@@ -689,11 +687,9 @@ class WaymoConverter(DataConverter):
                 ),
                 None,
                 {
-                    "waymo": {
-                        "label-class-string-id-map": {
-                            label_string: label_id
-                            for label_id, label_string in self.CAMERA_LABEL_CLASS_ID_STRING_MAP.items()
-                        }
+                    "label-class-string-id-map": {
+                        label_string: label_id
+                        for label_id, label_string in self.CAMERA_LABEL_CLASS_ID_STRING_MAP.items()
                     }
                 },
             )
