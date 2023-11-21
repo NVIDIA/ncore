@@ -273,7 +273,6 @@ class ContainerDataWriter:
         intensity: np.ndarray,
         timestamp_us: np.ndarray,
         dynamic_flag: np.ndarray,
-        semantic_class: Optional[np.ndarray],
         # label data
         frame_labels: List[types.FrameLabel3],
         # poses
@@ -325,11 +324,6 @@ class ContainerDataWriter:
         assert dynamic_flag.shape == (num_points,)
         assert dynamic_flag.dtype == np.dtype("int8")
         frame_group.create_dataset("dynamic_flag", data=dynamic_flag)
-
-        if semantic_class is not None:
-            assert semantic_class.shape == (num_points,)
-            assert semantic_class.dtype == np.dtype("int8")
-            frame_group.create_dataset("semantic_class", data=semantic_class)
 
         # Store pose data
         frame_group.create_dataset("T_rig_worlds", data=T_rig_worlds)

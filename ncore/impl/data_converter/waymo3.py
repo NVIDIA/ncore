@@ -438,7 +438,6 @@ class WaymoConverter(DataConverter):
                     intensity,
                     point_timestamps_us,
                     dynamic_flag,
-                    semantic_class,
                     frame_labels,
                     T_rig_worlds,
                     timestamps_us,
@@ -455,7 +454,10 @@ class WaymoConverter(DataConverter):
                         "xyz_e_second": xyz_e_second.reshape((-1, 3)).astype(np.float32),  # S x 3
                         "intensity_second": intensity_second.reshape(-1).astype(np.float32),  # S
                         "elongation_second": elongation_second.reshape(-1).astype(np.float32),  # S
-                    },
+                    }
+                    | {"semantic_class": semantic_class}  # N
+                    if semantic_class is not None
+                    else {},
                     {},
                 )
 

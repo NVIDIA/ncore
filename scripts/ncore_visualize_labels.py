@@ -2,6 +2,7 @@
 
 import click
 import tqdm
+import numpy as np
 
 from ncore.impl.common.visualization import LabelVisualizer
 from ncore.impl.data.data3 import ShardDataLoader, LidarSensor
@@ -43,8 +44,8 @@ def ncore_visualize_labels(shard_file_pattern, sensor_id, start_frame, stop_fram
             sensor.get_frame_data(frame_index, "intensity"),
             sensor.get_frame_data(frame_index, "dynamic_flag"),
             sensor.get_frame_data(frame_index, "timestamp_us"),
-            sensor.get_frame_data(frame_index, "semantic_class")
-            if sensor.has_frame_data(frame_index, "semantic_class")
+            sensor.get_frame_generic_data(frame_index, "semantic_class")
+            if sensor.has_frame_generic_data(frame_index, "semantic_class")
             else None,
         )
 

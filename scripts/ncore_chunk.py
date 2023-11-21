@@ -273,12 +273,6 @@ class ChunkDataWriter:
                     lidar_dynamic_flag_bbox_padding_meters=dynamic_flag_parameters.lidar_dynamic_flag_bbox_padding_meters,
                 )
 
-                semantic_class = (
-                    lidar_sensor.get_frame_data(source_frame_idx, "semantic_class")
-                    if lidar_sensor.has_frame_data(source_frame_idx, "semantic_class")
-                    else None
-                )
-
                 data_writer.store_lidar_frame(
                     lidar_id,
                     chunk_frame_index,
@@ -287,7 +281,6 @@ class ChunkDataWriter:
                     lidar_sensor.get_frame_data(source_frame_idx, "intensity"),
                     lidar_sensor.get_frame_data(source_frame_idx, "timestamp_us"),
                     dynamic_flag,
-                    semantic_class,
                     frame_labels,
                     T_rig_worlds,
                     timestamps_us,
