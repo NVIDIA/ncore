@@ -11,7 +11,7 @@ import concurrent.futures
 
 from types import SimpleNamespace
 from pathlib import Path
-from typing import Iterable, NamedTuple, Optional, Tuple, Union, Dict, List
+from typing import Iterable, NamedTuple, Optional, Tuple, Union, Dict, List, Union
 
 import numpy as np
 import zarr
@@ -28,6 +28,8 @@ SENSORS_BASE_GROUP = "sensors"
 CAMERAS_BASE_GROUP = "cameras"
 LIDARS_BASE_GROUP = "lidars"
 RADARS_BASE_GROUP = "radars"
+
+JsonLike = Union[Dict[str, "JsonLike"], List["JsonLike"], str, int, float, bool, None]
 
 
 class ContainerDataWriter:
@@ -163,8 +165,8 @@ class ContainerDataWriter:
         camera_model_parameters: types.ConcreteCameraModelParametersUnion,
         # sensor constants
         mask_image: Optional[PILImage.Image],
-        # generic sensor meta-data (name-value pairs, *not* dimension / dtype validated)
-        generic_meta_data: Dict[str, np.ndarray],
+        # generic sensor meta-data (needs to be json-serializable)
+        generic_meta_data: Dict[str, JsonLike],
     ) -> None:
         assert T_sensor_rig.shape == (4, 4)
         assert T_sensor_rig.dtype == np.dtype("float32")
@@ -172,15 +174,14 @@ class ContainerDataWriter:
         assert frame_timestamps_us.dtype == np.dtype("uint64")
 
         # Store meta data
-        camera_grp = self.container_root[SENSORS_BASE_GROUP][CAMERAS_BASE_GROUP][camera_id]
-        meta_data = {
-            "T_sensor_rig": T_sensor_rig.tolist(),
-            "camera_model_type": camera_model_parameters.type(),
-            "camera_model_parameters": camera_model_parameters.to_dict(),
-        }
-        # encode generic meta-data (not dimension / dtype checked)
-        meta_data["generic_meta_data"] = {name: value.tolist() for name, value in generic_meta_data.items()}
-        camera_grp.attrs.put(meta_data)
+        (camera_grp := self.container_root[SENSORS_BASE_GROUP][CAMERAS_BASE_GROUP][camera_id]).attrs.put(
+            {
+                "T_sensor_rig": T_sensor_rig.tolist(),
+                "camera_model_type": camera_model_parameters.type(),
+                "camera_model_parameters": camera_model_parameters.to_dict(),
+                "generic_meta_data": generic_meta_data,
+            }
+        )
 
         # Store timestamps
         camera_grp.create_dataset("frame_timestamps_us", data=frame_timestamps_us)
@@ -205,8 +206,9 @@ class ContainerDataWriter:
         # poses
         T_rig_worlds: np.ndarray,
         timestamps_us: np.ndarray,
-        # generic per-frame data (key-value pairs, *not* dimension / dtype validated)
+        # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
         generic_data: Dict[str, np.ndarray],
+        generic_meta_data: Dict[str, JsonLike],
     ) -> None:
         # sanity / consistency checks
         assert T_rig_worlds.shape == (2, 4, 4)
@@ -229,8 +231,8 @@ class ContainerDataWriter:
         frame_group.create_dataset("T_rig_worlds", data=T_rig_worlds)
         frame_group.create_dataset("timestamps_us", data=timestamps_us)
 
-        # Store additional generic frame data (not dimension / dtype checked)
-        frame_generic_data_group = frame_group.require_group("generic_data")
+        # Store additional generic frame data and meta-data (not dimension / dtype checked)
+        (frame_generic_data_group := frame_group.require_group("generic_data")).attrs.put(generic_meta_data)
         for name, value in generic_data.items():
             frame_generic_data_group.create_dataset(name, data=value)
 
@@ -241,8 +243,8 @@ class ContainerDataWriter:
         frame_timestamps_us: np.ndarray,
         # extrinsics
         T_sensor_rig: np.ndarray,
-        # generic sensor meta-data (name-value pairs, *not* dimension / dtype validated)
-        generic_meta_data: Dict[str, np.ndarray],
+        # generic sensor meta-data (has to be json-serializable)
+        generic_meta_data: Dict[str, JsonLike],
     ) -> None:
         assert T_sensor_rig.shape == (4, 4)
         assert T_sensor_rig.dtype == np.dtype("float32")
@@ -250,11 +252,12 @@ class ContainerDataWriter:
         assert frame_timestamps_us.dtype == np.dtype("uint64")
 
         # Store meta data
-        lidar_grp = self.container_root[SENSORS_BASE_GROUP][LIDARS_BASE_GROUP][lidar_id]
-        meta_data = {"T_sensor_rig": T_sensor_rig.tolist()}
-        # encode generic meta-data (not dimension / dtype checked)
-        meta_data["generic_meta_data"] = {name: value.tolist() for name, value in generic_meta_data.items()}
-        lidar_grp.attrs.put(meta_data)
+        (lidar_grp := self.container_root[SENSORS_BASE_GROUP][LIDARS_BASE_GROUP][lidar_id]).attrs.put(
+            {
+                "T_sensor_rig": T_sensor_rig.tolist(),
+                "generic_meta_data": generic_meta_data,
+            }
+        )
 
         # Store timestamps
         lidar_grp.create_dataset("frame_timestamps_us", data=frame_timestamps_us)
@@ -270,14 +273,14 @@ class ContainerDataWriter:
         intensity: np.ndarray,
         timestamp_us: np.ndarray,
         dynamic_flag: np.ndarray,
-        semantic_class: Optional[np.ndarray],
         # label data
         frame_labels: List[types.FrameLabel3],
         # poses
         T_rig_worlds: np.ndarray,
         timestamps_us: np.ndarray,
-        # generic per-frame data (key-value pairs, *not* dimension / dtype validated)
+        # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
         generic_data: Dict[str, np.ndarray],
+        generic_meta_data: Dict[str, JsonLike],
     ) -> None:
         # sanity / consistency checks
         assert xyz_e.ndim == 2
@@ -322,17 +325,12 @@ class ContainerDataWriter:
         assert dynamic_flag.dtype == np.dtype("int8")
         frame_group.create_dataset("dynamic_flag", data=dynamic_flag)
 
-        if semantic_class is not None:
-            assert semantic_class.shape == (num_points,)
-            assert semantic_class.dtype == np.dtype("int8")
-            frame_group.create_dataset("semantic_class", data=semantic_class)
-
         # Store pose data
         frame_group.create_dataset("T_rig_worlds", data=T_rig_worlds)
         frame_group.create_dataset("timestamps_us", data=timestamps_us)
 
-        # Store additional generic frame data (not dimension / dtype checked)
-        frame_generic_data_group = frame_group.require_group("generic_data")
+        # Store additional generic frame data and meta-data (not dimension / dtype checked)
+        (frame_generic_data_group := frame_group.require_group("generic_data")).attrs.put(generic_meta_data)
         for name, value in generic_data.items():
             frame_generic_data_group.create_dataset(name, data=value)
 
@@ -431,27 +429,14 @@ class Sensor:
         return transformations.se3_inverse(self.get_T_sensor_rig())
 
     # Generic sensor meta-data
-    def get_generic_meta_data_names(self) -> List[str]:
-        """List of all generic sensor meta-data property names"""
+    def get_generic_meta_data(self) -> Dict[str, JsonLike]:
+        """Returns the generic sensor meta-data"""
 
         if "generic_meta_data" not in self._sensor_meta.__dict__:
             # Backwards-compatibility for data that didn't store generic_meta_data
-            return []
+            return {}
 
-        return list(self._sensor_meta.generic_meta_data.keys())
-
-    def has_generic_meta_data(self, name: str) -> bool:
-        """Signals if named generic sensor meta-data property exists"""
-
-        return name in self.get_generic_meta_data_names()
-
-    def get_generic_meta_data(self, name: str) -> np.ndarray:
-        """Returns named generic sensor meta-data property"""
-
-        if not self.has_generic_meta_data(name):
-            raise ValueError(f"Sensor {self._sensor_id} is missing generic meta-data '{name}'")
-
-        return np.asarray(self._sensor_meta.generic_meta_data[name])
+        return self._sensor_meta.generic_meta_data
 
     # Sequence-wide or shard-wide frame data
     def get_frames_count(self, start_shard_idx: Optional[int] = None, stop_shard_idx: Optional[int] = None) -> int:
@@ -529,6 +514,7 @@ class Sensor:
 
         return util.closest_index_sorted(self.get_frames_timestamps_us(), timestamp_us)
 
+    # Generic per-frame data
     def get_frame_generic_data_names(self, continuous_frame_index: int) -> List[str]:
         """List of all generic frame-data names"""
 
@@ -552,6 +538,15 @@ class Sensor:
             )
 
         return self._get_frame_group(continuous_frame_index)["generic_data"][name][()]
+
+    def get_frame_generic_meta_data(self, continuous_frame_index) -> Dict[str, JsonLike]:
+        """Returns generic frame meta-data for a specific frame"""
+
+        if "generic_data" not in (frame_group := self._get_frame_group(continuous_frame_index)):
+            # Backwards-compatibility for data that didn't store generic_data
+            return {}
+
+        return frame_group["generic_data"].attrs.asdict()
 
 
 class CameraSensor(Sensor):

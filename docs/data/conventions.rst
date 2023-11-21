@@ -138,7 +138,6 @@ dataset hierarchy [#f3]_:
       │   ⁞   │   ├── frame_labels (M,) object
       │   ⁞   │   │
       │   ⁞   │   ├── dynamic_flag (N,) int8
-      │   ⁞   │   ├── {semantic_class} (N,) int8
       │   ⁞   │   ├── intensity (N,) float32
       │   ⁞   │   ├── timestamp_us (N,) uint64
       │   ⁞   │   ├── xyz_e (N, 3) float32
@@ -203,7 +202,6 @@ Lidar data contains the following columns:
   are classified as dynamic if the associated object-track is dynamic
   at *any* point in time of the sequence
 * ``timestamp_us`` - point timestamp in microseconds (uint64, [n])
-* ``semantic_class`` - point class label (optional, int8, [n])
 
 Radar data contains the following columns:
 

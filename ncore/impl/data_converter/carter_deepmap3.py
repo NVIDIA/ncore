@@ -326,10 +326,10 @@ class CarterDeepmapConverter(DataConverter):
                     intensity,
                     timestamp,
                     dynamic_flag,
-                    None,
                     frame_labels,
                     T_rig_worlds,
                     timestamps_us,
+                    {},
                     {},
                 )
 
@@ -403,6 +403,7 @@ class CarterDeepmapConverter(DataConverter):
                     "jpeg",
                     T_rig_worlds,
                     timestamps_us,
+                    {},
                     {},
                 )
 
