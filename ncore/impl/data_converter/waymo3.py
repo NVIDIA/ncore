@@ -455,9 +455,7 @@ class WaymoConverter(DataConverter):
                         "intensity_second": intensity_second.reshape(-1).astype(np.float32),  # S
                         "elongation_second": elongation_second.reshape(-1).astype(np.float32),  # S
                     }
-                    | {"semantic_class": semantic_class}  # N
-                    if semantic_class is not None
-                    else {},
+                    | ({"semantic_class": semantic_class} if semantic_class is not None else {}),  # N
                     {},
                 )
 
