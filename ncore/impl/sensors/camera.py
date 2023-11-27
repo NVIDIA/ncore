@@ -1301,9 +1301,11 @@ class OpenCVPinholeCameraModel(CameraModel):
         assert image_points.is_floating_point(), "[CameraModel]: image_points must be floating point values"
         image_points = image_points.to(self.dtype)
 
-        camera_rays = self.__iterative_undistort(image_points)
+        camera_rays2 = self.__iterative_undistort(image_points)
+        camera_rays3 = torch.cat([camera_rays2, torch.ones_like(camera_rays2[:, :1])], dim=1)
 
-        return torch.cat([camera_rays, torch.ones_like(camera_rays[:, 0:1])], dim=1)
+        # make sure rays are normalized
+        return camera_rays3 / torch.linalg.norm(camera_rays3, axis=1, keepdims=True)
 
     def camera_rays_to_image_points(
         self, cam_rays: Union[torch.Tensor, np.ndarray], return_jacobians=False

@@ -716,7 +716,7 @@ class TestJacobian(CommonTestCase):
 
             np.testing.assert_array_almost_equal(pref, proj.image_points.detach()[0].cpu().numpy())
             np.testing.assert_array_almost_equal(
-                Jref, proj.jacobians.detach()[0].cpu().numpy(), decimal=6 if self.dtype == torch.float64 else 4
+                Jref, proj.jacobians.detach()[0].cpu().numpy(), decimal=6 if self.dtype == torch.float64 else 3
             )
 
     def test_jacobian_consistency(self):
@@ -845,6 +845,14 @@ class TestJacobian(CommonTestCase):
             valid_rays3d = cam_model.image_points_to_camera_rays(
                 torch.Tensor([[20, 40], [11, 12], [15, 20], [500, 500]])
             )  # valid rays
+            self.assertLessEqual(
+                (torch.linalg.norm(valid_rays3d, axis=1, keepdims=True) - torch.ones_like(valid_rays3d[:, :1]))
+                .abs()
+                .max()
+                .item(),
+                1e-07,
+                msg=f"{type(cam_model)} failed to return normalized rays",
+            )  # make sure all camera models return *normalized* rays
             principal_direction_rays3d = torch.Tensor([[0, 0, 1], [0, 0, 5], [0, 0, 0.1]]).to(
                 valid_rays3d
             )  # rays along the principal direction
