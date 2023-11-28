@@ -371,20 +371,23 @@ class Sensor:
             def thread_load_shard(shard_root):
                 """Thread-executed shard data loading"""
 
+                # Look up shard sensor group *once* (preventing expensive zarr hierarchy traversal later on)
+                shard_sensor_group = shard_root[SENSORS_BASE_GROUP][self._sensor_group][self._sensor_id]
+
                 # Load shard-associated sensor meta-data
-                shard_sensor_meta = shard_root[SENSORS_BASE_GROUP][self._sensor_group][self._sensor_id].attrs.asdict()
+                shard_sensor_meta = shard_sensor_group.attrs.asdict()
 
                 # Load shard-associated sensor timestamps
-                shard_sensor_frame_timestamps_us = shard_root[SENSORS_BASE_GROUP][self._sensor_group][self._sensor_id][
-                    "frame_timestamps_us"
-                ][()]
+                shard_sensor_frame_timestamps_us = shard_sensor_group["frame_timestamps_us"][()]
 
-                return shard_sensor_meta, shard_sensor_frame_timestamps_us
+                return shard_sensor_group, shard_sensor_meta, shard_sensor_frame_timestamps_us
 
             # Load in multi-threaded fashion, making sure order is preserved
-            shard_sensor_metas, shards_sensor_frame_timestamps_us = zip(
+            shard_sensor_groups, shard_sensor_metas, shards_sensor_frame_timestamps_us = zip(
                 *executor.map(thread_load_shard, self._shard_roots)
             )
+
+        self._shard_sensor_group = shard_sensor_groups
 
         # Construct frame offset map / sensor frame time-range over all shards as
         # offset map [0, len(s0), len(s0+s1), ... , len(s0+..+sN)]
@@ -472,7 +475,7 @@ class Sensor:
 
         shard_frame = self._get_shard_frame(continuous_frame_index)
 
-        return self._shard_roots[shard_frame.shard_index][SENSORS_BASE_GROUP][self._sensor_group][self._sensor_id][
+        return self._shard_sensor_group[shard_frame.shard_index][
             util.padded_index_string(shard_frame.shard_frame_index)
         ]
 
@@ -599,11 +602,7 @@ class CameraSensor(Sensor):
         """Returns constant camera mask image, if available"""
 
         # Take mask from *first* shard
-        if (
-            mask_dataset := self._shard_roots[0][SENSORS_BASE_GROUP][self._sensor_group][self._sensor_id].get(
-                "mask", default=None
-            )
-        ) is None:
+        if (mask_dataset := self._shard_sensor_group[0].get("mask", default=None)) is None:
             return None
 
         return PILImage.open(io.BytesIO(mask_dataset[()]), formats=[mask_dataset.attrs["format"]])
