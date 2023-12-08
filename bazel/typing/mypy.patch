@@ -24,7 +24,7 @@ index 63bb405..0d3c3ef 100644
      deps = [
          requirement("mypy"),
 +        # List of dependencies that provide type-hints
-+        local_req("click"), local_req("pytest"), local_req("numpy"), local_req("sphinx"), local_req("multimethod"), local_req("jupyter_server"), local_req("dataclasses_json"), local_req("torch"),
++        local_req("click"), local_req("pytest"), local_req("numpy"), local_req("sphinx"), local_req("multimethod"), local_req("jupyter_server"), local_req("dataclasses_json"), local_req("torch"), local_req("trimesh"),
 +        "@ncore_repo//ncore/data:pylib", "@ncore_repo//ncore/data/v3:pylib", "@ncore_repo//ncore/geometry:pylib", "@ncore_repo//ncore/sensors:pylib",
      ],
  )
