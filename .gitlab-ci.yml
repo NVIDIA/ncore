@@ -84,12 +84,14 @@ wheel:
   script:
   - bazelisk version
 
-  # Build the wheel
+  # Build the wheels
   - bazelisk clean
   - bazelisk build //ncore:ncore_wheel
+  - bazelisk build //3rdparty/PoissonRecon:PoissonRecon_wheel
 
-  # Try to deploy it (skip if version already exists)
+  # Try to deploy the wheels (skip if version already exists)
   - pip install twine
   - python -m twine upload --repository-url https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi bazel-bin/ncore/*.whl --verbose --skip-existing --non-interactive
+  - python -m twine upload --repository-url https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi bazel-bin/3rdparty/PoissonRecon/*.whl --verbose --skip-existing --non-interactive
   rules:
     - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH

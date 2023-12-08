@@ -233,12 +233,12 @@ container_push(
 py_binary(
     name = "ncore_surface_rec",
     srcs = ["ncore_surface_rec.py"],
-    data = ["@PoissonRecon"],
     deps = [
         requirement("click"),
         requirement("tqdm"),
         requirement("point-cloud-utils"),
         requirement("trimesh"),
+        "//3rdparty/PoissonRecon:pylib",
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_data",
     ],
