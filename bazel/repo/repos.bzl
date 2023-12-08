@@ -1,54 +1,51 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", _http_archive = "http_archive")
-load("@bazel_tools//tools/build_defs/repo:git.bzl", _git_repository = "git_repository", _new_git_repository = "new_git_repository")
 load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
 
 def http_archive(name, **kwargs):
     maybe(_http_archive, name = name, **kwargs)
 
-def new_git_repository(name, **kwargs):
-    maybe(_new_git_repository, name = name, **kwargs)
-
-def git_repository(name, **kwargs):
-    maybe(_git_repository, name = name, **kwargs)
-
 def register_repositories():
     ## 3rdparty
-    new_git_repository(
+    http_archive(
         name = "PoissonRecon",
+        sha256 = "7fa4176d913a632afcde38308f4e41bac67ffdc6c6e88f73f434c8083e3d780e",
+        # source-repo: https://github.com/mkazhdan/PoissonRecon, commit f1c71fe
+        urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/repo-PoissonRecon/f1c71fe/repo-PoissonRecon-f1c71fe.tar.gz"],
         build_file = "//3rdparty/PoissonRecon:PoissonRecon.BUILD",
-        commit = "f1c71fe491828d00d34f95de9c264d4bf3481d61",  # v13.74
+        strip_prefix = "PoissonRecon",
         patch_args = ["-p1"],
         patches = ["//3rdparty/PoissonRecon:PoissonRecon.patch"],
-        remote = "https://github.com/mkazhdan/PoissonRecon",
-        shallow_since = "1650856848 -0400",
     )
 
-    new_git_repository(
+    http_archive(
         name = "numpyeigen",
+        sha256 = "1b77ab89d90d407f1c2af035df4a5b708e1ddac91882d488e59d82dc0da8ef60",
+        # source-repo: https://github.com/fwilliams/numpyeigen, commit e2ac640
+        urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/repo-numpyeigen/e2ac640/repo-numpyeigen-e2ac640.tar.gz"],
         build_file = "@ncore_repo//3rdparty/numpyeigen:numpyeigen.BUILD",
-        commit = "e2ac64034fde35cb70da39aaefbf5331df6015f7",
-        remote = "https://github.com/fwilliams/numpyeigen",
-        shallow_since = "1673738105 -0500",
+        strip_prefix = "numpyeigen",
     )
 
-    new_git_repository(
+    http_archive(
         name = "numpyeigen_pybind11",
+        sha256 = "5a13e0e17621622e61f4ce706167b80d4844b31dfd01aa7ab5c9d1ae99d540a9",
+        # source-repo: https://github.com/fwilliams/pybind11, commit c230777e
+        urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/repo-pybind11/c230777e/repo-pybind11-c230777e.tar.gz"],
         build_file = "@ncore_repo//3rdparty/numpyeigen_pybind11:numpyeigen_pybind11.BUILD",
-        commit = "c230777e92be50e509f955e025d1f56f42e847fa",
-        remote = "https://github.com/fwilliams/pybind11",
-        shallow_since = "1688567160 -0400",
+        strip_prefix = "pybind11",
     )
 
-    new_git_repository(
+    http_archive(
         name = "semantic-segmentation",
         build_file = "//3rdparty/semantic-segmentation:semantic-segmentation.BUILD",
-        commit = "7726b144c2cc0b8e09c67eabb78f027efdf3f0fa",
+        sha256 = "0826aff938dc7efa0a17b54f3f775e674d065d5f9f39b454f296add959be3d5d",
+        # source-repo: https://github.com/NVIDIA/semantic-segmentation.git, commit 7726b14
+        urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/repo-semantic-segmentation/7726b14/repo-semantic-segmentation-7726b14.tar.gz"],
+        strip_prefix = "semantic-segmentation",
         patch_args = ["-p1"],
         patches = ["//3rdparty/semantic-segmentation:semantic-segmentation.patch"],
-        remote = "https://github.com/NVIDIA/semantic-segmentation.git",
-        shallow_since = "1614912803 -0800",
     )
 
     http_archive(
@@ -89,12 +86,12 @@ cc_library(
         ],
     )
 
-    git_repository(
+    http_archive(
         name = "waymo-open-dataset",
-        commit = "576f63526281cf403be2b6720a0d3acb4d18f41d",  # tag v1.5.1
-        shallow_since = "1680923402 -0700",
-        remote = "https://github.com/waymo-research/waymo-open-dataset.git",
-        strip_prefix = "src",
+        sha256 = "cb67a97d99c28b6c801d0fbe9889bcaf7fb0e9f94b102624d38f9ae106db0891",
+        # source-repo: https://github.com/waymo-research/waymo-open-dataset.git, tag v1.5.1
+        urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/repo-waymo-open-dataset/576f635/repo-waymo-open-dataset-576f635.tar.gz"],
+        strip_prefix = "waymo-open-dataset/src",
         repo_mapping = {"@wod_deps": "@pip_deps"},
     )
 
