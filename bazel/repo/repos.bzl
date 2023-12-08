@@ -9,14 +9,14 @@ def http_archive(name, **kwargs):
 def register_repositories():
     ## 3rdparty
     http_archive(
-        name = "PoissonRecon",
+        name = "poisson_recon",
         sha256 = "7fa4176d913a632afcde38308f4e41bac67ffdc6c6e88f73f434c8083e3d780e",
         # source-repo: https://github.com/mkazhdan/PoissonRecon, commit f1c71fe
         urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/repo-PoissonRecon/f1c71fe/repo-PoissonRecon-f1c71fe.tar.gz"],
-        build_file = "//3rdparty/PoissonRecon:PoissonRecon.BUILD",
+        build_file = "//3rdparty/poisson_recon:poisson_recon.BUILD",
         strip_prefix = "PoissonRecon",
         patch_args = ["-p1"],
-        patches = ["//3rdparty/PoissonRecon:PoissonRecon.patch"],
+        patches = ["//3rdparty/poisson_recon:poisson_recon.patch"],
     )
 
     http_archive(
