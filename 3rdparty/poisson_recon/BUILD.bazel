@@ -12,28 +12,28 @@ py_library(
     srcs = [
         "__init__.py",
     ],
-    data = ["@PoissonRecon//:poisson_recon"],
+    data = ["@poisson_recon//:poisson_recon_bin"],
     imports = [".."],
 )
 
 # Collect all dependencies to export exectuable and interface function in wheel
 py_package(
-    name = "PoissonRecon_pkg",
+    name = "poisson_recon_pkg",
     deps = [
         ":pylib",
     ],
 )
 
-# Export PoissonRecon in wheel
+# Export poisson_recon in wheel
 py_wheel(
-    name = "PoissonRecon_wheel",
-    distribution = "PoissonRecon",
+    name = "poisson_recon_wheel",
+    distribution = "poisson_recon",
     homepage = "https://github.com/mkazhdan/PoissonRecon",
     platform = "manylinux2014_x86_64",
     strip_path_prefixes = ["3rdparty"],
     version = "13.74",
     deps = [
-        ":PoissonRecon_pkg",
+        ":poisson_recon_pkg",
     ],
 )
 

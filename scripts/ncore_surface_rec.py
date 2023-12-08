@@ -12,7 +12,7 @@ import numpy as np
 import point_cloud_utils as pcu
 import trimesh
 
-from PoissonRecon import reconstruct_surface
+from poisson_recon import reconstruct_surface
 from ncore.impl.common.transformations import transform_point_cloud
 from ncore.impl.data.data3 import ShardDataLoader, PointCloudSensor
 

@@ -10,14 +10,14 @@ def reconstruct_surface(
     """Runs Poisson surface extraction executable on a given input file, producing a reconstruction mesh as output"""
 
     # find executable based on context
-    if (path := pathlib.Path("external/PoissonRecon/poisson_recon")).exists():
+    if (path := pathlib.Path("external/poisson_recon/poisson_recon_bin")).exists():
         # bazel-build setup
         pass
-    elif (path := pathlib.Path(__file__).parent.parent / "poisson_recon").exists():
+    elif (path := pathlib.Path(__file__).parent.parent / "poisson_recon_bin").exists():
         # wheel setup
         pass
     else:
-        raise FileNotFoundError("PoissonRecon executable not found")
+        raise FileNotFoundError("poisson_recon_bin executable not found")
 
     # run executable
     abs_path = str(path.absolute())
