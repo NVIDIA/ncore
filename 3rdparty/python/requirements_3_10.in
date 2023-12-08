@@ -20,6 +20,7 @@ tensorflow~=2.8.2 # required by open3d.ml.tf
 h5py
 zarr
 cbor2
+trimesh
 
 --find-links https://download.pytorch.org/whl/torch_stable.html
 torch==1.12.0+cu116

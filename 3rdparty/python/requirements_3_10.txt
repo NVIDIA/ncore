@@ -974,6 +974,7 @@ numpy==1.23.4 \
     #   tensorflow
     #   tifffile
     #   torchvision
+    #   trimesh
     #   webdataset
     #   zarr
 oauthlib==3.2.2 \
@@ -2061,6 +2062,10 @@ traitlets==5.5.0 \
     #   nbconvert
     #   nbformat
     #   nbsphinx
+trimesh==4.0.5 \
+    --hash=sha256:b9bfcfec03b70ab4d21f055df1ab73e8740dd0bc8fd5648273eef8fec76cddf9 \
+    --hash=sha256:d139a9108fc7d68a9cd3f5788528eadc20f25a10ae915922b4a2768e0b23d943
+    # via -r 3rdparty/python/requirements_3_10.in
 typing-extensions==4.4.0 \
     --hash=sha256:1511434bb92bf8dd198c12b1cc812e800d4181cfcb867674e0f8279cc93087aa \
     --hash=sha256:16fa4864408f655d35ec496218b85f79b3437c829e93320c7c9215ccfd92489e
