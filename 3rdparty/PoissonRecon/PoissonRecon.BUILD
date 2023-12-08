@@ -113,7 +113,7 @@ cc_library(
 )
 
 cc_binary(
-    name = "PoissonRecon",
+    name = "poisson_recon",
     srcs = [
         "Src/Allocator.h",
         "Src/Array.h",

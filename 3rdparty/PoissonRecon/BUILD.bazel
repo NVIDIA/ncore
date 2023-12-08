@@ -1,1 +1,40 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@rules_python//python:defs.bzl", "py_library")
+load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
+
+package(default_visibility = ["//:code_package_group"])
+
+# Simple library interface for in-bazel / in-wheel executable invocation
+py_library(
+    name = "pylib",
+    srcs = [
+        "__init__.py",
+    ],
+    data = ["@PoissonRecon//:poisson_recon"],
+    imports = [".."],
+)
+
+# Collect all dependencies to export exectuable and interface function in wheel
+py_package(
+    name = "PoissonRecon_pkg",
+    deps = [
+        ":pylib",
+    ],
+)
+
+# Export PoissonRecon in wheel
+py_wheel(
+    name = "PoissonRecon_wheel",
+    distribution = "PoissonRecon",
+    homepage = "https://github.com/mkazhdan/PoissonRecon",
+    platform = "manylinux2014_x86_64",
+    strip_path_prefixes = ["3rdparty"],
+    version = "13.74",
+    deps = [
+        ":PoissonRecon_pkg",
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")

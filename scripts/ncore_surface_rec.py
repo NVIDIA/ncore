@@ -3,7 +3,6 @@
 import logging
 import tqdm
 import tempfile
-import os
 
 from pathlib import Path
 from typing import Optional
@@ -13,6 +12,7 @@ import numpy as np
 import point_cloud_utils as pcu
 import trimesh
 
+from PoissonRecon import reconstruct_surface
 from ncore.impl.common.transformations import transform_point_cloud
 from ncore.impl.data.data3 import ShardDataLoader, PointCloudSensor
 
@@ -92,9 +92,8 @@ def ncore_surface_rec(
         pcu.save_mesh_vn(temp_fp.name, pf, nf)
 
         logger.info("Running Poisson surface reconstruction")
-        os.system(
-            f"'external/PoissonRecon/PoissonRecon' --in {temp_fp.name} --out {temp_rp.name} "
-            f"--width 0.1 --density --samplesPerNode 1.0 --colors"
+        reconstruct_surface(
+            input_file=temp_fp.name, output_file=temp_rp.name, width=0.1, density=True, samples_per_node=1.0
         )
 
         logger.info("Trimming the reconstructed mesh")
