@@ -10,7 +10,6 @@ from typing import Optional
 import click
 import numpy as np
 import point_cloud_utils as pcu
-import trimesh
 
 from poisson_recon import reconstruct_surface
 from ncore.impl.common.transformations import transform_point_cloud
@@ -96,23 +95,19 @@ def ncore_surface_rec(
             input_file=temp_fp.name, output_file=temp_rp.name, width=0.1, density=True, samples_per_node=1.0
         )
 
-        logger.info("Trimming the reconstructed mesh")
         v, f = pcu.load_mesh_vf(temp_rp.name)
 
+    logger.info("Trimming the reconstructed mesh")
     nn_dist, _ = pcu.k_nearest_neighbors(v.astype(np.float32), pf.astype(np.float32), k=2)
     nn_dist = nn_dist[:, 1]
     f_mask = np.stack([nn_dist[f[:, i]] < trim_distance for i in range(f.shape[1])], axis=-1)
     f_mask = np.all(f_mask, axis=-1)
 
+    logger.info("Removing unreferenced vertices")
     v_clean, f_clean, _, _ = pcu.remove_unreferenced_mesh_vertices(v, f[f_mask])
 
     logger.info("Saving the reconstructed mesh and cleaning up the temp files.")
-
-    # Note: we are serializing using 'trimesh' as PCU currently has an issue
-    # serializing correct ply files with large amounts of faces
-    trimesh.Trimesh(v_clean, f_clean, process=False).export(
-        str(output_path / f"{output_filename}.ply"), file_type="ply"
-    )
+    pcu.save_mesh_vf(str(output_path / f"{output_filename}.ply"), v_clean, f_clean)
 
 
 def load_fused_pc(shard_file_pattern, sensor_id, max_dist=-1, start_frame=None, stop_frame=None, step_frame=None):
