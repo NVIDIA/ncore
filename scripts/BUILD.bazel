@@ -237,7 +237,6 @@ py_binary(
         requirement("click"),
         requirement("tqdm"),
         requirement("point-cloud-utils"),
-        requirement("trimesh"),
         "//3rdparty/poisson_recon:pylib",
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_data",
