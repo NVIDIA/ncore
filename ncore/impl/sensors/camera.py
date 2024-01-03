@@ -1,4 +1,4 @@
-# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2024 NVIDIA CORPORATION.  All rights reserved.
 
 from __future__ import annotations
 
@@ -357,7 +357,8 @@ class CameraModel(ABC):
                 return_var.valid_indices = torch.where(image_points_start.valid_flag)[0].squeeze()
             if return_timestamps:
                 return_var.timestamps_us = torch.tile(
-                    torch.tensor(start_timestamp_us), dims=(int(image_points_start.valid_flag.sum().item()),)
+                    torch.tensor(start_timestamp_us, device=self.device),
+                    dims=(int(image_points_start.valid_flag.sum().item()),),
                 )
             return return_var
 
@@ -383,9 +384,9 @@ class CameraModel(ABC):
             if return_T_world_sensors:
                 return_var.T_world_sensors = torch.empty((0, 4, 4), dtype=self.dtype, device=self.device)
             if return_valid_indices:
-                return_var.valid_indices = torch.empty((0,), dtype=torch.int64)
+                return_var.valid_indices = torch.empty((0,), dtype=torch.int64, device=self.device)
             if return_timestamps:
-                return_var.timestamps_us = torch.empty((0,), dtype=torch.int64)
+                return_var.timestamps_us = torch.empty((0,), dtype=torch.int64, device=self.device)
             return return_var
 
         # Convert the start and end rotation matrix to quaternions for subsequent interpolations
@@ -446,7 +447,7 @@ class CameraModel(ABC):
             )
             trans_matrices[:, :3, 3] = trans_rs[image_points_rs.valid_flag]
             trans_matrices[:, :3, :3] = rot_rs[image_points_rs.valid_flag, ...]
-            trans_matrices[:, 3] = torch.Tensor([0, 0, 0, 1])
+            trans_matrices[:, 3] = torch.tensor([0, 0, 0, 1], device=self.device, dtype=self.dtype)
 
             return_var.T_world_sensors = trans_matrices
 
@@ -521,7 +522,7 @@ class CameraModel(ABC):
 
         if return_timestamps:
             return_var.timestamps_us = torch.tile(
-                torch.tensor(timestamp_us), dims=(len(torch.where(image_points.valid_flag)[0]),)
+                torch.tensor(timestamp_us, device=self.device), dims=(len(torch.where(image_points.valid_flag)[0]),)
             )
 
         if return_all_projections:
@@ -699,7 +700,9 @@ class CameraModel(ABC):
         if return_timestamps:
             assert timestamp_us is not None
             # Repeat constant timestamp for all rays
-            return_var.timestamps_us = torch.tile(torch.tensor(timestamp_us), dims=(len(world_rays),))
+            return_var.timestamps_us = torch.tile(
+                torch.tensor(timestamp_us, device=self.device), dims=(len(world_rays),)
+            )
 
         return return_var
 
@@ -881,8 +884,8 @@ class CameraModel(ABC):
         num_rotations, D1, D2 = R.shape
         assert (D1, D2) == (3, 3), "Input has to be a Bx3x3 tensor."
 
-        decision_matrix = torch.empty((num_rotations, 4), dtype=R.dtype).to(self.device)
-        quat = torch.empty((num_rotations, 4), dtype=R.dtype).to(self.device)
+        decision_matrix = torch.empty((num_rotations, 4), dtype=R.dtype, device=self.device)
+        quat = torch.empty((num_rotations, 4), dtype=R.dtype, device=self.device)
 
         decision_matrix[:, :3] = R.diagonal(dim1=1, dim2=2)
         decision_matrix[:, -1] = decision_matrix[:, :3].sum(dim=1)
@@ -923,7 +926,7 @@ class CameraModel(ABC):
         z = quat[..., 2]
         w = quat[..., 3]
 
-        R = torch.empty(quat.shape[:-1] + (3, 3), dtype=quat.dtype).to(self.device)
+        R = torch.empty(quat.shape[:-1] + (3, 3), dtype=quat.dtype, device=self.device)
 
         R[..., 0, 0] = torch.pow(x, 2) - torch.pow(y, 2) - torch.pow(z, 2) + torch.pow(w, 2)
         R[..., 1, 0] = 2 * (x * y + z * w)
@@ -1024,13 +1027,13 @@ class CameraModel(ABC):
 
         # Evaluate orientation interpolation at t
         interp_rot = self.__unitquat_to_rotmat(
-            self.__unitquat_slerp(pose_s_quat, pose_e_quat, torch.Tensor([t]).to(pose_s))
+            self.__unitquat_slerp(pose_s_quat, pose_e_quat, torch.tensor([t], device=self.device, dtype=self.dtype))
         ).squeeze()  # [3, 3]
 
         # Evaluate translation interpolation at t
         interp_transl = (1 - t) * pose_s[:3, 3] + t * pose_e[:3, 3]  # [3]
 
-        interp_pose = torch.eye(4, 4).to(pose_s)
+        interp_pose = torch.eye(4, 4, device=self.device, dtype=self.dtype)
         interp_pose[:3, :3] = interp_rot
         interp_pose[:3, 3] = interp_transl
 
@@ -1185,7 +1188,9 @@ class FThetaCameraModel(CameraModel):
         cam_rays = torch.hstack(
             (torch.sin(alphas) * image_points_dist / torch.maximum(rdist, self.min_2d_norm), torch.cos(alphas))
         )
-        cam_rays[rdist.flatten() < self.min_2d_norm, :] = torch.tensor([[0, 0, 1]]).to(image_points_dist)
+        cam_rays[rdist.flatten() < self.min_2d_norm, :] = torch.tensor(
+            [[0, 0, 1]], device=self.device, dtype=self.dtype
+        )
 
         return cam_rays
 
@@ -1500,7 +1505,9 @@ class OpenCVFisheyeCameraModel(CameraModel):
         cam_rays = torch.hstack(
             (torch.sin(thetas) * normalized_image_points / torch.maximum(deltas, self.min_2d_norm), torch.cos(thetas))
         )
-        cam_rays[deltas.flatten() < self.min_2d_norm, :] = torch.tensor([[0, 0, 1]]).to(normalized_image_points)
+        cam_rays[deltas.flatten() < self.min_2d_norm, :] = torch.tensor(
+            [[0, 0, 1]], device=self.device, dtype=self.dtype
+        )
 
         return cam_rays
 
