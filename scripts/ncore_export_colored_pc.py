@@ -79,6 +79,7 @@ def ncore_export_colored_pc(
     cam_model = CameraModel.from_parameters(cam_model_params, device=device)
 
     output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
 
     # Get the camera frame indices from the index range
     indices = cam_sensor.get_frame_index_range(start_frame, stop_frame, step_frame)
