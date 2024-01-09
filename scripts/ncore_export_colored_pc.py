@@ -74,6 +74,10 @@ def ncore_export_colored_pc(
     cam_sensor = loader.get_sensor(camera_id)
     assert isinstance(cam_sensor, CameraSensor), "only image sensors are supported as the target sensor"
 
+    # Initialize the camera model on requested device
+    cam_model_params = cam_sensor.get_camera_model_parameters()
+    cam_model = CameraModel.from_parameters(cam_model_params, device=device)
+
     output_path = Path(output_dir)
 
     # Get the camera frame indices from the index range
@@ -94,10 +98,6 @@ def ncore_export_colored_pc(
 
         T_world_sensor_start = cam_sensor.get_frame_T_world_sensor(frame_index, types.FrameTimepoint.START)
         T_world_sensor_end = cam_sensor.get_frame_T_world_sensor(frame_index, types.FrameTimepoint.END)
-
-        # Initialize the camera model on requested device
-        cam_model_params = cam_sensor.get_camera_model_parameters()
-        cam_model = CameraModel.from_parameters(cam_model_params, device=device)
 
         logger.info(f"Starting the projection with torch implementation on device={device}")
 
