@@ -30,22 +30,28 @@ from ncore.impl.data.util import padded_index_string
     default="camera_front_wide_120fov",
 )
 @click.option(
-    "--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial camera frame to be used", default=None
+    "--start-frame",
+    type=click.IntRange(min=0, max_open=True),
+    help="Initial point-cloud frame to be used",
+    default=None,
 )
 @click.option(
-    "--stop-frame", type=click.IntRange(min=0, max_open=True), help="Past-the-end frame to be exported", default=None
+    "--stop-frame",
+    type=click.IntRange(min=0, max_open=True),
+    help="Past-the-end point-cloud frame to be exported",
+    default=None,
 )
 @click.option(
     "--step-frame",
     type=click.IntRange(min=1, max_open=True),
-    help="Step used to downsample the number of frames",
+    help="Step used to downsample the number of point-cloud frames",
     default=None,
 )
 @click.option(
     "--device", type=click.Choice(["cuda", "cpu"]), help="Device used for the computation via torch", default="cuda"
 )
 @click.option(
-    "--pose",
+    "--camera-pose",
     type=click.Choice(["rolling-shutter", "mean", "start", "end"]),
     help="Per-pixel poses to use (rolling-shutter optimization, mean frame pose, start frame pose, end frame pose) ",
     default="rolling-shutter",
@@ -59,7 +65,7 @@ def ncore_export_colored_pc(
     stop_frame: Optional[int],
     step_frame: Optional[int],
     device: str,
-    pose: str,
+    camera_pose: str,
 ):
     """Projects the point cloud to the camera image, comparing projection w. and w/o rolling shutter compensation"""
 
@@ -69,40 +75,41 @@ def ncore_export_colored_pc(
 
     shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
     loader = ShardDataLoader(shards)
-    pc_sensor = loader.get_sensor(sensor_id)
-    assert isinstance(pc_sensor, PointCloudSensor), "only point-cloud sensors are supported as source sensor"
-    cam_sensor = loader.get_sensor(camera_id)
-    assert isinstance(cam_sensor, CameraSensor), "only image sensors are supported as the target sensor"
+    assert isinstance(
+        pc_sensor := loader.get_sensor(sensor_id), PointCloudSensor
+    ), "only point-cloud sensors are supported as source sensors"
+    assert isinstance(
+        cam_sensor := loader.get_sensor(camera_id), CameraSensor
+    ), "only camera sensors are supported as color sensors"
 
     # Initialize the camera model on requested device
-    cam_model_params = cam_sensor.get_camera_model_parameters()
-    cam_model = CameraModel.from_parameters(cam_model_params, device=device)
+    cam_model = CameraModel.from_parameters(cam_sensor.get_camera_model_parameters(), device=device)
 
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Get the camera frame indices from the index range
-    indices = cam_sensor.get_frame_index_range(start_frame, stop_frame, step_frame)
-    logger.info(f"Starting the pc projection. {len(indices)} frames will be processed.")
-    for frame_index in tqdm.tqdm(indices):
+    pc_frame_indices = pc_sensor.get_frame_index_range(start_frame, stop_frame, step_frame)
+    logger.info(f"Starting the pc projection. {len(pc_frame_indices)} frames will be processed.")
+    for pc_frame_index in tqdm.tqdm(pc_frame_indices):
 
-        # Get the camera timestamp and find the closes lidar frame
-        cam_timestamp = cam_sensor.get_frame_timestamp_us(frame_index)
-        pc_frame_index = pc_sensor.get_closest_frame_index(cam_timestamp)
+        # Get the pc timestamp and find the closes camera frame
+        pc_timestamp_us = pc_sensor.get_frame_timestamp_us(pc_frame_index)
+        cam_frame_index = cam_sensor.get_closest_frame_index(pc_timestamp_us)
 
         # Load the camera image and the point cloud
-        img_frame = cam_sensor.get_frame_image_array(frame_index)
+        img_frame = cam_sensor.get_frame_image_array(cam_frame_index)
         pc = pc_sensor.get_frame_data(pc_frame_index, "xyz_e")
 
         # Transform the point cloud to the world coordinate frame
         pc = transform_point_cloud(pc, pc_sensor.get_frame_T_sensor_world(pc_frame_index))
 
-        T_world_sensor_start = cam_sensor.get_frame_T_world_sensor(frame_index, types.FrameTimepoint.START)
-        T_world_sensor_end = cam_sensor.get_frame_T_world_sensor(frame_index, types.FrameTimepoint.END)
+        T_world_sensor_start = cam_sensor.get_frame_T_world_sensor(cam_frame_index, types.FrameTimepoint.START)
+        T_world_sensor_end = cam_sensor.get_frame_T_world_sensor(cam_frame_index, types.FrameTimepoint.END)
 
         logger.info(f"Starting the projection with torch implementation on device={device}")
 
-        match pose:
+        match camera_pose:
             case "rolling-shutter":
                 world_point_projections = cam_model.world_points_to_image_points_shutter_pose(
                     pc, T_world_sensor_start, T_world_sensor_end, return_valid_indices=True, return_T_world_sensors=True
@@ -137,7 +144,7 @@ def ncore_export_colored_pc(
         tm.vertex_data.colors = point_colors
 
         # Save the ply file
-        tm.save(str(output_path / (padded_index_string(frame_index) + ".ply")))
+        tm.save(str(output_path / (padded_index_string(pc_frame_index) + ".ply")))
 
 
 if __name__ == "__main__":
