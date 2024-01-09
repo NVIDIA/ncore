@@ -56,6 +56,12 @@ from ncore.impl.data.util import padded_index_string
     help="Per-pixel poses to use (rolling-shutter optimization, mean frame pose, start frame pose, end frame pose) ",
     default="rolling-shutter",
 )
+@click.option(
+    "--output-filepattern",
+    type=click.Choice(["frame-index", "timestamps-us"]),
+    help="PLY output filename pattern, either store by <frame-index>.ply or by <timestamp-us>.ply [end-of-frame timestamp]",
+    default="frame-index",
+)
 def ncore_export_colored_pc(
     shard_file_pattern: str,
     output_dir: str,
@@ -66,6 +72,7 @@ def ncore_export_colored_pc(
     step_frame: Optional[int],
     device: str,
     camera_pose: str,
+    output_filepattern: str,
 ):
     """Projects the point cloud to the camera image, comparing projection w. and w/o rolling shutter compensation"""
 
@@ -144,7 +151,11 @@ def ncore_export_colored_pc(
         tm.vertex_data.colors = point_colors
 
         # Save the ply file
-        tm.save(str(output_path / (padded_index_string(pc_frame_index) + ".ply")))
+        match output_filepattern:
+            case "frame-index":
+                tm.save(str(output_path / (padded_index_string(pc_frame_index) + ".ply")))
+            case "timestamps-us":
+                tm.save(str(output_path / (str(pc_timestamp_us) + ".ply")))
 
 
 if __name__ == "__main__":
