@@ -417,6 +417,23 @@ py_binary(
 #################################################################
 
 py_binary(
+    name = "ncore_export_colored_pc",
+    srcs = ["ncore_export_colored_pc.py"],
+    deps = [
+        requirement("click"),
+        requirement("tqdm"),
+        requirement("numpy"),
+        requirement("point-cloud-utils"),
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_types",
+        "//ncore/impl/sensors:pylib_camera",
+    ],
+)
+
+#################################################################
+
+py_binary(
     name = "ncore_sequence_meta",
     srcs = ["ncore_sequence_meta.py"],
     deps = [
