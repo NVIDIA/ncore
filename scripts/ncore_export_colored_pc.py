@@ -122,9 +122,11 @@ def ncore_export_colored_pc(
                     pc, T_world_sensor_end, return_valid_indices=True, return_T_world_sensors=True
                 )
 
+        assert world_point_projections.T_world_sensors is not None and world_point_projections.valid_indices is not None
+
         image_point_coords = world_point_projections.image_points.cpu().numpy()
-        trans_matrices = world_point_projections.T_world_sensors.cpu().numpy()  # type: ignore
-        valid_idx = world_point_projections.valid_indices.cpu().numpy()  # type: ignore
+        trans_matrices = world_point_projections.T_world_sensors.cpu().numpy()
+        valid_idx = world_point_projections.valid_indices.cpu().numpy()
         transformed_points = transform_point_cloud(pc[valid_idx, None, :], trans_matrices).squeeze(1)
         dist_rs = np.linalg.norm(transformed_points, axis=1, keepdims=True)
 
