@@ -126,15 +126,10 @@ def ncore_export_colored_pc(
         assert world_point_projections.T_world_sensors is not None and world_point_projections.valid_indices is not None
 
         image_point_coords = world_point_projections.image_points.cpu().numpy()
-        trans_matrices = world_point_projections.T_world_sensors.cpu().numpy()
         valid_idx = world_point_projections.valid_indices.cpu().numpy()
-        transformed_points = transform_point_cloud(pc[valid_idx, None, :], trans_matrices).squeeze(1)
-        dist_rs = np.linalg.norm(transformed_points, axis=1, keepdims=True)
-
-        projected_points = np.concatenate((image_point_coords[:, :2], dist_rs), axis=1)
 
         point_colors = img_frame[
-            np.floor(projected_points[:, 1]).astype(int), np.floor(projected_points[:, 0]).astype(int)
+            np.floor(image_point_coords[:, 1]).astype(int), np.floor(image_point_coords[:, 0]).astype(int)
         ]
 
         tm = TriangleMesh()
