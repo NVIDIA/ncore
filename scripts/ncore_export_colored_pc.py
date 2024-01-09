@@ -53,8 +53,14 @@ from ncore.impl.data.util import padded_index_string
 @click.option(
     "--camera-pose",
     type=click.Choice(["rolling-shutter", "mean", "start", "end"]),
-    help="Per-pixel poses to use (rolling-shutter optimization, mean frame pose, start frame pose, end frame pose) ",
+    help="Per-pixel poses to use (rolling-shutter optimization, mean frame pose, start frame pose, end frame pose)",
     default="rolling-shutter",
+)
+@click.option(
+    "--point-cloud-space",
+    type=click.Choice(["world", "sensor"]),
+    help="Output space of the colored point-cloud, either world space or local sensor space",
+    default="world",
 )
 @click.option(
     "--output-filepattern",
@@ -72,6 +78,7 @@ def ncore_export_colored_pc(
     step_frame: Optional[int],
     device: str,
     camera_pose: str,
+    point_cloud_space: str,
     output_filepattern: str,
 ):
     """Projects the point cloud to the camera image, comparing projection w. and w/o rolling shutter compensation"""
@@ -106,10 +113,10 @@ def ncore_export_colored_pc(
 
         # Load the camera image and the point cloud
         img_frame = cam_sensor.get_frame_image_array(cam_frame_index)
-        pc = pc_sensor.get_frame_data(pc_frame_index, "xyz_e")
+        xyz_sensor = pc_sensor.get_frame_data(pc_frame_index, "xyz_e")
 
         # Transform the point cloud to the world coordinate frame
-        pc = transform_point_cloud(pc, pc_sensor.get_frame_T_sensor_world(pc_frame_index))
+        xyz_world = transform_point_cloud(xyz_sensor, pc_sensor.get_frame_T_sensor_world(pc_frame_index))
 
         T_world_sensor_start = cam_sensor.get_frame_T_world_sensor(cam_frame_index, types.FrameTimepoint.START)
         T_world_sensor_end = cam_sensor.get_frame_T_world_sensor(cam_frame_index, types.FrameTimepoint.END)
@@ -119,22 +126,30 @@ def ncore_export_colored_pc(
         match camera_pose:
             case "rolling-shutter":
                 world_point_projections = cam_model.world_points_to_image_points_shutter_pose(
-                    pc, T_world_sensor_start, T_world_sensor_end, return_valid_indices=True, return_T_world_sensors=True
+                    xyz_world,
+                    T_world_sensor_start,
+                    T_world_sensor_end,
+                    return_valid_indices=True,
+                    return_T_world_sensors=True,
                 )
 
             case "mean":
                 world_point_projections = cam_model.world_points_to_image_points_mean_pose(
-                    pc, T_world_sensor_start, T_world_sensor_end, return_valid_indices=True, return_T_world_sensors=True
+                    xyz_world,
+                    T_world_sensor_start,
+                    T_world_sensor_end,
+                    return_valid_indices=True,
+                    return_T_world_sensors=True,
                 )
 
             case "start":
                 world_point_projections = cam_model.world_points_to_image_points_static_pose(
-                    pc, T_world_sensor_start, return_valid_indices=True, return_T_world_sensors=True
+                    xyz_world, T_world_sensor_start, return_valid_indices=True, return_T_world_sensors=True
                 )
 
             case "end":
                 world_point_projections = cam_model.world_points_to_image_points_static_pose(
-                    pc, T_world_sensor_end, return_valid_indices=True, return_T_world_sensors=True
+                    xyz_world, T_world_sensor_end, return_valid_indices=True, return_T_world_sensors=True
                 )
 
         assert world_point_projections.T_world_sensors is not None and world_point_projections.valid_indices is not None
@@ -147,7 +162,11 @@ def ncore_export_colored_pc(
         ]
 
         tm = TriangleMesh()
-        tm.vertex_data.positions = pc[valid_idx]
+        match point_cloud_space:
+            case "world":
+                tm.vertex_data.positions = xyz_world[valid_idx]
+            case "sensor":
+                tm.vertex_data.positions = xyz_sensor[valid_idx]
         tm.vertex_data.colors = point_colors
 
         # Save the ply file
