@@ -24,6 +24,7 @@ class CLIBaseParams:
     """Parameters passed to non-command-based CLI part"""
 
     shard_file_pattern: str
+    skip_suffixes: Tuple[str]
     output_dir: str
     output_basename: Optional[str]
     open_consolidated: bool
@@ -360,6 +361,14 @@ def get_dynamic_flag_parameters(variant: str, loader: ShardDataLoader) -> Dynami
 @click.option(
     "--shard-file-pattern", type=str, help="Data shard pattern to load (supports range expansion)", required=True
 )
+@click.option(
+    "--skip-suffix",
+    "skip_suffixes",
+    multiple=True,
+    type=str,
+    help="Shard suffixes to skip",
+    default=None,
+)
 @click.option("--output-dir", type=str, help="Path to the output folder", required=True)
 @click.option(
     "--output-basename",
@@ -512,7 +521,8 @@ def timestamps(ctx, start_timestamp_us: int | None, end_timestamp_us: int | None
 
     # determine time-ranges from seek/duration relative to data
     loader = ShardDataLoader(
-        ShardDataLoader.evaluate_shard_file_pattern(params.shard_file_pattern), params.open_consolidated
+        ShardDataLoader.evaluate_shard_file_pattern(params.shard_file_pattern, params.skip_suffixes),
+        params.open_consolidated,
     )
 
     poses, egomotion_type = get_poses(loader, params.egomotion_file)
@@ -546,7 +556,8 @@ def offset(ctx, seek_sec: float | None, duration_sec: float | None) -> None:
 
     # determine time-ranges from seek/duration relative to data
     loader = ShardDataLoader(
-        ShardDataLoader.evaluate_shard_file_pattern(params.shard_file_pattern), params.open_consolidated
+        ShardDataLoader.evaluate_shard_file_pattern(params.shard_file_pattern, params.skip_suffixes),
+        params.open_consolidated,
     )
 
     poses, egomotion_type = get_poses(loader, params.egomotion_file)
