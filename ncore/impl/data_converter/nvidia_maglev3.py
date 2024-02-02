@@ -5,9 +5,11 @@ from __future__ import annotations
 import logging
 import json
 import tempfile
+import gzip
 
 from pathlib import Path
 from typing import Optional
+from io import BufferedReader
 
 import numpy as np
 import tqdm
@@ -482,9 +484,57 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 {},
             )
 
-            # Load tar file containing frames
-            tar_file = open(self.sequence_path / "lidars" / lidar_rig_name / "frames.tar", "rb")
-            tar_index = json.load(open(self.sequence_path / "lidars" / lidar_rig_name / "frames.tar.idx.json", "r"))
+            # Load tar file containing frames, if available
+            tar_file_index: None | tuple[BufferedReader, dict] = None
+            if (tar_path := self.sequence_path / "lidars" / lidar_rig_name / "frames.tar").exists() and (
+                tar_index_path := self.sequence_path / "lidars" / lidar_rig_name / "frames.tar.idx.json"
+            ).exists():
+                tar_file_index = open(tar_path, "rb"), json.load(open(tar_index_path, "r"))
+
+            def get_frame_mesh(frame_number: int) -> pcu.TriangleMesh:
+                """Wrapper function to load the different ply variants of the maglev lidar-indexer"""
+                frame_number_str = str(frame_number)
+
+                compression = "none"
+                ply_binary_data: bytes | None = None
+
+                if tar_file_index is not None:
+                    # load data from tar-archive
+                    tar_file, tar_index = tar_file_index
+
+                    if file_record := tar_index.get(f"./{frame_number_str}.ply"):
+                        pass
+                    else:
+                        file_record = tar_index[f"./{frame_number_str}.ply.gz"]  # will fail if not exist
+                        compression = "gz"
+
+                    tar_file.seek(file_record["offset_data"])
+                    ply_binary_data = tar_file.read(file_record["size"])
+                elif (ply_path := self.sequence_path / "lidars" / lidar_rig_name / f"{frame_number_str}.ply").exists():
+                    # load from plain ply's
+                    ply_binary_data = open(ply_path, "rb").read()
+                else:
+                    # load from compressed ply's
+                    compression = "gz"
+                    ply_binary_data = open(
+                        self.sequence_path / "lidars" / lidar_rig_name / f"{frame_number_str}.ply.gz", "rb"
+                    ).read()  # will fail if not exist
+
+                assert ply_binary_data is not None, f"failed to load frame data of frame {frame_number_str}"
+
+                # decompress data if necessary
+                match compression:
+                    case "none":
+                        pass
+                    case "gz":
+                        ply_binary_data = gzip.decompress(ply_binary_data)
+
+                # Need a temporary file-system file as PCU can't load from memory
+                with tempfile.NamedTemporaryFile(suffix=".ply") as ply:
+                    ply.write(ply_binary_data)
+                    mesh = pcu.load_triangle_mesh(ply.name)
+
+                return mesh
 
             ## Process all valid point clouds
             for continuous_local_frame_index, (frame_number, frame_end_timestamp_us, frame_egocompensated) in tqdm.tqdm(
@@ -501,15 +551,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                 timer = SimpleTimer()
 
                 # Load point clouds / ply files from archive
-                file_record = tar_index[f"./{str(frame_number)}.ply"]
-                tar_file.seek(file_record["offset_data"])
-                ply_binary_data = tar_file.read(file_record["size"])
-
-                # Need a temporary file-system file as PCU can't load from memory
-                with tempfile.NamedTemporaryFile(suffix=".ply") as ply:
-                    ply.write(ply_binary_data)
-                    mesh = pcu.load_triangle_mesh(ply.name)
-
+                mesh = get_frame_mesh(frame_number)
                 time_load = timer.elapsed_sec(restart=True)
 
                 # Remove all points with *duplicate* coordinates (these seem to be present in the input already)
