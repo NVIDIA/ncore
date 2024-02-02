@@ -907,11 +907,18 @@ def load_maglev_lidar_indexer_frame_meta(lidarpath_or_metafile: Path) -> LidarIn
         raw_primary_spin_idx = np.array([int(row["primarySpinIndex"]) for row in rows], dtype=np.uint64)
 
         # Determine motion-compensation property from tool configuration
-        with open(lidarpath_or_metafile / "toolConfigs.txt", "r") as toolconfig_file:
-            if state := re.search(r"--motionCompensate=(\d)", toolconfig_file.read()):
-                frames_egocompensated = state.group(1) == "1"
-            else:
-                raise ValueError("Can't determine motion-compensation state from lidar exporter tool-config")
+        frames_egocompensated: None | bool = None
+        if (toolconfig_path := lidarpath_or_metafile / "toolConfigs.txt").exists():
+            with open(toolconfig_path, "r") as toolconfig_file:
+                if state := re.search(r"--motionCompensate=(\d)", toolconfig_file.read()):
+                    frames_egocompensated = state.group(1) == "1"
+        if (toolconfig_path := lidarpath_or_metafile / "toolConfigs.json").exists():
+            with open(toolconfig_path, "r") as toolconfig_file:
+                frames_egocompensated = json.load(toolconfig_file)["configs"]["motionCompEnabled"] is not None
+
+        assert (
+            frames_egocompensated is not None
+        ), "Can't determine motion-compensation state from lidar exporter tool-config"
 
         # Sanity check assumptions
         assert np.all(raw_lidar_idx == raw_lidar_idx[0]), "Expecting consistent single-lidar data"
