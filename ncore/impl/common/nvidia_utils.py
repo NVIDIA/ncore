@@ -936,16 +936,67 @@ def load_maglev_lidar_indexer_frame_meta(lidarpath_or_metafile: Path) -> LidarIn
     raise ValueError("No viable lidar-indexer meta-data found")
 
 
-def load_maglev_session_id(sequence_path: Path) -> str:
-    """Loads session-id in a strustable way"""
+@dataclass
+class MaglevSegmentID:
+    """Tracks segment-specific data"""
+
+    segment_id: str
+    segment_start_timestamp_us: int
+    segment_end_timestamp_us: int
+
+
+@dataclass
+class MaglevSequenceID:
+    """Tracks maglev dataset-specific data (source session ID and optional segment information)"""
+
+    session_id: str  # source-session ID, always present
+    segment_id: MaglevSegmentID | None  # only set if sequence is a segment (~ time-restriction of a session)
+
+    def get_sequence_id(self) -> str:
+        """Returns sequence ID - either <session-id> (for full sequences), or <session-id>[<start-time>-<end-time>] (for restricted sequences)"""
+
+        if (segment_id := self.segment_id) is not None:
+            return f"{self.session_id}[{segment_id.segment_start_timestamp_us}-{segment_id.segment_end_timestamp_us}]"
+
+        return self.session_id
+
+
+def load_maglev_sequence_id(sequence_path: Path) -> MaglevSequenceID:
+    """Loads sequence-id in a trustable way"""
+
+    session_data_path = Path(sequence_path) / "session_data"
+    assert session_data_path.exists(), f"{session_data_path} doesn't exist"
+
+    # If this is a virtual clip, use the clips as segment-id
+    if (vclip_symlink_map_path := session_data_path / "vclip_symlink_map.conf").exists():
+        with open(vclip_symlink_map_path, "r") as fp:
+            # symlink map has the form
+            # <SOURCE-SESSION_ID>_<START-TS>_<END-TS> <SEGMENT-ID> <START-TS> <END-TS> <ASSET_URL>
+            # and we use <CLIP-ID> for the current "virtual" session-ID
+            s = fp.read().split()
+            assert len(s) == 5, ValueError(
+                "Unable to parse vclip_symlink_map - unable to determine trustable sequence id"
+            )
+
+            match = re.search(r"(\w{8}-\w{4}-\w{4}-\w{4}-\w{12})_(\d+)_(\d+)", s[0])
+            if match:
+                assert match[2] == s[2]  # start time
+                assert match[3] == s[3]  # end time
+                return MaglevSequenceID(
+                    session_id=match[1],
+                    segment_id=MaglevSegmentID(
+                        segment_id=s[1], segment_start_timestamp_us=int(s[2]), segment_end_timestamp_us=int(s[3])
+                    ),
+                )
+            else:
+                raise ValueError("Parsing vclip_symlink_map data failed - unable to determine trustable sequence id")
+
+    # Parse session-id as segment-id
 
     # Note: session_id in loaded rig meta might not reflect the actual current session due to bugs
     #       in the rig generation, prefer loading correct ID from session-data directly
 
     # Find `aux_info` from session-data
-    session_data_path = sequence_path / "session_data"
-    assert session_data_path.exists(), f"{session_data_path} doesn't exist"
-
     aux_infos = list(session_data_path.glob("**/aux_info"))
     assert len(aux_infos), f"no 'aux_info' found in {session_data_path}"
 
@@ -953,7 +1004,7 @@ def load_maglev_session_id(sequence_path: Path) -> str:
     with open(aux_infos[0], "r") as fp:
         match = re.search(r"uuid: (\w{8}-\w{4}-\w{4}-\w{4}-\w{12})", fp.read())
         if match:
-            return match[1]
+            return MaglevSequenceID(session_id=match[1], segment_id=None)
         else:
             raise ValueError("Unable to determine trustable session_id")
 
