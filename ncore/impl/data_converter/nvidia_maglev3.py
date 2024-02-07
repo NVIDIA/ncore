@@ -23,7 +23,7 @@ from ncore.impl.common.nvidia_utils import (
     load_maglev_camera_indexer_frame_meta,
     load_maglev_lidar_indexer_frame_meta,
     load_maglev_egomotion,
-    load_maglev_session_id,
+    load_maglev_sequence_id,
     parse_rig_sensors_from_dict,
     sensor_to_rig,
     LabelProcessor,
@@ -65,7 +65,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
     def convert_sequence(self, sequence_path: Path) -> None:
         """
-        Runs the conversion of a single session (single job output of Maglev ncore-pp workflow)
+        Runs the conversion of a single sequence (single job output of Maglev ncore-pp workflow)
         """
 
         self.sequence_path = sequence_path
@@ -78,9 +78,9 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         self.constants = self.get_constants(self.rig["rig"]["properties"], list(self.sensors_calibration_data.keys()))
 
-        # Determine session-id to be processed
-        self.session_id = load_maglev_session_id(self.sequence_path)
-        self.logger.info(f"Converting session {self.session_id} [shard {self.shard_id}/{self.shard_count}]")
+        # Determine sequence-id to be processed
+        self.sequence_id = load_maglev_sequence_id(self.sequence_path)
+        self.logger.info(f"Converting sequence {self.sequence_id} [shard {self.shard_id}/{self.shard_count}]")
 
         # Decode data from maglev
         self.decode_poses()
@@ -107,14 +107,14 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         # DataWriter for all outputs (instantiated after parsing poses to know the egomotion_type)
         self.data_writer = ContainerDataWriter(
-            self.output_dir / self.session_id,
-            f"{self.session_id}_{self.shard_id}-{self.shard_count}",
+            self.output_dir / self.sequence_id.get_sequence_id(),
+            f"{self.sequence_id.get_sequence_id()}_{self.shard_id}-{self.shard_count}",
             self.get_active_camera_ids(list(self.constants.CAMERAID_TO_RIGNAME.keys())),
             self.get_active_lidar_ids(list(self.constants.LIDARID_TO_RIGNAME.keys())),
             self.get_active_radar_ids([]),  # no radars yet
             "scene-calib",
             egomotion_type,
-            self.session_id,
+            self.sequence_id.get_sequence_id(),
             self.shard_id,
             self.shard_count,
             True,
