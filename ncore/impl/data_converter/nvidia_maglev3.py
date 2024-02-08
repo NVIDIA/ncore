@@ -204,6 +204,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         # Initialize annotation structs (defaults in case no labels are available loaded)
         self.track_labels: dict[int, dict] = {}
         self.frame_labels: dict[str, dict] = {}
+        self.track_global_dynamic_flag: dict[str, bool] = {}
 
         # Process autolabels, if available
         labels_path = self.sequence_path / "cuboids_tracked" / "labels_lidar.parquet"
