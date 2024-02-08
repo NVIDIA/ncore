@@ -953,10 +953,10 @@ class MaglevSequenceID:
     segment_id: MaglevSegmentID | None  # only set if sequence is a segment (~ time-restriction of a session)
 
     def get_sequence_id(self) -> str:
-        """Returns sequence ID - either <session-id> (for full sequences), or <session-id>[<start-time>-<end-time>] (for restricted sequences)"""
+        """Returns sequence ID - either <session-id> (for full sequences), or <session-id>@<start-time>-<end-time> (for restricted sequences)"""
 
         if (segment_id := self.segment_id) is not None:
-            return f"{self.session_id}[{segment_id.segment_start_timestamp_us}-{segment_id.segment_end_timestamp_us}]"
+            return f"{self.session_id}@{segment_id.segment_start_timestamp_us}-{segment_id.segment_end_timestamp_us}"
 
         return self.session_id
 
