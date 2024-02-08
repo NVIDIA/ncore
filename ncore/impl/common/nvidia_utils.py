@@ -23,7 +23,7 @@ from scipy.optimize import curve_fit
 from scipy.spatial.transform import Rotation as R
 from multimethod import multimethod
 
-from ncore.impl.common.common import MaskImage, PoseInterpolator, load_jsonl
+from ncore.impl.common.common import HalfClosedInterval, MaskImage, PoseInterpolator, load_jsonl
 from ncore.impl.av_utils import isWithin3DBBox
 from ncore.impl.common.transformations import euler_2_so3, lat_lng_alt_2_ecef, se3_inverse, transform_bbox
 from ncore.impl.data.types import FrameLabel3, BBox3, LabelSource, TrackLabel, DynamicFlagState
@@ -1033,13 +1033,39 @@ def load_maglev_egomotion(
 
     # Determine egomotion source file to parse
     if egomotion_file_overwrite:
-        # Use specific egomotion input
-        egomotion_file = egomotion_file_overwrite
-    else:
-        # Use default egomotion jsonl location
-        egomotion_file = sequence_path / "egomotion" / "egomotion.json"
+        # Use specific egomotion input unconditionally
+        return load_maglev_egomotion(T_rig_sensors, egomotion_file_overwrite)
 
-    return load_maglev_egomotion(T_rig_sensors, egomotion_file)
+    # Use default egomotion jsonl location - this defines the data-range unconditionally
+    T_rig_worlds, T_rig_world_timestamps_us, egomotion_type = load_maglev_egomotion(
+        T_rig_sensors, sequence_path / "egomotion" / "egomotion.json"
+    )
+
+    # Incorporate overwrite if no explicit external egomotion file was provided and
+    if (egomotion_overwrite_file := sequence_path / "egomotion" / "egomotion-overwrite.json").exists():
+        overwrite_T_rig_worlds, overwrite_T_rig_world_timestamps_us, _ = load_maglev_egomotion(
+            T_rig_sensors, egomotion_overwrite_file
+        )
+
+        # Assert that overwrite time-extend does cover the default range [with small slack]
+        SLACK = 1 * int(1e6)  # 1sec
+        default_interval = HalfClosedInterval(T_rig_world_timestamps_us[0], T_rig_world_timestamps_us[-1] + 1)
+        overwrite_interval = HalfClosedInterval(
+            overwrite_T_rig_world_timestamps_us[0] - SLACK, overwrite_T_rig_world_timestamps_us[-1] + 1 + SLACK
+        )
+
+        assert (T_rig_world_timestamps_us[0] in overwrite_interval) and (
+            T_rig_world_timestamps_us[-1] in overwrite_interval
+        ), f"egomotion overwrite timerange {overwrite_interval} incompatible with (slacked) default bounds {default_interval}"
+
+        # apply pose overwrite in default egomotion range and make use of overwrite type
+        overwrite_range = default_interval.cover_range(np.array(overwrite_T_rig_world_timestamps_us))
+        T_rig_worlds = overwrite_T_rig_worlds[overwrite_range.start:overwrite_range.stop]
+        T_rig_world_timestamps_us = overwrite_T_rig_world_timestamps_us[overwrite_range.start:overwrite_range.stop]
+        with open(sequence_path / "egomotion" / "egomotion-overwrite-type.txt", "r") as fp:
+            egomotion_type = fp.read()
+
+    return T_rig_worlds, T_rig_world_timestamps_us, egomotion_type
 
 
 @load_maglev_egomotion.register

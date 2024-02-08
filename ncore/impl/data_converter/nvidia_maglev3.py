@@ -98,7 +98,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         logger = self.logger.getChild("decode_poses")
         logger.info(f"Loading poses")
 
-        # Load timestamped poses variables
+        # Load timestamped poses variables - these define the segment range to process
         self.global_T_rig_worlds, self.global_T_rig_world_timestamps_us, egomotion_type = load_maglev_egomotion(
             self.sequence_path, self.sensors_calibration_data, self.egomotion_file
         )
