@@ -374,7 +374,7 @@ def get_dynamic_flag_parameters(variant: str, loader: ShardDataLoader) -> Dynami
     "--output-basename",
     type=str,
     default=None,
-    help="Basename of the generated file - <sequence-id>_<start-time-us>_<end-time-us> will be used by default if not provided",
+    help="Basename of the generated file - <sequence-id>@<start-time-us>-<end-time-us> will be used by default if not provided",
     required=False,
 )
 @click.option("--open-consolidated/--no-open-consolidated", default=True, help="Pre-load shard meta-data?")
@@ -444,7 +444,7 @@ def ncore_chunk(
     """Execute common components of chunk export"""
     # Output container name
     if not (container_name := params.output_basename):
-        container_name = "_".join((str(x) for x in (loader.get_sequence_id(), start_timestamp_us, end_timestamp_us)))
+        container_name = f"{loader.get_sequence_id()}@{str(start_timestamp_us)}-{str(end_timestamp_us)}"
 
     # Sensor selection
     camera_ids = list(params.camera_ids) if len(params.camera_ids) else None

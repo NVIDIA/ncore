@@ -23,7 +23,7 @@ from ncore.impl.common.nvidia_utils import (
     load_maglev_camera_indexer_frame_meta,
     load_maglev_lidar_indexer_frame_meta,
     load_maglev_egomotion,
-    load_maglev_sequence_id,
+    load_maglev_dataset_id,
     parse_rig_sensors_from_dict,
     sensor_to_rig,
     LabelProcessor,
@@ -79,8 +79,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.constants = self.get_constants(self.rig["rig"]["properties"], list(self.sensors_calibration_data.keys()))
 
         # Determine sequence-id to be processed
-        self.sequence_id = load_maglev_sequence_id(self.sequence_path)
-        self.logger.info(f"Converting sequence {self.sequence_id} [shard {self.shard_id}/{self.shard_count}]")
+        self.dataset_id = load_maglev_dataset_id(self.sequence_path)
+        self.logger.info(f"Converting dataset {self.dataset_id} [shard {self.shard_id}/{self.shard_count}]")
 
         # Decode data from maglev
         self.decode_poses()
@@ -98,23 +98,28 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         logger = self.logger.getChild("decode_poses")
         logger.info(f"Loading poses")
 
-        # Load timestamped poses variables
+        # Load timestamped poses variables - these define the segment range to process
         self.global_T_rig_worlds, self.global_T_rig_world_timestamps_us, egomotion_type = load_maglev_egomotion(
             self.sequence_path, self.sensors_calibration_data, self.egomotion_file
         )
 
         assert len(self.global_T_rig_worlds), "No valid egomotion poses loaded"
 
+        # Construct sequence ID from *current* (potentially overwritten) timestamp bounds
+        sequence_id = self.dataset_id.get_sequence_id(
+            (self.global_T_rig_world_timestamps_us[0], self.global_T_rig_world_timestamps_us[-1])
+        )
+
         # DataWriter for all outputs (instantiated after parsing poses to know the egomotion_type)
         self.data_writer = ContainerDataWriter(
-            self.output_dir / self.sequence_id.get_sequence_id(),
-            f"{self.sequence_id.get_sequence_id()}_{self.shard_id}-{self.shard_count}",
+            self.output_dir / sequence_id,
+            f"{sequence_id}_{self.shard_id}-{self.shard_count}",
             self.get_active_camera_ids(list(self.constants.CAMERAID_TO_RIGNAME.keys())),
             self.get_active_lidar_ids(list(self.constants.LIDARID_TO_RIGNAME.keys())),
             self.get_active_radar_ids([]),  # no radars yet
             "scene-calib",
             egomotion_type,
-            self.sequence_id.get_sequence_id(),
+            sequence_id,
             self.shard_id,
             self.shard_count,
             True,

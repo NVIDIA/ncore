@@ -23,7 +23,7 @@ from scipy.optimize import curve_fit
 from scipy.spatial.transform import Rotation as R
 from multimethod import multimethod
 
-from ncore.impl.common.common import MaskImage, PoseInterpolator, load_jsonl
+from ncore.impl.common.common import HalfClosedInterval, MaskImage, PoseInterpolator, load_jsonl
 from ncore.impl.av_utils import isWithin3DBBox
 from ncore.impl.common.transformations import euler_2_so3, lat_lng_alt_2_ecef, se3_inverse, transform_bbox
 from ncore.impl.data.types import FrameLabel3, BBox3, LabelSource, TrackLabel, DynamicFlagState
@@ -946,23 +946,27 @@ class MaglevSegmentID:
 
 
 @dataclass
-class MaglevSequenceID:
+class MaglevDatasetID:
     """Tracks maglev dataset-specific data (source session ID and optional segment information)"""
 
     session_id: str  # source-session ID, always present
-    segment_id: MaglevSegmentID | None  # only set if sequence is a segment (~ time-restriction of a session)
+    segment_id: MaglevSegmentID | None  # only set if dataset is a segment (~ time-restriction of a session)
 
-    def get_sequence_id(self) -> str:
-        """Returns sequence ID - either <session-id> (for full sequences), or <session-id>[<start-time>-<end-time>] (for restricted sequences)"""
+    def get_sequence_id(self, start_end_timestamps_us: tuple[int, int] | None) -> str:
+        """Returns sequence ID - either <session-id> (for full sequences), or <session-id>@<start-time>-<end-time> (for restricted sequences).
+        Incorporates provided timestamps over internal segment bounds if provided"""
+
+        if start_end_timestamps_us is not None:
+            return f"{self.session_id}@{start_end_timestamps_us[0]}-{start_end_timestamps_us[1]}"
 
         if (segment_id := self.segment_id) is not None:
-            return f"{self.session_id}[{segment_id.segment_start_timestamp_us}-{segment_id.segment_end_timestamp_us}]"
+            return f"{self.session_id}@{segment_id.segment_start_timestamp_us}-{segment_id.segment_end_timestamp_us}"
 
         return self.session_id
 
 
-def load_maglev_sequence_id(sequence_path: Path) -> MaglevSequenceID:
-    """Loads sequence-id in a trustable way"""
+def load_maglev_dataset_id(sequence_path: Path) -> MaglevDatasetID:
+    """Loads maglev dataset id information in a trustable way"""
 
     session_data_path = Path(sequence_path) / "session_data"
     assert session_data_path.exists(), f"{session_data_path} doesn't exist"
@@ -982,7 +986,7 @@ def load_maglev_sequence_id(sequence_path: Path) -> MaglevSequenceID:
             if match:
                 assert match[2] == s[2]  # start time
                 assert match[3] == s[3]  # end time
-                return MaglevSequenceID(
+                return MaglevDatasetID(
                     session_id=match[1],
                     segment_id=MaglevSegmentID(
                         segment_id=s[1], segment_start_timestamp_us=int(s[2]), segment_end_timestamp_us=int(s[3])
@@ -1004,7 +1008,7 @@ def load_maglev_sequence_id(sequence_path: Path) -> MaglevSequenceID:
     with open(aux_infos[0], "r") as fp:
         match = re.search(r"uuid: (\w{8}-\w{4}-\w{4}-\w{4}-\w{12})", fp.read())
         if match:
-            return MaglevSequenceID(session_id=match[1], segment_id=None)
+            return MaglevDatasetID(session_id=match[1], segment_id=None)
         else:
             raise ValueError("Unable to determine trustable session_id")
 
@@ -1033,13 +1037,57 @@ def load_maglev_egomotion(
 
     # Determine egomotion source file to parse
     if egomotion_file_overwrite:
-        # Use specific egomotion input
-        egomotion_file = egomotion_file_overwrite
-    else:
-        # Use default egomotion jsonl location
-        egomotion_file = sequence_path / "egomotion" / "egomotion.json"
+        # Use specific egomotion input unconditionally
+        return load_maglev_egomotion(T_rig_sensors, egomotion_file_overwrite)
 
-    return load_maglev_egomotion(T_rig_sensors, egomotion_file)
+    # Use default egomotion jsonl location - this defines the data-range unconditionally
+    T_rig_worlds, T_rig_world_timestamps_us, egomotion_type = load_maglev_egomotion(
+        T_rig_sensors, sequence_path / "egomotion" / "egomotion.json"
+    )
+
+    # Incorporate overwrite if no explicit external egomotion file was provided and overwrite is present
+    if (egomotion_overwrite_file := sequence_path / "egomotion" / "egomotion-overwrite.json").exists():
+        logging.info(f"Overwriting egomotion with external trajectory")
+
+        overwrite_T_rig_worlds, overwrite_T_rig_world_timestamps_us, _ = load_maglev_egomotion(
+            T_rig_sensors, egomotion_overwrite_file
+        )
+
+        with open(sequence_path / "egomotion" / "egomotion-overwrite-type.txt", "r") as fp:
+            egomotion_type = fp.read()
+
+        # Assert that overwrite time-extend does cover the default range [with small slack]
+        SLACK = 1 * int(1e6)  # 1sec
+        default_interval = HalfClosedInterval(T_rig_world_timestamps_us[0], T_rig_world_timestamps_us[-1] + 1)
+        overwrite_interval_slacked = HalfClosedInterval(
+            overwrite_T_rig_world_timestamps_us[0] - SLACK, overwrite_T_rig_world_timestamps_us[-1] + 1 + SLACK
+        )
+
+        if (T_rig_world_timestamps_us[0] in overwrite_interval_slacked) and (
+            T_rig_world_timestamps_us[-1] in overwrite_interval_slacked
+        ):
+            logging.info(f"- overwriting data-range range only with external egomotion")
+
+            # the default is fully contained in the overwrite -> use default range of overwrite
+            overwrite_range = default_interval.cover_range(np.array(overwrite_T_rig_world_timestamps_us))
+            T_rig_worlds = overwrite_T_rig_worlds[overwrite_range.start : overwrite_range.stop]
+            T_rig_world_timestamps_us = overwrite_T_rig_world_timestamps_us[
+                overwrite_range.start : overwrite_range.stop
+            ]
+
+        elif (overwrite_T_rig_world_timestamps_us[0] in default_interval) and (
+            overwrite_T_rig_world_timestamps_us[-1] in default_interval
+        ):
+            logging.info(f"- using full external overwrite egomotion as fully contained in data range")
+
+            # the overwrite interval is fully contained in the default range -> use overwrite range completely
+            T_rig_worlds = overwrite_T_rig_worlds
+            T_rig_world_timestamps_us = overwrite_T_rig_world_timestamps_us
+
+        else:
+            f"egomotion overwrite time-range {overwrite_interval_slacked} incompatible with (slacked) default bounds {default_interval}"
+
+    return T_rig_worlds, T_rig_world_timestamps_us, egomotion_type
 
 
 @load_maglev_egomotion.register
