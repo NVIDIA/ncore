@@ -22,7 +22,7 @@ from ncore.impl.data import types, util
 from ncore.impl.common.nvidia_utils import (
     load_maglev_camera_indexer_frame_meta,
     load_maglev_egomotion,
-    load_maglev_sequence_id,
+    load_maglev_dataset_id,
     parse_rig_sensors_from_dict,
     sensor_to_rig,
     camera_intrinsic_parameters,
@@ -125,7 +125,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         """Store shard-specific meta-data"""
         with open(
             self.output_dir
-            / self.sequence_id.get_sequence_id()
+            / self.dataset_id.get_sequence_id(None)
             / f"shard-meta-{util.padded_index_string(self.shard_id, index_digits=4)}.json",
             "w",
         ) as outfile:
@@ -147,11 +147,11 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
         self.constants = self.get_constants(self.rig["rig"]["properties"], list(self.sensors_calibration_data.keys()))
 
         # Determine sequence-id to be processed
-        self.sequence_id = load_maglev_sequence_id(self.sequence_path)
-        self.logger.info(f"Converting sequence {self.sequence_id} [shard {self.shard_id + 1}/{self.shard_count}]")
+        self.dataset_id = load_maglev_dataset_id(self.sequence_path)
+        self.logger.info(f"Converting sequence {self.dataset_id} [shard {self.shard_id + 1}/{self.shard_count}]")
 
         # Create output dir
-        (self.output_dir / self.sequence_id.get_sequence_id()).mkdir(parents=True, exist_ok=True)
+        (self.output_dir / self.dataset_id.get_sequence_id(None)).mkdir(parents=True, exist_ok=True)
 
         # Store initial shard meta
         self.store_shard_meta(False)
@@ -340,8 +340,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             # Assemble camera meta-data
             meta = {
                 "camera_id": camera_id,
-                "sequence_id": self.sequence_id.get_sequence_id(),
-                "session_id": self.sequence_id.segment_id,
+                "sequence_id": self.dataset_id.get_sequence_id(None),
+                "session_id": self.dataset_id.segment_id,
                 "T_sensor_rig": T_sensor_rig.tolist(),
                 "camera_model_type": camera_model_parameters.type(),
                 "camera_model_parameters": camera_model_parameters.to_dict(),
@@ -360,7 +360,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             with wds.ShardWriter(
                 pattern=str(
                     self.output_dir
-                    / self.sequence_id.get_sequence_id()
+                    / self.dataset_id.get_sequence_id(None)
                     / (f"{camera_id}_{self.shard_id + 1}-{self.shard_count}_%d.tar")
                 ),
                 maxsize=self.wds_shard_maxsize_mib * 2**20,  # MiB -> B
