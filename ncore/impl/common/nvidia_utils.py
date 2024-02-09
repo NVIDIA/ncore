@@ -1041,29 +1041,41 @@ def load_maglev_egomotion(
         T_rig_sensors, sequence_path / "egomotion" / "egomotion.json"
     )
 
-    # Incorporate overwrite if no explicit external egomotion file was provided and
+    # Incorporate overwrite if no explicit external egomotion file was provided and overwrite is present
     if (egomotion_overwrite_file := sequence_path / "egomotion" / "egomotion-overwrite.json").exists():
         overwrite_T_rig_worlds, overwrite_T_rig_world_timestamps_us, _ = load_maglev_egomotion(
             T_rig_sensors, egomotion_overwrite_file
         )
 
+        with open(sequence_path / "egomotion" / "egomotion-overwrite-type.txt", "r") as fp:
+            egomotion_type = fp.read()
+
         # Assert that overwrite time-extend does cover the default range [with small slack]
         SLACK = 1 * int(1e6)  # 1sec
         default_interval = HalfClosedInterval(T_rig_world_timestamps_us[0], T_rig_world_timestamps_us[-1] + 1)
-        overwrite_interval = HalfClosedInterval(
+        overwrite_interval_slacked = HalfClosedInterval(
             overwrite_T_rig_world_timestamps_us[0] - SLACK, overwrite_T_rig_world_timestamps_us[-1] + 1 + SLACK
         )
 
-        assert (T_rig_world_timestamps_us[0] in overwrite_interval) and (
-            T_rig_world_timestamps_us[-1] in overwrite_interval
-        ), f"egomotion overwrite timerange {overwrite_interval} incompatible with (slacked) default bounds {default_interval}"
+        if (T_rig_world_timestamps_us[0] in overwrite_interval_slacked) and (
+            T_rig_world_timestamps_us[-1] in overwrite_interval_slacked
+        ):
+            # the default is fully contained in the overwrite -> use default range of overwrite
+            overwrite_range = default_interval.cover_range(np.array(overwrite_T_rig_world_timestamps_us))
+            T_rig_worlds = overwrite_T_rig_worlds[overwrite_range.start : overwrite_range.stop]
+            T_rig_world_timestamps_us = overwrite_T_rig_world_timestamps_us[
+                overwrite_range.start : overwrite_range.stop
+            ]
 
-        # apply pose overwrite in default egomotion range and make use of overwrite type
-        overwrite_range = default_interval.cover_range(np.array(overwrite_T_rig_world_timestamps_us))
-        T_rig_worlds = overwrite_T_rig_worlds[overwrite_range.start:overwrite_range.stop]
-        T_rig_world_timestamps_us = overwrite_T_rig_world_timestamps_us[overwrite_range.start:overwrite_range.stop]
-        with open(sequence_path / "egomotion" / "egomotion-overwrite-type.txt", "r") as fp:
-            egomotion_type = fp.read()
+        elif (overwrite_T_rig_world_timestamps_us[0] in default_interval) and (
+            overwrite_T_rig_world_timestamps_us[-1] in default_interval
+        ):
+            # the overwrite interval is fully contained in the default range -> use overwrite range completely
+            T_rig_worlds = overwrite_T_rig_worlds
+            T_rig_world_timestamps_us = overwrite_T_rig_world_timestamps_us
+
+        else:
+            f"egomotion overwrite time-range {overwrite_interval_slacked} incompatible with (slacked) default bounds {default_interval}"
 
     return T_rig_worlds, T_rig_world_timestamps_us, egomotion_type
 
