@@ -8,15 +8,16 @@ import tempfile
 import gzip
 
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 from io import BufferedReader
 
 import numpy as np
 import tqdm
 import point_cloud_utils as pcu
+import cbor2
 
 from ncore.impl.data_converter.data_converter import BaseNvidiaDataConverter
-from ncore.impl.data.data3 import ContainerDataWriter
+from ncore.impl.data.data3 import ContainerDataWriter, JsonLike
 from ncore.impl.data.types import FThetaCameraModelParameters, LabelSource, Poses, ShutterType, Tracks
 
 from ncore.impl.common.nvidia_utils import (
@@ -91,6 +92,8 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
         self.decode_lidars()
 
+        self.decode_radars()
+
         # Store per-shard meta data / final success state / close file
         self.data_writer.finalize()
 
@@ -116,7 +119,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             f"{sequence_id}_{self.shard_id}-{self.shard_count}",
             self.get_active_camera_ids(list(self.constants.CAMERAID_TO_RIGNAME.keys())),
             self.get_active_lidar_ids(list(self.constants.LIDARID_TO_RIGNAME.keys())),
-            self.get_active_radar_ids([]),  # no radars yet
+            self.get_active_radar_ids(list(self.constants.RADARIDS_TO_RIGNAME.keys())),
             "scene-calib",
             egomotion_type,
             sequence_id,
@@ -732,3 +735,156 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             )
 
         logger.info(f"> processed {len(self.data_writer.lidar_ids)} lidars")
+
+    def decode_radars(self):
+        logger = self.logger.getChild("decode_radars")
+        logger.info(f"Loading radar data [shard {self.shard_id}/{self.shard_count}]")
+
+        # Pose interpolator to obtain start / end egomotion poses
+        pose_interpolator = PoseInterpolator(self.global_T_rig_worlds, self.global_T_rig_world_timestamps_us)
+
+        # Process all active radar sensors
+        for radar_id, radar_rig_name in {
+            sensor_id: sensor_rig_name
+            for sensor_id, sensor_rig_name in self.constants.RADARIDS_TO_RIGNAME.items()
+            if sensor_id in self.data_writer.radar_ids
+        }.items():
+            logger.info(f"Processing radar {radar_rig_name}")
+
+            # Determine range mode from 'sensor-base-id@<range-mode>' suffix
+            range_mode = radar_id.split("@")[1]
+
+            # Load extrinsics
+            T_sensor_rig = sensor_to_rig(self.sensors_calibration_data[radar_rig_name])
+
+            # Load frame timestamps
+            with open(self.sequence_path / "radars" / radar_rig_name / "meta.json", "r") as fp:
+                frames_metadata = json.load(fp)
+
+            raw_frame_timestamps_us = np.array(
+                frames_metadata[f"{range_mode}_range"]["frame_timestamps_us"], dtype=np.uint64
+            )
+
+            # Get the frame range of the first and last frame relative to available egomotion poses
+            global_range_start = np.argmax(raw_frame_timestamps_us >= self.global_start_timestamp_us)
+            global_range_stop = (
+                np.argmin(raw_frame_timestamps_us < self.global_end_timestamp_us)
+                if raw_frame_timestamps_us[-1] > self.global_end_timestamp_us
+                else len(raw_frame_timestamps_us)
+            )
+
+            global_frame_timestamps_us = raw_frame_timestamps_us[global_range_start:global_range_stop]
+
+            # Subsample frames to valid local ranges
+            local_range_start = np.argmax(raw_frame_timestamps_us >= self.local_start_timestamp_us)
+            local_range_stop = (
+                np.argmin(raw_frame_timestamps_us < self.local_end_timestamp_us)
+                if raw_frame_timestamps_us[-1] > self.local_end_timestamp_us
+                else len(raw_frame_timestamps_us)
+            )
+
+            local_frame_timestamps_us = raw_frame_timestamps_us[
+                local_range_start:local_range_stop
+            ]  # corresponds to end-of-frame
+            num_local_frames = len(local_frame_timestamps_us)
+
+            logger.debug(
+                f"radar {radar_rig_name} range {range_mode} | local_range_start {local_range_start} / local_range_stop {local_range_stop} | "
+                f"{self.local_start_timestamp_us} <= t < {self.local_end_timestamp_us}"
+            )
+
+            assert (
+                global_frame_timestamps_us[0] <= local_frame_timestamps_us[0]
+            ), "Inconsistent timestamp ranges / data-integrity, potentially the sensor didn't record for the full sequence-length"
+            assert local_frame_timestamps_us[1] <= global_frame_timestamps_us[-1]  # note: global bounds are inclusive
+
+            assert self.local_start_timestamp_us <= local_frame_timestamps_us[0]
+            if self.shard_id < self.shard_count - 1:
+                assert (
+                    local_frame_timestamps_us[-1] < self.local_end_timestamp_us
+                )  # note: local bounds are non-inclusive in this regular case
+            else:
+                # last-shard or single-shard case
+                assert (
+                    local_frame_timestamps_us[-1] <= self.local_end_timestamp_us
+                )  # note: local bounds are inclusive in this end-case
+
+            # Store all static sensor data
+            self.data_writer.store_radar_meta(
+                radar_id,
+                local_frame_timestamps_us,
+                T_sensor_rig,
+                {},
+            )
+
+            # Load tar file containing frames, if available
+            tar_file = open(self.sequence_path / "radars" / radar_rig_name / "frames.tar", "rb")
+            tar_file_index = json.load(
+                open(self.sequence_path / "radars" / radar_rig_name / "frames.tar.idx.json", "r")
+            )
+
+            ## Process all valid frames
+            for continuous_local_frame_index, frame_end_timestamp_us in tqdm.tqdm(
+                enumerate(local_frame_timestamps_us),
+                total=num_local_frames,
+            ):
+                # Load and decode detections from archive
+                file_record = tar_file_index[f"./frame-{frame_end_timestamp_us}.cbor"]
+                tar_file.seek(file_record["offset_data"])
+                data = cbor2.loads(tar_file.read(file_record["size"]))
+
+                # Collect data [generic for now as not fully standardized yet]
+                generic_data: Dict[str, np.ndarray] = {}
+                generic_data["azimuth_rad"] = (
+                    azimuth_rad := np.array(data["detections"]["azimuth_rad"], dtype=np.float32)
+                )
+                generic_data["elevation_rad"] = (
+                    elevation_rad := np.array(data["detections"]["elevation_rad"], dtype=np.float32)
+                )  # will be zero if not valid
+                generic_data["elevation_valid"] = np.array(data["detections"]["elevation_valid"], dtype=np.bool_)
+                generic_data["radius_m"] = (radius_m := np.array(data["detections"]["radius_m"], dtype=np.float32))
+                generic_data["radial_velocity_ms"] = np.array(
+                    data["detections"]["radial_velocity_ms"], dtype=np.float32
+                )
+                generic_data["rcs_db"] = np.array(data["detections"]["rcs_db"], dtype=np.float32)
+                generic_data["snr_dbr"] = np.array(data["detections"]["snr_dbr"], dtype=np.float32)
+
+                # create cartesian coordinates of detections
+                #   x = r * cos(azi) * cos(elev)
+                #   y = r * sin(azi) * cos(elev)
+                #   z = r * sin(elev)
+                xyz_e = radius_m[:, None] * np.hstack(
+                    (
+                        (np.cos(azimuth_rad) * np.cos(elevation_rad))[:, None],
+                        (np.sin(azimuth_rad) * np.cos(elevation_rad))[:, None],
+                        np.sin(elevation_rad)[:, None],
+                    )
+                )
+                # as the frame start/end time is the same, the ray start points all coincide with the origin in the sensor frame
+                xyz_s = np.zeros_like(xyz_e)
+
+                generic_meta_data: Dict[str, JsonLike] = {}
+                generic_meta_data["doppler_ambiguity_ms"] = data["doppler_ambiguity_ms"]
+
+                # Equal start / end poses
+                timestamps_us = np.array([frame_end_timestamp_us, frame_end_timestamp_us])
+                T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
+
+                # Serialize radar frame
+                self.data_writer.store_radar_frame(
+                    radar_id,
+                    continuous_local_frame_index,
+                    xyz_s,
+                    xyz_e,
+                    T_rig_worlds,
+                    timestamps_us,
+                    generic_data,
+                    generic_meta_data,
+                )
+
+            logger.info(
+                f"> processed {len(local_frame_timestamps_us)} local"
+                f" radar frames [shard {self.shard_id}/{self.shard_count}]"
+            )
+
+        logger.info(f"> processed {len(self.data_writer.radar_ids)} radars")

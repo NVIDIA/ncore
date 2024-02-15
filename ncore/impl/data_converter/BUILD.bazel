@@ -26,6 +26,7 @@ py_library(
         "//ncore/impl/data:pylib_data",
         "//ncore/impl/data:pylib_types",
         requirement("point-cloud-utils"),
+        requirement("cbor2"),
         "//ncore/impl/common:pylib_common",
         "//ncore/impl/common:pylib_nvidia",
     ],

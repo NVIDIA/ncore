@@ -334,6 +334,81 @@ class ContainerDataWriter:
         for name, value in generic_data.items():
             frame_generic_data_group.create_dataset(name, data=value)
 
+    def store_radar_meta(
+        self,
+        radar_id: str,
+        # all frame timestamps
+        frame_timestamps_us: np.ndarray,
+        # extrinsics
+        T_sensor_rig: np.ndarray,
+        # generic sensor meta-data (has to be json-serializable)
+        generic_meta_data: Dict[str, JsonLike],
+    ) -> None:
+        assert T_sensor_rig.shape == (4, 4)
+        assert T_sensor_rig.dtype == np.dtype("float32")
+        assert frame_timestamps_us.shape[1:] == ()
+        assert frame_timestamps_us.dtype == np.dtype("uint64")
+
+        # Store meta data
+        (radar_grp := self.container_root[SENSORS_BASE_GROUP][RADARS_BASE_GROUP][radar_id]).attrs.put(
+            {
+                "T_sensor_rig": T_sensor_rig.tolist(),
+                "generic_meta_data": generic_meta_data,
+            }
+        )
+
+        # Store timestamps
+        radar_grp.create_dataset("frame_timestamps_us", data=frame_timestamps_us)
+
+    def store_radar_frame(
+        self,
+        # data indexing
+        radar_id: str,
+        continuous_frame_index: int,
+        # point-cloud data
+        xyz_s: np.ndarray,
+        xyz_e: np.ndarray,
+        # poses
+        T_rig_worlds: np.ndarray,
+        timestamps_us: np.ndarray,
+        # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
+        generic_data: Dict[str, np.ndarray],
+        generic_meta_data: Dict[str, JsonLike],
+    ) -> None:
+        # sanity / consistency checks
+
+        assert xyz_e.ndim == 2
+        assert xyz_e.shape[1] == 3
+        assert xyz_e.dtype == np.dtype("float32")
+        num_points = xyz_e.shape[0]
+
+        assert T_rig_worlds.shape == (2, 4, 4)
+        assert T_rig_worlds.dtype == np.dtype("float32")
+        assert timestamps_us.shape == (2,)
+        assert timestamps_us.dtype == np.dtype("uint64")
+
+        # Initialize frame
+        continuous_frame_index_string = util.padded_index_string(continuous_frame_index)
+        frame_group = self.container_root[SENSORS_BASE_GROUP][RADARS_BASE_GROUP][radar_id].require_group(
+            continuous_frame_index_string
+        )
+
+        # Store frame data
+        frame_group.create_dataset("xyz_e", data=xyz_e)
+
+        assert xyz_s.shape == (num_points, 3)
+        assert xyz_s.dtype == np.dtype("float32")
+        frame_group.create_dataset("xyz_s", data=xyz_s)
+
+        # Store pose data
+        frame_group.create_dataset("T_rig_worlds", data=T_rig_worlds)
+        frame_group.create_dataset("timestamps_us", data=timestamps_us)
+
+        # Store additional generic frame data and meta-data (not dimension / dtype checked)
+        (frame_generic_data_group := frame_group.require_group("generic_data")).attrs.put(generic_meta_data)
+        for name, value in generic_data.items():
+            frame_generic_data_group.create_dataset(name, data=value)
+
 
 class Sensor:
     """Provides access to generic data available to all sensor types"""
