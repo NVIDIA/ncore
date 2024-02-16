@@ -36,6 +36,12 @@ from ncore.impl.sensors.camera import CameraModel
     default=None,
 )
 @click.option(
+    "--point-size",
+    type=click.FloatRange(min=0.0, max_open=True),
+    default=4.0,
+    help="Point size of rendering",
+)
+@click.option(
     "--device", type=click.Choice(["cuda", "cpu"]), help="Device used for the computation via torch", default="cuda"
 )
 @click.option(
@@ -59,6 +65,7 @@ def ncore_project_pc_to_img(
     start_frame: Optional[int],
     stop_frame: Optional[int],
     step_frame: Optional[int],
+    point_size: float,
     device: str,
     pose: str,
     output_dir: str,
@@ -146,7 +153,7 @@ def ncore_project_pc_to_img(
             np.concatenate((image_point_coords[:, :2], dist_rs), axis=1),
             img_frame,
             f"Projection with {pose} poses (torch implementation @ {device})" if not encode_images else "",
-            point_size=10.0,
+            point_size=point_size,
             show=not encode_images,
             save_path=str(save_path),
         )
