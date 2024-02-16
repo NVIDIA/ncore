@@ -29,23 +29,29 @@ def rgba(r):
 
 
 def plot_image(camera_image):
-    """Plot a cmaera image."""
+    """Plot a camera image."""
     plt.figure(figsize=(20, 12))
     plt.imshow(camera_image)
     plt.grid(visible=False)
 
 
-def plot_points_on_image(projected_points, camera_image, title, rgba_func=rgba, point_size=5.0):
+def plot_points_on_image(
+    projected_points, camera_image, title="", rgba_func=rgba, point_size=5.0, show=True, save_path: Optional[str] = None
+):
     """Plots points on a camera image.
 
     Args:
         projected_points: [N, 3] numpy array. The inner dims are
             [camera_x, camera_y, range].
         camera_image: jpeg encoded camera image.
+        title: if given, the title to add to the plot.
         rgba_func: a function that generates a color from a range value.
         point_size: the point size.
+        show: whether to show the plot.
+        save_path: filename to store the plot to if provided.
 
     """
+    plt.clf()
     plot_image(camera_image)
 
     xs = []
@@ -57,11 +63,19 @@ def plot_points_on_image(projected_points, camera_image, title, rgba_func=rgba, 
         ys.append(point[1])  # height, row
         colors.append(rgba_func(point[2]))
 
-    plt.title(title)
+    if len(title):
+        plt.title(title)
+
     plt.scatter(xs, ys, c=colors, s=point_size, edgecolors="none")
     plt.axis("off")
     plt.grid(visible=False)
-    plt.show()
+
+    if show:
+        plt.show()
+
+    if save_path:
+        plt.tight_layout()
+        plt.savefig(save_path)
 
 
 class LabelVisualizer:

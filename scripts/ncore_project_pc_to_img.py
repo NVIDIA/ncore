@@ -2,6 +2,7 @@
 
 import logging
 
+from pathlib import Path
 from typing import Optional
 
 import click
@@ -10,6 +11,7 @@ import numpy as np
 
 from ncore.impl.data.data3 import ShardDataLoader, PointCloudSensor, CameraSensor
 from ncore.impl.data import types
+from ncore.impl.data.util import padded_index_string
 from ncore.impl.common.transformations import transform_point_cloud
 from ncore.impl.common.visualization import plot_points_on_image
 from ncore.impl.sensors.camera import CameraModel
@@ -34,6 +36,12 @@ from ncore.impl.sensors.camera import CameraModel
     default=None,
 )
 @click.option(
+    "--point-size",
+    type=click.FloatRange(min=0.0, max_open=True),
+    default=4.0,
+    help="Point size of rendering",
+)
+@click.option(
     "--device", type=click.Choice(["cuda", "cpu"]), help="Device used for the computation via torch", default="cuda"
 )
 @click.option(
@@ -42,6 +50,14 @@ from ncore.impl.sensors.camera import CameraModel
     help="Per-pixel poses to use (rolling-shutter optimization, mean frame pose, start frame pose, end frame pose) ",
     default="rolling-shutter",
 )
+@click.option("--output-dir", type=str, help="Path to the output folder if encoding images", required=False, default="")
+@click.option("--encode-images/--no-encode-images", is_flag=True, default=False, help="Encode image files for frames")
+@click.option(
+    "--timestamp-image-names/--no-timestamp-image-names",
+    is_flag=True,
+    default=False,
+    help="Store image with timestamp filenames or frame-index filenames",
+)
 def ncore_project_pc_to_img(
     shard_file_pattern: str,
     sensor_id: str,
@@ -49,8 +65,12 @@ def ncore_project_pc_to_img(
     start_frame: Optional[int],
     stop_frame: Optional[int],
     step_frame: Optional[int],
+    point_size: float,
     device: str,
     pose: str,
+    output_dir: str,
+    encode_images: bool,
+    timestamp_image_names: bool,
 ):
     """Projects the point cloud to the camera image, comparing projection w. and w/o rolling shutter compensation"""
 
@@ -117,13 +137,27 @@ def ncore_project_pc_to_img(
         transformed_points = transform_point_cloud(pc[valid_idx, None, :], trans_matrices).squeeze(1)
         dist_rs = np.linalg.norm(transformed_points, axis=1, keepdims=True)
 
+        save_path: Optional[Path] = None
+        if encode_images:
+            assert len(output_dir)
+
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
+
+            if timestamp_image_names:
+                save_path = output_path / (str(cam_timestamp) + ".png")
+            else:
+                save_path = output_path / (padded_index_string(frame_index) + ".png")
+
         plot_points_on_image(
             np.concatenate((image_point_coords[:, :2], dist_rs), axis=1),
             img_frame,
-            f"Projection with {pose} poses (torch implementation @ {device})",
-            point_size=4.0,
+            f"Projection with {pose} poses (torch implementation @ {device})" if not encode_images else "",
+            point_size=point_size,
+            show=not encode_images,
+            save_path=str(save_path),
         )
 
 
 if __name__ == "__main__":
-    ncore_project_pc_to_img()
+    ncore_project_pc_to_img(show_default=True)
