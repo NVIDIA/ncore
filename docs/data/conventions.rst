@@ -209,14 +209,9 @@ Radar data contains the following columns:
   end-of-frame reference frame (float32, [n,3])
 * ``xyz_e`` - 3D coordinate of the end of the ray in the sensor's
   end-of-frame reference frame (float32, [n,3])
-* ``azimuth`` - azimuth angle in sensor frame (float32, [n])
-* ``elevation`` - elevation angle in sensor frame (float32, [n])
-* ``radial-velocity`` - radial-velocity relative to sensor frame
-  (float32, [n])
-* ``doppler-ambiguity`` - Doppler-ambiguity of measurement (float32,
-  [n])
-* ``rcs`` - Radar-cross-section of measurement (float32, [n])
-* ``timestamp_us`` - point timestamp in microseconds (uint64, [n])
+
+Additional radar readings (like radial velocities / radar-cross-section
+measurements) are exposed in dataset-specific generic per-frame data.
 
 **Metadata**
 
