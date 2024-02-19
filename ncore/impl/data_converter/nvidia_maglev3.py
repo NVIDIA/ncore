@@ -119,7 +119,10 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             f"{sequence_id}_{self.shard_id}-{self.shard_count}",
             self.get_active_camera_ids(list(self.constants.CAMERAID_TO_RIGNAME.keys())),
             self.get_active_lidar_ids(list(self.constants.LIDARID_TO_RIGNAME.keys())),
-            self.get_active_radar_ids(list(self.constants.RADARIDS_TO_RIGNAME.keys())),
+            # activate radar only if present for now in input data as some data-pipelines don't produce these currently
+            self.get_active_radar_ids(list(self.constants.RADARIDS_TO_RIGNAME.keys()))
+            if (self.sequence_path / "radars").exists()
+            else [],
             "scene-calib",
             egomotion_type,
             sequence_id,
