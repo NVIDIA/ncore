@@ -409,7 +409,7 @@ class TestData3Reload(unittest.TestCase):
             ref_sequence_id := "some-sequence-name",
             [ref_camera_id := "camera-sensor"],
             [ref_lidar_id := "lidar-sensor"],
-            [],
+            [ref_radar_id := "radar-sensor"],
             # TODO: parse these from the data
             ref_calibration_type := "some-calibration-type",
             ref_egomotion_type := "some-egomotion-type",
@@ -563,6 +563,41 @@ class TestData3Reload(unittest.TestCase):
             ref_lidar_generic_metadata1 := {"some-frame-meta-data": {"random-data": np.random.rand(6, 3).tolist()}},
         )
 
+        # Store radar data
+        writer.store_radar_meta(
+            ref_radar_id,
+            T_rig_world_timestamps_us,
+            ref_radar_extrinsics := np.block(
+                [
+                    [R.from_euler("xyz", [5, 1.1, 2.2], degrees=True).as_matrix(), np.array([1, 5, 0]).reshape((3, 1))],
+                    [np.array([0, 0, 0, 1])],
+                ]
+            ).astype(np.float32),
+            ref_radar_generic_meta_data := {"some-meta-data": np.random.rand(3, 2).tolist()},
+        )
+
+        writer.store_radar_frame(
+            ref_radar_id,
+            0,
+            ref_radar_xyz_s0 := np.random.rand(5, 3).astype(np.float32),
+            ref_radar_xyz_e0 := np.random.rand(5, 3).astype(np.float32),
+            T_rig_worlds.astype(np.float32),
+            T_rig_world_timestamps_us,
+            ref_radar_generic_data0 := {"some-frame-data": np.random.rand(6, 3)},
+            ref_radar_generic_metadata0 := {"some-frame-meta-data": {"random-data": np.random.rand(6, 3).tolist()}},
+        )
+
+        writer.store_radar_frame(
+            ref_radar_id,
+            1,
+            ref_radar_xyz_s1 := np.random.rand(5, 3).astype(np.float32),
+            ref_radar_xyz_e1 := np.random.rand(5, 3).astype(np.float32),
+            T_rig_worlds.astype(np.float32),
+            T_rig_world_timestamps_us,
+            ref_radar_generic_data1 := {"some-frame-data": np.random.rand(6, 3)},
+            ref_radar_generic_metadata1 := {"some-frame-meta-data": {"random-data": np.random.rand(6, 3).tolist()}},
+        )
+
         shard_path = writer.finalize()
 
         ## Reload shard and verify consistency
@@ -647,5 +682,32 @@ class TestData3Reload(unittest.TestCase):
             self.assertIsNone(
                 np.testing.assert_array_equal(
                     lidar_sensor.get_frame_generic_data(1, name), ref_lidar_generic_data1[name]
+                )
+            )
+
+        # Check radars
+        radar_sensor = loader.get_radar_sensor(ref_radar_id)
+        self.assertIsNone(np.testing.assert_array_equal(radar_sensor.get_T_sensor_rig(), ref_radar_extrinsics))
+        self.assertEqual(radar_sensor.get_generic_meta_data(), ref_radar_generic_meta_data)
+
+        self.assertIsNone(np.testing.assert_array_equal(radar_sensor.get_frame_data(0, "xyz_s"), ref_radar_xyz_s0))
+        self.assertIsNone(np.testing.assert_array_equal(radar_sensor.get_frame_data(0, "xyz_e"), ref_radar_xyz_e0))
+        self.assertEqual(radar_sensor.get_frame_generic_meta_data(0), ref_radar_generic_metadata0)
+        self.assertEqual(names := radar_sensor.get_frame_generic_data_names(0), list(ref_radar_generic_data0.keys()))
+        for name in names:
+            self.assertIsNone(
+                np.testing.assert_array_equal(
+                    radar_sensor.get_frame_generic_data(0, name), ref_radar_generic_data0[name]
+                )
+            )
+
+        self.assertIsNone(np.testing.assert_array_equal(radar_sensor.get_frame_data(1, "xyz_s"), ref_radar_xyz_s1))
+        self.assertIsNone(np.testing.assert_array_equal(radar_sensor.get_frame_data(1, "xyz_e"), ref_radar_xyz_e1))
+        self.assertEqual(radar_sensor.get_frame_generic_meta_data(1), ref_radar_generic_metadata1)
+        self.assertEqual(names := radar_sensor.get_frame_generic_data_names(1), list(ref_radar_generic_data1.keys()))
+        for name in names:
+            self.assertIsNone(
+                np.testing.assert_array_equal(
+                    radar_sensor.get_frame_generic_data(1, name), ref_radar_generic_data1[name]
                 )
             )
