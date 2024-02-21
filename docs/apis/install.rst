@@ -16,4 +16,4 @@ Alternatively, gitlab personal access tokens can be included in the index url vi
 
     pip install ncore --extra-index-url https://__token__:<GITLAB_TOKEN>@gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple
 
-Currently, ``ncore`` wheels support all python version starting from ``python3.10``.
+Currently, ``ncore`` wheels support all python version starting from ``python3.8``.
