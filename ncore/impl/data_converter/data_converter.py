@@ -256,22 +256,13 @@ class BaseNvidiaDataConverter(DataConverter):
 
         RADARIDS_TO_RIGNAME = {
             "radar_corner_front_left@short": "radar:corner:front:left",
-            "radar_corner_front_left@long": "radar:corner:front:left",
             "radar_corner_front_right@short": "radar:corner:front:right",
-            "radar_corner_front_right@long": "radar:corner:front:right",
-            "radar_corner_rear_left@long": "radar:corner:rear:left",
             "radar_corner_rear_left@short": "radar:corner:rear:left",
-            "radar_corner_rear_right@long": "radar:corner:rear:right",
             "radar_corner_rear_right@short": "radar:corner:rear:right",
-            "radar_front_center@long": "radar:front:center",
-            "radar_front_center@short": "radar:front:center",
-            "radar_rear_left@long": "radar:rear:left",
-            "radar_rear_left@short": "radar:rear:left",
-            "radar_rear_right@long": "radar:rear:right",
-            "radar_rear_right@short": "radar:rear:right",
-            "radar_side_left@long": "radar:side:left",
+            "radar_front_center@medium": "radar:front:center",
+            "radar_rear_left@medium": "radar:rear:left",
+            "radar_rear_right@medium": "radar:rear:right",
             "radar_side_left@short": "radar:side:left",
-            "radar_side_right@long": "radar:side:right",
             "radar_side_right@short": "radar:side:right",
         }
 
