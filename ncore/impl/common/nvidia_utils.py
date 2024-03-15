@@ -365,8 +365,7 @@ class LabelProcessor:
     # Label BBOX padding distance (in meters) to enlarge bounding boxes for per-point dynamic-flag assignment
     LIDAR_DYNAMIC_FLAG_BBOX_PADDING_METERS = 3.0
 
-    # TODO: check if this user-defined velocity threshold makes sense
-    GLOBAL_SPEED_DYNAMIC_THRESHOLD = 1.0 / 3.6
+    GLOBAL_SPEED_DYNAMIC_THRESHOLD = 1.5  # in [m/s], same as in NRE
 
     # Minimal label centroid to rig distance (skip potential self-classifications)
     MIN_CENTROID_RIG_DISTANCE_METER = 3.0
