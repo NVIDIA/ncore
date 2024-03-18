@@ -213,7 +213,7 @@ class PoseInterpolator:
     Args:
         poses (np.array): poses at given timestamps in a se3 representation [n,4,4]
         timestamps (np.array): timestamps of the known poses [n]
-        ts_target (np.array): timestamps for which the poses will be interpolated [m,1]
+        ts_target (np.array): timestamps for which the poses will be interpolated [m]
     Out:
         (np.array): interpolated poses in se3 representation [m,4,4]
     """
