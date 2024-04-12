@@ -137,6 +137,8 @@ class BaseNvidiaDataConverter(DataConverter):
     class Hyperion8Constants(Constants):
         CAMERAID_TO_RIGNAME = {
             "camera_front_wide_120fov": "camera:front:wide:120fov",
+            "camera_front_tele_30fov": "camera:front:tele:30fov",
+            "camera_front_tele_sat_30fov": "camera:front:tele:sat:30fov",
             "camera_cross_left_120fov": "camera:cross:left:120fov",
             "camera_cross_right_120fov": "camera:cross:right:120fov",
             "camera_rear_left_70fov": "camera:rear:left:70fov",
@@ -154,6 +156,8 @@ class BaseNvidiaDataConverter(DataConverter):
         # Per-camera sensor types
         CAMERAID_TO_SENSORTYPE = {
             "camera_front_wide_120fov": "AR0820",
+            "camera_front_tele_30fov": "AR0820",
+            "camera_front_tele_sat_30fov": "AR0820",
             "camera_cross_left_120fov": "AR0820",
             "camera_cross_right_120fov": "AR0820",
             "camera_rear_left_70fov": "AR0820",
@@ -208,6 +212,8 @@ class BaseNvidiaDataConverter(DataConverter):
     class Hyperion81Constants(Constants):
         CAMERAID_TO_RIGNAME = {
             "camera_front_wide_120fov": "camera:front:wide:120fov",
+            "camera_front_tele_30fov": "camera:front:tele:30fov",
+            "camera_front_tele_sat_30fov": "camera:front:tele:sat:30fov",
             "camera_cross_left_120fov": "camera:cross:left:120fov",
             "camera_cross_right_120fov": "camera:cross:right:120fov",
             "camera_rear_left_70fov": "camera:rear:left:70fov",
@@ -225,6 +231,8 @@ class BaseNvidiaDataConverter(DataConverter):
         # Per-camera types
         CAMERAID_TO_SENSORTYPE = {
             "camera_front_wide_120fov": "IMX728",
+            "camera_front_tele_30fov": "IMX728",
+            "camera_front_tele_sat_30fov": "IMX728",
             "camera_cross_left_120fov": "IMX728",
             "camera_cross_right_120fov": "IMX728",
             "camera_rear_left_70fov": "IMX728",
