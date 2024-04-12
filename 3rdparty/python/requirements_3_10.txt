@@ -889,9 +889,9 @@ nbformat==5.5.0 \
     #   nbconvert
     #   nbsphinx
     #   open3d
-nbsphinx==0.9.1 \
-    --hash=sha256:59bbfb7bc676a6647805fb3ca83490338ae7f96c1674a9e5e707f055c272c59d \
-    --hash=sha256:c2991a2c497715f52f6c727f8a633e309f097fe9bb794538011ca1ddb6b698fa
+nbsphinx==0.9.3 \
+    --hash=sha256:6e805e9627f4a358bd5720d5cbf8bf48853989c79af557afd91a5f22e163029f \
+    --hash=sha256:ec339c8691b688f8676104a367a4b8cf3ea01fd089dc28d24dec22d563b11562
     # via -r 3rdparty/python/requirements_3_10.in
 nest-asyncio==1.5.6 \
     --hash=sha256:b9a953fb40dceaa587d109609098db21900182b16440652454a146cffb06e8b8 \
