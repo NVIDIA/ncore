@@ -98,6 +98,9 @@ dataset hierarchy [#f3]_:
 .. code-block:: text
 
    /
+   │
+   ├── {generic_meta_data}...
+   │
    ├── poses
    │   ├── T_rig_world_base (4, 4) float64
    │   ├── T_rig_world_timestamps_us (I,) uint64
@@ -121,7 +124,8 @@ dataset hierarchy [#f3]_:
       │   ⁞   │   │
       │   ⁞   │   ├── image () |Sx
       │   ⁞   │   │      
-      │   ⁞   │   └── {generic_data}...
+      │   ⁞   │   ├── {generic_data}...
+      │   ⁞   │   └── {generic_meta_data}...
       │   ⁞   │
       │   ⁞   └── 000001...
       │
@@ -143,7 +147,8 @@ dataset hierarchy [#f3]_:
       │   ⁞   │   ├── xyz_e (N, 3) float32
       │   ⁞   │   ├── xyz_s (N, 3) float32
       │   ⁞   │   │
-      │   ⁞   │   └── {generic_data}...
+      │   ⁞   │   ├── {generic_data}...
+      │   ⁞   │   └── {generic_meta_data}...
       │   ⁞   │
       │   ⁞   └── 000001...
       │

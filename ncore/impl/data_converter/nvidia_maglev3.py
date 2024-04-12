@@ -126,6 +126,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             "scene-calib",
             egomotion_type,
             sequence_id,
+            {"nv-rig": self.rig},  # store source-rig as meta data at `nv-rig`
             self.shard_id,
             self.shard_count,
             True,

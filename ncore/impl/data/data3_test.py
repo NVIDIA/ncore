@@ -46,10 +46,10 @@ class TestData3Loader(unittest.TestCase):
             # expected number of total poses is sum of per-shard poses minus duplicated/removed poses at shard boundaries
             expected_num_poses = sum(shard_num_poses[start:stop]) - (stop - start - 1)
 
-            self.assertEqual(len(loader.get_camera_ids()), 10)
+            self.assertEqual(len(loader.get_camera_ids()), 12)
             self.assertEqual(len(loader.get_lidar_ids()), 1)
-            self.assertEqual(len(loader.get_radar_ids()), 0)
-            self.assertEqual(len(loader.get_sensor_ids()), 11)
+            self.assertEqual(len(loader.get_radar_ids()), 18)
+            self.assertEqual(len(loader.get_sensor_ids()), 31)
 
             poses = loader.get_poses()
             self.assertEqual(poses.T_rig_world_base.shape, (4, 4))
@@ -63,14 +63,20 @@ class TestData3Loader(unittest.TestCase):
                     (shard_num_poses[shard_id],),
                 )
 
-            self.assertEqual(loader.get_sequence_id(with_shard_range=False), "c9b05cf4-afb9-11ec-b3c2-00044bf65fcb")
+            self.assertEqual(
+                loader.get_sequence_id(with_shard_range=False),
+                "c9b05cf4-afb9-11ec-b3c2-00044bf65fcb@1648597318700123-1648599151600035",
+            )
             self.assertEqual(
                 loader.get_sequence_id(with_shard_range=True),
-                "c9b05cf4-afb9-11ec-b3c2-00044bf65fcb_" + "_".join([str(shard_id) for shard_id in range(start, stop)]),
+                "c9b05cf4-afb9-11ec-b3c2-00044bf65fcb@1648597318700123-1648599151600035_"
+                + "_".join([str(shard_id) for shard_id in range(start, stop)]),
             )
 
+            self.assertTrue("nv-rig" in loader.get_generic_meta_data())
+
             self.assertEqual(loader.get_calibration_type(), "scene-calib")
-            self.assertEqual(loader.get_egomotion_type(), "lidar-egomotion")
+            self.assertEqual(loader.get_egomotion_type(), "icp")
 
             # make sure returned paths are absolute and ordered by shard-id
             self.assertEqual(loader.get_shard_paths(), [str(Path(p).absolute()) for p in self.all_shards[start:stop]])
@@ -78,7 +84,7 @@ class TestData3Loader(unittest.TestCase):
 
             # check global tracks API
             tracks = loader.get_tracks()
-            self.assertEqual(len(tracks.track_labels), 32)
+            self.assertEqual(len(tracks.track_labels), 40)
 
         # check all shard slice variants
         for stop in range(1, len(self.all_shards) + 1):
@@ -174,29 +180,29 @@ class TestData3Loader(unittest.TestCase):
             np.testing.assert_array_almost_equal(sensor.get_T_rig_sensor(), np.linalg.inv(reference_T_sensor_rig))
         )
 
-        self.assertEqual(sensor.get_frames_count(), 9)
+        self.assertEqual(sensor.get_frames_count(), 27)
 
-        self.assertEqual(sensor.get_frames_count(0, 1), 4)
-        self.assertEqual(sensor.get_frames_count(1, 2), 3)
-        self.assertEqual(sensor.get_frames_count(2, 3), 2)
-        self.assertEqual(sensor.get_frames_count(0, 2), 7)
+        self.assertEqual(sensor.get_frames_count(0, 1), 12)
+        self.assertEqual(sensor.get_frames_count(1, 2), 9)
+        self.assertEqual(sensor.get_frames_count(2, 3), 6)
+        self.assertEqual(sensor.get_frames_count(0, 2), 21)
 
-        self.assertEqual(len(sensor.get_frames_timestamps_us(0, 1)), 4)
-        self.assertEqual(len(sensor.get_frames_timestamps_us(1, 2)), 3)
-        self.assertEqual(len(sensor.get_frames_timestamps_us(2, 3)), 2)
-        self.assertEqual(len(sensor.get_frames_timestamps_us(0, 2)), 7)
+        self.assertEqual(len(sensor.get_frames_timestamps_us(0, 1)), 12)
+        self.assertEqual(len(sensor.get_frames_timestamps_us(1, 2)), 9)
+        self.assertEqual(len(sensor.get_frames_timestamps_us(2, 3)), 6)
+        self.assertEqual(len(sensor.get_frames_timestamps_us(0, 2)), 21)
 
-        self.assertEqual(sensor.get_frame_index_range(), range(0, 9, 1))
-        self.assertEqual(sensor.get_frame_index_range(None, None, None), range(0, 9, 1))
-        self.assertEqual(sensor.get_frame_index_range(0, 9, 1), range(0, 9, 1))
-        self.assertEqual(sensor.get_frame_index_range(0), range(0, 9, 1))
+        self.assertEqual(sensor.get_frame_index_range(), range(0, 27, 1))
+        self.assertEqual(sensor.get_frame_index_range(None, None, None), range(0, 27, 1))
+        self.assertEqual(sensor.get_frame_index_range(0, 27, 1), range(0, 27, 1))
+        self.assertEqual(sensor.get_frame_index_range(0), range(0, 27, 1))
         self.assertEqual(sensor.get_frame_index_range(1, 3, None), range(1, 3, 1))
-        self.assertEqual(sensor.get_frame_index_range(1, None, 2), range(1, 9, 2))
-        self.assertEqual(sensor.get_frame_index_range(1, -1, 1), range(1, 8, 1))  # negative slice arguments
-        self.assertEqual(sensor.get_frame_index_range(-2), range(7, 9, 1))
-        self.assertEqual(sensor.get_frame_index_range(-2, None, -1), range(7, -1, -1))
-        self.assertEqual(sensor.get_frame_index_range(10), range(9, 9, 1))  # empty ranges
-        self.assertEqual(sensor.get_frame_index_range(20), range(9, 9, 1))
+        self.assertEqual(sensor.get_frame_index_range(1, None, 2), range(1, 27, 2))
+        self.assertEqual(sensor.get_frame_index_range(1, -1, 1), range(1, 26, 1))  # negative slice arguments
+        self.assertEqual(sensor.get_frame_index_range(-2), range(25, 27, 1))
+        self.assertEqual(sensor.get_frame_index_range(-2, None, -1), range(25, -1, -1))
+        self.assertEqual(sensor.get_frame_index_range(28), range(27, 27, 1))  # empty ranges
+        self.assertEqual(sensor.get_frame_index_range(2 * 28), range(27, 27, 1))
 
         # Check that all sensor timestamps are strictly monotonically increasing
         self.assertTrue(np.all((timestamps := sensor.get_frames_timestamps_us())[:-1] < timestamps[1:]))
@@ -204,9 +210,9 @@ class TestData3Loader(unittest.TestCase):
         # first frame in first shard
         reference_T_rig_world_0_start = np.array(
             [
-                [9.9652308e-01, 8.3280794e-02, -2.4666323e-03, -8.8845842e-02],
-                [-8.3104335e-02, 9.9565548e-01, 4.1997660e-02, -5.6151047e00],
-                [5.9535145e-03, -4.1646648e-02, 9.9911469e-01, 3.5184065e-01],
+                [0.9966336, 0.0819398, -0.0027226843, -0.06672776],
+                [-0.08177382, 0.9959, 0.038681187, -5.527364],
+                [0.00588105, -0.038328324, 0.9992479, 0.34190598],
                 [0.0, 0.0, 0.0, 1.0],
             ],
             dtype=np.float32,
@@ -244,9 +250,9 @@ class TestData3Loader(unittest.TestCase):
                 sensor.get_frame_T_rig_world(0, FrameTimepoint.END),
                 np.array(
                     [
-                        [0.9940593, 0.10880685, -0.002673706, -0.10544174],
-                        [-0.10850722, 0.9926424, 0.05373352, -7.3418508],
-                        [0.008500609, -0.05312419, 0.9985517, 0.4574791],
+                        [0.9942354, 0.10717609, -0.003044726, -0.07839771],
+                        [-0.10689344, 0.9930261, 0.04972909, -7.2354264],
+                        [0.008353262, -0.04911696, 0.9987581, 0.44561356],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
@@ -255,18 +261,18 @@ class TestData3Loader(unittest.TestCase):
         )
 
         # second frame in first shard
-        self.assertEqual(sensor.get_frames_timestamps_us()[1], 1648597318907676)
-        self.assertEqual(sensor.get_closest_frame_index(1648597318907676), 1)
-        self.assertEqual(sensor.get_frame_timestamp_us(1, FrameTimepoint.START), 1648597318876065)
-        self.assertEqual(sensor.get_frame_timestamp_us(1, FrameTimepoint.END), 1648597318907676)
+        self.assertEqual(sensor.get_frames_timestamps_us()[1], 1648597318840981)
+        self.assertEqual(sensor.get_closest_frame_index(1648597318840981), 1)
+        self.assertEqual(sensor.get_frame_timestamp_us(1, FrameTimepoint.START), 1648597318809370)
+        self.assertEqual(sensor.get_frame_timestamp_us(1, FrameTimepoint.END), 1648597318840981)
         self.assertIsNone(
             np.testing.assert_array_equal(
                 sensor.get_frame_T_rig_world(1, FrameTimepoint.START),
                 np.array(
                     [
-                        [0.9947504, 0.10225154, -0.0040356223, -0.0019506012],
-                        [-0.10201238, 0.9939906, 0.03970017, -6.9034667],
-                        [0.008070774, -0.039080076, 0.9992035, 0.40697458],
+                        [0.99424964, 0.10704328, -0.0030718392, -0.076306164],
+                        [-0.106761694, 0.9930536, 0.049461745, -7.226634],
+                        [0.008345049, -0.048849367, 0.9987713, 0.44463754],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
@@ -278,9 +284,9 @@ class TestData3Loader(unittest.TestCase):
                 sensor.get_frame_T_rig_world(1, FrameTimepoint.END),
                 np.array(
                     [
-                        [0.9948286, 0.10147619, -0.0043243, 0.012320286],
-                        [-0.10125569, 0.99420524, 0.036100592, -6.8392653],
-                        [0.007962593, -0.03547604, 0.9993388, 0.39667666],
+                        [0.9945132, 0.10455002, -0.0035738598, -0.03706818],
+                        [-0.104289405, 0.9935534, 0.044444963, -7.0616794],
+                        [0.008197542, -0.043828387, 0.99900544, 0.42632708],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
@@ -289,18 +295,18 @@ class TestData3Loader(unittest.TestCase):
         )
 
         # first frame in second shard
-        self.assertEqual(sensor.get_frames_timestamps_us()[4], 1648597319207656)
-        self.assertEqual(sensor.get_closest_frame_index(1648597319207656), 4)
-        self.assertEqual(sensor.get_frame_timestamp_us(4, FrameTimepoint.START), 1648597319176045)
-        self.assertEqual(sensor.get_frame_timestamp_us(4, FrameTimepoint.END), 1648597319207656)
+        self.assertEqual(sensor.get_frames_timestamps_us()[4], 1648597318940968)
+        self.assertEqual(sensor.get_closest_frame_index(1648597318940968), 4)
+        self.assertEqual(sensor.get_frame_timestamp_us(4, FrameTimepoint.START), 1648597318909357)
+        self.assertEqual(sensor.get_frame_timestamp_us(4, FrameTimepoint.END), 1648597318940968)
         self.assertIsNone(
             np.testing.assert_array_equal(
                 sensor.get_frame_T_rig_world(4, FrameTimepoint.START),
                 np.array(
                     [
-                        [0.99523276, 0.09743341, -0.0042961035, 0.057760954],
-                        [-0.097271085, 0.9948425, 0.028752342, -6.5305796],
-                        [0.007075385, -0.028197385, 0.99957734, 0.35440144],
+                        [0.99483097, 0.101455204, -0.004267634, 0.017603396],
+                        [-0.10123113, 0.9941819, 0.03680526, -6.8479548],
+                        [0.00797689, -0.036182996, 0.99931335, 0.39923683],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
@@ -312,9 +318,9 @@ class TestData3Loader(unittest.TestCase):
                 sensor.get_frame_T_rig_world(4, FrameTimepoint.END),
                 np.array(
                     [
-                        [0.9950211, 0.0995725, -0.0042855716, 0.04243073],
-                        [-0.09936843, 0.9944588, 0.034315955, -6.7014346],
-                        [0.00767875, -0.03371925, 0.99940187, 0.3853566],
+                        [0.9942722, 0.1068194, -0.003527579, -0.046103783],
+                        [-0.106572434, 0.9933853, 0.042753946, -7.170697],
+                        [0.008071195, -0.042133115, 0.9990794, 0.42358804],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
@@ -323,18 +329,18 @@ class TestData3Loader(unittest.TestCase):
         )
 
         # second frame in second shard
-        self.assertEqual(sensor.get_frames_timestamps_us()[5], 1648597319307655)
-        self.assertEqual(sensor.get_closest_frame_index(1648597319307655), 5)
-        self.assertEqual(sensor.get_frame_timestamp_us(5, FrameTimepoint.START), 1648597319276044)
-        self.assertEqual(sensor.get_frame_timestamp_us(5, FrameTimepoint.END), 1648597319307655)
+        self.assertEqual(sensor.get_frames_timestamps_us()[5], 1648597318974378)
+        self.assertEqual(sensor.get_closest_frame_index(1648597318974378), 5)
+        self.assertEqual(sensor.get_frame_timestamp_us(5, FrameTimepoint.START), 1648597318942767)
+        self.assertEqual(sensor.get_frame_timestamp_us(5, FrameTimepoint.END), 1648597318974378)
         self.assertIsNone(
             np.testing.assert_array_equal(
                 sensor.get_frame_T_rig_world(5, FrameTimepoint.START),
                 np.array(
                     [
-                        [0.9943467, 0.10613897, -0.0030333605, -0.056124102],
-                        [-0.105874814, 0.99323505, 0.04769315, -7.1737633],
-                        [0.008074942, -0.04710237, 0.99885744, 0.43693495],
+                        [0.9942395, 0.10712445, -0.0034844966, -0.049729396],
+                        [-0.1068763, 0.99333805, 0.04309232, -7.1890645],
+                        [0.008077525, -0.04247168, 0.99906504, 0.42497388],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
@@ -346,9 +352,9 @@ class TestData3Loader(unittest.TestCase):
                 sensor.get_frame_T_rig_world(5, FrameTimepoint.END),
                 np.array(
                     [
-                        [0.9942162, 0.107363395, -0.0026930906, -0.078172036],
-                        [-0.107098304, 0.9930072, 0.049665943, -7.2552214],
-                        [0.0080065625, -0.04909026, 0.99876225, 0.44165128],
+                        [0.9936502, 0.11248058, -0.0027105322, -0.11343657],
+                        [-0.11221362, 0.9924735, 0.049035087, -7.511807],
+                        [0.008205626, -0.048419565, 0.99879336, 0.44932508],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
@@ -357,18 +363,18 @@ class TestData3Loader(unittest.TestCase):
         )
 
         # first frame in third shard
-        self.assertEqual(sensor.get_frames_timestamps_us()[8], 1648597319607634)
-        self.assertEqual(sensor.get_closest_frame_index(1648597319607634), 8)
-        self.assertEqual(sensor.get_frame_timestamp_us(8, FrameTimepoint.START), 1648597319576023)
-        self.assertEqual(sensor.get_frame_timestamp_us(8, FrameTimepoint.END), 1648597319607634)
+        self.assertEqual(sensor.get_frames_timestamps_us()[8], 1648597319074372)
+        self.assertEqual(sensor.get_closest_frame_index(1648597319074372), 8)
+        self.assertEqual(sensor.get_frame_timestamp_us(8, FrameTimepoint.START), 1648597319042761)
+        self.assertEqual(sensor.get_frame_timestamp_us(8, FrameTimepoint.END), 1648597319074372)
         self.assertIsNone(
             np.testing.assert_array_equal(
                 sensor.get_frame_T_rig_world(8, FrameTimepoint.START),
                 np.array(
                     [
-                        [0.99609107, 0.088257425, -0.003639324, 0.06650393],
-                        [-0.088215396, 0.9960468, 0.010430551, -5.8018165],
-                        [0.0045455107, -0.010068734, 0.99993896, 0.23424523],
+                        [0.9942919, 0.106653325, -0.0029403504, -0.06390721],
+                        [-0.10646834, 0.99360436, 0.037614945, -7.0825877],
+                        [0.006933304, -0.037087183, 0.99928796, 0.38593167],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
@@ -380,9 +386,9 @@ class TestData3Loader(unittest.TestCase):
                 sensor.get_frame_T_rig_world(8, FrameTimepoint.END),
                 np.array(
                     [
-                        [0.9960127, 0.08913779, -0.0036360484, 0.053808965],
-                        [-0.08908242, 0.99593574, 0.013280461, -5.877899],
-                        [0.0048050615, -0.012903599, 0.9999052, 0.24700965],
+                        [0.9950704, 0.09910973, -0.0034858456, 0.011042176],
+                        [-0.09898916, 0.9947596, 0.025582034, -6.5709286],
+                        [0.006003007, -0.025110865, 0.99966663, 0.32437676],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
@@ -414,6 +420,7 @@ class TestData3Reload(unittest.TestCase):
             ref_calibration_type := "some-calibration-type",
             ref_egomotion_type := "some-egomotion-type",
             ref_sequence_id,
+            ref_generic_meta_data := {"some-meta": "data"},
             # always single-shard
             0,
             1,
@@ -603,6 +610,8 @@ class TestData3Reload(unittest.TestCase):
         ## Reload shard and verify consistency
         loader = ShardDataLoader([str(shard_path)])
 
+        self.assertEqual(loader.get_sequence_id(), ref_sequence_id)
+        self.assertEqual(loader.get_generic_meta_data(), ref_generic_meta_data)
         self.assertEqual(loader.get_calibration_type(), ref_calibration_type)
         self.assertEqual(loader.get_egomotion_type(), ref_egomotion_type)
 

@@ -100,6 +100,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
                 "scene-calib",
                 "deepmap",
                 f"{self.sequence_name}-{self.track_name}",
+                {},  # no generic sequence meta data
                 # always single-shard
                 0,
                 1,

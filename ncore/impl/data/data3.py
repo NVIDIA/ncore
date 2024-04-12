@@ -11,7 +11,7 @@ import concurrent.futures
 
 from types import SimpleNamespace
 from pathlib import Path
-from typing import Iterable, NamedTuple, Optional, Tuple, Union, Dict, List, Union
+from typing import Iterable, NamedTuple, Optional, Tuple, Union, Dict, List, Union, cast
 
 import numpy as np
 import zarr
@@ -45,6 +45,7 @@ class ContainerDataWriter:
         calibration_type: str,
         egomotion_type: str,
         sequence_id: str,
+        generic_meta_data: Dict[str, JsonLike],  # generic sequence meta-data (needs to be json-serializable)
         shard_id: int,
         shard_count: int,
         store_shard_meta: bool,
@@ -67,6 +68,7 @@ class ContainerDataWriter:
         self.output_container_path = self.output_dir_path / f"{self.container_name}.zarr.itar"
 
         self.sequence_id = sequence_id
+        self.generic_meta_data = generic_meta_data
         self.shard_id = shard_id
         self.shard_count = shard_count
 
@@ -87,6 +89,7 @@ class ContainerDataWriter:
                 "lidar_ids": self.lidar_ids,
                 "radar_ids": self.radar_ids,
                 "sequence_id": self.sequence_id,
+                "generic_meta_data": self.generic_meta_data,
                 "shard_id": self.shard_id,
                 "shard_count": self.shard_count,
             }
@@ -804,6 +807,14 @@ class ShardDataLoader:
                 shard_path, shard_root, shard_store = future.result()
 
                 shard_sequence_id = shard_root.attrs.get("sequence_id")
+                shard_generic_meta_data = cast(
+                    Optional[Dict[str, JsonLike]],
+                    shard_root.attrs.get(
+                        "generic_meta_data",
+                        # Backwards-compatibility for data that didn't store generic_meta_data
+                        None,
+                    ),
+                )
                 shard_camera_ids = set(shard_root.attrs.get("camera_ids"))
                 shard_lidar_ids = set(shard_root.attrs.get("lidar_ids"))
                 shard_radar_ids = set(shard_root.attrs.get("radar_ids"))
@@ -815,6 +826,7 @@ class ShardDataLoader:
 
                 if not shards_map:
                     self._sequence_id: str = shard_sequence_id
+                    self._generic_meta_data = shard_generic_meta_data
                     self._camera_ids: set[str] = shard_camera_ids
                     self._lidar_ids: set[str] = shard_lidar_ids
                     self._radar_ids: set[str] = shard_radar_ids
@@ -825,6 +837,8 @@ class ShardDataLoader:
 
                 if not self._sequence_id == shard_sequence_id:
                     raise ValueError("Can't load shards from different sequences")
+                if not self._generic_meta_data == shard_generic_meta_data:
+                    raise ValueError("Can't load shards with different generic meta data")
                 if not self._camera_ids == shard_camera_ids:
                     raise ValueError("Can't load shards with different camera sensors")
                 if not self._lidar_ids == shard_lidar_ids:
@@ -917,6 +931,11 @@ class ShardDataLoader:
         if with_shard_range:
             return f"{self._sequence_id}_{'_'.join([str(shard_id) for shard_id in self._shard_ids])}"
         return self._sequence_id
+
+    def get_generic_meta_data(self) -> Dict[str, JsonLike]:
+        """Returns generic sequence meta-data"""
+
+        return self._generic_meta_data if self._generic_meta_data else {}
 
     def get_calibration_type(self) -> str:
         """Provides access to a calibration type identifier of the loaded shard data"""
