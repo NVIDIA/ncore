@@ -105,6 +105,7 @@ class WaymoConverter(DataConverter):
             "waymo-calibration",
             "waymo-egomotion",
             sequence_name,
+            {},  # no generic sequence meta data
             # single shard
             0,
             1,

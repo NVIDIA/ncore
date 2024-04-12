@@ -95,6 +95,7 @@ class ChunkDataWriter:
             loader.get_calibration_type(),
             source_egomotion_type,
             container_name,
+            loader.get_generic_meta_data(),
             # always single-shard
             0,
             1,

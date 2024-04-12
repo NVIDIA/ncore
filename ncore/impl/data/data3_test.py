@@ -69,6 +69,9 @@ class TestData3Loader(unittest.TestCase):
                 "c9b05cf4-afb9-11ec-b3c2-00044bf65fcb_" + "_".join([str(shard_id) for shard_id in range(start, stop)]),
             )
 
+            # test data didn't store any generic meta data
+            self.assertEqual(loader.get_generic_meta_data(), {})
+
             self.assertEqual(loader.get_calibration_type(), "scene-calib")
             self.assertEqual(loader.get_egomotion_type(), "lidar-egomotion")
 
@@ -414,6 +417,7 @@ class TestData3Reload(unittest.TestCase):
             ref_calibration_type := "some-calibration-type",
             ref_egomotion_type := "some-egomotion-type",
             ref_sequence_id,
+            ref_generic_meta_data := {"some-meta": "data"},
             # always single-shard
             0,
             1,
@@ -603,6 +607,8 @@ class TestData3Reload(unittest.TestCase):
         ## Reload shard and verify consistency
         loader = ShardDataLoader([str(shard_path)])
 
+        self.assertEqual(loader.get_sequence_id(), ref_sequence_id)
+        self.assertEqual(loader.get_generic_meta_data(), ref_generic_meta_data)
         self.assertEqual(loader.get_calibration_type(), ref_calibration_type)
         self.assertEqual(loader.get_egomotion_type(), ref_egomotion_type)
 

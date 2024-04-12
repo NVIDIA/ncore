@@ -126,6 +126,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
             "scene-calib",
             egomotion_type,
             sequence_id,
+            {},  # no generic sequence meta data
             self.shard_id,
             self.shard_count,
             True,
