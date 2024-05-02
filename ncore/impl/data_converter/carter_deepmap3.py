@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import logging
-import os
+import re
 
 from pathlib import Path
 from typing import Optional
@@ -33,14 +33,55 @@ from ncore.impl.common.nvidia_utils import LabelProcessor, extract_pose
 from ncore.impl.av_utils import isWithin3DBBox
 
 
+def generate_sensor_ids(track_records: track_data_pb2.AlignedTrackRecords) -> tuple[list[str], list[str]]:
+    """
+    Generate a list of sensor IDs for cameras and a list of sensor IDs for lidars based on the given track records.
+
+    Args:
+        track_records: The track records containing the sensor information (camera and lidar records)
+
+    Returns:
+        A tuple containing a list of sensor IDs for cameras and a list of sensor IDs for lidars
+    """
+    camera_sensor_ids = [f"camera{record.sensor_id:02}" for record in track_records.camera_records]
+    lidar_sensor_ids = [f"lidar{record.sensor_id:02}" for record in track_records.lidar_records]
+    return camera_sensor_ids, lidar_sensor_ids
+
+
+def find_aligned_track_segment_files(directory: Path) -> list[Path]:
+    """
+    Searches the given directory for files that match the naming convention for aligned track records.
+
+    Args:
+        directory: The root directory to search for aligned_track proto file
+
+    Returns:
+        A list of file names that match the naming convention
+    """
+    # Define the pattern to match filenames based on the given naming convention
+    pattern = r"^aligned_track_records_segment_from(\d+)_to(\d+)\.pb\.txt$"
+
+    # Path object for the directory
+    dir_path = Path(directory)
+
+    # List to store filenames that match the naming convention
+    matching_files: list[Path] = []
+
+    # Loop through all files in the specified directory
+    for filename in dir_path.iterdir():
+        # Check if the filename matches the specified pattern
+        if re.match(pattern, filename.name):
+            matching_files.append(filename)
+
+    return matching_files
+
+
 class CarterDeepmapConverter(DataConverter):
     """
     NVIDIA-specific data converter (based on DeepMap tracks)
     """
 
     # Sensor specifications
-    CAMERA_SENSOR_IDS = ["camera00", "camera01"]
-    LIDAR_SENSOR_IDS = ["lidar00"]
     LIDAR_FILTER_MAX_DISTANCE_METERS = 150.0
 
     @dataclass
@@ -80,12 +121,36 @@ class CarterDeepmapConverter(DataConverter):
 
             self.logger.info(f"Processing track {self.track_name}")
 
+            pose_file_paths = find_aligned_track_segment_files(self.track_dir)
+            # TODO: extend support to extract multiple track-segments from a single track.
+            # Currently, we only support 1 aligned_track segment_file per track
+            if pose_file_paths:  # Check if the list is not empty
+                self.pose_file_path = pose_file_paths[0]
+                self.logger.info(f"Reading pose file {self.pose_file_path}")
+            else:
+                self.logger.warn(
+                    f"No aligned track record files found in directory {self.track_dir.name}; skipping track {self.track_name}"
+                )
+                continue  # Skip to next track directory
+
+            # Initialize the track aligned track record structure
+            self.track_data = track_data_pb2.AlignedTrackRecords()
+            # Read in the track record data from a proto file
+            # This includes camera_records and lidar_records (see track_record proto for more detail)
+            with open(self.pose_file_path, "r") as f:
+                text_format.Parse(f.read(), self.track_data)
+
+            # Generate sensor and camera ids from the dataset (information available in track_data)
+            self.camera_sensor_ids, self.lidar_sensor_ids = generate_sensor_ids(self.track_data)
+            self.logger.info(f"Camera IDs: { str(self.camera_sensor_ids)}")
+            self.logger.info(f"Lidar IDS: {str(self.lidar_sensor_ids)}")
+
             # ContainerDataWriter for all outputs (always single-shard)
             self.data_writer = ContainerDataWriter(
                 self.output_dir / f"{self.sequence_name}-{self.track_name}",
                 f"{self.sequence_name}-{self.track_name}",
-                self.get_active_camera_ids(self.CAMERA_SENSOR_IDS),
-                self.get_active_lidar_ids(self.LIDAR_SENSOR_IDS),
+                self.get_active_camera_ids(self.camera_sensor_ids),
+                self.get_active_lidar_ids(self.lidar_sensor_ids),
                 self.get_active_radar_ids([]),  # no radars yet
                 # TODO: parse these from the data
                 "carter",
@@ -97,16 +162,6 @@ class CarterDeepmapConverter(DataConverter):
                 1,
                 False,
             )
-
-            # Initialize the track aligned track record structure
-            self.track_data = track_data_pb2.AlignedTrackRecords()
-
-            # Read in the track record data from a proto file
-            # This includes camera_records and lidar_records (see track_record proto for more detail)
-            with open(
-                os.path.join(track_dir, "aligned_track_records_segment_from0_to18446744073709551615.pb.txt"), "r"
-            ) as f:
-                text_format.Parse(f.read(), self.track_data)
 
             # Extract all the lidar paths, timestamps and poses from the track record
             self.track_data = protobuf_to_dict(self.track_data)
@@ -156,13 +211,13 @@ class CarterDeepmapConverter(DataConverter):
 
         # Decode poses and sensor-specific data
         for sensor_id, sensor_record in zip(
-            CarterDeepmapConverter.LIDAR_SENSOR_IDS,
+            self.lidar_sensor_ids,
             self.track_data["lidar_records"],
         ):
             if sensor_id in self.data_writer.lidar_ids:
                 self.sensor_datas[sensor_id] = decode_record("lidar", sensor_record)
         for sensor_id, sensor_record in zip(
-            CarterDeepmapConverter.CAMERA_SENSOR_IDS,
+            self.camera_sensor_ids,
             self.track_data["camera_records"],
         ):
             if sensor_id in self.data_writer.camera_ids:
