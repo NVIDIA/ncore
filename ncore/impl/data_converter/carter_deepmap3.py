@@ -413,7 +413,7 @@ class CarterDeepmapConverter(DataConverter):
             T_camera_rig = sensor_data.extrinsics
 
             # Intrinsics
-            # Isaac Carter provides rectified images to NRE. So, we use projection matrix instead of camera matrix
+            # Isaac Carter provides rectified images, so we use projection matrix instead of camera matrix for the intrinsic camera model
             projection_matrix = np.array(sensor_data.intrinsics.projection_matrix.data, dtype=np.float32).reshape(
                 (3, 4)
             )
