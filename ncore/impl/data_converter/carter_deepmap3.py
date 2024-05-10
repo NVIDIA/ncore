@@ -413,14 +413,17 @@ class CarterDeepmapConverter(DataConverter):
             T_camera_rig = sensor_data.extrinsics
 
             # Intrinsics
-            camera_matrix = np.array(sensor_data.intrinsics.camera_matrix.data, dtype=np.float32).reshape((3, 3))
+            # Isaac Carter provides rectified images, so we use projection matrix instead of camera matrix for the intrinsic camera model
+            projection_matrix = np.array(sensor_data.intrinsics.projection_matrix.data, dtype=np.float32).reshape(
+                (3, 4)
+            )
             camera_model = OpenCVPinholeCameraModelParameters(
                 resolution=np.array(
                     [sensor_data.intrinsics.image_width, sensor_data.intrinsics.image_height], dtype=np.uint64
                 ),
                 shutter_type=ShutterType.GLOBAL,
-                principal_point=camera_matrix[:2, 2],
-                focal_length=camera_matrix[np.diag_indices(2)],
+                principal_point=projection_matrix[:2, 2],
+                focal_length=projection_matrix[:2, :2].diagonal(),
                 # Images are rectified already -> identity distortion
                 radial_coeffs=np.zeros((6,), dtype=np.float32),
                 tangential_coeffs=np.zeros((2,), dtype=np.float32),
