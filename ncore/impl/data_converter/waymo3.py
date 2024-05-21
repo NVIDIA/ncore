@@ -14,7 +14,7 @@ import tensorflow.compat.v1 as tf
 from waymo_open_dataset import dataset_pb2, label_pb2
 from waymo_open_dataset.protos import camera_segmentation_pb2  # type: ignore
 
-from ncore.impl.av_utils import isWithin3DBBox
+from ncore.impl.av_utils import isWithin3DBBoxes
 from ncore.impl.data.data3 import ContainerDataWriter, JsonLike
 from ncore.impl.data.types import (
     Poses,
@@ -428,7 +428,7 @@ class WaymoConverter(DataConverter):
                         bbox = frame_label.bbox3.to_array()
                         # enlarge the bounding box for the check *only*
                         bbox[3:6] += self.LIDAR_DYNAMIC_FLAG_BBOX_PADDING_METERS
-                        dynamic_flag[isWithin3DBBox(xyz_e, bbox.reshape(1, -1))] = DynamicFlagState.DYNAMIC.value
+                        dynamic_flag[isWithin3DBBoxes(xyz_e, bbox.reshape(1, -1))] = DynamicFlagState.DYNAMIC.value
 
                 # Serialize lidar frame
                 self.data_writer.store_lidar_frame(

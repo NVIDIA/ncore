@@ -1,4 +1,6 @@
-# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2024 NVIDIA CORPORATION.  All rights reserved.
+
+from typing import Optional
 
 import numpy as np
 
@@ -210,6 +212,73 @@ def transform_bbox(bbox_source: np.ndarray, T_source_target: np.ndarray) -> np.n
 
     # Convert back to bbox parametrization (dimensions stay unchanged)
     return pose_bbox(T_bbox_target, bbox_source[3:6])
+
+
+def is_within_3d_bbox(pc: np.ndarray, bbox: np.ndarray) -> np.ndarray:
+    """Checks whether points of a point-cloud are in a 3d box
+
+    [Reference implementation, consider faster C++ version in 'isWithin3DBBox']
+
+    Args:
+        pc: [N, 3] tensor. Inner dims are: [x, y, z].
+        bbox: [9,] tensor. Inner dims are: [center_x, center_y, center_z, length, width, height, roll, pitch, yaw].
+                        roll/pitch/yaw are in radians.
+    Returns:
+        point_in_bbox; [N,] boolean array.
+    """
+
+    center = bbox[0:3]
+    dim = bbox[3:6]
+    rotation_angles = bbox[6:9]
+
+    # Get the rotation matrix from the heading angle
+    rotation = R.from_euler("xyz", rotation_angles, degrees=False).as_matrix()
+
+    # [4, 4]
+    transform = so3_trans_2_se3(rotation, center)
+    # [4, 4]
+    transform = np.linalg.inv(transform)
+    # [3, 3]
+    rotation = transform[0:3, 0:3]
+    # [3]
+    translation = transform[0:3, 3]
+
+    # [M, 3]
+    points_in_box_frames = np.matmul(rotation, pc.transpose()).transpose() + translation
+
+    # [M, 3]
+    point_in_bbox = np.logical_and(
+        np.logical_and(points_in_box_frames <= dim * 0.5, points_in_box_frames >= -dim * 0.5),
+        np.all(np.not_equal(dim, 0), axis=-1, keepdims=True),
+    )
+
+    # [N]
+    point_in_bbox = np.prod(point_in_bbox, axis=-1).astype(bool)
+
+    return point_in_bbox
+
+
+def is_within_3d_bboxes(pc: np.ndarray, bboxes: np.ndarray) -> np.ndarray:
+    """Wrapper for is_within_3d_bbox to iterate on multiple boxes to be consistent with C++ version 'isWithin3DBBox' in av_utils
+
+    Args:
+        pc: [N, 3] tensor. Inner dims are: [x, y, z].
+        bboxes: [M, 9] tensor. Inner dims are: [center_x, center_y, center_z, length, width, height, roll, pitch, yaw].
+                        roll/pitch/yaw are in radians.
+    Returns:
+        point_in_bboxes; [N,M] boolean array.
+    """
+
+    assert pc.shape[1] == 3, "Wrong PC input size"
+    assert len(bboxes.shape) == 2, "bboxes need to be a 2D numpy array"
+    assert bboxes.shape[1] == 9, "bboxes need to be a 2D numpy array"
+
+    point_in_box = np.empty((pc.shape[0], bboxes.shape[0]), dtype=np.bool_)
+
+    for i, bbox in enumerate(bboxes):
+        point_in_box[:, i] = is_within_3d_bbox(pc, bbox)
+
+    return point_in_box
 
 
 def se3_inverse(T: np.ndarray) -> np.ndarray:
