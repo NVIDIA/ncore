@@ -16,11 +16,11 @@ Eigen::Quaternionf euler2Quaternion(const float roll, const float pitch, const f
     return q;
 }
 
-const char* isWithin3DBoundingBox_doc = R"igl_Qu8mg5v7(
+const char* isWithin3DBBoxes_doc = R"igl_Qu8mg5v7(
 Computes boolean array of point incidences relative to a list of bbboxes
 )igl_Qu8mg5v7";
-npe_function(_isWithin3DBoundingBox)
-npe_doc(isWithin3DBoundingBox_doc)
+npe_function(_isWithin3DBBoxes)
+npe_doc(isWithin3DBBoxes_doc)
 npe_arg(points, dense_float)
 npe_arg(bboxes, dense_float)
 npe_begin_code()

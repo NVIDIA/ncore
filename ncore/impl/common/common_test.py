@@ -1,4 +1,4 @@
-# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2024 NVIDIA CORPORATION.  All rights reserved.
 
 import time
 import tempfile
@@ -16,8 +16,8 @@ from ncore.impl.common.common import (
     uniform_subdivide_range,
     HalfClosedInterval,
 )
-from ncore.impl.common.transformations import so3_trans_2_se3
-from ncore.impl.av_utils import isWithin3DBBox
+from ncore.impl.common.transformations import is_within_3d_bbox, is_within_3d_bboxes
+from ncore.impl.av_utils import isWithin3DBBoxes
 
 
 def test_save_load_pkl():
@@ -86,61 +86,6 @@ class TestSaveLoadPCDat(unittest.TestCase):
 
 
 class TestIsWithin3DBBox(unittest.TestCase):
-    @staticmethod
-    def is_within_3d_bbox(points, box, normals=None, return_points_in_bbox_frame=False):
-        """Reference implementation: Checks whether a point is in a 3d box given a set of points and a box.
-        Args:
-            point: [N, 3] tensor. Inner dims are: [x, y, z].
-            box: [9,] tensor. Inner dims are: [center_x, center_y, center_z, length, width, height, roll, pitch, yaw].
-                            roll/pitch/yaw are in radians.
-        Returns:
-            point_in_box; [N,] boolean array.
-        """
-
-        center = box[0:3]
-        dim = box[3:6]
-        rotation_angles = box[6:9]
-
-        # Get the rotation matrix from the heading angle
-        rotation = R.from_euler("xyz", rotation_angles, degrees=False).as_matrix()
-
-        # [4, 4]
-        transform = so3_trans_2_se3(rotation, center)
-        # [4, 4]
-        transform = np.linalg.inv(transform)
-        # [3, 3]
-        rotation = transform[0:3, 0:3]
-        # [3]
-        translation = transform[0:3, 3]
-
-        # [M, 3]
-        points_in_box_frames = np.matmul(rotation, points.transpose()).transpose() + translation
-
-        # [M, 3]
-        point_in_box = np.logical_and(
-            np.logical_and(points_in_box_frames <= dim * 0.5, points_in_box_frames >= -dim * 0.5),
-            np.all(np.not_equal(dim, 0), axis=-1, keepdims=True),
-        )
-
-        # [N, M]
-        point_in_box = np.prod(point_in_box, axis=-1).astype(bool)
-
-        if not return_points_in_bbox_frame:
-            return point_in_box
-        else:
-            if normals is not None:
-                T_normals = np.linalg.inv(transform).transpose()
-
-                normals_in_bbox_frame = (
-                    np.matmul(T_normals[0:3, 0:3], normals[point_in_box, :].transpose()).transpose() + T_normals[0:3, 3]
-                )
-
-                return points_in_box_frames[point_in_box, :], normals_in_bbox_frame / np.linalg.norm(
-                    normals_in_bbox_frame, axis=1, keepdims=True
-                )
-            else:
-                return points_in_box_frames[point_in_box, :]
-
     def setUp(self):
 
         # Set the random seed
@@ -162,34 +107,37 @@ class TestIsWithin3DBBox(unittest.TestCase):
         for i in range(self.bboxes.shape[0]):
             self.assertTrue(
                 (
-                    self.is_within_3d_bbox(self.pc, self.bboxes[i, :])
-                    == isWithin3DBBox(self.pc, self.bboxes[i : i + 1, :])
+                    is_within_3d_bbox(self.pc, self.bboxes[i, :])
+                    == isWithin3DBBoxes(self.pc, self.bboxes[i : i + 1, :])
                 ).all()
             )
-            any_true = any_true or isWithin3DBBox(self.pc, self.bboxes[i : i + 1, :]).any()
+            any_true = any_true or isWithin3DBBoxes(self.pc, self.bboxes[i : i + 1, :]).any()
 
         self.assertTrue(any_true)
+
+        # test all bboxes in one go
+        self.assertTrue((is_within_3d_bboxes(self.pc, self.bboxes) == isWithin3DBBoxes(self.pc, self.bboxes)).all())
 
     def test_multi_bbox_processing(self):
         """Test to verify that processing all the boxes at once is the same as doing it one by one"""
         single_box = []
         for i in range(self.bboxes.shape[0]):
-            single_box.append(isWithin3DBBox(self.pc, self.bboxes[i : i + 1, :]).reshape(-1, 1))
+            single_box.append(isWithin3DBBoxes(self.pc, self.bboxes[i : i + 1, :]).reshape(-1, 1))
         single_box = np.concatenate(single_box, axis=1)
 
-        self.assertTrue((single_box == isWithin3DBBox(self.pc, self.bboxes)).all())
+        self.assertTrue((single_box == isWithin3DBBoxes(self.pc, self.bboxes)).all())
 
     def test_efficiency(self):
         """Test to verify that the cpp code is faster than python"""
 
         start_time_python = time.time()
         for i in range(self.bboxes.shape[0]):
-            self.is_within_3d_bbox(self.pc, self.bboxes[i, :])
+            is_within_3d_bbox(self.pc, self.bboxes[i, :])
         end_time_python = time.time()
         python_duration = end_time_python - start_time_python
 
         start_time_cpp = time.time()
-        isWithin3DBBox(self.pc, self.bboxes)
+        isWithin3DBBoxes(self.pc, self.bboxes)
         end_time_cpp = time.time()
         cpp_duration = end_time_cpp - start_time_cpp
 
@@ -205,13 +153,13 @@ class TestIsWithin3DBBox(unittest.TestCase):
         """Test to verify correct behavior on invalid input"""
 
         with self.assertRaises(ValueError):
-            isWithin3DBBox(self.pc.astype(np.float64), self.bboxes)
+            isWithin3DBBoxes(self.pc.astype(np.float64), self.bboxes)
 
         with self.assertRaises(ValueError):
-            isWithin3DBBox(self.pc, self.bboxes.astype(np.float64))
+            isWithin3DBBoxes(self.pc, self.bboxes.astype(np.float64))
 
         with self.assertRaises(AssertionError):
-            isWithin3DBBox(self.pc, self.bboxes[:, :6])
+            isWithin3DBBoxes(self.pc, self.bboxes[:, :6])
 
 
 def test_uniform_subdivide_range():
