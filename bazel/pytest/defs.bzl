@@ -5,7 +5,7 @@
 load("@rules_python//python:defs.bzl", "py_test")
 load("@pip_deps//:requirements.bzl", "requirement")
 load("@pip_deps_3_8//:requirements.bzl", requirement_3_8 = "requirement")
-load("@python//3.8:defs.bzl", py_test_3_8 = "py_test")
+load("@python_3_8//:defs.bzl", py_test_3_8 = "py_test")
 
 def pytest_test(name, srcs, deps = [], args = [], **kwargs):
     """
