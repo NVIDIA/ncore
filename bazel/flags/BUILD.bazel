@@ -10,4 +10,9 @@ bool_flag(
     build_setting_default = False,
 )
 
+bool_flag(
+    name = "av_utils",
+    build_setting_default = True,
+)
+
 bzlformat_pkg(name = "bzlformat")
