@@ -10,7 +10,7 @@ import hashlib
 import csv
 import re
 
-from typing import Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -749,23 +749,22 @@ def compute_fw_polynomial(intrinsic):
         """5th degree polynomial."""
         return b + x1 * x + x2 * (x**2) + x3 * (x**3) + x4 * (x**4) + x5 * (x**5)
 
-    match bw_poly_degree := len(intrinsic[4:]) - 1:
-        case 4:
-            # Fit a 4th degree polynomial
-            f = f4
-            bounds = (
-                [0, -np.inf, -np.inf, -np.inf, -np.inf],
-                [np.finfo(np.float64).eps, np.inf, np.inf, np.inf, np.inf],
-            )
-        case 5:
-            # Fit a 5th degree polynomial
-            f = f5
-            bounds = (
-                [0, -np.inf, -np.inf, -np.inf, -np.inf, -np.inf],
-                [np.finfo(np.float64).eps, np.inf, np.inf, np.inf, np.inf, np.inf],
-            )
-        case _:
-            raise ValueError(f"Unsupported polynomial degree {bw_poly_degree}")
+    if (bw_poly_degree := len(intrinsic[4:]) - 1) == 4:
+        # Fit a 4th degree polynomial
+        f = f4
+        bounds = (
+            [0, -np.inf, -np.inf, -np.inf, -np.inf],
+            [np.finfo(np.float64).eps, np.inf, np.inf, np.inf, np.inf],
+        )
+    elif bw_poly_degree == 5:
+        # Fit a 5th degree polynomial
+        f = f5
+        bounds = (
+            [0, -np.inf, -np.inf, -np.inf, -np.inf, -np.inf],
+            [np.finfo(np.float64).eps, np.inf, np.inf, np.inf, np.inf, np.inf],
+        )
+    else:
+        raise ValueError(f"Unsupported polynomial degree {bw_poly_degree}")
 
     # The constant in the polynomial should be zero, so add the `bounds` condition.
     coeffs, _ = curve_fit(f, x, y, bounds=bounds)
@@ -1020,8 +1019,8 @@ def load_maglev_dataset_id(sequence_path: Path) -> MaglevDatasetID:
 
 @multimethod
 def load_maglev_egomotion(
-    sequence_path: Path, sensors_calibration_data: dict[str, dict], egomotion_file_overwrite: Optional[Path] = None
-) -> Tuple[list[np.ndarray], list[int], str]:
+    sequence_path: Path, sensors_calibration_data: Dict[str, Dict], egomotion_file_overwrite: Optional[Path] = None
+) -> Tuple[List[np.ndarray], List[int], str]:
     """Parse a maglev-based egomotion data into timestamped global T_rig_worlds
 
     The NV maglev 'egomotion.json' / 'egomotion.jsonl' format has gone through a couple of iterations,
@@ -1096,7 +1095,7 @@ def load_maglev_egomotion(
 
 
 @load_maglev_egomotion.register
-def _(T_rig_sensors: dict[str, np.ndarray], egomotion_file: Path) -> Tuple[list[np.ndarray], list[int], str]:
+def _(T_rig_sensors: Dict[str, np.ndarray], egomotion_file: Path) -> Tuple[List[np.ndarray], List[int], str]:
     """Parse a maglev-based egomotion data into timestamped global T_rig_worlds"""
 
     # Variables we are parsing into
