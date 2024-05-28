@@ -165,15 +165,6 @@ load("//bazel/repo:repos.bzl", "register_repositories")
 register_repositories()
 
 ## bazel-starlib / buildifier
-http_archive(
-    name = "cgrindel_bazel_starlib",
-    sha256 = "c95de004f346cbcb51ba1185e8861227cd9ab248b53046f662aeda1095601bc9",
-    strip_prefix = "bazel-starlib-0.7.1",
-    urls = [
-        "http://github.com/cgrindel/bazel-starlib/archive/v0.7.1.tar.gz",
-    ],
-)
-
 load("@cgrindel_bazel_starlib//:deps.bzl", "bazel_starlib_dependencies")
 
 bazel_starlib_dependencies()
