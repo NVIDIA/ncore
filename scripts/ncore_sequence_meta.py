@@ -33,17 +33,21 @@ from ncore.impl.data.data3 import ShardDataLoader
     required=False,
 )
 @click.option("--open-consolidated/--no-open-consolidated", default=True, help="Pre-load shard meta-data?")
+@click.option("--debug", is_flag=True, default=False, help="Enables debug logging outputs")
 def ncore_sequence_meta(
     shard_file_pattern: str,
     shard_file_skip_suffixes: Tuple[str],
     output_dir: str,
     output_file: Optional[str],
     open_consolidated: bool,
+    debug: bool,
 ):
     """Summarizes and exports data-ranges within a virtual shard sequence"""
 
     # Initialize the logger
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(
+        level=logging.DEBUG if debug else logging.INFO,
+    )
     logger = logging.getLogger(__name__)
 
     loader = ShardDataLoader(
