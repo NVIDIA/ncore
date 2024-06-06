@@ -289,8 +289,12 @@ def se3_inverse(T: np.ndarray) -> np.ndarray:
     Out:
         (np array): inverse transformation [4,4]
     """
-    Rt = T[:3, :3].transpose()
-    return np.block([[Rt, -Rt @ T[:3, 3:]], [np.zeros((1, 3)), 1]])
+
+    ret = np.eye(4, dtype=T.dtype)
+    ret[:3, :3] = (Rt := T[:3, :3].transpose())
+    ret[:3, 3:] = -Rt @ T[:3, 3:]
+
+    return ret
 
 
 def local_ENU_2_ECEF_orientation(theta, phi):

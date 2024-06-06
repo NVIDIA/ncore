@@ -7,4 +7,9 @@ config_setting(
     flag_values = {"//bazel/flags:low_memory": "True"},
 )
 
+config_setting(
+    name = "av_utils",
+    flag_values = {"//bazel/flags:av_utils": "True"},
+)
+
 bzlformat_pkg(name = "bzlformat")

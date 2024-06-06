@@ -69,9 +69,13 @@ py_library(
         requirement("pandas"),  # for pyarrow::to_pandas()
         ":pylib_common",
         ":pylib_transformations",
-        "//ncore/impl/av_utils:pylib",
         "//ncore/impl/data:pylib_types",
-    ],
+    ] + select({
+        "@ncore_repo//bazel/conditions:av_utils": [
+            "//ncore/impl/av_utils:pylib",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 py_library(
