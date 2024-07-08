@@ -18,7 +18,7 @@ parameterized
 open3d
 tensorflow~=2.8.2 # required by open3d.ml.tf
 h5py
-zarr
+zarr>=2.17.0 # contains "Cache result of FSStore._fsspec_installed()" https://github.com/zarr-developers/zarr-python/pull/1581
 cbor2
 
 --find-links https://download.pytorch.org/whl/torch_stable.html
