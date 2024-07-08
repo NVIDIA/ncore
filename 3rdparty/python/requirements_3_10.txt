@@ -2194,7 +2194,7 @@ yacs==0.1.8 \
     # via
     #   detectron2
     #   fvcore
-zarr==2.13.3 \
-    --hash=sha256:883305e8ded972e25992269b0355436f11d7057b2943d278bf33cdcd2debfe2d \
-    --hash=sha256:db24b090616c638f65e33a6bc5d956d642221182961515ccbc28b17fb0d0b48c
+zarr==2.18.2 \
+    --hash=sha256:9bb393b8a0a38fb121dbb913b047d75db28de9890f6d644a217a73cf4ae74f47 \
+    --hash=sha256:a638754902f97efa99b406083fdc807a0e2ccf12a949117389d2a4ba9b05df38
     # via -r 3rdparty/python/requirements_3_10.in
