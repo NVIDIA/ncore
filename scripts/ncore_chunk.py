@@ -60,6 +60,8 @@ class ChunkDataWriter:
         source_egomotion_type: str,
         start_timestamp_us: int,
         end_timestamp_us: int,
+        camera_frame_step: int,
+        lidar_frame_step: int,
         # Dynamic-flag processing parameters
         dynamic_flag_parameters: DynamicFlagParameters,
         # Output specification
@@ -134,6 +136,15 @@ class ChunkDataWriter:
             # subselect frames
             source_frame_timestamps_us = camera_sensor.get_frames_timestamps_us()
             target_frames_range = pose_interval_us.cover_range(source_frame_timestamps_us)
+            target_frames = list(target_frames_range)
+            # source_frame_index_range = camera_sensor.get_frame_index_range(
+            #     start_frame_index=target_frames[0],step_frame_index=camera_frame_step,
+            # )
+            # target_frames = [
+            #     source_frame_idx for source_frame_idx in target_frames
+            #     if source_frame_idx in list(source_frame_index_range)
+            # ]
+            target_frames_range = range(target_frames[0], target_frames[-1] + 1, camera_frame_step)
 
             # store subselected frames
             chunk_frame_index = 0
@@ -199,6 +210,16 @@ class ChunkDataWriter:
             source_frame_timestamps_us = lidar_sensor.get_frames_timestamps_us()
             target_frames_range = pose_interval_us.cover_range(source_frame_timestamps_us)
 
+            target_frames = list(target_frames_range)
+            # source_frame_index_range = camera_sensor.get_frame_index_range(
+            #     start_frame_index=target_frames[0],step_frame_index=lidar_frame_step,
+            # )
+            # target_frames = [
+            #     source_frame_idx for source_frame_idx in target_frames
+            #     if source_frame_idx in list(source_frame_index_range)
+            # ]
+            target_frames_range = range(target_frames[0], target_frames[-1] + 1, lidar_frame_step)
+
             # extract labels from subselected frames
             for source_frame_idx in tqdm.tqdm(target_frames_range, desc="Frame Labels", leave=False):
 
@@ -242,6 +263,15 @@ class ChunkDataWriter:
             # subselect frames
             source_frame_timestamps_us = lidar_sensor.get_frames_timestamps_us()
             target_frames_range = pose_interval_us.cover_range(source_frame_timestamps_us)
+            target_frames = list(target_frames_range)
+            # source_frame_index_range = camera_sensor.get_frame_index_range(
+            #     start_frame_index=target_frames[0],step_frame_index=lidar_frame_step,
+            # )
+            # target_frames = [
+            #     source_frame_idx for source_frame_idx in target_frames
+            #     if source_frame_idx in list(source_frame_index_range)
+            # ]
+            target_frames_range = range(target_frames[0], target_frames[-1] + 1, lidar_frame_step)
 
             # store subselected frames
             chunk_frame_index = 0
@@ -441,6 +471,8 @@ def ncore_chunk(
     egomotion_type: str,
     start_timestamp_us: int,
     end_timestamp_us: int,
+    camera_frame_step: int = 1,
+    lidar_frame_step: int = 1,
 ) -> None:
     """Execute common components of chunk export"""
     # Output container name
@@ -466,6 +498,8 @@ def ncore_chunk(
         egomotion_type,
         start_timestamp_us,
         end_timestamp_us,
+        camera_frame_step,
+        lidar_frame_step,
         get_dynamic_flag_parameters(params.dynamic_flag_variant, loader),
         Path(params.output_dir),
         container_name,
@@ -549,8 +583,20 @@ def timestamps(ctx, start_timestamp_us: int | None, end_timestamp_us: int | None
     type=click.FloatRange(min=0.0, max_open=True),
     help="Restrict total duration of the dataset conversion (in seconds)",
 )
+@click.option(
+    "--camera-frame-step",
+    type=click.IntRange(min=1, max_open=True),
+    help="Frame step for camera subsampling during dataset conversion",
+)
+@click.option(
+    "--lidar-frame-step",
+    type=click.IntRange(min=1, max_open=True),
+    help="Frame step for lidar subsampling during dataset conversion",
+)
 @click.pass_context
-def offset(ctx, seek_sec: float | None, duration_sec: float | None) -> None:
+def offset(
+    ctx, seek_sec: float | None, duration_sec: float | None, camera_frame_step: int, lidar_frame_step: int
+) -> None:
     """Offset-based subrange selection"""
 
     params: CLIBaseParams = ctx.obj
@@ -565,7 +611,9 @@ def offset(ctx, seek_sec: float | None, duration_sec: float | None) -> None:
 
     start_timestamp_us, end_timestamp_us = time_bounds(poses.T_rig_world_timestamps_us.tolist(), seek_sec, duration_sec)
 
-    ncore_chunk(params, loader, poses, egomotion_type, start_timestamp_us, end_timestamp_us)
+    ncore_chunk(
+        params, loader, poses, egomotion_type, start_timestamp_us, end_timestamp_us, camera_frame_step, lidar_frame_step
+    )
 
 
 if __name__ == "__main__":
