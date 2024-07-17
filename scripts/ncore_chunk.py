@@ -36,7 +36,10 @@ class CLIBaseParams:
     no_radars: bool
     radar_ids: Tuple[str]
     egomotion_file: Optional[str]
-    debug: bool
+    camera_frame_step: int
+    lidar_frame_step: int
+    radar_frame_step: int
+    verbose: bool
 
 
 @dataclass(kw_only=True, slots=True, frozen=True)
@@ -60,6 +63,9 @@ class ChunkDataWriter:
         source_egomotion_type: str,
         start_timestamp_us: int,
         end_timestamp_us: int,
+        camera_frame_step: int,
+        lidar_frame_step: int,
+        radar_frame_step: int,
         # Dynamic-flag processing parameters
         dynamic_flag_parameters: DynamicFlagParameters,
         # Output specification
@@ -138,7 +144,7 @@ class ChunkDataWriter:
             # store subselected frames
             chunk_frame_index = 0
             chunk_frame_end_timestamps_us: list[int] = []
-            for source_frame_idx in tqdm.tqdm(target_frames_range, desc="Frames", leave=False):
+            for source_frame_idx in tqdm.tqdm(target_frames_range[::camera_frame_step], desc="Frames", leave=False):
                 timestamps_us = np.stack(
                     (
                         camera_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.START),
@@ -184,6 +190,59 @@ class ChunkDataWriter:
                 camera_sensor.get_generic_meta_data(),
             )
 
+        ## Process radars
+        for radar_id in tqdm.tqdm(radar_ids, desc="Radars"):
+            radar_sensor = loader.get_radar_sensor(radar_id)
+
+            # subselect frames
+            source_frame_timestamps_us = radar_sensor.get_frames_timestamps_us()
+            target_frames_range = pose_interval_us.cover_range(source_frame_timestamps_us)
+
+            # store subselected frames
+            chunk_frame_index = 0
+            chunk_frame_end_timestamps_us = []
+            for source_frame_idx in tqdm.tqdm(target_frames_range[::radar_frame_step], desc="Frames", leave=False):
+                timestamps_us = np.stack(
+                    (
+                        radar_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.START),
+                        radar_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.END),
+                    )
+                )
+
+                # allow skipping frames (usually at start / end of range due to mixed sensor / pose frequencies) in case they are not within egomotion time-range
+                if not pose_interpolator.in_range(timestamps_us):
+                    logging.warning(
+                        f"Skipping frame of radar {radar_id} as frame timestamps {timestamps_us} not "
+                        f"in egomotion time-range [{pose_interpolator.start_timestamp}-{pose_interpolator.start_timestamp}]"
+                    )
+                    continue
+
+                T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
+
+                data_writer.store_radar_frame(
+                    radar_id,
+                    chunk_frame_index,
+                    radar_sensor.get_frame_data(source_frame_idx, "xyz_s"),
+                    radar_sensor.get_frame_data(source_frame_idx, "xyz_e"),
+                    T_rig_worlds,
+                    timestamps_us,
+                    {
+                        name: radar_sensor.get_frame_generic_data(source_frame_idx, name)
+                        for name in radar_sensor.get_frame_generic_data_names(source_frame_idx)
+                    },
+                    radar_sensor.get_frame_generic_meta_data(source_frame_idx),
+                )
+
+                chunk_frame_index += 1
+                chunk_frame_end_timestamps_us.append(timestamps_us[1])
+
+            data_writer.store_radar_meta(
+                radar_id,
+                np.array(chunk_frame_end_timestamps_us, dtype=np.uint64),
+                radar_sensor.get_T_sensor_rig(),
+                radar_sensor.get_generic_meta_data(),
+            )
+
         ## Process lidars
 
         # Iterate once over all frames to collect surviving tracks / frame labels
@@ -200,7 +259,9 @@ class ChunkDataWriter:
             target_frames_range = pose_interval_us.cover_range(source_frame_timestamps_us)
 
             # extract labels from subselected frames
-            for source_frame_idx in tqdm.tqdm(target_frames_range, desc="Frame Labels", leave=False):
+            for source_frame_idx in tqdm.tqdm(
+                target_frames_range[::lidar_frame_step], desc="Frame Labels", leave=False
+            ):
 
                 source_frame_timestamp_us = int(source_frame_timestamps_us[source_frame_idx])
 
@@ -246,7 +307,7 @@ class ChunkDataWriter:
             # store subselected frames
             chunk_frame_index = 0
             chunk_frame_end_timestamps_us = []
-            for source_frame_idx in tqdm.tqdm(target_frames_range, desc="Frames", leave=False):
+            for source_frame_idx in tqdm.tqdm(target_frames_range[::lidar_frame_step], desc="Frames", leave=False):
                 timestamps_us = np.stack(
                     (
                         lidar_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.START),
@@ -418,7 +479,22 @@ def get_dynamic_flag_parameters(variant: str, loader: ShardDataLoader) -> Dynami
     help="If provided, overwrite egomotion poses with trajectory at file location (NV maglev pose format)",
     default=None,
 )
-@click.option("--debug", is_flag=True, default=False, help="Enables debug logging outputs")
+@click.option(
+    "--camera-frame-step",
+    type=click.IntRange(min=1, max_open=True),
+    help="Frame step for camera subsampling during dataset conversion",
+)
+@click.option(
+    "--lidar-frame-step",
+    type=click.IntRange(min=1, max_open=True),
+    help="Frame step for lidar subsampling during dataset conversion",
+)
+@click.option(
+    "--radar-frame-step",
+    type=click.IntRange(min=1, max_open=True),
+    help="Frame step for radar subsampling during dataset conversion",
+)
+@click.option("--verbose", is_flag=True, default=False, help="Enables debug logging outputs")
 @click.pass_context
 def cli(ctx, **kwargs) -> None:
     """Extracts a time-based subrange of data from NCore shards and outputs the data as a new shard"""
@@ -427,7 +503,7 @@ def cli(ctx, **kwargs) -> None:
 
     # Initialize basic top-level logger configuration
     logging.basicConfig(
-        level=logging.DEBUG if params.debug else logging.INFO,
+        level=logging.DEBUG if params.verbose else logging.INFO,
         format="<%(asctime)s|%(levelname)s|%(filename)s:%(lineno)d|%(name)s> %(message)s",
     )
 
@@ -466,6 +542,9 @@ def ncore_chunk(
         egomotion_type,
         start_timestamp_us,
         end_timestamp_us,
+        params.camera_frame_step,
+        params.lidar_frame_step,
+        params.radar_frame_step,
         get_dynamic_flag_parameters(params.dynamic_flag_variant, loader),
         Path(params.output_dir),
         container_name,
@@ -565,7 +644,14 @@ def offset(ctx, seek_sec: float | None, duration_sec: float | None) -> None:
 
     start_timestamp_us, end_timestamp_us = time_bounds(poses.T_rig_world_timestamps_us.tolist(), seek_sec, duration_sec)
 
-    ncore_chunk(params, loader, poses, egomotion_type, start_timestamp_us, end_timestamp_us)
+    ncore_chunk(
+        params,
+        loader,
+        poses,
+        egomotion_type,
+        start_timestamp_us,
+        end_timestamp_us,
+    )
 
 
 if __name__ == "__main__":
