@@ -190,6 +190,59 @@ class ChunkDataWriter:
                 camera_sensor.get_generic_meta_data(),
             )
 
+        ## Process radars
+        for radar_id in tqdm.tqdm(radar_ids, desc="Radars"):
+            radar_sensor = loader.get_radar_sensor(radar_id)
+
+            # subselect frames
+            source_frame_timestamps_us = radar_sensor.get_frames_timestamps_us()
+            target_frames_range = pose_interval_us.cover_range(source_frame_timestamps_us)
+
+            # store subselected frames
+            chunk_frame_index = 0
+            chunk_frame_end_timestamps_us = []
+            for source_frame_idx in tqdm.tqdm(target_frames_range[::radar_frame_step], desc="Frames", leave=False):
+                timestamps_us = np.stack(
+                    (
+                        radar_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.START),
+                        radar_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.END),
+                    )
+                )
+
+                # allow skipping frames (usually at start / end of range due to mixed sensor / pose frequencies) in case they are not within egomotion time-range
+                if not pose_interpolator.in_range(timestamps_us):
+                    logging.warning(
+                        f"Skipping frame of radar {radar_id} as frame timestamps {timestamps_us} not "
+                        f"in egomotion time-range [{pose_interpolator.start_timestamp}-{pose_interpolator.start_timestamp}]"
+                    )
+                    continue
+
+                T_rig_worlds = pose_interpolator.interpolate_to_timestamps(timestamps_us)
+
+                data_writer.store_radar_frame(
+                    radar_id,
+                    chunk_frame_index,
+                    radar_sensor.get_frame_data(source_frame_idx, "xyz_s"),
+                    radar_sensor.get_frame_data(source_frame_idx, "xyz_e"),
+                    T_rig_worlds,
+                    timestamps_us,
+                    {
+                        name: radar_sensor.get_frame_generic_data(source_frame_idx, name)
+                        for name in radar_sensor.get_frame_generic_data_names(source_frame_idx)
+                    },
+                    radar_sensor.get_frame_generic_meta_data(source_frame_idx),
+                )
+
+                chunk_frame_index += 1
+                chunk_frame_end_timestamps_us.append(timestamps_us[1])
+
+            data_writer.store_radar_meta(
+                radar_id,
+                np.array(chunk_frame_end_timestamps_us, dtype=np.uint64),
+                radar_sensor.get_T_sensor_rig(),
+                radar_sensor.get_generic_meta_data(),
+            )
+
         ## Process lidars
 
         # Iterate once over all frames to collect surviving tracks / frame labels
