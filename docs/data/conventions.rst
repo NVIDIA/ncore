@@ -141,7 +141,7 @@ dataset hierarchy [#f3]_:
       │   ⁞   │   │
       │   ⁞   │   ├── frame_labels (M,) object
       │   ⁞   │   │
-      │   ⁞   │   ├── dynamic_flag (N,) int8
+      │   ⁞   │   ├── dynamic_flag (N,) int8 [deprecated - see footnote 4]
       │   ⁞   │   ├── intensity (N,) float32
       │   ⁞   │   ├── timestamp_us (N,) uint64
       │   ⁞   │   ├── xyz_e (N, 3) float32
@@ -205,7 +205,7 @@ Lidar data contains the following columns:
 * ``dynamic_flag`` - dynamic flag (int8, [n]): ``-1`` if not evaluated,
   ``0`` for static points, and ``1`` for dynamic points. Note: points
   are classified as dynamic if the associated object-track is dynamic
-  at *any* point in time of the sequence
+  at *any* point in time of the sequence [deprecated [#f4]_]
 * ``timestamp_us`` - point timestamp in microseconds (uint64, [n])
 
 Radar data contains the following columns:
@@ -357,9 +357,7 @@ Annotation data is stored in a segmented format:
 * All observations of each unique track instance is stored in a
   session-wide format in the ``/labels/track_labels`` dataset by
   *references* to the individual sensor frames that are observing the
-  track's instance. An associated ``dynamic_flag`` indicates
-  if any of the time-associated instances are dynamic at *any*
-  point in time of the sequence
+  track's instance.
 * Individual time-associated instances of each track observation (e.g.,
   3D bounding boxes in lidar frames or 2D bounding boxes in camera
   frames) are stored in the per-frame meta data of each sensor's frame.
@@ -380,3 +378,5 @@ Annotation data is stored in a segmented format:
          also supports shard concatenation to reconstruct full source
          sequences.
 .. [#f3] Curly brackets denote optional data.
+.. [#f4] Deprecated property, might be available as generic frame
+         data still
