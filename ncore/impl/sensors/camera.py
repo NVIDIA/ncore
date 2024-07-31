@@ -817,7 +817,7 @@ class CameraModel(ABC):
             self.__unitquat_slerp(
                 R_sensor_world_s_quat.repeat(t.shape[0], 1), R_sensor_world_e_quat.repeat(t.shape[0], 1), t
             )
-        ).squeeze()  # [n_image_points, 3, 3]
+        )  # [n_image_points, 3, 3]
 
         world_ray_directions_rs = torch.bmm(R_sensor_world_rs, camera_rays[:, :, None]).squeeze(
             -1

@@ -404,8 +404,36 @@ class TestReferenceFThetaCamera(CommonTestCase):
 
         self._compareVector(pixel_rays, image_point_rays)
 
-    def test_return_all_projections(self):
+    def test_empty_single_pixels(self):
+        resolution = 1000
+        principalPoint = (resolution - 1) / 2
+        baseAngle = np.radians(35)
+        backwardPolynomial = _generateBackwardPolynomial(resolution, baseAngle, 4)
+        camera = ReferenceFThetaCamera([resolution, resolution], [principalPoint, principalPoint], backwardPolynomial)
 
+        ftheta_cam = ftheta_from_reference(camera, self.device, self.dtype)
+
+        def check(pixel_idxs: np.ndarray) -> None:
+            camera_rays = ftheta_cam.pixels_to_camera_rays(pixel_idxs.astype(np.int32)).cpu()
+
+            ftheta_cam.pixels_to_world_rays_shutter_pose(
+                pixel_idxs=pixel_idxs,
+                T_sensor_world_start=np.eye(4, 4, dtype=np.float32),
+                T_sensor_world_end=np.eye(4, 4, dtype=np.float32),
+                start_timestamp_us=0,
+                end_timestamp_us=10,
+                camera_rays=camera_rays,
+                return_T_world_sensors=True,
+                return_timestamps=True,
+            )
+
+        # single pixel
+        check(np.random.default_rng(seed=0).choice(resolution - 1, (1, 2)))
+
+        # no pixel
+        check(np.random.default_rng(seed=0).choice(resolution - 1, (0, 2)))
+
+    def test_return_all_projections(self):
         resolution = 1000
         principalPoint = (resolution - 1) / 2
         baseAngle = np.radians(5)
