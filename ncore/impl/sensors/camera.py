@@ -844,7 +844,9 @@ class CameraModel(ABC):
             ), "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
             return_var.timestamps_us = (
                 start_timestamp_us + torch.floor(t[..., None] * (end_timestamp_us - start_timestamp_us)).to(torch.int64)
-            ).squeeze()
+            ).squeeze(
+                -1
+            )  # [n_image_points]
 
         return return_var
 

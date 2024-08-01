@@ -404,7 +404,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
 
         self._compareVector(pixel_rays, image_point_rays)
 
-    def test_empty_single_pixels(self):
+    def test_empty_single_more_pixels(self):
         resolution = 1000
         principalPoint = (resolution - 1) / 2
         baseAngle = np.radians(35)
@@ -416,7 +416,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
         def check(pixel_idxs: np.ndarray) -> None:
             camera_rays = ftheta_cam.pixels_to_camera_rays(pixel_idxs.astype(np.int32)).cpu()
 
-            ftheta_cam.pixels_to_world_rays_shutter_pose(
+            world_rays = ftheta_cam.pixels_to_world_rays_shutter_pose(
                 pixel_idxs=pixel_idxs,
                 T_sensor_world_start=np.eye(4, 4, dtype=np.float32),
                 T_sensor_world_end=np.eye(4, 4, dtype=np.float32),
@@ -427,11 +427,22 @@ class TestReferenceFThetaCamera(CommonTestCase):
                 return_timestamps=True,
             )
 
+            assert len(world_rays.world_rays) == len(pixel_idxs)
+
+            assert world_rays.T_world_sensors is not None
+            assert len(world_rays.T_world_sensors) == len(pixel_idxs)
+
+            assert world_rays.timestamps_us is not None
+            assert len(world_rays.timestamps_us) == len(pixel_idxs)
+
         # single pixel
         check(np.random.default_rng(seed=0).choice(resolution - 1, (1, 2)))
 
         # no pixel
         check(np.random.default_rng(seed=0).choice(resolution - 1, (0, 2)))
+
+        # more pixel
+        check(np.random.default_rng(seed=0).choice(resolution - 1, (10, 2)))
 
     def test_return_all_projections(self):
         resolution = 1000
