@@ -15,6 +15,8 @@ from poisson_recon import reconstruct_surface
 from ncore.impl.common.transformations import transform_point_cloud
 from ncore.impl.data.data3 import ShardDataLoader, PointCloudSensor
 
+from scripts.util import get_dynamic_flag
+
 
 @click.command()
 @click.option(
@@ -137,11 +139,12 @@ def load_fused_pc(shard_file_pattern, sensor_id, max_dist=-1, start_frame=None, 
         dirs = transform_point_cloud(sensor.get_frame_data(frame_index, "xyz_s"), T_sensor_to_world) - points
         dists = np.linalg.norm(dirs, axis=1)
 
-        # Remove dynamic points
-        static_mask = (
-            sensor.get_frame_data(frame_index, "dynamic_flag") != 1
-        )  # If 1 the point belongs to a dynamic object. Otherwise it can be 0 (static) or -1 (undefined)
-        points, dirs, dists = points[static_mask], dirs[static_mask], dists[static_mask]
+        # Remove dynamic points if dynamic_flag is available
+        if (dynamic_flag := get_dynamic_flag(sensor, frame_index)) is not None:
+            static_mask = (
+                dynamic_flag != 1
+            )  # If 1 the point belongs to a dynamic object. Otherwise it can be 0 (static) or -1 (undefined)
+            points, dirs, dists = points[static_mask], dirs[static_mask], dists[static_mask]
 
         # Filter the points based on the maximum distance
         if max_dist > 0:

@@ -547,11 +547,13 @@ class TestData3Reload(unittest.TestCase):
             ref_lidar_xyz_e0 := np.random.rand(5, 3).astype(np.float32),
             ref_lidar_intensity0 := np.random.rand(5).astype(np.float32),
             ref_lidar_timestamp_us0 := np.array([1, 2, 3, 4, 5], dtype=np.uint64),
-            ref_lidar_dynamic_flag0 := np.random.rand(5).astype(np.int8),
             [],
             T_rig_worlds.astype(np.float32),
             T_rig_world_timestamps_us,
-            ref_lidar_generic_data0 := {"some-frame-data": np.random.rand(6, 3)},
+            ref_lidar_generic_data0 := {
+                "some-frame-data": np.random.rand(6, 3),
+                "dynamic_flag": np.random.rand(5).astype(np.int8),
+            },
             ref_lidar_generic_metadata0 := {"some-frame-meta-data": {"random-data": np.random.rand(6, 3).tolist()}},
         )
 
@@ -562,11 +564,13 @@ class TestData3Reload(unittest.TestCase):
             ref_lidar_xyz_e1 := np.random.rand(5, 3).astype(np.float32),
             ref_lidar_intensity1 := np.random.rand(5).astype(np.float32),
             ref_lidar_timestamp_us1 := np.array([1, 2, 3, 4, 5], dtype=np.uint64),
-            ref_lidar_dynamic_flag1 := np.random.rand(5).astype(np.int8),
             [],
             T_rig_worlds.astype(np.float32),
             T_rig_world_timestamps_us,
-            ref_lidar_generic_data1 := {"some-frame-data": np.random.rand(6, 3)},
+            ref_lidar_generic_data1 := {
+                "some-frame-data": np.random.rand(6, 3),
+                "dynamic_flag": np.random.rand(5).astype(np.int8),
+            },
             ref_lidar_generic_metadata1 := {"some-frame-meta-data": {"random-data": np.random.rand(6, 3).tolist()}},
         )
 
@@ -662,11 +666,11 @@ class TestData3Reload(unittest.TestCase):
         self.assertIsNone(
             np.testing.assert_array_equal(lidar_sensor.get_frame_data(0, "timestamp_us"), ref_lidar_timestamp_us0)
         )
-        self.assertIsNone(
-            np.testing.assert_array_equal(lidar_sensor.get_frame_data(0, "dynamic_flag"), ref_lidar_dynamic_flag0)
-        )
+        self.assertFalse(lidar_sensor.has_frame_data(0, "dynamic_flag"))  # deprecated property
         self.assertEqual(lidar_sensor.get_frame_generic_meta_data(0), ref_lidar_generic_metadata0)
-        self.assertEqual(names := lidar_sensor.get_frame_generic_data_names(0), list(ref_lidar_generic_data0.keys()))
+        self.assertEqual(
+            names := sorted(lidar_sensor.get_frame_generic_data_names(0)), sorted(list(ref_lidar_generic_data0.keys()))
+        )
         for name in names:
             self.assertIsNone(
                 np.testing.assert_array_equal(
@@ -682,11 +686,11 @@ class TestData3Reload(unittest.TestCase):
         self.assertIsNone(
             np.testing.assert_array_equal(lidar_sensor.get_frame_data(1, "timestamp_us"), ref_lidar_timestamp_us1)
         )
-        self.assertIsNone(
-            np.testing.assert_array_equal(lidar_sensor.get_frame_data(1, "dynamic_flag"), ref_lidar_dynamic_flag1)
-        )
+        self.assertFalse(lidar_sensor.has_frame_data(1, "dynamic_flag"))  # deprecated property
         self.assertEqual(lidar_sensor.get_frame_generic_meta_data(1), ref_lidar_generic_metadata1)
-        self.assertEqual(names := lidar_sensor.get_frame_generic_data_names(1), list(ref_lidar_generic_data1.keys()))
+        self.assertEqual(
+            names := sorted(lidar_sensor.get_frame_generic_data_names(1)), sorted(list(ref_lidar_generic_data1.keys()))
+        )
         for name in names:
             self.assertIsNone(
                 np.testing.assert_array_equal(

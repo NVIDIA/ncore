@@ -23,7 +23,7 @@ from ncore.impl.data.types import (
     OpenCVPinholeCameraModelParameters,
     OpenCVFisheyeCameraModelParameters,
 )
-from scripts.util import NPArrayParamType
+from scripts.util import NPArrayParamType, get_dynamic_flag
 from ncore.impl.sensors.camera import CameraModel
 from ncore.impl.data.util import padded_index_string
 from ncore.impl.common.common import average_camera_pose, save_pc_dat, PoseInterpolator, get_3d_bbox_coords
@@ -717,13 +717,17 @@ def ncore_to_ngp(
                     # Load relevant frame data for ray structure
                     xyz_s = transform_point_cloud(
                         lidar_sensor.get_frame_data(lidar_frame_idx, "xyz_s"), T_sensor_to_world
-                    )
+                    )  # N x 3
                     xyz_e = transform_point_cloud(
                         lidar_sensor.get_frame_data(lidar_frame_idx, "xyz_e"), T_sensor_to_world
-                    )
+                    )  # N x 3
                     dist = np.linalg.norm(xyz_s - xyz_e, axis=1)  # N x 1
-                    intensity = lidar_sensor.get_frame_data(lidar_frame_idx, "intensity")
-                    dynamic_flag = lidar_sensor.get_frame_data(lidar_frame_idx, "dynamic_flag")
+                    intensity = lidar_sensor.get_frame_data(lidar_frame_idx, "intensity")  # N x 1
+
+                    # dynamic_flag N x 1
+                    if (dynamic_flag := get_dynamic_flag(lidar_sensor, lidar_frame_idx)) is None:
+                        # Fallback to not-available
+                        dynamic_flag = np.full_like(intensity, -1, dtype=np.int8)
 
                     # Assemble full point-cloud ray structure
                     point_cloud = np.column_stack((xyz_s, xyz_e, dist, intensity, dynamic_flag))

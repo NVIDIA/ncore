@@ -343,14 +343,14 @@ class ChunkDataWriter:
                     xyz_e,
                     lidar_sensor.get_frame_data(source_frame_idx, "intensity"),
                     lidar_sensor.get_frame_data(source_frame_idx, "timestamp_us"),
-                    dynamic_flag,
                     frame_labels,
                     T_rig_worlds,
                     timestamps_us,
                     {
                         name: lidar_sensor.get_frame_generic_data(source_frame_idx, name)
                         for name in lidar_sensor.get_frame_generic_data_names(source_frame_idx)
-                    },
+                    }
+                    | {"dynamic_flag": dynamic_flag.astype(np.int8)},
                     lidar_sensor.get_frame_generic_meta_data(source_frame_idx),
                 )
 

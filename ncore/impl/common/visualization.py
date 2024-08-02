@@ -107,8 +107,8 @@ class LabelVisualizer:
         frame_id: int,
         xyz: np.ndarray,
         intensity: np.ndarray,
-        dynamic_flag: np.ndarray,
         timestamp: np.ndarray,
+        dynamic_flag: Optional[np.ndarray],
         semantic_class: Optional[np.ndarray],
     ) -> None:
         """Adds a single lidar point cloud to the visualizer (V3 data)"""
@@ -117,7 +117,6 @@ class LabelVisualizer:
             "name": str(frame_id),
             "points": xyz.astype(np.float32),
             "intensity": intensity.astype(np.float32),
-            "dynamic_flag": dynamic_flag,
         }
 
         # normalize timestamps to floating point [0,1]
@@ -127,6 +126,9 @@ class LabelVisualizer:
 
         if semantic_class is not None:
             pc["semantic_class"] = semantic_class
+
+        if dynamic_flag is not None:
+            pc["dynamic_flag"] = dynamic_flag
 
         self.data.append(pc)
 
