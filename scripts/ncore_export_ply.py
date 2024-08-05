@@ -14,6 +14,8 @@ from ncore.impl.common.transformations import transform_point_cloud
 from ncore.impl.data.data3 import ShardDataLoader, LidarSensor, PointCloudSensor
 from ncore.impl.data.util import padded_index_string
 
+from scripts.util import get_dynamic_flag
+
 
 @click.command()
 @click.option(
@@ -80,8 +82,12 @@ def ncore_export_ply(
             sensor.get_frame_data(frame_index, "xyz_s"), T_sensor_target
         )
         if isinstance(sensor, LidarSensor):
+            # intensity N x 1
             pc.vertex_data.custom_attributes["intensity"] = sensor.get_frame_data(frame_index, "intensity")
-            pc.vertex_data.custom_attributes["dynamic_flag"] = sensor.get_frame_data(frame_index, "dynamic_flag")
+
+            # conditional dynamic_flag N x 1
+            if (dynamic_flag := get_dynamic_flag(sensor, frame_index)) is not None:
+                pc.vertex_data.custom_attributes["dynamic_flag"] = dynamic_flag
 
             # Compute offset in "inverse" fashion to prevent wrapping around zero for uint64
             negative_offset_timestamp = (

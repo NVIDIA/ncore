@@ -438,11 +438,11 @@ class WaymoConverter(DataConverter):
                     xyz_e,
                     intensity,
                     point_timestamps_us,
-                    dynamic_flag,
                     frame_labels,
                     T_rig_worlds,
                     timestamps_us,
                     {
+                        "dynamic_flag": dynamic_flag.astype(np.int8),  # N
                         # primary ray data
                         "elongation": elongation.reshape(-1).astype(np.float32),  # N
                         "range_image_indices": range_image_indices.reshape((-1, 2)).astype(

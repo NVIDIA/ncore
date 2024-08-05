@@ -719,11 +719,10 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
                     xyz_e,
                     intensity,
                     timestamp,
-                    dynamic_flag,
                     frame_labels,
                     T_rig_worlds,
                     timestamps_us,
-                    {},
+                    {"dynamic_flag": dynamic_flag.astype(np.int8)},
                     {},
                 )
 

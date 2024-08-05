@@ -27,6 +27,7 @@ py_library(
     deps = [
         requirement("numpy"),
         requirement("click"),
+        "//ncore/impl/data:pylib_data",
     ],
 )
 
@@ -126,6 +127,7 @@ py_binary(
         requirement("numpy"),
         requirement("click"),
         requirement("tqdm"),
+        ":pylib_util",
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_data",
         "//ncore/impl/data:pylib_util",
@@ -237,6 +239,7 @@ py_binary(
         requirement("click"),
         requirement("tqdm"),
         requirement("point-cloud-utils"),
+        ":pylib_util",
         "//3rdparty/poisson_recon:pylib",
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_data",
@@ -251,6 +254,7 @@ py_binary(
     deps = [
         requirement("click"),
         requirement("tqdm"),
+        ":pylib_util",
         "//ncore/impl/common:pylib_visualization",
         "//ncore/impl/data:pylib_data",
     ],

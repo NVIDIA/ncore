@@ -275,7 +275,6 @@ class ContainerDataWriter:
         xyz_e: np.ndarray,
         intensity: np.ndarray,
         timestamp_us: np.ndarray,
-        dynamic_flag: np.ndarray,
         # label data
         frame_labels: List[types.FrameLabel3],
         # poses
@@ -323,10 +322,6 @@ class ContainerDataWriter:
         assert timestamp_us.shape == (num_points,)
         assert timestamp_us.dtype == np.dtype("uint64")
         frame_group.create_dataset("timestamp_us", data=timestamp_us)
-
-        assert dynamic_flag.shape == (num_points,)
-        assert dynamic_flag.dtype == np.dtype("int8")
-        frame_group.create_dataset("dynamic_flag", data=dynamic_flag)
 
         # Store pose data
         frame_group.create_dataset("T_rig_worlds", data=T_rig_worlds)
