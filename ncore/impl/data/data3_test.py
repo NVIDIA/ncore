@@ -84,7 +84,7 @@ class TestData3Loader(unittest.TestCase):
 
             # check global tracks API
             tracks = loader.get_tracks()
-            self.assertEqual(len(tracks.track_labels), 40)
+            self.assertEqual(len(tracks.track_labels), 32)
 
         # check all shard slice variants
         for stop in range(1, len(self.all_shards) + 1):
@@ -110,7 +110,8 @@ class TestData3Loader(unittest.TestCase):
             self.assertTrue(lidar_sensor.has_frame_data(frame_index, "xyz_e"))
             self.assertTrue(lidar_sensor.has_frame_data(frame_index, "intensity"))
             self.assertTrue(lidar_sensor.has_frame_data(frame_index, "timestamp_us"))
-            self.assertTrue(lidar_sensor.has_frame_data(frame_index, "dynamic_flag"))
+            self.assertFalse(lidar_sensor.has_frame_data(frame_index, "dynamic_flag"))  # deprecated property
+            self.assertTrue(lidar_sensor.has_frame_generic_data(frame_index, "dynamic_flag"))
             self.assertFalse(lidar_sensor.has_frame_data(frame_index, "foo"))
 
             point_count = lidar_sensor.get_frame_data(frame_index, "xyz_e").shape[0]
@@ -120,15 +121,21 @@ class TestData3Loader(unittest.TestCase):
             )
             self.assertEqual(len(lidar_sensor.get_frame_data(frame_index, "intensity")), point_count)
             self.assertEqual(len(lidar_sensor.get_frame_data(frame_index, "timestamp_us")), point_count)
-            self.assertEqual(len(lidar_sensor.get_frame_data(frame_index, "dynamic_flag")), point_count)
+            self.assertEqual(len(lidar_sensor.get_frame_generic_data(frame_index, "dynamic_flag")), point_count)
 
-            self.assertGreater(
-                len(lidar_sensor.get_frame_labels(frame_index)), 0, f"no labels for lidar frame {frame_index}"
-            )
+            if (
+                frame_index
+                not in
+                # skip frames without labels
+                [7]
+            ):
+                self.assertGreater(
+                    len(lidar_sensor.get_frame_labels(frame_index)), 0, f"no labels for lidar frame {frame_index}"
+                )
 
             # We currently don't store generic frame data in NV data
             self.assertEqual(lidar_sensor.get_frame_generic_meta_data(frame_index), {})
-            self.assertEqual(lidar_sensor.get_frame_generic_data_names(frame_index), [])
+            self.assertEqual(lidar_sensor.get_frame_generic_data_names(frame_index), ["dynamic_flag"])
             self.assertFalse(lidar_sensor.has_frame_generic_data(frame_index, "nonexisting"))
             self.assertRaises(ValueError, lidar_sensor.get_frame_generic_data, frame_index, "nonexisting")
 
@@ -210,9 +217,9 @@ class TestData3Loader(unittest.TestCase):
         # first frame in first shard
         reference_T_rig_world_0_start = np.array(
             [
-                [0.9966336, 0.0819398, -0.0027226843, -0.06672776],
-                [-0.08177382, 0.9959, 0.038681187, -5.527364],
-                [0.00588105, -0.038328324, 0.9992479, 0.34190598],
+                [0.99651974, 0.0833199, -0.0024925137, -0.09059321],
+                [-0.08314237, 0.99565256, 0.041991536, -5.618675],
+                [0.0059804083, -0.041638162, 0.9991149, 0.3536863],
                 [0.0, 0.0, 0.0, 1.0],
             ],
             dtype=np.float32,
@@ -250,9 +257,9 @@ class TestData3Loader(unittest.TestCase):
                 sensor.get_frame_T_rig_world(0, FrameTimepoint.END),
                 np.array(
                     [
-                        [0.9942354, 0.10717609, -0.003044726, -0.07839771],
-                        [-0.10689344, 0.9930261, 0.04972909, -7.2354264],
-                        [0.008353262, -0.04911696, 0.9987581, 0.44561356],
+                        [0.9940543, 0.108851776, -0.002702877, -0.107448034],
+                        [-0.10855045, 0.9926371, 0.05374367, -7.3465524],
+                        [0.00853307, -0.05313073, 0.99855113, 0.45992938],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
@@ -270,9 +277,9 @@ class TestData3Loader(unittest.TestCase):
                 sensor.get_frame_T_rig_world(1, FrameTimepoint.START),
                 np.array(
                     [
-                        [0.99424964, 0.10704328, -0.0030718392, -0.076306164],
-                        [-0.106761694, 0.9930536, 0.049461745, -7.226634],
-                        [0.008345049, -0.048849367, 0.9987713, 0.44463754],
+                        [0.994072, 0.108689055, -0.0027365193, -0.10483271],
+                        [-0.1083891, 0.99267316, 0.05340203, -7.33575],
+                        [0.008520685, -0.052788854, 0.99856937, 0.4586895],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
@@ -284,9 +291,9 @@ class TestData3Loader(unittest.TestCase):
                 sensor.get_frame_T_rig_world(1, FrameTimepoint.END),
                 np.array(
                     [
-                        [0.9945132, 0.10455002, -0.0035738598, -0.03706818],
-                        [-0.104289405, 0.9935534, 0.044444963, -7.0616794],
-                        [0.008197542, -0.043828387, 0.99900544, 0.42632708],
+                        [0.9943994, 0.10563379, -0.0033572735, -0.055768613],
+                        [-0.105360806, 0.9933232, 0.046990618, -7.133101],
+                        [0.008298654, -0.046373717, 0.9988897, 0.43542957],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
@@ -304,9 +311,9 @@ class TestData3Loader(unittest.TestCase):
                 sensor.get_frame_T_rig_world(4, FrameTimepoint.START),
                 np.array(
                     [
-                        [0.99483097, 0.101455204, -0.004267634, 0.017603396],
-                        [-0.10123113, 0.9941819, 0.03680526, -6.8479548],
-                        [0.00797689, -0.036182996, 0.99931335, 0.39923683],
+                        [0.9947975, 0.10178284, -0.004263375, 0.008754347],
+                        [-0.10156045, 0.99415636, 0.036586877, -6.863315],
+                        [0.007962378, -0.035963543, 0.9993214, 0.40074944],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
@@ -318,9 +325,9 @@ class TestData3Loader(unittest.TestCase):
                 sensor.get_frame_T_rig_world(4, FrameTimepoint.END),
                 np.array(
                     [
-                        [0.9942722, 0.1068194, -0.003527579, -0.046103783],
-                        [-0.106572434, 0.9933853, 0.042753946, -7.170697],
-                        [0.008071195, -0.042133115, 0.9990794, 0.42358804],
+                        [0.9941264, 0.10816693, -0.0035539374, -0.08399431],
+                        [-0.107923664, 0.993271, 0.042014558, -7.2351894],
+                        [0.008074609, -0.041384228, 0.9991107, 0.43077266],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
@@ -338,9 +345,9 @@ class TestData3Loader(unittest.TestCase):
                 sensor.get_frame_T_rig_world(5, FrameTimepoint.START),
                 np.array(
                     [
-                        [0.9942395, 0.10712445, -0.0034844966, -0.049729396],
-                        [-0.1068763, 0.99333805, 0.04309232, -7.1890645],
-                        [0.008077525, -0.04247168, 0.99906504, 0.42497388],
+                        [0.994087, 0.10853001, -0.0035125145, -0.089272685],
+                        [-0.10828564, 0.9932185, 0.042323276, -7.2563534],
+                        [0.00808204, -0.041692663, 0.9990978, 0.4324813],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
@@ -352,9 +359,9 @@ class TestData3Loader(unittest.TestCase):
                 sensor.get_frame_T_rig_world(5, FrameTimepoint.END),
                 np.array(
                     [
-                        [0.9936502, 0.11248058, -0.0027105322, -0.11343657],
-                        [-0.11221362, 0.9924735, 0.049035087, -7.511807],
-                        [0.008205626, -0.048419565, 0.99879336, 0.44932508],
+                        [0.9933726, 0.11490519, -0.0027662509, -0.18202133],
+                        [-0.114643395, 0.9922587, 0.047744706, -7.6282277],
+                        [0.008230952, -0.04711115, 0.99885577, 0.4625045],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
@@ -372,9 +379,9 @@ class TestData3Loader(unittest.TestCase):
                 sensor.get_frame_T_rig_world(8, FrameTimepoint.START),
                 np.array(
                     [
-                        [0.9942919, 0.106653325, -0.0029403504, -0.06390721],
-                        [-0.10646834, 0.99360436, 0.037614945, -7.0825877],
-                        [0.006933304, -0.037087183, 0.99928796, 0.38593167],
+                        [0.99407494, 0.10865563, -0.0029973236, -0.116565935],
+                        [-0.10847275, 0.9934174, 0.036817934, -7.1801877],
+                        [0.0069780694, -0.036274657, 0.99931747, 0.39714238],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
@@ -386,9 +393,9 @@ class TestData3Loader(unittest.TestCase):
                 sensor.get_frame_T_rig_world(8, FrameTimepoint.END),
                 np.array(
                     [
-                        [0.9950704, 0.09910973, -0.0034858456, 0.011042176],
-                        [-0.09898916, 0.9947596, 0.025582034, -6.5709286],
-                        [0.006003007, -0.025110865, 0.99966663, 0.32437676],
+                        [0.99496245, 0.100186095, -0.0035222045, -0.012373716],
+                        [-0.10006499, 0.994655, 0.025464071, -6.625067],
+                        [0.0060545243, -0.024983346, 0.99966955, 0.33072114],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                     dtype=np.float32,
