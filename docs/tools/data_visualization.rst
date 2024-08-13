@@ -39,7 +39,7 @@ enabling label verification relative to the point-cloud sensor.
 
 Example invocation::
 
-    bazel run //scripts:ncore_project_pc_to_img \
+    bazel run //scripts:ncore_visualize_labels \
         -- \
         --shard-file-pattern=<SHARD_FILE_PATTERN>
 
