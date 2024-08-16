@@ -14,7 +14,7 @@ NOTE: This codebase is under active development and the APIs may thus still chan
 In addition to nvidia drivers / cuda runtime (>11.1), the following system packages should be installed to build the project:
 
 ```
-sudo apt-get install gcc g++ clang libgl1 xz-utils
+sudo apt-get install gcc g++ clang libgl1 xz-utils jupyter-nbconvert
 ```
 
 Alternatively, builds can be executed within the `gitlab-master.nvidia.com:5005/toronto_dl_lab/ncore:dev` docker image, which has these packages pre-installed.
