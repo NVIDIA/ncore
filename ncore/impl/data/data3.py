@@ -288,7 +288,7 @@ class ContainerDataWriter:
         assert xyz_e.ndim == 2
         assert xyz_e.shape[1] == 3
         assert xyz_e.dtype == np.dtype("float32")
-        num_points = xyz_e.shape[0]
+        point_count = xyz_e.shape[0]
 
         assert T_rig_worlds.shape == (2, 4, 4)
         assert T_rig_worlds.dtype == np.dtype("float32")
@@ -302,6 +302,8 @@ class ContainerDataWriter:
         )
 
         # Store frame data
+        frame_group.attrs.put({"point_count": point_count})
+
         frame_group.create_dataset("xyz_e", data=xyz_e)
 
         frame_group.create_dataset(
@@ -311,15 +313,15 @@ class ContainerDataWriter:
             object_codec=numcodecs.JSON(),
         )
 
-        assert xyz_s.shape == (num_points, 3)
+        assert xyz_s.shape == (point_count, 3)
         assert xyz_s.dtype == np.dtype("float32")
         frame_group.create_dataset("xyz_s", data=xyz_s)
 
-        assert intensity.shape == (num_points,)
+        assert intensity.shape == (point_count,)
         assert intensity.dtype == np.dtype("float32")
         frame_group.create_dataset("intensity", data=intensity)
 
-        assert timestamp_us.shape == (num_points,)
+        assert timestamp_us.shape == (point_count,)
         assert timestamp_us.dtype == np.dtype("uint64")
         frame_group.create_dataset("timestamp_us", data=timestamp_us)
 
@@ -378,7 +380,7 @@ class ContainerDataWriter:
         assert xyz_e.ndim == 2
         assert xyz_e.shape[1] == 3
         assert xyz_e.dtype == np.dtype("float32")
-        num_points = xyz_e.shape[0]
+        point_count = xyz_e.shape[0]
 
         assert T_rig_worlds.shape == (2, 4, 4)
         assert T_rig_worlds.dtype == np.dtype("float32")
@@ -392,9 +394,11 @@ class ContainerDataWriter:
         )
 
         # Store frame data
+        frame_group.attrs.put({"point_count": point_count})
+
         frame_group.create_dataset("xyz_e", data=xyz_e)
 
-        assert xyz_s.shape == (num_points, 3)
+        assert xyz_s.shape == (point_count, 3)
         assert xyz_s.dtype == np.dtype("float32")
         frame_group.create_dataset("xyz_s", data=xyz_s)
 
@@ -693,6 +697,19 @@ class PointCloudSensor(Sensor):
         """Returns frame-data for a specific frame and name"""
 
         return self._get_frame_group(continuous_frame_index)[name][()]
+
+    def get_frame_point_count(self, continuous_frame_index: int) -> int:
+        """Returns the number points for a specific frame"""
+
+        frame_group = self._get_frame_group(continuous_frame_index)
+        if (point_count := frame_group.attrs.get("point_count")) is not None:
+            # point count stored explicitly in meta data
+            return point_count
+
+        # legacy data: fall-back to zarr.Array size (meta-data, doesn't require decoding)
+        # of a well-known frame data property ('xyz_e' exists for both lidar and
+        # radar point cloud sensors)
+        return len(frame_group["xyz_e"])
 
 
 class LidarSensor(PointCloudSensor):

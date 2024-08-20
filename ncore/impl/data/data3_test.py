@@ -122,6 +122,7 @@ class TestData3Loader(unittest.TestCase):
             self.assertEqual(len(lidar_sensor.get_frame_data(frame_index, "intensity")), point_count)
             self.assertEqual(len(lidar_sensor.get_frame_data(frame_index, "timestamp_us")), point_count)
             self.assertEqual(len(lidar_sensor.get_frame_generic_data(frame_index, "dynamic_flag")), point_count)
+            self.assertEqual(lidar_sensor.get_frame_point_count(frame_index), point_count)
 
             if (
                 frame_index
@@ -567,10 +568,10 @@ class TestData3Reload(unittest.TestCase):
         writer.store_lidar_frame(
             ref_lidar_id,
             1,
-            ref_lidar_xyz_s1 := np.random.rand(5, 3).astype(np.float32),
-            ref_lidar_xyz_e1 := np.random.rand(5, 3).astype(np.float32),
-            ref_lidar_intensity1 := np.random.rand(5).astype(np.float32),
-            ref_lidar_timestamp_us1 := np.array([1, 2, 3, 4, 5], dtype=np.uint64),
+            ref_lidar_xyz_s1 := np.random.rand(4, 3).astype(np.float32),
+            ref_lidar_xyz_e1 := np.random.rand(4, 3).astype(np.float32),
+            ref_lidar_intensity1 := np.random.rand(4).astype(np.float32),
+            ref_lidar_timestamp_us1 := np.array([1, 2, 3, 4], dtype=np.uint64),
             [],
             T_rig_worlds.astype(np.float32),
             T_rig_world_timestamps_us,
@@ -608,8 +609,8 @@ class TestData3Reload(unittest.TestCase):
         writer.store_radar_frame(
             ref_radar_id,
             1,
-            ref_radar_xyz_s1 := np.random.rand(5, 3).astype(np.float32),
-            ref_radar_xyz_e1 := np.random.rand(5, 3).astype(np.float32),
+            ref_radar_xyz_s1 := np.random.rand(4, 3).astype(np.float32),
+            ref_radar_xyz_e1 := np.random.rand(4, 3).astype(np.float32),
             T_rig_worlds.astype(np.float32),
             T_rig_world_timestamps_us,
             ref_radar_generic_data1 := {"some-frame-data": np.random.rand(6, 3)},
@@ -667,6 +668,7 @@ class TestData3Reload(unittest.TestCase):
 
         self.assertIsNone(np.testing.assert_array_equal(lidar_sensor.get_frame_data(0, "xyz_s"), ref_lidar_xyz_s0))
         self.assertIsNone(np.testing.assert_array_equal(lidar_sensor.get_frame_data(0, "xyz_e"), ref_lidar_xyz_e0))
+        self.assertEqual(lidar_sensor.get_frame_point_count(0), len(ref_lidar_xyz_e0))
         self.assertIsNone(
             np.testing.assert_array_equal(lidar_sensor.get_frame_data(0, "intensity"), ref_lidar_intensity0)
         )
@@ -687,6 +689,7 @@ class TestData3Reload(unittest.TestCase):
 
         self.assertIsNone(np.testing.assert_array_equal(lidar_sensor.get_frame_data(1, "xyz_s"), ref_lidar_xyz_s1))
         self.assertIsNone(np.testing.assert_array_equal(lidar_sensor.get_frame_data(1, "xyz_e"), ref_lidar_xyz_e1))
+        self.assertEqual(lidar_sensor.get_frame_point_count(1), len(ref_lidar_xyz_e1))
         self.assertIsNone(
             np.testing.assert_array_equal(lidar_sensor.get_frame_data(1, "intensity"), ref_lidar_intensity1)
         )
@@ -712,6 +715,7 @@ class TestData3Reload(unittest.TestCase):
 
         self.assertIsNone(np.testing.assert_array_equal(radar_sensor.get_frame_data(0, "xyz_s"), ref_radar_xyz_s0))
         self.assertIsNone(np.testing.assert_array_equal(radar_sensor.get_frame_data(0, "xyz_e"), ref_radar_xyz_e0))
+        self.assertEqual(radar_sensor.get_frame_point_count(0), len(ref_radar_xyz_e0))
         self.assertEqual(radar_sensor.get_frame_generic_meta_data(0), ref_radar_generic_metadata0)
         self.assertEqual(names := radar_sensor.get_frame_generic_data_names(0), list(ref_radar_generic_data0.keys()))
         for name in names:
@@ -723,6 +727,7 @@ class TestData3Reload(unittest.TestCase):
 
         self.assertIsNone(np.testing.assert_array_equal(radar_sensor.get_frame_data(1, "xyz_s"), ref_radar_xyz_s1))
         self.assertIsNone(np.testing.assert_array_equal(radar_sensor.get_frame_data(1, "xyz_e"), ref_radar_xyz_e1))
+        self.assertEqual(radar_sensor.get_frame_point_count(1), len(ref_radar_xyz_e1))
         self.assertEqual(radar_sensor.get_frame_generic_meta_data(1), ref_radar_generic_metadata1)
         self.assertEqual(names := radar_sensor.get_frame_generic_data_names(1), list(ref_radar_generic_data1.keys()))
         for name in names:
