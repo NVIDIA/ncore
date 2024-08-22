@@ -10,6 +10,8 @@ import hashlib
 import csv
 import re
 
+from collections import defaultdict
+from statistics import median
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 from dataclasses import dataclass
@@ -587,6 +589,17 @@ class LabelProcessor:
         # in the format NCORE_LABEL_TRACKIDS_FORCE_STATIC='0286dd552c9bea9a69ecb3759e7b94777635514b 0716d9708d321ffb6a00818614779e779925365c' (white-space separated IDs)
         trackids_force_static = set([int(id) for id in os.environ.get("NCORE_LABEL_TRACKIDS_FORCE_STATIC", "").split()])
 
+        # collect all track-wise global speeds for robust median-based speed-based threshold
+        track_global_speeds: dict[str, list[float]] = defaultdict(list)
+        for sensor_id in frame_labels:
+            for label_frame_timestamp_us in frame_labels[sensor_id]:
+                for frame_label in frame_labels[sensor_id][label_frame_timestamp_us]:
+                    track_global_speeds[frame_label.track_id].append(frame_label.global_speed)
+
+        track_median_global_speeds = {
+            track_id: median(global_speeds) for track_id, global_speeds in track_global_speeds.items()
+        }
+
         for sensor_id in frame_labels:
             for label_frame_timestamp_us in frame_labels[sensor_id]:
                 for frame_label in frame_labels[sensor_id][label_frame_timestamp_us]:
@@ -603,7 +616,8 @@ class LabelProcessor:
 
                     if (
                         label_class not in label_strings_unconditionally_static
-                        and global_speed >= global_speed_dynamic_threshold
+                        # apply threshold to median of all local global speeds
+                        and track_median_global_speeds[track_id] >= global_speed_dynamic_threshold
                     ):
                         track_global_dynamic_flag[track_id] = True
 
