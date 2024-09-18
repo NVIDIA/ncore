@@ -30,7 +30,7 @@ todo_include_todos = True
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
-    "PyTorch": ("https://pytorch.org/docs/master/", None),
+    "PyTorch": ("https://pytorch.org/docs/main/", None),
     "zarr": ("https://zarr.readthedocs.io/en/stable/", None),
 }
 
