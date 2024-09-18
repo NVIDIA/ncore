@@ -449,7 +449,6 @@ class TestReferenceFThetaCamera(CommonTestCase):
         principalPoint = (resolution - 1) / 2
         baseAngle = np.radians(5)
         backwardPolynomial = _generateBackwardPolynomial(resolution, baseAngle, 4)
-        cumulativeAngle = _computeCumulativeAngleAtImageBorder(baseAngle, 4)
 
         camera = ReferenceFThetaCamera([resolution, resolution], [principalPoint, principalPoint], backwardPolynomial)
 
@@ -476,6 +475,16 @@ class TestReferenceFThetaCamera(CommonTestCase):
             image_points.image_points.cpu(), image_points_all.image_points[image_points_all.valid_indices].cpu()
         )
 
+        image_point_invalid = ftheta_cam.world_points_to_image_points_shutter_pose(
+            np.array([[0, 0, -1]]),
+            T_world_sensor_start,
+            T_world_sensor_end,
+            return_valid_indices=True,
+            return_all_projections=True,
+        )
+        self.assertTrue(len(image_point_invalid.valid_indices) == 0)
+        self.assertTrue(len(image_point_invalid.image_points) > 0)
+
         # Test single pose projection
         image_points = ftheta_cam.world_points_to_image_points_static_pose(world_points, T_world_sensor_start)
         image_points_all = ftheta_cam.world_points_to_image_points_static_pose(
@@ -485,6 +494,12 @@ class TestReferenceFThetaCamera(CommonTestCase):
         self._compareVector(
             image_points.image_points.cpu(), image_points_all.image_points[image_points_all.valid_indices].cpu()
         )
+
+        image_point_invalid = ftheta_cam.world_points_to_image_points_static_pose(
+            np.array([[0, 0, -1]]), T_world_sensor_start, return_valid_indices=True, return_all_projections=True
+        )
+        self.assertTrue(len(image_point_invalid.valid_indices) == 0)
+        self.assertTrue(len(image_point_invalid.image_points) > 0)
 
     def test_inputs_and_input_types(self):
         camera = ReferenceFThetaCamera(np.array([1000, 1000]), [10, 10], [0, np.radians(90) / 1000])
