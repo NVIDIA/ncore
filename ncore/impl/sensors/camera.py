@@ -6,7 +6,7 @@ import logging
 import math
 
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, cast
 from dataclasses import dataclass
 import torch
 import numpy as np
@@ -467,7 +467,8 @@ class CameraModel(ABC):
 
         if return_timestamps:
             return_var.timestamps_us = (
-                torch.floor((1 - t)[..., None] * start_timestamp_us + t[..., None] * end_timestamp_us).to(torch.int64)
+                start_timestamp_us
+                + (t[..., None] * (cast(int, end_timestamp_us) - cast(int, start_timestamp_us))).to(torch.int64)
             ).squeeze(1)
 
         if return_all_projections:
@@ -852,7 +853,7 @@ class CameraModel(ABC):
                 end_timestamp_us >= start_timestamp_us
             ), "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
             return_var.timestamps_us = (
-                start_timestamp_us + torch.floor(t[..., None] * (end_timestamp_us - start_timestamp_us)).to(torch.int64)
+                start_timestamp_us + (t[..., None] * (end_timestamp_us - start_timestamp_us)).to(torch.int64)
             ).squeeze(
                 -1
             )  # [n_image_points]
