@@ -347,7 +347,11 @@ class CameraModel(ABC):
         # Global-shutter special case - no need for rolling-shutter compensation, use projections from start-pose as single available pose
         if self.shutter_type == types.ShutterType.GLOBAL:
             return_var = self.WorldPointsToImagePointsReturn(
-                image_points=image_points_start.image_points[image_points_start.valid_flag]
+                image_points=(
+                    image_points_start.image_points[image_points_start.valid_flag]
+                    if not return_all_projections
+                    else image_points_start.image_points
+                )
             )
             if return_T_world_sensors:
                 return_var.T_world_sensors = torch.tile(
@@ -379,7 +383,11 @@ class CameraModel(ABC):
         # Exit early if no point projected to a valid image point
         if not valid.any():
             return_var = self.WorldPointsToImagePointsReturn(
-                image_points=torch.empty((0, 2), dtype=self.dtype, device=self.device)
+                image_points=(
+                    torch.empty((0, 2), dtype=self.dtype, device=self.device)
+                    if not return_all_projections
+                    else init_image_points
+                )
             )
             if return_T_world_sensors:
                 return_var.T_world_sensors = torch.empty((0, 4, 4), dtype=self.dtype, device=self.device)
@@ -508,7 +516,11 @@ class CameraModel(ABC):
 
         # We always return image points
         return_var = self.WorldPointsToImagePointsReturn(
-            image_points=image_points.image_points[image_points.valid_flag]
+            image_points=(
+                image_points.image_points[image_points.valid_flag]
+                if not return_all_projections
+                else image_points.image_points
+            )
         )
 
         if return_T_world_sensors:
@@ -524,9 +536,6 @@ class CameraModel(ABC):
             return_var.timestamps_us = torch.tile(
                 torch.tensor(timestamp_us, device=self.device), dims=(len(torch.where(image_points.valid_flag)[0]),)
             )
-
-        if return_all_projections:
-            return_var.image_points = image_points.image_points
 
         return return_var
 
