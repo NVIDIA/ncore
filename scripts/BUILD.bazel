@@ -14,6 +14,7 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 
 CONVERT_RAW_DATA_DEPS = [
     requirement("click"),
+    ":pylib_util",
     "//ncore/impl/data_converter:pylib_nvidia_maglev",
     "//ncore/impl/data_converter:pylib_nvidia_deepmap",
     "//ncore/impl/data_converter:pylib_waymo_open",
@@ -27,6 +28,7 @@ py_library(
     deps = [
         requirement("numpy"),
         requirement("click"),
+        requirement("debugpy"),
         "//ncore/impl/data:pylib_data",
     ],
 )

@@ -5,11 +5,14 @@ import logging
 
 from ncore.impl.common.common import Config
 
+from scripts.util import breakpoint
+
 
 @click.group()
 @click.option("--root-dir", type=str, help="Path to the raw data sequences", required=True)
 @click.option("--output-dir", type=str, help="Path where the converted data will be saved", required=True)
-@click.option("--debug", is_flag=True, default=False, help="Enables debug logging outputs")
+@click.option("--verbose", is_flag=True, default=False, help="Enables debug logging outputs")
+@click.option("--debug", is_flag=True, default=False, help="Start a debugpy remote debugging sessions to listen on")
 @click.option("--no-cameras", is_flag=True, default=False, help="Disable exporting any camera sensor")
 @click.option(
     "--camera-id",
@@ -58,9 +61,13 @@ def cli(ctx, *_, **kwargs):
 
     # Initialize basic top-level logger configuration
     logging.basicConfig(
-        level=logging.DEBUG if ctx.obj.debug else logging.INFO,
+        level=logging.DEBUG if ctx.obj.verbose else logging.INFO,
         format="<%(asctime)s|%(levelname)s|%(filename)s:%(lineno)d|%(name)s> %(message)s",
     )
+
+    # If the debug flag is set, add a breakpoint and wait for remote debugger
+    if ctx.obj.debug:
+        breakpoint()
 
 
 @cli.command()
