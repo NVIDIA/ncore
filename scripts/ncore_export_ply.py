@@ -41,6 +41,12 @@ from scripts.util import get_dynamic_flag
     help="Frame to represent the point-cloud in",
     default="world",
 )
+@click.option(
+    "--timestamp-frame-names/--no-timestamp-frame-names",
+    is_flag=True,
+    default=False,
+    help="Store ply's with timestamp filenames or frame-index filenames",
+)
 def ncore_export_ply(
     shard_file_pattern: str,
     output_dir: str,
@@ -49,6 +55,7 @@ def ncore_export_ply(
     stop_frame: Optional[int],
     step_frame: Optional[int],
     frame: str,
+    timestamp_frame_names: bool,
 ):
     """Exports the point cloud data to the ply format with named attributes"""
 
@@ -62,6 +69,7 @@ def ncore_export_ply(
     assert isinstance(sensor, PointCloudSensor), "only point-cloud sensors supported"
 
     output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
 
     indices = sensor.get_frame_index_range(start_frame, stop_frame, step_frame)
     logger.info(f"Starting '.ply' export. {len(indices)} frames will be exported.")
@@ -96,7 +104,12 @@ def ncore_export_ply(
             pc.vertex_data.custom_attributes["negative_offset_timestamp_us"] = negative_offset_timestamp
 
         # Save the ply file
-        pc.save(str(output_path / (padded_index_string(frame_index) + ".ply")))
+        fname = (
+            padded_index_string(frame_index)
+            if not timestamp_frame_names
+            else str(sensor.get_frame_timestamp_us(frame_index))
+        )
+        pc.save(str(output_path / (fname + ".ply")))
 
 
 if __name__ == "__main__":
