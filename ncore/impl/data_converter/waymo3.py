@@ -14,7 +14,6 @@ import tensorflow.compat.v1 as tf
 from waymo_open_dataset import dataset_pb2, label_pb2
 from waymo_open_dataset.protos import camera_segmentation_pb2  # type: ignore
 
-from ncore.impl.common.transformations import is_within_3d_bboxes
 from ncore.impl.data.data3 import ContainerDataWriter, JsonLike
 from ncore.impl.data.types import (
     Poses,
@@ -28,7 +27,7 @@ from ncore.impl.data.types import (
     Tracks,
 )
 from ncore.impl.common.common import PoseInterpolator
-from ncore.impl.common.transformations import transform_point_cloud, se3_inverse, transform_bbox
+from ncore.impl.common.transformations import transform_point_cloud, se3_inverse, transform_bbox, is_within_3d_bboxes
 from ncore.impl.data_converter.data_converter import DataConverter
 from ncore.impl.data_converter.waymo_utils import (
     parse_range_image_and_segmentations,
