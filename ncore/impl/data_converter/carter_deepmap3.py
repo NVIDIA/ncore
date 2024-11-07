@@ -30,7 +30,7 @@ from ncore.impl.data.types import (
 )
 from ncore.impl.common.common import PoseInterpolator
 from ncore.impl.common.nvidia_utils import LabelProcessor, extract_pose
-from ncore.impl.av_utils import isWithin3DBBoxes
+from ncore.impl.common.transformations import is_within_3d_bboxes
 
 
 def generate_sensor_ids(track_records: track_data_pb2.AlignedTrackRecords) -> tuple[list[str], list[str]]:
@@ -348,7 +348,7 @@ class CarterDeepmapConverter(DataConverter):
 
                 # Filter outs points that are inside the vehicles bounding-box
                 valid_idxs_vehicle_bbox = np.logical_not(
-                    isWithin3DBBoxes(pc_rig.astype(np.float32), vehicle_bbox_rig.reshape(1, -1))
+                    is_within_3d_bboxes(pc_rig.astype(np.float32), vehicle_bbox_rig.reshape(1, -1))
                 )
 
                 # Filter points based on distances

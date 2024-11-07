@@ -27,11 +27,7 @@ from multimethod import multimethod
 
 from ncore.impl.common.common import HalfClosedInterval, MaskImage, PoseInterpolator, load_jsonl
 
-try:
-    from ncore.impl.av_utils import isWithin3DBBoxes
-except ImportError:
-    # Fall back to slower non-C++ reference implementation if C++ module can't be loaded (e.g., if loaded from wheel)
-    from ncore.impl.common.transformations import is_within_3d_bboxes as isWithin3DBBoxes
+from ncore.impl.common.transformations import is_within_3d_bboxes
 
 from ncore.impl.common.transformations import euler_2_so3, lat_lng_alt_2_ecef, se3_inverse, transform_bbox
 from ncore.impl.data.types import FrameLabel3, BBox3, LabelSource, TrackLabel, DynamicFlagState
@@ -665,7 +661,7 @@ class LabelProcessor:
                 bbox = frame_label.bbox3.to_array()
                 # enlarge the bounding box for the check *only*
                 bbox[3:6] += lidar_dynamic_flag_bbox_padding_meters  # TODO: make sure this parameter is tuned sensibly
-                dynamic_flag[isWithin3DBBoxes(xyz, bbox.reshape(1, -1))] = DynamicFlagState.DYNAMIC.value
+                dynamic_flag[is_within_3d_bboxes(xyz, bbox.reshape(1, -1))] = DynamicFlagState.DYNAMIC.value
 
         return dynamic_flag, current_frame_labels
 

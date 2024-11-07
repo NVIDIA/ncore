@@ -77,7 +77,6 @@ py_library(
         requirement("numpy"),
         requirement("tqdm"),
         ":pylib_waymo_open_utils",
-        "//ncore/impl/av_utils:pylib",
         "//ncore/impl/data:pylib_data",
     ],
 )

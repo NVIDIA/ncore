@@ -35,7 +35,7 @@ from ncore.impl.common.nvidia_utils import (
     vehicle_bbox,
 )
 from ncore.impl.common.common import PoseInterpolator, uniform_subdivide_range, SimpleTimer, time_bounds
-from ncore.impl.av_utils import isWithin3DBBoxes
+from ncore.impl.common.transformations import is_within_3d_bboxes
 
 
 class NvidiaMaglevConverter(BaseNvidiaDataConverter):
@@ -677,7 +677,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
                 # Filter points inside the vehicles bounding-box
                 valid_idxs = np.logical_not(
-                    isWithin3DBBoxes(xyz_e_rig[0:3, :].transpose(), vehicle_bbox_rig.reshape(1, -1))
+                    is_within_3d_bboxes(xyz_e_rig[0:3, :].transpose(), vehicle_bbox_rig.reshape(1, -1))
                 )
 
                 # Drop homogeneous dimension and transpose to match output dimension

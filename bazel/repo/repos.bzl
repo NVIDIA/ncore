@@ -20,24 +20,6 @@ def register_repositories():
     )
 
     http_archive(
-        name = "numpyeigen",
-        sha256 = "1b77ab89d90d407f1c2af035df4a5b708e1ddac91882d488e59d82dc0da8ef60",
-        # source-repo: https://github.com/fwilliams/numpyeigen, commit e2ac640
-        urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/repo-numpyeigen/e2ac640/repo-numpyeigen-e2ac640.tar.gz"],
-        build_file = "@ncore_repo//3rdparty/numpyeigen:numpyeigen.BUILD",
-        strip_prefix = "numpyeigen",
-    )
-
-    http_archive(
-        name = "numpyeigen_pybind11",
-        sha256 = "5a13e0e17621622e61f4ce706167b80d4844b31dfd01aa7ab5c9d1ae99d540a9",
-        # source-repo: https://github.com/fwilliams/pybind11, commit c230777e
-        urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/repo-pybind11/c230777e/repo-pybind11-c230777e.tar.gz"],
-        build_file = "@ncore_repo//3rdparty/numpyeigen_pybind11:numpyeigen_pybind11.BUILD",
-        strip_prefix = "pybind11",
-    )
-
-    http_archive(
         name = "semantic-segmentation",
         build_file = "//3rdparty/semantic-segmentation:semantic-segmentation.BUILD",
         sha256 = "0826aff938dc7efa0a17b54f3f775e674d065d5f9f39b454f296add959be3d5d",
@@ -64,26 +46,6 @@ def register_repositories():
         name = "test-data-v3-shards",
         sha256 = "cdb766ba178548f9307b1458bb408f4f92ba1557dd34bb30dac2a303749ab783",
         urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/test-data-v3-shards/0.7/test-data-v3-shards.tar.gz"],
-    )
-
-    http_archive(
-        name = "eigen",
-        build_file_content =
-            """
-# TODO(janickm): Replace this with a better version, like from TensorFlow.
-# See https://github.com/tensorflow/tensorflow/tree/master/third_party/eigen3
-cc_library(
-    name = 'eigen',
-    includes = ['.'],
-    hdrs = glob(['Eigen/**']),
-    visibility = ['//visibility:public'],
-)
-    """,
-        sha256 = "685adf14bd8e9c015b78097c1dc22f2f01343756f196acdc76a678e1ae352e11",
-        strip_prefix = "eigen-3.3.7",
-        urls = [
-            "https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.tar.bz2",
-        ],
     )
 
     http_archive(

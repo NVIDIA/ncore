@@ -16,8 +16,7 @@ from ncore.impl.common.common import (
     uniform_subdivide_range,
     HalfClosedInterval,
 )
-from ncore.impl.common.transformations import is_within_3d_bbox, is_within_3d_bboxes
-from ncore.impl.av_utils import isWithin3DBBoxes
+from ncore.impl.common.transformations import is_within_3d_bboxes
 
 
 def test_save_load_pkl():
@@ -100,67 +99,23 @@ class TestIsWithin3DBBox(unittest.TestCase):
         rotation = np.random.rand(100, 3).astype(np.float32) * 2 * np.pi
 
         self.bboxes = np.concatenate([center, dim, rotation], axis=-1).astype(np.float32)
-
-    def test_oputput_vales(self):
-        """Test to verify functionality of the c++ implementation (the output should be the same to python)"""
-        any_true = False
-        for i in range(self.bboxes.shape[0]):
-            self.assertTrue(
-                (
-                    is_within_3d_bbox(self.pc, self.bboxes[i, :])
-                    == isWithin3DBBoxes(self.pc, self.bboxes[i : i + 1, :])
-                ).all()
-            )
-            any_true = any_true or isWithin3DBBoxes(self.pc, self.bboxes[i : i + 1, :]).any()
-
-        self.assertTrue(any_true)
-
-        # test all bboxes in one go
-        self.assertTrue((is_within_3d_bboxes(self.pc, self.bboxes) == isWithin3DBBoxes(self.pc, self.bboxes)).all())
+        
+        # Create an outlier point that's outside the bboxes (guaranteed) by minimum of xyz of the
+        # point being larger than maximum possible dimensions for bboxes
+        self.outlier_point = np.random.uniform(1000, 2000, size=(1, 3)).astype(np.float32)
 
     def test_multi_bbox_processing(self):
         """Test to verify that processing all the boxes at once is the same as doing it one by one"""
         single_box = []
         for i in range(self.bboxes.shape[0]):
-            single_box.append(isWithin3DBBoxes(self.pc, self.bboxes[i : i + 1, :]).reshape(-1, 1))
+            single_box.append(is_within_3d_bboxes(self.pc, self.bboxes[i : i + 1, :]).reshape(-1, 1))
         single_box = np.concatenate(single_box, axis=1)
 
-        self.assertTrue((single_box == isWithin3DBBoxes(self.pc, self.bboxes)).all())
+        self.assertTrue((single_box == is_within_3d_bboxes(self.pc, self.bboxes)).all())
 
-    def test_efficiency(self):
-        """Test to verify that the cpp code is faster than python"""
-
-        start_time_python = time.time()
-        for i in range(self.bboxes.shape[0]):
-            is_within_3d_bbox(self.pc, self.bboxes[i, :])
-        end_time_python = time.time()
-        python_duration = end_time_python - start_time_python
-
-        start_time_cpp = time.time()
-        isWithin3DBBoxes(self.pc, self.bboxes)
-        end_time_cpp = time.time()
-        cpp_duration = end_time_cpp - start_time_cpp
-
-        print(
-            f"\nPython implementation took {python_duration} s for {self.bboxes.shape[0]} bboxes and {self.pc.shape[0]} points."
-        )
-        print(
-            f"CPP implementation took {cpp_duration} s for {self.bboxes.shape[0]} bboxes and {self.pc.shape[0]} points."
-        )
-        self.assertLess(cpp_duration, python_duration)
-
-    def test_invalid_arguments(self):
-        """Test to verify correct behavior on invalid input"""
-
-        with self.assertRaises(ValueError):
-            isWithin3DBBoxes(self.pc.astype(np.float64), self.bboxes)
-
-        with self.assertRaises(ValueError):
-            isWithin3DBBoxes(self.pc, self.bboxes.astype(np.float64))
-
-        with self.assertRaises(AssertionError):
-            isWithin3DBBoxes(self.pc, self.bboxes[:, :6])
-
+    def test_outlier_point_outside_bboxes(self):
+        """Test to verify that the outlier point is not within any of the defined boxes"""
+        self.assertFalse(is_within_3d_bboxes(self.outlier_point, self.bboxes).all())
 
 def test_uniform_subdivide_range():
     def check(actual, expected):

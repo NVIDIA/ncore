@@ -259,7 +259,7 @@ def is_within_3d_bbox(pc: np.ndarray, bbox: np.ndarray) -> np.ndarray:
 
 
 def is_within_3d_bboxes(pc: np.ndarray, bboxes: np.ndarray) -> np.ndarray:
-    """Wrapper for is_within_3d_bbox to iterate on multiple boxes to be consistent with C++ version 'isWithin3DBBox' in av_utils
+    """Wrapper for is_within_3d_bbox to iterate on multiple boxes
 
     Args:
         pc: [N, 3] tensor. Inner dims are: [x, y, z].

@@ -70,12 +70,7 @@ py_library(
         ":pylib_common",
         ":pylib_transformations",
         "//ncore/impl/data:pylib_types",
-    ] + select({
-        "@ncore_repo//bazel/conditions:av_utils": [
-            "//ncore/impl/av_utils:pylib",
-        ],
-        "//conditions:default": [],
-    }),
+    ]
 )
 
 py_library(
@@ -104,7 +99,6 @@ pytest_test(
         requirement("scipy"),
         ":pylib_common",
         ":pylib_transformations",
-        "//ncore/impl/av_utils:pylib",
     ],
 )
 
@@ -116,7 +110,6 @@ pytest_test_3_8(
         requirement_3_8("scipy"),
         ":pylib_common_3_8",
         ":pylib_transformations_3_8",
-        "//ncore/impl/av_utils:pylib_3_8",
     ],
 )
 

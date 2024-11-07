@@ -36,7 +36,7 @@ from ncore.impl.common.nvidia_utils import (
     compute_ftheta_fov,
     camera_car_mask,
 )
-from ncore.impl.av_utils import isWithin3DBBoxes
+from ncore.impl.common.transformations import is_within_3d_bboxes
 
 
 class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
@@ -315,7 +315,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
 
             # Filter outs points that are inside the vehicles bounding-box
             valid_idxs_vehicle_bbox = np.logical_not(
-                isWithin3DBBoxes(pc_rig.astype(np.float32), vehicle_bbox_rig.reshape(1, -1))
+                is_within_3d_bboxes(pc_rig.astype(np.float32), vehicle_bbox_rig.reshape(1, -1))
             )
 
             # Filter points based on distances
