@@ -99,7 +99,7 @@ class TestIsWithin3DBBox(unittest.TestCase):
         rotation = np.random.rand(100, 3).astype(np.float32) * 2 * np.pi
 
         self.bboxes = np.concatenate([center, dim, rotation], axis=-1).astype(np.float32)
-        
+
         # Create an outlier point that's outside the bboxes (guaranteed) by minimum of xyz of the
         # point being larger than maximum possible dimensions for bboxes
         self.outlier_point = np.random.uniform(1000, 2000, size=(1, 3)).astype(np.float32)
@@ -116,6 +116,7 @@ class TestIsWithin3DBBox(unittest.TestCase):
     def test_outlier_point_outside_bboxes(self):
         """Test to verify that the outlier point is not within any of the defined boxes"""
         self.assertFalse(is_within_3d_bboxes(self.outlier_point, self.bboxes).all())
+
 
 def test_uniform_subdivide_range():
     def check(actual, expected):
