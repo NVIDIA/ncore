@@ -259,7 +259,7 @@ def is_within_3d_bbox(pc: np.ndarray, bbox: np.ndarray) -> np.ndarray:
 
 
 def is_within_3d_bboxes(pc: np.ndarray, bboxes: np.ndarray) -> np.ndarray:
-    """Wrapper for is_within_3d_bbox to iterate on multiple boxes
+    """Checks whether points of a point cloud are in an array of 3d boxes
 
     Args:
         pc: [N, 3] tensor. Inner dims are: [x, y, z].
@@ -273,12 +273,38 @@ def is_within_3d_bboxes(pc: np.ndarray, bboxes: np.ndarray) -> np.ndarray:
     assert len(bboxes.shape) == 2, "bboxes need to be a 2D numpy array"
     assert bboxes.shape[1] == 9, "bboxes need to be a 2D numpy array"
 
-    point_in_box = np.empty((pc.shape[0], bboxes.shape[0]), dtype=np.bool_)
+    centers = bboxes[..., 0:3]
+    dims = bboxes[..., 3:6]
+    rot_angles = bboxes[..., 6:9]
 
-    for i, bbox in enumerate(bboxes):
-        point_in_box[:, i] = is_within_3d_bbox(pc, bbox)
+    # Get the rotation matrices from the heading angles
+    rotations = R.from_euler("xyz", rot_angles, degrees=False).as_matrix()
 
-    return point_in_box
+    # [M, 4, 4]
+    transforms = so3_trans_2_se3(rotations, centers)
+
+    # [M, 4, 4]
+    transforms = np.linalg.inv(transforms)
+
+    # [M, 3, 3]
+    rotations = transforms[..., 0:3, 0:3]
+
+    # [M, 3]
+    translations = transforms[..., 0:3, 3]
+
+    # [N, M, 3]
+    points_in_boxes_frames = np.matmul(rotations, pc.transpose()).transpose(2, 0, 1) + translations
+
+    # [N, M, 3]
+    points_in_bboxes = np.logical_and(
+        np.logical_and(points_in_boxes_frames <= dims * 0.5, points_in_boxes_frames >= -dims * 0.5),
+        np.all(np.not_equal(dims, 0), axis=-1, keepdims=True),
+    )
+
+    # [N, M]
+    points_in_bboxes = np.prod(points_in_bboxes, axis=-1).astype(bool)
+
+    return points_in_bboxes
 
 
 def se3_inverse(T: np.ndarray) -> np.ndarray:
