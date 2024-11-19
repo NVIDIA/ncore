@@ -284,7 +284,7 @@ def is_within_3d_bboxes(pc: np.ndarray, bboxes: np.ndarray) -> np.ndarray:
     transforms = so3_trans_2_se3(rotations, centers)
 
     # [M, 4, 4]
-    transforms = np.linalg.inv(transforms)
+    transforms = se3_n_inverse(transforms)
 
     # [M, 3, 3]
     rotations = transforms[..., 0:3, 0:3]
@@ -305,6 +305,22 @@ def is_within_3d_bboxes(pc: np.ndarray, bboxes: np.ndarray) -> np.ndarray:
     points_in_bboxes = np.prod(points_in_bboxes, axis=-1).astype(bool)
 
     return points_in_bboxes
+
+
+def se3_n_inverse(Ts: np.ndarray) -> np.ndarray:
+    """Computes the inverse of multiple rigid transformations
+
+    Args:
+        Ts (np.ndarray): a numpy array of N se3 transformation matrices to invert [N, 4, 4]
+
+    Returns:
+        (np array): N inverse transformations [N, 4, 4]
+    """
+    ret = np.stack([np.eye(4)] * Ts.shape[0], axis=0)
+    ret[:, :3, :3] = (Rts := Ts[:, :3, :3].transpose(0, 2, 1))
+    ret[:, :3, 3:] = -Rts @ Ts[:, :3, 3:]
+
+    return ret
 
 
 def se3_inverse(T: np.ndarray) -> np.ndarray:
