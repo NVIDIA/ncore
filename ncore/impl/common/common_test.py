@@ -141,6 +141,7 @@ class TestIsWithin3DBBox(unittest.TestCase):
         """Test to verify that the outlier point is not within any of the defined boxes"""
         self.assertFalse(is_within_3d_bboxes(self.outlier_point, self.bboxes).all())
 
+
 def test_uniform_subdivide_range():
     def check(actual, expected):
         range_equal = (actual[0] == expected[0]).all()
