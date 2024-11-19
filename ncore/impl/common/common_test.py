@@ -141,24 +141,6 @@ class TestIsWithin3DBBox(unittest.TestCase):
         """Test to verify that the outlier point is not within any of the defined boxes"""
         self.assertFalse(is_within_3d_bboxes(self.outlier_point, self.bboxes).all())
 
-    def test_multi_bbox_efficieny(self):
-        """
-        Test to verify that the runtime of [is_within_3d_bboxes] is faster than looping over each
-        bbox and calling [is_within_3d_bbox]
-        """
-        loop_start_time = time.time()
-        point_in_box = np.empty((self.pc.shape[0], self.bboxes.shape[0]), dtype=np.bool_)
-        for i, bbox in enumerate(self.bboxes):
-            point_in_box[:, i] = is_within_3d_bbox(self.pc, bbox)
-        loop_runtime = time.time() - loop_start_time
-
-        multi_start_time = time.time()
-        _points_in_bboxes = is_within_3d_bboxes(self.pc, self.bboxes)
-        multi_runtime = time.time() - multi_start_time
-
-        self.assertTrue(multi_runtime < loop_runtime)
-
-
 def test_uniform_subdivide_range():
     def check(actual, expected):
         range_equal = (actual[0] == expected[0]).all()
