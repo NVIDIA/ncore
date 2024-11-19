@@ -113,7 +113,7 @@ class TestIsWithin3DBBox(unittest.TestCase):
 
         self.assertTrue((single_box == is_within_3d_bboxes(self.pc, self.bboxes)).all())
 
-    def test_multi_single_bbox_equivalent(self):
+    def test_output_values(self):
         """
         Test to verify that [is_within_3d_bboxes] results in the same output as individually
         calling [is_within_3d_bbox] on each bbox
