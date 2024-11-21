@@ -214,50 +214,6 @@ def transform_bbox(bbox_source: np.ndarray, T_source_target: np.ndarray) -> np.n
     return pose_bbox(T_bbox_target, bbox_source[3:6])
 
 
-def is_within_3d_bbox(pc: np.ndarray, bbox: np.ndarray) -> np.ndarray:
-    """Checks whether points of a point-cloud are in a 3d box
-
-    [Reference implementation, consider faster C++ version in 'isWithin3DBBox']
-
-    Args:
-        pc: [N, 3] tensor. Inner dims are: [x, y, z].
-        bbox: [9,] tensor. Inner dims are: [center_x, center_y, center_z, length, width, height, roll, pitch, yaw].
-                        roll/pitch/yaw are in radians.
-    Returns:
-        point_in_bbox; [N,] boolean array.
-    """
-
-    center = bbox[0:3]
-    dim = bbox[3:6]
-    rotation_angles = bbox[6:9]
-
-    # Get the rotation matrix from the heading angle
-    rotation = R.from_euler("xyz", rotation_angles, degrees=False).as_matrix()
-
-    # [4, 4]
-    transform = so3_trans_2_se3(rotation, center)
-    # [4, 4]
-    transform = np.linalg.inv(transform)
-    # [3, 3]
-    rotation = transform[0:3, 0:3]
-    # [3]
-    translation = transform[0:3, 3]
-
-    # [M, 3]
-    points_in_box_frames = np.matmul(rotation, pc.transpose()).transpose() + translation
-
-    # [M, 3]
-    point_in_bbox = np.logical_and(
-        np.logical_and(points_in_box_frames <= dim * 0.5, points_in_box_frames >= -dim * 0.5),
-        np.all(np.not_equal(dim, 0), axis=-1, keepdims=True),
-    )
-
-    # [N]
-    point_in_bbox = np.prod(point_in_bbox, axis=-1).astype(bool)
-
-    return point_in_bbox
-
-
 def is_within_3d_bboxes(pc: np.ndarray, bboxes: np.ndarray) -> np.ndarray:
     """Checks whether points of a point cloud are in an array of 3d boxes
 
@@ -284,7 +240,7 @@ def is_within_3d_bboxes(pc: np.ndarray, bboxes: np.ndarray) -> np.ndarray:
     transforms = so3_trans_2_se3(rotations, centers)
 
     # [M, 4, 4]
-    transforms = se3_n_inverse(transforms)
+    transforms = se3_inverse(transforms, unbatch=False)
 
     # [M, 3, 3]
     rotations = transforms[..., 0:3, 0:3]
@@ -307,34 +263,25 @@ def is_within_3d_bboxes(pc: np.ndarray, bboxes: np.ndarray) -> np.ndarray:
     return points_in_bboxes
 
 
-def se3_n_inverse(Ts: np.ndarray) -> np.ndarray:
+def se3_inverse(T: np.ndarray, unbatch: bool = True) -> np.ndarray:
     """Computes the inverse of multiple rigid transformations
 
     Args:
-        Ts (np.ndarray): a numpy array of N se3 transformation matrices to invert [N, 4, 4]
+        Ts (np.ndarray): se3 transformation matrices to invert [N, 4, 4] or [4, 4]
+        unbatch (bool): if the single matrix should be unbatched (first dimension removed) or not
 
     Returns:
-        (np array): N inverse transformations [N, 4, 4]
-    """
-    ret = np.stack([np.eye(4)] * Ts.shape[0], axis=0)
-    ret[:, :3, :3] = (Rts := Ts[:, :3, :3].transpose(0, 2, 1))
-    ret[:, :3, 3:] = -Rts @ Ts[:, :3, 3:]
-
-    return ret
-
-
-def se3_inverse(T: np.ndarray) -> np.ndarray:
-    """Computed the inverse of a rigid transformation
-    Args:
-        T (np.array): se3 transformation matrix to invert [4,4]
-
-    Out:
-        (np array): inverse transformation [4,4]
+        (np array): Inverse transformations [N, 4, 4] or [4, 4]
     """
 
-    ret = np.eye(4, dtype=T.dtype)
-    ret[:3, :3] = (Rt := T[:3, :3].transpose())
-    ret[:3, 3:] = -Rt @ T[:3, 3:]
+    # batch dimensions unconditionally
+    T = T.reshape((-1, 4, 4))
+    ret = np.stack([np.eye(4)] * T.shape[0], axis=0)
+    ret[:, :3, :3] = (Rt := T[:, :3, :3].transpose(0, 2, 1))
+    ret[:, :3, 3:] = -Rt @ T[:, :3, 3:]
+
+    if unbatch:  # unbatch dimensions conditionally
+        ret = ret.squeeze()
 
     return ret
 

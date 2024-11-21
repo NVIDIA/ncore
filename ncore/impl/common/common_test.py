@@ -16,7 +16,7 @@ from ncore.impl.common.common import (
     uniform_subdivide_range,
     HalfClosedInterval,
 )
-from ncore.impl.common.transformations import is_within_3d_bbox, is_within_3d_bboxes
+from ncore.impl.common.transformations import is_within_3d_bboxes
 
 
 def test_save_load_pkl():
@@ -104,6 +104,21 @@ class TestIsWithin3DBBox(unittest.TestCase):
         # point being larger than maximum possible dimensions for bboxes
         self.outlier_point = np.random.uniform(1000, 2000, size=(1, 3)).astype(np.float32)
 
+        # Create inliner points that are guaranteed to be inside the bounding boxes to test that
+        # points inside the bounding boxes are classified correctly
+        self.inliner_points = center[np.random.choice(100, 10, replace=True)]
+
+        # Making the dimensions larger than the upper limit of the inliner points to ensure that the
+        # points are guaranteed to be inside the bounding box
+        self.inliner_bboxes = np.concatenate(
+            [
+                np.zeros((10, 3), dtype=np.float32),  # centers
+                np.random.rand(10, 3).astype(np.float32) * 1000.0,  # dims
+                np.zeros((10, 3), dtype=np.float32),  # rotations
+            ],
+            axis=-1,
+        ).astype(np.float32)
+
     def test_multi_bbox_processing(self):
         """Test to verify that processing all the boxes at once is the same as doing it one by one"""
         single_box = []
@@ -113,33 +128,13 @@ class TestIsWithin3DBBox(unittest.TestCase):
 
         self.assertTrue((single_box == is_within_3d_bboxes(self.pc, self.bboxes)).all())
 
-    def test_output_values(self):
-        """
-        Test to verify that [is_within_3d_bboxes] results in the same output as individually
-        calling [is_within_3d_bbox] on each bbox
-        """
-        any_true = False
-        for i in range(self.bboxes.shape[0]):
-            self.assertTrue(
-                (
-                    is_within_3d_bbox(self.pc, self.bboxes[i, :])
-                    == is_within_3d_bboxes(self.pc, self.bboxes[i : i + 1, :]).flatten()
-                ).all()
-            )
-            any_true = any_true or is_within_3d_bboxes(self.pc, self.bboxes[i : i + 1, :]).any()
-
-        self.assertTrue(any_true)
-
-        # test all bboxes in one go
-        point_in_box = np.empty((self.pc.shape[0], self.bboxes.shape[0]), dtype=np.bool_)
-        for i, bbox in enumerate(self.bboxes):
-            point_in_box[:, i] = is_within_3d_bbox(self.pc, bbox)
-
-        self.assertTrue((is_within_3d_bboxes(self.pc, self.bboxes) == point_in_box).all())
-
     def test_outlier_point_outside_bboxes(self):
         """Test to verify that the outlier point is not within any of the defined boxes"""
         self.assertFalse(is_within_3d_bboxes(self.outlier_point, self.bboxes).all())
+
+    def test_inliner_points_inside_bboxes(self):
+        """Test to verify that points inside the bounding boxes are correctly classified as inside"""
+        self.assertTrue(is_within_3d_bboxes(self.inliner_points, self.inliner_bboxes).all())
 
 
 def test_uniform_subdivide_range():
