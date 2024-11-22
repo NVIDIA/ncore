@@ -665,7 +665,7 @@ class LabelProcessor:
                 bbox = frame_label.bbox3.to_array()
                 # enlarge the bounding box for the check *only*
                 bbox[3:6] += lidar_dynamic_flag_bbox_padding_meters  # TODO: make sure this parameter is tuned sensibly
-                dynamic_flag[is_within_3d_bboxes(xyz, bbox.reshape(1, -1))] = DynamicFlagState.DYNAMIC.value
+                dynamic_flag[is_within_3d_bboxes(xyz, bbox.reshape(1, -1)).squeeze(-1)] = DynamicFlagState.DYNAMIC.value
 
         return dynamic_flag, current_frame_labels
 

@@ -677,7 +677,7 @@ class NvidiaMaglevConverter(BaseNvidiaDataConverter):
 
                 # Filter points inside the vehicles bounding-box
                 valid_idxs = np.logical_not(
-                    is_within_3d_bboxes(xyz_e_rig[0:3, :].transpose(), vehicle_bbox_rig.reshape(1, -1))
+                    is_within_3d_bboxes(xyz_e_rig[0:3, :].transpose(), vehicle_bbox_rig.reshape(1, -1)).squeeze(-1)
                 )
 
                 # Drop homogeneous dimension and transpose to match output dimension

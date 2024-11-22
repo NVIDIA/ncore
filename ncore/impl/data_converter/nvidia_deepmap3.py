@@ -315,7 +315,7 @@ class NvidiaDeepmapConverter(BaseNvidiaDataConverter):
 
             # Filter outs points that are inside the vehicles bounding-box
             valid_idxs_vehicle_bbox = np.logical_not(
-                is_within_3d_bboxes(pc_rig.astype(np.float32), vehicle_bbox_rig.reshape(1, -1))
+                is_within_3d_bboxes(pc_rig.astype(np.float32), vehicle_bbox_rig.reshape(1, -1)).squeeze(-1)
             )
 
             # Filter points based on distances

@@ -427,7 +427,9 @@ class WaymoConverter(DataConverter):
                         bbox = frame_label.bbox3.to_array()
                         # enlarge the bounding box for the check *only*
                         bbox[3:6] += self.LIDAR_DYNAMIC_FLAG_BBOX_PADDING_METERS
-                        dynamic_flag[is_within_3d_bboxes(xyz_e, bbox.reshape(1, -1))] = DynamicFlagState.DYNAMIC.value
+                        dynamic_flag[
+                            is_within_3d_bboxes(xyz_e, bbox.reshape(1, -1)).squeeze(-1)
+                        ] = DynamicFlagState.DYNAMIC.value
 
                 # Serialize lidar frame
                 self.data_writer.store_lidar_frame(
