@@ -144,7 +144,7 @@ container_pull(
     timeout = 7200,
     digest = "sha256:a7ef63cd668559421ce7ceb70cc2d6c454c761cd4fa309f8e96db1be2968c69a",
     registry = "gitlab-master.nvidia.com:5005",
-    repository = "toronto_dl_lab/ncore",
+    repository = "nrs/ncore",
 )
 
 ## Protobuf rules

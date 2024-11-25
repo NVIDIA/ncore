@@ -20,7 +20,7 @@ class DataConverter(ABC):
     For adding a new dataset, please inherit this class and implement the required functions.
 
     The output data should follow the conventions defined in
-    https://toronto_dl_lab.gitlab-master-pages.nvidia.com/ncore/notes/conventions.html
+    https://nrs.gitlab-master-pages.nvidia.com/ncore/notes/conventions.html
 
     Please also use the facilities of the 'data_writer' module, which simplifies adding new datasets.
 

@@ -28,7 +28,7 @@ py_wheel(
     name = "ncore_wheel",
     abi = "none",
     distribution = "ncore",
-    homepage = "https://gitlab-master.nvidia.com/Toronto_DL_Lab/ncore",
+    homepage = "https://gitlab-master.nvidia.com/nrs/ncore",
     platform = "any",
     python_requires = ">=3.8",
     python_tag = "py3",

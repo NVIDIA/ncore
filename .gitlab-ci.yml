@@ -5,7 +5,7 @@ variables:
 
 default:
   image:
-    name: gitlab-master.nvidia.com:5005/toronto_dl_lab/ncore:dev
+    name: gitlab-master.nvidia.com:5005/nrs/ncore:dev
   tags:
     - type/docker
     - os/linux
@@ -14,7 +14,7 @@ default:
   before_script:
     # Fix permission as we are running as a local user
     - sudo chown -R developer /home/developer
-    - git config --global --add safe.directory /builds/Toronto_DL_Lab/ncore
+    - git config --global --add safe.directory /builds/nrs/ncore
     - |
       if test -d $CI_PROJECT_DIR/.ci-keep; then
         sudo chown -R developer $CI_PROJECT_DIR/.ci-keep
