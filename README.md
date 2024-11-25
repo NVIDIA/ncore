@@ -17,7 +17,7 @@ In addition to nvidia drivers / cuda runtime (>11.1), the following system packa
 sudo apt-get install gcc g++ clang libgl1 xz-utils jupyter-nbconvert
 ```
 
-Alternatively, builds can be executed within the `gitlab-master.nvidia.com:5005/toronto_dl_lab/ncore:dev` docker image, which has these packages pre-installed.
+Alternatively, builds can be executed within the `gitlab-master.nvidia.com:5005/nrs/ncore:dev` docker image, which has these packages pre-installed.
 
 Additionally, the following packages should be installed as dependencies for scripts:
 
@@ -63,7 +63,7 @@ using the same `<TOKEN>` to access development and base images.
 ## Cloning the repo
 
 ```
-git clone https://gitlab-master.nvidia.com/toronto_dL_lab/ncore.git
+git clone https://gitlab-master.nvidia.com/nrs/ncore.git
 ```
 
 ## Install bazel
