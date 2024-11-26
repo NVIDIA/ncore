@@ -79,7 +79,7 @@ def ncore_export_camera(
         w, h = sensor.get_camera_model_parameters().resolution[:]
         video_writer = cv2.VideoWriter(
             str(video_path := (output_path / camera_id).with_suffix(".mp4")),
-            cv2.VideoWriter_fourcc(*"mp4v"),
+            cv2.VideoWriter_fourcc(*"mp4v"),  # type: ignore
             encode_video_fps,
             (int(w), int(h)),
         )

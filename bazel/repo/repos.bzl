@@ -20,29 +20,6 @@ def register_repositories():
     )
 
     http_archive(
-        name = "semantic-segmentation",
-        build_file = "//3rdparty/semantic-segmentation:semantic-segmentation.BUILD",
-        sha256 = "0826aff938dc7efa0a17b54f3f775e674d065d5f9f39b454f296add959be3d5d",
-        # source-repo: https://github.com/NVIDIA/semantic-segmentation.git, commit 7726b14
-        urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/repo-semantic-segmentation/7726b14/repo-semantic-segmentation-7726b14.tar.gz"],
-        strip_prefix = "semantic-segmentation",
-        patch_args = ["-p1"],
-        patches = ["//3rdparty/semantic-segmentation:semantic-segmentation.patch"],
-    )
-
-    http_archive(
-        name = "semantic-segmentation-models",
-        sha256 = "6ff6f5f1d80ad5742fad3f81651e1053e37a50d9bf79c561dd07a6ec5f88f5e2",
-        urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/semantic_segmentation_pretrained_models/0.1/semantic_segmentation_pretrained_models.tar.xz"],
-    )
-
-    http_archive(
-        name = "instance-segmentation-models",
-        sha256 = "b2db69e0c6e409ec137d953217f8481def9e7f3af84255f705e8dd963adf01a5",
-        urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/instance_segmentation_pretrained_models/0.1/instance_segmentation_pretrained_models.tar.xz"],
-    )
-
-    http_archive(
         name = "test-data-v3-shards",
         sha256 = "cdb766ba178548f9307b1458bb408f4f92ba1557dd34bb30dac2a303749ab783",
         urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/test-data-v3-shards/0.7/test-data-v3-shards.tar.gz"],

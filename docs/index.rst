@@ -27,7 +27,6 @@ The SDK is developed within the Nvidia Toronto AI Lab.
    :caption: Tools / Applications
 
    tools/data_visualization
-   tools/ngp_export
    tools/segmentation
    tools/reconstruction
 

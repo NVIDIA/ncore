@@ -9,9 +9,6 @@ py_binary(
     srcs = ["jupyter.py"],
     deps = [
         requirement("jupyter_server"),
-        "//ncore/impl/common:pylib_common",
-        "//ncore/impl/common:pylib_nvidia",
-        "//ncore/impl/common:pylib_transformations",
     ],
 )
 

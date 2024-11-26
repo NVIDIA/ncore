@@ -12,14 +12,6 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 
 #################################################################
 
-CONVERT_RAW_DATA_DEPS = [
-    requirement("click"),
-    ":pylib_util",
-    "//ncore/impl/data_converter:pylib_nvidia_maglev",
-    "//ncore/impl/data_converter:pylib_nvidia_deepmap",
-    "//ncore/impl/data_converter:pylib_waymo_open",
-]
-
 py_library(
     name = "pylib_util",
     srcs = [
@@ -30,92 +22,6 @@ py_library(
         requirement("click"),
         requirement("debugpy"),
         "//ncore/impl/data:pylib_data",
-    ],
-)
-
-py_binary(
-    name = "convert_raw_data",
-    srcs = ["convert_raw_data.py"],
-    deps = CONVERT_RAW_DATA_DEPS,
-)
-
-# Image for 'convert_raw_data'
-
-# extract all transitive dependencies of dependencies under //ncore
-py_layer(
-    name = "convert_raw_data_common_deps_layer",
-    filter = "//ncore",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = CONVERT_RAW_DATA_DEPS,
-)
-
-# extract all external dependencies of the deps under //ncore
-py_layer(
-    name = "convert_raw_data_common_external_deps_layer",
-    filter = "@",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = [":convert_raw_data_common_deps_layer"],
-)
-
-# extract all external dependencies of CONVERT_RAW_DATA_DEPS, which is a superset of ":convert_raw_data_common_external_deps_layer".
-py_layer(
-    name = "convert_raw_data_external_deps_layer",
-    filter = "@",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = CONVERT_RAW_DATA_DEPS,
-)
-
-py3_image(
-    name = "convert_raw_data_image",
-    srcs = ["convert_raw_data.py"],
-    base = "@ncore_dev_container//image",
-    layers = [
-        ":convert_raw_data_external_deps_layer",
-        ":convert_raw_data_common_external_deps_layer",
-        ":convert_raw_data_common_deps_layer",
-    ],
-    main = "convert_raw_data.py",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = [":ncore_sequence_meta"],  # include additional local targets to simplify their deployment
-)
-
-# Push image to 'production' (prod) tag - use with *CAUTION* as referenced by default in workflows
-container_push(
-    name = "push_convert_raw_data_image_prod",
-    format = "Docker",
-    image = ":convert_raw_data_image",
-    registry = "nvcr.io",
-    repository = "nv-maglev/dlav/ncore",
-    tag = "convert-raw-data-prod",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-)
-
-# Push image to 'staging' (stage) tag - useful for experimentation
-container_push(
-    name = "push_convert_raw_data_image_stage",
-    format = "Docker",
-    image = ":convert_raw_data_image",
-    registry = "nvcr.io",
-    repository = "nv-maglev/dlav/ncore",
-    tag = "convert-raw-data-stage",
-    tags = [
-        "manual",
-        "no-remote-cache",
     ],
 )
 
@@ -163,7 +69,7 @@ py_layer(
         "manual",
         "no-remote-cache",
     ],
-    deps = CONVERT_RAW_DATA_DEPS,
+    deps = NCORE_EXPORT_CAMERA_DEPS,
 )
 
 # extract all external dependencies of the deps under //ncore
@@ -177,7 +83,7 @@ py_layer(
     deps = [":ncore_export_camera_common_deps_layer"],
 )
 
-# extract all external dependencies of CONVERT_RAW_DATA_DEPS, which is a superset of ":ncore_export_camera_common_external_deps_layer".
+# extract all external dependencies of NCORE_EXPORT_CAMERA_DEPS, which is a superset of ":ncore_export_camera_common_external_deps_layer".
 py_layer(
     name = "ncore_export_camera_external_deps_layer",
     filter = "@",
@@ -185,7 +91,7 @@ py_layer(
         "manual",
         "no-remote-cache",
     ],
-    deps = CONVERT_RAW_DATA_DEPS,
+    deps = NCORE_EXPORT_CAMERA_DEPS,
 )
 
 py3_image(
@@ -265,145 +171,6 @@ py_binary(
 #################################################################
 
 py_binary(
-    name = "ncore_extract_segmentation",
-    srcs = ["ncore_extract_segmentation.py"],
-    deps = [
-        requirement("click"),
-        "//ncore/impl/data:pylib_data",
-        "//ncore/impl/data:pylib_util",
-        "//ncore/impl/deps/instance_segmentation:pylib",
-        "//ncore/impl/deps/semantic_segmentation:pylib",
-    ],
-)
-
-#################################################################
-
-NCORE_TO_NGP_DEPS = [
-    requirement("click"),
-    requirement("pillow"),
-    requirement("torch"),
-    "//scripts:pylib_util",
-    "//ncore/impl/common:pylib_common",
-    "//ncore/impl/common:pylib_nvidia",
-    "//ncore/impl/common:pylib_transformations",
-    "//ncore/impl/data:pylib_data",
-    "//ncore/impl/data:pylib_types",
-    "//ncore/impl/data:pylib_util",
-    "//ncore/impl/sensors:pylib_camera",
-]
-
-py_binary(
-    name = "ncore_to_ngp",
-    srcs = ["ncore_to_ngp.py"],
-    deps = NCORE_TO_NGP_DEPS,
-)
-
-# self-contained python zip file for target
-filegroup(
-    name = "ncore_to_ngp_zip",
-    srcs = [":ncore_to_ngp"],
-    output_group = "python_zip_file",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-)
-
-# Image for 'ncore_to_ngp'
-
-# extract all "local" dependencies
-py_layer(
-    name = "ncore_to_ngp_local_deps_layer",
-    filter = "//scripts",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = NCORE_TO_NGP_DEPS,
-)
-
-# extract all transitive dependencies of dependencies under //ncore
-py_layer(
-    name = "ncore_to_ngp_common_deps_layer",
-    filter = "//ncore",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = NCORE_TO_NGP_DEPS,
-)
-
-# extract all external dependencies of the deps under //ncore
-py_layer(
-    name = "ncore_to_ngp_common_external_deps_layer",
-    filter = "@",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = [":ncore_to_ngp_common_deps_layer"],
-)
-
-# extract all external dependencies of NCORE_TO_NGP_DEPS, which is a superset of ":ncore_to_ngp_common_external_deps_layer".
-py_layer(
-    name = "ncore_to_ngp_external_deps_layer",
-    filter = "@",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = NCORE_TO_NGP_DEPS,
-)
-
-py3_image(
-    name = "ncore_to_ngp_image",
-    srcs = ["ncore_to_ngp.py"],
-    base = "@ncore_dev_container//image",
-    layers = [
-        ":ncore_to_ngp_external_deps_layer",
-        ":ncore_to_ngp_common_external_deps_layer",
-        ":ncore_to_ngp_common_deps_layer",
-        ":ncore_to_ngp_local_deps_layer",
-    ],
-    main = "ncore_to_ngp.py",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = ["//scripts:ncore_to_map_transform"],  # include additional local targets to simplify their deployment
-)
-
-# Push image to 'production' (prod) tag - use with *CAUTION* as referenced by default in workflows
-container_push(
-    name = "push_ncore_to_ngp_image_prod",
-    format = "Docker",
-    image = ":ncore_to_ngp_image",
-    registry = "nvcr.io",
-    repository = "nv-maglev/dlav/ncore",
-    tag = "ncore-to-ngp-prod",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-)
-
-# Push image to 'staging' (stage) tag - useful for experimentation
-container_push(
-    name = "push_ncore_to_ngp_image_stage",
-    format = "Docker",
-    image = ":ncore_to_ngp_image",
-    registry = "nvcr.io",
-    repository = "nv-maglev/dlav/ncore",
-    tag = "ncore-to-ngp-stage",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-)
-
-#################################################################
-
-py_binary(
     name = "ncore_project_pc_to_img",
     srcs = ["ncore_project_pc_to_img.py"],
     deps = [
@@ -472,115 +239,5 @@ filegroup(
         "no-remote-cache",
     ],
 )
-
-#################################################################
-
-NCORE_CHUNK_DEPS = [
-    requirement("click"),
-    requirement("tqdm"),
-    "//ncore/impl/common:pylib_nvidia",
-    "//ncore/impl/data:pylib_data",
-    "//ncore/impl/data_converter:pylib_waymo_open",
-]
-
-py_binary(
-    name = "ncore_chunk",
-    srcs = ["ncore_chunk.py"],
-    deps = NCORE_CHUNK_DEPS,
-)
-
-# Image for 'ncore_chunk'
-
-# extract all "local" dependencies
-py_layer(
-    name = "ncore_chunk_local_deps_layer",
-    filter = "//scripts",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = NCORE_CHUNK_DEPS,
-)
-
-# extract all transitive dependencies of dependencies under //ncore
-py_layer(
-    name = "ncore_chunk_common_deps_layer",
-    filter = "//ncore",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = NCORE_CHUNK_DEPS,
-)
-
-# extract all external dependencies of the deps under //ncore
-py_layer(
-    name = "ncore_chunk_common_external_deps_layer",
-    filter = "@",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = [":ncore_chunk_common_deps_layer"],
-)
-
-# extract all external dependencies of NCORE_CHUNK_DEPS, which is a superset of ":ncore_chunk_common_external_deps_layer".
-py_layer(
-    name = "ncore_chunk_external_deps_layer",
-    filter = "@",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = NCORE_CHUNK_DEPS,
-)
-
-py3_image(
-    name = "ncore_chunk_image",
-    srcs = ["ncore_chunk.py"],
-    base = "@ncore_dev_container//image",
-    layers = [
-        ":ncore_chunk_external_deps_layer",
-        ":ncore_chunk_common_external_deps_layer",
-        ":ncore_chunk_common_deps_layer",
-        ":ncore_chunk_local_deps_layer",
-    ],
-    main = "ncore_chunk.py",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = [":ncore_sequence_meta"],  # include additional local targets to simplify their deployment
-)
-
-# Push image to 'production' (prod) tag - use with *CAUTION* as referenced by default in workflows
-container_push(
-    name = "push_ncore_chunk_image_prod",
-    format = "Docker",
-    image = ":ncore_chunk_image",
-    registry = "nvcr.io",
-    repository = "nv-maglev/dlav/ncore",
-    tag = "ncore-chunk-prod",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-)
-
-# Push image to 'staging' (stage) tag - useful for experimentation
-container_push(
-    name = "push_ncore_chunk_image_stage",
-    format = "Docker",
-    image = ":ncore_chunk_image",
-    registry = "nvcr.io",
-    repository = "nv-maglev/dlav/ncore",
-    tag = "ncore-chunk-stage",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-)
-
-#################################################################
 
 bzlformat_pkg(name = "bzlformat")
