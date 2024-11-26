@@ -1,9 +1,6 @@
-<!-- Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved. -->
+<!-- Copyright (c) 2024 NVIDIA CORPORATION.  All rights reserved. -->
 
-# NRECore-SDK
-
-DISCLAIMER: THIS REPOSITORY IS NVIDIA INTERNAL/CONFIDENTIAL. DO NOT SHARE EXTERNALLY.
-IF YOU PLAN TO USE THIS CODEBASE FOR YOUR RESEARCH, PLEASE CONTACT ZAN GOJCIC <zgojcic@nvidia.com> / JANICK MARTINEZ ESTURO <janickm@nvidia.com> / OR LITANY <olitany@nvidia.com>.
+# NCORE
 
 NOTE: This codebase is under active development and the APIs may thus still change. If you build upon this repository, consider forking it to prevent such issues.
 
@@ -17,7 +14,7 @@ In addition to nvidia drivers / cuda runtime (>11.1), the following system packa
 sudo apt-get install gcc g++ clang libgl1 xz-utils jupyter-nbconvert
 ```
 
-Alternatively, builds can be executed within the `gitlab-master.nvidia.com:5005/nrs/ncore:dev` docker image, which has these packages pre-installed.
+Alternatively, builds can be executed within the `gitlab-master.nvidia.com:5005/nrs/ncore_repos/ncore:dev` docker image, which has these packages pre-installed.
 
 Additionally, the following packages should be installed as dependencies for scripts:
 
@@ -63,7 +60,7 @@ using the same `<TOKEN>` to access development and base images.
 ## Cloning the repo
 
 ```
-git clone https://gitlab-master.nvidia.com/nrs/ncore.git
+git clone https://gitlab-master.nvidia.com/Toronto_DL_Lab/nrs/ncore.git
 ```
 
 ## Install bazel
@@ -100,32 +97,6 @@ bazel run @aspect_rules_format//format
 ```
 
 to format all source files. Use `bazel run @aspect_rules_format//format -- --mode check` to only check for code-formatting violations.
-
-## Example of building / running a target with bazel
-
-Build targets can be seamlessly build and executed using the bazel driver (either `bazel` or `bazelisk`) via, e.g.,
-
-```
-bazel run //scripts:convert_raw_data -- \
-  --help
-```
-
-In this command, `run` is the bazel command to run (other common alternatives are `build` / `test`), `//scripts:convert_raw_data` is the label of the target `convert_raw_data` living in the `//scripts` package (corresponding to the `<repo-root>/scripts` folder), and `-- --help` are arguments passed to the executed target (not the intermediate `--` separator).
-
-## Example of debugging a python target
-
-Python targets are executed within a sandbox and scripts can't be executed directly. To facilitate debugging of scripts `debugpy`-based remote debugging can be used. To enable a `debugpy` server, use bazel's `--run_under` CLI argument for supported targets, e.g.,
-
-```
-bazel run //scripts:convert_raw_data \
-  --run_under="python -m debugpy --listen 0.0.0.0:5678 --wait-for-client"
-  -- \
-  ...
-```
-
-The `debugpy` module needs to be available for the local host's `python` interpreter (it can be installed, e.g., with `pip install debugpy --user`).
-
-A remote debugger client can then be attached to this process. For instance, in vs-code, create a new `Python: Remote Attach` run configuration (usually using `localhost:5678` as the server to connect to).
 
 ## Static Code Analysis
 
