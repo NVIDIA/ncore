@@ -8,6 +8,13 @@ load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
 py_library(
     name = "pylib",
     data = ["py.typed"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@ncore_repo//ncore/data:pylib",
+        "@ncore_repo//ncore/data/v3:pylib",
+        "@ncore_repo//ncore/geometry:pylib",
+        "@ncore_repo//ncore/sensors:pylib",
+    ],
 )
 
 # Collect all dependencies within the ncore.* subpackages to export in wheel
@@ -16,10 +23,6 @@ py_package(
     packages = ["ncore"],
     deps = [
         "@ncore_repo//ncore:pylib",
-        "@ncore_repo//ncore/data:pylib",
-        "@ncore_repo//ncore/data/v3:pylib",
-        "@ncore_repo//ncore/geometry:pylib",
-        "@ncore_repo//ncore/sensors:pylib",
     ],
 )
 

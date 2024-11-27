@@ -12,7 +12,7 @@ try:
     from scripts.util import breakpoint
 except ImportError:
     # if included externally as 'ncore_repo' use fully-evaluated path
-    from external.ncore_repo.scripts.util import breakpoint
+    from external.ncore_repo.scripts.util import breakpoint  # type: ignore
 
 import click
 

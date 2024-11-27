@@ -9,10 +9,10 @@ py_library(
     srcs = [
         "__init__.py",
     ],
+    data = ["py.typed"],
     visibility = ["//visibility:public"],
     deps = [
         requirement("click"),
-        "//ncore/impl/common:pylib_common",
         "//scripts:pylib_util",
     ],
 )
