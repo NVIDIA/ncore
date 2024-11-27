@@ -439,17 +439,3 @@ class HalfClosedInterval:
         )  # full range of frames
 
         return range(cover_range_start, cover_range_stop)
-
-
-class Config(object):
-    """Simple dictionary holding all options as key/value pairs"""
-
-    def __init__(self, kwargs):
-        self.__dict__ = kwargs
-
-    def __iadd__(self, other):
-        """Extend with more key/value options"""
-        for key, value in other.items():
-            self.__dict__[key] = value
-
-        return self
