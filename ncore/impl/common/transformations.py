@@ -1,7 +1,5 @@
 # Copyright (c) 2024 NVIDIA CORPORATION.  All rights reserved.
 
-from typing import Optional
-
 import numpy as np
 
 from scipy.spatial.transform import Rotation as R
