@@ -7,6 +7,10 @@ def http_archive(name, **kwargs):
     maybe(_http_archive, name = name, **kwargs)
 
 def register_repositories():
+    """
+    Registers all the necessary repositories for the project.
+    """
+
     ## 3rdparty
     http_archive(
         name = "poisson_recon",
@@ -26,12 +30,9 @@ def register_repositories():
     )
 
     http_archive(
-        name = "waymo-open-dataset",
-        sha256 = "cb67a97d99c28b6c801d0fbe9889bcaf7fb0e9f94b102624d38f9ae106db0891",
-        # source-repo: https://github.com/waymo-research/waymo-open-dataset.git, tag v1.5.1
-        urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/repo-waymo-open-dataset/576f635/repo-waymo-open-dataset-576f635.tar.gz"],
-        strip_prefix = "waymo-open-dataset/src",
-        repo_mapping = {"@wod_deps": "@pip_deps"},
+        name = "io_bazel_rules_docker",
+        sha256 = "b1e80761a8a8243d03ebca8845e9cc1ba6c82ce7c5179ce2b295cd36f7e394bf",
+        urls = ["https://github.com/bazelbuild/rules_docker/releases/download/v0.25.0/rules_docker-v0.25.0.tar.gz"],
     )
 
     http_archive(
