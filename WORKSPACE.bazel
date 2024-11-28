@@ -109,13 +109,12 @@ load("@mypy_integration_pip_deps//:requirements.bzl", install_deps_mypy = "insta
 
 install_deps_mypy()
 
-## Docker rules
-http_archive(
-    name = "io_bazel_rules_docker",
-    sha256 = "b1e80761a8a8243d03ebca8845e9cc1ba6c82ce7c5179ce2b295cd36f7e394bf",
-    urls = ["https://github.com/bazelbuild/rules_docker/releases/download/v0.25.0/rules_docker-v0.25.0.tar.gz"],
-)
+## Dependencies
+load("//bazel/repo:repos.bzl", "register_repositories")
 
+register_repositories()
+
+## Docker rules
 load(
     "@io_bazel_rules_docker//repositories:repositories.bzl",
     container_repositories = "repositories",
@@ -146,23 +145,6 @@ container_pull(
     registry = "gitlab-master.nvidia.com:5005",
     repository = "nrs/ncore",
 )
-
-## Protobuf rules
-http_archive(
-    name = "com_google_protobuf",
-    sha256 = "25680843adf0c3302648d35f744e38cc3b6b05a6c77a927de5aea3e1c2e36106",
-    strip_prefix = "protobuf-3.19.4",
-    urls = ["https://github.com/google/protobuf/archive/v3.19.4.zip"],
-)
-
-load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
-
-protobuf_deps()
-
-## Dependencies
-load("//bazel/repo:repos.bzl", "register_repositories")
-
-register_repositories()
 
 ## bazel-starlib / buildifier
 load("@cgrindel_bazel_starlib//:deps.bzl", "bazel_starlib_dependencies")

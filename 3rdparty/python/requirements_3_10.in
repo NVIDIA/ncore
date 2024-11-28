@@ -1,51 +1,34 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-protobuf<4.0
-tqdm
-scipy
-matplotlib>=3.6.2
-pyside6
-runx
-opencv-python
-scikit-image
-protobuf3-to-dict==0.1.5
-pandas
-pyarrow
-point-cloud-utils>=0.30.2
-click
+# To run tests
 pytest
 parameterized
-open3d
-tensorflow~=2.8.2 # required by open3d.ml.tf
-h5py
+
+# Public API dependencies
+numpy
+dataclasses-json>=0.2.11 # deserialization fails with earlier versions
+pillow
 zarr>=2.17.0 # contains "Cache result of FSStore._fsspec_installed()" https://github.com/zarr-developers/zarr-python/pull/1581
 cbor2
+scipy
 
 --find-links https://download.pytorch.org/whl/torch_stable.html
 torch==1.12.0+cu116
-torchvision==0.13.0+cu116
-torchaudio==0.12.0
 
---extra-index-url https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple
-detectron2==0.6+cu116
+# Script dependencies
+tqdm
+matplotlib>=3.6.2
+pyside6
+opencv-python
+point-cloud-utils>=0.30.2
+click
+open3d
+tensorflow~=2.8.2 # required by open3d.ml.tf
+multimethod
+debugpy
 
---extra-index-url https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple
-apex==0.1
-
-# v2.0.4 py3.10 wheel from internal package repo (dist package fails to build)
-pycocotools==2.0.4 --hash=sha256:45c93ded54dbd0f74a9eb25ea19fbb1c178fa0d2f3185ea63dfac58786bd5fd6
-
+# Docs / tools dependencies
 jupyter_server
 sphinx
 sphinx_rtd_theme
 nbsphinx
-
-dataclasses-json>=0.2.11 # deserialization fails with earlier versions
-
-multimethod
-
-webdataset
-
-polyscope
-
-debugpy

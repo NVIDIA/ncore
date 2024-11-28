@@ -55,25 +55,6 @@ py_library(
 )
 
 py_library(
-    name = "pylib_nvidia",
-    srcs = [
-        "nvidia_utils.py",
-    ],
-    deps = [
-        requirement("numpy"),
-        requirement("tqdm"),
-        requirement("pillow"),
-        requirement("multimethod"),
-        requirement("scipy"),
-        requirement("pyarrow"),
-        requirement("pandas"),  # for pyarrow::to_pandas()
-        ":pylib_common",
-        ":pylib_transformations",
-        "//ncore/impl/data:pylib_types",
-    ],
-)
-
-py_library(
     name = "pylib_visualization",
     srcs = [
         "visualization.py",
@@ -86,7 +67,6 @@ py_library(
         requirement("open3d"),
         requirement("tensorflow"),  # required by open3d.ml.tf
         requirement("multimethod"),
-        ":pylib_nvidia",
         "//ncore/impl/data:pylib_types",
     ],
 )

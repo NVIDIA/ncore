@@ -1,0 +1,20 @@
+# Copyright (c) 2024 NVIDIA CORPORATION.  All rights reserved.
+
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_library")
+
+py_library(
+    name = "pylib_data_converter",
+    srcs = [
+        "__init__.py",
+    ],
+    data = ["py.typed"],
+    visibility = ["//visibility:public"],
+    deps = [
+        requirement("click"),
+        "//scripts:pylib_util",
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")

@@ -11,7 +11,6 @@ from scipy.spatial.transform import Rotation as R
 from multimethod import multimethod
 
 from ncore.impl.data.types import FrameLabel3
-from ncore.impl.common.nvidia_utils import LabelProcessor as NvidiaLabelProcessor
 
 
 def rgba(r):
@@ -83,8 +82,31 @@ class LabelVisualizer:
     COLOR_MAP_LABELS = cm.get_cmap("tab20")
 
     # TODO: currently only works for NVIDIA classes
-    LABELCLASS_STRING_TO_LABELCLASS_ID = NvidiaLabelProcessor.LABELCLASS_STRING_TO_LABELCLASS_ID
-    LABELCLASS_ID_TO_LABELCLASS_STRING = NvidiaLabelProcessor.LABELCLASS_ID_TO_LABELCLASS_STRING
+    LABELCLASS_STRING_TO_LABELCLASS_ID: dict[str, int] = {
+        "unknown": 0,
+        "automobile": 1,
+        "pedestrian": 2,
+        "sign": 3,
+        "CYCLIST": 4,
+        "heavy_truck": 5,
+        "bus": 6,
+        "other_vehicle": 7,
+        "motorcycle": 8,
+        "motorcycle_with_rider": 9,
+        "person": 10,
+        "rider": 11,
+        "bicycle_with_rider": 12,
+        "bicycle": 13,
+        "stroller": 14,
+        "person_group": 15,
+        "unclassifiable_vehicle": 16,
+        "cycle": 17,
+        "trailer": 18,
+        "protruding_object": 19,
+        "animal": 20,
+        "train_or_tram_car": 21,
+    }
+    LABELCLASS_ID_TO_LABELCLASS_STRING: dict[int, str] = {v: k for k, v in LABELCLASS_STRING_TO_LABELCLASS_ID.items()}
 
     def __init__(self) -> None:
         """
