@@ -3,7 +3,7 @@
 import logging
 
 from pathlib import Path
-from typing import Final, Optional
+from typing import Final, Optional, Tuple
 
 import click
 import debugpy
@@ -18,7 +18,7 @@ class NPArrayParamType(click.ParamType):
     name = "NPArray"
     """ Click cmdl argument type for numpy arrays """
 
-    def __init__(self, dim: tuple[int, ...] = (-1,), dtype: npt.DTypeLike = np.float32):
+    def __init__(self, dim: Tuple[int, ...] = (-1,), dtype: npt.DTypeLike = np.float32):
         super().__init__()
         self.dim = dim
         self.dtype = np.dtype(dtype)
