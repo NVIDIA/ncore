@@ -274,7 +274,7 @@ def se3_inverse(T: np.ndarray, unbatch: bool = True) -> np.ndarray:
 
     # batch dimensions unconditionally
     T = T.reshape((-1, 4, 4))
-    ret = np.stack([np.eye(4)] * T.shape[0], axis=0)
+    ret = np.stack([np.eye(4, dtype=T.dtype)] * T.shape[0], axis=0)
     ret[:, :3, :3] = (Rt := T[:, :3, :3].transpose(0, 2, 1))
     ret[:, :3, 3:] = -Rt @ T[:, :3, 3:]
 
