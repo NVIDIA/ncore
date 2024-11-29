@@ -44,7 +44,12 @@ def numpy_array_field(datatype: "npt.DTypeLike", default=None):
     def decoder(*args, **kwargs):
         return np.array(*args, dtype=datatype, **kwargs)
 
-    return field(default=default, metadata=dataclasses_json.config(encoder=np.ndarray.tolist, decoder=decoder))
+    metadata = dataclasses_json.config(encoder=np.ndarray.tolist, decoder=decoder)
+
+    if default is not None:
+        return field(default_factory=lambda: default, metadata=metadata)
+    else:
+        return field(default=None, metadata=metadata)
 
 
 def enum_field(enum_class, default=None):
