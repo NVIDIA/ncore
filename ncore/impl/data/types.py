@@ -71,6 +71,9 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
         np.float32
     )  #: Coefficients of the angles-to-pixeldistances polynomial (float32, [6,])
     max_angle: float = 0.0  #: Maximal extrinsic ray angle [rad] with the principal direction (float32)
+    linear_cde: np.ndarray = util.numpy_array_field(
+        np.float32, default=np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    )  #: Coefficients of the constrained linear term [c,d;e,1] transforming between sensor coordinates (in mm) to image coordinates (in px) (float32, [3,])
 
     @staticmethod
     def type() -> str:
@@ -119,6 +122,9 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
         )
 
         assert self.max_angle > 0.0
+
+        assert self.linear_cde.shape == (3,)
+        assert self.linear_cde.dtype == np.dtype("float32")
 
 
 if sys.version_info <= (3, 9):

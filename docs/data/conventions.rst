@@ -286,6 +286,9 @@ will additionally be available in ``camera_model_parameters``:
   [6,])
 * ``max_angle`` - maximal extrinsic ray angle [rad] with the principal
   direction (float32)
+* ``linear_cde`` - Coefficients of the constrained linear term
+  :math:`\begin{bmatrix} c & d \\ e & 1 \end{bmatrix}` transforming between
+  sensor coordinates (in mm) to image coordinates (in px) (float32, [3,])
 
 If ``camera_model_type` = 'opencv-pinhole'`` the following intrinsic parameters
 will additionally be available in ``camera_model_parameters``:
