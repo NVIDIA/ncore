@@ -1140,10 +1140,7 @@ class FThetaCameraModel(CameraModel):
         self.device = torch.device(device)
         self.dtype = dtype
 
-        assert (
-            camera_model_parameters.reference_poly
-            == types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE
-        ), "currently only supporting PIXELDIST_TO_ANGLE reference polynomials"
+        self.reference_poly = camera_model_parameters.reference_poly
 
         # FThetaCameraModelParameters are defined such that the image coordinate origin corresponds to
         # the center of the first pixel. To conform to the CameraModel specification (having the image
@@ -1174,7 +1171,13 @@ class FThetaCameraModel(CameraModel):
             device=self.device,
         ) / (c - e * d)
 
-        # Initialize first derivative of bw_poly for Newton iteration
+        # Initialize first derivative of polynomials for Newton iteration-based inversions
+        self.dfw_poly = torch.tensor(
+            # coefficient of first derivative of the forward polynomial
+            [i * c for i, c in enumerate(camera_model_parameters.fw_poly[1:], start=1)],
+            dtype=self.dtype,
+            device=self.device,
+        )
         self.dbw_poly = torch.tensor(
             # coefficient of first derivative of the backwards polynomial
             [i * c for i, c in enumerate(camera_model_parameters.bw_poly[1:], start=1)],
@@ -1195,8 +1198,16 @@ class FThetaCameraModel(CameraModel):
         assert self.principal_point.dtype == self.dtype
         assert self.fw_poly.shape == (6,)
         assert self.fw_poly.dtype == self.dtype
+        assert self.dfw_poly.shape == (5,)
+        assert self.dfw_poly.dtype == self.dtype
         assert self.bw_poly.shape == (6,)
         assert self.bw_poly.dtype == self.dtype
+        assert self.dbw_poly.shape == (5,)
+        assert self.dbw_poly.dtype == self.dtype
+        assert self.A.shape == (2, 2)
+        assert self.A.dtype == self.dtype
+        assert self.Ainv.shape == (2, 2)
+        assert self.Ainv.dtype == self.dtype
         assert self.resolution.shape == (2,)
         assert self.resolution.dtype == torch.int32
 
@@ -1214,7 +1225,13 @@ class FThetaCameraModel(CameraModel):
         rdist = torch.linalg.norm(image_points_dist, axis=1, keepdims=True)
 
         # Evaluate backward polynomial to get alpha = f^-1(rdist) factors
-        alphas = self._eval_poly_horner(self.bw_poly, rdist)
+        if self.reference_poly == types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE:
+            alphas = self._eval_poly_horner(self.bw_poly, rdist)  # bw is reference, evaluate it directly
+        else:
+            # fw is reference, evaluate its inverse via newton-based inversion
+            alphas = self._eval_poly_inverse_horner_newton(
+                self.fw_poly, self.dfw_poly, self.bw_poly, self.newton_iterations, rdist
+            )
 
         # Compute the camera rays and set the ones at the image center to [0,0,1]
         cam_rays = torch.hstack(
@@ -1256,9 +1273,14 @@ class FThetaCameraModel(CameraModel):
         alphas = torch.clamp(alphas_full, max=self.max_angle)
 
         # Evaluate forward polynomial, giving delta = f(alpha) factors
-        deltas = self._eval_poly_inverse_horner_newton(
-            self.bw_poly, self.dbw_poly, self.fw_poly, self.newton_iterations, alphas
-        )
+        if self.reference_poly == types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE:
+            # bw is reference, evaluate its inverse via newton-based inversion
+            deltas = self._eval_poly_inverse_horner_newton(
+                self.bw_poly, self.dbw_poly, self.fw_poly, self.newton_iterations, alphas
+            )
+        else:
+            # fw is reference, evaluate it directly
+            deltas = self._eval_poly_horner(self.fw_poly, alphas)
 
         # Apply linear term [c,d;e,1] to f(alpha)-weighted normalized 2d vectors, relative to principal point
         image_points = (

@@ -388,6 +388,68 @@ class TestReferenceFThetaCamera(CommonTestCase):
                         MAX_DEVIATION_IN_PIXEL,
                     )
 
+    def test_imagePoints2rays_rays2imagePoints_consistency_fwpoly(self):
+        """Tests self-consistency of torch-based FTheta cameras using forward reference polynomials"""
+        MAX_DEVIATION_IN_PIXEL = 0.001
+
+        # A none trivial forward polynomial (usin ANGLE_TO_PIXELDIST as reference) camera model
+        camera_ftheta = FThetaCameraModel(
+            camera_model_parameters=(
+                camera_model_parameters := FThetaCameraModelParameters(
+                    resolution=np.array([3848, 2168], dtype=np.uint64),
+                    shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
+                    principal_point=np.array([1909.3092041015625, 1103.27880859375], dtype=np.float32),
+                    reference_poly=FThetaCameraModelParameters.PolynomialType.ANGLE_TO_PIXELDIST,
+                    pixeldist_to_angle_poly=np.array(
+                        [
+                            0.0,
+                            0.00031855489942245185,
+                            -5.4367417234857385e-09,
+                            4.775631279319015e-12,
+                            -1.0283620548333567e-15,
+                            -1.1274463994279525e-19,
+                        ],
+                        dtype=np.float32,
+                    ),
+                    angle_to_pixeldist_poly=np.array(
+                        [
+                            0.0,
+                            3139.48583984375,
+                            164.5725860595703,
+                            -442.12896728515625,
+                            259.5827331542969,
+                            153.66644287109375,
+                        ],
+                        dtype=np.float32,
+                    ),
+                    max_angle=0.7037167544041137,
+                    linear_cde=np.array(
+                        [1.0000840425491333, -2.8000000384054147e-05, -7.300000288523734e-05], dtype=np.float32
+                    ),
+                )
+            ),
+            device=self.device,
+            dtype=self.dtype,
+        )
+
+        # for p in [0, px]:
+        for p in range(int(camera_model_parameters.principal_point[0])):
+            with self.subTest(p=p):
+                expectedPoint2d = np.array([[p, p]])
+
+                # Evaluate torch-camera
+                ray3d = camera_ftheta.image_points_to_camera_rays(
+                    camera_ftheta.to_torch(expectedPoint2d).to(camera_ftheta.dtype)
+                )
+
+                with self.subTest(angle=np.degrees(np.arccos(ray3d.cpu()[0][2]))):
+                    # Verify torch-camera's result
+                    image_points = camera_ftheta.camera_rays_to_image_points(ray3d)
+                    self.assertLessEqual(
+                        np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())),
+                        MAX_DEVIATION_IN_PIXEL,
+                    )
+
     def test_calculateMaxRadius(self):
         size2d = np.array([10, 5])
         max2d = size2d - [1, 1]
