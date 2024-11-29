@@ -1,5 +1,6 @@
 # Copyright (c) 2023 NVIDIA CORPORATION.  All rights reserved.
 
+import dataclasses
 import unittest
 import itertools
 
@@ -342,6 +343,51 @@ class TestReferenceFThetaCamera(CommonTestCase):
                         MAX_DEVIATION_IN_PIXEL,
                     )
 
+    def test_imagePoints2rays_rays2imagePoints_consistency_linear(self):
+        """Tests self-consistency of torch-based FTheta cameras given a non-trivial linear term"""
+        MAX_DEVIATION_IN_PIXEL = 0.001
+        size2d = np.array([1000, 1000])
+        principalPoint = size2d / 2
+        focalLengthPixel = 500.0
+        backwardPolynomial = [
+            0.0,
+            0.4 / focalLengthPixel,
+            (0.4 / focalLengthPixel) ** 2,
+            (0.4 / focalLengthPixel) ** 3,
+            (0.4 / focalLengthPixel) ** 4,
+        ]
+
+        camera_model_parameters = ftheta_parameters_from_reference(
+            ReferenceFThetaCamera(size2d, principalPoint, backwardPolynomial)
+        )
+
+        # add non-identity linear term to the camera model
+        camera_model_parameters = dataclasses.replace(
+            camera_model_parameters, linear_cde=np.array([1.2, 0.1, 0.2], dtype=np.float32)
+        )
+
+        camera_ftheta = FThetaCameraModel(
+            camera_model_parameters=camera_model_parameters, device=self.device, dtype=self.dtype
+        )
+
+        # for p in [0, px]:
+        for p in range(int(principalPoint[0])):
+            with self.subTest(p=p):
+                expectedPoint2d = np.array([[p, p]])
+
+                # Evaluate torch-camera
+                ray3d = camera_ftheta.image_points_to_camera_rays(
+                    camera_ftheta.to_torch(expectedPoint2d).to(camera_ftheta.dtype)
+                )
+
+                with self.subTest(angle=np.degrees(np.arccos(ray3d.cpu()[0][2]))):
+                    # Verify torch-camera's result
+                    image_points = camera_ftheta.camera_rays_to_image_points(ray3d)
+                    self.assertLessEqual(
+                        np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())),
+                        MAX_DEVIATION_IN_PIXEL,
+                    )
+
     def test_calculateMaxRadius(self):
         size2d = np.array([10, 5])
         max2d = size2d - [1, 1]
@@ -554,11 +600,8 @@ def _computeCumulativeAngleAtImageBorder(baseAngle, orderPolynomial):
     return baseAngle * orderPolynomial
 
 
-def ftheta_from_reference(
-    reference_camera: ReferenceFThetaCamera, device: str, dtype: torch.dtype
-) -> FThetaCameraModel:
-
-    parameters = FThetaCameraModelParameters(
+def ftheta_parameters_from_reference(reference_camera: ReferenceFThetaCamera) -> FThetaCameraModelParameters:
+    return FThetaCameraModelParameters(
         resolution=reference_camera._imageSize.astype(np.uint64),
         shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
         # Subtract the principal offset to align the image coordinate system conventions
@@ -570,7 +613,14 @@ def ftheta_from_reference(
         max_angle=reference_camera._radius2angle(reference_camera._maxRadius).astype(np.float32),
     )
 
-    return FThetaCameraModel(camera_model_parameters=parameters, device=device, dtype=dtype)
+
+def ftheta_from_reference(
+    reference_camera: ReferenceFThetaCamera, device: str, dtype: torch.dtype
+) -> FThetaCameraModel:
+
+    return FThetaCameraModel(
+        camera_model_parameters=ftheta_parameters_from_reference(reference_camera), device=device, dtype=dtype
+    )
 
 
 @parameterized.parameterized_class(

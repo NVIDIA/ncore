@@ -1155,6 +1155,25 @@ class FThetaCameraModel(CameraModel):
         self.fw_poly = self.to_torch(camera_model_parameters.fw_poly).to(self.dtype)
         self.bw_poly = self.to_torch(camera_model_parameters.bw_poly).to(self.dtype)
 
+        # Linear term A = [c,d;e;1], A^-1 = 1/(c-e*d)*[1,-d;-e,c]
+        c, d, e = camera_model_parameters.linear_cde
+        self.A = torch.tensor(
+            [
+                [c, d],
+                [e, 1],
+            ],
+            dtype=self.dtype,
+            device=self.device,
+        )
+        self.Ainv = torch.tensor(
+            [
+                [1, -d],
+                [-e, c],
+            ],
+            dtype=self.dtype,
+            device=self.device,
+        ) / (c - e * d)
+
         # Initialize first derivative of bw_poly for Newton iteration
         self.dbw_poly = torch.tensor(
             # coefficient of first derivative of the backwards polynomial
@@ -1190,10 +1209,11 @@ class FThetaCameraModel(CameraModel):
         assert image_points.is_floating_point(), "[CameraModel]: image_points must be floating point values"
         image_points = image_points.to(self.dtype)
 
-        image_points_dist = image_points - self.principal_point
+        # Get f(alpha)-weighted normalized 2d vectors (undoing linear term)
+        image_points_dist = torch.einsum("ij,nj->ni", self.Ainv, image_points - self.principal_point)
         rdist = torch.linalg.norm(image_points_dist, axis=1, keepdims=True)
 
-        # Evaluate backward polynomial
+        # Evaluate backward polynomial to get alpha = f^-1(rdist) factors
         alphas = self._eval_poly_horner(self.bw_poly, rdist)
 
         # Compute the camera rays and set the ones at the image center to [0,0,1]
@@ -1235,12 +1255,15 @@ class FThetaCameraModel(CameraModel):
         # These FOV-clamped projections will be marked as *invalid*
         alphas = torch.clamp(alphas_full, max=self.max_angle)
 
-        # Evaluate forward polynomial
+        # Evaluate forward polynomial, giving delta = f(alpha) factors
         deltas = self._eval_poly_inverse_horner_newton(
             self.bw_poly, self.dbw_poly, self.fw_poly, self.newton_iterations, alphas
         )
 
-        image_points = deltas / ray_xy_norms * cam_rays[:, :2] + self.principal_point[None, :]
+        # Apply linear term [c,d;e,1] to f(alpha)-weighted normalized 2d vectors, relative to principal point
+        image_points = (
+            torch.einsum("ij,nj->ni", self.A, deltas / ray_xy_norms * cam_rays[:, :2]) + self.principal_point[None, :]
+        )
 
         # Extract valid image points
         valid_x = torch.logical_and(0.0 <= image_points[:, 0], image_points[:, 0] < self.resolution[0])
