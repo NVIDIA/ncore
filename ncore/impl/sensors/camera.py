@@ -1120,10 +1120,14 @@ def transform_parameters(
     cam_model_parameters: types.ConcreteCameraModelParametersUnion, image_domain_scale_factor: float = 1.0
 ) -> types.ConcreteCameraModelParametersUnion:
     """
-    Returns a transformed version of a camera model parameter structure, applying
+    Applies a transformation to camera model parameter
 
-        - 'image_domain_scale_factor': a scaling factor to the image domain (e.g., to account for up-/downsampling).
-           Resulting image resolution needs to be integer
+    Args:
+        image_domain_scale_factor: a uniform scaling factor to the image domain (e.g., to account for up-/downsampling).
+                                   Resulting image resolution needs to be integer
+
+    Returns:
+        a transformed version of the camera model parameters
     """
     if isinstance(cam_model_parameters, types.FThetaCameraModelParameters):
         return FThetaCameraModel.transform_parameters(image_domain_scale_factor, cam_model_parameters)
@@ -1170,7 +1174,7 @@ class FThetaCameraModel(CameraModel):
         # offset the principal point by half a pixel.
         # Please see documentation for more information.
         self.principal_point = self.to_torch(camera_model_parameters.principal_point).to(self.dtype) + 0.5
-        
+
         self.fw_poly = self.to_torch(camera_model_parameters.fw_poly).to(self.dtype)
         self.bw_poly = self.to_torch(camera_model_parameters.bw_poly).to(self.dtype)
 
@@ -1344,10 +1348,14 @@ class FThetaCameraModel(CameraModel):
         cam_model_parameters: types.FThetaCameraModelParameters,
     ) -> types.FThetaCameraModelParameters:
         """
-        Returns a transformed version of a camera model parameter structure, applying
+        Applies a transformation to camera model parameter
 
-            - 'image_domain_scale_factor': a scaling factor to the image domain (e.g., to account for up-/downsampling).
-               Resulting image resolution needs to be integer
+        Args:
+            image_domain_scale_factor: a uniform scaling factor to the image domain (e.g., to account for up-/downsampling).
+                                       Resulting image resolution needs to be integer
+
+        Returns:
+            a transformed version of the camera model parameters
         """
 
         # Make sure scaled resolution is integer
@@ -1506,10 +1514,14 @@ class OpenCVPinholeCameraModel(CameraModel):
         cam_model_parameters: types.OpenCVPinholeCameraModelParameters,
     ) -> types.OpenCVPinholeCameraModelParameters:
         """
-        Returns a transformed version of a camera model parameter structure, applying
+        Applies a transformation to camera model parameter
 
-            - 'image_domain_scale_factor': a scaling factor to the image domain (e.g., to account for up-/downsampling).
-               Resulting image resolution needs to be integer
+        Args:
+            image_domain_scale_factor: a uniform scaling factor to the image domain (e.g., to account for up-/downsampling).
+                                       Resulting image resolution needs to be integer
+
+        Returns:
+            a transformed version of the camera model parameters
         """
 
         # Make sure scaled resolution is integer
@@ -1723,10 +1735,14 @@ class OpenCVFisheyeCameraModel(CameraModel):
         cam_model_parameters: types.OpenCVFisheyeCameraModelParameters,
     ) -> types.OpenCVFisheyeCameraModelParameters:
         """
-        Returns a transformed version of a camera model parameter structure, applying
+        Applies a transformation to camera model parameter
 
-            - 'image_domain_scale_factor': a scaling factor to the image domain (e.g., to account for up-/downsampling).
-               Resulting image resolution needs to be integer
+        Args:
+            image_domain_scale_factor: a uniform scaling factor to the image domain (e.g., to account for up-/downsampling).
+                                       Resulting image resolution needs to be integer
+
+        Returns:
+            a transformed version of the camera model parameters
         """
 
         # Make sure scaled resolution is integer
