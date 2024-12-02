@@ -1168,7 +1168,6 @@ class TestFisheyeCamera(CommonTestCase):
 )
 class TestTransformParameters(CommonTestCase):
     MAX_DEVIATION_IN_IMAGE_COORDINATES = 0.001
-    MAX_DEVIATION_IN_RAY_COORDINATES = 0.001
 
     def setUp(self):
         # Make printed errors more representable numerically
@@ -1176,6 +1175,60 @@ class TestTransformParameters(CommonTestCase):
 
         # Real-world customer camera parameters to test
         self.cam_model_params = [
+            # fw-based ftheta camera model
+            FThetaCameraModelParameters(
+                resolution=np.array([3848, 2168], dtype=np.uint64),
+                shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
+                principal_point=np.array([1909.3092041015625, 1103.27880859375], dtype=np.float32),
+                reference_poly=FThetaCameraModelParameters.PolynomialType.ANGLE_TO_PIXELDIST,
+                pixeldist_to_angle_poly=np.array(
+                    [
+                        0.0,
+                        0.00031855489942245185,
+                        -5.4367417234857385e-09,
+                        4.775631279319015e-12,
+                        -1.0283620548333567e-15,
+                        -1.1274463994279525e-19,
+                    ],
+                    dtype=np.float32,
+                ),
+                angle_to_pixeldist_poly=np.array(
+                    [
+                        0.0,
+                        3139.48583984375,
+                        164.5725860595703,
+                        -442.12896728515625,
+                        259.5827331542969,
+                        153.66644287109375,
+                    ],
+                    dtype=np.float32,
+                ),
+                max_angle=0.7037167544041137,
+                linear_cde=np.array([1.1, -0.1, 0.2], dtype=np.float32),  # updated from [1,0,0] to be more significant
+            ),
+            # bw-based ftheta camera model
+            FThetaCameraModelParameters(
+                resolution=np.array([3848, 2168], dtype=np.uint64),
+                shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
+                principal_point=np.array([1904.948486328125, 1090.5164794921875], dtype=np.float32),
+                reference_poly=FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE,
+                pixeldist_to_angle_poly=np.array(
+                    [
+                        0.0,
+                        0.0005380856455303729,
+                        -1.2021251771798802e-09,
+                        4.5657002484267295e-12,
+                        -5.581118088908714e-16,
+                        0.0,
+                    ],
+                    dtype=np.float32,
+                ),
+                angle_to_pixeldist_poly=np.array(
+                    [0.0, 1858.59228515625, 6.894773483276367, -53.92193603515625, 14.201756477355957, 0.0],
+                    dtype=np.float32,
+                ),
+                max_angle=1.2292176485061646,
+            ),
             OpenCVPinholeCameraModelParameters(
                 resolution=np.array([1920, 1280], dtype=np.uint64),
                 shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,

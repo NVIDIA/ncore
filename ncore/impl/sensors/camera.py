@@ -1126,8 +1126,7 @@ def transform_parameters(
            Resulting image resolution needs to be integer
     """
     if isinstance(cam_model_parameters, types.FThetaCameraModelParameters):
-        raise NotImplementedError("FThetaCameraModelParameters not yet supported")
-        # return FThetaCameraModelParameters.transform_parameters(image_domain_scale_factor, cam_model_parameters)
+        return FThetaCameraModel.transform_parameters(image_domain_scale_factor, cam_model_parameters)
     elif isinstance(cam_model_parameters, types.OpenCVPinholeCameraModelParameters):
         return OpenCVPinholeCameraModel.transform_parameters(image_domain_scale_factor, cam_model_parameters)
     elif isinstance(cam_model_parameters, types.OpenCVFisheyeCameraModelParameters):
@@ -1170,8 +1169,8 @@ class FThetaCameraModel(CameraModel):
         # coordinate origin aligned with the top-left corner of the first pixel) we therefore need to
         # offset the principal point by half a pixel.
         # Please see documentation for more information.
-
         self.principal_point = self.to_torch(camera_model_parameters.principal_point).to(self.dtype) + 0.5
+        
         self.fw_poly = self.to_torch(camera_model_parameters.fw_poly).to(self.dtype)
         self.bw_poly = self.to_torch(camera_model_parameters.bw_poly).to(self.dtype)
 
@@ -1338,6 +1337,46 @@ class FThetaCameraModel(CameraModel):
 
         # If the input was numpy, return numpy arrays as well
         return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
+
+    @staticmethod
+    def transform_parameters(
+        image_domain_scale_factor: float,
+        cam_model_parameters: types.FThetaCameraModelParameters,
+    ) -> types.FThetaCameraModelParameters:
+        """
+        Returns a transformed version of a camera model parameter structure, applying
+
+            - 'image_domain_scale_factor': a scaling factor to the image domain (e.g., to account for up-/downsampling).
+               Resulting image resolution needs to be integer
+        """
+
+        # Make sure scaled resolution is integer
+        resolution = cam_model_parameters.resolution * image_domain_scale_factor
+        assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
+
+        # Scale principal point location by transforming it in the scaled image (make sure to account for 0.5px offset
+        # of the image domain, as the stored parameters are represented with (0,0) at the center of the first pixel)
+        principal_point = (cam_model_parameters.principal_point + 0.5) * image_domain_scale_factor - 0.5
+
+        # Scale bw polynomial by substituting the input pixel domain transformation (backwards polynomial is a pixel-distance to angle map, so the domain needs to be scaled)
+        scaled_pixel_map = np.polynomial.Polynomial([0.0, 1.0 / image_domain_scale_factor])
+        pixeldist_to_angle_poly = np.polynomial.Polynomial(cam_model_parameters.pixeldist_to_angle_poly)(
+            scaled_pixel_map
+        ).coef.astype(np.float32)
+
+        # Scale fw polynomial by simple scaling of the result, i.e., linear scaling of the polynomial coefficients
+        angle_to_pixeldist_poly = cam_model_parameters.angle_to_pixeldist_poly * image_domain_scale_factor
+
+        # Note: linear_cde doesn't need to be transformed as [c,d;e,1] is a "relative" transformation of the effective image domain scale
+        # (always scaling the output of f(theta) by the same factor)
+
+        return dataclasses.replace(
+            cam_model_parameters,
+            resolution=resolution.astype(np.uint64),
+            principal_point=principal_point,
+            pixeldist_to_angle_poly=pixeldist_to_angle_poly,
+            angle_to_pixeldist_poly=angle_to_pixeldist_poly,
+        )
 
 
 class OpenCVPinholeCameraModel(CameraModel):
@@ -1694,7 +1733,8 @@ class OpenCVFisheyeCameraModel(CameraModel):
         resolution = cam_model_parameters.resolution * image_domain_scale_factor
         assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
 
-        return dataclasses.replace(cam_model_parameters,
+        return dataclasses.replace(
+            cam_model_parameters,
             resolution=resolution.astype(np.uint64),
             principal_point=cam_model_parameters.principal_point * image_domain_scale_factor,
             focal_length=cam_model_parameters.focal_length * image_domain_scale_factor,
