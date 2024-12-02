@@ -1115,6 +1115,27 @@ class CameraModel(ABC):
         return x_iter[newton_iterations]
 
 
+def transform_parameters(
+    cam_model_parameters: types.ConcreteCameraModelParametersUnion, image_domain_scale_factor: float = 1.0
+) -> types.ConcreteCameraModelParametersUnion:
+    """
+    Returns a transformed version of a camera model parameter structure, applying
+        - a scaling factor to the image domain (e.g., to account for downsampling)
+    """
+    if isinstance(cam_model_parameters, types.FThetaCameraModelParameters):
+        raise NotImplementedError("FThetaCameraModelParameters not yet supported")
+        # return FThetaCameraModelParameters.transform_parameters(image_domain_scale_factor, cam_model_parameters)
+    elif isinstance(cam_model_parameters, types.OpenCVPinholeCameraModelParameters):
+        return OpenCVPinholeCameraModel.transform_parameters(image_domain_scale_factor, cam_model_parameters)
+    elif isinstance(cam_model_parameters, types.OpenCVFisheyeCameraModelParameters):
+        raise NotImplementedError("OpenCVFisheyeCameraModelParameters not yet supported")
+        # return OpenCVFisheyeCameraModel.transform_parameters(image_domain_scale_factor, cam_model_parameters)
+    else:
+        raise TypeError(
+            f"unsupported camera model type {type(cam_model_parameters)}, currently supporting Ftheta/OpenCV-Pinhole/OpenCV-Fisheye only"
+        )
+
+
 class FThetaCameraModel(CameraModel):
     def __init__(
         self,
@@ -1437,6 +1458,29 @@ class OpenCVPinholeCameraModel(CameraModel):
             jacobians[valid_idx, 1] = cam_rays_valid.grad
 
         return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
+
+    @staticmethod
+    def transform_parameters(
+        image_domain_scale_factor: float,
+        cam_model_parameters: types.OpenCVPinholeCameraModelParameters,
+    ) -> types.OpenCVPinholeCameraModelParameters:
+        """
+        Scales the camera model parameters by a given factor.
+        """
+
+        resolution = cam_model_parameters.resolution * image_domain_scale_factor
+
+        assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
+
+        return types.OpenCVPinholeCameraModelParameters(
+            principal_point=cam_model_parameters.principal_point * image_domain_scale_factor,
+            focal_length=cam_model_parameters.focal_length * image_domain_scale_factor,
+            radial_coeffs=cam_model_parameters.radial_coeffs,
+            tangential_coeffs=cam_model_parameters.tangential_coeffs,
+            thin_prism_coeffs=cam_model_parameters.thin_prism_coeffs,
+            resolution=resolution.astype(np.uint64),
+            shutter_type=cam_model_parameters.shutter_type,
+        )
 
     def __compute_distortion(self, xy: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Computes the radial, tangential, and thin-prism distortion given the camera rays"""
