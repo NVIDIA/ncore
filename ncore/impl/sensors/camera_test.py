@@ -1174,10 +1174,7 @@ class TestTransformParameters(CommonTestCase):
         # Make printed errors more representable numerically
         np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
 
-        # from scripts.util import breakpoint
-        # breakpoint()
-
-        # Real-world customer camera parameters
+        # Real-world customer camera parameters to test
         self.cam_model_params = [
             OpenCVPinholeCameraModelParameters(
                 resolution=np.array([1920, 1280], dtype=np.uint64),
@@ -1203,7 +1200,29 @@ class TestTransformParameters(CommonTestCase):
                 ),
                 tangential_coeffs=np.array([0.001805535524580487, -0.00005530628187935031], dtype=np.float32),
                 thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32),
-            )
+            ),
+            OpenCVFisheyeCameraModelParameters(
+                resolution=np.array([3840, 2160], dtype=np.uint64),
+                shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
+                principal_point=np.array([1928.184506, 1083.862789], dtype=np.float32),
+                focal_length=np.array(
+                    [
+                        1913.76478,
+                        1913.99708,
+                    ],
+                    dtype=np.float32,
+                ),
+                radial_coeffs=np.array(
+                    [
+                        -0.030093122,
+                        -0.005103817,
+                        -0.000849622,
+                        0.001079542,
+                    ],
+                    dtype=np.float32,
+                ),
+                max_angle=np.deg2rad(140 / 2),
+            ),
         ]
 
     def test_image_domain_scale_factor(self):
