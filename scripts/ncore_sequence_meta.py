@@ -137,6 +137,7 @@ def ncore_sequence_meta(
 
     ## Serialize output
     output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
 
     if output_file:
         output_path /= output_file
