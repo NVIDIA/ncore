@@ -8,8 +8,18 @@ from typing import Optional, Tuple
 
 import click
 import json
+import hashlib
 
 from ncore.impl.data.data3 import ShardDataLoader
+
+
+def md5(path: Path, chunk_size: int = 128 * 2**9) -> str:
+    """Compute the MD5 hash of a file"""
+    hash_md5 = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(chunk_size), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 
 @click.command()
@@ -74,7 +84,7 @@ def ncore_sequence_meta(
     shards = []
     shard_pose_offset = 0
     sensor_frame_offset: dict[str, int] = defaultdict(int)
-    for shard_idx, (shard_id, shard_path) in enumerate(zip(loader.get_shard_ids(), loader.get_shard_paths())):
+    for shard_idx, (shard_id, shard_file) in enumerate(zip(loader.get_shard_ids(), loader.get_shard_paths())):
         start_shard_idx = shard_idx
         stop_shard_idx = shard_idx + 1
 
@@ -90,7 +100,8 @@ def ncore_sequence_meta(
 
         shard = {
             "id": shard_id,
-            "path": Path(shard_path).name,
+            "path": (shard_path := Path(shard_file)).name,
+            "md5": md5(shard_path),
             "pose-range": {
                 "start-timestamp_us": int(shard_pose_timestamps_us[0]),
                 "end-timestamp_us": int(shard_pose_timestamps_us[-1]),
