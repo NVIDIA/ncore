@@ -211,6 +211,7 @@ py_binary(
 py_binary(
     name = "ncore_sequence_meta",
     srcs = ["ncore_sequence_meta.py"],
+    visibility = ["//visibility:public"],
     deps = [
         requirement("click"),
         "//ncore/impl/data:pylib_data",
