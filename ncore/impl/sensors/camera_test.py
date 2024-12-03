@@ -19,7 +19,12 @@ from ncore.impl.data.types import (
     OpenCVFisheyeCameraModelParameters,
     ShutterType,
 )
-from ncore.impl.sensors.camera import CameraModel, FThetaCameraModel, OpenCVPinholeCameraModel, OpenCVFisheyeCameraModel
+from ncore.impl.sensors.camera import (
+    CameraModel,
+    FThetaCameraModel,
+    OpenCVPinholeCameraModel,
+    OpenCVFisheyeCameraModel,
+)
 
 
 class ReferenceFThetaCamera:
@@ -392,7 +397,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
         """Tests self-consistency of torch-based FTheta cameras using forward reference polynomials"""
         MAX_DEVIATION_IN_PIXEL = 0.001
 
-        # A none trivial forward polynomial (usin ANGLE_TO_PIXELDIST as reference) camera model
+        # A none trivial forward polynomial (using ANGLE_TO_PIXELDIST as reference) camera model
         camera_ftheta = FThetaCameraModel(
             camera_model_parameters=(
                 camera_model_parameters := FThetaCameraModelParameters(
@@ -1155,6 +1160,182 @@ class TestFisheyeCamera(CommonTestCase):
                     np.linalg.norm(image_point_opencv - np.array(image_points.image_points.cpu())),
                     self.MAX_DEVIATION_IN_IMAGE_COORDINATES,
                 )
+
+
+@parameterized.parameterized_class(
+    ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
+)
+class TestTransformParameters(CommonTestCase):
+    MAX_DEVIATION_IN_IMAGE_COORDINATES = 0.001
+
+    def setUp(self):
+        # Make printed errors more representable numerically
+        np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
+
+        # Real-world customer camera parameters to test
+        self.cam_model_params = [
+            # fw-based ftheta camera model
+            FThetaCameraModelParameters(
+                resolution=np.array([3848, 2168], dtype=np.uint64),
+                shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
+                principal_point=np.array([1909.3092041015625, 1103.27880859375], dtype=np.float32),
+                reference_poly=FThetaCameraModelParameters.PolynomialType.ANGLE_TO_PIXELDIST,
+                pixeldist_to_angle_poly=np.array(
+                    [
+                        0.0,
+                        0.00031855489942245185,
+                        -5.4367417234857385e-09,
+                        4.775631279319015e-12,
+                        -1.0283620548333567e-15,
+                        -1.1274463994279525e-19,
+                    ],
+                    dtype=np.float32,
+                ),
+                angle_to_pixeldist_poly=np.array(
+                    [
+                        0.0,
+                        3139.48583984375,
+                        164.5725860595703,
+                        -442.12896728515625,
+                        259.5827331542969,
+                        153.66644287109375,
+                    ],
+                    dtype=np.float32,
+                ),
+                max_angle=0.7037167544041137,
+                linear_cde=np.array([1.1, -0.1, 0.2], dtype=np.float32),  # updated from [1,0,0] to be more significant
+            ),
+            # bw-based ftheta camera model
+            FThetaCameraModelParameters(
+                resolution=np.array([3848, 2168], dtype=np.uint64),
+                shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
+                principal_point=np.array([1904.948486328125, 1090.5164794921875], dtype=np.float32),
+                reference_poly=FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE,
+                pixeldist_to_angle_poly=np.array(
+                    [
+                        0.0,
+                        0.0005380856455303729,
+                        -1.2021251771798802e-09,
+                        4.5657002484267295e-12,
+                        -5.581118088908714e-16,
+                        0.0,
+                    ],
+                    dtype=np.float32,
+                ),
+                angle_to_pixeldist_poly=np.array(
+                    [0.0, 1858.59228515625, 6.894773483276367, -53.92193603515625, 14.201756477355957, 0.0],
+                    dtype=np.float32,
+                ),
+                max_angle=1.2292176485061646,
+            ),
+            OpenCVPinholeCameraModelParameters(
+                resolution=np.array([1920, 1280], dtype=np.uint64),
+                shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
+                principal_point=np.array([935.1248081874216, 635.052474560227], dtype=np.float32),
+                focal_length=np.array(
+                    [
+                        2059.0471439559833,
+                        2059.0471439559833,
+                    ],
+                    dtype=np.float32,
+                ),
+                radial_coeffs=np.array(
+                    [
+                        0.04239636827428756,
+                        -0.34165672675852826,
+                        0,
+                        0,
+                        0,
+                        0,
+                    ],
+                    dtype=np.float32,
+                ),
+                tangential_coeffs=np.array([0.001805535524580487, -0.00005530628187935031], dtype=np.float32),
+                thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32),
+            ),
+            OpenCVFisheyeCameraModelParameters(
+                resolution=np.array([3840, 2160], dtype=np.uint64),
+                shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
+                principal_point=np.array([1928.184506, 1083.862789], dtype=np.float32),
+                focal_length=np.array(
+                    [
+                        1913.76478,
+                        1913.99708,
+                    ],
+                    dtype=np.float32,
+                ),
+                radial_coeffs=np.array(
+                    [
+                        -0.030093122,
+                        -0.005103817,
+                        -0.000849622,
+                        0.001079542,
+                    ],
+                    dtype=np.float32,
+                ),
+                max_angle=np.deg2rad(140 / 2),
+            ),
+        ]
+
+    def test_image_domain_scale_factor(self):
+        """Validate image up- / down-scaling"""
+
+        SCALE_FACTORS = [
+            0.25,  # 4x downscale
+            0.5,  # 2x downscale
+            1.0,  # no scaling
+            2.0,  # 2x upscale
+        ]
+
+        for scale_factor in SCALE_FACTORS:
+            with self.subTest(scale_factor=scale_factor):
+                for cam_model_params in self.cam_model_params:
+                    with self.subTest(cam_model_params=cam_model_params):
+
+                        cam_model = CameraModel.from_parameters(cam_model_params, device=self.device, dtype=self.dtype)
+
+                        cam_model_scaled = CameraModel.from_parameters(
+                            cam_model_params.transform(scale_factor), device=self.device, dtype=self.dtype
+                        )
+
+                        # Validate unscaled image domain -> 3d -> scaled image domain round-trip
+                        ray3d = cam_model.image_points_to_camera_rays(
+                            image_points := torch.Tensor(
+                                [[20, 40], [11, 12], [15, 20], [500, 500], [867, 321]]
+                            )  # some image coordinates to use for evaluation [should be in the original image domain]
+                        )
+
+                        image_points_scaled = cam_model_scaled.camera_rays_to_image_points(ray3d)
+
+                        self.assertTrue(
+                            image_points_scaled.valid_flag.all(),
+                            msg="All point projections need to be valid for scale verification",
+                        )
+
+                        self.assertLessEqual(
+                            np.linalg.norm(
+                                image_points.cpu().numpy() * scale_factor
+                                - image_points_scaled.image_points.cpu().numpy()
+                            ),
+                            self.MAX_DEVIATION_IN_IMAGE_COORDINATES,
+                        )
+
+                        # Validate scaled image-domain -> 3d -> unscaled image-domain round-trip
+                        ray3d_scaled = cam_model_scaled.image_points_to_camera_rays(scale_factor * image_points)
+
+                        image_points_unscaled = cam_model.camera_rays_to_image_points(ray3d_scaled)
+
+                        self.assertTrue(
+                            image_points_unscaled.valid_flag.all(),
+                            msg="All point projections need to be valid for scale verification",
+                        )
+
+                        self.assertLessEqual(
+                            np.linalg.norm(
+                                image_points.cpu().numpy() - image_points_unscaled.image_points.cpu().numpy()
+                            ),
+                            self.MAX_DEVIATION_IN_IMAGE_COORDINATES,
+                        )
 
 
 if __name__ == "__main__":

@@ -1147,8 +1147,8 @@ class FThetaCameraModel(CameraModel):
         # coordinate origin aligned with the top-left corner of the first pixel) we therefore need to
         # offset the principal point by half a pixel.
         # Please see documentation for more information.
-
         self.principal_point = self.to_torch(camera_model_parameters.principal_point).to(self.dtype) + 0.5
+
         self.fw_poly = self.to_torch(camera_model_parameters.fw_poly).to(self.dtype)
         self.bw_poly = self.to_torch(camera_model_parameters.bw_poly).to(self.dtype)
 
@@ -1220,22 +1220,22 @@ class FThetaCameraModel(CameraModel):
         assert image_points.is_floating_point(), "[CameraModel]: image_points must be floating point values"
         image_points = image_points.to(self.dtype)
 
-        # Get f(alpha)-weighted normalized 2d vectors (undoing linear term)
+        # Get f(theta)-weighted normalized 2d vectors (undoing linear term)
         image_points_dist = torch.einsum("ij,nj->ni", self.Ainv, image_points - self.principal_point)
         rdist = torch.linalg.norm(image_points_dist, axis=1, keepdims=True)
 
-        # Evaluate backward polynomial to get alpha = f^-1(rdist) factors
+        # Evaluate backward polynomial to get theta = f^-1(rdist) factors
         if self.reference_poly == types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE:
-            alphas = self._eval_poly_horner(self.bw_poly, rdist)  # bw is reference, evaluate it directly
+            thetas = self._eval_poly_horner(self.bw_poly, rdist)  # bw is reference, evaluate it directly
         else:
             # fw is reference, evaluate its inverse via newton-based inversion
-            alphas = self._eval_poly_inverse_horner_newton(
+            thetas = self._eval_poly_inverse_horner_newton(
                 self.fw_poly, self.dfw_poly, self.bw_poly, self.newton_iterations, rdist
             )
 
         # Compute the camera rays and set the ones at the image center to [0,0,1]
         cam_rays = torch.hstack(
-            (torch.sin(alphas) * image_points_dist / torch.maximum(rdist, self.min_2d_norm), torch.cos(alphas))
+            (torch.sin(thetas) * image_points_dist / torch.maximum(rdist, self.min_2d_norm), torch.cos(thetas))
         )
         cam_rays[rdist.flatten() < self.min_2d_norm, :] = torch.tensor(
             [[0, 0, 1]], device=self.device, dtype=self.dtype
@@ -1262,7 +1262,7 @@ class FThetaCameraModel(CameraModel):
         # Make sure norm is non-vanishing (norm vanishes for points along the principal-axis)
         ray_xy_norms[ray_xy_norms[:, 0] <= 0.0] = torch.finfo(self.dtype).eps
 
-        alphas_full = torch.atan2(ray_xy_norms[:], cam_rays[:, 2:])
+        thetas_full = torch.atan2(ray_xy_norms[:], cam_rays[:, 2:])
 
         # Limit angles to max_angle to prevent projected points to leave valid cone around max_angle.
         # In particular for omnidirectional cameras, this prevents points outside the FOV to be
@@ -1270,19 +1270,19 @@ class FThetaCameraModel(CameraModel):
         # the effective FOV (which is different to the image boundaries).
         #
         # These FOV-clamped projections will be marked as *invalid*
-        alphas = torch.clamp(alphas_full, max=self.max_angle)
+        thetas = torch.clamp(thetas_full, max=self.max_angle)
 
-        # Evaluate forward polynomial, giving delta = f(alpha) factors
+        # Evaluate forward polynomial, giving delta = f(theta) factors
         if self.reference_poly == types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE:
             # bw is reference, evaluate its inverse via newton-based inversion
             deltas = self._eval_poly_inverse_horner_newton(
-                self.bw_poly, self.dbw_poly, self.fw_poly, self.newton_iterations, alphas
+                self.bw_poly, self.dbw_poly, self.fw_poly, self.newton_iterations, thetas
             )
         else:
             # fw is reference, evaluate it directly
-            deltas = self._eval_poly_horner(self.fw_poly, alphas)
+            deltas = self._eval_poly_horner(self.fw_poly, thetas)
 
-        # Apply linear term [c,d;e,1] to f(alpha)-weighted normalized 2d vectors, relative to principal point
+        # Apply linear term [c,d;e,1] to f(theta)-weighted normalized 2d vectors, relative to principal point
         image_points = (
             torch.einsum("ij,nj->ni", self.A, deltas / ray_xy_norms * cam_rays[:, :2]) + self.principal_point[None, :]
         )
@@ -1290,10 +1290,10 @@ class FThetaCameraModel(CameraModel):
         # Extract valid image points
         valid_x = torch.logical_and(0.0 <= image_points[:, 0], image_points[:, 0] < self.resolution[0])
         valid_y = torch.logical_and(0.0 <= image_points[:, 1], image_points[:, 1] < self.resolution[1])
-        valid_alphas = (
-            alphas[:, 0] < self.max_angle
+        valid_thetas = (
+            thetas[:, 0] < self.max_angle
         )  # explicitly check for strictly smaller angles to classify FOV-clamped points as invalid
-        valid = valid_x & valid_y & valid_alphas
+        valid = valid_x & valid_y & valid_thetas
 
         jacobians: Optional[torch.Tensor] = None
         if return_jacobians:

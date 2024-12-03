@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import sys
+import dataclasses
 
 from enum import IntEnum, auto, unique
 from dataclasses import dataclass
@@ -126,6 +127,49 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
         assert self.linear_cde.shape == (3,)
         assert self.linear_cde.dtype == np.dtype("float32")
 
+    def transform(
+        self,
+        image_domain_scale_factor: float,
+    ) -> FThetaCameraModelParameters:
+        """
+        Applies a transformation to camera model parameter
+
+        Args:
+            image_domain_scale_factor: a uniform scaling factor to the image domain (e.g., to account for up-/downsampling).
+                                       Resulting image resolution needs to be integer
+
+        Returns:
+            a transformed version of the camera model parameters
+        """
+
+        # Make sure scaled resolution is integer
+        resolution = self.resolution * image_domain_scale_factor
+        assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
+
+        # Scale principal point location by transforming it in the scaled image (make sure to account for 0.5px offset
+        # of the image domain, as the stored parameters are represented with (0,0) at the center of the first pixel)
+        principal_point = (self.principal_point + 0.5) * image_domain_scale_factor - 0.5
+
+        # Scale bw polynomial by substituting the input pixel domain transformation (backwards polynomial is a pixel-distance to angle map, so the domain needs to be scaled)
+        scaled_pixel_map = np.polynomial.Polynomial([0.0, 1.0 / image_domain_scale_factor])
+        pixeldist_to_angle_poly = np.polynomial.Polynomial(self.pixeldist_to_angle_poly)(scaled_pixel_map).coef.astype(
+            np.float32
+        )
+
+        # Scale fw polynomial by simple scaling of the result, i.e., linear scaling of the polynomial coefficients
+        angle_to_pixeldist_poly = self.angle_to_pixeldist_poly * image_domain_scale_factor
+
+        # Note: linear_cde doesn't need to be transformed as [c,d;e,1] is a "relative" transformation of the effective image domain scale
+        # (always scaling the output of f(theta) by the same factor)
+
+        return dataclasses.replace(
+            self,
+            resolution=resolution.astype(np.uint64),
+            principal_point=principal_point,
+            pixeldist_to_angle_poly=pixeldist_to_angle_poly,
+            angle_to_pixeldist_poly=angle_to_pixeldist_poly,
+        )
+
 
 if sys.version_info <= (3, 9):
     # Older python versions have issues with type-hints for nested types in
@@ -179,6 +223,32 @@ class OpenCVPinholeCameraModelParameters(CameraModelParameters, dataclasses_json
         assert self.thin_prism_coeffs.shape == (4,)
         assert self.thin_prism_coeffs.dtype == np.dtype("float32")
 
+    def transform(
+        self,
+        image_domain_scale_factor: float,
+    ) -> OpenCVPinholeCameraModelParameters:
+        """
+        Applies a transformation to camera model parameter
+
+        Args:
+            image_domain_scale_factor: a uniform scaling factor to the image domain (e.g., to account for up-/downsampling).
+                                       Resulting image resolution needs to be integer
+
+        Returns:
+            a transformed version of the camera model parameters
+        """
+
+        # Make sure scaled resolution is integer
+        resolution = self.resolution * image_domain_scale_factor
+        assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
+
+        return dataclasses.replace(
+            self,
+            resolution=resolution.astype(np.uint64),
+            principal_point=self.principal_point * image_domain_scale_factor,
+            focal_length=self.focal_length * image_domain_scale_factor,
+        )
+
 
 @dataclass
 class OpenCVFisheyeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
@@ -217,6 +287,32 @@ class OpenCVFisheyeCameraModelParameters(CameraModelParameters, dataclasses_json
         assert self.radial_coeffs.dtype == np.dtype("float32")
 
         assert self.max_angle > 0.0
+
+    def transform(
+        self,
+        image_domain_scale_factor: float,
+    ) -> OpenCVFisheyeCameraModelParameters:
+        """
+        Applies a transformation to camera model parameter
+
+        Args:
+            image_domain_scale_factor: a uniform scaling factor to the image domain (e.g., to account for up-/downsampling).
+                                       Resulting image resolution needs to be integer
+
+        Returns:
+            a transformed version of the camera model parameters
+        """
+
+        # Make sure scaled resolution is integer
+        resolution = self.resolution * image_domain_scale_factor
+        assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
+
+        return dataclasses.replace(
+            self,
+            resolution=resolution.astype(np.uint64),
+            principal_point=self.principal_point * image_domain_scale_factor,
+            focal_length=self.focal_length * image_domain_scale_factor,
+        )
 
 
 # Represents the collection of all concrete camera model parameter type
