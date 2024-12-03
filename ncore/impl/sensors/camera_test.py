@@ -24,7 +24,6 @@ from ncore.impl.sensors.camera import (
     FThetaCameraModel,
     OpenCVPinholeCameraModel,
     OpenCVFisheyeCameraModel,
-    transform_parameters,
 )
 
 
@@ -1296,7 +1295,7 @@ class TestTransformParameters(CommonTestCase):
                         cam_model = CameraModel.from_parameters(cam_model_params, device=self.device, dtype=self.dtype)
 
                         cam_model_scaled = CameraModel.from_parameters(
-                            transform_parameters(cam_model_params, scale_factor), device=self.device, dtype=self.dtype
+                            cam_model_params.transform(scale_factor), device=self.device, dtype=self.dtype
                         )
 
                         # Validate unscaled image domain -> 3d -> scaled image domain round-trip
