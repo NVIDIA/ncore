@@ -142,12 +142,12 @@ class CameraModel(ABC):
         """
         Contains
             - rays [point, direction] in the world coordinate frame, represented by 3d start of ray points and 3d ray directions [float] (n,6)
-            - [optional] world-to-sensor poses of the returned rays [float] (n,4,4)
+            - [optional] sensor-to-worlds poses of the returned rays [float] (n,4,4)
             - [optional] timestamps of the returned rays [int] (n,)
         """
 
         world_rays: torch.Tensor
-        T_world_sensors: Optional[torch.Tensor] = None
+        T_sensor_worlds: Optional[torch.Tensor] = None
         timestamps_us: Optional[torch.Tensor] = None
 
     @dataclass
@@ -588,7 +588,7 @@ class CameraModel(ABC):
         T_sensor_world: Union[torch.Tensor, np.ndarray],
         timestamp_us: Optional[int] = None,
         camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
-        return_T_world_sensors: bool = False,
+        return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
     ) -> CameraModel.WorldRaysReturn:
 
@@ -597,7 +597,7 @@ class CameraModel(ABC):
             T_sensor_world,
             timestamp_us,
             camera_rays,
-            return_T_world_sensors,
+            return_T_sensor_worlds,
             return_timestamps,
         )
 
@@ -609,7 +609,7 @@ class CameraModel(ABC):
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
         camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
-        return_T_world_sensors: bool = False,
+        return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
     ) -> CameraModel.WorldRaysReturn:
 
@@ -620,7 +620,7 @@ class CameraModel(ABC):
             start_timestamp_us,
             end_timestamp_us,
             camera_rays,
-            return_T_world_sensors,
+            return_T_sensor_worlds,
             return_timestamps,
         )
 
@@ -632,7 +632,7 @@ class CameraModel(ABC):
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
         camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
-        return_T_world_sensors: bool = False,
+        return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
     ) -> CameraModel.WorldRaysReturn:
 
@@ -650,7 +650,7 @@ class CameraModel(ABC):
             start_timestamp_us,
             end_timestamp_us,
             camera_rays,
-            return_T_world_sensors,
+            return_T_sensor_worlds,
             return_timestamps,
         )
 
@@ -660,7 +660,7 @@ class CameraModel(ABC):
         T_sensor_world: Union[torch.Tensor, np.ndarray],
         timestamp_us: Optional[int] = None,
         camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
-        return_T_world_sensors: bool = False,
+        return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
     ) -> CameraModel.WorldRaysReturn:
         """Unprojects image points to world rays using a using a *fixed* sensor pose (not compensating for potential sensor-motion).
@@ -703,9 +703,9 @@ class CameraModel(ABC):
 
         return_var = self.WorldRaysReturn(world_rays=world_rays)
 
-        if return_T_world_sensors:
+        if return_T_sensor_worlds:
             # Repeat constant transformation for all rays
-            return_var.T_world_sensors = torch.repeat_interleave(T_sensor_world.unsqueeze(0), len(world_rays), dim=0)
+            return_var.T_sensor_worlds = torch.repeat_interleave(T_sensor_world.unsqueeze(0), len(world_rays), dim=0)
 
         if return_timestamps:
             assert timestamp_us is not None
@@ -724,7 +724,7 @@ class CameraModel(ABC):
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
         camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
-        return_T_world_sensors: bool = False,
+        return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
     ) -> CameraModel.WorldRaysReturn:
         """Unprojects image points to world rays using the *mean pose* of the sensor between
@@ -755,7 +755,7 @@ class CameraModel(ABC):
             ),
             timestamp_us,
             camera_rays,
-            return_T_world_sensors,
+            return_T_sensor_worlds,
             return_timestamps,
         )
 
@@ -767,7 +767,7 @@ class CameraModel(ABC):
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
         camera_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
-        return_T_world_sensors: bool = False,
+        return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
     ) -> CameraModel.WorldRaysReturn:
         """Unprojects image points to world rays using *rolling-shutter compensation* of sensor motion.
@@ -783,7 +783,7 @@ class CameraModel(ABC):
                 T_sensor_world_start,
                 start_timestamp_us,
                 camera_rays,
-                return_T_world_sensors,
+                return_T_sensor_worlds,
                 return_timestamps,
             )
 
@@ -840,11 +840,11 @@ class CameraModel(ABC):
 
         return_var = self.WorldRaysReturn(world_rays=world_rays)
 
-        if return_T_world_sensors:
-            return_var.T_world_sensors = torch.zeros((len(image_points), 4, 4), dtype=self.dtype, device=self.device)
-            return_var.T_world_sensors[:, :3, :3] = R_sensor_world_rs
-            return_var.T_world_sensors[:, :3, 3] = world_position_rs
-            return_var.T_world_sensors[:, 3, 3] = 1
+        if return_T_sensor_worlds:
+            return_var.T_sensor_worlds = torch.zeros((len(image_points), 4, 4), dtype=self.dtype, device=self.device)
+            return_var.T_sensor_worlds[:, :3, :3] = R_sensor_world_rs
+            return_var.T_sensor_worlds[:, :3, 3] = world_position_rs
+            return_var.T_sensor_worlds[:, 3, 3] = 1
 
         if return_timestamps:
             assert start_timestamp_us is not None

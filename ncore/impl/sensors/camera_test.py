@@ -536,14 +536,14 @@ class TestReferenceFThetaCamera(CommonTestCase):
                 start_timestamp_us=0,
                 end_timestamp_us=10,
                 camera_rays=camera_rays,
-                return_T_world_sensors=True,
+                return_T_sensor_worlds=True,
                 return_timestamps=True,
             )
 
             assert len(world_rays.world_rays) == len(pixel_idxs)
 
-            assert world_rays.T_world_sensors is not None
-            assert len(world_rays.T_world_sensors) == len(pixel_idxs)
+            assert world_rays.T_sensor_worlds is not None
+            assert len(world_rays.T_sensor_worlds) == len(pixel_idxs)
 
             assert world_rays.timestamps_us is not None
             assert len(world_rays.timestamps_us) == len(pixel_idxs)
