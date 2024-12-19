@@ -434,7 +434,7 @@ class Sensor:
         """For a given shard-frame, determine the corresponding continuous-frame"""
         return self._shard_frame_map[shard_frame.shard_index] + shard_frame.shard_frame_index
 
-    def __init__(self, sensor_id: str, sensor_group: str, shard_roots: List[zarr.Group]):
+    def __init__(self, sensor_id: str, sensor_group: str, shard_roots: List[zarr.Group], max_threads: int | None):
         assert len(shard_roots), "Require at least a single shard"
 
         self._sensor_id = sensor_id
@@ -443,7 +443,7 @@ class Sensor:
         self._shard_roots = shard_roots
 
         # Load cross-shard sensor information concurrently to hide latencies
-        with concurrent.futures.ThreadPoolExecutor() as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
 
             def thread_load_shard(shard_root):
                 """Thread-executed shard data loading"""
@@ -771,7 +771,7 @@ class ShardDataLoader:
 
         return [str(match) for match in list(matches)]
 
-    def __init__(self, shard_paths: List[str], open_consolidated: bool = True):
+    def __init__(self, shard_paths: List[str], open_consolidated: bool = True, max_threads: int | None = None):
         """Initialize a ShardDataLoader for a virtual sequence represented by a list of shard files.
 
         Args:
@@ -781,16 +781,20 @@ class ShardDataLoader:
                                storage to prevent latencies introduced when accessing the data.
                                If the shard data is available on fast *local* storage, disabling
                                this option can speed up initial load times.
+            max_threads:       The maximum number of threads used to load the different shards (if None,
+                               use interpreter-default number of threads for a ThreadPoolExecutor)
         """
 
         assert len(shard_paths), "No shard inputs provided"
+
+        self.max_threads = max_threads
 
         # Load shards concurrently (to hide latency) and check for sequence consistency and continuity of shards
         shards_map: Dict[
             int, Tuple[str, zarr.Group, stores.IndexedTarStore]
         ] = {}  # use str as the generic path / URL type
 
-        with concurrent.futures.ThreadPoolExecutor() as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_threads) as executor:
 
             def thread_load_shard(shard_path):
                 """Thread-executed shard opening"""
@@ -981,7 +985,7 @@ class ShardDataLoader:
 
     def get_camera_sensor(self, camera_id) -> CameraSensor:
         """Provides access to a specific camera sensor given its sensor-id"""
-        return CameraSensor(camera_id, CAMERAS_BASE_GROUP, self._shard_roots)
+        return CameraSensor(camera_id, CAMERAS_BASE_GROUP, self._shard_roots, self.max_threads)
 
     def get_camera_ids(self) -> List[str]:
         """Returns all camera sensor ids"""
@@ -989,7 +993,7 @@ class ShardDataLoader:
 
     def get_lidar_sensor(self, lidar_id) -> LidarSensor:
         """Provides access to a specific lidar sensor given its sensor-id"""
-        return LidarSensor(lidar_id, LIDARS_BASE_GROUP, self._shard_roots)
+        return LidarSensor(lidar_id, LIDARS_BASE_GROUP, self._shard_roots, self.max_threads)
 
     def get_lidar_ids(self) -> List[str]:
         """Returns all lidar sensor ids"""
@@ -997,7 +1001,7 @@ class ShardDataLoader:
 
     def get_radar_sensor(self, radar_id) -> RadarSensor:
         """Provides access to a specific radar sensor given its sensor-id"""
-        return RadarSensor(radar_id, RADARS_BASE_GROUP, self._shard_roots)
+        return RadarSensor(radar_id, RADARS_BASE_GROUP, self._shard_roots, self.max_threads)
 
     def get_radar_ids(self) -> List[str]:
         """Returns all radar sensor ids"""
