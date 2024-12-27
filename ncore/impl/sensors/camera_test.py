@@ -1287,7 +1287,7 @@ class TestTransformParameters(CommonTestCase):
             2.0,  # 2x upscale
         ]
 
-        OFFSETS = [(0.0, 0.0), (-5.0, 10.0)]  # no offset  # some offset
+        OFFSETS = [(0.0, 0.0), (-5.0, -10.0)]  # no offset  # some offset
 
         for scale_factor in SCALE_FACTORS:
             with self.subTest(msg=f"scale_factor {scale_factor}", scale_factor=scale_factor):
@@ -1324,15 +1324,15 @@ class TestTransformParameters(CommonTestCase):
 
                                 self.assertLessEqual(
                                     np.linalg.norm(
-                                        image_points.cpu().numpy()
-                                        - (image_points_transformed.image_points.cpu().numpy() / scale_factor + offset)
+                                        (image_points.cpu().numpy() * scale_factor - offset)
+                                        - image_points_transformed.image_points.cpu().numpy()
                                     ),
                                     self.MAX_DEVIATION_IN_IMAGE_COORDINATES,
                                 )
 
                                 # Validate transformed image-domain -> 3d -> untransformed image-domain round-trip
                                 ray3d_transformed = cam_model_transformed.image_points_to_camera_rays(
-                                    scale_factor * (image_points - torch.tensor(offset, dtype=image_points.dtype))
+                                    scale_factor * image_points - torch.tensor(offset, dtype=image_points.dtype)
                                 )
 
                                 image_points_untransformed = cam_model.camera_rays_to_image_points(ray3d_transformed)

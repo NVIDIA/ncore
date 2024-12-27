@@ -139,26 +139,30 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
         Args:
             image_domain_scale_factor: a uniform scaling factor to the image domain (e.g., to account for up-/downsampling).
                                        Resulting scaled image resolution needs to be integer.
-            image_domain_offset: an offset of the full image domain (e.g., to account for cropping).
+            image_domain_offset: an offset of the image domain after the above scaling (e.g., to account for cropping).
             new_resolution: an optional new resolution to set (if None, the full scaled resolution is used).
 
         Returns:
             a transformed version of the camera model parameters
         """
 
-        # Make sure scaled resolution is integer
-        resolution = self.resolution * image_domain_scale_factor
-        assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
-
         # Use new resolution if provided
+        resolution: np.ndarray
         if new_resolution is not None:
             resolution = np.array(new_resolution, dtype=np.uint64)
+
+        # Otherwise make sure the scaled resolution is integer
+        else:
+            resolution = self.resolution * image_domain_scale_factor
+            assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
 
         # Scale / offset principal point location by transforming it in the scaled image (make sure to account for 0.5px offset
         # of the image domain, as the stored parameters are represented with (0,0) at the center of the first pixel)
         principal_point = (
-            self.principal_point + 0.5 - np.array(image_domain_offset, dtype=np.float32)
-        ) * image_domain_scale_factor - 0.5
+            (self.principal_point + 0.5) * image_domain_scale_factor
+            - 0.5
+            - np.array(image_domain_offset, dtype=np.float32)
+        )
 
         # Scale bw polynomial by substituting the input pixel domain transformation (backwards polynomial is a pixel-distance to angle map, so the domain needs to be scaled)
         scaled_pixel_map = np.polynomial.Polynomial([0.0, 1.0 / image_domain_scale_factor])
@@ -247,26 +251,28 @@ class OpenCVPinholeCameraModelParameters(CameraModelParameters, dataclasses_json
         Args:
             image_domain_scale_factor: a uniform scaling factor to the image domain (e.g., to account for up-/downsampling).
                                        Resulting scaled image resolution needs to be integer.
-            image_domain_offset: an offset of the full image domain (e.g., to account for cropping).
+            image_domain_offset: an offset of the image domain after the above scaling (e.g., to account for cropping).
             new_resolution: an optional new resolution to set (if None, the full scaled resolution is used).
 
         Returns:
             a transformed version of the camera model parameters
         """
 
-        # Make sure scaled resolution is integer
-        resolution = self.resolution * image_domain_scale_factor
-        assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
-
         # Use new resolution if provided
+        resolution: np.ndarray
         if new_resolution is not None:
             resolution = np.array(new_resolution, dtype=np.uint64)
+
+        # Otherwise make sure the scaled resolution is integer
+        else:
+            resolution = self.resolution * image_domain_scale_factor
+            assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
 
         return dataclasses.replace(
             self,
             resolution=resolution.astype(np.uint64),
-            principal_point=(self.principal_point - np.array(image_domain_offset, dtype=np.float32))
-            * image_domain_scale_factor,
+            principal_point=self.principal_point * image_domain_scale_factor
+            - np.array(image_domain_offset, dtype=np.float32),
             focal_length=self.focal_length * image_domain_scale_factor,
         )
 
@@ -321,26 +327,28 @@ class OpenCVFisheyeCameraModelParameters(CameraModelParameters, dataclasses_json
         Args:
             image_domain_scale_factor: a uniform scaling factor to the image domain (e.g., to account for up-/downsampling).
                                        Resulting scaled image resolution needs to be integer.
-            image_domain_offset: an offset of the scaled image domain (e.g., to account for cropping).
+            image_domain_offset: an offset of the image domain after the above scaling (e.g., to account for cropping).
             new_resolution: an optional new resolution to set (if None, the full scaled resolution is used).
 
         Returns:
             a transformed version of the camera model parameters
         """
 
-        # Make sure scaled resolution is integer
-        resolution = self.resolution * image_domain_scale_factor
-        assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
-
         # Use new resolution if provided
+        resolution: np.ndarray
         if new_resolution is not None:
             resolution = np.array(new_resolution, dtype=np.uint64)
+
+        # Otherwise make sure the scaled resolution is integer
+        else:
+            resolution = self.resolution * image_domain_scale_factor
+            assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
 
         return dataclasses.replace(
             self,
             resolution=resolution.astype(np.uint64),
-            principal_point=(self.principal_point - np.array(image_domain_offset, dtype=np.float32))
-            * image_domain_scale_factor,
+            principal_point=self.principal_point * image_domain_scale_factor
+            - np.array(image_domain_offset, dtype=np.float32),
             focal_length=self.focal_length * image_domain_scale_factor,
         )
 
