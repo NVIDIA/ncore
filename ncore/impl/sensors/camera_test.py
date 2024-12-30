@@ -330,7 +330,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
 
                 # Evaluate torch-camera
                 ray3d = camera_ftheta.image_points_to_camera_rays(
-                    camera_ftheta.to_torch(expectedPoint2d).to(camera_ftheta.dtype)
+                    camera_ftheta.to_torch(expectedPoint2d, dtype=camera_ftheta.dtype)
                 )
 
                 # test that the computed rays of both cameras agree
@@ -382,7 +382,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
 
                 # Evaluate torch-camera
                 ray3d = camera_ftheta.image_points_to_camera_rays(
-                    camera_ftheta.to_torch(expectedPoint2d).to(camera_ftheta.dtype)
+                    camera_ftheta.to_torch(expectedPoint2d, dtype=camera_ftheta.dtype)
                 )
 
                 with self.subTest(angle=np.degrees(np.arccos(ray3d.cpu()[0][2]))):
@@ -444,7 +444,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
 
                 # Evaluate torch-camera
                 ray3d = camera_ftheta.image_points_to_camera_rays(
-                    camera_ftheta.to_torch(expectedPoint2d).to(camera_ftheta.dtype)
+                    camera_ftheta.to_torch(expectedPoint2d, dtype=camera_ftheta.dtype)
                 )
 
                 with self.subTest(angle=np.degrees(np.arccos(ray3d.cpu()[0][2]))):
@@ -740,7 +740,9 @@ class TestPinholeCamera(CommonTestCase):
                 expectedPoint2d = np.array([[p, p]])
 
                 # Verify torch-camera's result
-                ray3d = cam_model.image_points_to_camera_rays(cam_model.to_torch(expectedPoint2d).to(cam_model.dtype))
+                ray3d = cam_model.image_points_to_camera_rays(
+                    cam_model.to_torch(expectedPoint2d, dtype=cam_model.dtype)
+                )
                 image_points = cam_model.camera_rays_to_image_points(ray3d)
 
                 self.assertTrue(image_points.valid_flag)
@@ -1142,7 +1144,7 @@ class TestFisheyeCamera(CommonTestCase):
                 expectedPoint2d = np.array([[p, p]])
 
                 ray3d = self.cam_model.image_points_to_camera_rays(
-                    self.cam_model.to_torch(expectedPoint2d).to(self.dtype)
+                    self.cam_model.to_torch(expectedPoint2d, dtype=self.dtype)
                 )
                 image_points = self.cam_model.camera_rays_to_image_points(ray3d)
 
