@@ -330,7 +330,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
 
                 # Evaluate torch-camera
                 ray3d = camera_ftheta.image_points_to_camera_rays(
-                    camera_ftheta.to_torch(expectedPoint2d).to(camera_ftheta.dtype)
+                    camera_ftheta.to_torch(expectedPoint2d, dtype=camera_ftheta.dtype)
                 )
 
                 # test that the computed rays of both cameras agree
@@ -382,7 +382,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
 
                 # Evaluate torch-camera
                 ray3d = camera_ftheta.image_points_to_camera_rays(
-                    camera_ftheta.to_torch(expectedPoint2d).to(camera_ftheta.dtype)
+                    camera_ftheta.to_torch(expectedPoint2d, dtype=camera_ftheta.dtype)
                 )
 
                 with self.subTest(angle=np.degrees(np.arccos(ray3d.cpu()[0][2]))):
@@ -444,7 +444,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
 
                 # Evaluate torch-camera
                 ray3d = camera_ftheta.image_points_to_camera_rays(
-                    camera_ftheta.to_torch(expectedPoint2d).to(camera_ftheta.dtype)
+                    camera_ftheta.to_torch(expectedPoint2d, dtype=camera_ftheta.dtype)
                 )
 
                 with self.subTest(angle=np.degrees(np.arccos(ray3d.cpu()[0][2]))):
@@ -740,7 +740,9 @@ class TestPinholeCamera(CommonTestCase):
                 expectedPoint2d = np.array([[p, p]])
 
                 # Verify torch-camera's result
-                ray3d = cam_model.image_points_to_camera_rays(cam_model.to_torch(expectedPoint2d).to(cam_model.dtype))
+                ray3d = cam_model.image_points_to_camera_rays(
+                    cam_model.to_torch(expectedPoint2d, dtype=cam_model.dtype)
+                )
                 image_points = cam_model.camera_rays_to_image_points(ray3d)
 
                 self.assertTrue(image_points.valid_flag)
@@ -1142,7 +1144,7 @@ class TestFisheyeCamera(CommonTestCase):
                 expectedPoint2d = np.array([[p, p]])
 
                 ray3d = self.cam_model.image_points_to_camera_rays(
-                    self.cam_model.to_torch(expectedPoint2d).to(self.dtype)
+                    self.cam_model.to_torch(expectedPoint2d, dtype=self.dtype)
                 )
                 image_points = self.cam_model.camera_rays_to_image_points(ray3d)
 
@@ -1277,65 +1279,90 @@ class TestTransformParameters(CommonTestCase):
             ),
         ]
 
-    def test_image_domain_scale_factor(self):
-        """Validate image up- / down-scaling"""
+    def test_image_domain_transform(self):
+        """Validate image up- / down-scaling and offsetting"""
 
         SCALE_FACTORS = [
+            # isotropic scaling
+            1.0,  # no scaling
             0.25,  # 4x downscale
             0.5,  # 2x downscale
-            1.0,  # no scaling
             2.0,  # 2x upscale
+            # anisotropic scaling
+            (1.0, 1.0),  # no scaling
+            (0.5, 0.5),  # 2x downscale
+            (0.5, 1.0),  # 2x downscale in x
+            (1.0, 0.5),  # 2x downscale in y
+            (2.0, 1.0),  # 2x upscale in x
+            (1.0, 2.0),  # 2x upscale in y
+            (0.5, 0.25),  # 2x downscale in x, 4x downscale in y
         ]
 
+        OFFSETS = [
+            # no offset
+            (0.0, 0.0),
+            # some offset
+            (20.0, 10.0),
+        ]
+
+        IMAGE_POINTS = np.array(
+            [[150.2, 200.1], [500.1, 500.5], [867.4, 321.7]], dtype=np.float32
+        )  # some image coordinates to use for evaluation [should be in the original image domains of all tested camera models incl. (scaled) offsets]
+
         for scale_factor in SCALE_FACTORS:
-            with self.subTest(scale_factor=scale_factor):
-                for cam_model_params in self.cam_model_params:
-                    with self.subTest(cam_model_params=cam_model_params):
+            with self.subTest(msg=f"scale_factor {scale_factor}", scale_factor=scale_factor):
+                for offset in OFFSETS:
+                    with self.subTest(msg=f"offset {offset}", offset=offset):
+                        for cam_model_params in self.cam_model_params:
+                            with self.subTest(cam_model_params=cam_model_params):
 
-                        cam_model = CameraModel.from_parameters(cam_model_params, device=self.device, dtype=self.dtype)
+                                cam_model = CameraModel.from_parameters(
+                                    cam_model_params, device=self.device, dtype=self.dtype
+                                )
 
-                        cam_model_scaled = CameraModel.from_parameters(
-                            cam_model_params.transform(scale_factor), device=self.device, dtype=self.dtype
-                        )
+                                cam_model_transformed = CameraModel.from_parameters(
+                                    cam_model_params.transform(
+                                        image_domain_scale=scale_factor, image_domain_offset=offset
+                                    ),
+                                    device=self.device,
+                                    dtype=self.dtype,
+                                )
 
-                        # Validate unscaled image domain -> 3d -> scaled image domain round-trip
-                        ray3d = cam_model.image_points_to_camera_rays(
-                            image_points := torch.Tensor(
-                                [[20, 40], [11, 12], [15, 20], [500, 500], [867, 321]]
-                            )  # some image coordinates to use for evaluation [should be in the original image domain]
-                        )
+                                # Validate original image domain -> 3d -> transformed image domain round-trip
+                                ray3d = cam_model.image_points_to_camera_rays(IMAGE_POINTS)
+                                image_points_transformed = cam_model_transformed.camera_rays_to_image_points(ray3d)
 
-                        image_points_scaled = cam_model_scaled.camera_rays_to_image_points(ray3d)
+                                self.assertTrue(
+                                    image_points_transformed.valid_flag.all(),
+                                    msg="All point projections need to be valid for scale verification",
+                                )
 
-                        self.assertTrue(
-                            image_points_scaled.valid_flag.all(),
-                            msg="All point projections need to be valid for scale verification",
-                        )
+                                self.assertLessEqual(
+                                    np.linalg.norm(
+                                        (image_points_transformed_ref := (IMAGE_POINTS * scale_factor - offset))
+                                        - image_points_transformed.image_points.cpu().numpy()
+                                    ),
+                                    self.MAX_DEVIATION_IN_IMAGE_COORDINATES,
+                                )
 
-                        self.assertLessEqual(
-                            np.linalg.norm(
-                                image_points.cpu().numpy() * scale_factor
-                                - image_points_scaled.image_points.cpu().numpy()
-                            ),
-                            self.MAX_DEVIATION_IN_IMAGE_COORDINATES,
-                        )
+                                # Validate transformed image-domain -> 3d -> untransformed image-domain round-trip
+                                ray3d_transformed = cam_model_transformed.image_points_to_camera_rays(
+                                    image_points_transformed_ref
+                                )
 
-                        # Validate scaled image-domain -> 3d -> unscaled image-domain round-trip
-                        ray3d_scaled = cam_model_scaled.image_points_to_camera_rays(scale_factor * image_points)
+                                image_points_untransformed = cam_model.camera_rays_to_image_points(ray3d_transformed)
 
-                        image_points_unscaled = cam_model.camera_rays_to_image_points(ray3d_scaled)
+                                self.assertTrue(
+                                    image_points_untransformed.valid_flag.all(),
+                                    msg="All point projections need to be valid for transformation verification",
+                                )
 
-                        self.assertTrue(
-                            image_points_unscaled.valid_flag.all(),
-                            msg="All point projections need to be valid for scale verification",
-                        )
-
-                        self.assertLessEqual(
-                            np.linalg.norm(
-                                image_points.cpu().numpy() - image_points_unscaled.image_points.cpu().numpy()
-                            ),
-                            self.MAX_DEVIATION_IN_IMAGE_COORDINATES,
-                        )
+                                self.assertLessEqual(
+                                    np.linalg.norm(
+                                        IMAGE_POINTS - image_points_untransformed.image_points.cpu().numpy()
+                                    ),
+                                    self.MAX_DEVIATION_IN_IMAGE_COORDINATES,
+                                )
 
 
 if __name__ == "__main__":

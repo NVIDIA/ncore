@@ -79,7 +79,7 @@ class CameraModel(ABC):
                 f"unsupported camera model type {type(cam_model_parameters)}, currently supporting Ftheta/OpenCV-Pinhole/OpenCV-Fisheye only"
             )
 
-    def to_torch(self, var: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+    def to_torch(self, var: Union[torch.Tensor, np.ndarray], dtype=None) -> torch.Tensor:
         """Converts an input array / tensor to a tensor on the camera's device"""
         if isinstance(var, np.ndarray):
             # Torch doesn't support uint32 and uint64 so we cast them to signed integers beforehand
@@ -105,7 +105,7 @@ class CameraModel(ABC):
 
             var = torch.from_numpy(var)
 
-        return var.to(self.device)
+        return var.to(device=self.device, dtype=dtype)
 
     @dataclass
     class WorldPointsToPixelsReturn:
@@ -283,8 +283,8 @@ class CameraModel(ABC):
         return self.world_points_to_pixels_static_pose(
             world_points,
             self.__interpolate_poses(
-                self.to_torch(T_world_sensor_start).to(self.dtype),
-                self.to_torch(T_world_sensor_end).to(self.dtype),
+                self.to_torch(T_world_sensor_start, dtype=self.dtype),
+                self.to_torch(T_world_sensor_end, dtype=self.dtype),
                 0.5,
             ),
             timestamp_us,
@@ -312,9 +312,9 @@ class CameraModel(ABC):
         """Projects world points to corresponding image point coordinates using *rolling-shutter compensation* of sensor motion"""
 
         # Check if the variables are numpy, convert them to torch and send them to correct device
-        world_points = self.to_torch(world_points).to(self.dtype)
-        T_world_sensor_start = self.to_torch(T_world_sensor_start).to(self.dtype)
-        T_world_sensor_end = self.to_torch(T_world_sensor_end).to(self.dtype)
+        world_points = self.to_torch(world_points, dtype=self.dtype)
+        T_world_sensor_start = self.to_torch(T_world_sensor_start, dtype=self.dtype)
+        T_world_sensor_end = self.to_torch(T_world_sensor_end, dtype=self.dtype)
 
         assert T_world_sensor_start.shape == (4, 4)
         assert T_world_sensor_end.shape == (4, 4)
@@ -405,7 +405,7 @@ class CameraModel(ABC):
         image_points_rs_prev = init_image_points[valid, :]
         mean_error_px = 1e12
         for _ in range(max_iterations):
-            t = self.__get_interpolation_timestamp(image_points_rs_prev)
+            t = self.image_points_relative_frame_times(image_points_rs_prev)
 
             rot_rs = self.__unitquat_to_rotmat(
                 self.__unitquat_slerp(
@@ -496,8 +496,8 @@ class CameraModel(ABC):
         """Projects world points to corresponding image point coordinates using a *fixed* sensor pose (not compensating for potential sensor-motion)."""
 
         # Check if the variables are numpy, convert them to torch and send them to correct device
-        world_points = self.to_torch(world_points).to(self.dtype)
-        T_world_sensor = self.to_torch(T_world_sensor).to(self.dtype)
+        world_points = self.to_torch(world_points, dtype=self.dtype)
+        T_world_sensor = self.to_torch(T_world_sensor, dtype=self.dtype)
 
         assert T_world_sensor.shape == (4, 4)
         assert len(world_points.shape) == 2
@@ -571,8 +571,8 @@ class CameraModel(ABC):
         return self.world_points_to_image_points_static_pose(
             world_points,
             self.__interpolate_poses(
-                self.to_torch(T_world_sensor_start).to(self.dtype),
-                self.to_torch(T_world_sensor_end).to(self.dtype),
+                self.to_torch(T_world_sensor_start, dtype=self.dtype),
+                self.to_torch(T_world_sensor_end, dtype=self.dtype),
                 0.5,
             ),
             timestamp_us,
@@ -670,8 +670,8 @@ class CameraModel(ABC):
         For each image point returns 3d world rays [point, direction], represented by 3d start of ray points and 3d ray directions in the world frame
         """
         # Check if the variables are numpy, convert them to torch and send them to correct device
-        image_points = self.to_torch(image_points).to(self.dtype)
-        T_sensor_world = self.to_torch(T_sensor_world).to(self.dtype)
+        image_points = self.to_torch(image_points, dtype=self.dtype)
+        T_sensor_world = self.to_torch(T_sensor_world, dtype=self.dtype)
 
         assert T_sensor_world.shape == (4, 4)
         assert len(image_points.shape) == 2
@@ -682,7 +682,7 @@ class CameraModel(ABC):
         # Unproject the image points to camera rays
         if camera_rays is not None:
             # Reuse provided camera rays
-            camera_rays = self.to_torch(camera_rays).to(self.dtype)
+            camera_rays = self.to_torch(camera_rays, dtype=self.dtype)
             assert len(camera_rays.shape) == 2
             assert len(camera_rays) == len(image_points)
             assert camera_rays.shape[1] == 3
@@ -749,8 +749,8 @@ class CameraModel(ABC):
         return self.image_points_to_world_rays_static_pose(
             image_points,
             self.__interpolate_poses(
-                self.to_torch(T_sensor_world_start).to(self.dtype),
-                self.to_torch(T_sensor_world_end).to(self.dtype),
+                self.to_torch(T_sensor_world_start, dtype=self.dtype),
+                self.to_torch(T_sensor_world_end, dtype=self.dtype),
                 0.5,
             ),
             timestamp_us,
@@ -788,9 +788,9 @@ class CameraModel(ABC):
             )
 
         # Check if the variables are numpy, convert them to torch and send them to correct device
-        image_points = self.to_torch(image_points).to(self.dtype)
-        T_sensor_world_start = self.to_torch(T_sensor_world_start).to(self.dtype)
-        T_sensor_world_end = self.to_torch(T_sensor_world_end).to(self.dtype)
+        image_points = self.to_torch(image_points, dtype=self.dtype)
+        T_sensor_world_start = self.to_torch(T_sensor_world_start, dtype=self.dtype)
+        T_sensor_world_end = self.to_torch(T_sensor_world_end, dtype=self.dtype)
 
         assert T_sensor_world_start.shape == (4, 4)
         assert T_sensor_world_end.shape == (4, 4)
@@ -803,7 +803,7 @@ class CameraModel(ABC):
         # Unproject the image points to camera rays
         if camera_rays is not None:
             # Reuse provided camera rays
-            camera_rays = self.to_torch(camera_rays).to(self.dtype)
+            camera_rays = self.to_torch(camera_rays, dtype=self.dtype)
             assert len(camera_rays.shape) == 2
             assert camera_rays.shape[0] == image_points.shape[0]
             assert camera_rays.shape[1] == 3
@@ -815,7 +815,7 @@ class CameraModel(ABC):
         R_sensor_world_s_quat = self.__rotmat_to_unitquat(T_sensor_world_start[None, :3, :3])  # [1, 4]
         R_sensor_world_e_quat = self.__rotmat_to_unitquat(T_sensor_world_end[None, :3, :3])  # [1, 4]
 
-        t = self.__get_interpolation_timestamp(image_points)
+        t = self.image_points_relative_frame_times(image_points)
 
         world_position_rs = (1 - t)[..., None] * T_sensor_world_start[:3, 3:4].transpose(0, 1).repeat(
             t.shape[0], 1
@@ -1002,8 +1002,10 @@ class CameraModel(ABC):
 
         return quat
 
-    def __get_interpolation_timestamp(self, image_points: torch.Tensor) -> torch.Tensor:
-        """Get interpolation timestamp based on the image point coordinates and rolling shutter type"""
+    def image_points_relative_frame_times(self, image_points: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+        """Get relative frame-times based on the image point coordinates and rolling shutter type"""
+
+        image_points = self.to_torch(image_points, dtype=self.dtype)
 
         # Floor/Ceil the continuous image points to the row / column index following the image coordinate
         # convention that index defines the top left corner of each pixel, e.g., the first pixels
@@ -1147,10 +1149,10 @@ class FThetaCameraModel(CameraModel):
         # coordinate origin aligned with the top-left corner of the first pixel) we therefore need to
         # offset the principal point by half a pixel.
         # Please see documentation for more information.
-        self.principal_point = self.to_torch(camera_model_parameters.principal_point).to(self.dtype) + 0.5
+        self.principal_point = self.to_torch(camera_model_parameters.principal_point, dtype=self.dtype) + 0.5
 
-        self.fw_poly = self.to_torch(camera_model_parameters.fw_poly).to(self.dtype)
-        self.bw_poly = self.to_torch(camera_model_parameters.bw_poly).to(self.dtype)
+        self.fw_poly = self.to_torch(camera_model_parameters.fw_poly, dtype=self.dtype)
+        self.bw_poly = self.to_torch(camera_model_parameters.bw_poly, dtype=self.dtype)
 
         # Linear term A = [c,d;e;1], A^-1 = 1/(c-e*d)*[1,-d;-e,c]
         c, d, e = camera_model_parameters.linear_cde
@@ -1251,7 +1253,7 @@ class FThetaCameraModel(CameraModel):
         """
 
         # If the input is a numpy array first convert it to torch otherwise just send to correct device
-        cam_rays = self.to_torch(cam_rays).to(self.dtype)
+        cam_rays = self.to_torch(cam_rays, dtype=self.dtype)
 
         initial_requires_grad = cam_rays.requires_grad
         if return_jacobians:
@@ -1333,11 +1335,11 @@ class OpenCVPinholeCameraModel(CameraModel):
 
         self.device = torch.device(device)
         self.dtype = dtype
-        self.principal_point = self.to_torch(camera_model_parameters.principal_point).to(self.dtype)
-        self.focal_length = self.to_torch(camera_model_parameters.focal_length).to(self.dtype)
-        self.radial_coeffs = self.to_torch(camera_model_parameters.radial_coeffs).to(self.dtype)
-        self.tangential_coeffs = self.to_torch(camera_model_parameters.tangential_coeffs).to(self.dtype)
-        self.thin_prism_coeffs = self.to_torch(camera_model_parameters.thin_prism_coeffs).to(self.dtype)
+        self.principal_point = self.to_torch(camera_model_parameters.principal_point, dtype=self.dtype)
+        self.focal_length = self.to_torch(camera_model_parameters.focal_length, dtype=self.dtype)
+        self.radial_coeffs = self.to_torch(camera_model_parameters.radial_coeffs, dtype=self.dtype)
+        self.tangential_coeffs = self.to_torch(camera_model_parameters.tangential_coeffs, dtype=self.dtype)
+        self.thin_prism_coeffs = self.to_torch(camera_model_parameters.thin_prism_coeffs, dtype=self.dtype)
         self.resolution = self.to_torch(camera_model_parameters.resolution.astype(np.int32))
         self.shutter_type = camera_model_parameters.shutter_type
 
@@ -1376,7 +1378,7 @@ class OpenCVPinholeCameraModel(CameraModel):
         For each camera ray compute the corresponding image point coordinates
         """
 
-        cam_rays = self.to_torch(cam_rays).to(self.dtype)
+        cam_rays = self.to_torch(cam_rays, dtype=self.dtype)
 
         # Initialize the valid flag and set all the points behind the camera plane to invalid
         image_points = torch.zeros_like(cam_rays[:, :2])
@@ -1509,8 +1511,8 @@ class OpenCVFisheyeCameraModel(CameraModel):
 
         self.device = torch.device(device)
         self.dtype = dtype
-        self.principal_point = self.to_torch(camera_model_parameters.principal_point).to(self.dtype)
-        self.focal_length = self.to_torch(camera_model_parameters.focal_length).to(self.dtype)
+        self.principal_point = self.to_torch(camera_model_parameters.principal_point, dtype=self.dtype)
+        self.focal_length = self.to_torch(camera_model_parameters.focal_length, dtype=self.dtype)
         self.resolution = self.to_torch(camera_model_parameters.resolution.astype(np.int32))
         self.shutter_type = camera_model_parameters.shutter_type
         self.max_angle = float(camera_model_parameters.max_angle)
@@ -1576,7 +1578,7 @@ class OpenCVFisheyeCameraModel(CameraModel):
         """
 
         # If the input is a numpy array first convert it to torch otherwise just send to correct device
-        cam_rays = self.to_torch(cam_rays).to(self.dtype)
+        cam_rays = self.to_torch(cam_rays, dtype=self.dtype)
 
         initial_requires_grad = cam_rays.requires_grad
         if return_jacobians:
