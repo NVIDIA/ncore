@@ -1300,12 +1300,12 @@ class TestTransformParameters(CommonTestCase):
             # no offset
             (0.0, 0.0),
             # some offset
-            (-5.0, -10.0),
+            (20.0, 10.0),
         ]
 
         IMAGE_POINTS = np.array(
-            [[20, 40], [11, 12], [15, 20], [500, 500], [867, 321]], dtype=np.float32
-        )  # some image coordinates to use for evaluation [should be in the original image domains of all tested camera models]
+            [[150.2, 200.1], [500.1, 500.5], [867.4, 321.7]], dtype=np.float32
+        )  # some image coordinates to use for evaluation [should be in the original image domains of all tested camera models incl. (scaled) offsets]
 
         for scale_factor in SCALE_FACTORS:
             with self.subTest(msg=f"scale_factor {scale_factor}", scale_factor=scale_factor):
