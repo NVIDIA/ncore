@@ -405,7 +405,7 @@ class CameraModel(ABC):
         image_points_rs_prev = init_image_points[valid, :]
         mean_error_px = 1e12
         for _ in range(max_iterations):
-            t = self.__get_interpolation_timestamp(image_points_rs_prev)
+            t = self.image_points_relative_frame_times(image_points_rs_prev)
 
             rot_rs = self.__unitquat_to_rotmat(
                 self.__unitquat_slerp(
@@ -1002,8 +1002,10 @@ class CameraModel(ABC):
 
         return quat
 
-    def __get_interpolation_timestamp(self, image_points: torch.Tensor) -> torch.Tensor:
-        """Get interpolation timestamp based on the image point coordinates and rolling shutter type"""
+    def image_points_relative_frame_times(self, image_points: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+        """Get relative frame-times based on the image point coordinates and rolling shutter type"""
+
+        image_points = self.to_torch(image_points).to(self.dtype)
 
         # Floor/Ceil the continuous image points to the row / column index following the image coordinate
         # convention that index defines the top left corner of each pixel, e.g., the first pixels
