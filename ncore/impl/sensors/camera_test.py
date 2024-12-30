@@ -1281,13 +1281,31 @@ class TestTransformParameters(CommonTestCase):
         """Validate image up- / down-scaling and offsetting"""
 
         SCALE_FACTORS = [
+            # isotropic scaling
             1.0,  # no scaling
             0.25,  # 4x downscale
             0.5,  # 2x downscale
             2.0,  # 2x upscale
+            # anisotropic scaling
+            (1.0, 1.0),  # no scaling
+            (0.5, 0.5),  # 2x downscale
+            (0.5, 1.0),  # 2x downscale in x
+            (1.0, 0.5),  # 2x downscale in y
+            (2.0, 1.0),  # 2x upscale in x
+            (1.0, 2.0),  # 2x upscale in y
+            (0.5, 0.25),  # 2x downscale in x, 4x downscale in y
         ]
 
-        OFFSETS = [(0.0, 0.0), (-5.0, -10.0)]  # no offset  # some offset
+        OFFSETS = [
+            # no offset
+            (0.0, 0.0),
+            # some offset
+            (-5.0, -10.0),
+        ]
+
+        IMAGE_POINTS = np.array(
+            [[20, 40], [11, 12], [15, 20], [500, 500], [867, 321]], dtype=np.float32
+        )  # some image coordinates to use for evaluation [should be in the original image domains of all tested camera models]
 
         for scale_factor in SCALE_FACTORS:
             with self.subTest(msg=f"scale_factor {scale_factor}", scale_factor=scale_factor):
@@ -1302,19 +1320,14 @@ class TestTransformParameters(CommonTestCase):
 
                                 cam_model_transformed = CameraModel.from_parameters(
                                     cam_model_params.transform(
-                                        image_domain_scale_factor=scale_factor, image_domain_offset=offset
+                                        image_domain_scale=scale_factor, image_domain_offset=offset
                                     ),
                                     device=self.device,
                                     dtype=self.dtype,
                                 )
 
                                 # Validate original image domain -> 3d -> transformed image domain round-trip
-                                ray3d = cam_model.image_points_to_camera_rays(
-                                    image_points := torch.Tensor(
-                                        [[20, 40], [11, 12], [15, 20], [500, 500], [867, 321]]
-                                    )  # some image coordinates to use for evaluation [should be in the original image domain]
-                                )
-
+                                ray3d = cam_model.image_points_to_camera_rays(IMAGE_POINTS)
                                 image_points_transformed = cam_model_transformed.camera_rays_to_image_points(ray3d)
 
                                 self.assertTrue(
@@ -1324,7 +1337,7 @@ class TestTransformParameters(CommonTestCase):
 
                                 self.assertLessEqual(
                                     np.linalg.norm(
-                                        (image_points.cpu().numpy() * scale_factor - offset)
+                                        (image_points_transformed_ref := (IMAGE_POINTS * scale_factor - offset))
                                         - image_points_transformed.image_points.cpu().numpy()
                                     ),
                                     self.MAX_DEVIATION_IN_IMAGE_COORDINATES,
@@ -1332,7 +1345,7 @@ class TestTransformParameters(CommonTestCase):
 
                                 # Validate transformed image-domain -> 3d -> untransformed image-domain round-trip
                                 ray3d_transformed = cam_model_transformed.image_points_to_camera_rays(
-                                    scale_factor * image_points - torch.tensor(offset, dtype=image_points.dtype)
+                                    image_points_transformed_ref
                                 )
 
                                 image_points_untransformed = cam_model.camera_rays_to_image_points(ray3d_transformed)
@@ -1344,8 +1357,7 @@ class TestTransformParameters(CommonTestCase):
 
                                 self.assertLessEqual(
                                     np.linalg.norm(
-                                        image_points.cpu().numpy()
-                                        - image_points_untransformed.image_points.cpu().numpy()
+                                        IMAGE_POINTS - image_points_untransformed.image_points.cpu().numpy()
                                     ),
                                     self.MAX_DEVIATION_IN_IMAGE_COORDINATES,
                                 )
