@@ -1,0 +1,13 @@
+# Copyright (c) 2025 NVIDIA CORPORATION.  All rights reserved.
+
+load("@aspect_rules_lint//format:defs.bzl", "format_multirun")
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+
+package(default_visibility = ["//visibility:public"])
+
+format_multirun(
+    name = "format",
+    python = "@multitool//tools/ruff",
+)
+
+bzlformat_pkg(name = "bzlformat")

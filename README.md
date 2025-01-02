@@ -93,10 +93,10 @@ to format all bazel source files (`//:bzlformat_missing_pkgs_fix` can be used to
 Execute
 
 ```
-bazel run @aspect_rules_format//format
+bazel run //:format
 ```
 
-to format all source files. Use `bazel run @aspect_rules_format//format -- --mode check` to only check for code-formatting violations.
+to format all source files. Use `bazel run //:format.check` to only check for code-formatting violations.
 
 ## Static Code Analysis
 

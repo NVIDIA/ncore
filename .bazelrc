@@ -32,8 +32,5 @@ build --aspects @mypy_integration//:mypy.bzl%mypy_aspect
 build --output_groups=+mypy
 build --@mypy_integration//:mypy_config=//bazel/typing:mypy.ini
 
-# Enable python code formatting
-run --@aspect_rules_format//format:python_enabled
-
 # https://docs.bazel.build/versions/main/best-practices.html#using-the-bazelrc-file
 try-import %workspace%/.bazelrc.user

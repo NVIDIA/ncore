@@ -54,8 +54,8 @@ build+test:
     # Check format declarations are not missing
     - bazelisk run //:bzlformat_missing_pkgs_test
 
-    # Check code format [disabled temporarily - code-format-only MR will be provided subsequently]
-    - bazelisk run @aspect_rules_format//format -- --mode check
+    # Check code format
+    - bazelisk run //:format.check
 
     # Build+test all remaining targets
     - bazelisk build ...
