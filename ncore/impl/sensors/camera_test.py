@@ -475,7 +475,6 @@ class TestReferenceFThetaCamera(CommonTestCase):
         self.assertAlmostEqual(actualMaxRadius, expectedMaxRadius)
 
     def test_rays2imagePoints_rays2Pixels_consistency(self):
-
         resolution = 1000
         principalPoint = (resolution - 1) / 2
         baseAngle = np.radians(35)
@@ -495,7 +494,6 @@ class TestReferenceFThetaCamera(CommonTestCase):
         self._test_rays2imagePoints_rays2Pixels_consistencyTestCase(ftheta_cam, bottomRay)
 
     def _test_rays2imagePoints_rays2Pixels_consistencyTestCase(self, ftheta_cam, cam_ray):
-
         image_points = ftheta_cam.camera_rays_to_image_points(np.array(cam_ray, ndmin=2))
         pixels = ftheta_cam.camera_rays_to_pixels(np.array(cam_ray, ndmin=2))
         self._compareVector(torch.floor(image_points.image_points.cpu()), pixels.pixels.cpu().float())
@@ -684,7 +682,6 @@ def ftheta_parameters_from_reference(reference_camera: ReferenceFThetaCamera) ->
 def ftheta_from_reference(
     reference_camera: ReferenceFThetaCamera, device: str, dtype: torch.dtype
 ) -> FThetaCameraModel:
-
     return FThetaCameraModel(
         camera_model_parameters=ftheta_parameters_from_reference(reference_camera), device=device, dtype=dtype
     )
@@ -1315,7 +1312,6 @@ class TestTransformParameters(CommonTestCase):
                     with self.subTest(msg=f"offset {offset}", offset=offset):
                         for cam_model_params in self.cam_model_params:
                             with self.subTest(cam_model_params=cam_model_params):
-
                                 cam_model = CameraModel.from_parameters(
                                     cam_model_params, device=self.device, dtype=self.dtype
                                 )

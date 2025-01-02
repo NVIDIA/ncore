@@ -95,7 +95,6 @@ class TestIndexedTarStore(unittest.TestCase):
 
                 # But loading a non-existing group should then fail
                 with self.assertRaises(zarr.errors.PathNotFoundError):
-
                     if compressed_consolidate:
                         open_compressed_consolidated(s_itar_in, mode="r")
                     else:

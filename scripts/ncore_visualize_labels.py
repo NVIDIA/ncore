@@ -27,14 +27,12 @@ from scripts.util import get_dynamic_flag
     default=None,
 )
 def ncore_visualize_labels(shard_file_pattern, sensor_id, start_frame, stop_frame, step_frame):
-
     shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
     loader = ShardDataLoader(shards)
     sensor = loader.get_sensor(sensor_id)
     assert isinstance(sensor, LidarSensor), "only lidar sensors supported"
 
     for frame_index in tqdm.tqdm(sensor.get_frame_index_range(start_frame, stop_frame, step_frame)):
-
         # Initialize the visualizer
         viz = LabelVisualizer()
 

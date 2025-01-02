@@ -131,7 +131,6 @@ def so3_2_axis_angle(so3, degrees=True):
 
 
 def euclidean_2_spherical_coords(coords):
-
     r = np.linalg.norm(coords, axis=-1, keepdims=True)
     el = np.arctan(coords[:, 2] / np.linalg.norm(coords[:, :2], axis=-1)).reshape(-1, 1)
     az = np.arctan2(coords[:, 1], coords[:, 0]).reshape(-1, 1)
@@ -140,7 +139,6 @@ def euclidean_2_spherical_coords(coords):
 
 
 def spherical_2_direction(spherical_coords):
-
     dx = np.cos(spherical_coords[:, 2]) * np.cos(spherical_coords[:, 1])
     dy = np.cos(spherical_coords[:, 2]) * np.sin(spherical_coords[:, 1])
     dz = np.sin(spherical_coords[:, 2])

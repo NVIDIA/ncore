@@ -148,7 +148,6 @@ def ncore_to_map_transform(
 
     # Print out the transformation matrices
     with np.printoptions(floatmode="unique", linewidth=200, suppress=True):  # print in highest precision
-
         logger.info(f"T_ncore_ecef:\n{T_ncore_ecef}")
 
         if (T_ngp_ecef_opt := output_data.get("T_ngp_ecef")) is not None:

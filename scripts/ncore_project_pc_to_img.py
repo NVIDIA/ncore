@@ -121,7 +121,6 @@ def ncore_project_pc_to_img(
     T_camera_rig = se3_matrix(camera_extrinsic_delta) @ cam_sensor.get_T_sensor_rig()
 
     for frame_index in tqdm.tqdm(indices):
-
         # Get the camera timestamp and find the closes lidar frame
         cam_timestamp = cam_sensor.get_frame_timestamp_us(frame_index)
         pc_frame_index = pc_sensor.get_closest_frame_index(cam_timestamp)

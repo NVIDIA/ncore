@@ -591,7 +591,6 @@ class CameraModel(ABC):
         return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
     ) -> CameraModel.WorldRaysReturn:
-
         return self.image_points_to_world_rays_static_pose(
             self.pixels_to_image_points(pixel_idxs),
             T_sensor_world,
@@ -612,7 +611,6 @@ class CameraModel(ABC):
         return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
     ) -> CameraModel.WorldRaysReturn:
-
         return self.image_points_to_world_rays_shutter_pose(
             self.pixels_to_image_points(pixel_idxs),
             T_sensor_world_start,
@@ -635,7 +633,6 @@ class CameraModel(ABC):
         return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
     ) -> CameraModel.WorldRaysReturn:
-
         if return_timestamps:
             assert start_timestamp_us is not None
             assert end_timestamp_us is not None
@@ -819,9 +816,7 @@ class CameraModel(ABC):
 
         world_position_rs = (1 - t)[..., None] * T_sensor_world_start[:3, 3:4].transpose(0, 1).repeat(
             t.shape[0], 1
-        ) + t[..., None] * T_sensor_world_end[:3, 3:4].transpose(0, 1).repeat(
-            t.shape[0], 1
-        )  # [n_image_points, 3]
+        ) + t[..., None] * T_sensor_world_end[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1)  # [n_image_points, 3]
 
         R_sensor_world_rs = self.__unitquat_to_rotmat(
             self.__unitquat_slerp(
@@ -854,9 +849,7 @@ class CameraModel(ABC):
             ), "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
             return_var.timestamps_us = (
                 start_timestamp_us + (t[..., None] * (end_timestamp_us - start_timestamp_us)).to(torch.int64)
-            ).squeeze(
-                -1
-            )  # [n_image_points]
+            ).squeeze(-1)  # [n_image_points]
 
         return return_var
 

@@ -75,7 +75,6 @@ def ncore_export_ply(
     logger.info(f"Starting '.ply' export. {len(indices)} frames will be exported.")
 
     for frame_index in tqdm.tqdm(indices):
-
         # Setup target transformation
         if frame == "sensor":
             T_sensor_target = np.identity(4)

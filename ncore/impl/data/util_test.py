@@ -9,7 +9,6 @@ class TestClosestIndexSorted(unittest.TestCase):
     """Test to verify functionality of closest_index_sorted"""
 
     def test_empty(self):
-
         with self.assertRaises(ValueError):
             closest_index_sorted([], 5)  # empty array -> raises exception
 

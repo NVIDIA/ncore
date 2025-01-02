@@ -59,7 +59,6 @@ class IndexedTarStore(zarr._storage.store.Store):
         records: Dict[str, IndexedTarStore.TarRecord] = field(default_factory=dict)
 
     def __init__(self, itar_path: Union[str, Path], mode: Literal["r", "w"] = "r"):
-
         if mode not in ["r", "w"]:
             raise ValueError("TarRecordIndex: only r/w modes supported")
 

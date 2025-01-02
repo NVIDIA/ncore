@@ -106,7 +106,6 @@ def ncore_export_colored_pc(
     pc_frame_indices = pc_sensor.get_frame_index_range(start_frame, stop_frame, step_frame)
     logger.info(f"Starting the pc projection. {len(pc_frame_indices)} frames will be processed.")
     for pc_frame_index in tqdm.tqdm(pc_frame_indices):
-
         # Get the pc timestamp and find the closes camera frame
         pc_timestamp_us = pc_sensor.get_frame_timestamp_us(pc_frame_index)
         cam_frame_index = cam_sensor.get_closest_frame_index(pc_timestamp_us)
