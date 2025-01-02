@@ -38,6 +38,17 @@ updatesrc_update_all(
     ],
 )
 
+# Formatting target aliases for convenience
+alias(
+    name = "format",
+    actual = "//bazel/format:format",
+)
+
+alias(
+    name = "format.check",
+    actual = "//bazel/format:format.check",
+)
+
 # Package group representing all code-related sub-packages
 package_group(
     name = "code_package_group",

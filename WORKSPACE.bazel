@@ -4,12 +4,25 @@ workspace(name = "ncore_repo")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
+## Bazel features
+
+http_archive(
+    name = "bazel_features",
+    sha256 = "06f02b97b6badb3227df2141a4b4622272cdcd2951526f40a888ab5f43897f14",
+    strip_prefix = "bazel_features-1.9.0",
+    url = "https://github.com/bazel-contrib/bazel_features/releases/download/v1.9.0/bazel_features-v1.9.0.tar.gz",
+)
+
+load("@bazel_features//:deps.bzl", "bazel_features_deps")
+
+bazel_features_deps()
+
 ## Python rules
 http_archive(
     name = "rules_python",
-    sha256 = "5868e73107a8e85d8f323806e60cad7283f34b32163ea6ff1020cf27abef6036",
-    strip_prefix = "rules_python-0.25.0",
-    url = "https://github.com/bazelbuild/rules_python/releases/download/0.25.0/rules_python-0.25.0.tar.gz",
+    sha256 = "4f7e2aa1eb9aa722d96498f5ef514f426c1f55161c3c9ae628c857a7128ceb07",
+    strip_prefix = "rules_python-1.0.0",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/1.0.0/rules_python-1.0.0.tar.gz",
 )
 
 load("@rules_python//python:repositories.bzl", "py_repositories", "python_register_multi_toolchains")
@@ -28,8 +41,6 @@ python_register_multi_toolchains(
 )
 
 # Local pip dependencies
-load("@python//3.10:defs.bzl", interpreter_3_10 = "interpreter")
-load("@python//3.8:defs.bzl", interpreter_3_8 = "interpreter")
 load("@rules_python//python:pip.bzl", "package_annotation", "pip_parse")
 
 pip_parse(
@@ -47,7 +58,7 @@ cc_library(
 """,
         ),
     },
-    python_interpreter_target = interpreter_3_10,
+    python_interpreter_target = "@python_3_10_host//:python",
     quiet = False,
     requirements_lock = "//3rdparty/python:requirements_3_10.txt",
 )
@@ -71,7 +82,7 @@ cc_library(
 """,
         ),
     },
-    python_interpreter_target = interpreter_3_8,
+    python_interpreter_target = "@python_3_8_host//:python",
     quiet = False,
     requirements_lock = "//3rdparty/python:requirements_3_8.txt",
 )
@@ -101,7 +112,7 @@ mypy_integration_repositories()
 
 pip_parse(
     name = "mypy_integration_pip_deps",
-    python_interpreter_target = interpreter_3_10,
+    python_interpreter_target = "@python_3_10_host//:python",
     requirements_lock = "//bazel/typing:mypy_version.txt",
 )
 
@@ -163,39 +174,41 @@ load("@buildifier_prebuilt//:defs.bzl", "buildifier_prebuilt_register_toolchains
 
 buildifier_prebuilt_register_toolchains()
 
-## rules_format - Code formatting rules (should be last to avoid toolchain re-definitions)
+## rules_lint - Code formatting rules (should be last to avoid toolchain re-definitions)
 
 http_archive(
-    name = "aspect_rules_format",
-    patch_args = ["-p1"],
-    patches = [
-        "//3rdparty/aspect_rules_format:aspect_rules_format.patch",
+    name = "aspect_rules_lint",
+    sha256 = "7d5feef9ad85f0ba78cc5757a9478f8fa99c58a8cabc1660d610b291dc242e9b",
+    strip_prefix = "rules_lint-1.0.2",
+    url = "https://github.com/aspect-build/rules_lint/releases/download/v1.0.2/rules_lint-v1.0.2.tar.gz",
+)
+
+# aspect_rules_lint depends on aspect_bazel_lib
+http_archive(
+    name = "aspect_bazel_lib",
+    sha256 = "6d758a8f646ecee7a3e294fbe4386daafbe0e5966723009c290d493f227c390b",
+    strip_prefix = "bazel-lib-2.7.7",
+    url = "https://github.com/aspect-build/bazel-lib/releases/download/v2.7.7/bazel-lib-v2.7.7.tar.gz",
+)
+
+load("@aspect_bazel_lib//lib:repositories.bzl", "aspect_bazel_lib_dependencies")
+
+# aspect_bazel_lib depends on bazel_skylib
+aspect_bazel_lib_dependencies()
+
+load(
+    "@aspect_rules_lint//format:repositories.bzl",
+    "rules_lint_dependencies",
+)
+
+rules_lint_dependencies()
+
+load("@rules_multitool//multitool:multitool.bzl", "multitool")
+
+multitool(
+    name = "multitool",
+    lockfiles = [
+        "@aspect_rules_lint//format:multitool.lock.json",
+        "@aspect_rules_lint//lint:multitool.lock.json",
     ],
-    sha256 = "c8d04f68082c0eeac2777e15f65048ece2f17d632023bdcc511602f8c5faf177",
-    strip_prefix = "bazel-super-formatter-2.0.0",
-    url = "https://github.com/aspect-build/bazel-super-formatter/archive/refs/tags/v2.0.0.tar.gz",
 )
-
-load("@aspect_rules_format//format:repositories.bzl", format_dependencies = "rules_format_dependencies")
-
-format_dependencies()
-
-load("@rules_nodejs//nodejs:repositories.bzl", "DEFAULT_NODE_VERSION", "nodejs_register_toolchains")
-
-nodejs_register_toolchains(
-    name = "node",
-    node_version = DEFAULT_NODE_VERSION,
-)
-
-load("@aspect_rules_format//format:dependencies.bzl", format_parse_dependencies = "parse_dependencies")
-
-format_parse_dependencies()
-
-# Should be LAST in WORKSPACE to avoid getting different versions of toolchains
-load("@aspect_rules_format//format:toolchains.bzl", "format_register_toolchains")
-
-format_register_toolchains()
-
-load("@aspect_rules_format//:requirements.bzl", install_black = "install_deps")
-
-install_black()

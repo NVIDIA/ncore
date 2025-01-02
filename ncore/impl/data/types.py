@@ -397,7 +397,9 @@ class Poses:
 
     T_rig_world_base: np.ndarray  #: Base rig-to-global-world SE3 transformation (float64, [4,4])
     T_rig_worlds: np.ndarray  #: All rig-to-local-world SE3 transformations of the trajectory (float64, [N,4,4])
-    T_rig_world_timestamps_us: np.ndarray  #: All rig-to-local-world transformation timestamps of the trajectory (uint64, [N,])
+    T_rig_world_timestamps_us: (
+        np.ndarray
+    )  #: All rig-to-local-world transformation timestamps of the trajectory (uint64, [N,])
 
     def __post_init__(self):
         # Sanity checks
@@ -545,5 +547,4 @@ class EncodedImageData:
 class EncodedImageHandle(Protocol):
     """Protocol type to reference encoded image data (e.g., file-based, container-based, memory-based)"""
 
-    def get_data(self) -> EncodedImageData:
-        ...
+    def get_data(self) -> EncodedImageData: ...

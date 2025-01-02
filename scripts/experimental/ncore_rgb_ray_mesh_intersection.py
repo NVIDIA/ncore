@@ -110,7 +110,6 @@ def ncore_rgb_ray_mesh_intersection(
         f"Starting pc coloring. {len(camera_frame_indices)} frames will be processed and stored to {output_path}"
     )
     for camera_frame_index in tqdm.tqdm(camera_frame_indices):
-
         # Perform rolling-shutter-based world ray estimation
         start_timestamp_us = camera_sensor.get_frame_timestamp_us(
             camera_frame_index, frame_timepoint=FrameTimepoint.START

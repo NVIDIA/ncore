@@ -3,6 +3,8 @@ __pycache__/
 .vscode/
 _build/
 
+.ci-keep/
+
 # Bazel-specific ignores
 /bazel-*
 .bazelrc.user

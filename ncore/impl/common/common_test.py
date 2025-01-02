@@ -86,7 +86,6 @@ class TestSaveLoadPCDat(unittest.TestCase):
 
 class TestIsWithin3DBBox(unittest.TestCase):
     def setUp(self):
-
         # Set the random seed
         np.random.seed(41)
 
