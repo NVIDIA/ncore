@@ -16,7 +16,7 @@ build --remote_instance_name ncore
 build --incompatible_strict_action_env
 
 # This is needed to have tags=["no-cache"] propagate to action execution requirements
-build --experimental_allow_tags_propagation
+build --incompatible_allow_tags_propagation
 
 # Check the ctime of input files of an action before uploading it to a remote cache (there may be cases where the Linux kernel delays writing of files, which could cause false positives)
 build --experimental_guard_against_concurrent_changes
@@ -34,6 +34,14 @@ build --@mypy_integration//:mypy_config=//bazel/typing:mypy.ini
 
 # Require OAuth2 support in rules_oci for some docker image repositories
 common --repo_env=OCI_ENABLE_OAUTH2_SUPPORT=1
+
+# We are not yet ready for bzlmod (enabled by default in bazel 7+)
+common --noenable_bzlmod
+common --enable_workspace
+
+# Silence warnings on unused repositories / dependencies we don't use
+# (introduced in bazel 8 to transition to modular setups)
+common --incompatible_autoload_externally=+@rules_python,+@rules_shell
 
 # https://docs.bazel.build/versions/main/best-practices.html#using-the-bazelrc-file
 try-import %workspace%/.bazelrc.user

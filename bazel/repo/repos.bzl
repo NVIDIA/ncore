@@ -31,9 +31,8 @@ def register_repositories():
 
     http_archive(
         name = "cgrindel_bazel_starlib",
-        sha256 = "c95de004f346cbcb51ba1185e8861227cd9ab248b53046f662aeda1095601bc9",
-        strip_prefix = "bazel-starlib-0.7.1",
+        sha256 = "43e375213dabe0c3928e65412ea7ec16850db93285c8c6f8b0eaa41cacd0f882",
         urls = [
-            "http://github.com/cgrindel/bazel-starlib/archive/v0.7.1.tar.gz",
-        ],
+            "https://github.com/cgrindel/bazel-starlib/releases/download/v0.21.0/bazel-starlib.v0.21.0.tar.gz",
+            ],
     )
