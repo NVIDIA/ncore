@@ -15,7 +15,7 @@ index 63bb405..0d3c3ef 100644
 +++ w/mypy/BUILD
 @@ -1,4 +1,5 @@
  load("@mypy_integration_pip_deps//:requirements.bzl", "requirement")
-+load("@pip_deps//:requirements.bzl", local_req = "requirement")
++load("@ncore_pip_deps//:requirements.bzl", local_req = "requirement")
  
  py_binary(
      name = "mypy",

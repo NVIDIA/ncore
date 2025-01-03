@@ -273,9 +273,9 @@ class MaskImage:
         assert isinstance(binary_mask, np.ndarray), "expecting array as input"
         assert isinstance(mask_type, MaskImage.MaskType), "expecting MaskType as input"
         assert binary_mask.dtype is np.dtype("bool"), "expecting binary array as input"
-        assert (
-            binary_mask.shape == self.mask_array.shape
-        ), f"invalid array resolution, expecting shape {self.mask_array.shape}"
+        assert binary_mask.shape == self.mask_array.shape, (
+            f"invalid array resolution, expecting shape {self.mask_array.shape}"
+        )
 
         # set new values for masked pixels
         self.mask_array[binary_mask] = mask_type.value
@@ -369,13 +369,13 @@ def uniform_subdivide_range(
                          -1
     """
 
-    assert (
-        subdiv_count > 0 and subdiv_id < subdiv_count
-    ), f"Invalid subdivision specification id={subdiv_id} count={subdiv_count}"
+    assert subdiv_count > 0 and subdiv_id < subdiv_count, (
+        f"Invalid subdivision specification id={subdiv_id} count={subdiv_count}"
+    )
 
-    assert (
-        range_start >= 0 and range_end >= range_start
-    ), f"Range specification {range_start}:{range_end} invalid / not providing *absolute* range"
+    assert range_start >= 0 and range_end >= range_start, (
+        f"Range specification {range_start}:{range_end} invalid / not providing *absolute* range"
+    )
 
     # Create full index range and split according to subdiv-count
     split_range = np.array_split(np.arange(range_start, range_end), subdiv_count)

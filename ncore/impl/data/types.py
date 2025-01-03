@@ -548,13 +548,13 @@ class RowOffsetStructuredSpinningLidarModelParameters(
         assert self.column_azimuths_rad.shape == (self.n_columns,)
 
         if self.spinning_direction == "ccw":
-            assert is_sorted_descending(
-                self.column_azimuths_rad
-            ), "Column azimuth angles must be sorted in descending order for ccw sensors"
+            assert is_sorted_descending(self.column_azimuths_rad), (
+                "Column azimuth angles must be sorted in descending order for ccw sensors"
+            )
         else:
-            assert is_sorted_ascending(
-                self.column_azimuths_rad
-            ), "Column azimuth angles must be sorted in ascending order for cw sensors"
+            assert is_sorted_ascending(self.column_azimuths_rad), (
+                "Column azimuth angles must be sorted in ascending order for cw sensors"
+            )
 
         # Reconstruct all (wrapped) element azimuths once to check against FoV
         azimuths_rad = self.column_azimuths_rad[None, :] + self.row_azimuth_offsets_rad[:, None]

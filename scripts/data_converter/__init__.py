@@ -78,11 +78,9 @@ class DataConverter(ABC):
             return all_sensor_ids
 
         # Make sure active sensors are a subset of all sensors
-        assert set(
-            active_sensor_ids
-        ).issubset(
-            all_sensor_ids
-        ), f"Selected active {sensor_type} sensors {active_sensor_ids} not a subset of all available sensors {all_sensor_ids}"
+        assert set(active_sensor_ids).issubset(all_sensor_ids), (
+            f"Selected active {sensor_type} sensors {active_sensor_ids} not a subset of all available sensors {all_sensor_ids}"
+        )
 
         return active_sensor_ids
 

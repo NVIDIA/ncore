@@ -1,7 +1,7 @@
 # Copyright (c) 2023 NVIDIA CORPORATION.  All rights reserved.
 
 load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
-load("@pip_deps//:requirements.bzl", "requirement")
+load("@ncore_pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary")
 
 py_binary(

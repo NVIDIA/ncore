@@ -1,10 +1,9 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
-load("@pip_deps//:requirements.bzl", "requirement")
-load("@pip_deps_3_8//:requirements.bzl", requirement_3_8 = "requirement")
+load("@ncore_pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_library")
-load("//bazel/pytest:defs.bzl", "pytest_test", "pytest_test_3_8")
+load("//bazel/pytest:defs.bzl", "pytest_test")
 
 package(default_visibility = ["//:code_package_group"])
 
@@ -20,17 +19,6 @@ py_library(
 )
 
 py_library(
-    name = "pylib_common_3_8",
-    srcs = [
-        "common.py",
-    ],
-    deps = [
-        requirement_3_8("numpy"),
-        requirement_3_8("torch"),
-    ],
-)
-
-py_library(
     name = "pylib_camera",
     srcs = [
         "camera.py",
@@ -40,19 +28,6 @@ py_library(
         requirement("torch"),
         ":pylib_common",
         "//ncore/impl/data:pylib_types",
-    ],
-)
-
-py_library(
-    name = "pylib_camera_3_8",
-    srcs = [
-        "camera.py",
-    ],
-    deps = [
-        requirement_3_8("numpy"),
-        requirement_3_8("torch"),
-        ":pylib_common_3_8",
-        "//ncore/impl/data:pylib_types_3_8",
     ],
 )
 
@@ -72,22 +47,6 @@ pytest_test(
     ],
 )
 
-pytest_test_3_8(
-    name = "pytest_camera_3_8",
-    srcs = [
-        "camera_test.py",
-    ],
-    deps = [
-        requirement_3_8("numpy"),
-        requirement_3_8("opencv-python"),
-        requirement_3_8("parameterized"),
-        requirement_3_8("scipy"),
-        ":pylib_camera_3_8",
-        ":pylib_common_3_8",
-        "//ncore/impl/data:pylib_types_3_8",
-    ],
-)
-
 py_library(
     name = "pylib_lidar",
     srcs = [
@@ -99,20 +58,6 @@ py_library(
         requirement("numpy"),
         requirement("scipy"),
         requirement("torch"),
-    ],
-)
-
-py_library(
-    name = "pylib_lidar_3_8",
-    srcs = [
-        "lidar.py",
-    ],
-    deps = [
-        ":pylib_common_3_8",
-        "//ncore/impl/data:pylib_types_3_8",
-        requirement_3_8("numpy"),
-        requirement_3_8("scipy"),
-        requirement_3_8("torch"),
     ],
 )
 
@@ -129,22 +74,6 @@ pytest_test(
         requirement("numpy"),
         requirement("torch"),
         requirement("parameterized"),
-    ],
-)
-
-pytest_test_3_8(
-    name = "pytest_lidar_3_8",
-    srcs = [
-        "lidar_test.py",
-    ],
-    data = ["//ncore/impl/sensors:test_data/row-offset-spinning-lidar-model-parameters.json"],
-    deps = [
-        ":pylib_common_3_8",
-        ":pylib_lidar_3_8",
-        "//ncore/impl/common:pylib_transformations_3_8",
-        requirement_3_8("numpy"),
-        requirement_3_8("torch"),
-        requirement_3_8("parameterized"),
     ],
 )
 

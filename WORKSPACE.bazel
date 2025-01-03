@@ -63,7 +63,7 @@ cc_library(
     requirements_lock = "//3rdparty/python:requirements_3_11.txt",
 )
 
-load("@pip_deps//:requirements.bzl", "install_deps")
+load("@ncore_pip_deps//:requirements.bzl", "install_deps")
 
 install_deps()
 
@@ -87,7 +87,7 @@ cc_library(
     requirements_lock = "//3rdparty/python:requirements_3_8.txt",
 )
 
-load("@pip_deps_3_8//:requirements.bzl", install_pip_deps_3_8 = "install_deps")
+load("@ncore_pip_deps_3_8//:requirements.bzl", install_pip_deps_3_8 = "install_deps")
 
 install_pip_deps_3_8()
 

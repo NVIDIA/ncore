@@ -5,6 +5,7 @@ import random
 import itertools
 import tempfile
 import io
+import os
 
 from pathlib import Path
 
@@ -13,6 +14,7 @@ import PIL.Image as PILImage
 import parameterized
 
 from scipy.spatial.transform import Rotation as R
+from python.runfiles import Runfiles
 
 from .data3 import ShardDataLoader, Sensor, CameraSensor, LidarSensor, ContainerDataWriter
 from .types import (
@@ -26,6 +28,8 @@ from .types import (
     BivariateWindshieldModelParameters,
 )
 
+_RUNFILES = Runfiles.Create()
+
 
 class TestData3Loader(unittest.TestCase):
     """Test to verify functionality of V3 data loader"""
@@ -35,7 +39,16 @@ class TestData3Loader(unittest.TestCase):
         np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
 
         self.random = random.Random(x=0)  # seed deterministically
-        self.all_shards = sorted([str(p) for p in Path("external/test-data-v3-shards").iterdir() if p.match("*.itar")])
+
+        self.all_shards = sorted(
+            [
+                str(p)
+                for p in Path(
+                    _RUNFILES.Rlocation(os.environ["RUNFILE_PATHS_TEST_SHARDS"].split(" ")[0])
+                ).parent.iterdir()
+                if p.match("*.itar")
+            ]
+        )
 
     @parameterized.parameterized.expand(itertools.product((False, True), (False, True)))
     def test_shard_loader(self, open_consolidated: bool, reload_store_resources: bool):

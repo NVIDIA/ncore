@@ -1,0 +1,71 @@
+# Copyright (c) 2025 NVIDIA CORPORATION.  All rights reserved.
+
+"""
+This module defines the dependencies and extensions for the ncore project.
+"""
+
+module(name = "ncore", repo_name = "ncore_repo")
+
+bazel_dep(name = "aspect_bazel_lib", version = "2.7.7")
+bazel_dep(name = "aspect_rules_lint", version = "1.2.2")
+bazel_dep(name = "cgrindel_bazel_starlib", version = "0.22.0")
+bazel_dep(name = "rules_cc", version = "0.1.1")
+bazel_dep(name = "bazel_skylib", version = "1.7.1")
+bazel_dep(name = "platforms", version = "0.0.11")
+
+bazel_dep(name = "rules_python", version = "1.2.0")
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    is_default = True,
+    python_version = "3.11",
+)
+python.toolchain(
+    python_version = "3.8",
+)
+use_repo(python, "python_3_11",
+                 "python_3_8",
+                 "python_versions")
+
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    hub_name = "ncore_pip_deps",
+    python_version = "3.11",
+    requirements_lock = "//3rdparty/python:requirements_3_11.txt",
+)
+pip.parse(
+    hub_name = "ncore_pip_deps",
+    python_version = "3.8",
+    requirements_lock = "//3rdparty/python:requirements_3_8.txt",
+)
+use_repo(pip, "ncore_pip_deps")
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+http_archive(
+    name = "poisson_recon",
+    sha256 = "7fa4176d913a632afcde38308f4e41bac67ffdc6c6e88f73f434c8083e3d780e",
+    # source-repo: https://github.com/mkazhdan/PoissonRecon, commit f1c71fe
+    urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/repo-PoissonRecon/f1c71fe/repo-PoissonRecon-f1c71fe.tar.gz"],
+    build_file = "//3rdparty/poisson_recon:poisson_recon.BUILD",
+    strip_prefix = "PoissonRecon",
+    patch_args = ["-p1"],
+    patches = ["//3rdparty/poisson_recon:poisson_recon.patch"],
+)
+
+http_archive(
+    name = "test-data-v3-shards",
+    sha256 = "cdb766ba178548f9307b1458bb408f4f92ba1557dd34bb30dac2a303749ab783",
+    urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/test-data-v3-shards/0.7/test-data-v3-shards.tar.gz"],
+)
+
+bazel_dep(name = "rules_multitool", version = "1.0.0")
+multitool = use_extension("@rules_multitool//multitool:extension.bzl", "multitool")
+use_repo(multitool, "multitool")
+
+bazel_dep(name = "rules_oci", version = "2.2.0")
+oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
+oci.pull(
+    name = "ncore_dev_image",
+    digest = "sha256:a7ef63cd668559421ce7ceb70cc2d6c454c761cd4fa309f8e96db1be2968c69a",
+    image = "gitlab-master.nvidia.com:5005/nrs/ncore",
+)
+use_repo(oci, "ncore_dev_image")

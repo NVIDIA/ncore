@@ -1,10 +1,9 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
-load("@pip_deps//:requirements.bzl", "requirement")
-load("@pip_deps_3_8//:requirements.bzl", requirement_3_8 = "requirement")
+load("@ncore_pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_library")
-load("//bazel/pytest:defs.bzl", "pytest_test", "pytest_test_3_8")
+load("//bazel/pytest:defs.bzl", "pytest_test")
 
 package(default_visibility = ["//:code_package_group"])
 
@@ -25,22 +24,6 @@ py_library(
 )
 
 py_library(
-    name = "pylib_data_3_8",
-    srcs = [
-        "data3.py",
-    ],
-    deps = [
-        ":pylib_stores_3_8",
-        ":pylib_types_3_8",
-        ":pylib_util_3_8",
-        "//ncore/impl/common:pylib_common_3_8",
-        "//ncore/impl/common:pylib_transformations_3_8",
-        requirement_3_8("zarr"),
-        requirement_3_8("pillow"),
-    ],
-)
-
-py_library(
     name = "pylib_types",
     srcs = [
         "types.py",
@@ -50,19 +33,6 @@ py_library(
         requirement("numpy"),
         requirement("dataclasses-json"),
         requirement("pillow"),
-    ],
-)
-
-py_library(
-    name = "pylib_types_3_8",
-    srcs = [
-        "types.py",
-    ],
-    deps = [
-        ":pylib_util_3_8",
-        requirement_3_8("numpy"),
-        requirement_3_8("dataclasses-json"),
-        requirement_3_8("pillow"),
     ],
 )
 
@@ -78,17 +48,6 @@ py_library(
 )
 
 py_library(
-    name = "pylib_stores_3_8",
-    srcs = [
-        "stores.py",
-    ],
-    deps = [
-        requirement_3_8("zarr"),
-        requirement_3_8("cbor2"),
-    ],
-)
-
-py_library(
     name = "pylib_util",
     srcs = [
         "util.py",
@@ -96,17 +55,6 @@ py_library(
     deps = [
         requirement("numpy"),
         requirement("dataclasses-json"),
-    ],
-)
-
-py_library(
-    name = "pylib_util_3_8",
-    srcs = [
-        "util.py",
-    ],
-    deps = [
-        requirement_3_8("numpy"),
-        requirement_3_8("dataclasses-json"),
     ],
 )
 
@@ -120,13 +68,14 @@ pytest_test(
     ],
 )
 
-pytest_test_3_8(
-    name = "pytest_util_3_8",
+pytest_test(
+    name = "pytest_util_38",
     srcs = [
         "util_test.py",
     ],
+    python_version = "3.8",
     deps = [
-        ":pylib_util_3_8",
+        ":pylib_util",
     ],
 )
 
@@ -136,25 +85,15 @@ pytest_test(
     data = [
         "@test-data-v3-shards//:test-shards",
     ],
+    env = {
+        "RUNFILE_PATHS_TEST_SHARDS": "$(rlocationpaths @test-data-v3-shards//:test-shards)",
+    },
     deps = [
         ":pylib_data",
         requirement("parameterized"),
         requirement("pillow"),
         requirement("scipy"),
-    ],
-)
-
-pytest_test_3_8(
-    name = "pytest_data3_3_8",
-    srcs = ["data3_test.py"],
-    data = [
-        "@test-data-v3-shards//:test-shards",
-    ],
-    deps = [
-        ":pylib_data_3_8",
-        requirement_3_8("parameterized"),
-        requirement_3_8("pillow"),
-        requirement_3_8("scipy"),
+        "@rules_python//python/runfiles",
     ],
 )
 
@@ -163,15 +102,6 @@ pytest_test(
     srcs = ["stores_test.py"],
     deps = [
         ":pylib_stores",
-        requirement("parameterized"),
-    ],
-)
-
-pytest_test_3_8(
-    name = "pytest_stores_3_8",
-    srcs = ["stores_test.py"],
-    deps = [
-        ":pylib_stores_3_8",
         requirement("parameterized"),
     ],
 )

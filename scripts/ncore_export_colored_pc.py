@@ -89,12 +89,12 @@ def ncore_export_colored_pc(
 
     shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
     loader = ShardDataLoader(shards)
-    assert isinstance(
-        pc_sensor := loader.get_sensor(sensor_id), PointCloudSensor
-    ), "only point-cloud sensors are supported as source sensors"
-    assert isinstance(
-        cam_sensor := loader.get_sensor(camera_id), CameraSensor
-    ), "only camera sensors are supported as color sensors"
+    assert isinstance(pc_sensor := loader.get_sensor(sensor_id), PointCloudSensor), (
+        "only point-cloud sensors are supported as source sensors"
+    )
+    assert isinstance(cam_sensor := loader.get_sensor(camera_id), CameraSensor), (
+        "only camera sensors are supported as color sensors"
+    )
 
     # Initialize the camera model on requested device
     cam_model = CameraModel.from_parameters(cam_sensor.get_camera_model_parameters(), device=device)

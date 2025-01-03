@@ -17,21 +17,21 @@ def to_torch(
         # Note that this can cause problems
 
         if var.dtype == np.uint16:
-            assert np.all(
-                var <= np.iinfo(np.int16).max
-            ), "[CameraModel]: Trying to cast uint16 to int16 but the value exceeds max range."
+            assert np.all(var <= np.iinfo(np.int16).max), (
+                "[CameraModel]: Trying to cast uint16 to int16 but the value exceeds max range."
+            )
             var = var.astype(np.int16)
 
         if var.dtype == np.uint32:
-            assert np.all(
-                var <= np.iinfo(np.int32).max
-            ), "[CameraModel]: Trying to cast uint32 to int32 but the value exceeds max range."
+            assert np.all(var <= np.iinfo(np.int32).max), (
+                "[CameraModel]: Trying to cast uint32 to int32 but the value exceeds max range."
+            )
             var = var.astype(np.int32)
 
         if var.dtype == np.uint64:
-            assert np.all(
-                var <= np.iinfo(np.int64).max
-            ), "[CameraModel]: Trying to cast uint64 to int64 but the value exceeds max range."
+            assert np.all(var <= np.iinfo(np.int64).max), (
+                "[CameraModel]: Trying to cast uint64 to int64 but the value exceeds max range."
+            )
             var = var.astype(np.int64)
 
         var = torch.from_numpy(var)

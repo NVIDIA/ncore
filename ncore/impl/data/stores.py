@@ -292,9 +292,9 @@ class IndexedTarStore(zarr._storage.store.Store):
             fill_block()
 
         # Create index header block
-        assert (
-            struct.calcsize(cls.INDEX_HEADER_FORMAT) <= tarfile.BLOCKSIZE
-        ), "Index header larger than single block size"
+        assert struct.calcsize(cls.INDEX_HEADER_FORMAT) <= tarfile.BLOCKSIZE, (
+            "Index header larger than single block size"
+        )
         header_binary = struct.pack(
             cls.INDEX_HEADER_FORMAT,
             cls.INDEX_HEADER_MAGIC,
