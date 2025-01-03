@@ -32,5 +32,8 @@ build --aspects @mypy_integration//:mypy.bzl%mypy_aspect
 build --output_groups=+mypy
 build --@mypy_integration//:mypy_config=//bazel/typing:mypy.ini
 
+# Require OAuth2 support in rules_oci for some docker image repositories
+common --repo_env=OCI_ENABLE_OAUTH2_SUPPORT=1
+
 # https://docs.bazel.build/versions/main/best-practices.html#using-the-bazelrc-file
 try-import %workspace%/.bazelrc.user

@@ -1,14 +1,10 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
-load(
-    "@io_bazel_rules_docker//container:container.bzl",
-    "container_push",
-)
-load("@io_bazel_rules_docker//python:image.bzl", "py_layer")
-load("@io_bazel_rules_docker//python3:image.bzl", "py3_image")
 load("@pip_deps//:requirements.bzl", "requirement")
+load("@rules_oci//oci:defs.bzl", "oci_load", "oci_push")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("//bazel/oci:py_layer.bzl", "py_oci_image")
 
 #################################################################
 
@@ -62,77 +58,36 @@ py_binary(
 
 # Image for 'ncore_export_camera'
 
-# extract all transitive dependencies of dependencies under //ncore
-py_layer(
-    name = "ncore_export_camera_common_deps_layer",
-    filter = "//ncore",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = NCORE_EXPORT_CAMERA_DEPS,
-)
-
-# extract all external dependencies of the deps under //ncore
-py_layer(
-    name = "ncore_export_camera_common_external_deps_layer",
-    filter = "@",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = [":ncore_export_camera_common_deps_layer"],
-)
-
-# extract all external dependencies of NCORE_EXPORT_CAMERA_DEPS, which is a superset of ":ncore_export_camera_common_external_deps_layer".
-py_layer(
-    name = "ncore_export_camera_external_deps_layer",
-    filter = "@",
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-    deps = NCORE_EXPORT_CAMERA_DEPS,
-)
-
-py3_image(
+py_oci_image(
     name = "ncore_export_camera_image",
-    srcs = ["ncore_export_camera.py"],
-    base = "@ncore_dev_container//image",
-    layers = [
-        ":ncore_export_camera_external_deps_layer",
-        ":ncore_export_camera_common_external_deps_layer",
-        ":ncore_export_camera_common_deps_layer",
-    ],
-    main = "ncore_export_camera.py",
+    base = "@ncore_dev_image",
+    binary = "ncore_export_camera",
+    entrypoint = ["/scripts/ncore_export_camera"],
     tags = [
         "manual",
         "no-remote-cache",
     ],
 )
 
-# Push image to 'production' (prod) tag - use with *CAUTION* as referenced by default in workflows
-container_push(
-    name = "push_ncore_export_camera_image_prod",
-    format = "Docker",
+# Build the image and load it into a local runtime:
+# $ bazel run //scripts:load_ncore_export_camera_image
+# $ docker run -it --rm --gpus all nvcr.io/nv-maglev/dlav/ncore-export-camera:latest
+oci_load(
+    name = "load_ncore_export_camera_image",
     image = ":ncore_export_camera_image",
-    registry = "nvcr.io",
-    repository = "nv-maglev/dlav/ncore",
-    tag = "ncore-export-camera-prod",
+    repo_tags = ["nvcr.io/nv-maglev/dlav/ncore-export-camera:latest"],
     tags = [
         "manual",
         "no-remote-cache",
     ],
 )
 
-# Push image to 'staging' (stage) tag - useful for experimentation
-container_push(
-    name = "push_ncore_export_camera_image_stage",
-    format = "Docker",
+# Push image to 'latest' tag - use with *CAUTION* as referenced by default in workflows
+oci_push(
+    name = "push_ncore_export_camera_image",
     image = ":ncore_export_camera_image",
-    registry = "nvcr.io",
-    repository = "nv-maglev/dlav/ncore",
-    tag = "ncore-export-camera-stage",
+    remote_tags = ["latest"],
+    repository = "nvcr.io/nv-maglev/dlav/ncore-export-camera",
     tags = [
         "manual",
         "no-remote-cache",
