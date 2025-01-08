@@ -468,7 +468,9 @@ class CameraModel(ABC):
         if return_timestamps:
             return_var.timestamps_us = (
                 start_timestamp_us
-                + (t[..., None] * (cast(int, end_timestamp_us) - cast(int, start_timestamp_us))).to(torch.int64)
+                + (
+                    t[image_points_rs.valid_flag, None] * (cast(int, end_timestamp_us) - cast(int, start_timestamp_us))
+                ).to(torch.int64)
             ).squeeze(1)
 
         if return_all_projections:
