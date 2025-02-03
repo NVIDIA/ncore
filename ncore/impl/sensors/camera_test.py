@@ -25,6 +25,7 @@ from ncore.impl.sensors.camera import (
     OpenCVPinholeCameraModel,
     OpenCVFisheyeCameraModel,
 )
+from ncore.impl.sensors.common import to_torch
 
 
 class ReferenceFThetaCamera:
@@ -330,7 +331,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
 
                 # Evaluate torch-camera
                 ray3d = camera_ftheta.image_points_to_camera_rays(
-                    camera_ftheta.to_torch(expectedPoint2d, dtype=camera_ftheta.dtype)
+                    to_torch(expectedPoint2d, device=camera_ftheta.device, dtype=camera_ftheta.dtype)
                 )
 
                 # test that the computed rays of both cameras agree
@@ -382,7 +383,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
 
                 # Evaluate torch-camera
                 ray3d = camera_ftheta.image_points_to_camera_rays(
-                    camera_ftheta.to_torch(expectedPoint2d, dtype=camera_ftheta.dtype)
+                    to_torch(expectedPoint2d, device=camera_ftheta.device, dtype=camera_ftheta.dtype)
                 )
 
                 with self.subTest(angle=np.degrees(np.arccos(ray3d.cpu()[0][2]))):
@@ -444,7 +445,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
 
                 # Evaluate torch-camera
                 ray3d = camera_ftheta.image_points_to_camera_rays(
-                    camera_ftheta.to_torch(expectedPoint2d, dtype=camera_ftheta.dtype)
+                    to_torch(expectedPoint2d, device=camera_ftheta.device, dtype=camera_ftheta.dtype)
                 )
 
                 with self.subTest(angle=np.degrees(np.arccos(ray3d.cpu()[0][2]))):
@@ -738,7 +739,7 @@ class TestPinholeCamera(CommonTestCase):
 
                 # Verify torch-camera's result
                 ray3d = cam_model.image_points_to_camera_rays(
-                    cam_model.to_torch(expectedPoint2d, dtype=cam_model.dtype)
+                    to_torch(expectedPoint2d, device=cam_model.device, dtype=cam_model.dtype)
                 )
                 image_points = cam_model.camera_rays_to_image_points(ray3d)
 
@@ -1141,7 +1142,7 @@ class TestFisheyeCamera(CommonTestCase):
                 expectedPoint2d = np.array([[p, p]])
 
                 ray3d = self.cam_model.image_points_to_camera_rays(
-                    self.cam_model.to_torch(expectedPoint2d, dtype=self.dtype)
+                    to_torch(expectedPoint2d, device=self.cam_model.device, dtype=self.dtype)
                 )
                 image_points = self.cam_model.camera_rays_to_image_points(ray3d)
 

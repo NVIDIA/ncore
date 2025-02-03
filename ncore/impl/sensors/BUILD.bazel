@@ -9,6 +9,28 @@ load("//bazel/pytest:defs.bzl", "pytest_test", "pytest_test_3_8")
 package(default_visibility = ["//:code_package_group"])
 
 py_library(
+    name = "pylib_common",
+    srcs = [
+        "common.py",
+    ],
+    deps = [
+        requirement("numpy"),
+        requirement("torch"),
+    ],
+)
+
+py_library(
+    name = "pylib_common_3_8",
+    srcs = [
+        "common.py",
+    ],
+    deps = [
+        requirement_3_8("numpy"),
+        requirement_3_8("torch"),
+    ],
+)
+
+py_library(
     name = "pylib_camera",
     srcs = [
         "camera.py",
@@ -16,6 +38,7 @@ py_library(
     deps = [
         requirement("numpy"),
         requirement("torch"),
+        ":pylib_common",
         "//ncore/impl/data:pylib_types",
     ],
 )
@@ -28,6 +51,7 @@ py_library(
     deps = [
         requirement_3_8("numpy"),
         requirement_3_8("torch"),
+        ":pylib_common_3_8",
         "//ncore/impl/data:pylib_types_3_8",
     ],
 )
@@ -43,6 +67,7 @@ pytest_test(
         requirement("parameterized"),
         requirement("scipy"),
         ":pylib_camera",
+        ":pylib_common",
         "//ncore/impl/data:pylib_types",
     ],
 )
@@ -58,6 +83,7 @@ pytest_test_3_8(
         requirement_3_8("parameterized"),
         requirement_3_8("scipy"),
         ":pylib_camera_3_8",
+        ":pylib_common_3_8",
         "//ncore/impl/data:pylib_types_3_8",
     ],
 )

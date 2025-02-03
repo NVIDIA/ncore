@@ -12,6 +12,7 @@ import torch
 import numpy as np
 
 from ncore.impl.data import types
+from ncore.impl.sensors.common import to_torch, rotmat_to_unitquat, unitquat_to_rotmat, unitquat_slerp
 
 
 class CameraModel(ABC):
@@ -78,34 +79,6 @@ class CameraModel(ABC):
             raise TypeError(
                 f"unsupported camera model type {type(cam_model_parameters)}, currently supporting Ftheta/OpenCV-Pinhole/OpenCV-Fisheye only"
             )
-
-    def to_torch(self, var: Union[torch.Tensor, np.ndarray], dtype=None) -> torch.Tensor:
-        """Converts an input array / tensor to a tensor on the camera's device"""
-        if isinstance(var, np.ndarray):
-            # Torch doesn't support uint32 and uint64 so we cast them to signed integers beforehand
-            # Note that this can cause problems
-
-            if var.dtype == np.uint16:
-                assert np.all(
-                    var <= np.iinfo(np.int16).max
-                ), "[CameraModel]: Trying to cast uint16 to int16 but the value exceeds max range."
-                var = var.astype(np.int16)
-
-            if var.dtype == np.uint32:
-                assert np.all(
-                    var <= np.iinfo(np.int32).max
-                ), "[CameraModel]: Trying to cast uint32 to int32 but the value exceeds max range."
-                var = var.astype(np.int32)
-
-            if var.dtype == np.uint64:
-                assert np.all(
-                    var <= np.iinfo(np.int64).max
-                ), "[CameraModel]: Trying to cast uint64 to int64 but the value exceeds max range."
-                var = var.astype(np.int64)
-
-            var = torch.from_numpy(var)
-
-        return var.to(device=self.device, dtype=dtype)
 
     @dataclass
     class WorldPointsToPixelsReturn:
@@ -283,8 +256,8 @@ class CameraModel(ABC):
         return self.world_points_to_pixels_static_pose(
             world_points,
             self.__interpolate_poses(
-                self.to_torch(T_world_sensor_start, dtype=self.dtype),
-                self.to_torch(T_world_sensor_end, dtype=self.dtype),
+                to_torch(T_world_sensor_start, device=self.device, dtype=self.dtype),
+                to_torch(T_world_sensor_end, device=self.device, dtype=self.dtype),
                 0.5,
             ),
             timestamp_us,
@@ -312,9 +285,9 @@ class CameraModel(ABC):
         """Projects world points to corresponding image point coordinates using *rolling-shutter compensation* of sensor motion"""
 
         # Check if the variables are numpy, convert them to torch and send them to correct device
-        world_points = self.to_torch(world_points, dtype=self.dtype)
-        T_world_sensor_start = self.to_torch(T_world_sensor_start, dtype=self.dtype)
-        T_world_sensor_end = self.to_torch(T_world_sensor_end, dtype=self.dtype)
+        world_points = to_torch(world_points, device=self.device, dtype=self.dtype)
+        T_world_sensor_start = to_torch(T_world_sensor_start, device=self.device, dtype=self.dtype)
+        T_world_sensor_end = to_torch(T_world_sensor_end, device=self.device, dtype=self.dtype)
 
         assert T_world_sensor_start.shape == (4, 4)
         assert T_world_sensor_end.shape == (4, 4)
@@ -398,8 +371,8 @@ class CameraModel(ABC):
             return return_var
 
         # Convert the start and end rotation matrix to quaternions for subsequent interpolations
-        world_sensor_s_quat = self.__rotmat_to_unitquat(T_world_sensor_start[None, :3, :3])  # [1, 4]
-        world_sensor_e_quat = self.__rotmat_to_unitquat(T_world_sensor_end[None, :3, :3])  # [1, 4]
+        world_sensor_s_quat = rotmat_to_unitquat(T_world_sensor_start[None, :3, :3])  # [1, 4]
+        world_sensor_e_quat = rotmat_to_unitquat(T_world_sensor_end[None, :3, :3])  # [1, 4]
 
         # For valid image points, compute the new timestamp and project again
         image_points_rs_prev = init_image_points[valid, :]
@@ -407,10 +380,8 @@ class CameraModel(ABC):
         for _ in range(max_iterations):
             t = self.image_points_relative_frame_times(image_points_rs_prev)
 
-            rot_rs = self.__unitquat_to_rotmat(
-                self.__unitquat_slerp(
-                    world_sensor_s_quat.repeat(t.shape[0], 1), world_sensor_e_quat.repeat(t.shape[0], 1), t
-                )
+            rot_rs = unitquat_to_rotmat(
+                unitquat_slerp(world_sensor_s_quat.repeat(t.shape[0], 1), world_sensor_e_quat.repeat(t.shape[0], 1), t)
             )  # [n_valid, 3, 3]
 
             trans_rs = (1 - t)[..., None] * T_world_sensor_start[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1) + t[
@@ -498,8 +469,8 @@ class CameraModel(ABC):
         """Projects world points to corresponding image point coordinates using a *fixed* sensor pose (not compensating for potential sensor-motion)."""
 
         # Check if the variables are numpy, convert them to torch and send them to correct device
-        world_points = self.to_torch(world_points, dtype=self.dtype)
-        T_world_sensor = self.to_torch(T_world_sensor, dtype=self.dtype)
+        world_points = to_torch(world_points, device=self.device, dtype=self.dtype)
+        T_world_sensor = to_torch(T_world_sensor, device=self.device, dtype=self.dtype)
 
         assert T_world_sensor.shape == (4, 4)
         assert len(world_points.shape) == 2
@@ -573,8 +544,8 @@ class CameraModel(ABC):
         return self.world_points_to_image_points_static_pose(
             world_points,
             self.__interpolate_poses(
-                self.to_torch(T_world_sensor_start, dtype=self.dtype),
-                self.to_torch(T_world_sensor_end, dtype=self.dtype),
+                to_torch(T_world_sensor_start, device=self.device, dtype=self.dtype),
+                to_torch(T_world_sensor_end, device=self.device, dtype=self.dtype),
                 0.5,
             ),
             timestamp_us,
@@ -669,8 +640,8 @@ class CameraModel(ABC):
         For each image point returns 3d world rays [point, direction], represented by 3d start of ray points and 3d ray directions in the world frame
         """
         # Check if the variables are numpy, convert them to torch and send them to correct device
-        image_points = self.to_torch(image_points, dtype=self.dtype)
-        T_sensor_world = self.to_torch(T_sensor_world, dtype=self.dtype)
+        image_points = to_torch(image_points, device=self.device, dtype=self.dtype)
+        T_sensor_world = to_torch(T_sensor_world, device=self.device, dtype=self.dtype)
 
         assert T_sensor_world.shape == (4, 4)
         assert len(image_points.shape) == 2
@@ -681,7 +652,7 @@ class CameraModel(ABC):
         # Unproject the image points to camera rays
         if camera_rays is not None:
             # Reuse provided camera rays
-            camera_rays = self.to_torch(camera_rays, dtype=self.dtype)
+            camera_rays = to_torch(camera_rays, device=self.device, dtype=self.dtype)
             assert len(camera_rays.shape) == 2
             assert len(camera_rays) == len(image_points)
             assert camera_rays.shape[1] == 3
@@ -748,8 +719,8 @@ class CameraModel(ABC):
         return self.image_points_to_world_rays_static_pose(
             image_points,
             self.__interpolate_poses(
-                self.to_torch(T_sensor_world_start, dtype=self.dtype),
-                self.to_torch(T_sensor_world_end, dtype=self.dtype),
+                to_torch(T_sensor_world_start, device=self.device, dtype=self.dtype),
+                to_torch(T_sensor_world_end, device=self.device, dtype=self.dtype),
                 0.5,
             ),
             timestamp_us,
@@ -787,9 +758,9 @@ class CameraModel(ABC):
             )
 
         # Check if the variables are numpy, convert them to torch and send them to correct device
-        image_points = self.to_torch(image_points, dtype=self.dtype)
-        T_sensor_world_start = self.to_torch(T_sensor_world_start, dtype=self.dtype)
-        T_sensor_world_end = self.to_torch(T_sensor_world_end, dtype=self.dtype)
+        image_points = to_torch(image_points, device=self.device, dtype=self.dtype)
+        T_sensor_world_start = to_torch(T_sensor_world_start, device=self.device, dtype=self.dtype)
+        T_sensor_world_end = to_torch(T_sensor_world_end, device=self.device, dtype=self.dtype)
 
         assert T_sensor_world_start.shape == (4, 4)
         assert T_sensor_world_end.shape == (4, 4)
@@ -802,7 +773,7 @@ class CameraModel(ABC):
         # Unproject the image points to camera rays
         if camera_rays is not None:
             # Reuse provided camera rays
-            camera_rays = self.to_torch(camera_rays, dtype=self.dtype)
+            camera_rays = to_torch(camera_rays, device=self.device, dtype=self.dtype)
             assert len(camera_rays.shape) == 2
             assert camera_rays.shape[0] == image_points.shape[0]
             assert camera_rays.shape[1] == 3
@@ -811,8 +782,8 @@ class CameraModel(ABC):
             camera_rays = self.image_points_to_camera_rays(image_points)
 
         # Convert the start and end rotation matrix to quaternions
-        R_sensor_world_s_quat = self.__rotmat_to_unitquat(T_sensor_world_start[None, :3, :3])  # [1, 4]
-        R_sensor_world_e_quat = self.__rotmat_to_unitquat(T_sensor_world_end[None, :3, :3])  # [1, 4]
+        R_sensor_world_s_quat = rotmat_to_unitquat(T_sensor_world_start[None, :3, :3])  # [1, 4]
+        R_sensor_world_e_quat = rotmat_to_unitquat(T_sensor_world_end[None, :3, :3])  # [1, 4]
 
         t = self.image_points_relative_frame_times(image_points)
 
@@ -820,10 +791,8 @@ class CameraModel(ABC):
             t.shape[0], 1
         ) + t[..., None] * T_sensor_world_end[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1)  # [n_image_points, 3]
 
-        R_sensor_world_rs = self.__unitquat_to_rotmat(
-            self.__unitquat_slerp(
-                R_sensor_world_s_quat.repeat(t.shape[0], 1), R_sensor_world_e_quat.repeat(t.shape[0], 1), t
-            )
+        R_sensor_world_rs = unitquat_to_rotmat(
+            unitquat_slerp(R_sensor_world_s_quat.repeat(t.shape[0], 1), R_sensor_world_e_quat.repeat(t.shape[0], 1), t)
         )  # [n_image_points, 3, 3]
 
         world_ray_directions_rs = torch.bmm(R_sensor_world_rs, camera_rays[:, :, None]).squeeze(
@@ -859,7 +828,7 @@ class CameraModel(ABC):
         """Given integer-based pixels indices, computes corresponding continuous image point coordinates representing the *center* of each pixel."""
 
         # Convert to torch
-        pixel_idxs = self.to_torch(pixel_idxs)
+        pixel_idxs = to_torch(pixel_idxs, device=self.device)
 
         assert not pixel_idxs.is_floating_point(), "[CameraModel]: Pixel indices must be integers"
 
@@ -870,137 +839,17 @@ class CameraModel(ABC):
         """Given continuous image point coordinates, computes the corresponding pixel indices."""
 
         # Convert to torch
-        image_points = self.to_torch(image_points)
+        image_points = to_torch(image_points, device=self.device)
 
         assert image_points.is_floating_point(), "[CameraModel]: Image points must be floating point values"
 
         # Compute the pixel indices for given image points (round to top left corner integer coordinate)
         return torch.floor(image_points).to(torch.int32)
 
-    def __rotmat_to_unitquat(self, R: torch.Tensor) -> torch.Tensor:
-        """
-        Converts a batch of rotation matrices to unit quaternion representation.
-
-        Args:
-            R: batch of rotation matrices [bs, 3, 3]
-
-        Returns:
-            batch of unit quaternions (XYZW convention)  [bs, 4]
-        """
-
-        num_rotations, D1, D2 = R.shape
-        assert (D1, D2) == (3, 3), "Input has to be a Bx3x3 tensor."
-
-        decision_matrix = torch.empty((num_rotations, 4), dtype=R.dtype, device=self.device)
-        quat = torch.empty((num_rotations, 4), dtype=R.dtype, device=self.device)
-
-        decision_matrix[:, :3] = R.diagonal(dim1=1, dim2=2)
-        decision_matrix[:, -1] = decision_matrix[:, :3].sum(dim=1)
-        choices = decision_matrix.argmax(dim=1)
-
-        ind = torch.nonzero(choices != 3, as_tuple=True)[0]
-        i = choices[ind]
-        j = (i + 1) % 3
-        k = (j + 1) % 3
-
-        quat[ind, i] = 1 - decision_matrix[ind, -1] + 2 * R[ind, i, i]
-        quat[ind, j] = R[ind, j, i] + R[ind, i, j]
-        quat[ind, k] = R[ind, k, i] + R[ind, i, k]
-        quat[ind, 3] = R[ind, k, j] - R[ind, j, k]
-
-        ind = torch.nonzero(choices == 3, as_tuple=True)[0]
-        quat[ind, 0] = R[ind, 2, 1] - R[ind, 1, 2]
-        quat[ind, 1] = R[ind, 0, 2] - R[ind, 2, 0]
-        quat[ind, 2] = R[ind, 1, 0] - R[ind, 0, 1]
-        quat[ind, 3] = 1 + decision_matrix[ind, -1]
-
-        quat = quat / torch.norm(quat, dim=1)[:, None]
-
-        return quat
-
-    def __unitquat_to_rotmat(self, quat: torch.Tensor) -> torch.Tensor:
-        """
-        Converts a batch of unit quaternions into a SO3 representation.
-        Args:
-            quat: batch of unit quaternions (XYZW convention) [bs, 4]
-
-        Returns:
-            batch of SO3 rotation matrices [bs, 3, 3]
-        """
-
-        x = quat[..., 0]
-        y = quat[..., 1]
-        z = quat[..., 2]
-        w = quat[..., 3]
-
-        R = torch.empty(quat.shape[:-1] + (3, 3), dtype=quat.dtype, device=self.device)
-
-        R[..., 0, 0] = torch.pow(x, 2) - torch.pow(y, 2) - torch.pow(z, 2) + torch.pow(w, 2)
-        R[..., 1, 0] = 2 * (x * y + z * w)
-        R[..., 2, 0] = 2 * (x * z - y * w)
-
-        R[..., 0, 1] = 2 * (x * y - z * w)
-        R[..., 1, 1] = -torch.pow(x, 2) + torch.pow(y, 2) - torch.pow(z, 2) + torch.pow(w, 2)
-        R[..., 2, 1] = 2 * (y * z + x * w)
-
-        R[..., 0, 2] = 2 * (x * z + y * w)
-        R[..., 1, 2] = 2 * (y * z - x * w)
-        R[..., 2, 2] = -torch.pow(x, 2) - torch.pow(y, 2) + torch.pow(z, 2) + torch.pow(w, 2)
-
-        return R
-
-    def __unitquat_slerp(
-        self, quat_s: torch.Tensor, quat_e: torch.Tensor, t: torch.Tensor, shortest_arc=True
-    ) -> torch.Tensor:
-        """
-        Batch-wise implementation of SLERP (spherical linear interpolation)
-
-        Args:
-            quat_s: batch of unit quaternions denoting the start rotation [bs, 4]
-            quat_e: batch of unit quaternions denoting the end rotation  [bs, 4]
-            t: interpolation steps within 0.0 and 1.0, 0.0 corresponding to q0 and 1.0 to q1 [bs, 1]
-            shortest_arc: if True, interpolation will be performed along the shortest arc on SO(3)
-        Returns:
-            batch of interpolated quaternions [bs, 4]
-        """
-
-        assert quat_s.shape == quat_e.shape, "Input quaternions must be of the same shape."
-
-        if len(quat_s.shape) == 1:
-            quat_s = torch.unsqueeze(quat_s, 0)
-            quat_e = torch.unsqueeze(quat_e, 0)
-
-        # omega is the 'angle' between both quaternions
-        cos_omega = torch.sum(quat_s * quat_e, dim=-1)
-
-        if shortest_arc:
-            # Flip quaternions with negative angle to perform shortest arc interpolation.
-            quat_e = quat_e.clone()
-            quat_e[cos_omega < 0, :] *= -1
-            cos_omega = torch.abs(cos_omega)
-
-        # True when q0 and q1 are close.
-        nearby_quaternions = cos_omega > (1.0 - 1e-3)
-
-        # General approach
-        omega = torch.acos(cos_omega)
-        alpha = torch.sin((1 - t) * omega)
-
-        beta = torch.sin(t * omega)
-        # Use linear interpolation for nearby quaternions
-        alpha[nearby_quaternions] = (1 - t)[nearby_quaternions]
-        beta[nearby_quaternions] = t[nearby_quaternions]
-
-        # Interpolation
-        quat = alpha.reshape(-1, 1) * quat_s + beta.reshape(-1, 1) * quat_e
-        quat /= torch.norm(quat, dim=-1, keepdim=True)
-
-        return quat
-
     def image_points_relative_frame_times(self, image_points: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
         """Get relative frame-times based on the image point coordinates and rolling shutter type"""
 
-        image_points = self.to_torch(image_points, dtype=self.dtype)
+        image_points = to_torch(image_points, device=self.device, dtype=self.dtype)
 
         # Floor/Ceil the continuous image points to the row / column index following the image coordinate
         # convention that index defines the top left corner of each pixel, e.g., the first pixels
@@ -1031,12 +880,12 @@ class CameraModel(ABC):
         assert pose_e.shape == (4, 4)
 
         # Convert the start and end rotation matrix to quaternions
-        pose_s_quat = self.__rotmat_to_unitquat(pose_s[None, :3, :3])  # [1, 4]
-        pose_e_quat = self.__rotmat_to_unitquat(pose_e[None, :3, :3])  # [1, 4]
+        pose_s_quat = rotmat_to_unitquat(pose_s[None, :3, :3])  # [1, 4]
+        pose_e_quat = rotmat_to_unitquat(pose_e[None, :3, :3])  # [1, 4]
 
         # Evaluate orientation interpolation at t
-        interp_rot = self.__unitquat_to_rotmat(
-            self.__unitquat_slerp(pose_s_quat, pose_e_quat, torch.tensor([t], device=self.device, dtype=self.dtype))
+        interp_rot = unitquat_to_rotmat(
+            unitquat_slerp(pose_s_quat, pose_e_quat, torch.tensor([t], device=self.device, dtype=self.dtype))
         ).squeeze()  # [3, 3]
 
         # Evaluate translation interpolation at t
@@ -1144,10 +993,12 @@ class FThetaCameraModel(CameraModel):
         # coordinate origin aligned with the top-left corner of the first pixel) we therefore need to
         # offset the principal point by half a pixel.
         # Please see documentation for more information.
-        self.principal_point = self.to_torch(camera_model_parameters.principal_point, dtype=self.dtype) + 0.5
+        self.principal_point = (
+            to_torch(camera_model_parameters.principal_point, device=self.device, dtype=self.dtype) + 0.5
+        )
 
-        self.fw_poly = self.to_torch(camera_model_parameters.fw_poly, dtype=self.dtype)
-        self.bw_poly = self.to_torch(camera_model_parameters.bw_poly, dtype=self.dtype)
+        self.fw_poly = to_torch(camera_model_parameters.fw_poly, device=self.device, dtype=self.dtype)
+        self.bw_poly = to_torch(camera_model_parameters.bw_poly, device=self.device, dtype=self.dtype)
 
         # Linear term A = [c,d;e;1], A^-1 = 1/(c-e*d)*[1,-d;-e,c]
         c, d, e = camera_model_parameters.linear_cde
@@ -1182,7 +1033,10 @@ class FThetaCameraModel(CameraModel):
             device=self.device,
         )
 
-        self.resolution = self.to_torch(camera_model_parameters.resolution.astype(np.int32))
+        self.resolution = to_torch(
+            camera_model_parameters.resolution.astype(np.int32),
+            device=self.device,
+        )
         self.shutter_type = camera_model_parameters.shutter_type
         self.max_angle = float(camera_model_parameters.max_angle)
         self.newton_iterations = newton_iterations
@@ -1213,7 +1067,7 @@ class FThetaCameraModel(CameraModel):
         Computes the camera ray for each image point
         """
 
-        image_points = self.to_torch(image_points)
+        image_points = to_torch(image_points, device=self.device)
         assert image_points.is_floating_point(), "[CameraModel]: image_points must be floating point values"
         image_points = image_points.to(self.dtype)
 
@@ -1248,7 +1102,7 @@ class FThetaCameraModel(CameraModel):
         """
 
         # If the input is a numpy array first convert it to torch otherwise just send to correct device
-        cam_rays = self.to_torch(cam_rays, dtype=self.dtype)
+        cam_rays = to_torch(cam_rays, device=self.device, dtype=self.dtype)
 
         initial_requires_grad = cam_rays.requires_grad
         if return_jacobians:
@@ -1330,12 +1184,16 @@ class OpenCVPinholeCameraModel(CameraModel):
 
         self.device = torch.device(device)
         self.dtype = dtype
-        self.principal_point = self.to_torch(camera_model_parameters.principal_point, dtype=self.dtype)
-        self.focal_length = self.to_torch(camera_model_parameters.focal_length, dtype=self.dtype)
-        self.radial_coeffs = self.to_torch(camera_model_parameters.radial_coeffs, dtype=self.dtype)
-        self.tangential_coeffs = self.to_torch(camera_model_parameters.tangential_coeffs, dtype=self.dtype)
-        self.thin_prism_coeffs = self.to_torch(camera_model_parameters.thin_prism_coeffs, dtype=self.dtype)
-        self.resolution = self.to_torch(camera_model_parameters.resolution.astype(np.int32))
+        self.principal_point = to_torch(camera_model_parameters.principal_point, device=self.device, dtype=self.dtype)
+        self.focal_length = to_torch(camera_model_parameters.focal_length, device=self.device, dtype=self.dtype)
+        self.radial_coeffs = to_torch(camera_model_parameters.radial_coeffs, device=self.device, dtype=self.dtype)
+        self.tangential_coeffs = to_torch(
+            camera_model_parameters.tangential_coeffs, device=self.device, dtype=self.dtype
+        )
+        self.thin_prism_coeffs = to_torch(
+            camera_model_parameters.thin_prism_coeffs, device=self.device, dtype=self.dtype
+        )
+        self.resolution = to_torch(camera_model_parameters.resolution.astype(np.int32), device=self.device)
         self.shutter_type = camera_model_parameters.shutter_type
 
         assert self.principal_point.shape == (2,)
@@ -1356,7 +1214,10 @@ class OpenCVPinholeCameraModel(CameraModel):
         Computes the camera ray for each image point, performing an iterative undistortion of the nonlinear distortion model
         """
 
-        image_points = self.to_torch(image_points)
+        image_points = to_torch(
+            image_points,
+            device=self.device,
+        )
         assert image_points.is_floating_point(), "[CameraModel]: image_points must be floating point values"
         image_points = image_points.to(self.dtype)
 
@@ -1373,7 +1234,7 @@ class OpenCVPinholeCameraModel(CameraModel):
         For each camera ray compute the corresponding image point coordinates
         """
 
-        cam_rays = self.to_torch(cam_rays, dtype=self.dtype)
+        cam_rays = to_torch(cam_rays, device=self.device, dtype=self.dtype)
 
         # Initialize the valid flag and set all the points behind the camera plane to invalid
         image_points = torch.zeros_like(cam_rays[:, :2])
@@ -1506,9 +1367,12 @@ class OpenCVFisheyeCameraModel(CameraModel):
 
         self.device = torch.device(device)
         self.dtype = dtype
-        self.principal_point = self.to_torch(camera_model_parameters.principal_point, dtype=self.dtype)
-        self.focal_length = self.to_torch(camera_model_parameters.focal_length, dtype=self.dtype)
-        self.resolution = self.to_torch(camera_model_parameters.resolution.astype(np.int32))
+        self.principal_point = to_torch(camera_model_parameters.principal_point, device=self.device, dtype=self.dtype)
+        self.focal_length = to_torch(camera_model_parameters.focal_length, device=self.device, dtype=self.dtype)
+        self.resolution = to_torch(
+            camera_model_parameters.resolution.astype(np.int32),
+            device=self.device,
+        )
         self.shutter_type = camera_model_parameters.shutter_type
         self.max_angle = float(camera_model_parameters.max_angle)
         self.newton_iterations = newton_iterations
@@ -1543,7 +1407,10 @@ class OpenCVFisheyeCameraModel(CameraModel):
         Computes the camera ray for each image point, performing an iterative undistortion of the nonlinear distortion model
         """
 
-        image_points = self.to_torch(image_points)
+        image_points = to_torch(
+            image_points,
+            device=self.device,
+        )
         assert image_points.is_floating_point(), "[CameraModel]: image_points must be floating point values"
         image_points = image_points.to(self.dtype)
 
@@ -1573,7 +1440,7 @@ class OpenCVFisheyeCameraModel(CameraModel):
         """
 
         # If the input is a numpy array first convert it to torch otherwise just send to correct device
-        cam_rays = self.to_torch(cam_rays, dtype=self.dtype)
+        cam_rays = to_torch(cam_rays, device=self.device, dtype=self.dtype)
 
         initial_requires_grad = cam_rays.requires_grad
         if return_jacobians:
