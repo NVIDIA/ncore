@@ -8,3 +8,6 @@ _build/
 # Bazel-specific ignores
 /bazel-*
 .bazelrc.user
+
+*.swp
+*.swo

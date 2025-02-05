@@ -30,6 +30,46 @@ class ShutterType(IntEnum):
     GLOBAL = auto()  #: Instantaneous global shutter (no rolling shutter)
 
 
+@unique
+class ReferencePolynomial(IntEnum):
+    """Enumerates different possible reference polynomial types"""
+
+    FORWARD = (
+        auto()
+    )  #: The forward polynomial is the reference polynomial, the backward polynomial is it's (approximate) inverse
+    BACKWARD = (
+        auto()
+    )  #: The backward polynomial is the reference polynomial, the forward polynomial is it's (approximate) inverse
+
+
+@dataclass
+class BivariateWindshieldModelParameters(dataclasses_json.DataClassJsonMixin):
+    """Represents parameters required to create a windshield distortion model"""
+
+    reference_poly: ReferencePolynomial = util.enum_field(ReferencePolynomial)  #: Reference polynomial of the model
+
+    # Forward correction coefficients (project to sensor)
+    horizontal_poly: np.ndarray = util.numpy_array_field(
+        np.float32
+    )  #: Polynomial coefficients used for forward projection on the horizontal component of the ray (x) via it's projected angle phi=asin(x/norm(x,y)). The polynomial is of order N in both phi and theta with the form P(phi,N)*P(theta,0) + P(phi, N-1)*P(theta,1) ... + P(phi, N-N)*P(theta,N), where P(i, N) is a polynomial over "i" of degree N
+    vertical_poly: np.ndarray = util.numpy_array_field(
+        np.float32
+    )  #: Polynomial coefficients used for forward projection on the vertical component of the ray (y) via it's projected angle theta=asin(y/norm(x,y)). The polynomial is of order N in both phi and theta with the form P(phi,N)*P(theta,0) + P(phi, N-1)*P(theta,1) ... + P(phi, N-N)*P(theta,N), where P(i, N) is a polynomial over "i" of degree N
+
+    # Backward correction coefficient (project to world)
+    horizontal_poly_inverse: np.ndarray = util.numpy_array_field(
+        np.float32
+    )  #: Polynomial coefficients used to evaluate the inverse distortion in backprojection of the horizontal component of a ray (x) via it's projected angle phi=asin(x/norm(x,y)). The polynomial is of order N in both phi and theta with the form P(phi,N)*P(theta,0) + P(phi, N-1)*P(theta,1) ... + P(phi, N-N)*P(theta,N), where P(i, N) is a polynomial over "i" of degree N
+
+    vertical_poly_inverse: np.ndarray = util.numpy_array_field(
+        np.float32
+    )  #: Polynomial coefficients used to evaluate the inverse distortion in backprojection of the vertical component of a ray (y) via it's projected angle theta=asin(y/norm(x,y)). The polynomial is of order N in both phi and theta with the form P(phi,N)*P(theta,0) + P(phi, N-1)*P(theta,1) ... + P(phi, N-N)*P(theta,N), where P(i, N) is a polynomial over "i" of degree N
+
+
+# Represents the collection of all concrete external distortion types
+ConcreteExternalDistortionParametersUnion = Union[BivariateWindshieldModelParameters]
+
+
 @dataclass
 class CameraModelParameters:
     """Represents parameters common to all camera models"""
@@ -38,6 +78,10 @@ class CameraModelParameters:
         np.uint64
     )  #: Width and height of the image in pixels (uint32, [2,])
     shutter_type: ShutterType = util.enum_field(ShutterType)  #: Shutter type of the camera's imaging sensor
+
+    external_distortion_parameters: Optional[ConcreteExternalDistortionParametersUnion] = (
+        None  #: Optional external distortion source associated to the camera (e.g. windshield). If a source exits, rays will be distorted prior to reaching the camera and it's associated lens distortion if applicable.
+    )
 
     def __post_init__(self):
         # Sanity checks
