@@ -15,7 +15,15 @@ import parameterized
 from scipy.spatial.transform import Rotation as R
 
 from .data3 import ShardDataLoader, Sensor, CameraSensor, LidarSensor, ContainerDataWriter
-from .types import FrameTimepoint, FThetaCameraModelParameters, OpenCVFisheyeCameraModelParameters, Poses, ShutterType
+from .types import (
+    FrameTimepoint,
+    FThetaCameraModelParameters,
+    OpenCVFisheyeCameraModelParameters,
+    Poses,
+    ShutterType,
+    ReferencePolynomial,
+    BivariateWindshieldModelParameters,
+)
 
 
 class TestData3Loader(unittest.TestCase):
@@ -473,11 +481,14 @@ class TestData3Reload(unittest.TestCase):
             T_rig_world_timestamps_us,
             ref_camera_extrinsics := np.block(
                 [
-                    [R.from_euler("xyz", [1, 1.1, 2.2], degrees=True).as_matrix(), np.array([1, 0, 0]).reshape((3, 1))],
+                    [
+                        R.from_euler("xyz", [1, 1.1, 2.2], degrees=True).as_matrix(),
+                        np.array([1, 0, 0]).reshape((3, 1)),
+                    ],
                     [np.array([0, 0, 0, 1])],
                 ]
             ).astype(np.float32),
-            OpenCVFisheyeCameraModelParameters(
+            ref_camera_intrinsics := OpenCVFisheyeCameraModelParameters(
                 resolution=np.array([3840, 2160], dtype=np.uint64),
                 shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
                 principal_point=np.array([1928.184506, 1083.862789], dtype=np.float32),
@@ -498,6 +509,71 @@ class TestData3Reload(unittest.TestCase):
                     dtype=np.float32,
                 ),
                 max_angle=np.deg2rad(140 / 2),
+                external_distortion_parameters=BivariateWindshieldModelParameters(
+                    reference_poly=ReferencePolynomial.FORWARD,
+                    horizontal_poly=np.array(
+                        [
+                            -0.000475919834570959,
+                            0.99944007396698,
+                            0.000166745347087272,
+                            0.000205887947231531,
+                            0.0055195577442646,
+                            0.000861024134792387,
+                        ],
+                        dtype=np.float32,
+                    ),
+                    vertical_poly=np.array(
+                        [
+                            0.00152770057320595,
+                            -0.000532537756953388,
+                            -5.65027039556298e-05,
+                            -4.02410341848736e-06,
+                            0.000608163303695619,
+                            1.0094313621521,
+                            -0.00125278066843748,
+                            0.00823396816849709,
+                            -0.000293767458060756,
+                            0.0185473654419184,
+                            -0.003074218519032,
+                            0.00599765172228217,
+                            0.0172030478715897,
+                            -0.00364979170262814,
+                            0.0069147446192801,
+                        ],
+                        dtype=np.float32,
+                    ),
+                    horizontal_poly_inverse=np.array(
+                        [
+                            0.0004770369,
+                            1.0005774,
+                            -0.00016896478,
+                            -0.00020207358,
+                            -0.0054899976,
+                            -0.0008536868,
+                        ],
+                        dtype=np.float32,
+                    ),
+                    vertical_poly_inverse=np.array(
+                        [
+                            -0.0015191488,
+                            0.00052959577,
+                            7.882431e-05,
+                            -6.966009e-06,
+                            -0.00059701066,
+                            0.9906775,
+                            0.00116782,
+                            -0.007893825,
+                            0.00026140467,
+                            -0.017767625,
+                            0.0027627628,
+                            -0.00544897,
+                            -0.015480865,
+                            0.0033684247,
+                            -0.0057964055,
+                        ],
+                        dtype=np.float32,
+                    ),
+                ),
             ),
             None,
             ref_camera_generic_meta_data := {"some-meta-data": np.random.rand(3, 2).tolist()},
@@ -639,6 +715,7 @@ class TestData3Reload(unittest.TestCase):
         # Check cameras
         camera_sensor = loader.get_camera_sensor(ref_camera_id)
         self.assertIsNone(np.testing.assert_array_equal(camera_sensor.get_T_sensor_rig(), ref_camera_extrinsics))
+        self.assertEqual(camera_sensor.get_camera_model_parameters().to_dict(), ref_camera_intrinsics.to_dict())
         self.assertEqual(camera_sensor.get_generic_meta_data(), ref_camera_generic_meta_data)
 
         self.assertIsNone(np.testing.assert_array_equal(camera_sensor.get_frame_image_array(0), ref_image_rgb0))

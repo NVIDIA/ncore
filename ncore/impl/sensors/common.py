@@ -39,6 +39,47 @@ def to_torch(
     return var.to(device=device, dtype=dtype)
 
 
+def eval_poly_horner(poly_coefficients: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+    """Evaluates a polynomial y=f(x) (given by poly_coefficients) at points x using
+    numerically stable Horner scheme"""
+
+    y = torch.zeros_like(x)
+    for fi in torch.flip(poly_coefficients, dims=(0,)):
+        y = y * x + fi
+
+    return y
+
+
+def eval_poly_inverse_horner_newton(
+    poly_coefficients: torch.Tensor,
+    poly_derivative_coefficients: torch.Tensor,
+    inverse_poly_approximation_coefficients: torch.Tensor,
+    newton_iterations: int,
+    y: torch.Tensor,
+) -> torch.Tensor:
+    """Evaluates the inverse x = f^{-1}(y) of a reference polynomial y=f(x) (given by poly_coefficients) at points y
+    using numerically stable Horner scheme and Newton iterations starting from an approximate solution \\hat{x} = \\hat{f}^{-1}(y)
+    (given by inverse_poly_approximation_coefficients) and the polynomials derivative df/dx (given by poly_derivative_coefficients)
+    """
+
+    x = eval_poly_horner(
+        inverse_poly_approximation_coefficients, y
+    )  # approximation / starting points - also returned for zero iterations
+    assert newton_iterations >= 0, "Newton-iteration number needs to be non-negative"
+
+    # Buffers of intermediate results to allow differentiation
+    x_iter = [torch.zeros_like(x) for _ in range(newton_iterations + 1)]
+    x_iter[0] = x
+
+    for i in range(newton_iterations):
+        # Evaluate single Newton step
+        dfdx = eval_poly_horner(poly_derivative_coefficients, x_iter[i])
+        residuals = eval_poly_horner(poly_coefficients, x_iter[i]) - y
+        x_iter[i + 1] = x_iter[i] - residuals / dfdx
+
+    return x_iter[newton_iterations]
+
+
 def rotmat_to_unitquat(R: torch.Tensor) -> torch.Tensor:
     """
     Converts a batch of rotation matrices to unit quaternion representation.

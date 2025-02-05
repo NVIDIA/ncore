@@ -18,12 +18,17 @@ from ncore.impl.data.types import (
     OpenCVPinholeCameraModelParameters,
     OpenCVFisheyeCameraModelParameters,
     ShutterType,
+    ReferencePolynomial,
+    BivariateWindshieldModelParameters,
 )
 from ncore.impl.sensors.camera import (
     CameraModel,
     FThetaCameraModel,
     OpenCVPinholeCameraModel,
     OpenCVFisheyeCameraModel,
+    ExternalDistortion,
+    BivariateWindshieldModel,
+    to_torch,
 )
 from ncore.impl.sensors.common import to_torch
 
@@ -1360,6 +1365,216 @@ class TestTransformParameters(CommonTestCase):
                                     ),
                                     self.MAX_DEVIATION_IN_IMAGE_COORDINATES,
                                 )
+
+
+@parameterized.parameterized_class(
+    ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
+)
+class TestExternalDistortion(CommonTestCase):
+    def test_from_parameters(self):
+        # Verify that "None" parameters returns a "None" object
+        res_none = ExternalDistortion.maybe_from_parameters(None, self.device, self.dtype)
+        self.assertIsNone(res_none)
+
+        # Verify that, when provided BivariateWindshieldModelParameters, a BivariateWindshieldModel object is returned
+        horizontal_poly = np.zeros((3))
+        vertical_poly = np.zeros((3))
+        horizontal_poly_inverse = np.zeros((3))
+        vertical_poly_inverse = np.zeros((3))
+        windshield_params = BivariateWindshieldModelParameters(
+            ReferencePolynomial.FORWARD,
+            horizontal_poly,
+            vertical_poly,
+            horizontal_poly_inverse,
+            vertical_poly_inverse,
+        )
+        res_ws = ExternalDistortion.maybe_from_parameters(windshield_params, self.device, self.dtype)
+        self.assertTrue(isinstance(res_ws, BivariateWindshieldModel))
+
+
+@parameterized.parameterized_class(
+    ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
+)
+class TestBivariateWindshieldModel(CommonTestCase):
+    def test_init(self):
+        """Tests initialization of BivariateWindshieldModel"""
+
+        horizontal_poly = np.zeros((3))
+        vertical_poly = np.zeros((3))
+        horizontal_poly_inverse = np.zeros((3))
+        vertical_poly_inverse = np.zeros((3))
+        windshield_params = BivariateWindshieldModelParameters(
+            ReferencePolynomial.FORWARD,
+            horizontal_poly,
+            vertical_poly,
+            horizontal_poly_inverse,
+            vertical_poly_inverse,
+        )
+        windshield_distortion = BivariateWindshieldModel(windshield_params, self.device, self.dtype)
+        self.assertTrue(isinstance(windshield_distortion, BivariateWindshieldModel))
+
+    def test_poly_eval_2d(self):
+        """Tests evaluation of 2d polynomials"""
+
+        coeffs = torch.zeros(3, dtype=self.dtype, device=self.device)
+        x = torch.tensor([-1.0, 2.0, 3.0], dtype=self.dtype, device=self.device)
+        y = torch.tensor([-2.0, 1.0, 3.0, 5.0], dtype=self.dtype, device=self.device)
+        with self.assertRaises(ValueError) as context:
+            BivariateWindshieldModel.poly_eval_2d(coeffs, x, y, order=1)
+
+        coeffs = torch.zeros(3, dtype=self.dtype, device=self.device)
+        x = torch.tensor([-1.0, 2.0, 3.0, 4.0], dtype=self.dtype, device=self.device)
+        y = torch.tensor([-2.0, 1.0, 3.0, 5.0], dtype=self.dtype, device=self.device)
+        res = BivariateWindshieldModel.poly_eval_2d(coeffs, x, y, order=1)
+        expected_value = torch.zeros_like(x)
+        torch.testing.assert_close(res, expected_value)
+
+        # Oracle test
+        coeffs = torch.tensor(
+            [0.90113, 0.77499, 0.55887, 0.77048, 0.47019, 0.84775, 0.68832, 0.77690, 0.92327, 0.83983],
+            dtype=self.dtype,
+            device=self.device,
+        )
+        x = torch.tensor([1.2, 1.2], dtype=self.dtype, device=self.device)
+        y = torch.tensor([0.4, 0.4], dtype=self.dtype, device=self.device)
+        res = BivariateWindshieldModel.poly_eval_2d(coeffs, x, y, order=3)
+        expected_value = torch.tensor([5.31406952, 5.31406952], dtype=self.dtype, device=self.device)
+        torch.testing.assert_close(res, expected_value)
+
+    def test_distort_rays(self):
+        """Tests distortion of rays using a bivariate polynomial"""
+
+        # Create a polynomial evaluation function that always returns sqrt(2)/2. This way, we expect to
+        # see the sqrt(2)/2 in both x and y outputs, and 0 in z
+        def poly_eval_func(coeffs, x, y, _):
+            return torch.asin(np.sqrt(2.0) / 2.0 * torch.ones_like(x))
+
+        horizontal_poly = torch.tensor([-1.0, 2.0, 3.0], dtype=self.dtype, device=self.device)
+        vertical_poly = torch.tensor([1.0, 3.0, 6.0], dtype=self.dtype, device=self.device)
+        order = 1
+        rays = torch.tensor([[-1.0, 2.0, 3.0], [1.0, 3.0, 6.0]], dtype=self.dtype, device=self.device)
+        res = BivariateWindshieldModel.distort_rays(rays, horizontal_poly, vertical_poly, order, order, poly_eval_func)
+        expected_value = np.sqrt(2.0) / 2.0 * torch.ones_like(rays)
+        expected_value[:, 2] = 0
+        torch.testing.assert_close(res, expected_value, rtol=1e-4, atol=1e-3)
+
+    def test_distort_camera_rays(self):
+        """Tests distortion / undistortion using full WSD model"""
+
+        rt2_2 = np.sqrt(2.0) / 2.0
+        horizontal_poly = torch.tensor([0.0, -1.0, 0.0], dtype=self.dtype, device=self.device)
+        vertical_poly = torch.tensor([0.0, 0.0, -1.0], dtype=self.dtype, device=self.device)
+        rays = torch.tensor([[rt2_2, rt2_2, 0.0], [-rt2_2, rt2_2, 0.0]], dtype=self.dtype, device=self.device)
+
+        windshield_params = BivariateWindshieldModelParameters(
+            ReferencePolynomial.FORWARD,
+            horizontal_poly,
+            vertical_poly,
+            horizontal_poly,
+            vertical_poly,
+        )
+        windshield_distortion = BivariateWindshieldModel(windshield_params, self.device, self.dtype)
+        res = windshield_distortion.distort_camera_rays(rays)
+        expected_value = rays.clone()
+        expected_value[:, :2] *= -1.0
+        torch.testing.assert_close(res, expected_value)
+
+        # Expect distort and undistort to give the same results when provided with the same coefficients
+        windshield_params = BivariateWindshieldModelParameters(
+            ReferencePolynomial.FORWARD,
+            horizontal_poly,
+            vertical_poly,
+            horizontal_poly,
+            vertical_poly,
+        )
+        windshield_distortion = BivariateWindshieldModel(windshield_params, self.device, self.dtype)
+        res_w = windshield_distortion.undistort_camera_rays(rays)
+        torch.testing.assert_close(res, res_w)
+
+        windshield_horizontal_polynomial = torch.tensor(
+            [
+                -0.000475919834570959,
+                0.99944007396698,
+                0.000166745347087272,
+                0.000205887947231531,
+                0.0055195577442646,
+                0.000861024134792387,
+            ],
+            dtype=self.dtype,
+            device=self.device,
+        )
+        windshield_vertical_polynomial = torch.tensor(
+            [
+                0.00152770057320595,
+                -0.000532537756953388,
+                -5.65027039556298e-05,
+                -4.02410341848736e-06,
+                0.000608163303695619,
+                1.0094313621521,
+                -0.00125278066843748,
+                0.00823396816849709,
+                -0.000293767458060756,
+                0.0185473654419184,
+                -0.003074218519032,
+                0.00599765172228217,
+                0.0172030478715897,
+                -0.00364979170262814,
+                0.0069147446192801,
+            ],
+            dtype=self.dtype,
+            device=self.device,
+        )
+        windshield_horizontal_polynomial_inv = torch.tensor(
+            [0.0004770369, 1.0005774, -0.00016896478, -0.00020207358, -0.0054899976, -0.0008536868],
+            dtype=self.dtype,
+            device=self.device,
+        )
+        windshield_vertical_polynomial_inv = torch.tensor(
+            [
+                -0.0015191488,
+                0.00052959577,
+                7.882431e-05,
+                -6.966009e-06,
+                -0.00059701066,
+                0.9906775,
+                0.00116782,
+                -0.007893825,
+                0.00026140467,
+                -0.017767625,
+                0.0027627628,
+                -0.00544897,
+                -0.015480865,
+                0.0033684247,
+                -0.0057964055,
+            ],
+            dtype=self.dtype,
+            device=self.device,
+        )
+        r = 1.0
+        phi = 0.05
+        theta = 0.02
+        rays = torch.nn.functional.normalize(
+            torch.tensor(
+                [
+                    [0.0, 0.0, 1.0],
+                    [r * np.sin(phi) * np.cos(theta), r * np.sin(phi) * np.sin(theta), r * np.cos(theta)],
+                ],
+                dtype=self.dtype,
+                device=self.device,
+            ),
+            dim=-1,
+        )
+        windshield_params = BivariateWindshieldModelParameters(
+            ReferencePolynomial.FORWARD,
+            windshield_horizontal_polynomial,
+            windshield_vertical_polynomial,
+            windshield_horizontal_polynomial_inv,
+            windshield_vertical_polynomial_inv,
+        )
+        windshield_distortion = BivariateWindshieldModel(windshield_params, self.device, self.dtype)
+        res = windshield_distortion.distort_camera_rays(rays)
+        res_w = windshield_distortion.undistort_camera_rays(res)
+        torch.testing.assert_close(res_w, rays, rtol=1e-4, atol=1e-5)
 
 
 if __name__ == "__main__":
