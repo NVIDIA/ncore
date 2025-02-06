@@ -1553,6 +1553,7 @@ class TestBivariateWindshieldModel(CommonTestCase):
                 [
                     [0.0, 0.0, 1.0],
                     [r * np.sin(phi) * np.cos(theta), r * np.sin(phi) * np.sin(theta), r * np.cos(theta)],
+                    [r * np.sin(phi) * np.cos(theta), r * np.sin(phi) * np.sin(theta), -r * np.cos(theta)],
                 ],
                 dtype=self.dtype,
                 device=self.device,
