@@ -44,26 +44,47 @@ class ReferencePolynomial(IntEnum):
 
 @dataclass
 class BivariateWindshieldModelParameters(dataclasses_json.DataClassJsonMixin):
-    """Represents parameters required to create a windshield distortion model"""
+    """Represents parameters required to create a windshield external distortion model"""
 
     reference_poly: ReferencePolynomial = util.enum_field(ReferencePolynomial)  #: Reference polynomial of the model
 
     # Forward correction coefficients (project to sensor)
     horizontal_poly: np.ndarray = util.numpy_array_field(
         np.float32
-    )  #: Polynomial coefficients used for forward projection on the horizontal component of the ray (x) via it's projected angle phi=asin(x/norm(x,y)). The polynomial is of order N in both phi and theta with the form P(phi,N)*P(theta,0) + P(phi, N-1)*P(theta,1) ... + P(phi, N-N)*P(theta,N), where P(i, N) is a polynomial over "i" of degree N
+    )  #: Polynomial coefficients used for forward projection on the horizontal component of a ray via it's projected angle phi=asin(x/norm(x,y)). The polynomial is of order N in both phi and theta with the form P(phi,N)*P(theta,0) + P(phi, N-1)*P(theta,1) ... + P(phi, N-N)*P(theta,N), where P(i, N) is a polynomial over "i" of degree N (float32, [(N + 1) * (N + 2) / 2,])
     vertical_poly: np.ndarray = util.numpy_array_field(
         np.float32
-    )  #: Polynomial coefficients used for forward projection on the vertical component of the ray (y) via it's projected angle theta=asin(y/norm(x,y)). The polynomial is of order N in both phi and theta with the form P(phi,N)*P(theta,0) + P(phi, N-1)*P(theta,1) ... + P(phi, N-N)*P(theta,N), where P(i, N) is a polynomial over "i" of degree N
+    )  #: Polynomial coefficients used for forward projection on the vertical component of a ray via it's projected angle theta=asin(y/norm(x,y)). The polynomial is of order M in both phi and theta with the form P(phi,M)*P(theta,0) + P(phi, M-1)*P(theta,1) ... + P(phi, M-M)*P(theta,M), where P(i, M) is a polynomial over "i" of degree M (float32, [(M + 1) * (M + 2) / 2,])
 
     # Backward correction coefficient (project to world)
     horizontal_poly_inverse: np.ndarray = util.numpy_array_field(
         np.float32
-    )  #: Polynomial coefficients used to evaluate the inverse distortion in backprojection of the horizontal component of a ray (x) via it's projected angle phi=asin(x/norm(x,y)). The polynomial is of order N in both phi and theta with the form P(phi,N)*P(theta,0) + P(phi, N-1)*P(theta,1) ... + P(phi, N-N)*P(theta,N), where P(i, N) is a polynomial over "i" of degree N
+    )  #: Polynomial coefficients used to evaluate the inverse distortion in backprojection of the horizontal component of a ray via it's projected angle phi=asin(x/norm(x,y)). The polynomial is of order N in both phi and theta with the form P(phi,N)*P(theta,0) + P(phi, N-1)*P(theta,1) ... + P(phi, N-N)*P(theta,N), where P(i, N) is a polynomial over "i" of degree N (float32, [(N + 1) * (N + 2) / 2,])
 
     vertical_poly_inverse: np.ndarray = util.numpy_array_field(
         np.float32
-    )  #: Polynomial coefficients used to evaluate the inverse distortion in backprojection of the vertical component of a ray (y) via it's projected angle theta=asin(y/norm(x,y)). The polynomial is of order N in both phi and theta with the form P(phi,N)*P(theta,0) + P(phi, N-1)*P(theta,1) ... + P(phi, N-N)*P(theta,N), where P(i, N) is a polynomial over "i" of degree N
+    )  #: Polynomial coefficients used to evaluate the inverse distortion in backprojection of the vertical component of a ray via it's projected angle theta=asin(y/norm(x,y)). The polynomial is of order M in both phi and theta with the form P(phi,M)*P(theta,0) + P(phi, M-1)*P(theta,1) ... + P(phi, M-M)*P(theta,M), where P(i, M) is a polynomial over "i" of degree M (float32, [(M + 1) * (M + 2) / 2,])
+
+    @staticmethod
+    def type() -> str:
+        """Returns a string-identifier of the external distortion model"""
+        return "bivariate-windshield"
+
+    def __post_init__(self):
+        # Sanity checks
+        assert isinstance(self.reference_poly, ReferencePolynomial)
+
+        assert self.horizontal_poly.ndim == 1
+        assert self.horizontal_poly.dtype == np.dtype("float32")
+
+        assert self.vertical_poly.ndim == 1
+        assert self.horizontal_poly.dtype == np.dtype("float32")
+
+        assert self.horizontal_poly_inverse.ndim == 1
+        assert self.horizontal_poly.dtype == np.dtype("float32")
+
+        assert self.vertical_poly_inverse.ndim == 1
+        assert self.horizontal_poly.dtype == np.dtype("float32")
 
 
 # Represents the collection of all concrete external distortion types
@@ -80,7 +101,7 @@ class CameraModelParameters:
     shutter_type: ShutterType = util.enum_field(ShutterType)  #: Shutter type of the camera's imaging sensor
 
     external_distortion_parameters: Optional[ConcreteExternalDistortionParametersUnion] = (
-        None  #: Optional external distortion source associated to the camera (e.g. windshield). If a source exits, rays will be distorted prior to reaching the camera and it's associated lens distortion if applicable.
+        None  #: Optional external distortion source associated to the camera (e.g. windshield). If a source exits, rays will be distorted prior to reaching the camera and it's associated lens distortion if applicable
     )
 
     def __post_init__(self):
@@ -88,6 +109,15 @@ class CameraModelParameters:
         assert self.resolution.shape == (2,)
         assert self.resolution.dtype == np.dtype("uint64")
         assert self.resolution[0] > 0 and self.resolution[1] > 0
+
+        if sys.version_info >= (3, 10):
+            assert isinstance(self.shutter_type, ShutterType)
+            assert isinstance(self.external_distortion_parameters, Optional[ConcreteExternalDistortionParametersUnion])
+        else:
+            assert self.shutter_type in ShutterType.__members__.values()
+            assert isinstance(
+                self.external_distortion_parameters, (type(None), ConcreteExternalDistortionParametersUnion)
+            )
 
 
 @dataclass
@@ -143,6 +173,11 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
         assert self.principal_point.shape == (2,)
         assert self.principal_point.dtype == np.dtype("float32")
         assert self.principal_point[0] >= 0.0 and self.principal_point[1] >= 0.0
+
+        if sys.version_info >= (3, 10):
+            assert isinstance(self.reference_poly, FThetaCameraModelParameters.PolynomialType)
+        else:
+            assert self.reference_poly in FThetaCameraModelParameters.PolynomialType.__members__.values()
 
         assert self.pixeldist_to_angle_poly.ndim == 1
         assert len(self.pixeldist_to_angle_poly) <= self.POLYNOMIAL_DEGREE
@@ -527,9 +562,10 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
         assert isinstance(self.timestamp_us, int)
         if sys.version_info >= (3, 10):
             assert isinstance(self.confidence, Optional[float])
+            assert isinstance(self.source, LabelSource)
         else:
             assert isinstance(self.confidence, (type(None), float))
-        assert isinstance(self.source, LabelSource)
+            assert self.source in LabelSource.__members__.values()
 
 
 @dataclass

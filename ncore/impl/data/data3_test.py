@@ -161,7 +161,11 @@ class TestData3Loader(unittest.TestCase):
         # We currently don't store generic meta data in NV data
         self.assertEqual(camera_sensor.get_generic_meta_data(), {})
 
-        self.assertIsInstance(camera_sensor.get_camera_model_parameters(), FThetaCameraModelParameters)
+        camera_model_parameters = camera_sensor.get_camera_model_parameters()
+        self.assertIsInstance(camera_model_parameters, FThetaCameraModelParameters)
+        self.assertIsNone(
+            camera_model_parameters.external_distortion_parameters
+        )  # data doesn't have external distortion parameters
         self.assertEqual(camera_sensor.get_camera_mask_image().size, (3848, 2168))
 
         # Decode all camera frames
@@ -715,7 +719,12 @@ class TestData3Reload(unittest.TestCase):
         # Check cameras
         camera_sensor = loader.get_camera_sensor(ref_camera_id)
         self.assertIsNone(np.testing.assert_array_equal(camera_sensor.get_T_sensor_rig(), ref_camera_extrinsics))
-        self.assertEqual(camera_sensor.get_camera_model_parameters().to_dict(), ref_camera_intrinsics.to_dict())
+        camera_model_parameters = camera_sensor.get_camera_model_parameters()
+        self.assertIsInstance(camera_model_parameters, OpenCVFisheyeCameraModelParameters)
+        self.assertIsInstance(
+            camera_model_parameters.external_distortion_parameters, BivariateWindshieldModelParameters
+        )
+        self.assertEqual(camera_model_parameters.to_dict(), ref_camera_intrinsics.to_dict())
         self.assertEqual(camera_sensor.get_generic_meta_data(), ref_camera_generic_meta_data)
 
         self.assertIsNone(np.testing.assert_array_equal(camera_sensor.get_frame_image_array(0), ref_image_rgb0))

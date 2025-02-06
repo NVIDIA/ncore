@@ -1,6 +1,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 import logging
+import dataclasses
 
 from pathlib import Path
 from typing import Optional
@@ -76,6 +77,12 @@ def se3_matrix(se3_delta: np.ndarray) -> np.ndarray:
     default="rolling-shutter",
 )
 @click.option("--output-dir", type=str, help="Path to the output folder if encoding images", required=False, default="")
+@click.option(
+    "--external-distortion/--no-external-distortion",
+    is_flag=True,
+    default=False,
+    help="Allow / disallow external distortion",
+)
 @click.option("--encode-images/--no-encode-images", is_flag=True, default=False, help="Encode image files for frames")
 @click.option(
     "--timestamp-image-names/--no-timestamp-image-names",
@@ -96,6 +103,7 @@ def ncore_project_pc_to_img(
     device: str,
     pose: str,
     output_dir: str,
+    external_distortion: bool,
     encode_images: bool,
     timestamp_image_names: bool,
 ):
@@ -141,6 +149,11 @@ def ncore_project_pc_to_img(
 
         # Initialize the camera model on requested device
         cam_model_params = cam_sensor.get_camera_model_parameters()
+
+        # Drop external distortion if not allowed
+        if not external_distortion:
+            cam_model_params = dataclasses.replace(cam_model_params, external_distortion_parameters=None)
+
         cam_model = CameraModel.from_parameters(cam_model_params, device=device)
 
         logger.info(f"Starting the projection with torch implementation on device={device}")

@@ -1377,10 +1377,10 @@ class TestExternalDistortion(CommonTestCase):
         self.assertIsNone(res_none)
 
         # Verify that, when provided BivariateWindshieldModelParameters, a BivariateWindshieldModel object is returned
-        horizontal_poly = np.zeros((3))
-        vertical_poly = np.zeros((3))
-        horizontal_poly_inverse = np.zeros((3))
-        vertical_poly_inverse = np.zeros((3))
+        horizontal_poly = np.zeros((3), dtype=np.float32)
+        vertical_poly = np.zeros_like(horizontal_poly)
+        horizontal_poly_inverse = np.zeros_like(horizontal_poly)
+        vertical_poly_inverse = np.zeros_like(horizontal_poly)
         windshield_params = BivariateWindshieldModelParameters(
             ReferencePolynomial.FORWARD,
             horizontal_poly,
@@ -1399,10 +1399,10 @@ class TestBivariateWindshieldModel(CommonTestCase):
     def test_init(self):
         """Tests initialization of BivariateWindshieldModel"""
 
-        horizontal_poly = np.zeros((3))
-        vertical_poly = np.zeros((3))
-        horizontal_poly_inverse = np.zeros((3))
-        vertical_poly_inverse = np.zeros((3))
+        horizontal_poly = np.zeros((3), dtype=np.float32)
+        vertical_poly = np.zeros_like(horizontal_poly)
+        horizontal_poly_inverse = np.zeros_like(horizontal_poly)
+        vertical_poly_inverse = np.zeros_like(horizontal_poly)
         windshield_params = BivariateWindshieldModelParameters(
             ReferencePolynomial.FORWARD,
             horizontal_poly,
@@ -1462,8 +1462,8 @@ class TestBivariateWindshieldModel(CommonTestCase):
         """Tests distortion / undistortion using full WSD model"""
 
         rt2_2 = np.sqrt(2.0) / 2.0
-        horizontal_poly = torch.tensor([0.0, -1.0, 0.0], dtype=self.dtype, device=self.device)
-        vertical_poly = torch.tensor([0.0, 0.0, -1.0], dtype=self.dtype, device=self.device)
+        horizontal_poly = np.array([0.0, -1.0, 0.0], dtype=np.float32)
+        vertical_poly = np.array([0.0, 0.0, -1.0], dtype=np.float32)
         rays = torch.tensor([[rt2_2, rt2_2, 0.0], [-rt2_2, rt2_2, 0.0]], dtype=self.dtype, device=self.device)
 
         windshield_params = BivariateWindshieldModelParameters(
@@ -1491,7 +1491,7 @@ class TestBivariateWindshieldModel(CommonTestCase):
         res_w = windshield_distortion.undistort_camera_rays(rays)
         torch.testing.assert_close(res, res_w)
 
-        windshield_horizontal_polynomial = torch.tensor(
+        windshield_horizontal_polynomial = np.array(
             [
                 -0.000475919834570959,
                 0.99944007396698,
@@ -1500,10 +1500,9 @@ class TestBivariateWindshieldModel(CommonTestCase):
                 0.0055195577442646,
                 0.000861024134792387,
             ],
-            dtype=self.dtype,
-            device=self.device,
+            dtype=np.float32,
         )
-        windshield_vertical_polynomial = torch.tensor(
+        windshield_vertical_polynomial = np.array(
             [
                 0.00152770057320595,
                 -0.000532537756953388,
@@ -1521,15 +1520,12 @@ class TestBivariateWindshieldModel(CommonTestCase):
                 -0.00364979170262814,
                 0.0069147446192801,
             ],
-            dtype=self.dtype,
-            device=self.device,
+            dtype=np.float32,
         )
-        windshield_horizontal_polynomial_inv = torch.tensor(
-            [0.0004770369, 1.0005774, -0.00016896478, -0.00020207358, -0.0054899976, -0.0008536868],
-            dtype=self.dtype,
-            device=self.device,
+        windshield_horizontal_polynomial_inv = np.array(
+            [0.0004770369, 1.0005774, -0.00016896478, -0.00020207358, -0.0054899976, -0.0008536868], dtype=np.float32
         )
-        windshield_vertical_polynomial_inv = torch.tensor(
+        windshield_vertical_polynomial_inv = np.array(
             [
                 -0.0015191488,
                 0.00052959577,
@@ -1547,8 +1543,7 @@ class TestBivariateWindshieldModel(CommonTestCase):
                 0.0033684247,
                 -0.0057964055,
             ],
-            dtype=self.dtype,
-            device=self.device,
+            dtype=np.float32,
         )
         r = 1.0
         phi = 0.05
