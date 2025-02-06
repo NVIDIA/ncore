@@ -6,6 +6,8 @@ from ncore.impl.sensors.camera import (
     FThetaCameraModel,
     OpenCVPinholeCameraModel,
     OpenCVFisheyeCameraModel,
+    ExternalDistortion,
+    BivariateWindshieldModel,
 )
 
 __all__ = [
@@ -13,4 +15,6 @@ __all__ = [
     "FThetaCameraModel",
     "OpenCVPinholeCameraModel",
     "OpenCVFisheyeCameraModel",
+    "ExternalDistortion",
+    "BivariateWindshieldModel",
 ]
