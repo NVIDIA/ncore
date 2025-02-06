@@ -26,6 +26,22 @@ from ncore.impl.sensors.common import (
 class ExternalDistortion(ABC):
     """Base class for distortion effects from external causes to the camera"""
 
+    device: torch.device  #: Torch device to perform computations on
+    dtype: torch.dtype  #: Torch floating-point datatype to perform computations in
+
+    def __init__(
+        self,
+        device: torch.device,
+        dtype: torch.dtype = torch.float32,
+    ):
+        # Check if cuda device is actually available
+        if device == torch.device("cuda") and not torch.cuda.is_available():
+            logging.warning("Cuda device selected but not available, reverting to CPU!")
+            device = torch.device("cpu")
+
+        self.device = device
+        self.dtype = dtype
+
     @staticmethod
     def maybe_from_parameters(
         external_distortion_parameters: Optional[types.ConcreteExternalDistortionParametersUnion],
@@ -78,8 +94,6 @@ class BivariateWindshieldModel(ExternalDistortion):
 
     order_phi: int  #:  Order of the distortion polynomial on phi
     order_theta: int  #:  Order of the distortion polynomial on theta
-    device: torch.device  #: Torch device to perform computations on
-    dtype: torch.dtype  #: Torch floating-point datatype to perform computations in
 
     def __init__(
         self,
@@ -87,7 +101,7 @@ class BivariateWindshieldModel(ExternalDistortion):
         device: torch.device,
         dtype: torch.dtype = torch.float32,
     ):
-        super().__init__()
+        super().__init__(device, dtype)
 
         self.horizontal_poly = to_torch(windshield_distortion_parameters.horizontal_poly, device=device, dtype=dtype)
         self.vertical_poly = to_torch(windshield_distortion_parameters.vertical_poly, device=device, dtype=dtype)
@@ -197,7 +211,7 @@ class CameraModel(ABC):
     dtype: torch.dtype  #: Torch floating-point datatype to perform computations in
     external_distortion: Optional[
         ExternalDistortion
-    ]  #: Source of distortion external to the camera (e.g. windshield). Can be left empty (None) if no such source exists. If a source exits, rays will be distorted prior to reaching the camera and it's associated lens distortion if applicable.
+    ]  #: Source of distortion external to the camera (e.g. windshield). Can be left empty (None) if no such source exists. If a source exits, rays will be distorted prior to reaching the camera and it's associated lens distortion if applicable
 
     def __init__(self, camera_model_parameters: types.CameraModelParameters, dtype: torch.dtype, device: str):
         # Check if cuda device is actually available

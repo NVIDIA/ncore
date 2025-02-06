@@ -51,19 +51,19 @@ class BivariateWindshieldModelParameters(dataclasses_json.DataClassJsonMixin):
     # Forward correction coefficients (project to sensor)
     horizontal_poly: np.ndarray = util.numpy_array_field(
         np.float32
-    )  #: Polynomial coefficients used for forward projection on the horizontal component of the ray (x) via it's projected angle phi=asin(x/norm(x,y)). The polynomial is of order N in both phi and theta with the form P(phi,N)*P(theta,0) + P(phi, N-1)*P(theta,1) ... + P(phi, N-N)*P(theta,N), where P(i, N) is a polynomial over "i" of degree N
+    )  #: Polynomial coefficients used for forward projection on the horizontal component of a ray via it's projected angle phi=asin(x/norm(x,y)). The polynomial is of order N in both phi and theta with the form P(phi,N)*P(theta,0) + P(phi, N-1)*P(theta,1) ... + P(phi, N-N)*P(theta,N), where P(i, N) is a polynomial over "i" of degree N (float32, [(N + 1) * (N + 2) / 2,])
     vertical_poly: np.ndarray = util.numpy_array_field(
         np.float32
-    )  #: Polynomial coefficients used for forward projection on the vertical component of the ray (y) via it's projected angle theta=asin(y/norm(x,y)). The polynomial is of order N in both phi and theta with the form P(phi,N)*P(theta,0) + P(phi, N-1)*P(theta,1) ... + P(phi, N-N)*P(theta,N), where P(i, N) is a polynomial over "i" of degree N
+    )  #: Polynomial coefficients used for forward projection on the vertical component of a ray via it's projected angle theta=asin(y/norm(x,y)). The polynomial is of order M in both phi and theta with the form P(phi,M)*P(theta,0) + P(phi, M-1)*P(theta,1) ... + P(phi, M-M)*P(theta,M), where P(i, M) is a polynomial over "i" of degree M (float32, [(M + 1) * (M + 2) / 2,])
 
     # Backward correction coefficient (project to world)
     horizontal_poly_inverse: np.ndarray = util.numpy_array_field(
         np.float32
-    )  #: Polynomial coefficients used to evaluate the inverse distortion in backprojection of the horizontal component of a ray (x) via it's projected angle phi=asin(x/norm(x,y)). The polynomial is of order N in both phi and theta with the form P(phi,N)*P(theta,0) + P(phi, N-1)*P(theta,1) ... + P(phi, N-N)*P(theta,N), where P(i, N) is a polynomial over "i" of degree N
+    )  #: Polynomial coefficients used to evaluate the inverse distortion in backprojection of the horizontal component of a ray via it's projected angle phi=asin(x/norm(x,y)). The polynomial is of order N in both phi and theta with the form P(phi,N)*P(theta,0) + P(phi, N-1)*P(theta,1) ... + P(phi, N-N)*P(theta,N), where P(i, N) is a polynomial over "i" of degree N (float32, [(N + 1) * (N + 2) / 2,])
 
     vertical_poly_inverse: np.ndarray = util.numpy_array_field(
         np.float32
-    )  #: Polynomial coefficients used to evaluate the inverse distortion in backprojection of the vertical component of a ray (y) via it's projected angle theta=asin(y/norm(x,y)). The polynomial is of order N in both phi and theta with the form P(phi,N)*P(theta,0) + P(phi, N-1)*P(theta,1) ... + P(phi, N-N)*P(theta,N), where P(i, N) is a polynomial over "i" of degree N
+    )  #: Polynomial coefficients used to evaluate the inverse distortion in backprojection of the vertical component of a ray via it's projected angle theta=asin(y/norm(x,y)). The polynomial is of order M in both phi and theta with the form P(phi,M)*P(theta,0) + P(phi, M-1)*P(theta,1) ... + P(phi, M-M)*P(theta,M), where P(i, M) is a polynomial over "i" of degree M (float32, [(M + 1) * (M + 2) / 2,])
 
     @staticmethod
     def type() -> str:
@@ -101,7 +101,7 @@ class CameraModelParameters:
     shutter_type: ShutterType = util.enum_field(ShutterType)  #: Shutter type of the camera's imaging sensor
 
     external_distortion_parameters: Optional[ConcreteExternalDistortionParametersUnion] = (
-        None  #: Optional external distortion source associated to the camera (e.g. windshield). If a source exits, rays will be distorted prior to reaching the camera and it's associated lens distortion if applicable.
+        None  #: Optional external distortion source associated to the camera (e.g. windshield). If a source exits, rays will be distorted prior to reaching the camera and it's associated lens distortion if applicable
     )
 
     def __post_init__(self):
