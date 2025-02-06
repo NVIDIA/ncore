@@ -44,7 +44,7 @@ class ReferencePolynomial(IntEnum):
 
 @dataclass
 class BivariateWindshieldModelParameters(dataclasses_json.DataClassJsonMixin):
-    """Represents parameters required to create a windshield distortion model"""
+    """Represents parameters required to create a windshield external distortion model"""
 
     reference_poly: ReferencePolynomial = util.enum_field(ReferencePolynomial)  #: Reference polynomial of the model
 
@@ -64,6 +64,27 @@ class BivariateWindshieldModelParameters(dataclasses_json.DataClassJsonMixin):
     vertical_poly_inverse: np.ndarray = util.numpy_array_field(
         np.float32
     )  #: Polynomial coefficients used to evaluate the inverse distortion in backprojection of the vertical component of a ray (y) via it's projected angle theta=asin(y/norm(x,y)). The polynomial is of order N in both phi and theta with the form P(phi,N)*P(theta,0) + P(phi, N-1)*P(theta,1) ... + P(phi, N-N)*P(theta,N), where P(i, N) is a polynomial over "i" of degree N
+
+    @staticmethod
+    def type() -> str:
+        """Returns a string-identifier of the external distortion model"""
+        return "bivariate-windshield"
+
+    def __post_init__(self):
+        # Sanity checks
+        assert isinstance(self.reference_poly, ReferencePolynomial)
+
+        assert self.horizontal_poly.ndim == 1
+        assert self.horizontal_poly.dtype == np.dtype("float32")
+
+        assert self.vertical_poly.ndim == 1
+        assert self.horizontal_poly.dtype == np.dtype("float32")
+
+        assert self.horizontal_poly_inverse.ndim == 1
+        assert self.horizontal_poly.dtype == np.dtype("float32")
+
+        assert self.vertical_poly_inverse.ndim == 1
+        assert self.horizontal_poly.dtype == np.dtype("float32")
 
 
 # Represents the collection of all concrete external distortion types
@@ -88,6 +109,9 @@ class CameraModelParameters:
         assert self.resolution.shape == (2,)
         assert self.resolution.dtype == np.dtype("uint64")
         assert self.resolution[0] > 0 and self.resolution[1] > 0
+
+        assert isinstance(self.shutter_type, ShutterType)
+        assert isinstance(self.external_distortion_parameters, (type(None), ConcreteExternalDistortionParametersUnion))
 
 
 @dataclass
