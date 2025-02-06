@@ -110,8 +110,14 @@ class CameraModelParameters:
         assert self.resolution.dtype == np.dtype("uint64")
         assert self.resolution[0] > 0 and self.resolution[1] > 0
 
-        assert isinstance(self.shutter_type, ShutterType)
-        assert isinstance(self.external_distortion_parameters, (type(None), ConcreteExternalDistortionParametersUnion))
+        if sys.version_info >= (3, 10):
+            assert isinstance(self.shutter_type, ShutterType)
+            assert isinstance(self.external_distortion_parameters, Optional[ConcreteExternalDistortionParametersUnion])
+        else:
+            assert self.shutter_type in ShutterType.__members__.values()
+            assert isinstance(
+                self.external_distortion_parameters, (type(None), ConcreteExternalDistortionParametersUnion)
+            )
 
 
 @dataclass
@@ -167,6 +173,11 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
         assert self.principal_point.shape == (2,)
         assert self.principal_point.dtype == np.dtype("float32")
         assert self.principal_point[0] >= 0.0 and self.principal_point[1] >= 0.0
+
+        if sys.version_info >= (3, 10):
+            assert isinstance(self.reference_poly, FThetaCameraModelParameters.PolynomialType)
+        else:
+            assert self.reference_poly in FThetaCameraModelParameters.PolynomialType.__members__.values()
 
         assert self.pixeldist_to_angle_poly.ndim == 1
         assert len(self.pixeldist_to_angle_poly) <= self.POLYNOMIAL_DEGREE
@@ -551,9 +562,10 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
         assert isinstance(self.timestamp_us, int)
         if sys.version_info >= (3, 10):
             assert isinstance(self.confidence, Optional[float])
+            assert isinstance(self.source, LabelSource)
         else:
             assert isinstance(self.confidence, (type(None), float))
-        assert isinstance(self.source, LabelSource)
+            assert self.source in LabelSource.__members__.values()
 
 
 @dataclass
