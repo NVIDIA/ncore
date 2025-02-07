@@ -172,7 +172,7 @@ class BivariateWindshieldModel(ExternalDistortion):
         x = torch.sin(adj_phi)
         y = torch.sin(adj_theta)
         xy_norm = x * x + y * y
-        z = torch.sqrt(torch.clamp(torch.ones_like(x) - xy_norm, 0.0, 1.0))
+        z = torch.sqrt(torch.clamp(torch.ones_like(x) - xy_norm, 0.0, 1.0)) * torch.sign(normalized_rays[..., 2])
         return torch.stack((x, y, z), -1)
 
     def distort_camera_rays(self, camera_rays: torch.Tensor) -> torch.Tensor:
