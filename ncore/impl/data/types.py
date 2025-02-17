@@ -197,6 +197,10 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
         assert self.linear_cde.shape == (3,)
         assert self.linear_cde.dtype == np.dtype("float32")
 
+        # some datasets might store _invalid_ linear terms (all zero) - workaround by setting these to default linear term
+        if np.allclose(self.linear_cde, 0.0):
+            self.linear_cde = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+
     def transform(
         self,
         image_domain_scale: Union[float, Tuple[float, float]],
