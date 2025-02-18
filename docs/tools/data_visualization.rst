@@ -3,7 +3,7 @@
 Visualization
 =============
 
-Data stored in NRECore-specific dataformats can be visualized using different tools provided by the SDK
+Data stored in NCore-specific dataformats can be visualized using different tools provided by the SDK
 
 Rolling-Shutter Point-Cloud to Camera Projections
 -------------------------------------------------

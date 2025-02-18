@@ -8,7 +8,7 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = "NRECore"
+project = "NCore"
 copyright = "2022, NVIDIA"
 author = "NVIDIA - Toronto AI Lab"
 

@@ -33,7 +33,7 @@ class Config(object):
 
 class DataConverter(ABC):
     """
-    Base preprocessing class used to preprocess AV datasets in a canonical representation as used in the Nvidia NRECore-SDK project.
+    Base preprocessing class used to preprocess AV datasets in a canonical representation as used in the Nvidia NCore-SDK project.
 
     For adding a new dataset, please inherit this class, implement the required functions, and register a new CLI command.
 
