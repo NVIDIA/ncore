@@ -6,7 +6,7 @@
 Segmentations
 =============
 
-Data stored in NRECore-specific dataformats can be used as the input to different inference models provided as tools by the SDK
+Data stored in NCore-specific dataformats can be used as the input to different inference models provided as tools by the SDK
 
 Semantic and Instance Segmentations
 -----------------------------------

@@ -3,7 +3,7 @@
 Reconstruction
 ==============
 
-Data stored in NRECore-specific dataformats can be used as the input to scene reconstruction tools provided by the SDK
+Data stored in NCore-specific dataformats can be used as the input to scene reconstruction tools provided by the SDK
 
 Poisson Surface Reconstruction
 ------------------------------
