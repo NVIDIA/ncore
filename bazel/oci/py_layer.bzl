@@ -68,7 +68,9 @@ def py_layers(name, binary, tags):
             name = layer_target,
             srcs = [binary],
             mtree = "{}.{}_tar_manifest".format(name, layer),
-            tags = tags
+            tags = tags,
+            # we need to gzip layers unconditionally as maglev only supports gzipped layers
+            compress = "gzip", 
         )
 
     return result
