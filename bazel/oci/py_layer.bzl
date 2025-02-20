@@ -13,7 +13,7 @@ PY_INTERPRETER_REGEX = "\\.runfiles/.*python.*-.*"
 # match *only* external pip like repositories that contain the string "site-packages"
 SITE_PACKAGES_REGEX = "\\.runfiles/.*/site-packages/.*"
 
-def py_layers(name, binary, tags):
+def py_layers(name, binary, tags, compress):
     """Create three layers for a py_binary target: interpreter, third-party dependencies, and application code.
 
     This allows a container image to have smaller uploads, since the application layer usually changes more
@@ -23,6 +23,7 @@ def py_layers(name, binary, tags):
         name: prefix for generated targets, to ensure they are unique within the package
         binary: a py_binary target
         tags: a list of tags to be applied to the generated targets
+        compress: the compression algorithm to use for the tar files
 
     Returns:
         a list of labels for the layers, which are tar files
@@ -69,17 +70,16 @@ def py_layers(name, binary, tags):
             srcs = [binary],
             mtree = "{}.{}_tar_manifest".format(name, layer),
             tags = tags,
-            # we need to gzip layers unconditionally as maglev only supports gzipped layers
-            compress = "gzip", 
+            compress = compress, 
         )
 
     return result
 
-def py_oci_image(name, binary, tars = [], tags = [], **kwargs):
+def py_oci_image(name, binary, tars = [], tags = [], compress = "gzip", **kwargs):
     "Wrapper around oci_image that splits the py_binary into layers."
     oci_image(
         name = name,
-        tars = tars + py_layers(name, binary, tags),
+        tars = tars + py_layers(name, binary, tags, compress),
         tags = tags,
         **kwargs
     )

@@ -12,6 +12,9 @@ try:
     from scripts.util import breakpoint
 except ImportError:
     # if included externally as 'ncore_repo' use fully-evaluated path
+    from ncore_repo.scripts.util import breakpoint  # type: ignore
+except ImportError:
+    # fall back to 'external'-prefixed 'ncore_repo' reference if required
     from external.ncore_repo.scripts.util import breakpoint  # type: ignore
 
 import click
