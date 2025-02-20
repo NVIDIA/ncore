@@ -8,7 +8,10 @@ parameterized
 numpy
 dataclasses-json>=0.2.11 # deserialization fails with earlier versions
 pillow
-zarr>=2.17.0,<3.0.0 # contains "Cache result of FSStore._fsspec_installed()" https://github.com/zarr-developers/zarr-python/pull/1581
+# zarr version restrictions:
+# - 2.17.0 contains crucial perf improvements ["Cache result of FSStore._fsspec_installed()" https://github.com/zarr-developers/zarr-python/pull/1581]
+# - we can't switch to zarr 3 yet unconditionally as it's not available for python3.8 anymore
+zarr>=2.17.0,<3.0.0
 cbor2
 scipy
 
