@@ -1457,12 +1457,6 @@ send2trash==1.8.0 \
     --hash=sha256:d2c24762fd3759860a0aff155e45871447ea58d2be6bdd39b5c8f966a0c99c2d \
     --hash=sha256:f20eaadfdb517eaca5ce077640cb261c7d2698385a6a0f072a4a5447fd49fa08
     # via jupyter-server
-setuptools==65.5.0 \
-    --hash=sha256:512e5536220e38146176efb833d4a62aa726b7bbff82cfbc8ba9eaa3996e0b17 \
-    --hash=sha256:f62ea9da9ed6289bfe868cd6845968a2c854d1427f8548d52cae02a42b4f0356
-    # via
-    #   tensorboard
-    #   tensorflow
 shiboken6==6.6.0 \
     --hash=sha256:456b89fb4b323e0c5002d92e4d346b48bb4e709db801208df8a0d6b4f5efc33d \
     --hash=sha256:bf23c43e53ffe6097853666ced05358c6640c378e992902a36c4cf77efb0223b \
@@ -1476,6 +1470,7 @@ six==1.16.0 \
     --hash=sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926 \
     --hash=sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254
     # via
+    #   asttokens
     #   astunparse
     #   bleach
     #   google-auth
@@ -1768,3 +1763,11 @@ zarr==2.18.2 \
     --hash=sha256:9bb393b8a0a38fb121dbb913b047d75db28de9890f6d644a217a73cf4ae74f47 \
     --hash=sha256:a638754902f97efa99b406083fdc807a0e2ccf12a949117389d2a4ba9b05df38
     # via -r 3rdparty/python/requirements_3_10.in
+
+# The following packages are considered to be unsafe in a requirements file:
+setuptools==65.5.0 \
+    --hash=sha256:512e5536220e38146176efb833d4a62aa726b7bbff82cfbc8ba9eaa3996e0b17 \
+    --hash=sha256:f62ea9da9ed6289bfe868cd6845968a2c854d1427f8548d52cae02a42b4f0356
+    # via
+    #   tensorboard
+    #   tensorflow
