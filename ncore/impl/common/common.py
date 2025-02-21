@@ -118,7 +118,7 @@ def save_pc_dat(file_path: str, lidar_data: np.ndarray) -> None:
         raise ValueError("expecting single-precision array as input")
 
     def save(file: Union[io.BufferedWriter, lzma.LZMAFile]) -> None:
-        n_rows, n_columns = lidar_data.shape
+        n_rows, n_columns = np.shape(lidar_data)
         lidar_data_flat = lidar_data.flatten()
 
         file.write(struct.pack("<i", n_rows))

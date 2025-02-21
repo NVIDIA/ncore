@@ -250,7 +250,7 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
         # (backwards polynomial is a pixel-distance to angle map, so the domain needs to be scaled).
         # Potentially anisotropic scaling is handled by the linear term.
         scaled_pixel_map = np.polynomial.Polynomial([0.0, 1.0 / image_domain_scale_factors[1]])
-        pixeldist_to_angle_poly = np.polynomial.Polynomial(self.pixeldist_to_angle_poly)(scaled_pixel_map).coef.astype(
+        pixeldist_to_angle_poly = np.polynomial.Polynomial(self.pixeldist_to_angle_poly)(scaled_pixel_map).coef.astype(  # type: ignore
             np.float32
         )
 
