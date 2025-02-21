@@ -1,16 +1,16 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
-load("@python//3.10:defs.bzl", compile_pip_requirements_3_10 = "compile_pip_requirements")
+load("@python//3.11:defs.bzl", compile_pip_requirements_3_11 = "compile_pip_requirements")
 load("@python//3.8:defs.bzl", compile_pip_requirements_3_8 = "compile_pip_requirements")
 
 # Check that our compiled pip requirements are up-to-date
-compile_pip_requirements_3_10(
-    name = "requirements_3_10",
+compile_pip_requirements_3_11(
+    name = "requirements_3_11",
     timeout = "eternal",
     extra_args = ["--allow-unsafe"],
-    requirements_in = "requirements_3_10.in",
-    requirements_txt = "requirements_3_10.txt",
+    requirements_in = "requirements_3_11.in",
+    requirements_txt = "requirements_3_11.txt",
     tags = [
         "manual",
     ],

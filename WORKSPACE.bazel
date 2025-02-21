@@ -33,10 +33,10 @@ py_repositories()
 
 python_register_multi_toolchains(
     name = "python",
-    default_version = "3.10",
+    default_version = "3.11",
     python_versions = [
         "3.8",
-        "3.10",
+        "3.11",
     ],
 )
 
@@ -58,9 +58,9 @@ cc_library(
 """,
         ),
     },
-    python_interpreter_target = "@python_3_10_host//:python",
+    python_interpreter_target = "@python_3_11_host//:python",
     quiet = False,
-    requirements_lock = "//3rdparty/python:requirements_3_10.txt",
+    requirements_lock = "//3rdparty/python:requirements_3_11.txt",
 )
 
 load("@pip_deps//:requirements.bzl", "install_deps")
@@ -112,7 +112,7 @@ mypy_integration_repositories()
 
 pip_parse(
     name = "mypy_integration_pip_deps",
-    python_interpreter_target = "@python_3_10_host//:python",
+    python_interpreter_target = "@python_3_11_host//:python",
     requirements_lock = "//bazel/typing:mypy_version.txt",
 )
 
