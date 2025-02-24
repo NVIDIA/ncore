@@ -140,6 +140,7 @@ py_binary(
         "//ncore/impl/data:pylib_data",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/sensors:pylib_camera",
+        "//ncore/impl/sensors:pylib_lidar",
         "//scripts:pylib_util",
     ],
 )
