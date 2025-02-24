@@ -635,6 +635,7 @@ class TestData3Reload(unittest.TestCase):
             ref_lidar_xyz_e0 := np.random.rand(5, 3).astype(np.float32),
             ref_lidar_intensity0 := np.random.rand(5).astype(np.float32),
             ref_lidar_timestamp_us0 := np.array([1, 2, 3, 4, 5], dtype=np.uint64),
+            ref_lidar_model_element0 := np.arange(5 * 2, dtype=np.uint16).reshape((5, 2)),
             [],
             T_rig_worlds.astype(np.float32),
             T_rig_world_timestamps_us,
@@ -652,6 +653,7 @@ class TestData3Reload(unittest.TestCase):
             ref_lidar_xyz_e1 := np.random.rand(4, 3).astype(np.float32),
             ref_lidar_intensity1 := np.random.rand(4).astype(np.float32),
             ref_lidar_timestamp_us1 := np.array([1, 2, 3, 4], dtype=np.uint64),
+            ref_lidar_model_element1 := np.arange(4 * 2, dtype=np.uint16).reshape((4, -1)),
             [],
             T_rig_worlds.astype(np.float32),
             T_rig_world_timestamps_us,
@@ -761,6 +763,9 @@ class TestData3Reload(unittest.TestCase):
         self.assertIsNone(
             np.testing.assert_array_equal(lidar_sensor.get_frame_data(0, "timestamp_us"), ref_lidar_timestamp_us0)
         )
+        self.assertIsNone(
+            np.testing.assert_array_equal(lidar_sensor.get_frame_data(0, "model_element"), ref_lidar_model_element0)
+        )
         self.assertFalse(lidar_sensor.has_frame_data(0, "dynamic_flag"))  # deprecated property
         self.assertEqual(lidar_sensor.get_frame_generic_meta_data(0), ref_lidar_generic_metadata0)
         self.assertEqual(
@@ -781,6 +786,9 @@ class TestData3Reload(unittest.TestCase):
         )
         self.assertIsNone(
             np.testing.assert_array_equal(lidar_sensor.get_frame_data(1, "timestamp_us"), ref_lidar_timestamp_us1)
+        )
+        self.assertIsNone(
+            np.testing.assert_array_equal(lidar_sensor.get_frame_data(1, "model_element"), ref_lidar_model_element1)
         )
         self.assertFalse(lidar_sensor.has_frame_data(1, "dynamic_flag"))  # deprecated property
         self.assertEqual(lidar_sensor.get_frame_generic_meta_data(1), ref_lidar_generic_metadata1)

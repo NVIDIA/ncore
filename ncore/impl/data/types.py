@@ -8,7 +8,7 @@ import dataclasses
 
 from enum import IntEnum, auto, unique
 from dataclasses import dataclass
-from typing import Optional, Protocol, Tuple, Union, List, Dict
+from typing import Literal, Optional, Protocol, Tuple, Union, List, Dict
 from functools import lru_cache
 
 import numpy as np
@@ -463,6 +463,119 @@ class OpenCVFisheyeCameraModelParameters(CameraModelParameters, dataclasses_json
 ConcreteCameraModelParametersUnion = Union[
     FThetaCameraModelParameters, OpenCVPinholeCameraModelParameters, OpenCVFisheyeCameraModelParameters
 ]
+
+
+@dataclass()
+class BaseLidarModelParameters:
+    """Represents parameters common to all lidar models"""
+
+    pass
+
+
+@dataclass()
+class BaseSpinningLidarModelParameters(BaseLidarModelParameters):
+    """Represents parameters common to all spinning lidar models"""
+
+    spinning_frequency_hz: float  # spinning frequency / frames per second [Hz]
+
+    spinning_direction: Literal[
+        "cw", "ccw"
+    ]  # direction of spinning, either clockwise (cw) or counter-clockwise (ccw) [around z axis]
+
+    def __post_init__(self):
+        # Sanity checks
+        assert self.spinning_frequency_hz > 0.0
+        assert self.spinning_direction in ["cw", "ccw"]
+
+
+@dataclass()
+class BaseStructuredSpinningLidarModelParameters(BaseSpinningLidarModelParameters):
+    """Represents parameters for a structured spinning lidar model.
+
+    A structured lidar model consists of a fixed number of rows x columns point measurements per frame
+    """
+
+    n_rows: int  # number of rows
+    n_columns: int  # number of columns
+
+    fov_horiz_start_rad: float  # horizontal field of view start [around z axis, relative to x axis] [radians]
+    fov_horiz_end_rad: float  # horizontal field of view end [around z axis, relative to x axis] [radians]
+
+    fov_vert_start_rad: float  # vertical field of view start [around y axis, relative to x axis] [radians]
+    fov_vert_end_rad: float  # vertical field of view end [around y axis, relative to z axis] [radians]
+
+    def __post_init__(self):
+        # Sanity checks
+        assert self.n_rows > 0
+        assert self.n_columns > 0
+        assert self.fov_horiz_start_rad < self.fov_horiz_end_rad
+        assert self.fov_vert_start_rad < self.fov_vert_end_rad
+
+
+@dataclass()
+class RowOffsetStructuredSpinningLidarModelParameters(
+    BaseStructuredSpinningLidarModelParameters, dataclasses_json.DataClassJsonMixin
+):
+    """Represents parameters for a structured spinning lidar model that is using a per-row azimuth-offset (compatible with, e.g., Hesai P128 sensors)"""
+
+    # elevation angles
+    row_elevations_rad: np.ndarray = util.numpy_array_field(
+        np.float32
+    )  # elevation angle of each row, constant for each column [around y axis, relative to x axis] [(Nrows,) radians]
+
+    # azimuth angles
+    column_azimuths_rad: np.ndarray = util.numpy_array_field(
+        np.float32
+    )  # azimuth angle of each column [around z axis, relative to y axis] [(Ncolumns,) radians]
+    row_azimuth_offsets_rad: np.ndarray = util.numpy_array_field(
+        np.float32
+    )  # azimuth angle offsets for each row [around z axis, relative to y axis] [(Nrows,) radians]
+
+    def __post_init__(self):
+        # Sanity checks
+        is_sorted_ascending = lambda a: np.all(a[:-1] < a[1:])
+        is_sorted_descending = lambda a: np.all(a[:-1] > a[1:])
+
+        assert self.row_elevations_rad.dtype == np.float32
+        assert self.row_elevations_rad.shape == (self.n_rows,)
+        assert is_sorted_descending(self.row_elevations_rad), "Row elevation angles must be sorted in descending order"
+        assert (
+            self.fov_vert_end_rad <= self.row_elevations_rad[-1].item()
+            and self.row_elevations_rad[0].item() <= self.fov_vert_start_rad
+        ), "Row elevation angles must cover the full FOV"
+
+        assert self.column_azimuths_rad.dtype == np.float32
+        assert self.column_azimuths_rad.shape == (self.n_columns,)
+
+        if self.spinning_direction == "ccw":
+            assert is_sorted_descending(
+                self.column_azimuths_rad
+            ), "Column azimuth angles must be sorted in descending order for ccw sensors"
+        else:
+            assert is_sorted_ascending(
+                self.column_azimuths_rad
+            ), "Column azimuth angles must be sorted in ascending order for cw sensors"
+
+        # Reconstruct all (wrapped) element azimuths once to check against FoV
+        azimuths_rad = self.column_azimuths_rad[None, :] + self.row_azimuth_offsets_rad[:, None]
+        azimuths_rad[azimuths_rad > np.pi] -= 2 * np.pi
+        azimuths_rad[azimuths_rad <= -np.pi] += 2 * np.pi
+        assert (
+            self.fov_horiz_start_rad <= azimuths_rad.min().item()
+            and azimuths_rad.max().item() <= self.fov_horiz_end_rad
+        ), "Column azimuth angles must cover the full FOV"
+
+        assert self.row_azimuth_offsets_rad.dtype == np.float32
+        assert self.row_azimuth_offsets_rad.shape == (self.n_rows,)
+
+    @staticmethod
+    def type() -> str:
+        """Returns a string-identifier of the lidar model"""
+        return "row-offset-spinning"
+
+
+# Represents the collection of all concrete lidar model parameter type
+ConcreteLidarModelParametersUnion = Union[RowOffsetStructuredSpinningLidarModelParameters]
 
 
 @dataclass

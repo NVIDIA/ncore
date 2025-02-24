@@ -11,7 +11,10 @@ py_library(
     srcs = [
         "__init__.py",
     ],
-    deps = ["//ncore/impl/sensors:pylib_camera"],
+    deps = [
+        "//ncore/impl/sensors:pylib_camera",
+        "//ncore/impl/sensors:pylib_lidar",
+    ],
 )
 
 pytest_test(
@@ -27,7 +30,10 @@ py_library(
     srcs = [
         "__init__.py",
     ],
-    deps = ["//ncore/impl/sensors:pylib_camera_3_8"],
+    deps = [
+        "//ncore/impl/sensors:pylib_camera_3_8",
+        "//ncore/impl/sensors:pylib_lidar_3_8",
+    ],
 )
 
 pytest_test_3_8(

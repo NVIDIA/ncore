@@ -280,6 +280,7 @@ class ContainerDataWriter:
         xyz_e: np.ndarray,
         intensity: np.ndarray,
         timestamp_us: np.ndarray,
+        model_element: Optional[np.ndarray],  # model elements, if applicable
         # label data
         frame_labels: List[types.FrameLabel3],
         # poses
@@ -329,6 +330,11 @@ class ContainerDataWriter:
         assert timestamp_us.shape == (point_count,)
         assert timestamp_us.dtype == np.dtype("uint64")
         frame_group.create_dataset("timestamp_us", data=timestamp_us)
+
+        if model_element is not None:
+            assert model_element.shape == (point_count, 2)
+            assert model_element.dtype == np.dtype("uint16")
+            frame_group.create_dataset("model_element", data=model_element)
 
         # Store pose data
         frame_group.create_dataset("T_rig_worlds", data=T_rig_worlds)

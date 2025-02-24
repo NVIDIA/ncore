@@ -88,4 +88,64 @@ pytest_test_3_8(
     ],
 )
 
+py_library(
+    name = "pylib_lidar",
+    srcs = [
+        "lidar.py",
+    ],
+    deps = [
+        ":pylib_common",
+        "//ncore/impl/data:pylib_types",
+        requirement("numpy"),
+        requirement("scipy"),
+        requirement("torch"),
+    ],
+)
+
+py_library(
+    name = "pylib_lidar_3_8",
+    srcs = [
+        "lidar.py",
+    ],
+    deps = [
+        ":pylib_common_3_8",
+        "//ncore/impl/data:pylib_types_3_8",
+        requirement_3_8("numpy"),
+        requirement_3_8("scipy"),
+        requirement_3_8("torch"),
+    ],
+)
+
+pytest_test(
+    name = "pytest_lidar",
+    srcs = [
+        "lidar_test.py",
+    ],
+    data = ["//ncore/impl/sensors:test_data/row-offset-spinning-lidar-model-parameters.json"],
+    deps = [
+        ":pylib_common",
+        ":pylib_lidar",
+        "//ncore/impl/common:pylib_transformations",
+        requirement("numpy"),
+        requirement("torch"),
+        requirement("parameterized"),
+    ],
+)
+
+pytest_test_3_8(
+    name = "pytest_lidar_3_8",
+    srcs = [
+        "lidar_test.py",
+    ],
+    data = ["//ncore/impl/sensors:test_data/row-offset-spinning-lidar-model-parameters.json"],
+    deps = [
+        ":pylib_common_3_8",
+        ":pylib_lidar_3_8",
+        "//ncore/impl/common:pylib_transformations_3_8",
+        requirement_3_8("numpy"),
+        requirement_3_8("torch"),
+        requirement_3_8("parameterized"),
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")
