@@ -19,6 +19,7 @@ from .types import (
     FrameTimepoint,
     FThetaCameraModelParameters,
     OpenCVFisheyeCameraModelParameters,
+    RowOffsetStructuredSpinningLidarModelParameters,
     Poses,
     ShutterType,
     ReferencePolynomial,
@@ -625,6 +626,19 @@ class TestData3Reload(unittest.TestCase):
                     [np.array([0, 0, 0, 1])],
                 ]
             ).astype(np.float32),
+            ref_lidar_intrinsics := RowOffsetStructuredSpinningLidarModelParameters(
+                spinning_frequency_hz=10.0,
+                spinning_direction="ccw",
+                n_rows=128,
+                n_columns=3600,
+                fov_horiz_start_rad=-3.141592502593994,
+                fov_horiz_end_rad=3.141576051712036,
+                fov_vert_start_rad=0.2511354088783264,
+                fov_vert_end_rad=-0.4364195466041565,
+                row_elevations_rad=np.linspace(0.2511354088783264, -0.4364195466041565, 128, dtype=np.float32),
+                column_azimuths_rad=np.linspace(3.141576051712036, -3.141592502593994, 3600, dtype=np.float32),
+                row_azimuth_offsets_rad=np.linspace(0.0, 0.0, 128, dtype=np.float32),
+            ),
             ref_lidar_generic_meta_data := {"some-meta-data": np.random.rand(3, 2).tolist()},
         )
 
@@ -752,6 +766,9 @@ class TestData3Reload(unittest.TestCase):
         # Check lidars
         lidar_sensor = loader.get_lidar_sensor(ref_lidar_id)
         self.assertIsNone(np.testing.assert_array_equal(lidar_sensor.get_T_sensor_rig(), ref_lidar_extrinsics))
+        lidar_model_parameters = lidar_sensor.get_lidar_model_parameters()
+        self.assertIsInstance(lidar_model_parameters, RowOffsetStructuredSpinningLidarModelParameters)
+        self.assertEqual(lidar_model_parameters.to_dict(), ref_lidar_intrinsics.to_dict())
         self.assertEqual(lidar_sensor.get_generic_meta_data(), ref_lidar_generic_meta_data)
 
         self.assertIsNone(np.testing.assert_array_equal(lidar_sensor.get_frame_data(0, "xyz_s"), ref_lidar_xyz_s0))
