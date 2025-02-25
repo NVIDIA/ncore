@@ -124,7 +124,7 @@ class ContainerDataWriter:
 
     # To be called after all data was added
     def finalize(self) -> Path:
-        """Closes container and returns its path (optionally also writes shard meta data if requested)"""
+        """Closes container and returns its path (optionally also writes shard meta-data if requested)"""
 
         # Make sure the shard file is consolidated
         stores.consolidate_compressed_metadata(self.container_store)
@@ -188,7 +188,7 @@ class ContainerDataWriter:
         if camera_model_parameters.external_distortion_parameters:
             meta_data["external_distortion_type"] = camera_model_parameters.external_distortion_parameters.type()
 
-        # Store meta data
+        # Store meta-data
         (camera_grp := self.container_root[SENSORS_BASE_GROUP][CAMERAS_BASE_GROUP][camera_id]).attrs.put(meta_data)
 
         # Store timestamps
@@ -251,6 +251,8 @@ class ContainerDataWriter:
         frame_timestamps_us: np.ndarray,
         # extrinsics
         T_sensor_rig: np.ndarray,
+        # intrinsics
+        lidar_model_parameters: Optional[types.ConcreteLidarModelParametersUnion],
         # generic sensor meta-data (has to be json-serializable)
         generic_meta_data: Dict[str, JsonLike],
     ) -> None:
@@ -259,13 +261,19 @@ class ContainerDataWriter:
         assert frame_timestamps_us.shape[1:] == ()
         assert frame_timestamps_us.dtype == np.dtype("uint64")
 
-        # Store meta data
-        (lidar_grp := self.container_root[SENSORS_BASE_GROUP][LIDARS_BASE_GROUP][lidar_id]).attrs.put(
-            {
-                "T_sensor_rig": T_sensor_rig.tolist(),
-                "generic_meta_data": generic_meta_data,
-            }
-        )
+        # Prepare meta-data
+        meta_data = {
+            "T_sensor_rig": T_sensor_rig.tolist(),
+            "generic_meta_data": generic_meta_data,
+        }
+
+        # Store lidar model parameters, if available
+        if lidar_model_parameters:
+            meta_data["lidar_model_type"] = lidar_model_parameters.type()
+            meta_data["lidar_model_parameters"] = lidar_model_parameters.to_dict()
+
+        # Store meta-data
+        (lidar_grp := self.container_root[SENSORS_BASE_GROUP][LIDARS_BASE_GROUP][lidar_id]).attrs.put(meta_data)
 
         # Store timestamps
         lidar_grp.create_dataset("frame_timestamps_us", data=frame_timestamps_us)
@@ -280,6 +288,7 @@ class ContainerDataWriter:
         xyz_e: np.ndarray,
         intensity: np.ndarray,
         timestamp_us: np.ndarray,
+        model_element: Optional[np.ndarray],  # model elements, if applicable
         # label data
         frame_labels: List[types.FrameLabel3],
         # poses
@@ -330,6 +339,11 @@ class ContainerDataWriter:
         assert timestamp_us.dtype == np.dtype("uint64")
         frame_group.create_dataset("timestamp_us", data=timestamp_us)
 
+        if model_element is not None:
+            assert model_element.shape == (point_count, 2)
+            assert model_element.dtype == np.dtype("uint16")
+            frame_group.create_dataset("model_element", data=model_element)
+
         # Store pose data
         frame_group.create_dataset("T_rig_worlds", data=T_rig_worlds)
         frame_group.create_dataset("timestamps_us", data=timestamps_us)
@@ -354,7 +368,7 @@ class ContainerDataWriter:
         assert frame_timestamps_us.shape[1:] == ()
         assert frame_timestamps_us.dtype == np.dtype("uint64")
 
-        # Store meta data
+        # Store meta-data
         (radar_grp := self.container_root[SENSORS_BASE_GROUP][RADARS_BASE_GROUP][radar_id]).attrs.put(
             {
                 "T_sensor_rig": T_sensor_rig.tolist(),
@@ -726,7 +740,7 @@ class PointCloudSensor(Sensor):
 
         frame_group = self._get_frame_group(continuous_frame_index)
         if (point_count := frame_group.attrs.get("point_count")) is not None:
-            # point count stored explicitly in meta data
+            # point count stored explicitly in meta-data
             return point_count
 
         # legacy data: fall-back to zarr.Array size (meta-data, doesn't require decoding)
@@ -745,6 +759,29 @@ class LidarSensor(PointCloudSensor):
             types.FrameLabel3.from_dict(frame_label, infer_missing=True)
             for frame_label in self._get_frame_group(continuous_frame_index)["frame_labels"]
         ]
+
+    # Intrinsics
+    def get_lidar_model_parameters(
+        self,
+    ) -> Optional[types.ConcreteLidarModelParametersUnion]:
+        """Returns parameters specific to the lidars's intrinsic model, if available"""
+
+        lidar_model_type = self._sensor_meta.__dict__.get(
+            "lidar_model_type",
+            # Backwards-compatibility for data that didn't store lidar model parameters
+            None,
+        )
+
+        if lidar_model_type is None:
+            return None
+
+        lidar_model_parameters = self._sensor_meta.lidar_model_parameters
+
+        # Return typed lidar model parameters
+        if lidar_model_type == types.RowOffsetStructuredSpinningLidarModelParameters.type():
+            return types.RowOffsetStructuredSpinningLidarModelParameters.from_dict(lidar_model_parameters)
+
+        raise ValueError(f"Unknown lidar model type: {lidar_model_type}")
 
 
 class RadarSensor(PointCloudSensor):
@@ -877,7 +914,7 @@ class ShardDataLoader:
                 if not self._sequence_id == shard_sequence_id:
                     raise ValueError("Can't load shards from different sequences")
                 if not self._generic_meta_data == shard_generic_meta_data:
-                    raise ValueError("Can't load shards with different generic meta data")
+                    raise ValueError("Can't load shards with different generic meta-data")
                 if not self._camera_ids == shard_camera_ids:
                     raise ValueError("Can't load shards with different camera sensors")
                 if not self._lidar_ids == shard_lidar_ids:

@@ -1,4 +1,5 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
 """Package exposing methods related to NCORE's sensor types"""
 
 from ncore.impl.sensors.camera import (
@@ -10,6 +11,8 @@ from ncore.impl.sensors.camera import (
     BivariateWindshieldModel,
 )
 
+from ncore.impl.sensors.lidar import LidarModel, StructuredLidarModel, RowOffsetStructuredSpinningLidarModel
+
 __all__ = [
     "CameraModel",
     "FThetaCameraModel",
@@ -17,4 +20,7 @@ __all__ = [
     "OpenCVFisheyeCameraModel",
     "ExternalDistortion",
     "BivariateWindshieldModel",
+    "LidarModel",
+    "StructuredLidarModel",
+    "RowOffsetStructuredSpinningLidarModel",
 ]

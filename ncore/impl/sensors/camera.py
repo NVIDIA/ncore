@@ -31,11 +31,15 @@ class ExternalDistortion(ABC):
 
     def __init__(
         self,
-        device: torch.device,
-        dtype: torch.dtype = torch.float32,
+        device: Union[str, torch.device],
+        dtype: torch.dtype,
     ):
+        # Make sure device is a torch device
+        if isinstance(device, str):
+            device = torch.device(device)
+
         # Check if cuda device is actually available
-        if device == torch.device("cuda") and not torch.cuda.is_available():
+        if device.type == "cuda" and not torch.cuda.is_available():
             logging.warning("Cuda device selected but not available, reverting to CPU!")
             device = torch.device("cpu")
 
@@ -45,7 +49,7 @@ class ExternalDistortion(ABC):
     @staticmethod
     def maybe_from_parameters(
         external_distortion_parameters: Optional[types.ConcreteExternalDistortionParametersUnion],
-        device: torch.device,
+        device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
     ) -> Optional[ExternalDistortion]:
         """
@@ -98,18 +102,20 @@ class BivariateWindshieldModel(ExternalDistortion):
     def __init__(
         self,
         windshield_distortion_parameters: types.BivariateWindshieldModelParameters,
-        device: torch.device,
+        device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
     ):
         super().__init__(device, dtype)
 
-        self.horizontal_poly = to_torch(windshield_distortion_parameters.horizontal_poly, device=device, dtype=dtype)
-        self.vertical_poly = to_torch(windshield_distortion_parameters.vertical_poly, device=device, dtype=dtype)
+        self.horizontal_poly = to_torch(
+            windshield_distortion_parameters.horizontal_poly, device=self.device, dtype=dtype
+        )
+        self.vertical_poly = to_torch(windshield_distortion_parameters.vertical_poly, device=self.device, dtype=dtype)
         self.horizontal_poly_inverse = to_torch(
-            windshield_distortion_parameters.horizontal_poly_inverse, device=device, dtype=dtype
+            windshield_distortion_parameters.horizontal_poly_inverse, device=self.device, dtype=dtype
         )
         self.vertical_poly_inverse = to_torch(
-            windshield_distortion_parameters.vertical_poly_inverse, device=device, dtype=dtype
+            windshield_distortion_parameters.vertical_poly_inverse, device=self.device, dtype=dtype
         )
 
         # Compute the order of the polynomial
@@ -213,13 +219,19 @@ class CameraModel(ABC):
         ExternalDistortion
     ]  #: Source of distortion external to the camera (e.g. windshield). Can be left empty (None) if no such source exists. If a source exits, rays will be distorted prior to reaching the camera and it's associated lens distortion if applicable
 
-    def __init__(self, camera_model_parameters: types.CameraModelParameters, dtype: torch.dtype, device: str):
-        # Check if cuda device is actually available
-        if device == "cuda" and not torch.cuda.is_available():
-            logging.warning("Cuda device selected but not available, reverting to CPU!")
-            device = "cpu"
+    def __init__(
+        self, camera_model_parameters: types.CameraModelParameters, device: Union[str, torch.device], dtype: torch.dtype
+    ):
+        # Make sure device is a torch device
+        if isinstance(device, str):
+            device = torch.device(device)
 
-        self.device = torch.device(device)
+        # Check if cuda device is actually available
+        if device.type == "cuda" and not torch.cuda.is_available():
+            logging.warning("Cuda device selected but not available, reverting to CPU!")
+            device = torch.device("cpu")
+
+        self.device = device
         self.dtype = dtype
 
         self.resolution = to_torch(camera_model_parameters.resolution.astype(np.int32), device=self.device)
@@ -306,7 +318,7 @@ class CameraModel(ABC):
     @staticmethod
     def from_parameters(
         cam_model_parameters: types.ConcreteCameraModelParametersUnion,
-        device: str = "cuda",
+        device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
     ) -> CameraModel:
         """
@@ -1164,7 +1176,7 @@ class FThetaCameraModel(CameraModel):
     def __init__(
         self,
         camera_model_parameters: types.FThetaCameraModelParameters,
-        device: str = "cuda",
+        device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
         newton_iterations: int = 3,
         min_2d_norm: float = 1e-6,
@@ -1175,7 +1187,7 @@ class FThetaCameraModel(CameraModel):
         min_2d_norm: Threshold for 2d image_points-distances (relative to principal point) below which the principal ray
                      is returned in ray generation (for points close to the principal point). Needs to be positive
         """
-        super().__init__(camera_model_parameters, dtype, device)
+        super().__init__(camera_model_parameters, device, dtype)
 
         self.reference_poly = camera_model_parameters.reference_poly
 
@@ -1357,10 +1369,10 @@ class OpenCVPinholeCameraModel(CameraModel):
     def __init__(
         self,
         camera_model_parameters: types.OpenCVPinholeCameraModelParameters,
-        device: str = "cuda",
+        device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
     ):
-        super().__init__(camera_model_parameters, dtype, device)
+        super().__init__(camera_model_parameters, device, dtype)
 
         self.principal_point = to_torch(camera_model_parameters.principal_point, device=self.device, dtype=self.dtype)
         self.focal_length = to_torch(camera_model_parameters.focal_length, device=self.device, dtype=self.dtype)
@@ -1529,12 +1541,12 @@ class OpenCVFisheyeCameraModel(CameraModel):
     def __init__(
         self,
         camera_model_parameters: types.OpenCVFisheyeCameraModelParameters,
-        device: str = "cuda",
+        device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
         newton_iterations: int = 3,
         min_2d_norm: float = 1e-6,
     ):
-        super().__init__(camera_model_parameters, dtype, device)
+        super().__init__(camera_model_parameters, device, dtype)
 
         self.principal_point = to_torch(camera_model_parameters.principal_point, device=self.device, dtype=self.dtype)
         self.focal_length = to_torch(camera_model_parameters.focal_length, device=self.device, dtype=self.dtype)

@@ -19,6 +19,7 @@ from .types import (
     FrameTimepoint,
     FThetaCameraModelParameters,
     OpenCVFisheyeCameraModelParameters,
+    RowOffsetStructuredSpinningLidarModelParameters,
     Poses,
     ShutterType,
     ReferencePolynomial,
@@ -625,6 +626,19 @@ class TestData3Reload(unittest.TestCase):
                     [np.array([0, 0, 0, 1])],
                 ]
             ).astype(np.float32),
+            ref_lidar_intrinsics := RowOffsetStructuredSpinningLidarModelParameters(
+                spinning_frequency_hz=10.0,
+                spinning_direction="ccw",
+                n_rows=128,
+                n_columns=3600,
+                fov_horiz_start_rad=-3.141592502593994,
+                fov_horiz_end_rad=3.141576051712036,
+                fov_vert_start_rad=0.2511354088783264,
+                fov_vert_end_rad=-0.4364195466041565,
+                row_elevations_rad=np.linspace(0.2511354088783264, -0.4364195466041565, 128, dtype=np.float32),
+                column_azimuths_rad=np.linspace(3.141576051712036, -3.141592502593994, 3600, dtype=np.float32),
+                row_azimuth_offsets_rad=np.linspace(0.0, 0.0, 128, dtype=np.float32),
+            ),
             ref_lidar_generic_meta_data := {"some-meta-data": np.random.rand(3, 2).tolist()},
         )
 
@@ -635,6 +649,7 @@ class TestData3Reload(unittest.TestCase):
             ref_lidar_xyz_e0 := np.random.rand(5, 3).astype(np.float32),
             ref_lidar_intensity0 := np.random.rand(5).astype(np.float32),
             ref_lidar_timestamp_us0 := np.array([1, 2, 3, 4, 5], dtype=np.uint64),
+            ref_lidar_model_element0 := np.arange(5 * 2, dtype=np.uint16).reshape((5, 2)),
             [],
             T_rig_worlds.astype(np.float32),
             T_rig_world_timestamps_us,
@@ -652,6 +667,7 @@ class TestData3Reload(unittest.TestCase):
             ref_lidar_xyz_e1 := np.random.rand(4, 3).astype(np.float32),
             ref_lidar_intensity1 := np.random.rand(4).astype(np.float32),
             ref_lidar_timestamp_us1 := np.array([1, 2, 3, 4], dtype=np.uint64),
+            ref_lidar_model_element1 := np.arange(4 * 2, dtype=np.uint16).reshape((4, -1)),
             [],
             T_rig_worlds.astype(np.float32),
             T_rig_world_timestamps_us,
@@ -750,6 +766,9 @@ class TestData3Reload(unittest.TestCase):
         # Check lidars
         lidar_sensor = loader.get_lidar_sensor(ref_lidar_id)
         self.assertIsNone(np.testing.assert_array_equal(lidar_sensor.get_T_sensor_rig(), ref_lidar_extrinsics))
+        lidar_model_parameters = lidar_sensor.get_lidar_model_parameters()
+        self.assertIsInstance(lidar_model_parameters, RowOffsetStructuredSpinningLidarModelParameters)
+        self.assertEqual(lidar_model_parameters.to_dict(), ref_lidar_intrinsics.to_dict())
         self.assertEqual(lidar_sensor.get_generic_meta_data(), ref_lidar_generic_meta_data)
 
         self.assertIsNone(np.testing.assert_array_equal(lidar_sensor.get_frame_data(0, "xyz_s"), ref_lidar_xyz_s0))
@@ -760,6 +779,9 @@ class TestData3Reload(unittest.TestCase):
         )
         self.assertIsNone(
             np.testing.assert_array_equal(lidar_sensor.get_frame_data(0, "timestamp_us"), ref_lidar_timestamp_us0)
+        )
+        self.assertIsNone(
+            np.testing.assert_array_equal(lidar_sensor.get_frame_data(0, "model_element"), ref_lidar_model_element0)
         )
         self.assertFalse(lidar_sensor.has_frame_data(0, "dynamic_flag"))  # deprecated property
         self.assertEqual(lidar_sensor.get_frame_generic_meta_data(0), ref_lidar_generic_metadata0)
@@ -781,6 +803,9 @@ class TestData3Reload(unittest.TestCase):
         )
         self.assertIsNone(
             np.testing.assert_array_equal(lidar_sensor.get_frame_data(1, "timestamp_us"), ref_lidar_timestamp_us1)
+        )
+        self.assertIsNone(
+            np.testing.assert_array_equal(lidar_sensor.get_frame_data(1, "model_element"), ref_lidar_model_element1)
         )
         self.assertFalse(lidar_sensor.has_frame_data(1, "dynamic_flag"))  # deprecated property
         self.assertEqual(lidar_sensor.get_frame_generic_meta_data(1), ref_lidar_generic_metadata1)

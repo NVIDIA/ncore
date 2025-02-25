@@ -12,13 +12,15 @@ import numpy as np
 
 from scipy.spatial.transform import Rotation as R
 
+from ncore.impl.common.common import PoseInterpolator
 from scripts.util import NPArrayParamType
-from ncore.impl.data.data3 import ShardDataLoader, PointCloudSensor, CameraSensor
+from ncore.impl.data.data3 import ShardDataLoader, PointCloudSensor, CameraSensor, LidarSensor
 from ncore.impl.data import types
 from ncore.impl.data.util import padded_index_string
 from ncore.impl.common.transformations import se3_inverse, transform_point_cloud
 from ncore.impl.common.visualization import plot_points_on_image
 from ncore.impl.sensors.camera import CameraModel
+from ncore.impl.sensors.lidar import StructuredLidarModel
 
 
 def se3_matrix(se3_delta: np.ndarray) -> np.ndarray:
@@ -73,7 +75,7 @@ def se3_matrix(se3_delta: np.ndarray) -> np.ndarray:
 @click.option(
     "--pose",
     type=click.Choice(["rolling-shutter", "mean", "start", "end"]),
-    help="Per-pixel poses to use (rolling-shutter optimization, mean frame pose, start frame pose, end frame pose) ",
+    help="Per-pixel poses to use (rolling-shutter optimization, mean frame pose, start frame pose, end frame pose)",
     default="rolling-shutter",
 )
 @click.option("--output-dir", type=str, help="Path to the output folder if encoding images", required=False, default="")
@@ -83,7 +85,16 @@ def se3_matrix(se3_delta: np.ndarray) -> np.ndarray:
     default=False,
     help="Allow / disallow external distortion",
 )
+@click.option("--file-prefix", type=str, help="Prefix to prepend to output files", required=False, default="")
+@click.option("--file-suffix", type=str, help="Suffix to append to output files", required=False, default="")
 @click.option("--encode-images/--no-encode-images", is_flag=True, default=False, help="Encode image files for frames")
+@click.option(
+    "--lidar-model/--no-lidar-model",
+    "enable_lidar_model",
+    is_flag=True,
+    default=False,
+    help="Use lidar-model for point cloud generation",
+)
 @click.option(
     "--timestamp-image-names/--no-timestamp-image-names",
     is_flag=True,
@@ -104,7 +115,10 @@ def ncore_project_pc_to_img(
     pose: str,
     output_dir: str,
     external_distortion: bool,
+    file_prefix: str,
+    file_suffix: str,
     encode_images: bool,
+    enable_lidar_model: bool,
     timestamp_image_names: bool,
 ):
     """Projects the point cloud to the camera image, comparing projection w. and w/o rolling shutter compensation"""
@@ -128,6 +142,34 @@ def ncore_project_pc_to_img(
     T_sensor_rig = se3_matrix(sensor_extrinsic_delta) @ pc_sensor.get_T_sensor_rig()
     T_camera_rig = se3_matrix(camera_extrinsic_delta) @ cam_sensor.get_T_sensor_rig()
 
+    poses = loader.get_poses()
+    pose_interpolator = PoseInterpolator(poses.T_rig_worlds, poses.T_rig_world_timestamps_us)
+
+    msg = f"Camera torch model @ {device} | projection with {pose} poses"
+
+    # Initialize the camera model on requested device
+    cam_model_params = cam_sensor.get_camera_model_parameters()
+
+    # Drop external distortion if not allowed
+    if not external_distortion:
+        cam_model_params = dataclasses.replace(cam_model_params, external_distortion_parameters=None)
+
+    if cam_model_params.external_distortion_parameters is not None:
+        msg += " | with external distortion"
+
+    cam_model = CameraModel.from_parameters(cam_model_params, device=device)
+
+    # Initialize the lidar model if requested
+    lidar_model: Optional[StructuredLidarModel] = None
+    if enable_lidar_model:
+        assert isinstance(pc_sensor, LidarSensor), "only lidar sensors are supported for lidar model"
+
+        lidar_model = StructuredLidarModel.maybe_from_parameters(pc_sensor.get_lidar_model_parameters(), device=device)
+
+        assert lidar_model is not None, f"No structured lidar model available for lidar sensor {sensor_id}"
+
+        msg += " | with structured lidar model"
+
     for frame_index in tqdm.tqdm(indices):
         # Get the camera timestamp and find the closes lidar frame
         cam_timestamp = cam_sensor.get_frame_timestamp_us(frame_index)
@@ -136,6 +178,45 @@ def ncore_project_pc_to_img(
         # Load the camera image and the point cloud
         img_frame = cam_sensor.get_frame_image_array(frame_index)
         pc = pc_sensor.get_frame_data(pc_frame_index, "xyz_e")
+
+        if lidar_model is not None:
+            ## Generate sensor points from model elements
+            sensor_pc = (
+                lidar_model.elements_to_sensor_points(
+                    pc_sensor.get_frame_data(pc_frame_index, "model_element"),
+                    np.linalg.norm(pc - pc_sensor.get_frame_data(pc_frame_index, "xyz_s"), axis=1),
+                )
+                .cpu()
+                .numpy()
+            )
+
+            ## Perform motion-compensation
+
+            # Interpolate egomotion at frame end timestamp for sensor reference pose at end-of-spin time
+            frame_end_timestamp_us = pc_sensor.get_frame_timestamp_us(pc_frame_index, types.FrameTimepoint.END)
+            T_world_sensorRef = se3_inverse(
+                pose_interpolator.interpolate_to_timestamps(frame_end_timestamp_us)[0] @ T_sensor_rig
+            )
+
+            # Determine unique timestamps to only perform actually required pose interpolations (a lot of points share the same timestamp)
+            timestamp_unique, unique_timestamp_reverse_idxs = np.unique(
+                pc_sensor.get_frame_data(pc_frame_index, "timestamp_us"), return_inverse=True
+            )
+
+            # Lidar frame poses for each point (will throw in case invalid timestamps are loaded) expressed in the reference sensor's frame
+            # sensor_sensorRef = world_sensorRef * sensor_world = world_sensorRef * (rig_world * sensor_rig)
+            T_sensor_sensorRef_unique = (
+                T_world_sensorRef @ pose_interpolator.interpolate_to_timestamps(timestamp_unique) @ T_sensor_rig
+            )
+
+            # Pick sensor positions (in end-of-spin reference pose) for each start point (blow up to original potentially non-unique timestamp range)
+            xyz_s = T_sensor_sensorRef_unique[unique_timestamp_reverse_idxs, :3, -1]  # N x 3
+
+            xyz = (T_sensor_sensorRef_unique[unique_timestamp_reverse_idxs, :3, :3] @ sensor_pc[:, :, None]).squeeze(
+                -1
+            ) + xyz_s  # N x 3
+
+            pc = xyz
 
         # Transform the point cloud to the world coordinate frame
         pc = transform_point_cloud(pc, pc_sensor.get_frame_T_rig_world(pc_frame_index) @ T_sensor_rig)
@@ -147,21 +228,16 @@ def ncore_project_pc_to_img(
             cam_sensor.get_frame_T_rig_world(frame_index, types.FrameTimepoint.END) @ T_camera_rig
         )
 
-        # Initialize the camera model on requested device
-        cam_model_params = cam_sensor.get_camera_model_parameters()
-
-        # Drop external distortion if not allowed
-        if not external_distortion:
-            cam_model_params = dataclasses.replace(cam_model_params, external_distortion_parameters=None)
-
-        cam_model = CameraModel.from_parameters(cam_model_params, device=device)
-
-        logger.info(f"Starting the projection with torch implementation on device={device}")
+        logger.info(msg)
 
         match pose:
             case "rolling-shutter":
                 world_point_projections = cam_model.world_points_to_image_points_shutter_pose(
-                    pc, T_world_camera_start, T_world_camera_end, return_valid_indices=True, return_T_world_sensors=True
+                    pc,
+                    T_world_camera_start,
+                    T_world_camera_end,
+                    return_valid_indices=True,
+                    return_T_world_sensors=True,
                 )
 
             case "mean":
@@ -193,14 +269,14 @@ def ncore_project_pc_to_img(
             output_path.mkdir(parents=True, exist_ok=True)
 
             if timestamp_image_names:
-                save_path = output_path / (str(cam_timestamp) + ".png")
+                save_path = output_path / (file_prefix + str(cam_timestamp) + file_suffix + ".png")
             else:
-                save_path = output_path / (padded_index_string(frame_index) + ".png")
+                save_path = output_path / (file_prefix + padded_index_string(frame_index) + file_suffix + ".png")
 
         plot_points_on_image(
             np.concatenate((image_point_coords[:, :2], dist_rs), axis=1),
             img_frame,
-            f"Projection with {pose} poses (torch implementation @ {device})" if not encode_images else "",
+            msg if not encode_images else "",
             point_size=point_size,
             show=not encode_images,
             save_path=str(save_path),
