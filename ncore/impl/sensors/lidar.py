@@ -71,11 +71,15 @@ class LidarModel(ABC):
 
     def __init__(
         self,
-        device: torch.device = torch.device("cuda"),
-        dtype: torch.dtype = torch.float32,
+        device: Union[str, torch.device],
+        dtype: torch.dtype,
     ):
+        # Make sure device is a torch device
+        if isinstance(device, str):
+            device = torch.device(device)
+
         # Check if cuda device is actually available
-        if device == torch.device("cuda") and not torch.cuda.is_available():
+        if device.type == "cuda" and not torch.cuda.is_available():
             logging.warning("Cuda device selected but not available, reverting to CPU!")
             device = torch.device("cpu")
 
@@ -85,7 +89,7 @@ class LidarModel(ABC):
     @staticmethod
     def maybe_from_parameters(
         lidar_model_parameters: Optional[types.ConcreteLidarModelParametersUnion],
-        device: torch.device,
+        device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
     ) -> Optional[LidarModel]:
         """
@@ -118,7 +122,7 @@ class StructuredLidarModel(LidarModel, ABC):
     @staticmethod
     def maybe_from_parameters(
         lidar_model_parameters: Optional[types.ConcreteLidarModelParametersUnion],
-        device: torch.device,
+        device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
     ) -> Optional[StructuredLidarModel]:
         """
@@ -173,7 +177,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         angles_to_columns_map_resolution_factor: int = 3,
         angles_to_columns_map_dtype=torch.int16,
         angles_to_columns_map_init=False,
-        device: torch.device = torch.device("cuda"),
+        device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
     ):
         super().__init__(device=device, dtype=dtype)
