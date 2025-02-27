@@ -36,6 +36,7 @@ The SDK is developed within the Nvidia Toronto AI Lab.
    :name: tutorials
 
    tutorial/data_loading
+   tutorial/data_sanity_check
 
 .. note:: 
    This project is under active development.
