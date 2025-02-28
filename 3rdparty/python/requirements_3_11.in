@@ -5,7 +5,7 @@ pytest
 parameterized
 
 # Public API dependencies
-numpy
+numpy<2 # torch-1.x is build against numpy-1.x, but doesn't explicitly state this requirement
 dataclasses-json>=0.2.11 # deserialization fails with earlier versions
 pillow
 # zarr version restrictions:
@@ -33,5 +33,6 @@ debugpy
 # Docs / tools dependencies
 jupyter_server
 sphinx
-sphinx_rtd_theme
+sphinx-rtd-theme
 nbsphinx
+nbconvert

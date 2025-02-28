@@ -1343,13 +1343,14 @@ class FThetaCameraModel(CameraModel):
         )  # explicitly check for strictly smaller angles to classify FOV-clamped points as invalid
         valid = valid_x & valid_y & valid_thetas
 
-        jacobians: Optional[torch.Tensor] = None
         if return_jacobians:
             # Evaluate Jacobians of valid points by gradients of both output dimensions
             jacobians = torch.empty((len(cam_rays), 2, 3), dtype=self.dtype, device=self.device)
 
             initial_gradient = torch.ones((len(cam_rays),), dtype=self.dtype, device=self.device)
             image_points[:, 0].backward(gradient=initial_gradient, retain_graph=True)
+
+            assert cam_rays.grad is not None
             jacobians[:, 0] = cam_rays.grad
 
             cam_rays.grad.zero_()
@@ -1360,6 +1361,8 @@ class FThetaCameraModel(CameraModel):
             # Cleanup for other backprop users
             cam_rays.grad.zero_()
             cam_rays.requires_grad = initial_requires_grad
+        else:
+            jacobians = None
 
         # If the input was numpy, return numpy arrays as well
         return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
@@ -1468,19 +1471,22 @@ class OpenCVPinholeCameraModel(CameraModel):
         valid_pts = valid_x & valid_y & valid_radial
         valid[valid_idx[~valid_pts]] = False
 
-        jacobians: Optional[torch.Tensor] = None
         if return_jacobians:
             # Evaluate Jacobians of valid points by gradients of both output dimensions
             jacobians = torch.zeros((len(cam_rays), 2, 3), dtype=self.dtype, device=self.device)
 
             initial_gradient = torch.ones((len(valid_idx),), dtype=self.dtype, device=self.device)
             image_points[valid_idx, 0].backward(gradient=initial_gradient, retain_graph=True, inputs=cam_rays_valid)
+
+            assert cam_rays_valid.grad is not None
             jacobians[valid_idx, 0] = cam_rays_valid.grad
 
             cam_rays_valid.grad.zero_()
 
             image_points[valid_idx, 1].backward(gradient=initial_gradient)
             jacobians[valid_idx, 1] = cam_rays_valid.grad
+        else:
+            jacobians = None
 
         return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
 
@@ -1652,13 +1658,14 @@ class OpenCVFisheyeCameraModel(CameraModel):
         )  # explicitly check for strictly smaller angles to classify FOV-clamped points as invalid
         valid = valid_x & valid_y & valid_alphas
 
-        jacobians: Optional[torch.Tensor] = None
         if return_jacobians:
             # Evaluate Jacobians of valid points by gradients of both output dimensions
             jacobians = torch.empty((len(cam_rays), 2, 3), dtype=self.dtype, device=self.device)
 
             initial_gradient = torch.ones((len(cam_rays),), dtype=self.dtype, device=self.device)
             image_points[:, 0].backward(gradient=initial_gradient, retain_graph=True)
+
+            assert cam_rays.grad is not None
             jacobians[:, 0] = cam_rays.grad
 
             cam_rays.grad.zero_()
@@ -1669,5 +1676,7 @@ class OpenCVFisheyeCameraModel(CameraModel):
             # Cleanup for other backprop users
             cam_rays.grad.zero_()
             cam_rays.requires_grad = initial_requires_grad
+        else:
+            jacobians = None
 
         return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
