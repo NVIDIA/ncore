@@ -171,7 +171,7 @@ class ContainerDataWriter:
         # generic sensor meta-data (needs to be json-serializable)
         generic_meta_data: Dict[str, JsonLike],
     ) -> None:
-        assert T_sensor_rig.shape == (4, 4)
+        assert np.shape(T_sensor_rig) == (4, 4)
         assert T_sensor_rig.dtype == np.dtype("float32")
         assert frame_timestamps_us.ndim == 1
         assert frame_timestamps_us.dtype == np.dtype("uint64")
@@ -219,9 +219,9 @@ class ContainerDataWriter:
         generic_meta_data: Dict[str, JsonLike],
     ) -> None:
         # sanity / consistency checks
-        assert T_rig_worlds.shape == (2, 4, 4)
+        assert np.shape(T_rig_worlds) == (2, 4, 4)
         assert T_rig_worlds.dtype == np.dtype("float32")
-        assert timestamps_us.shape == (2,)
+        assert np.shape(timestamps_us) == (2,)
         assert timestamps_us.dtype == np.dtype("uint64")
 
         # Initialize frame
@@ -256,9 +256,9 @@ class ContainerDataWriter:
         # generic sensor meta-data (has to be json-serializable)
         generic_meta_data: Dict[str, JsonLike],
     ) -> None:
-        assert T_sensor_rig.shape == (4, 4)
+        assert np.shape(T_sensor_rig) == (4, 4)
         assert T_sensor_rig.dtype == np.dtype("float32")
-        assert frame_timestamps_us.shape[1:] == ()
+        assert np.shape(frame_timestamps_us)[1:] == ()
         assert frame_timestamps_us.dtype == np.dtype("uint64")
 
         # Prepare meta-data
@@ -300,13 +300,13 @@ class ContainerDataWriter:
     ) -> None:
         # sanity / consistency checks
         assert xyz_e.ndim == 2
-        assert xyz_e.shape[1] == 3
+        assert np.shape(xyz_e)[1] == 3
         assert xyz_e.dtype == np.dtype("float32")
-        point_count = xyz_e.shape[0]
+        point_count = len(xyz_e)
 
-        assert T_rig_worlds.shape == (2, 4, 4)
+        assert np.shape(T_rig_worlds) == (2, 4, 4)
         assert T_rig_worlds.dtype == np.dtype("float32")
-        assert timestamps_us.shape == (2,)
+        assert np.shape(timestamps_us) == (2,)
         assert timestamps_us.dtype == np.dtype("uint64")
 
         # Initialize frame
@@ -365,7 +365,7 @@ class ContainerDataWriter:
     ) -> None:
         assert T_sensor_rig.shape == (4, 4)
         assert T_sensor_rig.dtype == np.dtype("float32")
-        assert frame_timestamps_us.shape[1:] == ()
+        assert np.shape(frame_timestamps_us)[1:] == ()
         assert frame_timestamps_us.dtype == np.dtype("uint64")
 
         # Store meta-data
@@ -397,13 +397,13 @@ class ContainerDataWriter:
         # sanity / consistency checks
 
         assert xyz_e.ndim == 2
-        assert xyz_e.shape[1] == 3
+        assert np.shape(xyz_e)[1] == 3
         assert xyz_e.dtype == np.dtype("float32")
-        point_count = xyz_e.shape[0]
+        point_count = len(xyz_e)
 
-        assert T_rig_worlds.shape == (2, 4, 4)
+        assert np.shape(T_rig_worlds) == (2, 4, 4)
         assert T_rig_worlds.dtype == np.dtype("float32")
-        assert timestamps_us.shape == (2,)
+        assert np.shape(timestamps_us) == (2,)
         assert timestamps_us.dtype == np.dtype("uint64")
 
         # Initialize frame
@@ -417,7 +417,7 @@ class ContainerDataWriter:
 
         frame_group.create_dataset("xyz_e", data=xyz_e)
 
-        assert xyz_s.shape == (point_count, 3)
+        assert np.shape(xyz_s) == (point_count, 3)
         assert xyz_s.dtype == np.dtype("float32")
         frame_group.create_dataset("xyz_s", data=xyz_s)
 
@@ -965,7 +965,7 @@ class ShardDataLoader:
 
         # Concat all poses from all shards, making sure they are uniquely timestamped and sorted
         T_rig_worlds = []
-        T_rig_world_timestamps_us = []
+        T_rig_world_timestamps_us_list = []
         for shard_root in self._shard_roots[start_shard_idx:stop_shard_idx]:
             shard_T_rig_worlds = shard_root["poses"]["T_rig_worlds"][()]
             shard_T_rig_world_timestamps_us = shard_root["poses"]["T_rig_world_timestamps_us"][()]
@@ -977,12 +977,12 @@ class ShardDataLoader:
                 raise ValueError(f"Pose timestamps not strictly monotonically increasing for shard: {shard_root}")
 
             T_rig_worlds.append(shard_T_rig_worlds)
-            T_rig_world_timestamps_us.append(shard_T_rig_world_timestamps_us)
+            T_rig_world_timestamps_us_list.append(shard_T_rig_world_timestamps_us)
 
         # Shards are allowed to have *single* overlapping poses across their boundary - remove these via unique search -
         # and make sure that pose timestamps are ordered in strictly monotonically increasing order afterwards
         T_rig_world_timestamps_us, unique_idxs, unique_counts = np.unique(
-            np.hstack(T_rig_world_timestamps_us), return_index=True, return_counts=True
+            np.hstack(T_rig_world_timestamps_us_list), return_index=True, return_counts=True
         )
 
         # Verify that overlapping poses showed up duplicated only once after concatenation
@@ -993,9 +993,7 @@ class ShardDataLoader:
         if not np.all(unique_idxs[:-1] < unique_idxs[1:]):
             raise ValueError(f"Concatenated pose timestamps not strictly monotonically increasing")
 
-        return types.Poses(
-            np.array(T_rig_world_base), np.vstack(T_rig_worlds)[unique_idxs], np.hstack(T_rig_world_timestamps_us)
-        )
+        return types.Poses(np.array(T_rig_world_base), np.vstack(T_rig_worlds)[unique_idxs], T_rig_world_timestamps_us)
 
     def get_sequence_id(self, with_shard_range: bool = False) -> str:
         """Provides access to a unique identifier of the loaded shard data, optionally including the linear range of shards

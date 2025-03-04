@@ -5,7 +5,7 @@ pytest
 parameterized
 
 # Public API dependencies
-numpy
+numpy<2 # torch-1.x is build against numpy-1.x, but doesn't explicitly state this requirement
 dataclasses-json>=0.2.11 # deserialization fails with earlier versions
 pillow
 # zarr version restrictions:
@@ -16,7 +16,7 @@ cbor2
 scipy
 
 --find-links https://download.pytorch.org/whl/torch_stable.html
-torch==1.12.0+cu116
+torch==1.13.0+cu116
 
 # Script dependencies
 tqdm
@@ -25,13 +25,16 @@ pyside6
 opencv-python
 point-cloud-utils>=0.30.2
 click
-open3d
-tensorflow~=2.8.2 # required by open3d.ml.tf
 multimethod
 debugpy
+
+--extra-index-url https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple
+open3d==0.19.0 --hash=sha256:daab2f7c79285552e5efaca0212f1e76de7e3d9666867f3c9a5b531d2545c42b
+tensorflow~=2.16.0 # required by open3d.ml.tf
 
 # Docs / tools dependencies
 jupyter_server
 sphinx
-sphinx_rtd_theme
+sphinx-rtd-theme
 nbsphinx
+nbconvert

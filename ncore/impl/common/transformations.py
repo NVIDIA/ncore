@@ -221,9 +221,9 @@ def is_within_3d_bboxes(pc: np.ndarray, bboxes: np.ndarray) -> np.ndarray:
         point_in_bboxes; [N,M] boolean array.
     """
 
-    assert pc.shape[1] == 3, "Wrong PC input size"
-    assert len(bboxes.shape) == 2, "bboxes need to be a 2D numpy array"
-    assert bboxes.shape[1] == 9, "bboxes need to be a 2D numpy array"
+    assert np.shape(pc)[1] == 3, "Wrong PC input size"
+    assert np.ndim(bboxes) == 2, "bboxes need to be a 2D numpy array"
+    assert np.shape(bboxes)[1] == 9, "bboxes need to be a 2D numpy array"
 
     centers = bboxes[..., 0:3]
     dims = bboxes[..., 3:6]
@@ -272,9 +272,9 @@ def se3_inverse(T: np.ndarray, unbatch: bool = True) -> np.ndarray:
 
     # batch dimensions unconditionally
     T = T.reshape((-1, 4, 4))
-    ret = np.stack([np.eye(4, dtype=T.dtype)] * T.shape[0], axis=0)
+    ret = np.stack([np.eye(4, dtype=T.dtype)] * len(T), axis=0)
     ret[:, :3, :3] = (Rt := T[:, :3, :3].transpose(0, 2, 1))
-    ret[:, :3, 3:] = -Rt @ T[:, :3, 3:]
+    ret[:, :3, 3:] = np.negative(Rt @ T[:, :3, 3:])
 
     if unbatch:  # unbatch dimensions conditionally
         ret = ret.squeeze()
