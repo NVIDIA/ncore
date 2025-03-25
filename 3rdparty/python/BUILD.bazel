@@ -14,6 +14,7 @@ compile_pip_requirements_3_11(
     requirements_txt = "requirements_3_11.txt",
     tags = [
         "manual",
+        "no-mypy",
     ],
 )
 
@@ -26,6 +27,7 @@ compile_pip_requirements_3_8(
     requirements_txt = "requirements_3_8.txt",
     tags = [
         "manual",
+        "no-mypy",
     ],
 )
 

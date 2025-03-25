@@ -13,7 +13,7 @@ import sys
 
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Tuple, Union, List
+from typing import Optional, Tuple, Union, List, cast
 from dataclasses import dataclass
 
 import numpy as np
@@ -351,7 +351,7 @@ def time_bounds(timestamps_us: List[int], seek_sec: Optional[float], duration_se
 
 def uniform_subdivide_range(
     subdiv_id: int, subdiv_count: int, range_start: int, range_end: int
-) -> Tuple[np.ndarray, np.int64]:
+) -> Tuple[np.ndarray, int]:
     """
     Splits the index range range_start:range_end into (approximately) uniform intervals
     based on the requested number of subvisions.
@@ -381,7 +381,7 @@ def uniform_subdivide_range(
     split_range = np.array_split(np.arange(range_start, range_end), subdiv_count)
 
     # Grab local range
-    local_range = split_range[subdiv_id]
+    local_range = cast(np.ndarray, split_range[subdiv_id])
 
     return local_range, local_range[0] - range_start if len(local_range) else -1
 

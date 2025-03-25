@@ -155,6 +155,8 @@
     "https://bcr.bazel.build/modules/rules_multitool/0.4.0/MODULE.bazel": "15517987d5c00c9e7faab41fbe22ee67a350b6eabcc1e08baded5c6d9025897f",
     "https://bcr.bazel.build/modules/rules_multitool/1.0.0/MODULE.bazel": "7f75dc8378368a10dcedcff6cbfee8254fff10748a219a6cb8de94fde4b6a574",
     "https://bcr.bazel.build/modules/rules_multitool/1.0.0/source.json": "5b92dc9b267b024bb2174bdf5d8e32821abb53fd84545e00699c4e35826a1c78",
+    "https://bcr.bazel.build/modules/rules_mypy/0.29.0/MODULE.bazel": "7c12bf9e6de8f8438e26f406e87793455037895997f4695d48cfc58c792fc70b",
+    "https://bcr.bazel.build/modules/rules_mypy/0.29.0/source.json": "610fd6f7f998793e3935acf4c48ca50ece7f84577c5206c820c907f2de83ed67",
     "https://bcr.bazel.build/modules/rules_nodejs/5.8.2/MODULE.bazel": "6bc03c8f37f69401b888023bf511cb6ee4781433b0cb56236b2e55a21e3a026a",
     "https://bcr.bazel.build/modules/rules_nodejs/5.8.2/source.json": "6e82cf5753d835ea18308200bc79b9c2e782efe2e2a4edc004a9162ca93382ca",
     "https://bcr.bazel.build/modules/rules_oci/2.2.0/MODULE.bazel": "70c17da97cb2ba42e46c7aa640fec65d23a325c5d4fc01a83b2592e1b3fb5f3e",
@@ -177,11 +179,14 @@
     "https://bcr.bazel.build/modules/rules_python/0.31.0/MODULE.bazel": "93a43dc47ee570e6ec9f5779b2e64c1476a6ce921c48cc9a1678a91dd5f8fd58",
     "https://bcr.bazel.build/modules/rules_python/0.4.0/MODULE.bazel": "9208ee05fd48bf09ac60ed269791cf17fb343db56c8226a720fbb1cdf467166c",
     "https://bcr.bazel.build/modules/rules_python/0.40.0/MODULE.bazel": "9d1a3cd88ed7d8e39583d9ffe56ae8a244f67783ae89b60caafc9f5cf318ada7",
+    "https://bcr.bazel.build/modules/rules_python/1.1.0/MODULE.bazel": "57e01abae22956eb96d891572490d20e07d983e0c065de0b2170cafe5053e788",
     "https://bcr.bazel.build/modules/rules_python/1.2.0/MODULE.bazel": "5aeeb48b2a6c19d668b48adf2b8a2b209a6310c230db0ce77450f148a89846e4",
     "https://bcr.bazel.build/modules/rules_python/1.2.0/source.json": "5b7892685c9a843526fd5a31e7d7a93eb819c59fd7b7fc444b5b143558e1b073",
     "https://bcr.bazel.build/modules/rules_shell/0.2.0/MODULE.bazel": "fda8a652ab3c7d8fee214de05e7a9916d8b28082234e8d2c0094505c5268ed3c",
     "https://bcr.bazel.build/modules/rules_shell/0.3.0/MODULE.bazel": "de4402cd12f4cc8fda2354fce179fdb068c0b9ca1ec2d2b17b3e21b24c1a937b",
     "https://bcr.bazel.build/modules/rules_shell/0.3.0/source.json": "c55ed591aa5009401ddf80ded9762ac32c358d2517ee7820be981e2de9756cf3",
+    "https://bcr.bazel.build/modules/rules_uv/0.21.0/MODULE.bazel": "7caa29ceff534212fb1ab942ec963cb66097c1236e5640a99010a2a945fcab46",
+    "https://bcr.bazel.build/modules/rules_uv/0.21.0/source.json": "6850f013aafc826c49f03cc0087d4a74d1e190ea82d2b7f0d1b2fe864c5f00f8",
     "https://bcr.bazel.build/modules/stardoc/0.5.0/MODULE.bazel": "f9f1f46ba8d9c3362648eea571c6f9100680efc44913618811b58cc9c02cd678",
     "https://bcr.bazel.build/modules/stardoc/0.5.1/MODULE.bazel": "1a05d92974d0c122f5ccf09291442580317cdd859f07a8655f1db9a60374f9f8",
     "https://bcr.bazel.build/modules/stardoc/0.5.3/MODULE.bazel": "c7f6948dae6999bf0db32c1858ae345f112cacf98f174c7a8bb707e41b974f1c",
@@ -1365,13 +1370,14 @@
     },
     "@@rules_python+//python/extensions:pip.bzl%pip": {
       "general": {
-        "bzlTransitiveDigest": "wSQJLy5Wz3URsq4FN5qSdxUIWOiE+FaSpYHmi/644Bg=",
-        "usagesDigest": "Wjc2k/MVh0NphOsW+HIVwwJ/nnVimGEr/3PZb//kJ9Y=",
+        "bzlTransitiveDigest": "PizZQH+PcidDpcTu+cV67RWyLSMyYTFv+6we86D09yc=",
+        "usagesDigest": "+vPtX40ivYHYTwOm4zmjGKn6bzmXmG4nB5Y2wzcVq1M=",
         "recordedFileInputs": {
-          "@@//3rdparty/python/requirements_3_11.txt": "295372567066c8c0540db648e238099f17193564cd25422a561131435c9e9b4d",
+          "@@//3rdparty/python/requirements_3_11.txt": "2a4d5d456edf6ecdfcb036e26973c3aaf1f273fba1f3bf98136fdada3d1f8f7b",
           "@@//3rdparty/python/requirements_3_8.txt": "4e5d44f0841a9ace04e39f54ad74c112b35056241ef8f18f45abae332ddaeabd",
           "@@protobuf+//python/requirements.txt": "983be60d3cec4b319dcab6d48aeb3f5b2f7c3350f26b3a9e97486c37967c73c5",
           "@@rules_fuzzing+//fuzzing/requirements.txt": "ab04664be026b632a0d2a2446c4f65982b7654f5b6851d2f9d399a19b7242a5b",
+          "@@rules_mypy+//mypy/private/requirements.txt": "5fef4723b02210e3f231d2b55e4894e43d669077b30e91e4303f5c14115af981",
           "@@rules_python+//tools/publish/requirements_darwin.txt": "095d4a4f3d639dce831cd493367631cd51b53665292ab20194bac2c0c6458fa8",
           "@@rules_python+//tools/publish/requirements_linux.txt": "d576e0d8542df61396a9b38deeaa183c24135ed5e8e73bb9622f298f2671811e",
           "@@rules_python+//tools/publish/requirements_windows.txt": "d18538a3982beab378fd5687f4db33162ee1ece69801f9a451661b1b64286b76"
@@ -1387,10 +1393,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1402,10 +1408,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1417,10 +1423,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1432,10 +1438,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1447,10 +1453,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1462,10 +1468,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1477,10 +1483,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1492,10 +1498,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1507,10 +1513,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1522,10 +1528,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1537,10 +1543,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1552,10 +1558,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1567,10 +1573,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1582,10 +1588,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1597,10 +1603,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1612,10 +1618,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1627,10 +1633,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1642,10 +1648,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1657,10 +1663,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1672,10 +1678,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1687,10 +1693,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1702,10 +1708,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1717,10 +1723,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1732,10 +1738,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1747,10 +1753,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1762,10 +1768,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1777,10 +1783,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1792,10 +1798,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1807,10 +1813,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1822,10 +1828,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1837,10 +1843,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1852,10 +1858,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1867,10 +1873,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1882,10 +1888,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1897,10 +1903,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1912,10 +1918,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1927,10 +1933,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1942,10 +1948,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1957,10 +1963,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1972,10 +1978,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -1987,10 +1993,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2002,10 +2008,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2017,10 +2023,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2032,10 +2038,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2047,10 +2053,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2062,10 +2068,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2077,10 +2083,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2092,10 +2098,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2107,10 +2113,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2122,10 +2128,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2137,10 +2143,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2152,10 +2158,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2167,10 +2173,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2182,10 +2188,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2197,10 +2203,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2212,10 +2218,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2227,10 +2233,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2242,10 +2248,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2257,10 +2263,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2272,10 +2278,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2287,10 +2293,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2302,10 +2308,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2317,10 +2323,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2332,10 +2338,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2347,10 +2353,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2362,10 +2368,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2377,10 +2383,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2392,10 +2398,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2407,10 +2413,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2422,10 +2428,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2437,10 +2443,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2452,10 +2458,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2467,10 +2473,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2482,10 +2488,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2497,10 +2503,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2512,10 +2518,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2527,10 +2533,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2542,10 +2548,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2557,14 +2563,29 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
               "requirement": "multimethod==2.0 --hash=sha256:45aa231dc9dbb7f980c0f2ad8179e2c2b72a8cd5c7d7534337be66dde29d35be --hash=sha256:c628b6d2e7d61fbe58484dd884d990901e8314faf58af062e72b65e3423cb109"
+            }
+          },
+          "ncore_pip_deps_311_mypy": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "extra_pip_args": [
+                "--extra-index-url",
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
+              ],
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "mypy==1.15.0 --hash=sha256:1124a18bc11a6a62887e3e137f37f53fbae476dc36c185d549d4f837a2a6a14e --hash=sha256:171a9ca9a40cd1843abeca0e405bc1940cd9b305eaeea2dda769ba096932bb22 --hash=sha256:1905f494bfd7d85a23a88c5d97840888a7bd516545fc5aaedff0267e0bb54e2f --hash=sha256:1fbb8da62dc352133d7d7ca90ed2fb0e9d42bb1a32724c287d3c76c58cbaa9c2 --hash=sha256:2922d42e16d6de288022e5ca321cd0618b238cfc5570e0263e5ba0a77dbef56f --hash=sha256:2e2c2e6d3593f6451b18588848e66260ff62ccca522dd231cd4dd59b0160668b --hash=sha256:2ee2d57e01a7c35de00f4634ba1bbf015185b219e4dc5909e281016df43f5ee5 --hash=sha256:2f2147ab812b75e5b5499b01ade1f4a81489a147c01585cda36019102538615f --hash=sha256:404534629d51d3efea5c800ee7c42b72a6554d6c400e6a79eafe15d11341fd43 --hash=sha256:5469affef548bd1895d86d3bf10ce2b44e33d86923c29e4d675b3e323437ea3e --hash=sha256:5a95fb17c13e29d2d5195869262f8125dfdb5c134dc8d9a9d0aecf7525b10c2c --hash=sha256:6983aae8b2f653e098edb77f893f7b6aca69f6cffb19b2cc7443f23cce5f4828 --hash=sha256:712e962a6357634fef20412699a3655c610110e01cdaa6180acec7fc9f8513ba --hash=sha256:8023ff13985661b50a5928fc7a5ca15f3d1affb41e5f0a9952cb68ef090b31ee --hash=sha256:811aeccadfb730024c5d3e326b2fbe9249bb7413553f15499a4050f7c30e801d --hash=sha256:8f8722560a14cde92fdb1e31597760dc35f9f5524cce17836c0d22841830fd5b --hash=sha256:93faf3fdb04768d44bf28693293f3904bbb555d076b781ad2530214ee53e3445 --hash=sha256:973500e0774b85d9689715feeffcc980193086551110fd678ebe1f4342fb7c5e --hash=sha256:979e4e1a006511dacf628e36fadfecbcc0160a8af6ca7dad2f5025529e082c13 --hash=sha256:98b7b9b9aedb65fe628c62a6dc57f6d5088ef2dfca37903a7d9ee374d03acca5 --hash=sha256:aea39e0583d05124836ea645f412e88a5c7d0fd77a6d694b60d9b6b2d9f184fd --hash=sha256:b9378e2c00146c44793c98b8d5a61039a048e31f429fb0eb546d93f4b000bedf --hash=sha256:baefc32840a9f00babd83251560e0ae1573e2f9d1b067719479bfb0e987c6357 --hash=sha256:be68172e9fd9ad8fb876c6389f16d1c1b5f100ffa779f77b1fb2176fcc9ab95b --hash=sha256:c43a7682e24b4f576d93072216bf56eeff70d9140241f9edec0c104d0c515036 --hash=sha256:c4bb0e1bd29f7d34efcccd71cf733580191e9a264a2202b0239da95984c5b559 --hash=sha256:c7be1e46525adfa0d97681432ee9fcd61a3964c2446795714699a998d193f1a3 --hash=sha256:c9817fa23833ff189db061e6d2eff49b2f3b6ed9856b4a0a73046e41932d744f --hash=sha256:ce436f4c6d218a070048ed6a44c0bbb10cd2cc5e272b29e7845f6a2f57ee4464 --hash=sha256:d10d994b41fb3497719bbf866f227b3489048ea4bbbb5015357db306249f7980 --hash=sha256:e601a7fa172c2131bff456bb3ee08a88360760d0d2f8cbd7a75a65497e2df078 --hash=sha256:f95579473af29ab73a10bada2f9722856792a36ec5af5399b653aa28360290a5"
             }
           },
           "ncore_pip_deps_311_mypy_extensions": {
@@ -2572,10 +2593,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2587,10 +2608,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2602,10 +2623,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2617,10 +2638,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2632,10 +2653,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2647,10 +2668,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2662,10 +2683,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2677,10 +2698,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2692,10 +2713,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2707,10 +2728,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2722,10 +2743,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2737,10 +2758,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2752,10 +2773,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2767,10 +2788,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2782,10 +2803,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2797,10 +2818,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2812,10 +2833,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2827,10 +2848,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2842,10 +2863,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2857,10 +2878,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2872,10 +2893,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2887,10 +2908,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2902,10 +2923,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2917,10 +2938,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2932,10 +2953,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2947,10 +2968,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2962,10 +2983,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2977,10 +2998,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -2992,10 +3013,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3007,10 +3028,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3022,10 +3043,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3037,10 +3058,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3052,10 +3073,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3067,10 +3088,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3082,10 +3103,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3097,10 +3118,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3112,10 +3133,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3127,10 +3148,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3142,10 +3163,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3157,10 +3178,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3172,10 +3193,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3187,10 +3208,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3202,10 +3223,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3217,10 +3238,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3232,10 +3253,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3247,10 +3268,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3262,10 +3283,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3277,10 +3298,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3292,10 +3313,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3307,10 +3328,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3322,10 +3343,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3337,10 +3358,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3352,10 +3373,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3367,10 +3388,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3382,10 +3403,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3397,10 +3418,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3412,10 +3433,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3427,10 +3448,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3442,10 +3463,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3457,10 +3478,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3472,10 +3493,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3487,10 +3508,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3502,10 +3523,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3517,10 +3538,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3532,10 +3553,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3547,10 +3568,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3562,10 +3583,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3577,10 +3598,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3592,10 +3613,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3607,10 +3628,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3622,10 +3643,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3637,10 +3658,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3652,10 +3673,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3667,10 +3688,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3682,10 +3703,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3697,10 +3718,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3712,10 +3733,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3727,10 +3748,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3742,10 +3763,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3757,10 +3778,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3772,10 +3793,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3787,10 +3808,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3802,10 +3823,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3817,10 +3838,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3832,10 +3853,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3847,10 +3868,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3862,10 +3883,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3877,10 +3898,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3892,10 +3913,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3907,10 +3928,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3922,10 +3943,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3937,10 +3958,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3952,10 +3973,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3967,10 +3988,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3982,10 +4003,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -3997,10 +4018,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -4012,10 +4033,10 @@
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
               "extra_pip_args": [
-                "--find-links",
-                "https://download.pytorch.org/whl/torch_stable.html",
                 "--extra-index-url",
-                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple"
+                "https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/torch_stable.html"
               ],
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
@@ -4529,6 +4550,76 @@
               "python_interpreter_target": "@@rules_python++python+python_3_9_host//:python",
               "repo": "rules_fuzzing_py_deps_39",
               "requirement": "six==1.16.0 --hash=sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"
+            }
+          },
+          "rules_mypy_pip_312_click": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@rules_mypy_pip//{name}:{target}",
+              "enable_implicit_namespace_pkgs": true,
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple"
+              ],
+              "python_interpreter_target": "@@rules_python++python+python_3_12_host//:python",
+              "repo": "rules_mypy_pip_312",
+              "requirement": "click==8.1.8 --hash=sha256:63c132bbbed01578a06712a2d1f497bb62d9c1c0d329b7903a866228027263b2 --hash=sha256:ed53c9d8990d83c2a27deae68e4ee337473f6330c040a31d4225c9574d16096a"
+            }
+          },
+          "rules_mypy_pip_312_colorama": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@rules_mypy_pip//{name}:{target}",
+              "enable_implicit_namespace_pkgs": true,
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple"
+              ],
+              "python_interpreter_target": "@@rules_python++python+python_3_12_host//:python",
+              "repo": "rules_mypy_pip_312",
+              "requirement": "colorama==0.4.6 --hash=sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44 --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"
+            }
+          },
+          "rules_mypy_pip_312_mypy": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@rules_mypy_pip//{name}:{target}",
+              "enable_implicit_namespace_pkgs": true,
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple"
+              ],
+              "python_interpreter_target": "@@rules_python++python+python_3_12_host//:python",
+              "repo": "rules_mypy_pip_312",
+              "requirement": "mypy==1.15.0 --hash=sha256:1124a18bc11a6a62887e3e137f37f53fbae476dc36c185d549d4f837a2a6a14e --hash=sha256:171a9ca9a40cd1843abeca0e405bc1940cd9b305eaeea2dda769ba096932bb22 --hash=sha256:1905f494bfd7d85a23a88c5d97840888a7bd516545fc5aaedff0267e0bb54e2f --hash=sha256:1fbb8da62dc352133d7d7ca90ed2fb0e9d42bb1a32724c287d3c76c58cbaa9c2 --hash=sha256:2922d42e16d6de288022e5ca321cd0618b238cfc5570e0263e5ba0a77dbef56f --hash=sha256:2e2c2e6d3593f6451b18588848e66260ff62ccca522dd231cd4dd59b0160668b --hash=sha256:2ee2d57e01a7c35de00f4634ba1bbf015185b219e4dc5909e281016df43f5ee5 --hash=sha256:2f2147ab812b75e5b5499b01ade1f4a81489a147c01585cda36019102538615f --hash=sha256:404534629d51d3efea5c800ee7c42b72a6554d6c400e6a79eafe15d11341fd43 --hash=sha256:5469affef548bd1895d86d3bf10ce2b44e33d86923c29e4d675b3e323437ea3e --hash=sha256:5a95fb17c13e29d2d5195869262f8125dfdb5c134dc8d9a9d0aecf7525b10c2c --hash=sha256:6983aae8b2f653e098edb77f893f7b6aca69f6cffb19b2cc7443f23cce5f4828 --hash=sha256:712e962a6357634fef20412699a3655c610110e01cdaa6180acec7fc9f8513ba --hash=sha256:8023ff13985661b50a5928fc7a5ca15f3d1affb41e5f0a9952cb68ef090b31ee --hash=sha256:811aeccadfb730024c5d3e326b2fbe9249bb7413553f15499a4050f7c30e801d --hash=sha256:8f8722560a14cde92fdb1e31597760dc35f9f5524cce17836c0d22841830fd5b --hash=sha256:93faf3fdb04768d44bf28693293f3904bbb555d076b781ad2530214ee53e3445 --hash=sha256:973500e0774b85d9689715feeffcc980193086551110fd678ebe1f4342fb7c5e --hash=sha256:979e4e1a006511dacf628e36fadfecbcc0160a8af6ca7dad2f5025529e082c13 --hash=sha256:98b7b9b9aedb65fe628c62a6dc57f6d5088ef2dfca37903a7d9ee374d03acca5 --hash=sha256:aea39e0583d05124836ea645f412e88a5c7d0fd77a6d694b60d9b6b2d9f184fd --hash=sha256:b9378e2c00146c44793c98b8d5a61039a048e31f429fb0eb546d93f4b000bedf --hash=sha256:baefc32840a9f00babd83251560e0ae1573e2f9d1b067719479bfb0e987c6357 --hash=sha256:be68172e9fd9ad8fb876c6389f16d1c1b5f100ffa779f77b1fb2176fcc9ab95b --hash=sha256:c43a7682e24b4f576d93072216bf56eeff70d9140241f9edec0c104d0c515036 --hash=sha256:c4bb0e1bd29f7d34efcccd71cf733580191e9a264a2202b0239da95984c5b559 --hash=sha256:c7be1e46525adfa0d97681432ee9fcd61a3964c2446795714699a998d193f1a3 --hash=sha256:c9817fa23833ff189db061e6d2eff49b2f3b6ed9856b4a0a73046e41932d744f --hash=sha256:ce436f4c6d218a070048ed6a44c0bbb10cd2cc5e272b29e7845f6a2f57ee4464 --hash=sha256:d10d994b41fb3497719bbf866f227b3489048ea4bbbb5015357db306249f7980 --hash=sha256:e601a7fa172c2131bff456bb3ee08a88360760d0d2f8cbd7a75a65497e2df078 --hash=sha256:f95579473af29ab73a10bada2f9722856792a36ec5af5399b653aa28360290a5"
+            }
+          },
+          "rules_mypy_pip_312_mypy_extensions": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@rules_mypy_pip//{name}:{target}",
+              "enable_implicit_namespace_pkgs": true,
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple"
+              ],
+              "python_interpreter_target": "@@rules_python++python+python_3_12_host//:python",
+              "repo": "rules_mypy_pip_312",
+              "requirement": "mypy-extensions==1.0.0 --hash=sha256:4392f6c0eb8a5668a69e23d168ffa70f0be9ccfd32b5cc2d26a34ae5b844552d --hash=sha256:75dbf8955dc00442a438fc4d0666508a9a97b6bd41aa2f0ffe9d2f2725af0782"
+            }
+          },
+          "rules_mypy_pip_312_typing_extensions": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@rules_mypy_pip//{name}:{target}",
+              "enable_implicit_namespace_pkgs": true,
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple"
+              ],
+              "python_interpreter_target": "@@rules_python++python+python_3_12_host//:python",
+              "repo": "rules_mypy_pip_312",
+              "requirement": "typing-extensions==4.12.2 --hash=sha256:04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d --hash=sha256:1a7ead55c7e559dd4dee8856e3a88b41225abfe1ce8df57b7c13915fe121ffb8"
             }
           },
           "rules_python_publish_deps_311_backports_tarfile_py3_none_any_77e284d7": {
@@ -6896,6 +6987,7 @@
                 "mistune": "{\"ncore_pip_deps_311_mistune\":[{\"version\":\"3.11\"}]}",
                 "ml_dtypes": "{\"ncore_pip_deps_311_ml_dtypes\":[{\"version\":\"3.11\"}]}",
                 "multimethod": "{\"ncore_pip_deps_311_multimethod\":[{\"version\":\"3.11\"}]}",
+                "mypy": "{\"ncore_pip_deps_311_mypy\":[{\"version\":\"3.11\"}]}",
                 "mypy_extensions": "{\"ncore_pip_deps_311_mypy_extensions\":[{\"version\":\"3.11\"}],\"ncore_pip_deps_38_mypy_extensions\":[{\"version\":\"3.8\"}]}",
                 "namex": "{\"ncore_pip_deps_311_namex\":[{\"version\":\"3.11\"}]}",
                 "narwhals": "{\"ncore_pip_deps_311_narwhals\":[{\"version\":\"3.11\"}]}",
@@ -7077,6 +7169,7 @@
                 "mistune",
                 "ml_dtypes",
                 "multimethod",
+                "mypy",
                 "mypy_extensions",
                 "namex",
                 "narwhals",
@@ -7207,6 +7300,28 @@
               "packages": [
                 "absl_py",
                 "six"
+              ],
+              "groups": {}
+            }
+          },
+          "rules_mypy_pip": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:hub_repository.bzl%hub_repository",
+            "attributes": {
+              "repo_name": "rules_mypy_pip",
+              "extra_hub_aliases": {},
+              "whl_map": {
+                "click": "{\"rules_mypy_pip_312_click\":[{\"version\":\"3.12\"}]}",
+                "colorama": "{\"rules_mypy_pip_312_colorama\":[{\"version\":\"3.12\"}]}",
+                "mypy": "{\"rules_mypy_pip_312_mypy\":[{\"version\":\"3.12\"}]}",
+                "mypy_extensions": "{\"rules_mypy_pip_312_mypy_extensions\":[{\"version\":\"3.12\"}]}",
+                "typing_extensions": "{\"rules_mypy_pip_312_typing_extensions\":[{\"version\":\"3.12\"}]}"
+              },
+              "packages": [
+                "click",
+                "colorama",
+                "mypy",
+                "mypy_extensions",
+                "typing_extensions"
               ],
               "groups": {}
             }

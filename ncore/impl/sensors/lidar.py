@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod, ABC
+
 import logging
 
 from typing import Optional, Union, cast
@@ -10,7 +11,8 @@ from dataclasses import dataclass
 
 import torch
 import numpy as np
-from scipy.spatial import cKDTree
+
+from scipy import spatial as scipy_spatial
 
 from ncore.impl.data import types
 from ncore.impl.sensors.common import to_torch, rotmat_to_unitquat, unitquat_to_rotmat, unitquat_slerp
@@ -324,7 +326,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
 
         # Compute the NN of each grid ray in the sensor rays
         # TODO: can we move this to torch/CUDA? do we assume that we always have access?
-        kdtree = cKDTree(sensor_rays.sensor_rays.cpu().numpy())
+        kdtree = scipy_spatial.cKDTree(sensor_rays.sensor_rays.cpu().numpy())
         _, idxs = kdtree.query(grid_rays.sensor_rays.cpu().numpy())
         idxs = to_torch(idxs, device=self.device, dtype=torch.int32)
 

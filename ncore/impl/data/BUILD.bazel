@@ -69,17 +69,6 @@ pytest_test(
 )
 
 pytest_test(
-    name = "pytest_util_38",
-    srcs = [
-        "util_test.py",
-    ],
-    python_version = "3.8",
-    deps = [
-        ":pylib_util",
-    ],
-)
-
-pytest_test(
     name = "pytest_data3",
     srcs = ["data3_test.py"],
     data = [
@@ -103,6 +92,7 @@ pytest_test(
     deps = [
         ":pylib_stores",
         requirement("parameterized"),
+        requirement("numpy"),
     ],
 )
 

@@ -1,5 +1,0 @@
---extra-index-url https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple
-mypy==0.981 --hash=sha256:c43876f908e208e566d326af7c893af44dd6254dade677fc629b7b6cb2c40c9e
-tomli==2.0.1
-typing-extensions==4.6.2
-mypy-extensions==1.0.0

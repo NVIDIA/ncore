@@ -7,7 +7,7 @@ import dataclasses_json
 import numpy as np
 
 if TYPE_CHECKING:
-    import numpy.typing as npt
+    import numpy.typing as npt  # type: ignore[import-not-found]
 
 ## Constants
 INDEX_DIGITS = 6  # the number of integer digits to pad counters in output filenames

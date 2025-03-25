@@ -38,3 +38,4 @@ sphinx
 sphinx-rtd-theme
 nbsphinx
 nbconvert
+mypy~=1.15.0

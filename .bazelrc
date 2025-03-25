@@ -27,14 +27,14 @@ build:low_memory --@//bazel/flags:low_memory=True
 # Show outputs of failing tests by default
 test --test_output=errors
 
-# # Mypy aspect registration
-# build --aspects @mypy_integration//:mypy.bzl%mypy_aspect
-# build --output_groups=+mypy
-# build --@mypy_integration//:mypy_config=//bazel/typing:mypy.ini
+# Mypy aspect registration
+build --aspects //bazel/typing:aspects.bzl%mypy_aspect
+
+# optionally, default enable the mypy checks
+build --output_groups=+mypy
 
 # Require OAuth2 support in rules_oci for some docker image repositories
 common --repo_env=OCI_ENABLE_OAUTH2_SUPPORT=1
-
 
 # Silence warnings on unused repositories / dependencies we don't use
 # (introduced in bazel 8 to transition to modular setups)
