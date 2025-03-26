@@ -97,7 +97,7 @@ class IndexedTarStore(zarr._storage.store.Store):
         with self.mutex:
             return len(self.index.records)
 
-    def __contains__(self, item: str) -> bool:
+    def __contains__(self, item: object) -> bool:
         with self.mutex:
             return item in self.index.records
 
@@ -292,9 +292,9 @@ class IndexedTarStore(zarr._storage.store.Store):
             fill_block()
 
         # Create index header block
-        assert (
-            struct.calcsize(cls.INDEX_HEADER_FORMAT) <= tarfile.BLOCKSIZE
-        ), "Index header larger than single block size"
+        assert struct.calcsize(cls.INDEX_HEADER_FORMAT) <= tarfile.BLOCKSIZE, (
+            "Index header larger than single block size"
+        )
         header_binary = struct.pack(
             cls.INDEX_HEADER_FORMAT,
             cls.INDEX_HEADER_MAGIC,
@@ -310,7 +310,7 @@ class IndexedTarStore(zarr._storage.store.Store):
         fill_block()
 
 
-def consolidate_compressed_metadata(store: zarr.BaseStore, metadata_key=".zmetadata.cbor.xz"):
+def consolidate_compressed_metadata(store: zarr.storage.BaseStore, metadata_key=".zmetadata.cbor.xz"):
     """Consolidate all metadata for groups and arrays within the given store
     into a single compressed cbor resource and put it under the given key.
 
@@ -348,7 +348,7 @@ class ConsolidatedCompressedMetadataStore(zarr.storage.ConsolidatedMetadataStore
     """A layer over other storage, where the metadata has been consolidated into a single compressed key."""
 
     # Overwrite constructor to perform decompression of metadata
-    def __init__(self, store: zarr.StoreLike, metadata_key=".zmetadata.cbor.xz"):
+    def __init__(self, store: zarr.storage.StoreLike, metadata_key=".zmetadata.cbor.xz"):
         self.store = zarr._storage.store.Store._ensure_store(store)
 
         # retrieve consolidated metadata
@@ -360,11 +360,11 @@ class ConsolidatedCompressedMetadataStore(zarr.storage.ConsolidatedMetadataStore
             raise zarr.MetadataError("unsupported zarr consolidated metadata format: %s" % consolidated_format)
 
         # decode metadata
-        self.meta_store: zarr.Store = zarr.KVStore(meta["metadata"])
+        self.meta_store: zarr.storage.Store = zarr.KVStore(meta["metadata"])
 
 
 def open_compressed_consolidated(
-    store: zarr.StoreLike, metadata_key=".zmetadata.cbor.xz", mode="r+", **kwargs
+    store: zarr.storage.StoreLike, metadata_key=".zmetadata.cbor.xz", mode="r+", **kwargs
 ) -> zarr.hierarchy.Group:
     """Open group using metadata previously consolidated and compressed into a single key.
 

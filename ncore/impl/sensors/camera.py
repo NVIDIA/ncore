@@ -422,9 +422,9 @@ class CameraModel(ABC):
         if return_timestamps:
             assert start_timestamp_us is not None
             assert end_timestamp_us is not None
-            assert (
-                end_timestamp_us >= start_timestamp_us
-            ), "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+            assert end_timestamp_us >= start_timestamp_us, (
+                "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+            )
 
         tmp = self.world_points_to_image_points_shutter_pose(
             world_points,
@@ -499,9 +499,9 @@ class CameraModel(ABC):
         if return_timestamps:
             assert start_timestamp_us is not None
             assert end_timestamp_us is not None
-            assert (
-                end_timestamp_us >= start_timestamp_us
-            ), "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+            assert end_timestamp_us >= start_timestamp_us, (
+                "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+            )
 
             timestamp_us = (end_timestamp_us + start_timestamp_us) // 2
 
@@ -557,9 +557,9 @@ class CameraModel(ABC):
         if return_timestamps:
             assert start_timestamp_us is not None
             assert end_timestamp_us is not None
-            assert (
-                end_timestamp_us >= start_timestamp_us
-            ), "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+            assert end_timestamp_us >= start_timestamp_us, (
+                "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+            )
 
             # Make sure timestamps have correct type (might be, e.g., np.uint64, which torch doesn't like)
             start_timestamp_us = int(start_timestamp_us)
@@ -787,9 +787,9 @@ class CameraModel(ABC):
         if return_timestamps:
             assert start_timestamp_us is not None
             assert end_timestamp_us is not None
-            assert (
-                end_timestamp_us >= start_timestamp_us
-            ), "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+            assert end_timestamp_us >= start_timestamp_us, (
+                "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+            )
 
             timestamp_us = (end_timestamp_us + start_timestamp_us) // 2
 
@@ -864,9 +864,9 @@ class CameraModel(ABC):
         if return_timestamps:
             assert start_timestamp_us is not None
             assert end_timestamp_us is not None
-            assert (
-                end_timestamp_us >= start_timestamp_us
-            ), "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+            assert end_timestamp_us >= start_timestamp_us, (
+                "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+            )
 
         return self.image_points_to_world_rays_mean_pose(
             self.pixels_to_image_points(pixel_idxs),
@@ -962,9 +962,9 @@ class CameraModel(ABC):
         if return_timestamps:
             assert start_timestamp_us is not None
             assert end_timestamp_us is not None
-            assert (
-                end_timestamp_us >= start_timestamp_us
-            ), "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+            assert end_timestamp_us >= start_timestamp_us, (
+                "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+            )
 
             timestamp_us = (end_timestamp_us + start_timestamp_us) // 2
 
@@ -1070,9 +1070,9 @@ class CameraModel(ABC):
         if return_timestamps:
             assert start_timestamp_us is not None
             assert end_timestamp_us is not None
-            assert (
-                end_timestamp_us >= start_timestamp_us
-            ), "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+            assert end_timestamp_us >= start_timestamp_us, (
+                "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+            )
             return_var.timestamps_us = (
                 start_timestamp_us + (t[..., None] * (end_timestamp_us - start_timestamp_us)).to(torch.int64)
             ).squeeze(-1)  # [n_image_points]

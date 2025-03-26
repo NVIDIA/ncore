@@ -108,7 +108,10 @@ cc_library(
         "JPEG/jpeglib.h",
         "JPEG/jversion.h",
     ],
-    copts = ["-Wno-misleading-indentation"],
+    copts = [
+        "-Wno-misleading-indentation",
+        "-Wno-register",
+    ],
     strip_include_prefix = "JPEG",
 )
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod, ABC
+
 import logging
 
 from typing import Optional, Union, cast
@@ -10,7 +11,8 @@ from dataclasses import dataclass
 
 import torch
 import numpy as np
-from scipy.spatial import cKDTree
+
+from scipy import spatial as scipy_spatial
 
 from ncore.impl.data import types
 from ncore.impl.sensors.common import to_torch, rotmat_to_unitquat, unitquat_to_rotmat, unitquat_slerp
@@ -260,9 +262,9 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
     def _init_angles_to_columns_map(self):
         # angles to column map is a 2D array of shape resolution_factor * (n_rows, n_columns)
 
-        assert (
-            torch.iinfo(self.angles_to_columns_map_dtype).max >= self.parameters.n_columns - 1
-        ), "The dtype for the angles to columns map must be able to store the maximum column index, consider increasing angles_to_columns_map_dtype"
+        assert torch.iinfo(self.angles_to_columns_map_dtype).max >= self.parameters.n_columns - 1, (
+            "The dtype for the angles to columns map must be able to store the maximum column index, consider increasing angles_to_columns_map_dtype"
+        )
 
         assert (
             not self.angles_to_columns_map_dtype.is_floating_point and not self.angles_to_columns_map_dtype.is_complex
@@ -324,7 +326,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
 
         # Compute the NN of each grid ray in the sensor rays
         # TODO: can we move this to torch/CUDA? do we assume that we always have access?
-        kdtree = cKDTree(sensor_rays.sensor_rays.cpu().numpy())
+        kdtree = scipy_spatial.cKDTree(sensor_rays.sensor_rays.cpu().numpy())
         _, idxs = kdtree.query(grid_rays.sensor_rays.cpu().numpy())
         idxs = to_torch(idxs, device=self.device, dtype=torch.int32)
 
@@ -398,9 +400,9 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         if return_timestamps:
             assert start_timestamp_us is not None
             assert end_timestamp_us is not None
-            assert (
-                end_timestamp_us >= start_timestamp_us
-            ), "[LidarModel]: End timestamp must be larger or equal to the start timestamp"
+            assert end_timestamp_us >= start_timestamp_us, (
+                "[LidarModel]: End timestamp must be larger or equal to the start timestamp"
+            )
 
             # Make sure timestamps have correct type (might be, e.g., np.uint64, which torch doesn't like)
             start_timestamp_us = int(start_timestamp_us)
@@ -576,9 +578,9 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         if return_timestamps:
             assert start_timestamp_us is not None
             assert end_timestamp_us is not None
-            assert (
-                end_timestamp_us >= start_timestamp_us
-            ), "[LidarModel]: End timestamp must be larger or equal to the start timestamp"
+            assert end_timestamp_us >= start_timestamp_us, (
+                "[LidarModel]: End timestamp must be larger or equal to the start timestamp"
+            )
 
             # Make sure timestamps have correct type (might be, e.g., np.uint64, which torch doesn't like)
             start_timestamp_us = int(start_timestamp_us)

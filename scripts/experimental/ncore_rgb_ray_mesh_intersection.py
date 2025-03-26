@@ -7,10 +7,11 @@ from typing import Optional
 
 import click
 import tqdm
-import scipy
 import torch
 import numpy as np
 import point_cloud_utils as pcu
+
+from scipy.ndimage.morphology import binary_dilation
 
 from ncore.impl.data.data3 import ShardDataLoader
 from ncore.impl.data.types import FrameTimepoint
@@ -85,7 +86,7 @@ def ncore_rgb_ray_mesh_intersection(
         camera_mask_array = np.asarray(camera_mask_image) != 0
 
         # Dilate mask boundary
-        camera_mask_array = scipy.ndimage.binary_dilation(camera_mask_array, iterations=static_camera_mask_dilations)
+        camera_mask_array = binary_dilation(camera_mask_array, iterations=static_camera_mask_dilations)
 
         # Subsample valid pixels relative to mask (True for parts that we want to keep)
         valid_pixel_mask = np.logical_not(camera_mask_array)

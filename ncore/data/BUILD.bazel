@@ -1,9 +1,8 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
-load("@pip_deps_3_8//:requirements.bzl", requirement_3_8 = "requirement")
 load("@rules_python//python:defs.bzl", "py_library")
-load("//bazel/pytest:defs.bzl", "pytest_test", "pytest_test_3_8")
+load("//bazel/pytest:defs.bzl", "pytest_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -23,26 +22,6 @@ pytest_test(
     srcs = ["test.py"],
     deps = [
         ":pylib",
-    ],
-)
-
-py_library(
-    name = "pylib_3_8",
-    srcs = [
-        "__init__.py",
-    ],
-    deps = [
-        "//ncore/impl/data:pylib_types_3_8",
-        "//ncore/impl/data:pylib_util_3_8",
-    ],
-)
-
-pytest_test_3_8(
-    name = "test_3_8",
-    srcs = ["test.py"],
-    deps = [
-        ":pylib_3_8",
-        requirement_3_8("numpy"),
     ],
 )
 

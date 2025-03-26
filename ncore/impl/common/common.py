@@ -13,7 +13,7 @@ import sys
 
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Tuple, Union, List
+from typing import Optional, Tuple, Union, List, cast
 from dataclasses import dataclass
 
 import numpy as np
@@ -273,9 +273,9 @@ class MaskImage:
         assert isinstance(binary_mask, np.ndarray), "expecting array as input"
         assert isinstance(mask_type, MaskImage.MaskType), "expecting MaskType as input"
         assert binary_mask.dtype is np.dtype("bool"), "expecting binary array as input"
-        assert (
-            binary_mask.shape == self.mask_array.shape
-        ), f"invalid array resolution, expecting shape {self.mask_array.shape}"
+        assert binary_mask.shape == self.mask_array.shape, (
+            f"invalid array resolution, expecting shape {self.mask_array.shape}"
+        )
 
         # set new values for masked pixels
         self.mask_array[binary_mask] = mask_type.value
@@ -351,7 +351,7 @@ def time_bounds(timestamps_us: List[int], seek_sec: Optional[float], duration_se
 
 def uniform_subdivide_range(
     subdiv_id: int, subdiv_count: int, range_start: int, range_end: int
-) -> Tuple[np.ndarray, np.int64]:
+) -> Tuple[np.ndarray, int]:
     """
     Splits the index range range_start:range_end into (approximately) uniform intervals
     based on the requested number of subvisions.
@@ -369,19 +369,19 @@ def uniform_subdivide_range(
                          -1
     """
 
-    assert (
-        subdiv_count > 0 and subdiv_id < subdiv_count
-    ), f"Invalid subdivision specification id={subdiv_id} count={subdiv_count}"
+    assert subdiv_count > 0 and subdiv_id < subdiv_count, (
+        f"Invalid subdivision specification id={subdiv_id} count={subdiv_count}"
+    )
 
-    assert (
-        range_start >= 0 and range_end >= range_start
-    ), f"Range specification {range_start}:{range_end} invalid / not providing *absolute* range"
+    assert range_start >= 0 and range_end >= range_start, (
+        f"Range specification {range_start}:{range_end} invalid / not providing *absolute* range"
+    )
 
     # Create full index range and split according to subdiv-count
     split_range = np.array_split(np.arange(range_start, range_end), subdiv_count)
 
     # Grab local range
-    local_range = split_range[subdiv_id]
+    local_range = cast(np.ndarray, split_range[subdiv_id])
 
     return local_range, local_range[0] - range_start if len(local_range) else -1
 

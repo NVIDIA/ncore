@@ -1,7 +1,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
-load("@pip_deps//:requirements.bzl", "requirement")
+load("@ncore_pip_deps//:requirements.bzl", "requirement")
 load("@rules_oci//oci:defs.bzl", "oci_load", "oci_push")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 load("//bazel/oci:py_layer.bzl", "py_oci_image")
@@ -56,7 +56,7 @@ py_binary(
     deps = NCORE_EXPORT_CAMERA_DEPS,
 )
 
-# Image for 'ncore_export_camera'
+# # Image for 'ncore_export_camera'
 
 py_oci_image(
     name = "ncore_export_camera_image",

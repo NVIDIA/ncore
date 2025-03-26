@@ -16,7 +16,7 @@ build --remote_instance_name ncore
 build --incompatible_strict_action_env
 
 # This is needed to have tags=["no-cache"] propagate to action execution requirements
-build --experimental_allow_tags_propagation
+build --incompatible_allow_tags_propagation
 
 # Check the ctime of input files of an action before uploading it to a remote cache (there may be cases where the Linux kernel delays writing of files, which could cause false positives)
 build --experimental_guard_against_concurrent_changes
@@ -27,10 +27,9 @@ build:low_memory --@//bazel/flags:low_memory=True
 # Show outputs of failing tests by default
 test --test_output=errors
 
-# Mypy aspect registration
-build --aspects @mypy_integration//:mypy.bzl%mypy_aspect
+# Mypy aspect registration + enable by default
+build --aspects //bazel/typing:aspects.bzl%mypy_aspect
 build --output_groups=+mypy
-build --@mypy_integration//:mypy_config=//bazel/typing:mypy.ini
 
 # Require OAuth2 support in rules_oci for some docker image repositories
 common --repo_env=OCI_ENABLE_OAUTH2_SUPPORT=1
