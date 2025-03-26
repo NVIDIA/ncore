@@ -46,6 +46,11 @@ use_repo(multitool, "multitool")
 
 ## rules_oci
 bazel_dep(name = "rules_oci", version = "2.2.0")
+single_version_override(module_name = "rules_oci",
+    patch_strip = 1,
+    patches = ["@@//:3rdparty/oci/oci.patch"],
+    version = "2.2.0",
+)
 oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
 oci.pull(
     name = "ncore_dev_image",

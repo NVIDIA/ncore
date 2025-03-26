@@ -46,6 +46,10 @@ def register_repositories():
 
     http_archive(
         name = "rules_oci",
+        patch_args = ["-p1"],
+        patches = [
+            "@ncore_repo//:3rdparty/oci/oci.patch",
+        ],
         sha256 = "1bd16e455278d523f01326e0c3964cd64d7840a7e99cdd6e2617e59f698f3504",
         strip_prefix = "rules_oci-2.2.0",
         url = "https://github.com/bazel-contrib/rules_oci/releases/download/v2.2.0/rules_oci-v2.2.0.tar.gz",
