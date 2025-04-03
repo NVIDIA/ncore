@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import abstractmethod, ABC
 
-from typing import Optional, Union, cast
+from typing import Literal, Optional, Union, cast
 from dataclasses import dataclass
 
 import torch
@@ -168,6 +168,8 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
     angles_to_columns_map_resolution_factor: int
     angles_to_columns_map_dtype: torch.dtype
     angles_to_columns_map: Optional[torch.Tensor]
+    spinning_frequency_hz: float
+    spinning_direction: Literal["cw", "ccw"]
     fov_vert_start_rad: float
     fov_vert_end_rad: float
     fov_horiz_start_rad: float
@@ -201,15 +203,34 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         self.angles_to_columns_map_dtype = angles_to_columns_map_dtype
         self.angles_to_columns_map: Optional[torch.Tensor] = None
 
-        self.fov_vert_start_rad = parameters.fov_vert_start_rad
-        self.fov_vert_end_rad = parameters.fov_vert_end_rad
-        self.fov_horiz_start_rad = parameters.fov_horiz_start_rad
-        self.fov_horiz_end_rad = parameters.fov_horiz_end_rad
+        self.spinning_frequency_hz = parameters.spinning_frequency_hz
+        self.spinning_direction = parameters.spinning_direction
         self.n_rows = parameters.n_rows
         self.n_columns = parameters.n_columns
+        self.fov_horiz_start_rad = parameters.fov_horiz_start_rad
+        self.fov_horiz_end_rad = parameters.fov_horiz_end_rad
+        self.fov_vert_start_rad = parameters.fov_vert_start_rad
+        self.fov_vert_end_rad = parameters.fov_vert_end_rad
 
         if angles_to_columns_map_init:
             self._init_angles_to_columns_map()
+
+    def get_parameters(self) -> types.RowOffsetStructuredSpinningLidarModelParameters:
+        """Returns the lidar model parameters specific to the current lidar model instance"""
+
+        return types.RowOffsetStructuredSpinningLidarModelParameters(
+            spinning_frequency_hz=self.spinning_frequency_hz,
+            spinning_direction=self.spinning_direction,
+            n_rows=self.n_rows,
+            n_columns=self.n_columns,
+            fov_horiz_start_rad=self.fov_horiz_start_rad,
+            fov_horiz_end_rad=self.fov_horiz_end_rad,
+            fov_vert_start_rad=self.fov_vert_start_rad,
+            fov_vert_end_rad=self.fov_vert_end_rad,
+            row_elevations_rad=self.row_elevations_rad.cpu().numpy().astype(np.float32),
+            column_azimuths_rad=self.column_azimuths_rad.cpu().numpy().astype(np.float32),
+            row_azimuth_offsets_rad=self.row_azimuth_offsets_rad.cpu().numpy().astype(np.float32),
+        )
 
     def elements_to_sensor_angles(self, elements: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
         """Retrieves the elevation and azimuth angles for elements in the structured lidar model. Elements are given as (row, column) indices."""
