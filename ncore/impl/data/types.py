@@ -110,7 +110,10 @@ class CameraModelParameters:
         assert self.resolution.dtype == np.dtype("uint64")
         assert self.resolution[0] > 0 and self.resolution[1] > 0
 
+        if not isinstance(self.shutter_type, ShutterType):
+            self.shutter_type = ShutterType(self.shutter_type)
         assert self.shutter_type in ShutterType.__members__.values()
+
         assert isinstance(self.external_distortion_parameters, (type(None), ConcreteExternalDistortionParametersUnion))
 
 
@@ -168,6 +171,8 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
         assert self.principal_point.dtype == np.dtype("float32")
         assert self.principal_point[0] >= 0.0 and self.principal_point[1] >= 0.0
 
+        if not isinstance(self.reference_poly, FThetaCameraModelParameters.PolynomialType):
+            self.reference_poly = FThetaCameraModelParameters.PolynomialType(self.reference_poly)
         assert self.reference_poly in FThetaCameraModelParameters.PolynomialType.__members__.values()
 
         assert self.pixeldist_to_angle_poly.ndim == 1
@@ -669,6 +674,9 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
         assert isinstance(self.global_speed, float)
         assert isinstance(self.timestamp_us, int)
         assert isinstance(self.confidence, (type(None), float))
+
+        if not isinstance(self.source, LabelSource):
+            self.source = LabelSource(self.source)
         assert self.source in LabelSource.__members__.values()
 
 
