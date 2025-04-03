@@ -606,7 +606,7 @@ class Sensor:
     ) -> int:
         """Returns timestamp of specific frame timepoints"""
 
-        return self._get_frame_group(continuous_frame_index)["timestamps_us"][frame_timepoint.value]
+        return int(self._get_frame_group(continuous_frame_index)["timestamps_us"][frame_timepoint.value])
 
     def get_closest_frame_index(self, timestamp_us: int) -> int:
         """Given a timestamp, returns the frame index of the closes frame"""
