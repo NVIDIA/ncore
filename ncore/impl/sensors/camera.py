@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import math
 
 from abc import ABC, abstractmethod
@@ -14,6 +13,7 @@ import numpy as np
 
 from ncore.impl.data import types
 from ncore.impl.sensors.common import (
+    BaseModel,
     to_torch,
     rotmat_to_unitquat,
     unitquat_to_rotmat,
@@ -23,35 +23,15 @@ from ncore.impl.sensors.common import (
 )
 
 
-class ExternalDistortion(ABC):
+class ExternalDistortionModel(BaseModel, ABC):
     """Base class for distortion effects from external causes to the camera"""
-
-    device: torch.device  #: Torch device to perform computations on
-    dtype: torch.dtype  #: Torch floating-point datatype to perform computations in
-
-    def __init__(
-        self,
-        device: Union[str, torch.device],
-        dtype: torch.dtype,
-    ):
-        # Make sure device is a torch device
-        if isinstance(device, str):
-            device = torch.device(device)
-
-        # Check if cuda device is actually available
-        if device.type == "cuda" and not torch.cuda.is_available():
-            logging.warning("Cuda device selected but not available, reverting to CPU!")
-            device = torch.device("cpu")
-
-        self.device = device
-        self.dtype = dtype
 
     @staticmethod
     def maybe_from_parameters(
         external_distortion_parameters: Optional[types.ConcreteExternalDistortionParametersUnion],
         device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
-    ) -> Optional[ExternalDistortion]:
+    ) -> Optional[ExternalDistortionModel]:
         """
         Initialize a generic external distortion model from parameters, if available
         """
@@ -62,6 +42,11 @@ class ExternalDistortion(ABC):
         raise TypeError(
             f"Unsupported external distortion type {type(external_distortion_parameters)}, currently only supporting 'BivariateWindshieldModel' type."
         )
+
+    @abstractmethod
+    def get_parameters(self) -> types.ConcreteExternalDistortionParametersUnion:
+        """Returns the parameters specific to the concrete distortion model"""
+        pass
 
     @abstractmethod
     def distort_camera_rays(self, camera_rays: torch.Tensor) -> torch.Tensor:
@@ -78,7 +63,7 @@ class ExternalDistortion(ABC):
         pass
 
 
-class BivariateWindshieldModel(ExternalDistortion):
+class BivariateWindshieldModel(ExternalDistortionModel):
     """Implements an external distortion caused by a vehicle's windshield. The model is only applicable for cameras where the whole area of interest is projected through the windshield.
 
     The distortion is computed on spherical phi/theta angle-based representations of a sensor ray with direction=[x,y,z] such that phi = asin(x/(x^2+y+2+z^2)) and theta = asin(y/(x^2+y^2+z^2)).
@@ -96,6 +81,8 @@ class BivariateWindshieldModel(ExternalDistortion):
     )  #: Polynomial used for horizontal component of distortion in backward direction
     vertical_poly_inverse: torch.Tensor  #: Polynomial used for vertical component of distortion in backward direction
 
+    reference_poly: types.ReferencePolynomial  #: Reference polynomial used for the distortion model
+
     order_phi: int  #:  Order of the distortion polynomial on phi
     order_theta: int  #:  Order of the distortion polynomial on theta
 
@@ -106,21 +93,40 @@ class BivariateWindshieldModel(ExternalDistortion):
         dtype: torch.dtype = torch.float32,
     ):
         super().__init__(device, dtype)
+        del (device, dtype)
 
-        self.horizontal_poly = to_torch(
-            windshield_distortion_parameters.horizontal_poly, device=self.device, dtype=dtype
+        self.register_buffer(
+            "horizontal_poly",
+            to_torch(windshield_distortion_parameters.horizontal_poly, device=self.device, dtype=self.dtype),
         )
-        self.vertical_poly = to_torch(windshield_distortion_parameters.vertical_poly, device=self.device, dtype=dtype)
-        self.horizontal_poly_inverse = to_torch(
-            windshield_distortion_parameters.horizontal_poly_inverse, device=self.device, dtype=dtype
+        self.register_buffer(
+            "vertical_poly",
+            to_torch(windshield_distortion_parameters.vertical_poly, device=self.device, dtype=self.dtype),
         )
-        self.vertical_poly_inverse = to_torch(
-            windshield_distortion_parameters.vertical_poly_inverse, device=self.device, dtype=dtype
+        self.register_buffer(
+            "horizontal_poly_inverse",
+            to_torch(windshield_distortion_parameters.horizontal_poly_inverse, device=self.device, dtype=self.dtype),
         )
+        self.register_buffer(
+            "vertical_poly_inverse",
+            to_torch(windshield_distortion_parameters.vertical_poly_inverse, device=self.device, dtype=self.dtype),
+        )
+
+        self.reference_poly = windshield_distortion_parameters.reference_poly
 
         # Compute the order of the polynomial
         self.order_phi = self.compute_poly_order(self.horizontal_poly)
         self.order_theta = self.compute_poly_order(self.vertical_poly)
+
+    def get_parameters(self) -> types.ConcreteExternalDistortionParametersUnion:
+        """Returns the parameters specific to the current windshield distortion model instance"""
+        return types.BivariateWindshieldModelParameters(
+            reference_poly=self.reference_poly,
+            horizontal_poly=self.horizontal_poly.cpu().numpy().astype(np.float32),
+            vertical_poly=self.vertical_poly.cpu().numpy().astype(np.float32),
+            horizontal_poly_inverse=self.horizontal_poly_inverse.cpu().numpy().astype(np.float32),
+            vertical_poly_inverse=self.vertical_poly_inverse.cpu().numpy().astype(np.float32),
+        )
 
     @staticmethod
     def compute_poly_order(poly_coeffs: torch.Tensor):
@@ -208,39 +214,41 @@ class BivariateWindshieldModel(ExternalDistortion):
         )
 
 
-class CameraModel(ABC):
-    """Base camera model class"""
+class CameraModel(BaseModel, ABC):
+    """Base class for all camera models"""
 
-    resolution: torch.Tensor  #: Width and height of the image in pixels (uint32, [2,])
+    resolution: torch.Tensor  #: Width and height of the image in pixels (int32, [2,])
     shutter_type: types.ShutterType  #: Shutter type of the camera's imaging sensor
-    device: torch.device  #: Torch device to perform computations on
-    dtype: torch.dtype  #: Torch floating-point datatype to perform computations in
     external_distortion: Optional[
-        ExternalDistortion
-    ]  #: Source of distortion external to the camera (e.g. windshield). Can be left empty (None) if no such source exists. If a source exits, rays will be distorted prior to reaching the camera and it's associated lens distortion if applicable
+        ExternalDistortionModel
+    ]  #: Source of distortion external to the camera (e.g. windshield). Can be empty (None) if no such source exists.
+    #  If a source exits, rays will be distorted prior to reaching the camera and it's associated lens distortion if applicable
 
     def __init__(
         self, camera_model_parameters: types.CameraModelParameters, device: Union[str, torch.device], dtype: torch.dtype
     ):
-        # Make sure device is a torch device
-        if isinstance(device, str):
-            device = torch.device(device)
+        # Initialize nn.module
+        super().__init__(device, dtype)
+        del (device, dtype)
 
-        # Check if cuda device is actually available
-        if device.type == "cuda" and not torch.cuda.is_available():
-            logging.warning("Cuda device selected but not available, reverting to CPU!")
-            device = torch.device("cpu")
-
-        self.device = device
-        self.dtype = dtype
-
-        self.resolution = to_torch(camera_model_parameters.resolution.astype(np.int32), device=self.device)
+        # Register buffers
+        self.register_buffer(
+            "resolution", to_torch(camera_model_parameters.resolution.astype(np.int32), device=self.device)
+        )
         self.shutter_type = camera_model_parameters.shutter_type
 
-        # Initialize external distortion if available
-        self.external_distortion = ExternalDistortion.maybe_from_parameters(
-            camera_model_parameters.external_distortion_parameters, self.device, self.dtype
+        # Initialize external distortion module if available
+        self.register_module(
+            "external_distortion",
+            ExternalDistortionModel.maybe_from_parameters(
+                camera_model_parameters.external_distortion_parameters, self.device, self.dtype
+            ),
         )
+
+        assert self.resolution.shape == (2,)
+        assert self.resolution.dtype == torch.int32
+        assert self.shutter_type in types.ShutterType, f"Unsupported shutter type {self.shutter_type}"
+        assert self.external_distortion is None or isinstance(self.external_distortion, ExternalDistortionModel)
 
     @abstractmethod
     def _image_points_to_camera_rays_impl(self, image_points: torch.Tensor) -> torch.Tensor:
@@ -1173,6 +1181,20 @@ class CameraModel(ABC):
 
 
 class FThetaCameraModel(CameraModel):
+    """Camera model for F-Theta lenses"""
+
+    reference_poly: types.FThetaCameraModelParameters.PolynomialType
+    principal_point: torch.Tensor
+    fw_poly: torch.Tensor
+    bw_poly: torch.Tensor
+    A: torch.Tensor
+    Ainv: torch.Tensor
+    dfw_poly: torch.Tensor
+    dbw_poly: torch.Tensor
+    max_angle: float
+    newton_iterations: int
+    min_2d_norm: torch.Tensor
+
     def __init__(
         self,
         camera_model_parameters: types.FThetaCameraModelParameters,
@@ -1188,6 +1210,7 @@ class FThetaCameraModel(CameraModel):
                      is returned in ray generation (for points close to the principal point). Needs to be positive
         """
         super().__init__(camera_model_parameters, device, dtype)
+        del (device, dtype)
 
         self.reference_poly = camera_model_parameters.reference_poly
 
@@ -1196,44 +1219,58 @@ class FThetaCameraModel(CameraModel):
         # coordinate origin aligned with the top-left corner of the first pixel) we therefore need to
         # offset the principal point by half a pixel.
         # Please see documentation for more information.
-        self.principal_point = (
-            to_torch(camera_model_parameters.principal_point, device=self.device, dtype=self.dtype) + 0.5
+        self.register_buffer(
+            "principal_point",
+            (to_torch(camera_model_parameters.principal_point, device=self.device, dtype=self.dtype) + 0.5),
         )
 
-        self.fw_poly = to_torch(camera_model_parameters.fw_poly, device=self.device, dtype=self.dtype)
-        self.bw_poly = to_torch(camera_model_parameters.bw_poly, device=self.device, dtype=self.dtype)
+        self.register_buffer("fw_poly", to_torch(camera_model_parameters.fw_poly, device=self.device, dtype=self.dtype))
+        self.register_buffer("bw_poly", to_torch(camera_model_parameters.bw_poly, device=self.device, dtype=self.dtype))
 
         # Linear term A = [c,d;e;1], A^-1 = 1/(c-e*d)*[1,-d;-e,c]
         c, d, e = camera_model_parameters.linear_cde
-        self.A = torch.tensor(
-            [
-                [c, d],
-                [e, 1],
-            ],
-            dtype=self.dtype,
-            device=self.device,
+        self.register_buffer(
+            "A",
+            torch.tensor(
+                [
+                    [c, d],
+                    [e, 1],
+                ],
+                dtype=self.dtype,
+                device=self.device,
+            ),
         )
-        self.Ainv = torch.tensor(
-            [
-                [1, -d],
-                [-e, c],
-            ],
-            dtype=self.dtype,
-            device=self.device,
-        ) / (c - e * d)
+        self.register_buffer(
+            "Ainv",
+            torch.tensor(
+                [
+                    [1, -d],
+                    [-e, c],
+                ],
+                dtype=self.dtype,
+                device=self.device,
+            )
+            / (c - e * d),
+        )
 
         # Initialize first derivative of polynomials for Newton iteration-based inversions
-        self.dfw_poly = torch.tensor(
-            # coefficient of first derivative of the forward polynomial
-            [i * c for i, c in enumerate(camera_model_parameters.fw_poly[1:], start=1)],
-            dtype=self.dtype,
-            device=self.device,
+        self.register_buffer(
+            "dfw_poly",
+            torch.tensor(
+                # coefficient of first derivative of the forward polynomial
+                [i * c for i, c in enumerate(camera_model_parameters.fw_poly[1:], start=1)],
+                dtype=self.dtype,
+                device=self.device,
+            ),
         )
-        self.dbw_poly = torch.tensor(
-            # coefficient of first derivative of the backwards polynomial
-            [i * c for i, c in enumerate(camera_model_parameters.bw_poly[1:], start=1)],
-            dtype=self.dtype,
-            device=self.device,
+        self.register_buffer(
+            "dbw_poly",
+            torch.tensor(
+                # coefficient of first derivative of the backwards polynomial
+                [i * c for i, c in enumerate(camera_model_parameters.bw_poly[1:], start=1)],
+                dtype=self.dtype,
+                device=self.device,
+            ),
         )
 
         self.max_angle = float(camera_model_parameters.max_angle)
@@ -1241,7 +1278,7 @@ class FThetaCameraModel(CameraModel):
 
         # 2D pixel-distance threshold
         assert min_2d_norm > 0, "require positive minimum norm threshold"
-        self.min_2d_norm = torch.tensor(min_2d_norm, dtype=self.dtype, device=self.device)
+        self.register_buffer("min_2d_norm", torch.tensor(min_2d_norm, dtype=self.dtype, device=self.device))
 
         assert self.principal_point.shape == (2,)
         assert self.principal_point.dtype == self.dtype
@@ -1257,8 +1294,23 @@ class FThetaCameraModel(CameraModel):
         assert self.A.dtype == self.dtype
         assert self.Ainv.shape == (2, 2)
         assert self.Ainv.dtype == self.dtype
-        assert self.resolution.shape == (2,)
-        assert self.resolution.dtype == torch.int32
+
+    def get_parameters(self) -> types.FThetaCameraModelParameters:
+        """Returns the camera model parameters specific to the current camera model instance"""
+
+        return types.FThetaCameraModelParameters(
+            resolution=self.resolution.cpu().numpy().astype(np.uint64),
+            shutter_type=self.shutter_type,
+            external_distortion_parameters=self.external_distortion.get_parameters()
+            if self.external_distortion
+            else None,
+            principal_point=self.principal_point.cpu().numpy().astype(np.float32) - 0.5,
+            reference_poly=self.reference_poly,
+            angle_to_pixeldist_poly=self.fw_poly.cpu().numpy().astype(np.float32),
+            pixeldist_to_angle_poly=self.bw_poly.cpu().numpy().astype(np.float32),
+            max_angle=self.max_angle,
+            linear_cde=self.A.flatten()[:3].cpu().numpy().astype(np.float32),
+        )
 
     def _image_points_to_camera_rays_impl(self, image_points: torch.Tensor) -> torch.Tensor:
         """
@@ -1369,6 +1421,14 @@ class FThetaCameraModel(CameraModel):
 
 
 class OpenCVPinholeCameraModel(CameraModel):
+    """Camera model for OpenCV pinhole cameras"""
+
+    principal_point: torch.Tensor
+    focal_length: torch.Tensor
+    radial_coeffs: torch.Tensor
+    tangential_coeffs: torch.Tensor
+    thin_prism_coeffs: torch.Tensor
+
     def __init__(
         self,
         camera_model_parameters: types.OpenCVPinholeCameraModelParameters,
@@ -1376,15 +1436,27 @@ class OpenCVPinholeCameraModel(CameraModel):
         dtype: torch.dtype = torch.float32,
     ):
         super().__init__(camera_model_parameters, device, dtype)
+        del (device, dtype)
 
-        self.principal_point = to_torch(camera_model_parameters.principal_point, device=self.device, dtype=self.dtype)
-        self.focal_length = to_torch(camera_model_parameters.focal_length, device=self.device, dtype=self.dtype)
-        self.radial_coeffs = to_torch(camera_model_parameters.radial_coeffs, device=self.device, dtype=self.dtype)
-        self.tangential_coeffs = to_torch(
-            camera_model_parameters.tangential_coeffs, device=self.device, dtype=self.dtype
+        self.register_buffer(
+            "principal_point",
+            to_torch(camera_model_parameters.principal_point, device=self.device, dtype=self.dtype),
         )
-        self.thin_prism_coeffs = to_torch(
-            camera_model_parameters.thin_prism_coeffs, device=self.device, dtype=self.dtype
+        self.register_buffer(
+            "focal_length",
+            to_torch(camera_model_parameters.focal_length, device=self.device, dtype=self.dtype),
+        )
+        self.register_buffer(
+            "radial_coeffs",
+            to_torch(camera_model_parameters.radial_coeffs, device=self.device, dtype=self.dtype),
+        )
+        self.register_buffer(
+            "tangential_coeffs",
+            to_torch(camera_model_parameters.tangential_coeffs, device=self.device, dtype=self.dtype),
+        )
+        self.register_buffer(
+            "thin_prism_coeffs",
+            to_torch(camera_model_parameters.thin_prism_coeffs, device=self.device, dtype=self.dtype),
         )
 
         assert self.principal_point.shape == (2,)
@@ -1397,8 +1469,22 @@ class OpenCVPinholeCameraModel(CameraModel):
         assert self.tangential_coeffs.dtype == self.dtype
         assert self.thin_prism_coeffs.shape == (4,)
         assert self.thin_prism_coeffs.dtype == self.dtype
-        assert self.resolution.shape == (2,)
-        assert self.resolution.dtype == torch.int32
+
+    def get_parameters(self) -> types.OpenCVPinholeCameraModelParameters:
+        """Returns the camera model parameters specific to the current camera model instance"""
+
+        return types.OpenCVPinholeCameraModelParameters(
+            resolution=self.resolution.cpu().numpy().astype(np.uint64),
+            shutter_type=self.shutter_type,
+            external_distortion_parameters=self.external_distortion.get_parameters()
+            if self.external_distortion
+            else None,
+            principal_point=self.principal_point.cpu().numpy().astype(np.float32),
+            focal_length=self.focal_length.cpu().numpy().astype(np.float32),
+            radial_coeffs=self.radial_coeffs.cpu().numpy().astype(np.float32),
+            tangential_coeffs=self.tangential_coeffs.cpu().numpy().astype(np.float32),
+            thin_prism_coeffs=self.thin_prism_coeffs.cpu().numpy().astype(np.float32),
+        )
 
     def _image_points_to_camera_rays_impl(self, image_points: torch.Tensor) -> torch.Tensor:
         """
@@ -1544,6 +1630,17 @@ class OpenCVPinholeCameraModel(CameraModel):
 
 
 class OpenCVFisheyeCameraModel(CameraModel):
+    """Camera model for OpenCV fisheye cameras"""
+
+    principal_point: torch.Tensor
+    focal_length: torch.Tensor
+    max_angle: float
+    newton_iterations: int
+    min_2d_norm: torch.Tensor
+    forward_poly: torch.Tensor
+    dforward_poly: torch.Tensor
+    approx_backward_poly: torch.Tensor
+
     def __init__(
         self,
         camera_model_parameters: types.OpenCVFisheyeCameraModelParameters,
@@ -1553,36 +1650,64 @@ class OpenCVFisheyeCameraModel(CameraModel):
         min_2d_norm: float = 1e-6,
     ):
         super().__init__(camera_model_parameters, device, dtype)
+        del (device, dtype)
 
-        self.principal_point = to_torch(camera_model_parameters.principal_point, device=self.device, dtype=self.dtype)
-        self.focal_length = to_torch(camera_model_parameters.focal_length, device=self.device, dtype=self.dtype)
+        self.register_buffer(
+            "principal_point",
+            to_torch(camera_model_parameters.principal_point, device=self.device, dtype=self.dtype),
+        )
+        self.register_buffer(
+            "focal_length",
+            to_torch(camera_model_parameters.focal_length, device=self.device, dtype=self.dtype),
+        )
 
         self.max_angle = float(camera_model_parameters.max_angle)
         self.newton_iterations = newton_iterations
 
         # 2D pixel-distance threshold
         assert min_2d_norm > 0, "require positive minimum norm threshold"
-        self.min_2d_norm = torch.tensor(min_2d_norm, dtype=self.dtype, device=self.device)
+        self.register_buffer("min_2d_norm", torch.tensor(min_2d_norm, device=self.device, dtype=self.dtype))
 
         assert self.principal_point.shape == (2,)
         assert self.principal_point.dtype == self.dtype
         assert self.focal_length.shape == (2,)
         assert self.focal_length.dtype == self.dtype
-        assert self.resolution.shape == (2,)
-        assert self.resolution.dtype == torch.int32
 
         k1, k2, k3, k4 = camera_model_parameters.radial_coeffs[:]
         # ninth-degree forward polynomial (mapping angles to normalized distances) theta + k1*theta^3 + k2*theta^5 + k3*theta^7 + k4*theta^9
-        self.forward_poly = torch.tensor([0, 1, 0, k1, 0, k2, 0, k3, 0, k4], dtype=self.dtype, device=self.device)
+        self.register_buffer(
+            "forward_poly", torch.tensor([0, 1, 0, k1, 0, k2, 0, k3, 0, k4], device=self.device, dtype=self.dtype)
+        )
         # eighth-degree differential of forward polynomial 1 + 3*k1*theta^2 + 5*k2*theta^4 + 7*k3*theta^8 + 9*k4*theta^8
-        self.dforward_poly = torch.tensor(
-            [1, 0, 3 * k1, 0, 5 * k2, 0, 7 * k3, 0, 9 * k4], dtype=self.dtype, device=self.device
+        self.register_buffer(
+            "dforward_poly",
+            torch.tensor([1, 0, 3 * k1, 0, 5 * k2, 0, 7 * k3, 0, 9 * k4], device=self.device, dtype=self.dtype),
         )
 
         # approximate backward poly (mapping normalized distances to angles) *very crudely* by linear interpolation / equidistant angle model (also assuming image-centered principal point)
         max_normalized_dist = np.max(camera_model_parameters.resolution / 2 / camera_model_parameters.focal_length)
-        self.approx_backward_poly = torch.tensor(
-            [0, self.max_angle / max_normalized_dist], dtype=self.dtype, device=self.device
+        self.register_buffer(
+            "approx_backward_poly",
+            torch.tensor(
+                [0, self.max_angle / max_normalized_dist],
+                device=self.device,
+                dtype=self.dtype,
+            ),
+        )
+
+    def get_parameters(self) -> types.OpenCVFisheyeCameraModelParameters:
+        """Returns the camera model parameters specific to the current camera model instance"""
+
+        return types.OpenCVFisheyeCameraModelParameters(
+            resolution=self.resolution.cpu().numpy().astype(np.uint64),
+            shutter_type=self.shutter_type,
+            external_distortion_parameters=self.external_distortion.get_parameters()
+            if self.external_distortion
+            else None,
+            principal_point=self.principal_point.cpu().numpy().astype(np.float32),
+            focal_length=self.focal_length.cpu().numpy().astype(np.float32),
+            radial_coeffs=self.forward_poly[[3, 5, 7, 9]].cpu().numpy().astype(np.float32),
+            max_angle=self.max_angle,
         )
 
     def _image_points_to_camera_rays_impl(self, image_points: torch.Tensor) -> torch.Tensor:

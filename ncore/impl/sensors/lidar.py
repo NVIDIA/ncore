@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from abc import abstractmethod, ABC
 
-import logging
-
 from typing import Optional, Union, cast
 from dataclasses import dataclass
 
@@ -15,11 +13,11 @@ import numpy as np
 from scipy import spatial as scipy_spatial
 
 from ncore.impl.data import types
-from ncore.impl.sensors.common import to_torch, rotmat_to_unitquat, unitquat_to_rotmat, unitquat_slerp
+from ncore.impl.sensors.common import BaseModel, to_torch, rotmat_to_unitquat, unitquat_to_rotmat, unitquat_slerp
 
 
-class LidarModel(ABC):
-    """Base class for all lidar models."""
+class LidarModel(BaseModel, ABC):
+    """Base class for all lidar models"""
 
     @dataclass
     class SensorAnglesReturn:
@@ -76,17 +74,8 @@ class LidarModel(ABC):
         device: Union[str, torch.device],
         dtype: torch.dtype,
     ):
-        # Make sure device is a torch device
-        if isinstance(device, str):
-            device = torch.device(device)
-
-        # Check if cuda device is actually available
-        if device.type == "cuda" and not torch.cuda.is_available():
-            logging.warning("Cuda device selected but not available, reverting to CPU!")
-            device = torch.device("cpu")
-
-        self.device = device
-        self.dtype = dtype
+        super().__init__(device, dtype)
+        del (device, dtype)
 
     @staticmethod
     def maybe_from_parameters(
@@ -173,6 +162,19 @@ class StructuredLidarModel(LidarModel, ABC):
 class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
     """Represents a structured spinning lidar model that is using a per-row azimuth-offset (compatible with, e.g., Hesai P128 sensors)"""
 
+    row_elevations_rad: torch.Tensor
+    column_azimuths_rad: torch.Tensor
+    row_azimuth_offsets_rad: torch.Tensor
+    angles_to_columns_map_resolution_factor: int
+    angles_to_columns_map_dtype: torch.dtype
+    angles_to_columns_map: Optional[torch.Tensor]
+    fov_vert_start_rad: float
+    fov_vert_end_rad: float
+    fov_horiz_start_rad: float
+    fov_horiz_end_rad: float
+    n_rows: int
+    n_columns: int
+
     def __init__(
         self,
         parameters: types.RowOffsetStructuredSpinningLidarModelParameters,
@@ -184,17 +186,27 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
     ):
         super().__init__(device=device, dtype=dtype)
 
-        self.parameters = parameters
-
-        self.row_elevations_rad = to_torch(parameters.row_elevations_rad, device=self.device, dtype=self.dtype)
-        self.column_azimuths_rad = to_torch(parameters.column_azimuths_rad, device=self.device, dtype=self.dtype)
-        self.row_azimuth_offsets_rad = to_torch(
-            parameters.row_azimuth_offsets_rad, device=self.device, dtype=self.dtype
+        self.register_buffer(
+            "row_elevations_rad", to_torch(parameters.row_elevations_rad, device=self.device, dtype=self.dtype)
+        )
+        self.register_buffer(
+            "column_azimuths_rad", to_torch(parameters.column_azimuths_rad, device=self.device, dtype=self.dtype)
+        )
+        self.register_buffer(
+            "row_azimuth_offsets_rad",
+            to_torch(parameters.row_azimuth_offsets_rad, device=self.device, dtype=self.dtype),
         )
 
         self.angles_to_columns_map_resolution_factor = angles_to_columns_map_resolution_factor
         self.angles_to_columns_map_dtype = angles_to_columns_map_dtype
         self.angles_to_columns_map: Optional[torch.Tensor] = None
+
+        self.fov_vert_start_rad = parameters.fov_vert_start_rad
+        self.fov_vert_end_rad = parameters.fov_vert_end_rad
+        self.fov_horiz_start_rad = parameters.fov_horiz_start_rad
+        self.fov_horiz_end_rad = parameters.fov_horiz_end_rad
+        self.n_rows = parameters.n_rows
+        self.n_columns = parameters.n_columns
 
         if angles_to_columns_map_init:
             self._init_angles_to_columns_map()
@@ -262,7 +274,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
     def _init_angles_to_columns_map(self):
         # angles to column map is a 2D array of shape resolution_factor * (n_rows, n_columns)
 
-        assert torch.iinfo(self.angles_to_columns_map_dtype).max >= self.parameters.n_columns - 1, (
+        assert torch.iinfo(self.angles_to_columns_map_dtype).max >= self.n_columns - 1, (
             "The dtype for the angles to columns map must be able to store the maximum column index, consider increasing angles_to_columns_map_dtype"
         )
 
@@ -273,8 +285,8 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         # create all element indices [relative to the static model]
         elements = torch.stack(
             torch.meshgrid(
-                torch.arange(self.parameters.n_rows, dtype=torch.long),
-                torch.arange(self.parameters.n_columns, dtype=torch.long),
+                torch.arange(self.n_rows, dtype=torch.long),
+                torch.arange(self.n_columns, dtype=torch.long),
                 indexing="ij",
             ),
             dim=-1,
@@ -290,25 +302,25 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         # regular angles of the map
         grid_elevations_rad, grid_azimuths_rad = torch.meshgrid(
             torch.linspace(
-                self.parameters.fov_vert_start_rad,
-                self.parameters.fov_vert_end_rad,
-                self.angles_to_columns_map_resolution_factor * self.parameters.n_rows,
+                self.fov_vert_start_rad,
+                self.fov_vert_end_rad,
+                self.angles_to_columns_map_resolution_factor * self.n_rows,
                 device=self.device,
             ),
             torch.linspace(
-                self.parameters.fov_horiz_start_rad,
-                self.parameters.fov_horiz_end_rad,
-                self.angles_to_columns_map_resolution_factor * self.parameters.n_columns,
+                self.fov_horiz_start_rad,
+                self.fov_horiz_end_rad,
+                self.angles_to_columns_map_resolution_factor * self.n_columns,
                 device=self.device,
             ),
             indexing="ij",
         )
 
-        self.map_resolution_horiz_rad = (self.parameters.fov_horiz_end_rad - self.parameters.fov_horiz_start_rad) / (
-            self.angles_to_columns_map_resolution_factor * self.parameters.n_columns - 1
+        self.map_resolution_horiz_rad = (self.fov_horiz_end_rad - self.fov_horiz_start_rad) / (
+            self.angles_to_columns_map_resolution_factor * self.n_columns - 1
         )
-        self.map_resolution_vert_rad = (self.parameters.fov_vert_start_rad - self.parameters.fov_vert_end_rad) / (
-            self.angles_to_columns_map_resolution_factor * self.parameters.n_rows - 1
+        self.map_resolution_vert_rad = (self.fov_vert_start_rad - self.fov_vert_end_rad) / (
+            self.angles_to_columns_map_resolution_factor * self.n_rows - 1
         )
 
         # Convert grid and sensor angles to unit norm rays
@@ -317,7 +329,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
 
         sensor_angles = torch.cat(
             [
-                torch.tile(self.row_elevations_rad, [self.parameters.n_columns, 1]).reshape(-1, 1),
+                torch.tile(self.row_elevations_rad, [self.n_columns, 1]).reshape(-1, 1),
                 element_azimuths_rad.transpose(0, 1).reshape(-1, 1),
             ],
             dim=1,
@@ -332,7 +344,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
 
         # Map the indices to the columns by dividing with the total number of rows and (implicit) flooring
         self.angles_to_columns_map = (
-            (idxs / self.parameters.n_rows).to(self.angles_to_columns_map_dtype).reshape(grid_elevations_rad.shape)
+            (idxs / self.n_rows).to(self.angles_to_columns_map_dtype).reshape(grid_elevations_rad.shape)
         )
 
     def sensor_angles_relative_frame_times(self, sensor_angles: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
@@ -356,30 +368,29 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         # Check that all angles are in the fov
         # TODO: this might be slow, need to check if we can do this outside or somehow guarantee that the angles are in the fov
         sensor_angles_ranges = torch.aminmax(sensor_angles, dim=0)
-        assert self.parameters.fov_vert_end_rad <= sensor_angles_ranges.min[0].item()
-        assert sensor_angles_ranges.max[0].item() <= self.parameters.fov_vert_start_rad
+        assert self.fov_vert_end_rad <= sensor_angles_ranges.min[0].item()
+        assert sensor_angles_ranges.max[0].item() <= self.fov_vert_start_rad
 
-        assert self.parameters.fov_horiz_start_rad <= sensor_angles_ranges.min[1].item()
-        assert sensor_angles_ranges.max[1].item() <= self.parameters.fov_horiz_end_rad
+        assert self.fov_horiz_start_rad <= sensor_angles_ranges.min[1].item()
+        assert sensor_angles_ranges.max[1].item() <= self.fov_horiz_end_rad
 
         elevations_rad = sensor_angles[:, 0]
         azimuths_rad = sensor_angles[:, 1]
 
         # Determine the location of the angle in the map (nearest neighbor lookup)
         horizontal_idxs = (
-            (azimuths_rad - self.parameters.fov_horiz_start_rad + self.map_resolution_horiz_rad / 2)
+            (azimuths_rad - self.fov_horiz_start_rad + self.map_resolution_horiz_rad / 2)
             / self.map_resolution_horiz_rad
         ).to(torch.long)
         vertical_idxs = (
-            (self.parameters.fov_vert_start_rad - elevations_rad + self.map_resolution_vert_rad / 2)
-            / self.map_resolution_vert_rad
+            (self.fov_vert_start_rad - elevations_rad + self.map_resolution_vert_rad / 2) / self.map_resolution_vert_rad
         ).to(torch.long)
 
         # Grab the corresponding column index from the map
         column_indices = self.angles_to_columns_map[vertical_idxs, horizontal_idxs]
 
         # Compute the relative frame time using the column-associated relative time
-        return column_indices.to(self.dtype) / (self.parameters.n_columns - 1)
+        return column_indices.to(self.dtype) / (self.n_columns - 1)
 
     def world_points_to_sensor_angles_shutter_pose(
         self,
@@ -595,7 +606,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
 
         # Get relative frame-times based on the elements column index relative to the total number of columns
         # (columns are measured in increasing time order irrespective of spin-direction)
-        t = elements[:, 1].to(self.dtype) / (self.parameters.n_columns - 1)
+        t = elements[:, 1].to(self.dtype) / (self.n_columns - 1)
 
         world_position_rs = (1 - t)[..., None] * T_sensor_world_start[:3, 3:4].transpose(0, 1).repeat(
             t.shape[0], 1
@@ -638,8 +649,8 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
     def __valid_sensor_angles(self, sensor_angles: torch.Tensor) -> torch.Tensor:
         """Checks if a sensor angles are valid / within the sensor's field of view"""
         return (
-            (self.parameters.fov_vert_end_rad <= sensor_angles[:, 0])
-            & (sensor_angles[:, 0] <= self.parameters.fov_vert_start_rad)
-            & (self.parameters.fov_horiz_start_rad <= sensor_angles[:, 1])
-            & (sensor_angles[:, 1] <= self.parameters.fov_horiz_end_rad)
+            (self.fov_vert_end_rad <= sensor_angles[:, 0])
+            & (sensor_angles[:, 0] <= self.fov_vert_start_rad)
+            & (self.fov_horiz_start_rad <= sensor_angles[:, 1])
+            & (sensor_angles[:, 1] <= self.fov_horiz_end_rad)
         )
