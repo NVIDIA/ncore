@@ -113,6 +113,7 @@ class CameraModelParameters:
         if not isinstance(self.shutter_type, ShutterType):
             self.shutter_type = ShutterType(self.shutter_type)
         assert self.shutter_type in ShutterType.__members__.values()
+
         assert isinstance(self.external_distortion_parameters, (type(None), ConcreteExternalDistortionParametersUnion))
 
 
@@ -673,6 +674,9 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
         assert isinstance(self.global_speed, float)
         assert isinstance(self.timestamp_us, int)
         assert isinstance(self.confidence, (type(None), float))
+
+        if not isinstance(self.source, LabelSource):
+            self.source = LabelSource(self.source)
         assert self.source in LabelSource.__members__.values()
 
 
