@@ -65,23 +65,16 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
     def test_model_parameters_roundtrip(self):
         """Validate model parameters obtained from torch model instances are correctly mapped back to the input versions
         between device transfers"""
-        expected_device = self.device
-        if expected_device == "cuda" and not torch.cuda.is_available():
-            # fall back to cpu if cuda is not available in unit test machine
-            expected_device = "cpu"
+
         self.assertEqual(
-            self.lidar_model.row_elevations_rad.device.type, expected_device.type
+            self.lidar_model.row_elevations_rad.device.type, self.device.type
         )  # make sure original device is correct
 
         # make sure retrieved parameters correspond to reference
         self.assertEqual(self.model_parameters.to_json(), self.lidar_model.get_parameters().to_json())
 
         # flip flop device using nn.Module magic
-        new_device_str = "cuda" if self.device == "cpu" else "cpu"
-        if new_device_str == "cuda" and not torch.cuda.is_available():
-            # fall back to cpu if cuda is not available in unit test machine
-            new_device_str = "cpu"
-        self.lidar_model.to(device=new_device_str)
+        self.lidar_model.to(device=(new_device_str := "cuda" if self.device == "cpu" else "cpu"))
         self.assertEqual(
             self.lidar_model.row_elevations_rad.device.type, new_device_str
         )  # make sure the new device is correct

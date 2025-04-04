@@ -1308,23 +1308,13 @@ class TestParameterIO(CameraModelsBaseTestCase):
             with self.subTest(cam_model_params=cam_model_params):
                 cam_model = CameraModel.from_parameters(cam_model_params, device=self.device, dtype=self.dtype)
 
-                expected_device = self.device
-                if expected_device == "cuda" and not torch.cuda.is_available():
-                    # fall back to cpu if cuda is not available in unit test machine
-                    expected_device = "cpu"
-                self.assertEqual(
-                    cam_model.resolution.device.type, expected_device
-                )  # make sure original device is correct
+                self.assertEqual(cam_model.resolution.device.type, self.device)  # make sure original device is correct
 
                 # make sure retrieved parameters correspond to reference
                 self.assertEqual(cam_model_params.to_json(), cam_model.get_parameters().to_json())
 
                 # flip flop device using nn.Module magic
-                new_device_str = "cuda" if self.device == "cpu" else "cpu"
-                if new_device_str == "cuda" and not torch.cuda.is_available():
-                    # fall back to cpu if cuda is not available in unit test machine
-                    new_device_str = "cpu"
-                cam_model.to(device=new_device_str)
+                cam_model.to(device=(new_device_str := "cuda" if self.device == "cpu" else "cpu"))
                 self.assertEqual(
                     cam_model.resolution.device.type, new_device_str
                 )  # make sure the new device is correct
