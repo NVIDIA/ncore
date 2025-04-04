@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import torch
 import numpy as np
 
+from ncore.impl.common.common import map_optional
 from ncore.impl.data import types
 from ncore.impl.sensors.common import (
     BaseModel,
@@ -27,16 +28,14 @@ class ExternalDistortionModel(BaseModel, ABC):
     """Base class for distortion effects from external causes to the camera"""
 
     @staticmethod
-    def maybe_from_parameters(
-        external_distortion_parameters: Optional[types.ConcreteExternalDistortionParametersUnion],
+    def from_parameters(
+        external_distortion_parameters: types.ConcreteExternalDistortionParametersUnion,
         device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
-    ) -> Optional[ExternalDistortionModel]:
+    ) -> ExternalDistortionModel:
         """
-        Initialize a generic external distortion model from parameters, if available
+        Initialize a generic external distortion model from parameters
         """
-        if external_distortion_parameters is None:
-            return None
         if isinstance(external_distortion_parameters, types.BivariateWindshieldModelParameters):
             return BivariateWindshieldModel(external_distortion_parameters, device, dtype)
         raise TypeError(
@@ -240,8 +239,9 @@ class CameraModel(BaseModel, ABC):
         # Initialize external distortion module if available
         self.register_module(
             "external_distortion",
-            ExternalDistortionModel.maybe_from_parameters(
-                camera_model_parameters.external_distortion_parameters, self.device, self.dtype
+            map_optional(
+                camera_model_parameters.external_distortion_parameters,
+                lambda x: ExternalDistortionModel.from_parameters(x, self.device, self.dtype),
             ),
         )
 
@@ -1301,9 +1301,7 @@ class FThetaCameraModel(CameraModel):
         return types.FThetaCameraModelParameters(
             resolution=self.resolution.cpu().numpy().astype(np.uint64),
             shutter_type=self.shutter_type,
-            external_distortion_parameters=self.external_distortion.get_parameters()
-            if self.external_distortion
-            else None,
+            external_distortion_parameters=map_optional(self.external_distortion, lambda x: x.get_parameters()),
             principal_point=self.principal_point.cpu().numpy().astype(np.float32) - 0.5,
             reference_poly=self.reference_poly,
             angle_to_pixeldist_poly=self.fw_poly.cpu().numpy().astype(np.float32),
@@ -1476,9 +1474,7 @@ class OpenCVPinholeCameraModel(CameraModel):
         return types.OpenCVPinholeCameraModelParameters(
             resolution=self.resolution.cpu().numpy().astype(np.uint64),
             shutter_type=self.shutter_type,
-            external_distortion_parameters=self.external_distortion.get_parameters()
-            if self.external_distortion
-            else None,
+            external_distortion_parameters=map_optional(self.external_distortion, lambda x: x.get_parameters()),
             principal_point=self.principal_point.cpu().numpy().astype(np.float32),
             focal_length=self.focal_length.cpu().numpy().astype(np.float32),
             radial_coeffs=self.radial_coeffs.cpu().numpy().astype(np.float32),
@@ -1701,9 +1697,7 @@ class OpenCVFisheyeCameraModel(CameraModel):
         return types.OpenCVFisheyeCameraModelParameters(
             resolution=self.resolution.cpu().numpy().astype(np.uint64),
             shutter_type=self.shutter_type,
-            external_distortion_parameters=self.external_distortion.get_parameters()
-            if self.external_distortion
-            else None,
+            external_distortion_parameters=map_optional(self.external_distortion, lambda x: x.get_parameters()),
             principal_point=self.principal_point.cpu().numpy().astype(np.float32),
             focal_length=self.focal_length.cpu().numpy().astype(np.float32),
             radial_coeffs=self.forward_poly[[3, 5, 7, 9]].cpu().numpy().astype(np.float32),

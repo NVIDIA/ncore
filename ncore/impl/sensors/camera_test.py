@@ -1429,10 +1429,6 @@ class TestTransformParameters(CameraModelsBaseTestCase):
 )
 class TestExternalDistortion(CommonTestCase):
     def test_from_parameters(self):
-        # Verify that "None" parameters returns a "None" object
-        res_none = ExternalDistortionModel.maybe_from_parameters(None, self.device, self.dtype)
-        self.assertIsNone(res_none)
-
         # Verify that, when provided BivariateWindshieldModelParameters, a BivariateWindshieldModel object is returned
         horizontal_poly = np.zeros((3), dtype=np.float32)
         vertical_poly = np.zeros_like(horizontal_poly)
@@ -1445,7 +1441,7 @@ class TestExternalDistortion(CommonTestCase):
             horizontal_poly_inverse,
             vertical_poly_inverse,
         )
-        res_ws = ExternalDistortionModel.maybe_from_parameters(windshield_params, self.device, self.dtype)
+        res_ws = ExternalDistortionModel.from_parameters(windshield_params, self.device, self.dtype)
         self.assertTrue(isinstance(res_ws, BivariateWindshieldModel))
 
 

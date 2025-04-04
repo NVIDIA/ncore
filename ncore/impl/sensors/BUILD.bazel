@@ -27,6 +27,7 @@ py_library(
         requirement("numpy"),
         requirement("torch"),
         ":pylib_common",
+        "//ncore/impl/common:pylib_common",
         "//ncore/impl/data:pylib_types",
     ],
 )
