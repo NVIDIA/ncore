@@ -26,7 +26,7 @@ from ncore.impl.sensors.camera import (
     FThetaCameraModel,
     OpenCVPinholeCameraModel,
     OpenCVFisheyeCameraModel,
-    ExternalDistortion,
+    ExternalDistortionModel,
     BivariateWindshieldModel,
     to_torch,
 )
@@ -1167,12 +1167,7 @@ class TestFisheyeCamera(CommonTestCase):
                 )
 
 
-@parameterized.parameterized_class(
-    ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
-)
-class TestTransformParameters(CommonTestCase):
-    MAX_DEVIATION_IN_IMAGE_COORDINATES = 0.001
-
+class CameraModelsBaseTestCase(CommonTestCase):
     def setUp(self):
         # Make printed errors more representable numerically
         np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
@@ -1282,6 +1277,58 @@ class TestTransformParameters(CommonTestCase):
             ),
         ]
 
+        # Add an arbitrary dummy windshield model
+        horizontal_poly = np.array([0.0, -1.0, 0.0], dtype=np.float32)
+        vertical_poly = np.array([0.0, 0.0, -1.0], dtype=np.float32)
+
+        windshield_model_parameters = BivariateWindshieldModelParameters(
+            ReferencePolynomial.FORWARD,
+            horizontal_poly,
+            vertical_poly,
+            horizontal_poly,
+            vertical_poly,
+        )
+
+        self.cam_model_params_wsd = []
+        for cam_model_params in self.cam_model_params:
+            self.cam_model_params_wsd.append(
+                dataclasses.replace(cam_model_params, external_distortion_parameters=windshield_model_parameters)
+            )
+
+
+@parameterized.parameterized_class(
+    ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
+)
+class TestParameterIO(CameraModelsBaseTestCase):
+    def test_model_parameters_roundtrip(self):
+        """Validate model parameters obtained from torch model instances are correctly mapped back to the input versions
+        between device transfers"""
+
+        for cam_model_params in self.cam_model_params + self.cam_model_params_wsd:
+            with self.subTest(cam_model_params=cam_model_params):
+                cam_model = CameraModel.from_parameters(cam_model_params, device=self.device, dtype=self.dtype)
+
+                self.assertEqual(cam_model.resolution.device.type, self.device)  # make sure original device is correct
+
+                # make sure retrieved parameters correspond to reference
+                self.assertEqual(cam_model_params.to_json(), cam_model.get_parameters().to_json())
+
+                # flip flop device using nn.Module magic
+                cam_model.to(device=(new_device_str := "cuda" if self.device == "cpu" else "cpu"))
+                self.assertEqual(
+                    cam_model.resolution.device.type, new_device_str
+                )  # make sure the new device is correct
+
+                # make sure retrieved parameters still correspond to reference
+                self.assertEqual(cam_model_params.to_json(), cam_model.get_parameters().to_json())
+
+
+@parameterized.parameterized_class(
+    ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
+)
+class TestTransformParameters(CameraModelsBaseTestCase):
+    MAX_DEVIATION_IN_IMAGE_COORDINATES = 0.001
+
     def test_image_domain_transform(self):
         """Validate image up- / down-scaling and offsetting"""
 
@@ -1372,10 +1419,6 @@ class TestTransformParameters(CommonTestCase):
 )
 class TestExternalDistortion(CommonTestCase):
     def test_from_parameters(self):
-        # Verify that "None" parameters returns a "None" object
-        res_none = ExternalDistortion.maybe_from_parameters(None, self.device, self.dtype)
-        self.assertIsNone(res_none)
-
         # Verify that, when provided BivariateWindshieldModelParameters, a BivariateWindshieldModel object is returned
         horizontal_poly = np.zeros((3), dtype=np.float32)
         vertical_poly = np.zeros_like(horizontal_poly)
@@ -1388,7 +1431,7 @@ class TestExternalDistortion(CommonTestCase):
             horizontal_poly_inverse,
             vertical_poly_inverse,
         )
-        res_ws = ExternalDistortion.maybe_from_parameters(windshield_params, self.device, self.dtype)
+        res_ws = ExternalDistortionModel.from_parameters(windshield_params, self.device, self.dtype)
         self.assertTrue(isinstance(res_ws, BivariateWindshieldModel))
 
 

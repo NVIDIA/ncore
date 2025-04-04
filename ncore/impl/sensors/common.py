@@ -2,13 +2,73 @@
 
 from typing import Union, Optional
 
+import logging
+
 import torch
 import numpy as np
 
 
+class BaseModel(torch.nn.Module):
+    """Base class for all sensor models in ncore"""
+
+    init_device: torch.device  #: Device the model was initialized with
+    init_dtype: torch.dtype  #: Floating point dtype the model was initialized with
+
+    def __init__(
+        self,
+        device: Union[str, torch.device],
+        dtype: torch.dtype,
+    ):
+        # Initialize nn.module
+        super().__init__()
+
+        # Make sure device is a torch device
+        if isinstance(device, str):
+            device = torch.device(device)
+
+        self.init_device = device
+
+        # Make sure dtype is a torch floating point dtype
+        if not dtype.is_floating_point:
+            raise TypeError(f"Expected floating point dtype, but got {dtype}")
+
+        self.init_dtype = dtype
+
+    @property
+    def device(self) -> torch.device:
+        """Returns the device of the model given by the first parameter or buffer
+        with a fallback to the init-time device"""
+        try:
+            # grab the first parameter or buffer to determine current device
+            return next(
+                self.parameters(),
+                next(self.buffers()),  # if no parameters, grab a buffer
+            ).device
+        except StopIteration:
+            return self.init_device  # otherwise fall back to init
+
+    @property
+    def dtype(self) -> torch.dtype:
+        """Returns the dtype of the model given by the first floating point dtype of parameters / buffers
+        with a fallback to the init-time dtype"""
+
+        # check parameters first
+        for parameter in self.parameters():
+            if not parameter.dtype.is_floating_point:
+                continue
+            return parameter.dtype
+        # if no parameters, grab a buffer
+        for buffer in self.buffers():
+            if not buffer.dtype.is_floating_point:
+                continue
+            return buffer.dtype
+        # otherwise fall back to init
+        return self.init_dtype
+
+
 def to_torch(
     var: Union[torch.Tensor, np.ndarray],
-    device: torch.device,
+    device: Union[str, torch.device],
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
     """Converts an input array / tensor to a tensor on the target device (with optional dtype conversion)."""
