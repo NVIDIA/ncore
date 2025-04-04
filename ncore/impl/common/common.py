@@ -2,18 +2,13 @@
 
 from __future__ import annotations
 
-import pickle
-import re
-import struct
 import json
-import lzma
-import io
 import time
 import sys
 
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Tuple, Union, List, cast
+from typing import Callable, Optional, Tuple, TypeVar, Union, List, cast
 from dataclasses import dataclass
 
 import numpy as np
@@ -21,123 +16,6 @@ import numpy as np
 import PIL.Image as PILImage
 from scipy import spatial, interpolate
 from scipy.spatial.transform import Rotation as R
-
-
-def natural_key(string_):
-    """
-    Sort strings by numbers in the name
-    """
-    return [int(s) if s.isdigit() else s for s in re.split(r"(\d+)", string_)]
-
-
-def load_pkl(path):
-    """
-    Load a .pkl object
-    """
-    file = open(path, "rb")
-    return pickle.load(file)
-
-
-def save_pkl(obj, path):
-    """
-    save a dictionary to a pickle file
-    """
-    with open(path, "wb") as f:
-        pickle.dump(obj, f)
-
-
-def load_pc_dat(file_path: str, allow_lookup_fallback: bool = True) -> np.ndarray:
-    """
-    Loads binary .dat / .dat.xz files representing a 2D single-precision array.
-    Serialized 2D arrays usually represent a point-clouds with columns defined as
-
-    [x_s, y_s, z_s, x_e, y_e, z_e, dist, intensity, dynamic_flag]
-
-    - xys_s / xyz_e: the start / end point of world rays
-    - dist: the norm of the ray
-    - intensity: lidar intensity response value for this point
-    - dynamic_flag:
-      - -1: if the information is not available,
-      -  0: static
-      -  1: = dynamic
-
-    Args:
-        file_path: path to .dat / .dat.xz file to load.
-        allow_lookup_fallback: If enabled, will fall back to .dat.xz/.dat, resp., in case loading .dat/.dat.xz fails (for backwards-compatibility).
-    Return:
-        lidar_data: loaded 2D single-precision array
-    """
-
-    def load(file: Union[io.BufferedReader, lzma.LZMAFile]) -> np.ndarray:
-        # The first number denotes the number of points
-        n_rows, n_columns = struct.unpack("<ii", file.read(8))
-        # The remaining data are floats saved in little endian
-        # Columns usually contain: x_s, y_s, z_s, x_e, y_e, z_e, d, intensity, dynamic_flag
-        # Dynamic flag is set to -1 if the information is not available, 0 static, 1 = dynamic
-        return np.array(struct.unpack("<%sf" % (n_rows * n_columns), file.read()), dtype=np.float32).reshape(
-            n_rows, n_columns
-        )
-
-    if file_path.endswith(".dat"):
-        try:
-            with open(file_path, "rb") as file:
-                lidar_data = load(file)
-        except FileNotFoundError as e:
-            if allow_lookup_fallback:
-                with lzma.open(file_path + ".xz", "rb") as lzma_file:
-                    lidar_data = load(lzma_file)
-            else:
-                raise e
-    elif file_path.endswith(".dat.xz"):
-        try:
-            with lzma.open(file_path, "rb") as lzma_file:
-                lidar_data = load(lzma_file)
-        except FileNotFoundError as e:
-            if allow_lookup_fallback:
-                with open(file_path.replace(".dat.xz", ".dat"), "rb") as file:
-                    lidar_data = load(file)
-            else:
-                raise e
-    else:
-        raise ValueError("invalid file format provided, supporting .dat / .dat.xz files only")
-
-    return lidar_data
-
-
-def save_pc_dat(file_path: str, lidar_data: np.ndarray) -> None:
-    """
-    Stores binary .dat / .dat.xz file representing a 2D single-precision array, usually representing
-    a point-cloud (see load_pc_dat for format description).
-
-    Args:
-        file_path: path to .dat / .dat.xz file to store
-        lidar_data: 2D single-precision array to serialize
-    """
-
-    if lidar_data.dtype is not np.dtype("float32"):
-        raise ValueError("expecting single-precision array as input")
-
-    def save(file: Union[io.BufferedWriter, lzma.LZMAFile]) -> None:
-        n_rows, n_columns = np.shape(lidar_data)
-        lidar_data_flat = lidar_data.flatten()
-
-        file.write(struct.pack("<i", n_rows))
-        file.write(struct.pack("<i", n_columns))
-        file.write(struct.pack("<%sf" % lidar_data_flat.size, *lidar_data_flat))
-
-    if file_path.endswith(".dat"):
-        with open(file_path, "wb") as file:
-            save(file)
-    elif file_path.endswith(".dat.xz"):
-        with lzma.open(
-            file_path,
-            "wb",
-            # Use fastest possible compression mode which still gives acceptable compression rates
-            preset=0,
-        ) as lzma_file:
-            save(lzma_file)
-    else:
-        raise ValueError("invalid file format provided, supporting .dat / .dat.xz files only")
 
 
 def load_jsonl(jsonl_path: Union[str, Path]) -> List[dict]:
@@ -156,19 +34,6 @@ def load_jsonl(jsonl_path: Union[str, Path]) -> List[dict]:
             object_list.append(json.loads(line))
 
     return object_list
-
-
-def save_jsonl(file_path: str, object_list: List[dict]) -> None:
-    """
-    Saves a list of json-serializable objects into a jsonl (json-lines) file (each line corresponds to a serialized json object) - see jsonlines.org
-
-    Args:
-        jsonl_path: json-lines output file path
-        object_list: list of json-serializable objects to save
-    """
-
-    with open(file_path, "w") as fp:
-        fp.writelines([json.dumps(object) + "\n" for object in object_list])
 
 
 class PoseInterpolator:
@@ -439,3 +304,24 @@ class HalfClosedInterval:
         )  # full range of frames
 
         return range(cover_range_start, cover_range_stop)
+
+
+# Helper functions for working with optionals
+T = TypeVar("T")
+U = TypeVar("U")
+
+
+def unpack_optional(maybe_value: Optional[T]) -> T:
+    """Unpacks the value of an optional, raising if value is missing"""
+    if maybe_value is None:
+        raise ValueError("Can't unpack empty optional")
+
+    return maybe_value
+
+
+def map_optional(maybe_value: Optional[T], func: Callable[[T], U]) -> Optional[U]:
+    """Applies a function `func` to an optional value if it's set, otherwise returns None"""
+    if maybe_value is None:
+        return None
+
+    return func(maybe_value)
