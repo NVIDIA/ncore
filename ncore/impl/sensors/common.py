@@ -26,11 +26,6 @@ class BaseModel(torch.nn.Module):
         if isinstance(device, str):
             device = torch.device(device)
 
-        # Check if cuda device is actually available
-        if device.type == "cuda" and not torch.cuda.is_available():
-            logging.warning("Cuda device selected but not available, reverting to CPU!")
-            device = torch.device("cpu")
-
         self.init_device = device
 
         # Make sure dtype is a torch floating point dtype
