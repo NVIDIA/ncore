@@ -388,7 +388,12 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
 
         # Check that all angles are in the fov
         # TODO: this might be slow, need to check if we can do this outside or somehow guarantee that the angles are in the fov
-        sensor_angles_ranges = torch.aminmax(sensor_angles, dim=0)
+        sensor_angles_ranges = torch.aminmax(
+            sensor_angles
+            # FOV ranges are only exact up to f32
+            .to(torch.float32),
+            dim=0,
+        )
         assert self.fov_vert_end_rad <= sensor_angles_ranges.min[0].item()
         assert sensor_angles_ranges.max[0].item() <= self.fov_vert_start_rad
 
@@ -663,8 +668,10 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
 
     def __warp_azimuth(self, azimuths_rad: torch.Tensor) -> torch.Tensor:
         """Wraps the azimuth angle to the interval (-pi, pi]"""
+
         azimuths_rad[azimuths_rad > np.pi] -= 2 * np.pi
         azimuths_rad[azimuths_rad <= -np.pi] += 2 * np.pi
+
         return azimuths_rad
 
     def __valid_sensor_angles(self, sensor_angles: torch.Tensor) -> torch.Tensor:
