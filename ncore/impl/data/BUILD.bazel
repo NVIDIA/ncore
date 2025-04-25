@@ -93,6 +93,7 @@ pytest_test(
         ":pylib_stores",
         requirement("parameterized"),
         requirement("numpy"),
+        requirement("zarr"),
     ],
 )
 

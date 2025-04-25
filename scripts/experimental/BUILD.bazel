@@ -12,6 +12,7 @@ py_binary(
         requirement("point-cloud-utils"),
         requirement("numpy"),
         requirement("tqdm"),
+        requirement("torch"),
         requirement("scipy"),
         requirement("pillow"),
         "//ncore/impl/data:pylib_data",

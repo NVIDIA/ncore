@@ -13,17 +13,6 @@ mypy_cli(
     mypy_requirement = requirement("mypy"),
     python_version = "3.11",
     tags = ["no-mypy"],
-    deps = [
-        # List of dependencies that provide type-hints
-        requirement("click"),
-        requirement("pytest"),
-        requirement("numpy"),
-        requirement("sphinx"),
-        requirement("multimethod"),
-        requirement("jupyter_server"),
-        requirement("dataclasses_json"),
-        requirement("torch"),
-    ],
 )
 
 bzlformat_pkg(name = "bzlformat")

@@ -42,6 +42,7 @@ pytest_test(
         requirement("opencv-python"),
         requirement("parameterized"),
         requirement("scipy"),
+        requirement("torch"),
         ":pylib_camera",
         ":pylib_common",
         "//ncore/impl/data:pylib_types",
