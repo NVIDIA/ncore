@@ -511,18 +511,18 @@ class BaseStructuredSpinningLidarModelParameters(BaseSpinningLidarModelParameter
     n_rows: int  # number of rows
     n_columns: int  # number of columns
 
-    fov_horiz_start_rad: float  # horizontal field of view start [around z axis, relative to x axis] [radians]
-    fov_horiz_end_rad: float  # horizontal field of view end [around z axis, relative to x axis] [radians]
+    fov_horiz_min_rad: float  # horizontal field of view minimum [around z axis, relative to x axis] [radians]
+    fov_horiz_max_rad: float  # horizontal field of view maximum [around z axis, relative to x axis] [radians]
 
-    fov_vert_start_rad: float  # vertical field of view start [around y axis, relative to x axis] [radians]
-    fov_vert_end_rad: float  # vertical field of view end [around y axis, relative to z axis] [radians]
+    fov_vert_min_rad: float  # vertical field of view minimum [around y axis, relative to x axis] [radians]
+    fov_vert_max_rad: float  # vertical field of view maximum [around y axis, relative to z axis] [radians]
 
     def __post_init__(self):
         # Sanity checks
         assert self.n_rows > 0
         assert self.n_columns > 0
-        assert self.fov_horiz_start_rad < self.fov_horiz_end_rad
-        assert self.fov_vert_start_rad < self.fov_vert_end_rad
+        assert self.fov_horiz_min_rad < self.fov_horiz_max_rad
+        assert self.fov_vert_min_rad < self.fov_vert_max_rad
 
 
 @dataclass()
@@ -553,8 +553,8 @@ class RowOffsetStructuredSpinningLidarModelParameters(
         assert self.row_elevations_rad.shape == (self.n_rows,)
         assert is_sorted_descending(self.row_elevations_rad), "Row elevation angles must be sorted in descending order"
         assert (
-            self.fov_vert_end_rad <= self.row_elevations_rad[-1].item()
-            and self.row_elevations_rad[0].item() <= self.fov_vert_start_rad
+            self.fov_vert_min_rad <= self.row_elevations_rad.min().item()
+            and self.row_elevations_rad.max().item() <= self.fov_vert_max_rad
         ), "Row elevation angles must cover the full FOV"
 
         assert self.column_azimuths_rad.dtype == np.float32
@@ -574,8 +574,7 @@ class RowOffsetStructuredSpinningLidarModelParameters(
         azimuths_rad[azimuths_rad > np.pi] -= 2 * np.pi
         azimuths_rad[azimuths_rad <= -np.pi] += 2 * np.pi
         assert (
-            self.fov_horiz_start_rad <= azimuths_rad.min().item()
-            and azimuths_rad.max().item() <= self.fov_horiz_end_rad
+            self.fov_horiz_min_rad <= azimuths_rad.min().item() and azimuths_rad.max().item() <= self.fov_horiz_max_rad
         ), "Column azimuth angles must cover the full FOV"
 
         assert self.row_azimuth_offsets_rad.dtype == np.float32
