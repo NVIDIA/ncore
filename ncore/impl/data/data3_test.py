@@ -649,7 +649,7 @@ class TestData3Reload(unittest.TestCase):
             ).astype(np.float32),
             ref_lidar_intrinsics := RowOffsetStructuredSpinningLidarModelParameters(
                 spinning_frequency_hz=10.0,
-                spinning_direction="ccw",
+                spinning_direction="cw",
                 n_rows=128,
                 n_columns=3600,
                 fov_horiz_start_rad=-3.141592502593994,

@@ -539,10 +539,10 @@ class RowOffsetStructuredSpinningLidarModelParameters(
     # azimuth angles
     column_azimuths_rad: np.ndarray = util.numpy_array_field(
         np.float32
-    )  # azimuth angle of each column [around z axis, relative to y axis] [(Ncolumns,) radians]
+    )  # azimuth angle of each column [around z axis, relative to x axis] [(Ncolumns,) radians]
     row_azimuth_offsets_rad: np.ndarray = util.numpy_array_field(
         np.float32
-    )  # azimuth angle offsets for each row [around z axis, relative to y axis] [(Nrows,) radians]
+    )  # azimuth angle offsets for each row [around z axis, relative to x axis] [(Nrows,) radians]
 
     def __post_init__(self):
         # Sanity checks
@@ -561,11 +561,11 @@ class RowOffsetStructuredSpinningLidarModelParameters(
         assert self.column_azimuths_rad.shape == (self.n_columns,)
 
         if self.spinning_direction == "ccw":
-            assert is_sorted_descending(self.column_azimuths_rad), (
+            assert is_sorted_ascending(self.column_azimuths_rad), (
                 "Column azimuth angles must be sorted in descending order for ccw sensors"
             )
         else:
-            assert is_sorted_ascending(self.column_azimuths_rad), (
+            assert is_sorted_descending(self.column_azimuths_rad), (
                 "Column azimuth angles must be sorted in ascending order for cw sensors"
             )
 
