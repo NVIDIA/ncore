@@ -56,8 +56,7 @@ py_binary(
     deps = NCORE_EXPORT_CAMERA_DEPS,
 )
 
-# # Image for 'ncore_export_camera'
-
+# Image for 'ncore_export_camera'
 py_oci_image(
     name = "ncore_export_camera_image",
     base = "@ncore_dev_image",
