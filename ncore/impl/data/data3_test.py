@@ -649,7 +649,7 @@ class TestData3Reload(unittest.TestCase):
             ).astype(np.float32),
             ref_lidar_intrinsics := RowOffsetStructuredSpinningLidarModelParameters(
                 spinning_frequency_hz=10.0,
-                spinning_direction="cw",
+                spinning_direction="ccw",
                 n_rows=128,
                 n_columns=3600,
                 fov_horiz_min_rad=-3.141592502593994,
@@ -657,7 +657,7 @@ class TestData3Reload(unittest.TestCase):
                 fov_vert_min_rad=-0.4364195466041565,
                 fov_vert_max_rad=0.2511354088783264,
                 row_elevations_rad=np.linspace(0.2511354088783264, -0.4364195466041565, 128, dtype=np.float32),
-                column_azimuths_rad=np.linspace(3.141576051712036, -3.141592502593994, 3600, dtype=np.float32),
+                column_azimuths_rad=np.linspace(-3.141592502593994, 3.141576051712036, 3600, dtype=np.float32),
                 row_azimuth_offsets_rad=np.linspace(0.0, 0.0, 128, dtype=np.float32),
             ),
             ref_lidar_generic_meta_data := {"some-meta-data": np.random.rand(3, 2).tolist()},
