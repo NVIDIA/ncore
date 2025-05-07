@@ -282,16 +282,18 @@ def relative_angle(ref_angle_rad: float, angle_rad: torch.Tensor, spinning_direc
         The relative angle in radians, always positive (in range [0, 2π]).
     """
 
+    two_pi = 2 * torch.pi
+
     # Normalize both angles to [0, 2π)
-    ref_angle_rad = (ref_angle_rad + 2 * torch.pi) % (2 * torch.pi)
-    angle_rad = (angle_rad + 2 * torch.pi) % (2 * torch.pi)
+    ref_angle_rad = ref_angle_rad % two_pi
+    angle_rad = angle_rad % two_pi
 
     if spinning_direction == "cw":
         # Clockwise: going from ref to angle in CW direction
-        rel_angle = (ref_angle_rad - angle_rad) % (2 * torch.pi)
+        rel_angle = (ref_angle_rad - angle_rad) % two_pi
     elif spinning_direction == "ccw":
         # Counterclockwise: going from ref to angle in CCW direction
-        rel_angle = (angle_rad - ref_angle_rad) % (2 * torch.pi)
+        rel_angle = (angle_rad - ref_angle_rad) % two_pi
     else:
         raise ValueError(f"Invalid spinning direction: {spinning_direction}")
 
