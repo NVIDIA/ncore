@@ -267,3 +267,32 @@ def unitquat_slerp(quat_s: torch.Tensor, quat_e: torch.Tensor, t: torch.Tensor, 
     quat /= torch.norm(quat, dim=-1, keepdim=True)
 
     return quat
+
+
+def relative_angle(ref_angle_rad: float, angle_rad: torch.Tensor, spinning_direction: str = "cw") -> torch.Tensor:
+    """
+    Compute the relative angle from ref_angle_rad to angle_rad in the specified direction.
+
+    Args:
+        ref_angle_rad: reference angle in radians [float]
+        angle_rad: angle to compare against the reference, in radians [n_angles,]
+        spinning_direction: If "cw", measure clockwise; if "ccw", measure counterclockwise.
+
+    Returns:
+        The relative angle in radians, always positive (in range [0, 2π]).
+    """
+
+    # Normalize both angles to [0, 2π)
+    ref_angle_rad = (ref_angle_rad + 2 * torch.pi) % (2 * torch.pi)
+    angle_rad = (angle_rad + 2 * torch.pi) % (2 * torch.pi)
+
+    if spinning_direction == "cw":
+        # Clockwise: going from ref to angle in CW direction
+        rel_angle = (ref_angle_rad - angle_rad) % (2 * torch.pi)
+    elif spinning_direction == "ccw":
+        # Counterclockwise: going from ref to angle in CCW direction
+        rel_angle = (angle_rad - ref_angle_rad) % (2 * torch.pi)
+    else:
+        raise ValueError(f"Invalid spinning direction: {spinning_direction}")
+
+    return rel_angle

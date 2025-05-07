@@ -24,6 +24,7 @@ import dataclasses_json
 import PIL.Image as PILImage
 
 from ncore.impl.data import util
+from ncore.impl.sensors.common import relative_angle
 
 
 ## Data classes representing stored data types
@@ -511,18 +512,22 @@ class BaseStructuredSpinningLidarModelParameters(BaseSpinningLidarModelParameter
     n_rows: int  # number of rows
     n_columns: int  # number of columns
 
-    fov_horiz_min_rad: float  # horizontal field of view minimum [around z axis, relative to x axis] [radians]
-    fov_horiz_max_rad: float  # horizontal field of view maximum [around z axis, relative to x axis] [radians]
+    fov_horiz_start_rad: (
+        float  # horizontal angle that is measured "first" in each spin [around z axis, relative to x axis] [radians]
+    )
+    fov_horiz_span_rad: float  # span of the horizontal field of view [radians]
 
-    fov_vert_min_rad: float  # vertical field of view minimum [around y axis, relative to x axis] [radians]
-    fov_vert_max_rad: float  # vertical field of view maximum [around y axis, relative to z axis] [radians]
+    fov_vert_start_rad: (
+        float  # vertical angle that is measured "first" in each spin [around y axis, relative to z axis] [radians]
+    )
+    fov_vert_span_rad: float  # span of the vertical field of view [radians]
 
     def __post_init__(self):
         # Sanity checks
         assert self.n_rows > 0
         assert self.n_columns > 0
-        assert self.fov_horiz_min_rad < self.fov_horiz_max_rad
-        assert self.fov_vert_min_rad < self.fov_vert_max_rad
+        assert self.fov_horiz_span_rad >= 0.0 and self.fov_horiz_span_rad <= 2 * np.pi
+        assert self.fov_vert_span_rad >= 0.0 and self.fov_vert_span_rad <= 2 * np.pi
 
 
 @dataclass()
@@ -552,10 +557,10 @@ class RowOffsetStructuredSpinningLidarModelParameters(
         assert self.row_elevations_rad.dtype == np.float32
         assert self.row_elevations_rad.shape == (self.n_rows,)
         assert is_sorted_descending(self.row_elevations_rad), "Row elevation angles must be sorted in descending order"
-        assert (
-            self.fov_vert_min_rad <= self.row_elevations_rad.min().item()
-            and self.row_elevations_rad.max().item() <= self.fov_vert_max_rad
-        ), "Row elevation angles must cover the full FOV"
+
+        assert np.all(
+            np.array(relative_angle(self.fov_vert_start_rad, self.row_elevations_rad, "ccw")) <= self.fov_vert_span_rad
+        ), "Row elevation angles must lie within the vertical FOV"
 
         assert self.column_azimuths_rad.dtype == np.float32
         assert self.column_azimuths_rad.shape == (self.n_columns,)
@@ -571,11 +576,10 @@ class RowOffsetStructuredSpinningLidarModelParameters(
 
         # Reconstruct all (wrapped) element azimuths once to check against FoV
         azimuths_rad = self.column_azimuths_rad[None, :] + self.row_azimuth_offsets_rad[:, None]
-        azimuths_rad[azimuths_rad > np.pi] -= 2 * np.pi
-        azimuths_rad[azimuths_rad <= -np.pi] += 2 * np.pi
-        assert (
-            self.fov_horiz_min_rad <= azimuths_rad.min().item() and azimuths_rad.max().item() <= self.fov_horiz_max_rad
-        ), "Column azimuth angles must cover the full FOV"
+        assert np.all(
+            np.array(relative_angle(self.fov_horiz_start_rad, azimuths_rad.reshape(-1), self.spinning_direction))
+            <= self.fov_horiz_span_rad
+        ), "Column azimuth angles must lie within the horizontal FOV"
 
         assert self.row_azimuth_offsets_rad.dtype == np.float32
         assert self.row_azimuth_offsets_rad.shape == (self.n_rows,)
