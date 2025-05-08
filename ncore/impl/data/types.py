@@ -559,26 +559,24 @@ class RowOffsetStructuredSpinningLidarModelParameters(
         assert self.column_azimuths_rad.dtype == np.float32
         assert self.column_azimuths_rad.shape == (self.n_columns,)
 
-        assert np.all(
-            np.diff(np.array(relative_angle(self.row_elevations_rad[0], self.row_elevations_rad[1:], "ccw"))) < 0
-        ), "Row elevation angles must be sorted in descending order"
+        relative_elevation_angles = np.array(
+            relative_angle(self.row_elevations_rad[0], self.row_elevations_rad[1:], "cw")
+        )
+        assert np.all(relative_elevation_angles > 0) or np.all(relative_elevation_angles < 0), (
+            "Row elevation angles must be sorted in descending or ascending order. We don't have a prefered direction as they are all measured at the same time"
+        )
 
         relative_elevation_angles = np.array(relative_angle(self.fov_vert_start_rad, self.row_elevations_rad, "ccw"))
         assert np.all(relative_elevation_angles <= self.fov_vert_span_rad), (
-            "Row elevation angles must lie within the vertical FOV"
+            "Row angles  must lie within the vertical FOV"
         )
 
         relative_azimuth_angles = np.array(
             relative_angle(self.column_azimuths_rad[0], self.column_azimuths_rad[1:], self.spinning_direction)
         )
-        if self.spinning_direction == "ccw":
-            assert np.all(np.diff(relative_azimuth_angles) < 0), (
-                "Column azimuth angles must be sorted in descending order for ccw sensors"
-            )
-        else:
-            assert np.all(np.diff(relative_azimuth_angles) > 0), (
-                "Column azimuth angles must be sorted in ascending order for cw sensors"
-            )
+        assert np.all(np.diff(relative_azimuth_angles) > 0), (
+            "Column azimuth angles must be sorted in the spinning direction so the diff between relative angles of consecutive columns should always be positive"
+        )
 
         # Reconstruct all (wrapped) element azimuths once to check against FoV
         azimuths_rad = self.column_azimuths_rad[None, :] + self.row_azimuth_offsets_rad[:, None]
