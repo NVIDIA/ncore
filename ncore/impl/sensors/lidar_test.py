@@ -41,13 +41,18 @@ class TestRowOffsetStructuredSpinningLidarModelParameters(unittest.TestCase):
 
 
 @parameterized.parameterized_class(
-    ("device", "dtype"), itertools.product((torch.device("cpu"), torch.device("cuda")), (torch.float32, torch.float64))
+    ("device", "dtype", "param_file"),
+    itertools.product(
+        (torch.device("cpu"), torch.device("cuda")),
+        (torch.float32, torch.float64),
+        ("row-offset-spinning-lidar-model-parameters.json", "row-offset-spinning-lidar-model-parameters-waymo.json"),
+    ),
 )
 class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
     """Test to verify functionality of RowOffsetStructuredSpinningLidarModel's methods"""
 
     def setUp(self):
-        with open("ncore/impl/sensors/test_data/row-offset-spinning-lidar-model-parameters.json", "r") as fp:
+        with open(f"ncore/impl/sensors/test_data/{self.param_file}", "r") as fp:
             self.model_parameters = RowOffsetStructuredSpinningLidarModelParameters.from_dict(json.load(fp))
 
         self.lidar_model = RowOffsetStructuredSpinningLidarModel(
