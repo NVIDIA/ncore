@@ -551,26 +551,32 @@ class RowOffsetStructuredSpinningLidarModelParameters(
 
     def __post_init__(self):
         # Sanity checks
-        is_sorted_ascending = lambda a: np.all(a[:-1] < a[1:])
-        is_sorted_descending = lambda a: np.all(a[:-1] > a[1:])
 
         assert self.row_elevations_rad.dtype == np.float32
         assert self.row_elevations_rad.shape == (self.n_rows,)
-        assert is_sorted_descending(self.row_elevations_rad), "Row elevation angles must be sorted in descending order"
-
-        assert np.all(
-            np.array(relative_angle(self.fov_vert_start_rad, self.row_elevations_rad, "ccw")) <= self.fov_vert_span_rad
-        ), "Row elevation angles must lie within the vertical FOV"
-
+        assert self.row_azimuth_offsets_rad.dtype == np.float32
+        assert self.row_azimuth_offsets_rad.shape == (self.n_rows,)
         assert self.column_azimuths_rad.dtype == np.float32
         assert self.column_azimuths_rad.shape == (self.n_columns,)
 
+        assert np.all(
+            np.diff(np.array(relative_angle(self.row_elevations_rad[0], self.row_elevations_rad[1:], "ccw"))) < 0
+        ), "Row elevation angles must be sorted in descending order"
+
+        relative_elevation_angles = np.array(relative_angle(self.fov_vert_start_rad, self.row_elevations_rad, "ccw"))
+        assert np.all(relative_elevation_angles <= self.fov_vert_span_rad), (
+            "Row elevation angles must lie within the vertical FOV"
+        )
+
+        relative_azimuth_angles = np.array(
+            relative_angle(self.column_azimuths_rad[0], self.column_azimuths_rad[1:], self.spinning_direction)
+        )
         if self.spinning_direction == "ccw":
-            assert is_sorted_ascending(self.column_azimuths_rad), (
+            assert np.all(np.diff(relative_azimuth_angles) < 0), (
                 "Column azimuth angles must be sorted in descending order for ccw sensors"
             )
         else:
-            assert is_sorted_descending(self.column_azimuths_rad), (
+            assert np.all(np.diff(relative_azimuth_angles) > 0), (
                 "Column azimuth angles must be sorted in ascending order for cw sensors"
             )
 
@@ -580,9 +586,6 @@ class RowOffsetStructuredSpinningLidarModelParameters(
             np.array(relative_angle(self.fov_horiz_start_rad, azimuths_rad.reshape(-1), self.spinning_direction))
             <= self.fov_horiz_span_rad
         ), "Column azimuth angles must lie within the horizontal FOV"
-
-        assert self.row_azimuth_offsets_rad.dtype == np.float32
-        assert self.row_azimuth_offsets_rad.shape == (self.n_rows,)
 
     @staticmethod
     def type() -> str:
