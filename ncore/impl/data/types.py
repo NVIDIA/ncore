@@ -559,29 +559,32 @@ class RowOffsetStructuredSpinningLidarModelParameters(
         assert self.column_azimuths_rad.dtype == np.float32
         assert self.column_azimuths_rad.shape == (self.n_columns,)
 
-        relative_elevation_angles = relative_angle(self.row_elevations_rad[0], self.row_elevations_rad[1:], "cw")
-        assert np.all(relative_elevation_angles > 0) or np.all(relative_elevation_angles < 0), (
+        # Check elevation angles are sorted consistently and are within the vertical FOV
+        relative_row_elevations_diff_rad = np.diff(
+            relative_angle(self.row_elevations_rad[0], self.row_elevations_rad[1:], "ccw")
+        )
+        assert np.all(relative_row_elevations_diff_rad > 0) or np.all(relative_row_elevations_diff_rad < 0), (
             "Row elevation angles must be sorted in descending or ascending order. We don't have a prefered direction as they are all measured at the same time"
         )
-
-        relative_elevation_angles = relative_angle(self.fov_vert_start_rad, self.row_elevations_rad, "ccw")
-        assert np.all(relative_elevation_angles <= self.fov_vert_span_rad), (
+        relative_row_elevations_rad = relative_angle(self.fov_vert_start_rad, self.row_elevations_rad, "ccw")
+        assert np.all(relative_row_elevations_rad <= self.fov_vert_span_rad), (
             "Row angles must lie within the vertical FOV"
         )
 
-        relative_azimuth_angles = relative_angle(
+        # Check order of column azimuth angles is consistent with spinning direction
+        relative_column_azimuths_rad = relative_angle(
             self.column_azimuths_rad[0], self.column_azimuths_rad[1:], self.spinning_direction
         )
-        assert np.all(np.diff(relative_azimuth_angles) > 0), (
+        assert np.all(np.diff(relative_column_azimuths_rad) > 0), (
             "Column azimuth angles must be sorted in the spinning direction so the diff between relative angles of consecutive columns should always be positive"
         )
 
         # Reconstruct all (wrapped) element azimuths once to check against FoV
         azimuths_rad = self.column_azimuths_rad[None, :] + self.row_azimuth_offsets_rad[:, None]
         assert np.all(
-            relative_angle(self.fov_horiz_start_rad, azimuths_rad.reshape(-1), self.spinning_direction)
+            relative_angle(self.fov_horiz_start_rad, azimuths_rad, self.spinning_direction).reshape(-1)
             <= self.fov_horiz_span_rad
-        ), "Column azimuth angles must lie within the horizontal FOV"
+        ), "Azimuth angles must lie within the horizontal FOV"
 
     @staticmethod
     def type() -> str:
