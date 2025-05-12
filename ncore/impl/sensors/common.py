@@ -8,9 +8,7 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
-from typing import Union, Optional
-
-import logging
+from typing import Literal, Union, Optional, TypeVar
 
 import torch
 import numpy as np
@@ -269,17 +267,19 @@ def unitquat_slerp(quat_s: torch.Tensor, quat_e: torch.Tensor, t: torch.Tensor, 
     return quat
 
 
-def relative_angle(ref_angle_rad: float, angle_rad: torch.Tensor, spinning_direction: str = "cw") -> torch.Tensor:
+Tensor = TypeVar("Tensor", np.ndarray, torch.Tensor)
+
+
+def relative_angle(ref_angle_rad: float, angle_rad: Tensor, direction: Literal["cw", "ccw"]) -> Tensor:
     """
-    Compute the relative angle from ref_angle_rad to angle_rad in the specified direction.
+    Compute the relative angle from ref_angle_rad to angle_rad in the specified direction
 
     Args:
         ref_angle_rad: reference angle in radians [float]
-        angle_rad: angle to compare against the reference, in radians [n_angles,]
-        spinning_direction: If "cw", measure clockwise; if "ccw", measure counterclockwise.
-
+        angle_rad: tensor of angles to compute relative angles for, in radians
+        direction: If "cw", measure clockwise; if "ccw", measure counterclockwise
     Returns:
-        The relative angle in radians, always positive (in range [0, 2π]).
+        Tensor of relative angles [same dimension as 'angle_rad', always positive in range [0, 2π)]
     """
 
     two_pi = 2 * torch.pi
@@ -288,13 +288,13 @@ def relative_angle(ref_angle_rad: float, angle_rad: torch.Tensor, spinning_direc
     ref_angle_rad = ref_angle_rad % two_pi
     angle_rad = angle_rad % two_pi
 
-    if spinning_direction == "cw":
+    if direction == "cw":
         # Clockwise: going from ref to angle in CW direction
         rel_angle = (ref_angle_rad - angle_rad) % two_pi
-    elif spinning_direction == "ccw":
+    elif direction == "ccw":
         # Counterclockwise: going from ref to angle in CCW direction
         rel_angle = (angle_rad - ref_angle_rad) % two_pi
     else:
-        raise ValueError(f"Invalid spinning direction: {spinning_direction}")
+        raise ValueError(f"Invalid spinning direction: {direction}")
 
     return rel_angle
