@@ -515,19 +515,19 @@ class BaseStructuredSpinningLidarModelParameters(BaseSpinningLidarModelParameter
     fov_horiz_start_rad: (
         float  # horizontal angle that is measured "first" in each spin [around z axis, relative to x axis] [radians]
     )
-    fov_horiz_span_rad: float  # span of the horizontal field of view [radians]
+    fov_horiz_span_rad: float  # span of the horizontal field of view [radians in (0, 2π]]
 
     fov_vert_start_rad: (
         float  # vertical angle that is measured "first" in each spin [around y axis, relative to z axis] [radians]
     )
-    fov_vert_span_rad: float  # span of the vertical field of view [radians]
+    fov_vert_span_rad: float  # span of the vertical field of view [radians in (0, 2π]]
 
     def __post_init__(self):
         # Sanity checks
         assert self.n_rows > 0
         assert self.n_columns > 0
-        assert self.fov_horiz_span_rad >= 0.0 and self.fov_horiz_span_rad <= 2 * np.pi
-        assert self.fov_vert_span_rad >= 0.0 and self.fov_vert_span_rad <= 2 * np.pi
+        assert self.fov_horiz_span_rad > 0 and self.fov_horiz_span_rad <= 2 * np.pi
+        assert self.fov_vert_span_rad > 0 and self.fov_vert_span_rad <= 2 * np.pi
 
 
 @dataclass()
