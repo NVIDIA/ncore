@@ -152,6 +152,9 @@ class DataConverter(ABC):
 @click.option("--output-dir", type=str, help="Path where the converted data will be saved", required=True)
 @click.option("--verbose", is_flag=True, default=False, help="Enables debug logging outputs")
 @click.option("--debug", is_flag=True, default=False, help="Start a debugpy remote debugging sessions to listen on")
+@click.option(
+    "--debug-port", type=int, default=5678, help="The port on which debugpy will wait for a client to connect"
+)
 @click.option("--no-cameras", is_flag=True, default=False, help="Disable exporting any camera sensor")
 @click.option(
     "--camera-id",
@@ -206,4 +209,4 @@ def cli(ctx, *_, **kwargs):
 
     # If the debug flag is set, add a breakpoint and wait for remote debugger
     if ctx.obj.debug:
-        breakpoint()
+        breakpoint(port=ctx.obj.debug_port)
