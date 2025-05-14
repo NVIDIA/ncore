@@ -8,8 +8,8 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
-from dataclasses import field
-from typing import TYPE_CHECKING
+from dataclasses import field, dataclass
+from typing import TYPE_CHECKING, Literal, NamedTuple, TypeVar, Any, Generic, cast
 
 import dataclasses_json
 import numpy as np
@@ -19,6 +19,18 @@ if TYPE_CHECKING:
 
 ## Constants
 INDEX_DIGITS = 6  # the number of integer digits to pad counters in output filenames
+
+
+## Types
+@dataclass
+class FOV:
+    """Represents a field-of-view with start and span in radians"""
+
+    start_rad: float  #: Start angle of the field-of-view in radians
+    span_rad: float  #: Span of the valid field-of-view region in radians in [0, 2π]
+    direction: Literal[
+        "cw", "ccw"
+    ]  #: Direction of the valid field-of-view region, either clockwise or counter-clockwise
 
 
 ## Functions
@@ -72,3 +84,52 @@ def enum_field(enum_class, default=None):
         return enum_class.__members__[variant]
 
     return field(default=default, metadata=dataclasses_json.config(encoder=encoder, decoder=decoder))
+
+
+# A generic type supporting basic artithmetic operations like +, -, *, /, etc. - in particular implemented by float, torch.Tensor, np.ndarray, etc.
+# Used here to not depend on torch.Tensor in the public data API
+TensorLike = TypeVar("TensorLike", bound=Any)
+
+
+class RelativeAngleResult(Generic[TensorLike], NamedTuple):
+    relative_angle_rad: TensorLike
+    wrap_around_flag: TensorLike
+
+
+def relative_angle(
+    ref_angle_rad: float, angle_rad: TensorLike, direction: Literal["cw", "ccw"]
+) -> "RelativeAngleResult[TensorLike]":
+    """
+    Compute the relative angle from ref_angle_rad to angle_rad in the specified direction
+
+    Args:
+        ref_angle_rad: reference angle in radians [float]
+        angle_rad: tensor of angles to compute relative angles for, in radians
+        direction: If "cw", measure clockwise; if "ccw", measure counter-clockwise
+    Returns:
+        A RelativeAngleResult containing:
+        - relative_angle: Tensor of relative angles [same dimension as 'angle_rad', always positive in range [0, 2π)]
+        - wrap_around_flag: Tensor of flags whether the relative angle computation required a wrap-around at multiples of 2π
+    """
+
+    two_pi = 2 * np.pi
+
+    # Check for wrap-around condition
+    wrap_around_flag = abs(angle_rad - ref_angle_rad) >= two_pi
+
+    # Project both angles to [0, 2π)
+    ref_angle_rad = ref_angle_rad % two_pi
+    angle_rad = angle_rad % two_pi
+
+    if direction == "cw":
+        # Clockwise: going from ref to angle in CW direction
+        diff_angle = ref_angle_rad - angle_rad
+    elif direction == "ccw":
+        # Counter-clockwise: going from ref to angle in CCW direction
+        diff_angle = angle_rad - ref_angle_rad
+    else:
+        raise ValueError(f"Invalid spinning direction: {direction}")
+
+    return RelativeAngleResult(
+        relative_angle_rad=cast(TensorLike, diff_angle % two_pi), wrap_around_flag=wrap_around_flag
+    )

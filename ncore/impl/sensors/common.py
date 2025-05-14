@@ -10,8 +10,6 @@
 
 from typing import Union, Optional
 
-import logging
-
 import torch
 import numpy as np
 

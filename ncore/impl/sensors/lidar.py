@@ -20,8 +20,14 @@ import numpy as np
 
 from scipy import spatial as scipy_spatial
 
-from ncore.impl.data import types
-from ncore.impl.sensors.common import BaseModel, to_torch, rotmat_to_unitquat, unitquat_to_rotmat, unitquat_slerp
+from ncore.impl.data import types, util
+from ncore.impl.sensors.common import (
+    BaseModel,
+    to_torch,
+    rotmat_to_unitquat,
+    unitquat_to_rotmat,
+    unitquat_slerp,
+)
 
 
 class LidarModel(BaseModel, ABC):
@@ -178,12 +184,10 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
     angles_to_columns_map: Optional[torch.Tensor]
     spinning_frequency_hz: float
     spinning_direction: Literal["cw", "ccw"]
-    fov_vert_min_rad: float
-    fov_vert_max_rad: float
-    fov_horiz_min_rad: float
-    fov_horiz_max_rad: float
     n_rows: int
     n_columns: int
+    fov_vert: util.FOV
+    fov_horiz: util.FOV
 
     def __init__(
         self,
@@ -215,10 +219,10 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         self.spinning_direction = parameters.spinning_direction
         self.n_rows = parameters.n_rows
         self.n_columns = parameters.n_columns
-        self.fov_horiz_min_rad = parameters.fov_horiz_min_rad
-        self.fov_horiz_max_rad = parameters.fov_horiz_max_rad
-        self.fov_vert_min_rad = parameters.fov_vert_min_rad
-        self.fov_vert_max_rad = parameters.fov_vert_max_rad
+
+        # Compute FOV bounds from parameters
+        self.fov_vert = parameters.get_vertical_fov()
+        self.fov_horiz = parameters.get_horizontal_fov()
 
         if angles_to_columns_map_init:
             self._init_angles_to_columns_map()
@@ -231,10 +235,6 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
             spinning_direction=self.spinning_direction,
             n_rows=self.n_rows,
             n_columns=self.n_columns,
-            fov_horiz_min_rad=self.fov_horiz_min_rad,
-            fov_horiz_max_rad=self.fov_horiz_max_rad,
-            fov_vert_min_rad=self.fov_vert_min_rad,
-            fov_vert_max_rad=self.fov_vert_max_rad,
             row_elevations_rad=self.row_elevations_rad.cpu().numpy().astype(np.float32),
             column_azimuths_rad=self.column_azimuths_rad.cpu().numpy().astype(np.float32),
             row_azimuth_offsets_rad=self.row_azimuth_offsets_rad.cpu().numpy().astype(np.float32),
@@ -250,13 +250,11 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
 
         # reconstruct angles from model parameterization
         elevations_rad = self.row_elevations_rad[elements[:, 0]]
-        azimuths_rad = self.__warp_azimuth(
-            self.column_azimuths_rad[elements[:, 1]] + self.row_azimuth_offsets_rad[elements[:, 0]]
-        )
+        azimuths_rad = self.column_azimuths_rad[elements[:, 1]] + self.row_azimuth_offsets_rad[elements[:, 0]]
 
         sensor_angles = torch.stack([elevations_rad, azimuths_rad], dim=-1)
 
-        return sensor_angles
+        return self._normalize_angle(sensor_angles)
 
     def sensor_rays_to_sensor_angles(
         self, sensor_rays: Union[torch.Tensor, np.ndarray], normalized: bool = True
@@ -271,12 +269,12 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         if not normalized:
             sensor_rays /= torch.norm(sensor_rays, dim=-1, keepdim=True)
 
-        elevations_rad = torch.arcsin(sensor_rays[:, 2])
-        azimuths_rad = torch.arctan2(sensor_rays[:, 1], sensor_rays[:, 0])
+        elevations_rad = torch.asin(sensor_rays[:, 2])
+        azimuths_rad = torch.atan2(sensor_rays[:, 1], sensor_rays[:, 0])
         sensor_angles = torch.stack([elevations_rad, azimuths_rad], dim=-1)
 
         return LidarModel.SensorAnglesReturn(
-            sensor_angles=sensor_angles, valid_flag=self.__valid_sensor_angles(sensor_angles)
+            sensor_angles=sensor_angles, valid_flag=self._valid_sensor_angles(sensor_angles)
         )
 
     def sensor_angles_to_sensor_rays(
@@ -297,11 +295,11 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         z = torch.sin(elevations_rad)
 
         return LidarModel.SensorRayReturn(
-            sensor_rays=torch.stack([x, y, z], dim=-1), valid_flag=self.__valid_sensor_angles(sensor_angles)
+            sensor_rays=torch.stack([x, y, z], dim=-1), valid_flag=self._valid_sensor_angles(sensor_angles)
         )
 
     def _init_angles_to_columns_map(self):
-        # angles to column map is a 2D array of shape resolution_factor * (n_rows, n_columns)
+        """Computes angles to column map as a 2D array of shape resolution_factor * (n_rows, n_columns)."""
 
         assert torch.iinfo(self.angles_to_columns_map_dtype).max >= self.n_columns - 1, (
             "The dtype for the angles to columns map must be able to store the maximum column index, consider increasing angles_to_columns_map_dtype"
@@ -311,7 +309,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
             not self.angles_to_columns_map_dtype.is_floating_point and not self.angles_to_columns_map_dtype.is_complex
         ), "The dtype for the angles to columns map must be an integer type"
 
-        # create all element indices [relative to the static model]
+        # Create all element indices [relative to the static model]
         elements = torch.stack(
             torch.meshgrid(
                 torch.arange(self.n_rows, dtype=torch.long),
@@ -321,40 +319,42 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
             dim=-1,
         )
 
-        # reconstruct angles from model parameterization
-        element_azimuths_rad = self.__warp_azimuth(
-            self.column_azimuths_rad[elements[:, :, 1]] + self.row_azimuth_offsets_rad[elements[:, :, 0]]
-        )
-
-        # reconstruct angles from model parameterization
-
-        # regular angles of the map
+        # Create regular angle grid in the FOV of the sensor
         grid_elevations_rad, grid_azimuths_rad = torch.meshgrid(
             torch.linspace(
-                self.fov_vert_min_rad,
-                self.fov_vert_max_rad,
+                self.fov_vert.start_rad,
+                self.fov_vert.start_rad - self.fov_vert.span_rad,  # cw convention
                 self.angles_to_columns_map_resolution_factor * self.n_rows,
                 device=self.device,
             ),
             torch.linspace(
-                self.fov_horiz_min_rad,
-                self.fov_horiz_max_rad,
+                self.fov_horiz.start_rad,
+                self.fov_horiz.start_rad + self.fov_horiz.span_rad
+                if self.spinning_direction == "ccw"
+                else self.fov_horiz.start_rad - self.fov_horiz.span_rad,
                 self.angles_to_columns_map_resolution_factor * self.n_columns,
                 device=self.device,
             ),
             indexing="ij",
         )
 
-        self.map_resolution_horiz_rad = (self.fov_horiz_max_rad - self.fov_horiz_min_rad) / (
+        self.map_resolution_horiz_rad = self.fov_horiz.span_rad / (
             self.angles_to_columns_map_resolution_factor * self.n_columns - 1
         )
-        self.map_resolution_vert_rad = (self.fov_vert_max_rad - self.fov_vert_min_rad) / (
+        self.map_resolution_vert_rad = self.fov_vert.span_rad / (
             self.angles_to_columns_map_resolution_factor * self.n_rows - 1
         )
 
         # Convert grid and sensor angles to unit norm rays
         grid_angles = torch.cat([grid_elevations_rad.reshape(-1, 1), grid_azimuths_rad.reshape(-1, 1)], dim=1)
         grid_rays = self.sensor_angles_to_sensor_rays(grid_angles)
+
+        assert torch.all(grid_rays.valid_flag), "Bug: grid rays must be valid in the FOV of the sensor"
+
+        # Reconstruct angles from model parameterization
+        element_azimuths_rad = self._normalize_angle(
+            self.column_azimuths_rad[elements[:, :, 1]] + self.row_azimuth_offsets_rad[elements[:, :, 0]]
+        )
 
         sensor_angles = torch.cat(
             [
@@ -364,6 +364,8 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
             dim=1,
         )
         sensor_rays = self.sensor_angles_to_sensor_rays(sensor_angles)
+
+        assert torch.all(sensor_rays.valid_flag), "Bug: sensor rays must be valid in the FOV of the sensor"
 
         # Compute the NN of each grid ray in the sensor rays
         # TODO: can we move this to torch/CUDA? do we assume that we always have access?
@@ -391,32 +393,25 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
 
         sensor_angles = to_torch(sensor_angles, device=self.device, dtype=self.dtype)
 
-        # Normalize azimuths
-        sensor_angles[:, 1] = self.__warp_azimuth(sensor_angles[:, 1])
+        # Normalize angles to the interval [0, 2π)
+        relative_elevations_rad = util.relative_angle(
+            self.fov_vert.start_rad, sensor_angles[:, 0], "cw"
+        ).relative_angle_rad
+        relative_azimuths_rad = util.relative_angle(
+            self.fov_horiz.start_rad, sensor_angles[:, 1], self.spinning_direction
+        ).relative_angle_rad
 
-        # Check that all angles are in the fov
-        # TODO: this might be slow, need to check if we can do this outside or somehow guarantee that the angles are in the fov
-        sensor_angles_ranges = torch.aminmax(
-            sensor_angles
-            # FOV ranges are only exact up to f32
-            .to(torch.float32),
-            dim=0,
-        )
-        assert self.fov_vert_min_rad <= sensor_angles_ranges.min[0].item()
-        assert sensor_angles_ranges.max[0].item() <= self.fov_vert_max_rad
-
-        assert self.fov_horiz_min_rad <= sensor_angles_ranges.min[1].item()
-        assert sensor_angles_ranges.max[1].item() <= self.fov_horiz_max_rad
-
-        elevations_rad = sensor_angles[:, 0]
-        azimuths_rad = sensor_angles[:, 1]
+        # Check that all angles are in the fov (account for numerical stability via some epsilon)
+        assert torch.all(relative_elevations_rad <= self.fov_vert.span_rad + 3 * torch.finfo(torch.float32).eps)
+        assert torch.all(relative_azimuths_rad <= self.fov_horiz.span_rad + 3 * torch.finfo(torch.float32).eps)
 
         # Determine the location of the angle in the map (nearest neighbor lookup)
         horizontal_idxs = (
-            (azimuths_rad - self.fov_horiz_min_rad + self.map_resolution_horiz_rad / 2) / self.map_resolution_horiz_rad
+            (relative_azimuths_rad + self.map_resolution_horiz_rad / 2) / self.map_resolution_horiz_rad
         ).to(torch.long)
+
         vertical_idxs = (
-            (elevations_rad - self.fov_vert_min_rad + self.map_resolution_vert_rad / 2) / self.map_resolution_vert_rad
+            (relative_elevations_rad + self.map_resolution_vert_rad / 2) / self.map_resolution_vert_rad
         ).to(torch.long)
 
         # Grab the corresponding column index from the map
@@ -673,19 +668,22 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
 
         return return_var
 
-    def __warp_azimuth(self, azimuths_rad: torch.Tensor) -> torch.Tensor:
-        """Wraps the azimuth angle to the interval (-pi, pi]"""
+    def _normalize_angle(self, angle_rad: torch.Tensor) -> torch.Tensor:
+        """Normalize angle to the interval (-pi, pi]"""
 
-        azimuths_rad[azimuths_rad > np.pi] -= 2 * np.pi
-        azimuths_rad[azimuths_rad <= -np.pi] += 2 * np.pi
+        angle_rad[angle_rad > torch.pi] -= 2 * torch.pi
+        angle_rad[angle_rad <= -torch.pi] += 2 * torch.pi
 
-        return azimuths_rad
+        return angle_rad
 
-    def __valid_sensor_angles(self, sensor_angles: torch.Tensor) -> torch.Tensor:
+    def _valid_sensor_angles(self, sensor_angles: torch.Tensor) -> torch.Tensor:
         """Checks if a sensor angles are valid / within the sensor's field of view"""
-        return (
-            (self.fov_vert_min_rad <= sensor_angles[:, 0])
-            & (sensor_angles[:, 0] <= self.fov_vert_max_rad)
-            & (self.fov_horiz_min_rad <= sensor_angles[:, 1])
-            & (sensor_angles[:, 1] <= self.fov_horiz_max_rad)
+
+        rel_elevation = util.relative_angle(self.fov_vert.start_rad, sensor_angles[:, 0], "cw")
+        rel_azimuth = util.relative_angle(self.fov_horiz.start_rad, sensor_angles[:, 1], self.spinning_direction)
+
+        # Account for numerical stability via some epsilon in FOV check
+        return torch.logical_and(
+            rel_elevation.relative_angle_rad <= self.fov_vert.span_rad + 3 * torch.finfo(torch.float32).eps,
+            rel_azimuth.relative_angle_rad <= self.fov_horiz.span_rad + 3 * torch.finfo(torch.float32).eps,
         )
