@@ -262,7 +262,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
 
         sensor_angles = torch.stack([elevations_rad, azimuths_rad], dim=-1)
 
-        return self._warp_angle(sensor_angles)
+        return self._normalize_angle(sensor_angles)
 
     def sensor_rays_to_sensor_angles(
         self, sensor_rays: Union[torch.Tensor, np.ndarray], normalized: bool = True
@@ -307,7 +307,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         )
 
     def _init_angles_to_columns_map(self):
-        # angles to column map is a 2D array of shape resolution_factor * (n_rows, n_columns)
+        """Computes angles to column map as a 2D array of shape resolution_factor * (n_rows, n_columns)."""
 
         assert torch.iinfo(self.angles_to_columns_map_dtype).max >= self.n_columns - 1, (
             "The dtype for the angles to columns map must be able to store the maximum column index, consider increasing angles_to_columns_map_dtype"
@@ -317,7 +317,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
             not self.angles_to_columns_map_dtype.is_floating_point and not self.angles_to_columns_map_dtype.is_complex
         ), "The dtype for the angles to columns map must be an integer type"
 
-        # create all element indices [relative to the static model]
+        # Create all element indices [relative to the static model]
         elements = torch.stack(
             torch.meshgrid(
                 torch.arange(self.n_rows, dtype=torch.long),
@@ -327,13 +327,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
             dim=-1,
         )
 
-        # reconstruct angles from model parameterization
-        element_azimuths_rad = self._warp_angle(
-            self.column_azimuths_rad[elements[:, :, 1]] + self.row_azimuth_offsets_rad[elements[:, :, 0]]
-        )
-
-        # reconstruct angles from model parameterization
-        # regular angles of the map
+        # Create regular angle grid in the FOV of the sensor
         grid_elevations_rad, grid_azimuths_rad = torch.meshgrid(
             torch.linspace(
                 self.fov_vert_start_rad,
@@ -361,9 +355,14 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
 
         # Convert grid and sensor angles to unit norm rays
         grid_angles = torch.cat([grid_elevations_rad.reshape(-1, 1), grid_azimuths_rad.reshape(-1, 1)], dim=1)
-        grid_rays = self.sensor_angles_to_sensor_rays(self._warp_angle(grid_angles))
+        grid_rays = self.sensor_angles_to_sensor_rays(grid_angles)
 
         assert torch.all(grid_rays.valid_flag), "Bug: grid rays must be valid in the FOV of the sensor"
+
+        # Reconstruct angles from model parameterization
+        element_azimuths_rad = self._normalize_angle(
+            self.column_azimuths_rad[elements[:, :, 1]] + self.row_azimuth_offsets_rad[elements[:, :, 0]]
+        )
 
         sensor_angles = torch.cat(
             [
@@ -372,7 +371,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
             ],
             dim=1,
         )
-        sensor_rays = self.sensor_angles_to_sensor_rays(self._warp_angle(sensor_angles))
+        sensor_rays = self.sensor_angles_to_sensor_rays(sensor_angles)
 
         assert torch.all(sensor_rays.valid_flag), "Bug: sensor rays must be valid in the FOV of the sensor"
 
@@ -675,16 +674,13 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
 
         return return_var
 
-    def _warp_angle(self, angle_rad: torch.Tensor) -> torch.Tensor:
-        """Warps angle to the interval (-pi, pi]"""
+    def _normalize_angle(self, angle_rad: torch.Tensor) -> torch.Tensor:
+        """Normalize angle to the interval (-pi, pi]"""
 
-        if False:
-            return (angle_rad + torch.pi) % (2 * torch.pi) - torch.pi
-        else:
-            angle_rad[angle_rad > torch.pi] -= 2 * torch.pi
-            angle_rad[angle_rad <= -torch.pi] += 2 * torch.pi
+        angle_rad[angle_rad > torch.pi] -= 2 * torch.pi
+        angle_rad[angle_rad <= -torch.pi] += 2 * torch.pi
 
-            return angle_rad
+        return angle_rad
 
     def _valid_sensor_angles(self, sensor_angles: torch.Tensor) -> torch.Tensor:
         """Checks if a sensor angles are valid / within the sensor's field of view"""
