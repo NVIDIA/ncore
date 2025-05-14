@@ -284,7 +284,7 @@ def relative_angle(
     Args:
         ref_angle_rad: reference angle in radians [float]
         angle_rad: tensor of angles to compute relative angles for, in radians
-        direction: If "cw", measure clockwise; if "ccw", measure counterclockwise
+        direction: If "cw", measure clockwise; if "ccw", measure counter-clockwise
     Returns:
         A RelativeAngleResult containing:
         - relative_angle: Tensor of relative angles [same dimension as 'angle_rad', always positive in range [0, 2π)]

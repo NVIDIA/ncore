@@ -527,12 +527,12 @@ class RowOffsetStructuredSpinningLidarModelParameters(
     # elevation angles
     row_elevations_rad: np.ndarray = util.numpy_array_field(
         np.float32
-    )  # elevation angle of each row, constant for each column [around y axis, relative to x axis] [(Nrows,) radians]
+    )  # elevation angle of each row, constant for each column [clockwise around y axis, relative to x axis] [(Nrows,) radians]
 
     # azimuth angles
     column_azimuths_rad: np.ndarray = util.numpy_array_field(
         np.float32
-    )  # azimuth angle of each column [around z axis, relative to x axis] [(Ncolumns,) radians]
+    )  # azimuth angle of each column, starting at first element of the spin [clockwise / counter-clockwise around z axis depending on sensors spin direction, relative to x axis] [(Ncolumns,) radians]
     row_azimuth_offsets_rad: np.ndarray = util.numpy_array_field(
         np.float32
     )  # azimuth angle offsets for each row [around z axis, relative to x axis] [(Nrows,) radians]
