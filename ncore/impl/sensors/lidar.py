@@ -20,14 +20,13 @@ import numpy as np
 
 from scipy import spatial as scipy_spatial
 
-from ncore.impl.data import types
+from ncore.impl.data import types, util
 from ncore.impl.sensors.common import (
     BaseModel,
     to_torch,
     rotmat_to_unitquat,
     unitquat_to_rotmat,
     unitquat_slerp,
-    relative_angle,
 )
 
 
@@ -402,8 +401,10 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         sensor_angles = to_torch(sensor_angles, device=self.device, dtype=self.dtype)
 
         # Normalize angles to the interval [0, 2π)
-        relative_elevations_rad = relative_angle(self.fov_vert_start_rad, sensor_angles[:, 0], "cw").relative_angle_rad
-        relative_azimuths_rad = relative_angle(
+        relative_elevations_rad = util.relative_angle(
+            self.fov_vert_start_rad, sensor_angles[:, 0], "cw"
+        ).relative_angle_rad
+        relative_azimuths_rad = util.relative_angle(
             self.fov_horiz_start_rad, sensor_angles[:, 1], self.spinning_direction
         ).relative_angle_rad
 
@@ -685,8 +686,8 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
     def _valid_sensor_angles(self, sensor_angles: torch.Tensor) -> torch.Tensor:
         """Checks if a sensor angles are valid / within the sensor's field of view"""
 
-        rel_elevation = relative_angle(self.fov_vert_start_rad, sensor_angles[:, 0], "cw")
-        rel_azimuth = relative_angle(self.fov_horiz_start_rad, sensor_angles[:, 1], self.spinning_direction)
+        rel_elevation = util.relative_angle(self.fov_vert_start_rad, sensor_angles[:, 0], "cw")
+        rel_azimuth = util.relative_angle(self.fov_horiz_start_rad, sensor_angles[:, 1], self.spinning_direction)
 
         return torch.logical_and(
             rel_elevation.relative_angle_rad <= self.fov_vert_span_rad + 3 * torch.finfo(torch.float32).eps,

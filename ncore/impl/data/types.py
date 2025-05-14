@@ -24,7 +24,6 @@ import dataclasses_json
 import PIL.Image as PILImage
 
 from ncore.impl.data import util
-from ncore.impl.sensors.common import relative_angle
 
 
 ## Data classes representing stored data types
@@ -548,7 +547,7 @@ class RowOffsetStructuredSpinningLidarModelParameters(
         assert self.column_azimuths_rad.shape == (self.n_columns,)
 
         # Check elevation angles are sorted consistently
-        relative_row_elevations_rad = relative_angle(self.row_elevations_rad[0], self.row_elevations_rad, "cw")
+        relative_row_elevations_rad = util.relative_angle(self.row_elevations_rad[0], self.row_elevations_rad, "cw")
         assert np.all(np.diff(relative_row_elevations_rad.relative_angle_rad) > 0), (
             "Row elevation angles must be sorted in descending order (cw)"
         )
@@ -557,7 +556,7 @@ class RowOffsetStructuredSpinningLidarModelParameters(
         )
 
         # Check order of column azimuth angles is consistent with spinning direction
-        relative_column_azimuths_rad = relative_angle(
+        relative_column_azimuths_rad = util.relative_angle(
             self.column_azimuths_rad[0], self.column_azimuths_rad, self.spinning_direction
         )
         assert np.all(np.diff(relative_column_azimuths_rad.relative_angle_rad) > 0), (
@@ -575,7 +574,7 @@ class RowOffsetStructuredSpinningLidarModelParameters(
     def get_vertical_fov(self) -> util.FOV:
         """Returns the vertical field-of-view of the lidar model (starting at first element)"""
         start_rad = self.row_elevations_rad[0].item()
-        span_rad = relative_angle(start_rad, self.row_elevations_rad[-1], "cw").relative_angle_rad.item()
+        span_rad = util.relative_angle(start_rad, self.row_elevations_rad[-1], "cw").relative_angle_rad.item()
 
         return util.FOV(start_rad=start_rad, span_rad=span_rad, direction="cw")
 
@@ -592,7 +591,7 @@ class RowOffsetStructuredSpinningLidarModelParameters(
             start_rad = azimuths_rad[:, 0].max().item()
 
         # Check if the azimuth angles of last element wrap around over the start element
-        span = relative_angle(start_rad, azimuths_rad[:, -1], self.spinning_direction)
+        span = util.relative_angle(start_rad, azimuths_rad[:, -1], self.spinning_direction)
         if np.any(span.wrap_around_flag):
             span_rad = 2 * np.pi
         else:

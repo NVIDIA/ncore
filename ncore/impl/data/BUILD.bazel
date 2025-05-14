@@ -30,7 +30,6 @@ py_library(
     ],
     deps = [
         ":pylib_util",
-        "//ncore/impl/sensors:pylib_common",
         requirement("numpy"),
         requirement("dataclasses-json"),
         requirement("pillow"),
