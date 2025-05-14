@@ -401,7 +401,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
             self.fov_horiz.start_rad, sensor_angles[:, 1], self.spinning_direction
         ).relative_angle_rad
 
-        # Check that all angles are in the fov
+        # Check that all angles are in the fov (account for numerical stability via some epsilon)
         assert torch.all(relative_elevations_rad <= self.fov_vert.span_rad + 3 * torch.finfo(torch.float32).eps)
         assert torch.all(relative_azimuths_rad <= self.fov_horiz.span_rad + 3 * torch.finfo(torch.float32).eps)
 
@@ -682,6 +682,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         rel_elevation = util.relative_angle(self.fov_vert.start_rad, sensor_angles[:, 0], "cw")
         rel_azimuth = util.relative_angle(self.fov_horiz.start_rad, sensor_angles[:, 1], self.spinning_direction)
 
+        # Account for numerical stability via some epsilon in FOV check
         return torch.logical_and(
             rel_elevation.relative_angle_rad <= self.fov_vert.span_rad + 3 * torch.finfo(torch.float32).eps,
             rel_azimuth.relative_angle_rad <= self.fov_horiz.span_rad + 3 * torch.finfo(torch.float32).eps,
