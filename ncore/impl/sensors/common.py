@@ -8,7 +8,7 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
-from typing import Literal, Union, Optional, TypeVar
+from typing import Literal, NamedTuple, Generic, Union, Optional, TypeVar
 
 import torch
 import numpy as np
@@ -267,10 +267,17 @@ def unitquat_slerp(quat_s: torch.Tensor, quat_e: torch.Tensor, t: torch.Tensor, 
     return quat
 
 
-Tensor = TypeVar("Tensor", np.ndarray, torch.Tensor)
+TensorLike = TypeVar("TensorLike", float, np.ndarray, torch.Tensor)
 
 
-def relative_angle(ref_angle_rad: float, angle_rad: Tensor, direction: Literal["cw", "ccw"]) -> Tensor:
+class RelativeAngleResult(Generic[TensorLike], NamedTuple):
+    relative_angle_rad: TensorLike
+    wrap_around_flag: TensorLike
+
+
+def relative_angle(
+    ref_angle_rad: float, angle_rad: TensorLike, direction: Literal["cw", "ccw"]
+) -> "RelativeAngleResult[TensorLike]":
     """
     Compute the relative angle from ref_angle_rad to angle_rad in the specified direction
 
@@ -279,22 +286,29 @@ def relative_angle(ref_angle_rad: float, angle_rad: Tensor, direction: Literal["
         angle_rad: tensor of angles to compute relative angles for, in radians
         direction: If "cw", measure clockwise; if "ccw", measure counterclockwise
     Returns:
-        Tensor of relative angles [same dimension as 'angle_rad', always positive in range [0, 2π)]
+        A RelativeAngleResult containing:
+        - relative_angle: Tensor of relative angles [same dimension as 'angle_rad', always positive in range [0, 2π)]
+        - wrap_around_flag: Tensor of flags whether the relative angle computation required a wrap-around at multiples of 2π
     """
 
     two_pi = 2 * torch.pi
 
-    # Normalize both angles to [0, 2π)
+    # Check for wrap-around condition
+    wrap_around_flag = abs(ref_angle_rad - angle_rad) > two_pi
+
+    # Project both angles to [0, 2π)
     ref_angle_rad = ref_angle_rad % two_pi
     angle_rad = angle_rad % two_pi
 
     if direction == "cw":
         # Clockwise: going from ref to angle in CW direction
-        rel_angle = (ref_angle_rad - angle_rad) % two_pi
+        diff_angle = ref_angle_rad - angle_rad
     elif direction == "ccw":
         # Counterclockwise: going from ref to angle in CCW direction
-        rel_angle = (angle_rad - ref_angle_rad) % two_pi
+        diff_angle = angle_rad - ref_angle_rad
     else:
         raise ValueError(f"Invalid spinning direction: {direction}")
 
-    return rel_angle
+    relative_angle_rad = diff_angle % two_pi
+
+    return RelativeAngleResult(relative_angle_rad=relative_angle_rad, wrap_around_flag=wrap_around_flag)

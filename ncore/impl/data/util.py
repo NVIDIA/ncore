@@ -8,8 +8,8 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
-from dataclasses import field
-from typing import TYPE_CHECKING
+from dataclasses import field, dataclass
+from typing import TYPE_CHECKING, Literal
 
 import dataclasses_json
 import numpy as np
@@ -19,6 +19,18 @@ if TYPE_CHECKING:
 
 ## Constants
 INDEX_DIGITS = 6  # the number of integer digits to pad counters in output filenames
+
+
+## Types
+@dataclass
+class FOV:
+    """Represents a field-of-view with start and span in radians"""
+
+    start_rad: float  #: Start angle of the field-of-view in radians
+    span_rad: float  #: Span of the valid field-of-view region in radians in [0, 2π]
+    direction: Literal[
+        "cw", "ccw"
+    ]  #: Direction of the valid field-of-view region, either clockwise or counter-clockwise
 
 
 ## Functions

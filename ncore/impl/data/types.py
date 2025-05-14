@@ -512,22 +512,10 @@ class BaseStructuredSpinningLidarModelParameters(BaseSpinningLidarModelParameter
     n_rows: int  # number of rows
     n_columns: int  # number of columns
 
-    fov_horiz_start_rad: (
-        float  # horizontal angle that is measured "first" in each spin [around z axis, relative to x axis] [radians]
-    )
-    fov_horiz_span_rad: float  # span of the horizontal field of view [radians in (0, 2π]]
-
-    fov_vert_start_rad: (
-        float  # vertical angle that is measured "first" in each spin [around y axis, relative to z axis] [radians]
-    )
-    fov_vert_span_rad: float  # span of the vertical field of view [radians in (0, 2π]]
-
     def __post_init__(self):
         # Sanity checks
         assert self.n_rows > 0
         assert self.n_columns > 0
-        assert self.fov_horiz_span_rad > 0 and self.fov_horiz_span_rad <= 2 * np.pi
-        assert self.fov_vert_span_rad > 0 and self.fov_vert_span_rad <= 2 * np.pi
 
 
 @dataclass()
@@ -559,37 +547,58 @@ class RowOffsetStructuredSpinningLidarModelParameters(
         assert self.column_azimuths_rad.dtype == np.float32
         assert self.column_azimuths_rad.shape == (self.n_columns,)
 
-        # Check elevation angles are sorted consistently and are within the vertical FOV
-        relative_row_elevations_diff_rad = np.diff(
-            relative_angle(self.row_elevations_rad[0], self.row_elevations_rad[1:], "ccw")
+        # Check elevation angles are sorted consistently
+        relative_row_elevations_rad = relative_angle(self.row_elevations_rad[0], self.row_elevations_rad, "cw")
+        assert np.all(np.diff(relative_row_elevations_rad.relative_angle_rad) > 0), (
+            "Row elevation angles must be sorted in descending order (cw)"
         )
-        assert np.all(relative_row_elevations_diff_rad > 0) or np.all(relative_row_elevations_diff_rad < 0), (
-            "Row elevation angles must be sorted in descending or ascending order. We don't have a prefered direction as they are all measured at the same time"
-        )
-        relative_row_elevations_rad = relative_angle(self.fov_vert_start_rad, self.row_elevations_rad, "ccw")
-        assert np.all(relative_row_elevations_rad <= self.fov_vert_span_rad), (
-            "Row angles must lie within the vertical FOV"
+        assert np.all(relative_row_elevations_rad.wrap_around_flag == False), (
+            "Row elevation angles must not wrap around the start element"
         )
 
         # Check order of column azimuth angles is consistent with spinning direction
         relative_column_azimuths_rad = relative_angle(
-            self.column_azimuths_rad[0], self.column_azimuths_rad[1:], self.spinning_direction
+            self.column_azimuths_rad[0], self.column_azimuths_rad, self.spinning_direction
         )
-        assert np.all(np.diff(relative_column_azimuths_rad) > 0), (
+        assert np.all(np.diff(relative_column_azimuths_rad.relative_angle_rad) > 0), (
             "Column azimuth angles must be sorted in the spinning direction so the diff between relative angles of consecutive columns should always be positive"
         )
-
-        # Reconstruct all (wrapped) element azimuths once to check against FoV
-        azimuths_rad = self.column_azimuths_rad[None, :] + self.row_azimuth_offsets_rad[:, None]
-        assert np.all(
-            relative_angle(self.fov_horiz_start_rad, azimuths_rad, self.spinning_direction).reshape(-1)
-            <= self.fov_horiz_span_rad
-        ), "Azimuth angles must lie within the horizontal FOV"
+        assert np.all(relative_row_elevations_rad.wrap_around_flag == False), (
+            "Column azimuth angles (without offsets) must not wrap around the start element"
+        )
 
     @staticmethod
     def type() -> str:
         """Returns a string-identifier of the lidar model"""
         return "row-offset-spinning"
+
+    def get_vertical_fov(self) -> util.FOV:
+        """Returns the vertical field-of-view of the lidar model (starting at first element)"""
+        start_rad = self.row_elevations_rad[0].item()
+        span_rad = relative_angle(start_rad, self.row_elevations_rad[-1], "cw").relative_angle_rad.item()
+
+        return util.FOV(start_rad=start_rad, span_rad=span_rad, direction="cw")
+
+    def get_horizontal_fov(self) -> util.FOV:
+        """Returns the horizontal field-of-view of the lidar model (starting at first element)"""
+
+        # Reconstruct first and last (wrapped) element azimuths once to obtain FoV bounds
+        azimuths_rad = self.column_azimuths_rad[None, [0, self.n_columns - 1]] + self.row_azimuth_offsets_rad[:, None]
+
+        # Determine extremum in first element
+        if self.spinning_direction == "ccw":
+            start_rad = azimuths_rad[:, 0].min().item()
+        else:
+            start_rad = azimuths_rad[:, 0].max().item()
+
+        # Check if the azimuth angles of last element wrap around over the start element
+        span = relative_angle(start_rad, azimuths_rad[:, -1], self.spinning_direction)
+        if np.any(span.wrap_around_flag):
+            span_rad = 2 * np.pi
+        else:
+            span_rad = span.relative_angle_rad.max().item()
+
+        return util.FOV(start_rad=start_rad, span_rad=span_rad, direction=self.spinning_direction)
 
 
 # Represents the collection of all concrete lidar model parameter type

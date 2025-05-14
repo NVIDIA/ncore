@@ -45,7 +45,10 @@ class TestRowOffsetStructuredSpinningLidarModelParameters(unittest.TestCase):
     itertools.product(
         (torch.device("cpu"), torch.device("cuda")),
         (torch.float32, torch.float64),
-        ("row-offset-spinning-lidar-model-parameters.json", "row-offset-spinning-lidar-model-parameters-waymo.json"),
+        (
+            "row-offset-spinning-lidar-model-parameters.json",
+            "row-offset-spinning-lidar-model-parameters-waymo.json",
+        ),
     ),
 )
 class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
