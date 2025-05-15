@@ -41,13 +41,14 @@ class TestRowOffsetStructuredSpinningLidarModelParameters(unittest.TestCase):
 
 
 @parameterized.parameterized_class(
-    ("device", "dtype", "param_file"),
+    ("device", "dtype", "param_file_mapresfactor"),
     itertools.product(
         (torch.device("cpu"), torch.device("cuda")),
         (torch.float32, torch.float64),
         (
-            "row-offset-spinning-lidar-model-parameters.json",
-            "row-offset-spinning-lidar-model-parameters-waymo.json",
+            ("row-offset-spinning-lidar-model-parameters.json", 3),
+            ("row-offset-spinning-lidar-model-parameters-waymo.json", 3),
+            ("row-offset-spinning-lidar-model-parameters-pandarset.json", 4),
         ),
     ),
 )
@@ -55,13 +56,13 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
     """Test to verify functionality of RowOffsetStructuredSpinningLidarModel's methods"""
 
     def setUp(self):
-        with open(f"ncore/impl/sensors/test_data/{self.param_file}", "r") as fp:
+        with open(f"ncore/impl/sensors/test_data/{self.param_file_mapresfactor[0]}", "r") as fp:
             self.model_parameters = RowOffsetStructuredSpinningLidarModelParameters.from_dict(json.load(fp))
 
         self.lidar_model = RowOffsetStructuredSpinningLidarModel(
             self.model_parameters,
             angles_to_columns_map_init=False,
-            angles_to_columns_map_resolution_factor=3,
+            angles_to_columns_map_resolution_factor=self.param_file_mapresfactor[1],
             device=self.device,
             dtype=self.dtype,
         )
