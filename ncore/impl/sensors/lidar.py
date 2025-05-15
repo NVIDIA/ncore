@@ -192,7 +192,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
     def __init__(
         self,
         parameters: types.RowOffsetStructuredSpinningLidarModelParameters,
-        angles_to_columns_map_resolution_factor: int = 3,
+        angles_to_columns_map_resolution_factor: int = 4,
         angles_to_columns_map_dtype=torch.int16,
         angles_to_columns_map_init=False,
         device: Union[str, torch.device] = torch.device("cuda"),
@@ -406,13 +406,10 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         assert torch.all(relative_azimuths_rad <= self.fov_horiz.span_rad + 3 * torch.finfo(torch.float32).eps)
 
         # Determine the location of the angle in the map (nearest neighbor lookup)
-        horizontal_idxs = (
-            (relative_azimuths_rad + self.map_resolution_horiz_rad / 2) / self.map_resolution_horiz_rad
-        ).to(torch.long)
-
-        vertical_idxs = (
-            (relative_elevations_rad + self.map_resolution_vert_rad / 2) / self.map_resolution_vert_rad
-        ).to(torch.long)
+        horizontal_nn_dist = relative_azimuths_rad / self.map_resolution_horiz_rad + 0.5  # = (azimuth + res/2) / res
+        horizontal_idxs = horizontal_nn_dist.to(torch.long)
+        vertical_nn_dist = relative_elevations_rad / self.map_resolution_vert_rad + 0.5  # = (elevation + res/2) / res
+        vertical_idxs = vertical_nn_dist.to(torch.long)
 
         # Grab the corresponding column index from the map
         column_indices = self.angles_to_columns_map[vertical_idxs, horizontal_idxs]
