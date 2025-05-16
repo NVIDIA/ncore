@@ -48,7 +48,7 @@ class TestRowOffsetStructuredSpinningLidarModelParameters(unittest.TestCase):
         (
             ("row-offset-spinning-lidar-model-parameters.json", 3),
             ("row-offset-spinning-lidar-model-parameters-waymo.json", 3),
-            ("row-offset-spinning-lidar-model-parameters-pandarset.json", 4),
+            ("row-offset-spinning-lidar-model-parameters-pandaset.json", 4),
         ),
     ),
 )

@@ -70,7 +70,7 @@ pytest_test(
     ],
     data = [
         "//ncore/impl/sensors:test_data/row-offset-spinning-lidar-model-parameters.json",
-        "//ncore/impl/sensors:test_data/row-offset-spinning-lidar-model-parameters-pandarset.json",
+        "//ncore/impl/sensors:test_data/row-offset-spinning-lidar-model-parameters-pandaset.json",
         "//ncore/impl/sensors:test_data/row-offset-spinning-lidar-model-parameters-waymo.json",
     ],
     deps = [
