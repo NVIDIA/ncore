@@ -685,6 +685,9 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
     timestamp_us: int  #: The timestamp associated with the centroid of the label (possibly an accurate in-spin time)
     confidence: Optional[float]  #: If available, the confidence score of the label [0..1]
     source: LabelSource = util.enum_field(LabelSource)  #: The source for the current label
+    source_version: Optional[str] = (
+        None  #: If provided, the unique version ID of the source for the current label (to distinguish between different versions of the same source)
+    )
 
     def __post_init__(self):
         # Sanity checks
@@ -699,6 +702,8 @@ class FrameLabel3(dataclasses_json.DataClassJsonMixin):
         if not isinstance(self.source, LabelSource):
             self.source = LabelSource(self.source)
         assert self.source in LabelSource.__members__.values()
+
+        assert isinstance(self.source_version, (type(None), str))
 
 
 @dataclass
