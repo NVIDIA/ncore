@@ -27,6 +27,9 @@ from python.runfiles import Runfiles
 from .data3 import ShardDataLoader, Sensor, CameraSensor, LidarSensor, ContainerDataWriter
 from .types import (
     FrameTimepoint,
+    FrameLabel3,
+    LabelSource,
+    BBox3,
     FThetaCameraModelParameters,
     OpenCVFisheyeCameraModelParameters,
     RowOffsetStructuredSpinningLidarModelParameters,
@@ -667,7 +670,37 @@ class TestData3Reload(unittest.TestCase):
             ref_lidar_intensity0 := np.random.rand(5).astype(np.float32),
             ref_lidar_timestamp_us0 := np.array([1, 2, 3, 4, 5], dtype=np.uint64),
             ref_lidar_model_element0 := np.arange(5 * 2, dtype=np.uint16).reshape((5, 2)),
-            [],
+            ref_lidar_frame_labels0 := [
+                FrameLabel3(
+                    label_id="label1",
+                    track_id="track1",
+                    label_class="car",
+                    bbox3=BBox3(
+                        centroid=(1.0, 2.0, 3.0),
+                        dim=(4.0, 2.0, 1.5),
+                        rot=(0.0, 0.0, 0.0),
+                    ),
+                    global_speed=5.5,
+                    timestamp_us=1234567890,
+                    confidence=0.95,
+                    source=LabelSource.AUTOLABEL,
+                ),
+                FrameLabel3(
+                    label_id="label2",
+                    track_id="track2",
+                    label_class="truck",
+                    bbox3=BBox3(
+                        centroid=(-2.0, 0.5, 1.0),
+                        dim=(6.0, 2.5, 2.5),
+                        rot=(0.1, 0.2, 0.3),
+                    ),
+                    global_speed=12.3,
+                    timestamp_us=1234567999,
+                    confidence=None,
+                    source=LabelSource.GT_ANNOTATION,
+                    source_version="v2",
+                ),
+            ],
             T_rig_worlds.astype(np.float32),
             T_rig_world_timestamps_us,
             ref_lidar_generic_data0 := {
@@ -685,7 +718,37 @@ class TestData3Reload(unittest.TestCase):
             ref_lidar_intensity1 := np.random.rand(4).astype(np.float32),
             ref_lidar_timestamp_us1 := np.array([1, 2, 3, 4], dtype=np.uint64),
             ref_lidar_model_element1 := np.arange(4 * 2, dtype=np.uint16).reshape((4, -1)),
-            [],
+            ref_lidar_frame_labels1 := [
+                FrameLabel3(
+                    label_id="label3",
+                    track_id="track1",
+                    label_class="car",
+                    bbox3=BBox3(
+                        centroid=(1.0, 2.0, 3.0),
+                        dim=(4.0, 2.0, 1.5),
+                        rot=(0.0, 0.0, 0.0),
+                    ),
+                    global_speed=5.5,
+                    timestamp_us=1234567890,
+                    confidence=0.95,
+                    source=LabelSource.AUTOLABEL,
+                ),
+                FrameLabel3(
+                    label_id="label4",
+                    track_id="track2",
+                    label_class="truck",
+                    bbox3=BBox3(
+                        centroid=(-2.0, 0.5, 1.0),
+                        dim=(6.0, 2.5, 2.5),
+                        rot=(0.1, 0.2, 0.3),
+                    ),
+                    global_speed=12.3,
+                    timestamp_us=1234567999,
+                    confidence=None,
+                    source=LabelSource.GT_ANNOTATION,
+                    source_version="v2",
+                ),
+            ],
             T_rig_worlds.astype(np.float32),
             T_rig_world_timestamps_us,
             ref_lidar_generic_data1 := {
@@ -800,6 +863,7 @@ class TestData3Reload(unittest.TestCase):
         self.assertIsNone(
             np.testing.assert_array_equal(lidar_sensor.get_frame_data(0, "model_element"), ref_lidar_model_element0)
         )
+        self.assertIsNone(np.testing.assert_array_equal(lidar_sensor.get_frame_labels(0), ref_lidar_frame_labels0))
         self.assertFalse(lidar_sensor.has_frame_data(0, "dynamic_flag"))  # deprecated property
         self.assertEqual(lidar_sensor.get_frame_generic_meta_data(0), ref_lidar_generic_metadata0)
         self.assertEqual(
@@ -824,6 +888,7 @@ class TestData3Reload(unittest.TestCase):
         self.assertIsNone(
             np.testing.assert_array_equal(lidar_sensor.get_frame_data(1, "model_element"), ref_lidar_model_element1)
         )
+        self.assertIsNone(np.testing.assert_array_equal(lidar_sensor.get_frame_labels(1), ref_lidar_frame_labels1))
         self.assertFalse(lidar_sensor.has_frame_data(1, "dynamic_flag"))  # deprecated property
         self.assertEqual(lidar_sensor.get_frame_generic_meta_data(1), ref_lidar_generic_metadata1)
         self.assertEqual(
