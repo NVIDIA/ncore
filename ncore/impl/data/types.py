@@ -105,7 +105,7 @@ class CameraModelParameters:
 
     resolution: np.ndarray = util.numpy_array_field(
         np.uint64
-    )  #: Width and height of the image in pixels (uint32, [2,])
+    )  #: Width and height of the image in pixels (uint64, [2,])
     shutter_type: ShutterType = util.enum_field(ShutterType)  #: Shutter type of the camera's imaging sensor
 
     external_distortion_parameters: Optional[ConcreteExternalDistortionParametersUnion] = (
