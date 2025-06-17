@@ -193,10 +193,11 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         self,
         parameters: types.RowOffsetStructuredSpinningLidarModelParameters,
         angles_to_columns_map_resolution_factor: int = 4,
-        angles_to_columns_map_dtype=torch.int16,
-        angles_to_columns_map_init=False,
+        angles_to_columns_map_dtype: torch.dtype = torch.int16,
+        angles_to_columns_map_init: bool = False,
         device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
+        fov_eps_factor: float = 4.0,  # used to account for accumulated numerical errors in FOV checks
     ):
         super().__init__(device=device, dtype=dtype)
 
@@ -220,9 +221,15 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         self.n_rows = parameters.n_rows
         self.n_columns = parameters.n_columns
 
-        # Compute FOV bounds from parameters
-        self.fov_vert = parameters.get_vertical_fov()
-        self.fov_horiz = parameters.get_horizontal_fov()
+        # Compute FOV bounds from parameters (using same precision as current model)
+        self.fov_eps_rad = fov_eps_factor * torch.finfo(self.dtype).eps
+        np_dtype = {
+            torch.float16: np.float16,
+            torch.float32: np.float32,
+            torch.float64: np.float64,
+        }[self.dtype]  # map torch dtype to numpy dtype for parameter-based FOV evaluation
+        self.fov_vert = parameters.get_vertical_fov(np_dtype)
+        self.fov_horiz = parameters.get_horizontal_fov(np_dtype)
 
         if angles_to_columns_map_init:
             self._init_angles_to_columns_map()
@@ -326,6 +333,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
                 self.fov_vert.start_rad - self.fov_vert.span_rad,  # cw convention
                 self.angles_to_columns_map_resolution_factor * self.n_rows,
                 device=self.device,
+                dtype=self.dtype,
             ),
             torch.linspace(
                 self.fov_horiz.start_rad,
@@ -334,6 +342,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
                 else self.fov_horiz.start_rad - self.fov_horiz.span_rad,
                 self.angles_to_columns_map_resolution_factor * self.n_columns,
                 device=self.device,
+                dtype=self.dtype,
             ),
             indexing="ij",
         )
@@ -401,9 +410,9 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
             self.fov_horiz.start_rad, sensor_angles[:, 1], self.spinning_direction
         ).relative_angle_rad
 
-        # Check that all angles are in the fov (account for numerical stability via some epsilon)
-        assert torch.all(relative_elevations_rad <= self.fov_vert.span_rad + 3 * torch.finfo(torch.float32).eps)
-        assert torch.all(relative_azimuths_rad <= self.fov_horiz.span_rad + 3 * torch.finfo(torch.float32).eps)
+        # Check that all angles are in the fov (account for accumulated numerical errors via some epsilon)
+        assert torch.all(relative_elevations_rad <= self.fov_vert.span_rad + self.fov_eps_rad)
+        assert torch.all(relative_azimuths_rad <= self.fov_horiz.span_rad + self.fov_eps_rad)
 
         # Determine the location of the angle in the map (nearest neighbor lookup)
         horizontal_nn_dist = relative_azimuths_rad / self.map_resolution_horiz_rad + 0.5  # = (azimuth + res/2) / res
@@ -679,8 +688,8 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         rel_elevation = util.relative_angle(self.fov_vert.start_rad, sensor_angles[:, 0], "cw")
         rel_azimuth = util.relative_angle(self.fov_horiz.start_rad, sensor_angles[:, 1], self.spinning_direction)
 
-        # Account for numerical stability via some epsilon in FOV check
+        # Account for accumulated numerical errors via some epsilon in FOV check
         return torch.logical_and(
-            rel_elevation.relative_angle_rad <= self.fov_vert.span_rad + 3 * torch.finfo(torch.float32).eps,
-            rel_azimuth.relative_angle_rad <= self.fov_horiz.span_rad + 3 * torch.finfo(torch.float32).eps,
+            rel_elevation.relative_angle_rad <= self.fov_vert.span_rad + self.fov_eps_rad,
+            rel_azimuth.relative_angle_rad <= self.fov_horiz.span_rad + self.fov_eps_rad,
         )
