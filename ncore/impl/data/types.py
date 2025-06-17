@@ -16,12 +16,15 @@ import dataclasses
 
 from enum import IntEnum, auto, unique
 from dataclasses import dataclass
-from typing import Literal, Optional, Protocol, Tuple, Union, List, Dict
+from typing import Literal, Optional, Protocol, Tuple, Union, List, Dict, TYPE_CHECKING
 from functools import lru_cache
 
 import numpy as np
 import dataclasses_json
 import PIL.Image as PILImage
+
+if TYPE_CHECKING:
+    import numpy.typing as npt  # type: ignore[import-not-found]
 
 from ncore.impl.data import util
 
@@ -571,18 +574,24 @@ class RowOffsetStructuredSpinningLidarModelParameters(
         """Returns a string-identifier of the lidar model"""
         return "row-offset-spinning"
 
-    def get_vertical_fov(self) -> util.FOV:
-        """Returns the vertical field-of-view of the lidar model (starting at first element)"""
-        start_rad = self.row_elevations_rad[0].item()
-        span_rad = util.relative_angle(start_rad, self.row_elevations_rad[-1], "cw").relative_angle_rad.item()
+    def get_vertical_fov(self, dtype: "npt.DTypeLike" = np.float32) -> util.FOV:
+        """Returns the vertical field-of-view of the lidar model (starting at first element) in the requested dtype precision"""
+
+        start_rad = self.row_elevations_rad[0].astype(dtype).item()
+        span_rad = util.relative_angle(
+            start_rad, self.row_elevations_rad.astype(dtype)[-1], "cw"
+        ).relative_angle_rad.item()
 
         return util.FOV(start_rad=start_rad, span_rad=span_rad, direction="cw")
 
-    def get_horizontal_fov(self) -> util.FOV:
-        """Returns the horizontal field-of-view of the lidar model (starting at first element)"""
+    def get_horizontal_fov(self, dtype: "npt.DTypeLike" = np.float32) -> util.FOV:
+        """Returns the horizontal field-of-view of the lidar model (starting at first element) in the requested dtype precision"""
 
         # Reconstruct first and last (wrapped) element azimuths once to obtain FoV bounds
-        azimuths_rad = self.column_azimuths_rad[None, [0, self.n_columns - 1]] + self.row_azimuth_offsets_rad[:, None]
+        azimuths_rad = (
+            self.column_azimuths_rad.astype(dtype)[None, [0, self.n_columns - 1]]
+            + self.row_azimuth_offsets_rad.astype(dtype)[:, None]
+        )
 
         # Determine extremum in first element
         if self.spinning_direction == "ccw":
