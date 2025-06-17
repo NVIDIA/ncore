@@ -43,12 +43,19 @@ class TestRowOffsetStructuredSpinningLidarModelParameters(unittest.TestCase):
 @parameterized.parameterized_class(
     ("device", "dtype", "param_file_mapresfactor"),
     itertools.product(
-        (torch.device("cpu"), torch.device("cuda")),
-        (torch.float32, torch.float64),
+        (
+            torch.device("cpu"),
+            torch.device("cuda"),
+        ),
+        (
+            torch.float32,
+            torch.float64,
+        ),
         (
             ("row-offset-spinning-lidar-model-parameters.json", 3),
             ("row-offset-spinning-lidar-model-parameters-waymo.json", 3),
             ("row-offset-spinning-lidar-model-parameters-pandaset.json", 4),
+            ("row-offset-spinning-lidar-model-parameters-hesai-at128.json", 3),
         ),
     ),
 )
