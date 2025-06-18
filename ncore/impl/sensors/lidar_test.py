@@ -111,20 +111,24 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
         sensor_rays = self.lidar_model.elements_to_sensor_rays(self.elements)
 
         sensor_angles = self.lidar_model.sensor_rays_to_sensor_angles(sensor_rays)
-        sensor_rays_reconstructed = self.lidar_model.sensor_angles_to_sensor_rays(
-            sensor_angles.sensor_angles
-        ).sensor_rays
+        sensor_rays_reconstructed = self.lidar_model.sensor_angles_to_sensor_rays(sensor_angles.sensor_angles)
 
-        np.testing.assert_array_almost_equal(sensor_rays.cpu(), sensor_rays_reconstructed.cpu(), decimal=6)
+        assert torch.all(sensor_rays_reconstructed.valid_flag)
+
+        np.testing.assert_array_almost_equal(sensor_rays.cpu(), sensor_rays_reconstructed.sensor_rays.cpu(), decimal=6)
 
     def test_angle_conversion_2(self):
         """Make sure angle conversion works correctly (element -> angle -> ray -> angle)"""
         sensor_angles = self.lidar_model.elements_to_sensor_angles(self.elements)
 
         sensor_rays = self.lidar_model.elements_to_sensor_rays(self.elements)
-        sensor_angles_reconstructed = self.lidar_model.sensor_rays_to_sensor_angles(sensor_rays).sensor_angles
+        sensor_angles_reconstructed = self.lidar_model.sensor_rays_to_sensor_angles(sensor_rays)
 
-        np.testing.assert_array_almost_equal(sensor_angles.cpu(), sensor_angles_reconstructed.cpu(), decimal=6)
+        assert torch.all(sensor_angles_reconstructed.valid_flag)
+
+        np.testing.assert_array_almost_equal(
+            sensor_angles.cpu(), sensor_angles_reconstructed.sensor_angles.cpu(), decimal=6
+        )
 
     def test_angles_to_columns(self):
         """Make sure angles to columns mapping works correctly"""
