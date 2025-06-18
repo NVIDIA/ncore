@@ -402,17 +402,13 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
 
         sensor_angles = to_torch(sensor_angles, device=self.device, dtype=self.dtype)
 
-        # Normalize angles to the interval [0, 2π)
-        relative_elevations_rad = util.relative_angle(
-            self.fov_vert.start_rad, sensor_angles[:, 0], "cw"
-        ).relative_angle_rad
-        relative_azimuths_rad = util.relative_angle(
-            self.fov_horiz.start_rad, sensor_angles[:, 1], self.spinning_direction
-        ).relative_angle_rad
+        # Map to relative angles in the interval [0, 2π)
+        relative_sensor_angles = self._relative_sensor_angles(sensor_angles)
+        relative_elevations_rad = relative_sensor_angles[:, 0]  # relative elevation angles in radians
+        relative_azimuths_rad = relative_sensor_angles[:, 1]  # relative azimuth angles in radians
 
         # Check that all angles are in the fov (account for accumulated numerical errors via some epsilon)
-        assert torch.all(relative_elevations_rad <= self.fov_vert.span_rad + self.fov_eps_rad)
-        assert torch.all(relative_azimuths_rad <= self.fov_horiz.span_rad + self.fov_eps_rad)
+        assert torch.all(self._valid_relative_sensor_angles(relative_sensor_angles))
 
         # Determine the location of the angle in the map (nearest neighbor lookup)
         horizontal_nn_dist = relative_azimuths_rad / self.map_resolution_horiz_rad + 0.5  # = (azimuth + res/2) / res
@@ -682,14 +678,40 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
 
         return angle_rad
 
-    def _valid_sensor_angles(self, sensor_angles: torch.Tensor) -> torch.Tensor:
-        """Checks if a sensor angles are valid / within the sensor's field of view"""
+    def _relative_sensor_angles(self, sensor_angles: torch.Tensor) -> torch.Tensor:
+        """Computes relative sensor angles"""
 
-        rel_elevation = util.relative_angle(self.fov_vert.start_rad, sensor_angles[:, 0], "cw")
-        rel_azimuth = util.relative_angle(self.fov_horiz.start_rad, sensor_angles[:, 1], self.spinning_direction)
+        # Account for accumulated numerical errors via some epsilon in FOV check (1x eps on the start of the FOV)
+        rel_elevation = util.relative_angle(self.fov_vert.start_rad + self.fov_eps_rad, sensor_angles[:, 0], "cw")
+        rel_azimuth = util.relative_angle(
+            (
+                self.fov_horiz.start_rad + self.fov_eps_rad
+                if self.spinning_direction == "cw"
+                else self.fov_horiz.start_rad - self.fov_eps_rad
+            ),
+            sensor_angles[:, 1],
+            self.spinning_direction,
+        )
+
+        return torch.stack([rel_elevation.relative_angle_rad, rel_azimuth.relative_angle_rad], dim=-1)
+
+    def _valid_relative_sensor_angles(self, relative_sensor_angles: torch.Tensor) -> torch.Tensor:
+        """Checks if relative sensor angles are within the FOV of the sensor
+
+        Relative angle inputs should be computed with _relative_sensor_angles to include eps corrections"""
 
         # Account for accumulated numerical errors via some epsilon in FOV check
+        # (using 2x eps as 1x eps is "inherited" from the start of the FOV in the relative angles,
+        #  so effectively this checks 1x eps on the end of the FOV)
         return torch.logical_and(
-            rel_elevation.relative_angle_rad <= self.fov_vert.span_rad + self.fov_eps_rad,
-            rel_azimuth.relative_angle_rad <= self.fov_horiz.span_rad + self.fov_eps_rad,
+            relative_sensor_angles[:, 0] <= self.fov_vert.span_rad + 2 * self.fov_eps_rad,
+            relative_sensor_angles[:, 1] <= self.fov_horiz.span_rad + 2 * self.fov_eps_rad,
         )
+
+    def _valid_sensor_angles(self, sensor_angles: torch.Tensor) -> torch.Tensor:
+        """Checks if sensor angles are within the FOV of the sensor"""
+
+        relative_sensor_angles = self._relative_sensor_angles(sensor_angles)
+
+        # Check if relative sensor angles are within the FOV of the sensor
+        return self._valid_relative_sensor_angles(relative_sensor_angles)
