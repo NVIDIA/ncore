@@ -14,6 +14,7 @@ import io
 import sys
 import dataclasses
 
+from abc import ABC, abstractmethod
 from enum import IntEnum, auto, unique
 from dataclasses import dataclass
 from typing import Literal, Optional, Protocol, Tuple, Union, List, Dict, TYPE_CHECKING
@@ -24,6 +25,7 @@ import dataclasses_json
 import PIL.Image as PILImage
 
 if TYPE_CHECKING:
+    from typing import Self  # use in type-checking context only as only supported in python 3.11+ via PEP 673
     import numpy.typing as npt  # type: ignore[import-not-found]
 
 from ncore.impl.data import util
@@ -103,7 +105,7 @@ ConcreteExternalDistortionParametersUnion = Union[BivariateWindshieldModelParame
 
 
 @dataclass
-class CameraModelParameters:
+class CameraModelParameters(ABC):
     """Represents parameters common to all camera models"""
 
     resolution: np.ndarray = util.numpy_array_field(
@@ -114,6 +116,27 @@ class CameraModelParameters:
     external_distortion_parameters: Optional[ConcreteExternalDistortionParametersUnion] = (
         None  #: Optional external distortion source associated to the camera (e.g. windshield). If a source exits, rays will be distorted prior to reaching the camera and it's associated lens distortion if applicable
     )
+
+    @abstractmethod
+    def transform(
+        self,
+        image_domain_scale: Union[float, Tuple[float, float]],
+        image_domain_offset: Tuple[float, float] = (0.0, 0.0),
+        new_resolution: Optional[Tuple[int, int]] = None,
+    ) -> "Self":
+        """
+        Applies a transformation to camera model parameter
+
+        Args:
+            image_domain_scale: an isotropic (if float) or anisotropic (if tuple of floats) scaling of the
+                                full image domain to a scaled image domain (e.g., to account for up-/downsampling).
+                                Resulting scaled image resolution needs to be integer if no explicit 'new_resolution' is provided.
+            image_domain_offset: an offset of the _scaled_ image domain (e.g., to account for cropping).
+            new_resolution: an optional new resolution to set (if None, the full scaled resolution is used).
+
+        Returns:
+            a transformed version of the concrete camera model parameters
+        """
 
     def __post_init__(self):
         # Sanity checks
@@ -234,7 +257,7 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
             new_resolution: an optional new resolution to set (if None, the full scaled resolution is used).
 
         Returns:
-            a transformed version of the camera model parameters
+            a transformed version of the FTheta camera model parameters
         """
 
         # Get scale factors for each image domain dimension
@@ -362,7 +385,7 @@ class OpenCVPinholeCameraModelParameters(CameraModelParameters, dataclasses_json
             new_resolution: an optional new resolution to set (if None, the full scaled resolution is used).
 
         Returns:
-            a transformed version of the camera model parameters
+            a transformed version of the OpenCV pinhole camera model parameters
         """
 
         # Get scale factors for each image domain dimension
@@ -446,7 +469,7 @@ class OpenCVFisheyeCameraModelParameters(CameraModelParameters, dataclasses_json
             new_resolution: an optional new resolution to set (if None, the full scaled resolution is used).
 
         Returns:
-            a transformed version of the camera model parameters
+            a transformed version of the OpenCV fisheye camera model parameters
         """
 
         # Get scale factors for each image domain dimension
