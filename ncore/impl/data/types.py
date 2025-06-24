@@ -17,7 +17,7 @@ import dataclasses
 from abc import ABC, abstractmethod
 from enum import IntEnum, auto, unique
 from dataclasses import dataclass
-from typing import Literal, Optional, Protocol, Tuple, Union, List, Dict, TYPE_CHECKING
+from typing import Literal, Optional, Protocol, Tuple, TypeVar, Union, List, Dict, TYPE_CHECKING
 from functools import lru_cache
 
 import numpy as np
@@ -25,7 +25,6 @@ import dataclasses_json
 import PIL.Image as PILImage
 
 if TYPE_CHECKING:
-    from typing import Self  # use in type-checking context only as only supported in python 3.11+ via PEP 673
     import numpy.typing as npt  # type: ignore[import-not-found]
 
 from ncore.impl.data import util
@@ -103,6 +102,9 @@ class BivariateWindshieldModelParameters(dataclasses_json.DataClassJsonMixin):
 # Represents the collection of all concrete external distortion types
 ConcreteExternalDistortionParametersUnion = Union[BivariateWindshieldModelParameters]
 
+# Self type-var for camera model parameters consistent with PEP 673 but compatible with Python < 3.11
+CameraModelParametersSelf = TypeVar("CameraModelParametersSelf", bound="CameraModelParameters")
+
 
 @dataclass
 class CameraModelParameters(ABC):
@@ -119,11 +121,11 @@ class CameraModelParameters(ABC):
 
     @abstractmethod
     def transform(
-        self,
+        self: CameraModelParametersSelf,
         image_domain_scale: Union[float, Tuple[float, float]],
         image_domain_offset: Tuple[float, float] = (0.0, 0.0),
         new_resolution: Optional[Tuple[int, int]] = None,
-    ) -> "Self":
+    ) -> CameraModelParametersSelf:
         """
         Applies a transformation to camera model parameter
 
