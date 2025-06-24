@@ -22,6 +22,7 @@ import torch
 import cv2
 
 from ncore.impl.data.types import (
+    ConcreteCameraModelParametersUnion,
     FThetaCameraModelParameters,
     OpenCVPinholeCameraModelParameters,
     OpenCVFisheyeCameraModelParameters,
@@ -1176,12 +1177,12 @@ class TestFisheyeCamera(CommonTestCase):
 
 
 class CameraModelsBaseTestCase(CommonTestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         # Make printed errors more representable numerically
         np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
 
         # Real-world customer camera parameters to test
-        self.cam_model_params = [
+        self.cam_model_params: List[ConcreteCameraModelParametersUnion] = [
             # fw-based ftheta camera model
             FThetaCameraModelParameters(
                 resolution=np.array([3848, 2168], dtype=np.uint64),
@@ -1378,11 +1379,22 @@ class TestTransformParameters(CameraModelsBaseTestCase):
                                 )
 
                                 cam_model_transformed = CameraModel.from_parameters(
-                                    cam_model_params.transform(
-                                        image_domain_scale=scale_factor, image_domain_offset=offset
+                                    cam_model_params_transformed := cam_model_params.transform(
+                                        image_domain_scale=scale_factor,
+                                        image_domain_offset=offset,
                                     ),
                                     device=self.device,
                                     dtype=self.dtype,
+                                )
+
+                                # Make sure types are preserved
+                                self.assertEqual(
+                                    type(cam_model_transformed), type(cam_model), msg="Camera model type mismatch"
+                                )
+                                self.assertEqual(
+                                    type(cam_model_params_transformed),
+                                    type(cam_model_params),
+                                    msg="Camera model parameters type mismatch",
                                 )
 
                                 # Validate original image domain -> 3d -> transformed image domain round-trip
