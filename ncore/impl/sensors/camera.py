@@ -1117,28 +1117,35 @@ class CameraModel(BaseModel, ABC):
         # Compute the pixel indices for given image points (round to top left corner integer coordinate)
         return torch.floor(image_points).to(torch.int32)
 
-    def image_points_relative_frame_times(self, image_points: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+    @staticmethod
+    def image_points_relative_frame_times_kernel(
+        image_points: torch.Tensor, resolution: torch.Tensor, shutter_type: types.ShutterType
+    ) -> torch.Tensor:
         """Get relative frame-times based on the image point coordinates and rolling shutter type"""
-
-        image_points = to_torch(image_points, device=self.device, dtype=self.dtype)
 
         # Floor/Ceil the continuous image points to the row / column index following the image coordinate
         # convention that index defines the top left corner of each pixel, e.g., the first pixels
         # u/v-range is [0.0, 1.0]
-        if self.shutter_type == types.ShutterType.ROLLING_TOP_TO_BOTTOM:
-            t = torch.floor(image_points[:, 1]) / (self.resolution[1] - 1)
-        elif self.shutter_type == types.ShutterType.ROLLING_LEFT_TO_RIGHT:
-            t = torch.floor(image_points[:, 0]) / (self.resolution[0] - 1)
-        elif self.shutter_type == types.ShutterType.ROLLING_BOTTOM_TO_TOP:
-            t = (self.resolution[1] - torch.ceil(image_points[:, 1])) / (self.resolution[1] - 1)
-        elif self.shutter_type == types.ShutterType.ROLLING_RIGHT_TO_LEFT:
-            t = (self.resolution[0] - torch.ceil(image_points[:, 0])) / (self.resolution[0] - 1)
-        elif self.shutter_type == types.ShutterType.GLOBAL:
+        if shutter_type == types.ShutterType.ROLLING_TOP_TO_BOTTOM:
+            t = torch.floor(image_points[:, 1]) / (resolution[1] - 1)
+        elif shutter_type == types.ShutterType.ROLLING_LEFT_TO_RIGHT:
+            t = torch.floor(image_points[:, 0]) / (resolution[0] - 1)
+        elif shutter_type == types.ShutterType.ROLLING_BOTTOM_TO_TOP:
+            t = (resolution[1] - torch.ceil(image_points[:, 1])) / (resolution[1] - 1)
+        elif shutter_type == types.ShutterType.ROLLING_RIGHT_TO_LEFT:
+            t = (resolution[0] - torch.ceil(image_points[:, 0])) / (resolution[0] - 1)
+        elif shutter_type == types.ShutterType.GLOBAL:
             t = torch.zeros_like(image_points[:, 0])
         else:
-            raise TypeError(f"unsupported shutter-type {self.shutter_type.name} for timestamp interpolation")
+            raise TypeError(f"unsupported shutter-type {shutter_type.name} for timestamp interpolation")
 
         return t
+
+    def image_points_relative_frame_times(self, image_points: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+        """Convenience wrapper for image_points_relative_frame_times_kernel with the camera's resolution and shutter type + tensor conversion"""
+        return self.image_points_relative_frame_times_kernel(
+            to_torch(image_points, device=self.device, dtype=self.dtype), self.resolution, self.shutter_type
+        )
 
     def __interpolate_poses(self, pose_s: torch.Tensor, pose_e: torch.Tensor, t: float) -> torch.Tensor:
         """Interpolate/extrapolate pose components linearly between two poses using
