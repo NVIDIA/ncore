@@ -597,10 +597,16 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         T_sensor_world_end: Union[torch.Tensor, np.ndarray],
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
+        sensor_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
         return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
     ) -> RowOffsetStructuredSpinningLidarModel.WorldRaysReturn:
-        """Unprojects elements to world rays using *rolling-shutter compensation* of sensor motion."""
+        """Unprojects elements to world rays using *rolling-shutter compensation* of sensor motion.
+
+        Can optionally re-use known sensor rays associated with elements.
+
+        For each element returns 3d world rays [point, direction], represented by 3d start of ray points and 3d ray directions in the world frame
+        """
 
         # Check if the variables are numpy, convert them to torch and send them to correct device
         elements = to_torch(elements, device=self.device, dtype=torch.long)
@@ -632,7 +638,15 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         R_sensor_world_e_quat = rotmat_to_unitquat(T_sensor_world_end[None, :3, :3])  # [1, 4]
 
         # Compute the sensor rays for the elements
-        sensor_rays = self.elements_to_sensor_rays(elements)
+        if sensor_rays is not None:
+            # Reuse provided sensor rays
+            sensor_rays = to_torch(sensor_rays, device=self.device, dtype=self.dtype)
+            assert len(sensor_rays.shape) == 2
+            assert len(sensor_rays) == len(elements)
+            assert sensor_rays.shape[1] == 3
+            assert sensor_rays.dtype == self.dtype
+        else:
+            sensor_rays = self.elements_to_sensor_rays(elements)
 
         # Get relative frame-times based on the elements column index relative to the total number of columns
         # (columns are measured in increasing time order irrespective of spin-direction)

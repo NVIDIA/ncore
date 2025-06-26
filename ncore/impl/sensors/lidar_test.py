@@ -181,6 +181,23 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
         self.assertIsNotNone(world_rays.timestamps_us, "Timestamps are not returned")
         self.assertIsNotNone(world_rays.T_sensor_worlds, "Sensor poses are not returned")
 
+        # Check that using pre-computed sensor rays yields the same rays
+        world_rays_precomputed_sensor_rays = self.lidar_model.elements_to_world_rays_shutter_pose(
+            elements=self.elements,
+            T_sensor_world_start=T_sensor_world_start,
+            T_sensor_world_end=T_sensor_world_end,
+            start_timestamp_us=timestamps_us[0],
+            end_timestamp_us=timestamps_us[1],
+            sensor_rays=self.lidar_model.elements_to_sensor_rays(self.elements),  # fake pre-computation
+            return_T_sensor_worlds=True,
+            return_timestamps=True,
+        )
+        self.assertIsNotNone(world_rays_precomputed_sensor_rays.timestamps_us, "Timestamps are not returned")
+        self.assertIsNotNone(world_rays_precomputed_sensor_rays.T_sensor_worlds, "Sensor poses are not returned")
+        np.testing.assert_array_almost_equal(
+            world_rays_precomputed_sensor_rays.world_rays.cpu().numpy(), world_rays.world_rays.cpu().numpy(), decimal=6
+        )
+
         np.random.seed(0)
         distances = to_torch(
             np.random.rand(world_rays.world_rays.shape[0], 1) * 100,
