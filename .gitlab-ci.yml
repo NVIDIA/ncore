@@ -1,7 +1,8 @@
-# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2022-2025 NVIDIA CORPORATION.  All rights reserved.
 
 variables:
   GIT_CLEAN_FLAGS: -ffdx -e .ci-keep
+  FF_TIMESTAMPS: true # Enable timestamps in job logs
 
 default:
   image:
