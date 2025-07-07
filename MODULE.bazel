@@ -31,11 +31,13 @@ pip.parse(
     hub_name = "ncore_pip_deps",
     python_version = "3.11",
     requirements_lock = "//3rdparty/python:requirements_3_11.txt",
+    experimental_index_url = "https://pypi.org/simple",  # download wheels via bazel downloader instead of pip
 )
 pip.parse(
     hub_name = "ncore_pip_deps",
     python_version = "3.8",
     requirements_lock = "//3rdparty/python:requirements_3_8.txt",
+    experimental_index_url = "https://pypi.org/simple",  # download wheels via bazel downloader instead of pip
 )
 use_repo(pip, "ncore_pip_deps")
 
