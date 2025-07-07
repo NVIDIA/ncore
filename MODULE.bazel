@@ -6,10 +6,10 @@ This module defines the dependencies and extensions for the ncore project.
 
 module(name = "ncore", repo_name = "ncore_repo")
 
-bazel_dep(name = "aspect_bazel_lib", version = "2.7.7")
+bazel_dep(name = "aspect_bazel_lib", version = "2.13.0")
 bazel_dep(name = "aspect_rules_lint", version = "1.2.2")
 bazel_dep(name = "rules_mypy", version = "0.29.0")
-bazel_dep(name = "cgrindel_bazel_starlib", version = "0.22.0")
+bazel_dep(name = "cgrindel_bazel_starlib", version = "0.27.0")
 bazel_dep(name = "rules_cc", version = "0.1.1")
 bazel_dep(name = "bazel_skylib", version = "1.7.1")
 bazel_dep(name = "platforms", version = "0.0.11")
@@ -31,11 +31,13 @@ pip.parse(
     hub_name = "ncore_pip_deps",
     python_version = "3.11",
     requirements_lock = "//3rdparty/python:requirements_3_11.txt",
+    experimental_index_url = "https://pypi.org/simple",  # download wheels via bazel downloader instead of pip
 )
 pip.parse(
     hub_name = "ncore_pip_deps",
     python_version = "3.8",
     requirements_lock = "//3rdparty/python:requirements_3_8.txt",
+    experimental_index_url = "https://pypi.org/simple",  # download wheels via bazel downloader instead of pip
 )
 use_repo(pip, "ncore_pip_deps")
 
