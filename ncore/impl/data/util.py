@@ -91,7 +91,8 @@ def enum_field(enum_class, default=None):
 TensorLike = TypeVar("TensorLike", bound=Any)
 
 
-class RelativeAngleResult(Generic[TensorLike], NamedTuple):
+@dataclass
+class RelativeAngleResult(Generic[TensorLike]):
     relative_angle_rad: TensorLike
     wrap_around_flag: TensorLike
 
