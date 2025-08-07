@@ -17,7 +17,7 @@ py_library(
         requirement("numpy"),
         requirement("click"),
         requirement("debugpy"),
-        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_data3",
     ],
 )
 
@@ -33,7 +33,7 @@ py_binary(
         requirement("tqdm"),
         ":pylib_util",
         "//ncore/impl/common:pylib_transformations",
-        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_data3",
         "//ncore/impl/data:pylib_util",
     ],
 )
@@ -45,7 +45,7 @@ NCORE_EXPORT_CAMERA_DEPS = [
     requirement("tqdm"),
     requirement("numpy"),
     requirement("opencv-python"),
-    "//ncore/impl/data:pylib_data",
+    "//ncore/impl/data:pylib_data3",
     "//ncore/impl/data:pylib_util",
 ]
 
@@ -104,7 +104,7 @@ py_binary(
         ":pylib_util",
         "//3rdparty/poisson_recon:pylib",
         "//ncore/impl/common:pylib_transformations",
-        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_data3",
     ],
 )
 
@@ -118,7 +118,7 @@ py_binary(
         requirement("tqdm"),
         ":pylib_util",
         "//ncore/impl/common:pylib_visualization",
-        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_data3",
     ],
 )
 
@@ -135,7 +135,7 @@ py_binary(
         requirement("pyside6"),  # required to open Qt6 windows
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/common:pylib_visualization",
-        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_data3",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/sensors:pylib_camera",
         "//ncore/impl/sensors:pylib_lidar",
@@ -154,7 +154,7 @@ py_binary(
         requirement("numpy"),
         requirement("point-cloud-utils"),
         "//ncore/impl/common:pylib_transformations",
-        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_data3",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/sensors:pylib_camera",
     ],
@@ -168,7 +168,7 @@ py_binary(
     visibility = ["//visibility:public"],
     deps = [
         requirement("click"),
-        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_data3",
     ],
 )
 
@@ -181,7 +181,7 @@ py_binary(
         requirement("click"),
         requirement("numpy"),
         "//ncore/impl/common:pylib_transformations",
-        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_data3",
     ],
 )
 

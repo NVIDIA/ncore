@@ -7,7 +7,7 @@ load("//bazel/pytest:defs.bzl", "pytest_test")
 package(default_visibility = ["//:code_package_group"])
 
 py_library(
-    name = "pylib_data",
+    name = "pylib_data3",
     srcs = [
         "data3.py",
     ],
@@ -20,6 +20,13 @@ py_library(
         requirement("zarr"),
         requirement("pillow"),
         requirement("universal_pathlib"),
+    ],
+)
+
+py_library(
+    name = "pylib_data4",
+    srcs = [
+        "data4.py",
     ],
 )
 
@@ -76,7 +83,7 @@ pytest_test(
         "@test-data-v3-shards//:test-shards",
     ],
     deps = [
-        ":pylib_data",
+        ":pylib_data3",
         requirement("parameterized"),
         requirement("pillow"),
         requirement("scipy"),

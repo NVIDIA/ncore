@@ -14,7 +14,7 @@ py_binary(
         requirement("torch"),
         requirement("scipy"),
         requirement("pillow"),
-        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_data3",
         "//ncore/impl/sensors:pylib_camera",
     ],
 )
