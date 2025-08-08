@@ -7,11 +7,22 @@ load("//bazel/pytest:defs.bzl", "pytest_test")
 package(default_visibility = ["//:code_package_group"])
 
 py_library(
+    name = "pylib_data",
+    srcs = [
+        "data.py",
+    ],
+    deps = [
+        ":pylib_types",
+    ],
+)
+
+py_library(
     name = "pylib_data3",
     srcs = [
         "data3.py",
     ],
     deps = [
+        ":pylib_data",
         ":pylib_stores",
         ":pylib_types",
         ":pylib_util",
@@ -19,6 +30,7 @@ py_library(
         "//ncore/impl/common:pylib_transformations",
         requirement("zarr"),
         requirement("pillow"),
+        requirement("numpy"),
         requirement("universal_pathlib"),
     ],
 )
@@ -27,6 +39,15 @@ py_library(
     name = "pylib_data4",
     srcs = [
         "data4.py",
+    ],
+    deps = [
+        ":pylib_data",
+        ":pylib_stores",
+        ":pylib_types",
+        requirement("zarr"),
+        requirement("numpy"),
+        requirement("pillow"),
+        requirement("dataclasses-json"),
     ],
 )
 
@@ -89,6 +110,21 @@ pytest_test(
         requirement("scipy"),
         requirement("universal_pathlib"),
         "@rules_python//python/runfiles",
+    ],
+)
+
+pytest_test(
+    name = "pytest_data4",
+    srcs = ["data4_test.py"],
+    deps = [
+        ":pylib_data4",
+        requirement("numpy"),
+        requirement("scipy"),
+        requirement("parameterized"),
+        requirement("pillow"),
+
+        # DBG
+        "//scripts:pylib_util",
     ],
 )
 

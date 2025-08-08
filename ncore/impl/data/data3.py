@@ -31,28 +31,15 @@ from upath import UPath
 import ncore.impl.common.common as common
 import ncore.impl.common.transformations as transformations
 
-from . import stores, types, util
+from . import types, stores, util, data
 
+from .data import JsonLike
 
 VERSION = "3.0.0"
 SENSORS_BASE_GROUP = "sensors"
 CAMERAS_BASE_GROUP = "cameras"
 LIDARS_BASE_GROUP = "lidars"
 RADARS_BASE_GROUP = "radars"
-
-JsonLike = Union[
-    Dict[str, "JsonLike"],
-    List["JsonLike"],
-    str,
-    int,
-    float,
-    bool,
-    None,
-    # special-case shouldn't be needed, but required to make mypy happy
-    List[int],
-]
-
-_logger = logging.getLogger(__name__)
 
 
 class ContainerDataWriter:
@@ -202,14 +189,9 @@ class ContainerDataWriter:
         # Prepare meta-data
         meta_data = {
             "T_sensor_rig": T_sensor_rig.tolist(),
-            "camera_model_type": camera_model_parameters.type(),
-            "camera_model_parameters": camera_model_parameters.to_dict(),
             "generic_meta_data": generic_meta_data,
         }
-
-        # Store type of external distortion, if available
-        if camera_model_parameters.external_distortion_parameters:
-            meta_data["external_distortion_type"] = camera_model_parameters.external_distortion_parameters.type()
+        meta_data.update(data.encode_camera_model_parameters(camera_model_parameters))
 
         # Store meta-data
         (camera_grp := self.container_root[SENSORS_BASE_GROUP][CAMERAS_BASE_GROUP][camera_id]).attrs.put(meta_data)
@@ -292,8 +274,7 @@ class ContainerDataWriter:
 
         # Store lidar model parameters, if available
         if lidar_model_parameters:
-            meta_data["lidar_model_type"] = lidar_model_parameters.type()
-            meta_data["lidar_model_parameters"] = lidar_model_parameters.to_dict()
+            meta_data.update(data.encode_lidar_model_parameters(lidar_model_parameters))
 
         # Store meta-data
         (lidar_grp := self.container_root[SENSORS_BASE_GROUP][LIDARS_BASE_GROUP][lidar_id]).attrs.put(meta_data)
@@ -705,34 +686,7 @@ class CameraSensor(Sensor):
     def get_camera_model_parameters(self) -> types.ConcreteCameraModelParametersUnion:
         """Returns parameters specific to the camera's intrinsic model"""
 
-        # Copy as we might modify the dictionary in place
-        camera_model_parameters = self._sensor_meta.camera_model_parameters.copy()
-
-        # Hook up typed external distortion type, if present
-        external_distortion_type: Optional[str] = self._sensor_meta.__dict__.get("external_distortion_type")
-        if external_distortion_type is not None:
-            if external_distortion_type == "bivariate-windshield":
-                camera_model_parameters["external_distortion_parameters"] = (
-                    types.BivariateWindshieldModelParameters.from_dict(
-                        camera_model_parameters["external_distortion_parameters"]
-                    )
-                )
-            else:
-                raise ValueError(f"Unknown external distortion type: {external_distortion_type}")
-
-        # Return typed camera model parameters
-        if self._sensor_meta.camera_model_type == "ftheta":
-            return types.FThetaCameraModelParameters.from_dict(camera_model_parameters)
-        elif self._sensor_meta.camera_model_type in [
-            "opencv-pinhole",
-            # keep 'pinhole' for backwards-compatibility with existing data
-            "pinhole",
-        ]:
-            return types.OpenCVPinholeCameraModelParameters.from_dict(camera_model_parameters)
-        elif self._sensor_meta.camera_model_type == "opencv-fisheye":
-            return types.OpenCVFisheyeCameraModelParameters.from_dict(camera_model_parameters)
-
-        raise ValueError(f"Unknown camera model type: {self._sensor_meta.camera_model_type}")
+        return data.decode_camera_model_parameters(self._sensor_meta.__dict__)
 
     # Camera Mask
     def get_camera_mask_image(self) -> Optional[PILImage.Image]:
@@ -798,13 +752,7 @@ class LidarSensor(PointCloudSensor):
         if lidar_model_type is None:
             return None
 
-        lidar_model_parameters = self._sensor_meta.lidar_model_parameters
-
-        # Return typed lidar model parameters
-        if lidar_model_type == types.RowOffsetStructuredSpinningLidarModelParameters.type():
-            return types.RowOffsetStructuredSpinningLidarModelParameters.from_dict(lidar_model_parameters)
-
-        raise ValueError(f"Unknown lidar model type: {lidar_model_type}")
+        return data.decode_lidar_model_parameters(self._sensor_meta.__dict__)
 
 
 class RadarSensor(PointCloudSensor):
