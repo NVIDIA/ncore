@@ -27,6 +27,8 @@ import cbor2
 import zarr
 import numcodecs
 
+_logger = logging.getLogger(__name__)
+
 
 class IndexedTarStore(zarr._storage.store.Store):
     """A zarr store over *indexed* tar files
@@ -249,7 +251,7 @@ class IndexedTarStore(zarr._storage.store.Store):
         tar_file_object.seek(original_file_position)
 
         if header.type == cls.IndexType.CBOR_LZMA_XZ_V1.value:
-            logging.debug(f"IndexedTarStore: lzma-compressed (xz archive format) index load size={len(header_binary)}")
+            _logger.debug(f"IndexedTarStore: lzma-compressed (xz archive format) index load size={len(header_binary)}")
 
             # load table (SOA)
             table = cbor2.loads(lzma.LZMADecompressor().decompress(header_binary))
@@ -292,7 +294,7 @@ class IndexedTarStore(zarr._storage.store.Store):
             index_binary = index_buffer.getvalue()
             index_size = len(index_binary)
 
-            logging.debug(f"IndexedTarStore lzma-compressed index store size={index_size}")
+            _logger.debug(f"IndexedTarStore lzma-compressed index store size={index_size}")
 
             # Append buffer to tar file
             tar_file_object.write(index_binary)
@@ -311,7 +313,7 @@ class IndexedTarStore(zarr._storage.store.Store):
             index_size,
         )
         header_size = len(header_binary)
-        logging.debug(f"IndexedTarStore: header store size={header_size}")
+        _logger.debug(f"IndexedTarStore: header store size={header_size}")
 
         # Append index header to tar file
         tar_file_object.write(header_binary)
