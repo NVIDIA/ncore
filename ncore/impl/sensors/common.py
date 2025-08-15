@@ -244,8 +244,7 @@ def unitquat_slerp(quat_s: torch.Tensor, quat_e: torch.Tensor, t: torch.Tensor, 
 
     if shortest_arc:
         # Flip quaternions with negative angle to perform shortest arc interpolation.
-        quat_e = quat_e.clone()
-        quat_e[cos_omega < 0, :] *= -1
+        quat_e = torch.where((cos_omega < 0).unsqueeze(-1), -quat_e, quat_e)
         cos_omega = torch.abs(cos_omega)
 
     # True when q0 and q1 are close.
@@ -257,8 +256,8 @@ def unitquat_slerp(quat_s: torch.Tensor, quat_e: torch.Tensor, t: torch.Tensor, 
 
     beta = torch.sin(t * omega)
     # Use linear interpolation for nearby quaternions
-    alpha[nearby_quaternions] = (1 - t)[nearby_quaternions]
-    beta[nearby_quaternions] = t[nearby_quaternions]
+    alpha = torch.where(nearby_quaternions, (1 - t), alpha)
+    beta = torch.where(nearby_quaternions, t, beta)
 
     # Interpolation
     quat = alpha.reshape(-1, 1) * quat_s + beta.reshape(-1, 1) * quat_e
