@@ -262,6 +262,6 @@ def unitquat_slerp(quat_s: torch.Tensor, quat_e: torch.Tensor, t: torch.Tensor, 
 
     # Interpolation
     quat = alpha.reshape(-1, 1) * quat_s + beta.reshape(-1, 1) * quat_e
-    quat /= torch.norm(quat, dim=-1, keepdim=True)
+    quat = quat / torch.norm(quat, dim=-1, keepdim=True)
 
     return quat
