@@ -227,7 +227,7 @@ def unitquat_slerp(quat_s: torch.Tensor, quat_e: torch.Tensor, t: torch.Tensor, 
     Args:
         quat_s: batch of unit quaternions denoting the start rotation [bs, 4]
         quat_e: batch of unit quaternions denoting the end rotation  [bs, 4]
-        t: interpolation steps within 0.0 and 1.0, 0.0 corresponding to q0 and 1.0 to q1 [bs, 1]
+        t: interpolation steps within 0.0 and 1.0, 0.0 corresponding to q0 and 1.0 to q1 [bs]
         shortest_arc: if True, interpolation will be performed along the shortest arc on SO(3)
     Returns:
         batch of interpolated quaternions [bs, 4]
@@ -238,6 +238,8 @@ def unitquat_slerp(quat_s: torch.Tensor, quat_e: torch.Tensor, t: torch.Tensor, 
     if len(quat_s.shape) == 1:
         quat_s = torch.unsqueeze(quat_s, 0)
         quat_e = torch.unsqueeze(quat_e, 0)
+
+    assert t.ndim == 1 and t.shape[0] == quat_e.shape[0], "t is expected to have shape [bs]."
 
     # omega is the 'angle' between both quaternions
     cos_omega = torch.sum(quat_s * quat_e, dim=-1)
