@@ -276,6 +276,8 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         if not normalized:
             sensor_rays = sensor_rays / torch.norm(sensor_rays, dim=-1, keepdim=True)
 
+        assert isinstance(sensor_rays, torch.Tensor)
+
         elevations_rad = torch.asin(sensor_rays[:, 2])
         azimuths_rad = torch.atan2(sensor_rays[:, 1], sensor_rays[:, 0])
         sensor_angles = torch.stack([elevations_rad, azimuths_rad], dim=-1)
