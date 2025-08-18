@@ -12,6 +12,8 @@ import numpy as np
 
 from scipy.spatial.transform import Rotation as R
 
+from ncore.impl.common.common import PoseInterpolator
+
 
 def so3_trans_2_se3(so3, trans):
     """Create a 4x4 rigid transformation matrix given so3 rotation and translation.
@@ -524,3 +526,77 @@ def ecef_2_ENU(loc_ref_point: np.ndarray, earth_model: str = "WGS84"):
     T_ecef_enu[:3, 3:4] = -T_ecef_enu[:3, :3] @ translation
 
     return T_ecef_enu
+
+
+def undo_motion_compensation(
+    xyz: np.ndarray, T_sensor_end_sensor_start: np.ndarray, timestamps_startend_us: list, timestamp_us: np.ndarray
+) -> np.ndarray:
+    """
+    undo motion-compensation to bring ray's into time-dependent sensor-frame
+
+    Args:
+        xyz (np.array): points from the sensor space [n,3]
+        T_sensor_end_sensor_start (np.array): relative pose from end-of-frame to start-of-frame in sensor space [4,4]
+        timestamps_startend_us (list): contains [start timestamp, end timestamp]
+        timestamp_us (np.array): recoding target per-point timestamps [n]
+    Out:
+        (np.array): points after undo motion-compensation[n,3]
+    """
+
+    pose_interpolator = PoseInterpolator(
+        np.stack([T_sensor_end_sensor_start, np.eye(4, dtype=np.float32)]),
+        timestamps_startend_us,
+    )
+
+    # Note: this interpolation will fail if the point's timestamps are outside of the frame's start/end times - issue dedicated error in that case
+    assert (timestamps_startend_us[0] <= timestamp_us).all() and (timestamp_us <= timestamps_startend_us[1]).all(), (
+        f"{undo_motion_compensation}: Lidar point timestamps out of frame timestamp bounds - this is an inconsistency in the dataset's internal data and needs to be fixed at dataset creation time"
+    )
+    T_sensor_end_sensor_pointtime = pose_interpolator.interpolate_to_timestamps(timestamp_us)
+
+    xyz = transform_point_cloud(xyz[:, np.newaxis, :], T_sensor_end_sensor_pointtime).squeeze(1)
+
+    return xyz
+
+
+def motion_compensation(
+    xyz: np.ndarray,
+    T_sensor_rig: np.ndarray,
+    T_rig_worlds: np.ndarray,
+    frame_start_end_timestamps_us: list,
+    timestamps_us: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Args:
+        xyz(np.ndarray): points before motion compensation, [n,3]
+        T_sensor_rig(np.ndarray): sensor extrinsics, [4,4]
+        T_rig_worlds(np.ndarray): ego poses at frame start and end timestamps, [2,4,4]
+        frame_start_end_timestamps_us(list): frame start and end timestamps, [2]
+        timestamps_us(np.ndarray): timestamps of points, [n]
+    Returns:
+        xyz_s(np.ndarray): points start after motion compensation, [n,3]
+        xyz_e(np.ndarray): points end after motion compensation, [n,3]
+    """
+
+    frame_start_end_timestamps_us = np.array(frame_start_end_timestamps_us)
+    pose_interpolator = PoseInterpolator(T_rig_worlds, frame_start_end_timestamps_us)
+
+    # Interpolate egomotion at frame end timestamp for sensor reference pose at end-of-spin time
+    T_world_sensorRef = se3_inverse(T_rig_worlds[1] @ T_sensor_rig)
+
+    # Determine unique timestamps to only perform actually required pose interpolations (a lot of points share the same timestamp)
+    timestamp_unique, unique_timestamp_reverse_idxs = np.unique(timestamps_us, return_inverse=True)
+
+    # Lidar frame poses for each point (will throw in case invalid timestamps are loaded) expressed in the reference sensor's frame
+    # sensor_sensorRef = world_sensorRef * sensor_world = world_sensorRef * (rig_world * sensor_rig)
+    T_sensor_sensorRef_unique = (
+        T_world_sensorRef @ pose_interpolator.interpolate_to_timestamps(timestamp_unique) @ T_sensor_rig
+    )
+
+    # Pick sensor positions (in end-of-spin reference pose) for each start point (blow up to original potentially non-unique timestamp range)
+    xyz_s = T_sensor_sensorRef_unique[unique_timestamp_reverse_idxs, :3, -1]  # N x 3
+
+    xyz_e = (T_sensor_sensorRef_unique[unique_timestamp_reverse_idxs, :3, :3] @ xyz[:, :, None]).squeeze(
+        -1
+    ) + xyz_s  # N x 3
+    return xyz_s, xyz_e

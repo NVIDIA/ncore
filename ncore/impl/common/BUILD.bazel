@@ -28,6 +28,7 @@ py_library(
         "transformations.py",
     ],
     deps = [
+        ":pylib_common",
         requirement("numpy"),
         requirement("scipy"),
     ],
