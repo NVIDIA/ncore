@@ -8,6 +8,7 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
+from typing import List, Tuple
 import numpy as np
 
 from scipy.spatial.transform import Rotation as R
@@ -529,29 +530,32 @@ def ecef_2_ENU(loc_ref_point: np.ndarray, earth_model: str = "WGS84"):
 
 
 def undo_motion_compensation(
-    xyz: np.ndarray, T_sensor_end_sensor_start: np.ndarray, timestamps_startend_us: list, timestamp_us: np.ndarray
+    xyz: np.ndarray,
+    T_sensor_end_sensor_start: np.ndarray,
+    frame_start_end_timestamps_us: List[int],
+    timestamp_us: np.ndarray,
 ) -> np.ndarray:
     """
-    undo motion-compensation to bring ray's into time-dependent sensor-frame
+    Undo motion-compensation to bring rays into time-dependent sensor-frame
 
     Args:
         xyz (np.array): points from the sensor space [n,3]
         T_sensor_end_sensor_start (np.array): relative pose from end-of-frame to start-of-frame in sensor space [4,4]
-        timestamps_startend_us (list): contains [start timestamp, end timestamp]
+        frame_start_end_timestamps_us (list): contains [start timestamp, end timestamp]
         timestamp_us (np.array): recoding target per-point timestamps [n]
     Out:
-        (np.array): points after undo motion-compensation[n,3]
+        (np.array): points after undo motion-compensation [n,3]
     """
 
     pose_interpolator = PoseInterpolator(
         np.stack([T_sensor_end_sensor_start, np.eye(4, dtype=np.float32)]),
-        timestamps_startend_us,
+        frame_start_end_timestamps_us,
     )
 
     # Note: this interpolation will fail if the point's timestamps are outside of the frame's start/end times - issue dedicated error in that case
-    assert (timestamps_startend_us[0] <= timestamp_us).all() and (timestamp_us <= timestamps_startend_us[1]).all(), (
-        f"{undo_motion_compensation}: Lidar point timestamps out of frame timestamp bounds - this is an inconsistency in the dataset's internal data and needs to be fixed at dataset creation time"
-    )
+    assert (frame_start_end_timestamps_us[0] <= timestamp_us).all() and (
+        timestamp_us <= frame_start_end_timestamps_us[1]
+    ).all(), f"Lidar point timestamps out of frame timestamp bounds"
     T_sensor_end_sensor_pointtime = pose_interpolator.interpolate_to_timestamps(timestamp_us)
 
     xyz = transform_point_cloud(xyz[:, np.newaxis, :], T_sensor_end_sensor_pointtime).squeeze(1)
@@ -563,22 +567,23 @@ def motion_compensation(
     xyz: np.ndarray,
     T_sensor_rig: np.ndarray,
     T_rig_worlds: np.ndarray,
-    frame_start_end_timestamps_us: list,
+    frame_start_end_timestamps_us: List[int],
     timestamps_us: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray]:
     """
+    Perform motion compensation of points in time-dependent sensor frame at measurement time to common end-of-frame sensor frame
+
     Args:
-        xyz(np.ndarray): points before motion compensation, [n,3]
+        xyz(np.ndarray): points in time-dependent sensor frame (~before motion compensation), [n,3]
         T_sensor_rig(np.ndarray): sensor extrinsics, [4,4]
         T_rig_worlds(np.ndarray): ego poses at frame start and end timestamps, [2,4,4]
         frame_start_end_timestamps_us(list): frame start and end timestamps, [2]
         timestamps_us(np.ndarray): timestamps of points, [n]
     Returns:
-        xyz_s(np.ndarray): points start after motion compensation, [n,3]
-        xyz_e(np.ndarray): points end after motion compensation, [n,3]
+        xyz_s(np.ndarray): ray segment start points after motion compensation, [n,3]
+        xyz_e(np.ndarray): ray segment end points after motion compensation, [n,3]
     """
 
-    frame_start_end_timestamps_us = np.array(frame_start_end_timestamps_us)
     pose_interpolator = PoseInterpolator(T_rig_worlds, frame_start_end_timestamps_us)
 
     # Interpolate egomotion at frame end timestamp for sensor reference pose at end-of-spin time
