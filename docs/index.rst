@@ -37,6 +37,7 @@ The SDK is developed within the Nvidia Toronto AI Lab.
 
    tutorial/data_loading
    tutorial/data_sanity_check
+   tutorial/lidar_preprocess
 
 .. note:: 
    This project is under active development.
