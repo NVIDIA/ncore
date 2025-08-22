@@ -9,7 +9,7 @@
 
 
 from dataclasses import field, dataclass
-from typing import TYPE_CHECKING, Literal, NamedTuple, TypeVar, Any, Generic, cast
+from typing import TYPE_CHECKING, Literal, TypeVar, Any, Generic, cast
 
 import dataclasses_json
 import numpy as np
