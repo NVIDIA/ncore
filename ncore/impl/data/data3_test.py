@@ -13,7 +13,6 @@ import random
 import itertools
 import tempfile
 import io
-import os
 
 from pathlib import Path
 
@@ -55,7 +54,9 @@ class TestData3Loader(unittest.TestCase):
             [
                 str(p)
                 for p in Path(
-                    _RUNFILES.Rlocation(os.environ["RUNFILE_PATHS_TEST_SHARDS"].split(" ")[0])
+                    _RUNFILES.Rlocation(
+                        "test-data-v3-shards/c9b05cf4-afb9-11ec-b3c2-00044bf65fcb@1648597318700123-1648599151600035_0-3.zarr.itar"
+                    )
                 ).parent.iterdir()
                 if p.match("*.itar")
             ]

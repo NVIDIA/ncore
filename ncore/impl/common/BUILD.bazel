@@ -57,9 +57,6 @@ pytest_test(
     data = [
         "@test-data-v3-shards//:test-shards",
     ],
-    env = {
-        "RUNFILE_PATHS_TEST_SHARDS": "$(rlocationpaths @test-data-v3-shards//:test-shards)",
-    },
     deps = [
         requirement("numpy"),
         requirement("scipy"),
