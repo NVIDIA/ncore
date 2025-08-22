@@ -54,11 +54,20 @@ py_library(
 pytest_test(
     name = "test",
     srcs = glob(["*test.py"]),
+    data = [
+        "@test-data-v3-shards//:test-shards",
+    ],
+    env = {
+        "RUNFILE_PATHS_TEST_SHARDS": "$(rlocationpaths @test-data-v3-shards//:test-shards)",
+    },
     deps = [
         requirement("numpy"),
         requirement("scipy"),
         ":pylib_common",
         ":pylib_transformations",
+        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_types",
+        "@rules_python//python/runfiles",
     ],
 )
 
