@@ -255,7 +255,7 @@ def unitquat_slerp(quat_s: torch.Tensor, quat_e: torch.Tensor, t: torch.Tensor, 
     # Clamp to avoid numerical issues in acos at backward pass, as the derivative of
     # acos is undefined at 1 and -1.
     cos_omega = torch.clamp(cos_omega, -1.0 + 1e-6, 1.0 - 1e-6)
-    
+
     # General approach
     omega = torch.acos(cos_omega)
     alpha = torch.sin((1 - t) * omega)
