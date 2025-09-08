@@ -94,7 +94,7 @@ wheel:
   - bazelisk build //3rdparty/poisson_recon:poisson_recon_wheel
 
   # Try to deploy the wheels (skip if version already exists)
-  - pip install twine
+  - pip install "twine<6.2.0" # (twine 6.2.0 removed --skip-existing)
   - python -m twine upload --repository-url https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi bazel-bin/ncore/*.whl --verbose --skip-existing --non-interactive
   - python -m twine upload --repository-url https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi bazel-bin/3rdparty/poisson_recon/*.whl --verbose --skip-existing --non-interactive
   rules:
