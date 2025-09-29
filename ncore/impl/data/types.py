@@ -205,7 +205,6 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
         super().__post_init__()
         assert self.principal_point.shape == (2,)
         assert self.principal_point.dtype == np.dtype("float32")
-        assert self.principal_point[0] >= 0.0 and self.principal_point[1] >= 0.0
 
         if not isinstance(self.reference_poly, FThetaCameraModelParameters.PolynomialType):
             self.reference_poly = FThetaCameraModelParameters.PolynomialType(self.reference_poly)
@@ -355,7 +354,6 @@ class OpenCVPinholeCameraModelParameters(CameraModelParameters, dataclasses_json
         super().__post_init__()
         assert self.principal_point.shape == (2,)
         assert self.principal_point.dtype == np.dtype("float32")
-        assert self.principal_point[0] > 0.0 and self.principal_point[1] > 0.0
 
         assert self.focal_length.shape == (2,)
         assert self.focal_length.dtype == np.dtype("float32")
@@ -443,7 +441,6 @@ class OpenCVFisheyeCameraModelParameters(CameraModelParameters, dataclasses_json
         super().__post_init__()
         assert self.principal_point.shape == (2,)
         assert self.principal_point.dtype == np.dtype("float32")
-        assert self.principal_point[0] > 0.0 and self.principal_point[1] > 0.0
 
         assert self.focal_length.shape == (2,)
         assert self.focal_length.dtype == np.dtype("float32")
