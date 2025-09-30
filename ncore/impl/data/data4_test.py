@@ -24,7 +24,7 @@ from .data4 import (
     LidarSensorComponent,
     SequenceStoreWriter,
     SequenceStoreReader,
-    RigPoseCalibrationComponent,
+    PosesSetComponent,
     CameraSensorComponent,
     SensorIntrinsicsComponent,
 )
@@ -71,13 +71,6 @@ class TestData4Reload(unittest.TestCase):
         )
 
         # Store pose / extrinsics
-        pose_writer = store_writer.register_component_writer(
-            RigPoseCalibrationComponent.Writer,
-            ref_rigpose_id := "some_egomotion_type",
-            group_name=None,  # use default component group
-            generic_meta_data=(ref_pose_generic_meta_data := {"some": "thing"}),
-        )
-
         T_world_world_global = np.eye(4, dtype=np.float64)
 
         T_rig_worlds = np.stack(
@@ -101,18 +94,34 @@ class TestData4Reload(unittest.TestCase):
         )
         T_rig_world_timestamps_us = np.array([0 * 1e6, 0.2 * 1e6], dtype=np.uint64)
 
-        pose_writer.store_rig_poses(
-            T_world_world_global=(ref_T_world_world_global := T_world_world_global),
-            T_rig_worlds=(ref_T_rig_worlds := T_rig_worlds),
-            T_rig_world_timestamps_us=(ref_T_rig_world_timestamps_us := T_rig_world_timestamps_us),
-        ).store_sensor_extrinsics(
-            ref_camera_id := "ref_camera_id",
-            ref_camera_T_sensor_rig := np.block(
-                [
-                    [R.from_euler("xyz", [1, 1, 3], degrees=True).as_matrix(), np.array([2, 1, -1]).reshape((3, 1))],
-                    [np.array([0, 0, 0, 1])],
-                ]
-            ).astype(np.float32),
+        store_writer.register_component_writer(
+            PosesSetComponent.Writer,
+            ref_poses_id := "some_poses_type",
+            group_name=None,  # use default component group
+            generic_meta_data=(ref_pose_generic_meta_data := {"some": "thing"}),
+        ).store_dynamic_poses(
+            source_frame="rig",
+            target_frame="world",
+            poses=(ref_T_rig_worlds := T_rig_worlds),
+            timestamps_us=(ref_T_rig_world_timestamps_us := T_rig_world_timestamps_us),
+        ).store_static_pose(
+            source_frame="world",
+            target_frame="world_global",
+            pose=(ref_T_world_world_global := T_world_world_global),
+        ).store_static_pose(
+            source_frame=(ref_camera_id := "ref_camera_id"),
+            target_frame="rig",
+            pose=(
+                ref_camera_T_sensor_rig := np.block(
+                    [
+                        [
+                            R.from_euler("xyz", [1, 1, 3], degrees=True).as_matrix(),
+                            np.array([2, 1, -1]).reshape((3, 1)),
+                        ],
+                        [np.array([0, 0, 0, 1])],
+                    ]
+                )
+            ),
         )
 
         # Store intrinsics
@@ -298,22 +307,27 @@ class TestData4Reload(unittest.TestCase):
         self.assertEqual(store_reader.generic_meta_data, ref_generic_sequence_meta_data)
 
         # check rig pose / calibration data
-        pose_readers = store_reader.open_component_readers(RigPoseCalibrationComponent.Reader)
+        poses_readers = store_reader.open_component_readers(PosesSetComponent.Reader)
 
-        self.assertEqual(len(pose_readers), 1)
-        pose_reader = pose_readers[ref_rigpose_id]
+        self.assertEqual(len(poses_readers), 1)
+        poses_reader = poses_readers[ref_poses_id]
 
-        self.assertEqual(pose_reader.instance_name, ref_rigpose_id)
-        self.assertEqual(pose_reader.generic_meta_data, ref_pose_generic_meta_data)
+        self.assertEqual(poses_reader.instance_name, ref_poses_id)
+        self.assertEqual(poses_reader.generic_meta_data, ref_pose_generic_meta_data)
 
-        self.assertTrue(np.all(pose_reader.T_world_world_global == ref_T_world_world_global))
-        self.assertTrue(np.all(pose_reader.T_rig_worlds == ref_T_rig_worlds))
-        self.assertTrue(np.all(pose_reader.T_rig_world_timestamps_us == ref_T_rig_world_timestamps_us))
+        self.assertTrue(np.all(poses_reader.get_static_pose("world", "world_global") == ref_T_world_world_global))
 
-        self.assertTrue(np.all(pose_reader.get_T_sensor_rig(ref_camera_id) == ref_camera_T_sensor_rig))
+        T_rig_worlds, T_rig_world_timestamps_us = poses_reader.get_dynamic_poses("rig", "world")
+        self.assertTrue(np.all(T_rig_worlds == ref_T_rig_worlds))
+        self.assertTrue(np.all(T_rig_world_timestamps_us == ref_T_rig_world_timestamps_us))
+
+        self.assertTrue(np.all(poses_reader.get_static_pose(ref_camera_id, "rig") == ref_camera_T_sensor_rig))
 
         with self.assertRaises(KeyError):
-            pose_reader.get_T_sensor_rig("non-existing-sensor")
+            poses_reader.get_static_pose("non-existing-sensor", "rig")
+
+        with self.assertRaises(KeyError):
+            poses_reader.get_dynamic_poses("non-existing-frame", "world")
 
         # check intrinsics data
         intrinsic_readers = store_reader.open_component_readers(SensorIntrinsicsComponent.Reader)
@@ -517,3 +531,10 @@ class TestData4Reload(unittest.TestCase):
                     ref_lidar_generic_data1[name],
                 )
             )
+
+        self.assertEqual(
+            lidar_reader.get_frame_generic_meta_data(ref_lidar_timestamps_us0[1]), ref_lidar_generic_metadata0
+        )
+        self.assertEqual(
+            lidar_reader.get_frame_generic_meta_data(ref_lidar_timestamps_us1[1]), ref_lidar_generic_metadata1
+        )

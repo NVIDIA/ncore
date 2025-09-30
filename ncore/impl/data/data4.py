@@ -390,18 +390,25 @@ CW = TypeVar("CW", bound=ComponentWriter)
 CR = TypeVar("CR", bound=ComponentReader)
 
 
-class RigPoseCalibrationComponent:
-    """Rig rig trajectory pose data component"""
+def validate_frame_name(name: str) -> str:
+    """Checks if the given name is a valid frame name (non-empty, no whitespace), returns it if valid, raises AssertionError otherwise"""
+    assert len(name) and not name.isspace(), f"Frame '{name}' is invalid, must not be empty or contain whitespace"
 
-    COMPONENT_BASE_NAME: str = "rig_pose_calibration"
+    return name
+
+
+class PosesSetComponent:
+    """Represents a generic set of static / dynamic poses (rigid transformations) between named coordinate frames"""
+
+    COMPONENT_BASE_NAME: str = "poses_set"
 
     class Writer(ComponentWriter):
-        """Trajectory pose data component writer"""
+        """Poses set data component writer"""
 
         @staticmethod
         def get_component_base_name() -> str:
             """Returns the base name of the current component'"""
-            return RigPoseCalibrationComponent.COMPONENT_BASE_NAME
+            return PosesSetComponent.COMPONENT_BASE_NAME
 
         @staticmethod
         def get_component_version() -> str:
@@ -411,55 +418,69 @@ class RigPoseCalibrationComponent:
         def __init__(self, component_group: zarr.Group):
             super().__init__(component_group)
 
-            self._group.create_group("extrinsics")
+            self.data: Dict = {"static_poses": {}, "dynamic_poses": {}}
 
-        def validate(self) -> bool:
-            """Validates the writen trajectory pose data"""
-            assert "T_world_world_global" in self._group, "T_world_world_global not found in component group"
-            assert "T_rig_worlds" in self._group, "T_rig_world not found in component group"
-            assert "T_rig_world_timestamps_us" in self._group, "T_rig_world_timestamps_us not found in component group"
-            return True
+        def finalize(self):
+            """Actually store the json-encoded pose data"""
 
-        def store_rig_poses(
+            self._group.create_group("static_poses").attrs.put(self.data["static_poses"])
+            self._group.create_group("dynamic_poses").attrs.put(self.data["dynamic_poses"])
+
+        def store_static_pose(
             self,
-            T_world_world_global: np.ndarray,  #: Base local-world-to-global-world SE3 transformation (float64, [4,4])
-            T_rig_worlds: np.ndarray,  #: All rig-to-local-world SE3 transformations of the trajectory (float64, [N,4,4])
-            T_rig_world_timestamps_us: np.ndarray,  #: All rig-to-local-world transformation timestamps of the trajectory (uint64, [N,])
+            source_frame: str,
+            target_frame: str,
+            pose: np.ndarray,  #: Source-to-target SE3 transformation (float64, [4,4])
         ) -> "Self":
+            """Store a static pose (rigid transformation) between two named coordinate frames.
+
+            Makes sure the inverse transformation is not already stored."""
+
             # Sanity checks
-            assert T_world_world_global.shape == (4, 4)
-            assert T_world_world_global.dtype == np.dtype("float64")
+            assert pose.shape == (4, 4)
+            assert pose.dtype == np.dtype("float64")
+            assert np.all(pose[3, :] == [0.0, 0.0, 0.0, 1.0]), "Invalid SE3 transformation"
 
-            assert T_rig_worlds.shape[1:] == (4, 4)
-            assert T_rig_worlds.dtype == np.dtype("float64")
+            key = f"T_{validate_frame_name(source_frame)}_{validate_frame_name(target_frame)}"
+            inv_key = f"T_{target_frame}_{source_frame}"
 
-            assert T_rig_world_timestamps_us.ndim == 1
-            assert T_rig_world_timestamps_us.dtype == np.dtype("uint64")
+            assert key not in self.data["static_poses"], f"Static pose {key} already exists"
+            assert inv_key not in self.data["static_poses"], f"Inverse static pose {inv_key} already exists"
 
-            assert len(T_rig_worlds) == len(T_rig_world_timestamps_us)
-
-            self._group.create_dataset("T_world_world_global", data=T_world_world_global)
-            self._group.create_dataset("T_rig_worlds", data=T_rig_worlds)
-            self._group.create_dataset("T_rig_world_timestamps_us", data=T_rig_world_timestamps_us)
+            self.data["static_poses"][key] = {
+                "pose": pose.tolist(),
+            }
 
             return self
 
-        def store_sensor_extrinsics(
+        def store_dynamic_poses(
             self,
-            sensor_id,  #: Sensor id the extrinsics are associated with
-            T_sensor_rig,  #: Sensor-to-rig transformation (float32, [4,4])
+            source_frame: str,
+            target_frame: str,
+            poses: np.ndarray,  #: Source-to-target SE3 transformation trajectory (float64, [N,4,4])
+            timestamps_us: np.ndarray,  #: All source-to-target transformation timestamps of the trajectory (uint64, [N,])
         ) -> "Self":
+            """Store a trajectory of dynamic poses (time-dependent rigid transformations) between two named coordinate frames.
+
+            Makes sure the inverse transformation is not already stored."""
+
             # Sanity checks
-            assert len(sensor_id)
+            assert poses.shape[1:] == (4, 4)
+            assert poses.dtype == np.dtype("float64")
+            assert np.all(poses[:, 3, :] == [0.0, 0.0, 0.0, 1.0]), "Invalid SE3 transformations"
 
-            assert T_sensor_rig.shape == (4, 4)
-            assert T_sensor_rig.dtype == np.dtype("float32")
+            assert timestamps_us.ndim == 1
+            assert timestamps_us.dtype == np.dtype("uint64")
 
-            meta_data = {
-                "T_sensor_rig": T_sensor_rig.tolist(),
-            }
+            assert len(poses) == len(timestamps_us)
 
-            self._group["extrinsics"].create_group(sensor_id).attrs.put(meta_data)
+            key = f"T_{validate_frame_name(source_frame)}_{validate_frame_name(target_frame)}"
+            inv_key = f"T_{target_frame}_{source_frame}"
+
+            assert key not in self.data["dynamic_poses"], f"Dynamic poses {key} already exists"
+            assert inv_key not in self.data["dynamic_poses"], f"Inverse dynamic poses {inv_key} already exists"
+
+            self.data["dynamic_poses"][key] = {"poses": poses.tolist(), "timestamps_us": timestamps_us.tolist()}
 
             return self
 
@@ -467,27 +488,38 @@ class RigPoseCalibrationComponent:
         @staticmethod
         def get_component_base_name() -> str:
             """Returns the base name of the current component"""
-            return RigPoseCalibrationComponent.COMPONENT_BASE_NAME
+            return PosesSetComponent.COMPONENT_BASE_NAME
 
         @staticmethod
         def supports_component_version(version: str) -> bool:
             """Returns true if the component version is supported by the reader"""
             return version == "0.1"
 
-        @property
-        def T_world_world_global(self) -> np.ndarray:
-            return np.array(self._group["T_world_world_global"])
+        def get_static_pose(self, source_frame: str, target_frame: str) -> np.ndarray:
+            """Returns static pose (rigid transformation) between two named coordinate frames, if available"""
 
-        @property
-        def T_rig_worlds(self) -> np.ndarray:
-            return np.array(self._group["T_rig_worlds"])
+            if (
+                static_pose := self._group["static_poses"].attrs.get(
+                    key := f"T_{validate_frame_name(source_frame)}_{validate_frame_name(target_frame)}"
+                )
+            ) is None:
+                raise KeyError(f"Static pose {key} not found")
 
-        @property
-        def T_rig_world_timestamps_us(self) -> np.ndarray:
-            return np.array(self._group["T_rig_world_timestamps_us"])
+            return np.array(static_pose["pose"], dtype=np.float64)
 
-        def get_T_sensor_rig(self, sensor_id: str) -> np.ndarray:
-            return np.array(self._group["extrinsics"][sensor_id].attrs["T_sensor_rig"])
+        def get_dynamic_poses(self, source_frame: str, target_frame: str) -> Tuple[np.ndarray, np.ndarray]:
+            """Returns dynamic poses (time-dependent rigid transformations) between two named coordinate frames, if available"""
+
+            if (
+                dynamic_poses := self._group["dynamic_poses"].attrs.get(
+                    key := f"T_{validate_frame_name(source_frame)}_{validate_frame_name(target_frame)}"
+                )
+            ) is None:
+                raise KeyError(f"Dynamic poses {key} not found")
+
+            return np.array(dynamic_poses["poses"], dtype=np.float64), np.array(
+                dynamic_poses["timestamps_us"], dtype=np.uint64
+            )
 
 
 class SensorIntrinsicsComponent:
@@ -901,9 +933,11 @@ class LidarSensorComponent:
             """Returns true if the component version is supported by the reader"""
             return version == "0.1"
 
+
 ### WIP - cuboids
 
 # TODO: move to types once stable
+
 
 @unique
 class ReferenceFrameType(IntEnum):
@@ -1003,5 +1037,6 @@ class CuboidTracksComponent:
         def supports_component_version(version: str) -> bool:
             """Returns true if the component version is supported by the reader"""
             return version == "0.1"
+
 
 ### WIP - cuboids
