@@ -27,6 +27,8 @@ from .data4 import (
     PosesSetComponent,
     CameraSensorComponent,
     SensorIntrinsicsComponent,
+    CuboidTracksComponent,
+    CuboidTrack,
 )
 from .types import (
     OpenCVFisheyeCameraModelParameters,
@@ -34,6 +36,8 @@ from .types import (
     BivariateWindshieldModelParameters,
     ReferencePolynomial,
     RowOffsetStructuredSpinningLidarModelParameters,
+    LabelSource,
+    BBox3,
 )
 
 
@@ -296,6 +300,50 @@ class TestData4Reload(unittest.TestCase):
             ref_lidar_generic_metadata1 := {"even-more-meta-data": {"yesno": None}},
         )
 
+        # Store cuboid tracks
+        tracks_writer = store_writer.register_component_writer(
+            CuboidTracksComponent.Writer,
+            ref_tracks_id := "default",
+            "tracks",
+            ref_tracks_generic_meta_data := {"track-set-meta-data": "some-value"},
+        )
+
+        tracks_writer.store_tracks(
+            cuboid_tracks=(
+                ref_cuboid_tracks := [
+                    CuboidTrack(
+                        track_id="track-1",
+                        label_class="car",
+                        reference_frame_name=ref_lidar_id,
+                        source=LabelSource.AUTOLABEL,
+                        source_version="v0",
+                        observations=[
+                            CuboidTrack.Observation(
+                                observation_id="obs-1-1",
+                                timestamp_us=int(0.3 * 1e6),
+                                reference_frame_timestamp_us=int(0.5 * 1e6),
+                                bbox3=BBox3(
+                                    centroid=(1.0, 2.0, 3.0),
+                                    dim=(4.0, 2.0, 1.5),
+                                    rot=(0.0, 0.0, 0.0),
+                                ),
+                            ),
+                            CuboidTrack.Observation(
+                                observation_id="obs-1-2",
+                                timestamp_us=int(0.4 * 1e6),
+                                reference_frame_timestamp_us=int(1.0 * 1e6),
+                                bbox3=BBox3(
+                                    centroid=(1.5, 2.5, 3.5),
+                                    dim=(4.0, 2.0, 1.5),
+                                    rot=(0.0, 0.0, 0.1),
+                                ),
+                            ),
+                        ],
+                    )
+                ]
+            )
+        )
+
         ## Finalize writers
         store_paths = store_writer.finalize()
 
@@ -538,3 +586,13 @@ class TestData4Reload(unittest.TestCase):
         self.assertEqual(
             lidar_reader.get_frame_generic_meta_data(ref_lidar_timestamps_us1[1]), ref_lidar_generic_metadata1
         )
+
+        # check tracks data
+        tracks_readers = store_reader.open_component_readers(CuboidTracksComponent.Reader)
+
+        self.assertEqual(len(tracks_readers), 1)
+        tracks_reader = tracks_readers[ref_tracks_id]
+        self.assertEqual(tracks_reader.instance_name, ref_tracks_id)
+        self.assertEqual(tracks_reader.generic_meta_data, ref_tracks_generic_meta_data)
+
+        self.assertEqual(tracks_reader.get_tracks(), ref_cuboid_tracks)

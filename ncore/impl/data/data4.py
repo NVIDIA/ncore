@@ -934,17 +934,7 @@ class LidarSensorComponent:
             return version == "0.1"
 
 
-### WIP - cuboids
-
 # TODO: move to types once stable
-
-
-@unique
-class ReferenceFrameType(IntEnum):
-    """Enumerates different reference frame types"""
-
-    SENSOR = auto()  #: The reference frame is a sensor frame
-    RIG = auto()  #: The reference frame is a rig frame
 
 
 @dataclass
@@ -952,43 +942,38 @@ class CuboidTrack(dataclasses_json.DataClassJsonMixin):
     """Cuboid track instance"""
 
     @dataclass
-    class Label(dataclasses_json.DataClassJsonMixin):
-        """Individual cuboid track label relative to the reference frame"""
+    class Observation(dataclasses_json.DataClassJsonMixin):
+        """Individual cuboid track observation relative to the reference frame"""
 
-        label_id: str  #: Identifier of the current frame label (unique among all labels)
-        reference_frame_timestamp_us: int  #: The timestamp of the reference frame
+        observation_id: str  #: Identifier of the current observation (unique among all observations)
         timestamp_us: (
-            int  #: The timestamp associated with the centroid of the label (possibly an accurate in-frame time)
+            int  #: The timestamp associated with the centroid of the observation (possibly an accurate in-frame time)
         )
+        reference_frame_timestamp_us: int  #: The timestamp of the reference frame
         bbox3: (
             types.BBox3
         )  #: Bounding-box coordinates of the object relative to the reference frame's coordinate system
 
         def __post_init__(self):
             # Sanity checks
-            assert isinstance(self.label_id, str)
+            assert isinstance(self.observation_id, str)
             assert isinstance(self.reference_frame_timestamp_us, int)
             assert isinstance(self.bbox3, types.BBox3)
             assert isinstance(self.timestamp_us, int)
 
-    track_id: str  #: Unique identifier of the object's track this label is associated with
-    label_class: str  #: String-representation of the class associated with this label
-    reference_frame_type: ReferenceFrameType  #: Type of the reference frame the track geometry is relative to
-    reference_frame_name: str  #: String-identifier of the reference frame (e.g., sensor name or "rig")
+    track_id: str  #: Unique identifier of the object's track this observation is associated with
+    label_class: str  #: String-representation of the labeled class associated with this observation
+    reference_frame_name: str  #: String-identifier of the reference frame (e.g., sensor name)
+    observations: List[Observation]  #: All observations associated with this track
     source: types.LabelSource = util.enum_field(types.LabelSource)  #: The source for the current label
     source_version: Optional[str] = (
         None  #: If provided, the unique version ID of the source for the current label (to distinguish between different versions of the same source)
     )
-    labels = List[Label]
 
     def __post_init__(self):
         # Sanity checks
         assert isinstance(self.track_id, str)
         assert isinstance(self.label_class, str)
-
-        if not isinstance(self.reference_frame_type, ReferenceFrameType):
-            self.reference_frame_type = ReferenceFrameType(self.reference_frame_type)
-
         assert isinstance(self.reference_frame_name, str)
 
         if not isinstance(self.source, types.LabelSource):
@@ -997,7 +982,7 @@ class CuboidTrack(dataclasses_json.DataClassJsonMixin):
 
         assert isinstance(self.source_version, (type(None), str))
 
-        assert isinstance(self.labels, List)
+        assert isinstance(self.observations, List)
 
 
 class CuboidTracksComponent:
@@ -1021,8 +1006,11 @@ class CuboidTracksComponent:
         def store_tracks(
             self,
             cuboid_tracks: List[CuboidTrack],  # individual track instances
-            generic_meta_data: Dict[str, data.JsonLike],
         ) -> "Self":
+            self._group.create_group("cuboid_tracks").attrs.put(
+                {"cuboid_tracks": [track.to_dict() for track in cuboid_tracks]}
+            )
+
             return self
 
     class Reader(ComponentReader):
@@ -1038,5 +1026,7 @@ class CuboidTracksComponent:
             """Returns true if the component version is supported by the reader"""
             return version == "0.1"
 
+        def get_tracks(self) -> List[CuboidTrack]:
+            """Returns all stored cuboid tracks"""
 
-### WIP - cuboids
+            return [CuboidTrack.from_dict(track) for track in self._group["cuboid_tracks"].attrs["cuboid_tracks"]]
