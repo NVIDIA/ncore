@@ -15,5 +15,7 @@ scipy
 --find-links https://download.pytorch.org/whl/torch_stable.html
 torch==1.12.1+cu116
 
-# secondary dependencies used in tests
+# secondary dependencies used in tests / scripts
 opencv-python
+debugpy
+click
