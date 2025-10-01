@@ -15,7 +15,6 @@ import logging
 import sys
 
 from dataclasses import dataclass
-from enum import IntEnum, auto, unique
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Type, TypeVar, Union, cast
@@ -964,7 +963,7 @@ class CuboidTrack(dataclasses_json.DataClassJsonMixin):
     track_id: str  #: Unique identifier of the object's track this observation is associated with
     label_class: str  #: String-representation of the labeled class associated with this observation
     reference_frame_name: str  #: String-identifier of the reference frame (e.g., sensor name)
-    observations: List[Observation]  #: All observations associated with this track
+    observations: List["Observation"]  #: All observations associated with this track
     source: types.LabelSource = util.enum_field(types.LabelSource)  #: The source for the current label
     source_version: Optional[str] = (
         None  #: If provided, the unique version ID of the source for the current label (to distinguish between different versions of the same source)
@@ -976,13 +975,16 @@ class CuboidTrack(dataclasses_json.DataClassJsonMixin):
         assert isinstance(self.label_class, str)
         assert isinstance(self.reference_frame_name, str)
 
+        assert isinstance(self.observations, List)
+        self.observations = [
+            CuboidTrack.Observation.from_dict(obs) if isinstance(obs, dict) else obs for obs in self.observations
+        ]
+
         if not isinstance(self.source, types.LabelSource):
             self.source = types.LabelSource(self.source)
         assert self.source in types.LabelSource.__members__.values()
 
         assert isinstance(self.source_version, (type(None), str))
-
-        assert isinstance(self.observations, List)
 
 
 class CuboidTracksComponent:

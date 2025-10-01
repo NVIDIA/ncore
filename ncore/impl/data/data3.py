@@ -35,6 +35,8 @@ from . import types, stores, util, data
 
 from .data import JsonLike
 
+_logger = logging.getLogger(__name__)
+
 VERSION = "3.0.0"
 SENSORS_BASE_GROUP = "sensors"
 CAMERAS_BASE_GROUP = "cameras"

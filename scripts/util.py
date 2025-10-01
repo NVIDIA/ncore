@@ -11,12 +11,14 @@
 import logging
 
 from pathlib import Path
-from typing import Final, Optional, Tuple
+from typing import Final, Optional, Tuple, TYPE_CHECKING
 
 import click
 import debugpy
 import numpy as np
-import numpy.typing as npt
+
+if TYPE_CHECKING:
+    import numpy.typing as npt  # type: ignore[import-not-found]
 
 from ncore.impl.data.data3 import PointCloudSensor
 
@@ -25,7 +27,7 @@ class NPArrayParamType(click.ParamType):
     name = "NPArray"
     """ Click cmdl argument type for numpy arrays """
 
-    def __init__(self, dim: Tuple[int, ...] = (-1,), dtype: npt.DTypeLike = np.float32):
+    def __init__(self, dim: Tuple[int, ...] = (-1,), dtype: "npt.DTypeLike" = np.float32):
         super().__init__()
         self.dim = dim
         self.dtype = np.dtype(dtype)
