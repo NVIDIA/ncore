@@ -10,6 +10,6 @@
 
 """Package exposing methods related to NCORE's V4 data interaction APIs"""
 
-from ncore.impl.data.data4 import SequenceStoreWriter
+from ncore.impl.data.data4.components import SequenceComponentStoreWriter
 
-__all__ = ["SequenceStoreWriter"]
+__all__ = ["SequenceComponentStoreWriter"]

@@ -20,17 +20,17 @@ import PIL.Image as PILImage
 from parameterized import parameterized
 from scipy.spatial.transform import Rotation as R
 
-from .data4 import (
+from .components import (
     LidarSensorComponent,
-    SequenceStoreWriter,
-    SequenceStoreReader,
+    SequenceComponentStoreWriter,
+    SequenceComponentStoreReader,
     PosesSetComponent,
     CameraSensorComponent,
     SensorIntrinsicsComponent,
     CuboidTracksComponent,
-    CuboidTrack,
 )
-from .types import (
+from .types import CuboidTrack
+from ..types import (
     OpenCVFisheyeCameraModelParameters,
     ShutterType,
     BivariateWindshieldModelParameters,
@@ -59,14 +59,13 @@ class TestData4Reload(unittest.TestCase):
     def test_reload(self, store_type, open_consolidated):
         """Test to make sure serialized data is faithfully reloaded"""
 
-        from scripts.util import breakpoint
-
+        # from scripts.util import breakpoint
         # breakpoint()
 
         tempdir = tempfile.TemporaryDirectory()
 
         ## Create reference sequence
-        store_writer = SequenceStoreWriter(
+        store_writer = SequenceComponentStoreWriter(
             output_dir_path=Path(tempdir.name),
             store_base_name=(ref_sequence_id := "some-sequence-name"),
             sequence_id=ref_sequence_id,
@@ -348,7 +347,7 @@ class TestData4Reload(unittest.TestCase):
         store_paths = store_writer.finalize()
 
         ## Reload sequence and verify consistency
-        store_reader = SequenceStoreReader(store_paths, open_consolidated=open_consolidated)
+        store_reader = SequenceComponentStoreReader(store_paths, open_consolidated=open_consolidated)
 
         # check sequence data
         self.assertEqual(store_reader.sequence_id, ref_sequence_id)
@@ -427,18 +426,12 @@ class TestData4Reload(unittest.TestCase):
         )
 
         self.assertEqual(
-            (frame0_data := camera_reader.get_frame_handle(ref_camera_timestamps_us0[1]).get_data()).get_encoded_image_data(), ref_image_binary0
+            camera_reader.get_frame_image_binary_data(ref_camera_timestamps_us0[1]), (ref_image_binary0, "png")
         )
         self.assertEqual(
-            frame0_data.get_encoded_image_format(), "png"
+            camera_reader.get_frame_image_binary_data(ref_camera_timestamps_us1[1]), (ref_image_binary1, "png")
         )
-        self.assertEqual(
-            (frame1_data := camera_reader.get_frame_handle(ref_camera_timestamps_us1[1]).get_data()).get_encoded_image_data(), ref_image_binary1
-        )
-        self.assertEqual(
-            frame1_data.get_encoded_image_format(), "png"
-        )
-        
+
         self.assertEqual(
             names := camera_reader.get_frame_generic_data_names(ref_camera_timestamps_us0[1]),
             list(ref_camera_generic_data0.keys()),

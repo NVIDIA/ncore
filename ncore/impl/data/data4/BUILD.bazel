@@ -1,0 +1,53 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
+load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@ncore_pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_library")
+load("//bazel/pytest:defs.bzl", "pytest_test")
+
+package(default_visibility = ["//:code_package_group"])
+
+py_library(
+    name = "pylib_types",
+    srcs = [
+        "types.py",
+    ],
+    deps = [
+        "//ncore/impl/data:pylib_types",
+        "//ncore/impl/data:pylib_util",
+        requirement("dataclasses-json"),
+    ],
+)
+
+py_library(
+    name = "pylib_components",
+    srcs = [
+        "components.py",
+    ],
+    deps = [
+        ":pylib_types",
+        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_stores",
+        requirement("zarr"),
+        requirement("numpy"),
+        requirement("pillow"),
+        requirement("dataclasses-json"),
+    ],
+)
+
+pytest_test(
+    name = "pytest_components",
+    srcs = ["components_test.py"],
+    deps = [
+        ":pylib_components",
+        requirement("numpy"),
+        requirement("scipy"),
+        requirement("parameterized"),
+        requirement("pillow"),
+
+        # DBG
+        "//scripts:pylib_util",
+    ],
+)
+
+bzlformat_pkg(name = "bzlformat")

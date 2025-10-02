@@ -14,12 +14,9 @@ import io
 import logging
 import sys
 
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Type, TypeVar, Union, cast
-
-import dataclasses_json
 
 if sys.version_info >= (3, 11):
     # Older python versions have issues with type-hints for nested types in
@@ -32,13 +29,15 @@ import zarr
 import numpy as np
 import PIL.Image as PILImage
 
-from . import stores, util, types, data
+from .types import CuboidTrack
+
+from .. import stores, util, types, data
 
 VERSION = 4
 
 
-class SequenceStoreWriter:
-    """SequenceStoreWriter manages store groups for writing for NCore V4 / zarr data for a single NCore sequence"""
+class SequenceComponentStoreWriter:
+    """SequenceComponentWriter manages store groups for writing for NCore V4 / zarr data components for a single NCore sequence"""
 
     def __init__(
         self,
@@ -198,13 +197,13 @@ class SequenceStoreWriter:
         return component_writer
 
 
-class SequenceStoreReader:
-    """SequenceStoreReader manages component store groups for reading for NCore V4 / zarr data for a single NCore sequence"""
+class SequenceComponentStoreReader:
+    """SequenceComponentReader manages data component store groups for reading for NCore V4 / zarr data for a single NCore sequence"""
 
     def __init__(
         self, component_store_paths: List[Path], open_consolidated: bool = True, max_threads: int | None = None
     ):
-        """Initialize a SequenceStoreReader for a virtual sequence represented by a list of components.
+        """Initialize a SequenceComponentReader for a virtual sequence represented by a list of components.
 
         Args:
             component_store_paths: Paths / URLs to component stores to load, which need to represent a *single* sequence
@@ -831,27 +830,10 @@ class CameraSensorComponent:
         def supports_component_version(version: str) -> bool:
             """Returns true if the component version is supported by the reader"""
             return version == "0.1"
-        class EncodedImageDataHandle:
-            """References encoded image data without loading it"""
 
-            def __init__(self, image_dataset: zarr.Array):
-                self._image_dataset = image_dataset
-
-            def get_data(self) -> types.EncodedImageData:
-                """Loads the referenced encoded image data to memory"""
-                return types.EncodedImageData(self._image_dataset[()], self._image_dataset.attrs["format"])
-
-        def get_frame_handle(self, timestamp_us: int) -> EncodedImageDataHandle:
-            """Returns the frame's encoded image data"""
-            return self.EncodedImageDataHandle(self._get_frame_group(timestamp_us)["image"])
-
-        def get_frame_data(self, timestamp_us: int) -> types.EncodedImageData:
-            """Returns the frame's encoded image data"""
-            return self.get_frame_handle(timestamp_us).get_data()
-
-        def get_frame_image(self, timestamp_us: int) -> PILImage.Image:
-            """Returns the frame's decoded image data"""
-            return self.get_frame_data(timestamp_us).get_decoded_image()
+        def get_frame_image_binary_data(self, timestamp_us: int) -> Tuple[bytes, str]:
+            image_group = self._get_frame_group(timestamp_us)["image"]
+            return bytes(image_group[()]), str(image_group.attrs["format"])
 
 
 class LidarSensorComponent:
@@ -931,60 +913,6 @@ class LidarSensorComponent:
         def supports_component_version(version: str) -> bool:
             """Returns true if the component version is supported by the reader"""
             return version == "0.1"
-
-
-# TODO: move to types once stable
-
-
-@dataclass
-class CuboidTrack(dataclasses_json.DataClassJsonMixin):
-    """Cuboid track instance"""
-
-    @dataclass
-    class Observation(dataclasses_json.DataClassJsonMixin):
-        """Individual cuboid track observation relative to the reference frame"""
-
-        observation_id: str  #: Identifier of the current observation (unique among all observations)
-        timestamp_us: (
-            int  #: The timestamp associated with the centroid of the observation (possibly an accurate in-frame time)
-        )
-        reference_frame_timestamp_us: int  #: The timestamp of the reference frame
-        bbox3: (
-            types.BBox3
-        )  #: Bounding-box coordinates of the object relative to the reference frame's coordinate system
-
-        def __post_init__(self):
-            # Sanity checks
-            assert isinstance(self.observation_id, str)
-            assert isinstance(self.reference_frame_timestamp_us, int)
-            assert isinstance(self.bbox3, types.BBox3)
-            assert isinstance(self.timestamp_us, int)
-
-    track_id: str  #: Unique identifier of the object's track this observation is associated with
-    label_class: str  #: String-representation of the labeled class associated with this observation
-    reference_frame_name: str  #: String-identifier of the reference frame (e.g., sensor name)
-    observations: List["Observation"]  #: All observations associated with this track
-    source: types.LabelSource = util.enum_field(types.LabelSource)  #: The source for the current label
-    source_version: Optional[str] = (
-        None  #: If provided, the unique version ID of the source for the current label (to distinguish between different versions of the same source)
-    )
-
-    def __post_init__(self):
-        # Sanity checks
-        assert isinstance(self.track_id, str)
-        assert isinstance(self.label_class, str)
-        assert isinstance(self.reference_frame_name, str)
-
-        assert isinstance(self.observations, List)
-        self.observations = [
-            CuboidTrack.Observation.from_dict(obs) if isinstance(obs, dict) else obs for obs in self.observations
-        ]
-
-        if not isinstance(self.source, types.LabelSource):
-            self.source = types.LabelSource(self.source)
-        assert self.source in types.LabelSource.__members__.values()
-
-        assert isinstance(self.source_version, (type(None), str))
 
 
 class CuboidTracksComponent:

@@ -11,7 +11,7 @@ py_library(
     srcs = [
         "__init__.py",
     ],
-    deps = ["//ncore/impl/data:pylib_data4"],
+    deps = ["//ncore/impl/data/data4:pylib_components"],
 )
 
 pytest_test(
