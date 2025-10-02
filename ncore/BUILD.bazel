@@ -12,7 +12,6 @@ py_library(
     deps = [
         "@ncore_repo//ncore/data:pylib",
         "@ncore_repo//ncore/data/v3:pylib",
-        "@ncore_repo//ncore/geometry:pylib",
         "@ncore_repo//ncore/sensors:pylib",
     ],
 )
@@ -44,7 +43,7 @@ py_wheel(
         "scipy",
         "torch",
     ],
-    version = "0.16.13",
+    version = "0.16.14",
     deps = [
         ":ncore_pkg",
     ],
