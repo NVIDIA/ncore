@@ -8,11 +8,11 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
-import unittest
 import tempfile
+import unittest
 
-import parameterized
 import numpy as np
+import parameterized
 import zarr
 
 from .stores import IndexedTarStore, consolidate_compressed_metadata, open_compressed_consolidated

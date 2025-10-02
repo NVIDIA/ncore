@@ -13,10 +13,10 @@ from typing import Optional
 import numpy as np
 import open3d.ml.tf as ml3d
 
-from matplotlib import pyplot as plt
 from matplotlib import cm
-from scipy.spatial.transform import Rotation as R
+from matplotlib import pyplot as plt
 from multimethod import multimethod
+from scipy.spatial.transform import Rotation as R
 
 from ncore.impl.data.types import FrameLabel3
 

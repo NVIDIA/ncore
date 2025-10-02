@@ -13,8 +13,8 @@ import unittest
 import numpy as np
 
 from ncore.impl.common.common import (
-    uniform_subdivide_range,
     HalfClosedInterval,
+    uniform_subdivide_range,
 )
 from ncore.impl.common.transformations import is_within_3d_bboxes
 

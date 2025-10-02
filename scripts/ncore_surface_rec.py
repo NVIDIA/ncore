@@ -9,7 +9,6 @@
 
 
 import logging
-import tqdm
 import tempfile
 
 from pathlib import Path
@@ -18,11 +17,12 @@ from typing import Optional
 import click
 import numpy as np
 import point_cloud_utils as pcu
+import tqdm
 
 from poisson_recon import reconstruct_surface
-from ncore.impl.common.transformations import transform_point_cloud
-from ncore.impl.data.data3 import ShardDataLoader, PointCloudSensor
 
+from ncore.impl.common.transformations import transform_point_cloud
+from ncore.impl.data.data3 import PointCloudSensor, ShardDataLoader
 from scripts.util import get_dynamic_flag
 
 

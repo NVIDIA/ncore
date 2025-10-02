@@ -6,3 +6,11 @@ exclude = [
     # Prevent checking ci-cache files
     ".ci-keep",
 ]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ncore", "scripts"]
+default-section = "third-party"
+known-third-party = ["wandb"] # prevent local wandb folders to be treaded as different package - see https://github.com/astral-sh/ruff/issues/8571
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+lines-between-types = 1
+lines-after-imports = 2

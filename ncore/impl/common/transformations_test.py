@@ -16,9 +16,10 @@ import numpy as np
 
 from python.runfiles import Runfiles
 
-from ncore.impl.data import types
 from ncore.impl.common.transformations import MotionCompensator
+from ncore.impl.data import types
 from ncore.impl.data.data3 import ShardDataLoader
+
 
 _RUNFILES = Runfiles.Create()
 

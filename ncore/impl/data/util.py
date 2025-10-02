@@ -8,11 +8,12 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
-from dataclasses import field, dataclass
-from typing import TYPE_CHECKING, Literal, TypeVar, Any, Generic, cast
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, cast
 
 import dataclasses_json
 import numpy as np
+
 
 if TYPE_CHECKING:
     import numpy.typing as npt  # type: ignore[import-not-found]

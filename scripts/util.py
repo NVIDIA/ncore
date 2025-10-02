@@ -15,7 +15,6 @@ from typing import Final, Optional, Tuple
 
 import click
 import debugpy
-
 import numpy as np
 import numpy.typing as npt
 

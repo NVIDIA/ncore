@@ -12,8 +12,7 @@ import click
 import tqdm
 
 from ncore.impl.common.visualization import LabelVisualizer
-from ncore.impl.data.data3 import ShardDataLoader, LidarSensor
-
+from ncore.impl.data.data3 import LidarSensor, ShardDataLoader
 from scripts.util import get_dynamic_flag
 
 

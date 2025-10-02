@@ -10,23 +10,22 @@
 
 from __future__ import annotations
 
-from abc import abstractmethod, ABC
-
-from typing import Literal, Optional, Union, cast
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Literal, Optional, Union, cast
 
-import torch
 import numpy as np
+import torch
 
 from scipy import spatial as scipy_spatial
 
 from ncore.impl.data import types, util
 from ncore.impl.sensors.common import (
     BaseModel,
-    to_torch,
     rotmat_to_unitquat,
-    unitquat_to_rotmat,
+    to_torch,
     unitquat_slerp,
+    unitquat_to_rotmat,
 )
 
 

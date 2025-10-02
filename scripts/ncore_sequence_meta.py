@@ -8,15 +8,15 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
-from collections import defaultdict
+import hashlib
+import json
 import logging
 
+from collections import defaultdict
 from pathlib import Path
 from typing import Optional, Tuple
 
 import click
-import json
-import hashlib
 
 from ncore.impl.data.data3 import ShardDataLoader
 

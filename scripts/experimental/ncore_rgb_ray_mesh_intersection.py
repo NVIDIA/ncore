@@ -14,17 +14,17 @@ from pathlib import Path
 from typing import Optional
 
 import click
-import tqdm
-import torch
 import numpy as np
 import point_cloud_utils as pcu
+import torch
+import tqdm
 
 from scipy.ndimage.morphology import binary_dilation
 
 from ncore.impl.data.data3 import ShardDataLoader
 from ncore.impl.data.types import FrameTimepoint
-from ncore.impl.sensors.camera import CameraModel
 from ncore.impl.data.util import padded_index_string
+from ncore.impl.sensors.camera import CameraModel
 
 
 @click.command()
