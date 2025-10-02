@@ -31,9 +31,9 @@ import PIL.Image as PILImage
 
 from .types import CuboidTrack
 
-from .. import stores, util, types, data
+from ncore.impl.data import stores, util, types, data
 
-VERSION = 4
+VERSION = "4.0"
 
 
 class SequenceComponentStoreWriter:
@@ -62,8 +62,8 @@ class SequenceComponentStoreWriter:
         self._generic_meta_data = generic_meta_data
 
         # Individual stores for each group are initialized lazily on-demand (indexed tar file or zarr directories)
-        self._stores_basegroups: dict[
-            str, Tuple[zarr.storage.Store, Path, zarr.Group]
+        self._stores_rootgroups: dict[
+            str, Tuple[zarr.Group, Path]
         ] = {}  # maps component group names to stores, store path, and base groups
         self._store_type = store_type
         self._validate_on_finalize = validate_on_finalize
@@ -80,9 +80,9 @@ class SequenceComponentStoreWriter:
             # empty group name represents the default group
             component_group_name = ""
 
-        if (store_basegroup := self._stores_basegroups.get(component_group_name)) is not None:
-            # Store already initialized, return it's base group
-            return store_basegroup[2]
+        if (store_rootgroup := self._stores_rootgroups.get(component_group_name)) is not None:
+            # Store already initialized, return it's root group
+            return store_rootgroup[0]
 
         # Store doesn't exist yet, create it
         self._output_dir_path.mkdir(parents=True, exist_ok=True)
@@ -98,12 +98,10 @@ class SequenceComponentStoreWriter:
             # container-based zarr stores <base-name>.<store_name>.zarr.itar
             store_path = self._output_dir_path / f"{self._store_base_name}.{store_name}.zarr.itar"
             store = stores.IndexedTarStore(store_path, mode="w")
-            component_root_group_name = "ncore"
         elif self._store_type == "directory":
             # directory-based zarr stores <base-name>.<store_name>.zarr.zarr
             store_path = self._output_dir_path / f"{self._store_base_name}.{store_name}.zarr"
             store = zarr.storage.DirectoryStore(store_path)
-            component_root_group_name = "ncore"
         else:
             raise ValueError(f"Unknown store type {self._store_type}")
 
@@ -116,18 +114,14 @@ class SequenceComponentStoreWriter:
                 "sequence_id": self._sequence_id,
                 "generic_meta_data": self._generic_meta_data,
                 "version": VERSION,
-                "component_root_group_name": component_root_group_name,  # the group name in the store's root group containing all data components
                 "component_group_name": component_group_name,
             }
         )
 
-        # Load root group based on meta-data (creating it on-demand)
-        component_root_group = root_group.require_group(root_group.attrs["component_root_group_name"])
-
         # Create store / base-group mapping
-        self._stores_basegroups[component_group_name] = store, store_path, component_root_group
+        self._stores_rootgroups[component_group_name] = root_group, store_path
 
-        return component_root_group
+        return root_group
 
     # To be called after all data was written
     def finalize(self) -> List[Path]:
@@ -147,7 +141,9 @@ class SequenceComponentStoreWriter:
 
         # Make sure the stores are consolidated and closed
         ret = []
-        for store, store_path, _ in self._stores_basegroups.values():
+        for root_group, store_path in self._stores_rootgroups.values():
+            store = root_group.store
+
             stores.consolidate_compressed_metadata(store)
 
             # Finish writing all files
@@ -286,9 +282,7 @@ class SequenceComponentStoreReader:
 
         # Check version-compatibility
         if self._version != VERSION:
-            raise ValueError(
-                f"Loading incompatible version {self._version}, supporting {VERSION} only"
-            )  # TODO: this check can still be refined
+            raise ValueError(f"Loading incompatible version {self._version}, supporting {VERSION} only")
 
     @property
     def sequence_id(self) -> str:
@@ -428,7 +422,7 @@ class PosesSetComponent:
             self,
             source_frame: str,
             target_frame: str,
-            pose: np.ndarray,  #: Source-to-target SE3 transformation (float64, [4,4])
+            pose: np.ndarray,  #: Source-to-target SE3 transformation (float32/64, [4,4])
         ) -> "Self":
             """Store a static pose (rigid transformation) between two named coordinate frames.
 
@@ -436,7 +430,7 @@ class PosesSetComponent:
 
             # Sanity checks
             assert pose.shape == (4, 4)
-            assert pose.dtype == np.dtype("float64")
+            assert np.issubdtype(pose.dtype, np.floating), "Poses must be of float type"
             assert np.all(pose[3, :] == [0.0, 0.0, 0.0, 1.0]), "Invalid SE3 transformation"
 
             key = f"T_{validate_frame_name(source_frame)}_{validate_frame_name(target_frame)}"
@@ -445,9 +439,7 @@ class PosesSetComponent:
             assert key not in self.data["static_poses"], f"Static pose {key} already exists"
             assert inv_key not in self.data["static_poses"], f"Inverse static pose {inv_key} already exists"
 
-            self.data["static_poses"][key] = {
-                "pose": pose.tolist(),
-            }
+            self.data["static_poses"][key] = {"pose": pose.tolist(), "dtype": str(pose.dtype)}
 
             return self
 
@@ -455,7 +447,7 @@ class PosesSetComponent:
             self,
             source_frame: str,
             target_frame: str,
-            poses: np.ndarray,  #: Source-to-target SE3 transformation trajectory (float64, [N,4,4])
+            poses: np.ndarray,  #: Source-to-target SE3 transformation trajectory (float32/64, [N,4,4])
             timestamps_us: np.ndarray,  #: All source-to-target transformation timestamps of the trajectory (uint64, [N,])
         ) -> "Self":
             """Store a trajectory of dynamic poses (time-dependent rigid transformations) between two named coordinate frames.
@@ -464,7 +456,7 @@ class PosesSetComponent:
 
             # Sanity checks
             assert poses.shape[1:] == (4, 4)
-            assert poses.dtype == np.dtype("float64")
+            assert np.issubdtype(poses.dtype, np.floating), "Poses must be of float type"
             assert np.all(poses[:, 3, :] == [0.0, 0.0, 0.0, 1.0]), "Invalid SE3 transformations"
 
             assert timestamps_us.ndim == 1
@@ -680,7 +672,14 @@ class BaseSensorComponentWriter(ComponentWriter):
         # Store additional generic frame data and meta-data (not dimension / dtype checked)
         (frame_generic_data_group := frame_group.create_group("generic_data")).attrs.put(generic_meta_data)
         for name, value in generic_data.items():
-            frame_generic_data_group.create_dataset(name, data=value)
+            frame_generic_data_group.create_dataset(
+                name,
+                data=value,
+                # we are not accessing sub-ranges, so disable chunking
+                chunks=value.shape,
+                # use compression that is fast to decode on modern hardware
+                compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
+            )
 
         return frame_group
 
@@ -750,7 +749,14 @@ class BasePointCloudSensorComponentWriter(BaseSensorComponentWriter):
         for name, data in point_cloud_data.items():
             assert len(data) == point_count, f"{name} doesn't have required point count"
 
-            point_cloud_group.create_dataset(name, data=data)
+            point_cloud_group.create_dataset(
+                name,
+                data=data,
+                # we are not accessing sub-ranges, so disable chunking
+                chunks=data.shape,
+                # use compression that is fast to decode on modern hardware
+                compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
+            )
 
         return point_cloud_group
 
@@ -811,7 +817,7 @@ class CameraSensorComponent:
             # Initialize frame
             frame_group = self._store_base_frame(timestamps_us, generic_data, generic_meta_data)
 
-            # Store image data
+            # Store image data (uncompressed, as already encoded)
             frame_group.create_dataset("image", data=np.asarray(image_binary_data), compressor=None).attrs["format"] = (
                 image_format
             )

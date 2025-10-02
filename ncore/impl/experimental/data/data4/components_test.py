@@ -30,7 +30,7 @@ from .components import (
     CuboidTracksComponent,
 )
 from .types import CuboidTrack
-from ..types import (
+from ncore.impl.data.types import (
     OpenCVFisheyeCameraModelParameters,
     ShutterType,
     BivariateWindshieldModelParameters,
@@ -122,8 +122,8 @@ class TestData4Reload(unittest.TestCase):
                             np.array([2, 1, -1]).reshape((3, 1)),
                         ],
                         [np.array([0, 0, 0, 1])],
-                    ]
-                )
+                    ],
+                ).astype(np.float32)
             ),
         )
 

@@ -20,38 +20,12 @@ from ncore.impl.data.types import FrameTimepoint
 from ncore.impl.data.data import JsonLike
 
 from ncore.impl.data.data3 import ShardDataLoader
-from ncore.impl.data.data4.components import (
+from ncore.impl.experimental.data.data4.components import (
     CameraSensorComponent,
     SensorIntrinsicsComponent,
     SequenceComponentStoreWriter,
     PosesSetComponent,
 )
-
-# class SimpleSequenceWriter:
-#     """A high-level V4 sequence writer for common data capturing use-cases (sensor recordings potentially attached rigidly to a rig)"""
-
-#     def __init__(self,
-#                 output_dir_path: Path,
-#                 store_base_name: str,
-#                 sequence_id: str,
-#                 camera_ids: List[str],
-#                 lidar_ids: List[str],
-#                 radar_ids: List[str],
-#                 recording_type : Literal["rig-trajectory", "free-posed"] = "rig-trajectory", # valid values: ['rig-trajectory', 'free-posed']
-#                 generic_meta_data: Dict[
-#                     str, data.JsonLike
-#                 ] = {},  # generic sequence meta-data (needs to be json-serializable) - will be stored into each component store group
-#                 # Zarr store type: either serialize as .itar archive store (default / production) or plain "directory" store (simpler for introspection / asynchronous / external setup)
-#                 store_type: Literal['itar', 'directory'] = "itar",  # valid values: ['itar', 'directory']
-#                 ):
-#         self._store_writer = SequenceComponentStoreWriter(
-#             output_dir_path=output_dir_path,
-#             store_base_name=store_base_name,
-#             store_type=store_type,
-#         )
-
-#         self._store_writer.__enter__()
-
 
 class Data3Converter:
     """Data3Converter converts Ncore V3 into V4"""
@@ -130,7 +104,7 @@ class Data3Converter:
             poses_writer.store_static_pose(
                 source_frame=camera_id,
                 target_frame="rig",
-                pose=camera_sensor.get_T_sensor_rig().astype(np.float64),
+                pose=camera_sensor.get_T_sensor_rig(),
             )
 
             # store frames

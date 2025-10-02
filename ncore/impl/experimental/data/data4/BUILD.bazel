@@ -13,6 +13,7 @@ py_library(
         "types.py",
     ],
     deps = [
+        "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data:pylib_util",
         requirement("dataclasses-json"),
