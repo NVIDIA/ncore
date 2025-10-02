@@ -16,7 +16,7 @@ import sys
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Type, TypeVar, Union, cast
+from typing import Dict, List, Literal, Optional, Tuple, Type, TypeVar, Union, cast
 
 if sys.version_info >= (3, 11):
     # Older python versions have issues with type-hints for nested types in
@@ -48,7 +48,7 @@ class SequenceComponentStoreWriter:
             str, data.JsonLike
         ],  # generic sequence meta-data (needs to be json-serializable) - will be stored into each component store group
         # Zarr store type: either serialize as .itar archive store (default / production) or plain "directory" store (simpler for introspection / asynchronous / external setup)
-        store_type: str = "itar",  # valid values: ['itar', 'directory']
+        store_type: Literal["itar", "directory"] = "itar",  # valid values: ['itar', 'directory']
         validate_on_finalize: bool = True,
     ):
         """

@@ -50,4 +50,36 @@ pytest_test(
     ],
 )
 
+py_library(
+    name = "pylib_conversion",
+    srcs = [
+        "conversion.py",
+    ],
+    deps = [
+        ":pylib_components",
+        "//ncore/impl/data:pylib_data3",
+        requirement("zarr"),
+        requirement("numpy"),
+        requirement("pillow"),
+        requirement("dataclasses-json"),
+    ],
+)
+
+pytest_test(
+    name = "pytest_conversion",
+    srcs = ["conversion_test.py"],
+    data = [
+        "@test-data-v3-shards//:test-shards",
+    ],
+    deps = [
+        ":pylib_conversion",
+        requirement("numpy"),
+        requirement("parameterized"),
+        "@rules_python//python/runfiles",
+
+        # DBG
+        "//scripts:pylib_util",
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")
