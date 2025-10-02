@@ -9,7 +9,9 @@
 
 
 import sys
+
 import pytest
+
 
 # if using 'bazel test ...'
 if __name__ == "__main__":

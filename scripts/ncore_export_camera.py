@@ -14,11 +14,11 @@ from pathlib import Path
 from typing import Optional
 
 import click
-import tqdm
 import cv2
 import numpy as np
+import tqdm
 
-from ncore.impl.data.data3 import ShardDataLoader, CameraSensor
+from ncore.impl.data.data3 import CameraSensor, ShardDataLoader
 from ncore.impl.data.util import padded_index_string
 
 

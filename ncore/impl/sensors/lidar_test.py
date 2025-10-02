@@ -8,18 +8,17 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
-import unittest
-import json
 import itertools
+import json
+import unittest
 
-import parameterized
 import numpy as np
+import parameterized
 import torch
 
 from ncore.impl.common.transformations import se3_inverse
-from ncore.impl.sensors.common import to_torch
-
 from ncore.impl.data.types import RowOffsetStructuredSpinningLidarModelParameters
+from ncore.impl.sensors.common import to_torch
 from ncore.impl.sensors.lidar import RowOffsetStructuredSpinningLidarModel
 
 

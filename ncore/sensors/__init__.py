@@ -11,15 +11,15 @@
 """Package exposing methods related to NCORE's sensor types"""
 
 from ncore.impl.sensors.camera import (
-    CameraModel,
-    FThetaCameraModel,
-    OpenCVPinholeCameraModel,
-    OpenCVFisheyeCameraModel,
-    ExternalDistortionModel,
     BivariateWindshieldModel,
+    CameraModel,
+    ExternalDistortionModel,
+    FThetaCameraModel,
+    OpenCVFisheyeCameraModel,
+    OpenCVPinholeCameraModel,
 )
+from ncore.impl.sensors.lidar import LidarModel, RowOffsetStructuredSpinningLidarModel, StructuredLidarModel
 
-from ncore.impl.sensors.lidar import LidarModel, StructuredLidarModel, RowOffsetStructuredSpinningLidarModel
 
 __all__ = [
     "CameraModel",

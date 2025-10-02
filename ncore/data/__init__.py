@@ -11,25 +11,25 @@
 """Package exposing methods related to NCORE's data types"""
 
 from ncore.impl.data.types import (
-    Poses,
-    FrameTimepoint,
-    CameraModelParameters,
-    ShutterType,
-    FThetaCameraModelParameters,
-    OpenCVPinholeCameraModelParameters,
-    OpenCVFisheyeCameraModelParameters,
-    ReferencePolynomial,
-    BivariateWindshieldModelParameters,
-    RowOffsetStructuredSpinningLidarModelParameters,
-    Tracks,
-    TrackLabel,
-    FrameLabel3,
     BBox3,
-    LabelSource,
+    BivariateWindshieldModelParameters,
+    CameraModelParameters,
     DynamicFlagState,
+    FrameLabel3,
+    FrameTimepoint,
+    FThetaCameraModelParameters,
+    LabelSource,
+    OpenCVFisheyeCameraModelParameters,
+    OpenCVPinholeCameraModelParameters,
+    Poses,
+    ReferencePolynomial,
+    RowOffsetStructuredSpinningLidarModelParameters,
+    ShutterType,
+    TrackLabel,
+    Tracks,
 )
-
 from ncore.impl.data.util import padded_index_string
+
 
 __all__ = [
     # types

@@ -11,18 +11,18 @@
 from __future__ import annotations
 
 import json
-import time
 import sys
+import time
 
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Optional, Tuple, TypeVar, Union, List, cast
-from dataclasses import dataclass
+from typing import Callable, List, Optional, Tuple, TypeVar, Union, cast
 
 import numpy as np
-
 import PIL.Image as PILImage
-from scipy import spatial, interpolate
+
+from scipy import interpolate, spatial
 from scipy.spatial.transform import Rotation as R
 
 

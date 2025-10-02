@@ -10,22 +10,23 @@
 
 from __future__ import annotations
 
-import lzma
-import tarfile
-import os
 import io
-import struct
 import logging
+import lzma
+import os
+import struct
+import tarfile
 
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import BinaryIO, Iterator, Literal, NamedTuple, Union, Dict
-from threading import RLock
 from enum import IntEnum, auto, unique
+from pathlib import Path
+from threading import RLock
+from typing import BinaryIO, Dict, Iterator, Literal, NamedTuple, Union
 
 import cbor2
-import zarr
 import numcodecs
+import zarr
+
 
 _logger = logging.getLogger(__name__)
 

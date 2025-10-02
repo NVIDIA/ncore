@@ -10,19 +10,20 @@
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import sys
-import dataclasses
 
 from abc import ABC, abstractmethod
-from enum import IntEnum, auto, unique
 from dataclasses import dataclass
-from typing import Literal, Optional, Protocol, Tuple, TypeVar, Union, List, Dict, TYPE_CHECKING
+from enum import IntEnum, auto, unique
 from functools import lru_cache
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Protocol, Tuple, TypeVar, Union
 
-import numpy as np
 import dataclasses_json
+import numpy as np
 import PIL.Image as PILImage
+
 
 if TYPE_CHECKING:
     import numpy.typing as npt  # type: ignore[import-not-found]

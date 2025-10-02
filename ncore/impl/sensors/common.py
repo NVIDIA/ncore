@@ -8,10 +8,10 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
-from typing import Union, Optional
+from typing import Optional, Union
 
-import torch
 import numpy as np
+import torch
 
 
 class BaseModel(torch.nn.Module):

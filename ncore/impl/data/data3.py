@@ -10,26 +10,26 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import io
 import json
+import logging
 import re
 
-import logging
-import concurrent.futures
-
-from types import SimpleNamespace
 from pathlib import Path
-from typing import Iterable, NamedTuple, Optional, Tuple, Union, Dict, List, Union, cast
+from types import SimpleNamespace
+from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple, Union, cast
 
-import numpy as np
-import zarr
 import numcodecs
+import numpy as np
 import PIL.Image as PILImage
+import zarr
 
 import ncore.impl.common.common as common
 import ncore.impl.common.transformations as transformations
 
-from . import types, stores, util
+from . import stores, types, util
+
 
 VERSION = "3.0.0"
 SENSORS_BASE_GROUP = "sensors"

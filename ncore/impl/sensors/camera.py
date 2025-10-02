@@ -13,22 +13,22 @@ from __future__ import annotations
 import math
 
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, Union, cast
 from dataclasses import dataclass
+from typing import Optional, Tuple, Union, cast
 
-import torch
 import numpy as np
+import torch
 
 from ncore.impl.common.common import map_optional
 from ncore.impl.data import types
 from ncore.impl.sensors.common import (
     BaseModel,
-    to_torch,
-    rotmat_to_unitquat,
-    unitquat_to_rotmat,
-    unitquat_slerp,
     eval_poly_horner,
     eval_poly_inverse_horner_newton,
+    rotmat_to_unitquat,
+    to_torch,
+    unitquat_slerp,
+    unitquat_to_rotmat,
 )
 
 
