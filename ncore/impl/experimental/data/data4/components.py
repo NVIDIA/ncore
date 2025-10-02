@@ -18,6 +18,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Literal, Optional, Tuple, Type, TypeVar, Union, cast
 
+
 if sys.version_info >= (3, 11):
     # Older python versions have issues with type-hints for nested types in
     # combination with typing.get_type_hints() (used by, e.g., 'dataclasses_json')
@@ -25,13 +26,15 @@ if sys.version_info >= (3, 11):
     from typing import Self
 
 import concurrent
-import zarr
+
 import numpy as np
 import PIL.Image as PILImage
+import zarr
+
+from ncore.impl.data import data, stores, types
 
 from .types import CuboidTrack
 
-from ncore.impl.data import stores, util, types, data
 
 VERSION = "4.0"
 

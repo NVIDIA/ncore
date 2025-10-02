@@ -14,7 +14,7 @@ from typing import List, Optional
 
 import dataclasses_json
 
-from ncore.impl.data import util, types
+from ncore.impl.data import types, util
 
 
 @dataclass

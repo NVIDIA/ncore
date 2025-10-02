@@ -11,21 +11,21 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Dict
-from typing_extensions import Literal
-
 
 import numpy as np
 
-from ncore.impl.data.types import FrameTimepoint
-from ncore.impl.data.data import JsonLike
+from typing_extensions import Literal
 
+from ncore.impl.data.data import JsonLike
 from ncore.impl.data.data3 import ShardDataLoader
+from ncore.impl.data.types import FrameTimepoint
 from ncore.impl.experimental.data.data4.components import (
     CameraSensorComponent,
+    PosesSetComponent,
     SensorIntrinsicsComponent,
     SequenceComponentStoreWriter,
-    PosesSetComponent,
 )
+
 
 class Data3Converter:
     """Data3Converter converts Ncore V3 into V4"""

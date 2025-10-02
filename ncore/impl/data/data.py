@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Union
 
 from . import types
 
+
 JsonLike = Union[
     Dict[str, "JsonLike"],
     List["JsonLike"],
@@ -22,6 +23,7 @@ JsonLike = Union[
     # special-case shouldn't be needed, but required to make mypy happy
     List[int],
 ]
+
 
 def encode_camera_model_parameters(camera_model_parameters: types.ConcreteCameraModelParametersUnion) -> Dict:
     """Encodes camera intrinsic model parameters to serializable model-typed dictionary"""

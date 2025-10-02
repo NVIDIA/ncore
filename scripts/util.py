@@ -11,11 +11,12 @@
 import logging
 
 from pathlib import Path
-from typing import Final, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Final, Optional, Tuple
 
 import click
 import debugpy
 import numpy as np
+
 
 if TYPE_CHECKING:
     import numpy.typing as npt  # type: ignore[import-not-found]

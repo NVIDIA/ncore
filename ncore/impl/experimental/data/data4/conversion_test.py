@@ -18,9 +18,9 @@ import numpy as np
 from parameterized import parameterized
 from python.runfiles import Runfiles
 
-from .conversion import Data3Converter
-
 from ncore.impl.data.data3 import ShardDataLoader
+
+from .conversion import Data3Converter
 
 
 _RUNFILES = Runfiles.Create()
