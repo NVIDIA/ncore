@@ -12,11 +12,11 @@ py_library(
     srcs = [
         "util.py",
     ],
-     visibility = [
-         "//scripts/data_converter:__subpackages__",
-         # DEBUG:
-         "//ncore/impl:__subpackages__",
-     ],
+    visibility = [
+        "//scripts:__subpackages__",
+        # DEBUG:
+        "//ncore/impl:__subpackages__",
+    ],
     deps = [
         requirement("numpy"),
         requirement("click"),

@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -27,23 +27,37 @@ from ncore.impl.experimental.data.data4.components import (
 )
 
 
-class Data3Converter:
-    """Data3Converter converts Ncore V3 into V4"""
+class NCore3To4:
+    """Performs data conversion from NCore 3 to NCore 4 format"""
 
     @staticmethod
     def convert(
+        ## V3 input
         source_data_loader: ShardDataLoader,
-        target_output_dir_path: Path,
-        # component target group overwrite
-        component_group_targets: Dict[
-            str, str
-        ] = {},  # Map from component group name to target component store name (missing key for default). Valid names are "poses", "intrinsics", "<camera_id>", "<lidar_id>", "<radar_id>", "cuboid_tracks"
+        ## V4 output
+        output_dir_path: Path,
+        # output store type
+        store_type: Literal["itar", "directory"] = "itar",  # valid values: ['itar', 'directory']
+        # sensor selection (None means all available sensors of that type)
+        camera_ids: Optional[List[str]] = None,
+        lidar_ids: Optional[List[str]] = None,
+        radar_ids: Optional[List[str]] = None,
+        # component target group overwrites
+        poses_component_group: Optional[str] = None,
+        intrinsics_component_group: Optional[str] = None,
+        camera_component_groups: Dict[str, str] = {},  # indexed by camera_id
+        lidar_component_groups: Dict[str, str] = {},  # indexed by lidar_id
+        radar_component_groups: Dict[str, str] = {},  # indexed by radar_id
+        cuboid_tracks_component_group: Optional[str] = None,
         generic_meta_data: Dict[
             str, JsonLike
         ] = {},  # generic sequence meta-data (needs to be json-serializable) - will be merged with source generic meta data
-        store_type: Literal["itar", "directory"] = "itar",  # valid values: ['itar', 'directory']
-    ):
-        """Converts the given V3 sequence (unconditionally rig-trajectory-based) into V4 format, storing the result into the given output directory path, potentially overwriting component group names as specified"""
+    ) -> List[Path]:
+        """Converts the given V3 sequence (unconditionally rig-trajectory-based) into V4 format,
+        storing the result into the given output directory path, potentially overwriting component group names as specified"""
+
+        if not (radar_ids is None or len(radar_ids) == 0):
+            raise NotImplementedError("Conversion of radar sensors is not supported yet")
 
         ## create sequence writer
 
@@ -53,7 +67,7 @@ class Data3Converter:
         source_generic_meta_data["egomotion_type"] = source_data_loader.get_egomotion_type()
 
         store_writer = SequenceComponentStoreWriter(
-            output_dir_path=target_output_dir_path,
+            output_dir_path=output_dir_path,
             store_base_name=source_data_loader.get_sequence_id(),
             sequence_id=source_data_loader.get_sequence_id(),
             store_type=store_type,
@@ -64,7 +78,7 @@ class Data3Converter:
         poses_writer = store_writer.register_component_writer(
             PosesSetComponent.Writer,
             component_instance_name="poses",
-            group_name=component_group_targets.get("poses", None),
+            group_name=poses_component_group,
         )
 
         source_poses = source_data_loader.get_poses()
@@ -84,13 +98,13 @@ class Data3Converter:
         intrinsics_writer = store_writer.register_component_writer(
             SensorIntrinsicsComponent.Writer,
             component_instance_name="intrinsics",
-            group_name=component_group_targets.get("intrinsics", None),
+            group_name=intrinsics_component_group,
         )
 
         ## iterate over all sensors, convert and store their data
 
         # cameras
-        for camera_id in source_data_loader.get_camera_ids():
+        for camera_id in camera_ids if camera_ids is not None else source_data_loader.get_camera_ids():
             camera_sensor = source_data_loader.get_camera_sensor(camera_id)
 
             # store intrinsics
@@ -111,10 +125,10 @@ class Data3Converter:
             camera_writer = store_writer.register_component_writer(
                 CameraSensorComponent.Writer,
                 component_instance_name=camera_id,
-                group_name=component_group_targets.get(camera_id, None),
+                group_name=camera_component_groups.get(camera_id, None),
             )
 
-            for source_frame_idx in range(camera_sensor.get_frames_count()):
+            for source_frame_idx in range(camera_sensor.get_frames_count())[:10]:  # DEBUG: limit to first 10 frames
                 frame_image_data = camera_sensor.get_frame_data(source_frame_idx)
 
                 camera_writer.store_frame(
@@ -135,4 +149,4 @@ class Data3Converter:
                 )
 
         ## finalize
-        store_writer.finalize()
+        return store_writer.finalize()
