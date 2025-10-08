@@ -17,6 +17,7 @@ py_library(
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data:pylib_util",
         requirement("dataclasses-json"),
+        requirement("numpy"),
     ],
 )
 
@@ -27,6 +28,7 @@ py_library(
     ],
     deps = [
         ":pylib_types",
+        "//ncore/impl/common:pylib_common",
         "//ncore/impl/data:pylib_data",
         "//ncore/impl/data:pylib_stores",
         requirement("zarr"),
@@ -58,6 +60,8 @@ py_library(
     ],
     deps = [
         ":pylib_components",
+        ":pylib_types",
+        "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_data3",
         requirement("zarr"),
         requirement("numpy"),
@@ -75,11 +79,7 @@ pytest_test(
     deps = [
         ":pylib_conversion",
         requirement("numpy"),
-        requirement("parameterized"),
         "@rules_python//python/runfiles",
-
-        # DBG
-        "//scripts:pylib_util",
     ],
 )
 

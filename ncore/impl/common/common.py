@@ -285,15 +285,25 @@ class HalfClosedInterval:
     start: int
     stop: int
 
+    @staticmethod
+    def from_start_end(start: int, end: int) -> HalfClosedInterval:
+        """Creates a half-closed interval from start and end (inclusive)"""
+        return HalfClosedInterval(start, end + 1)
+
     def __post_init__(self) -> None:
         """Makes sure interval is well-defined"""
         assert isinstance(self.start, int)
         assert isinstance(self.stop, int)
         assert self.start <= self.stop
 
-    def __contains__(self, item: int) -> bool:
-        """Determines if an item is contained in the interval"""
-        return self.start <= item < self.stop
+    def __contains__(self, item: Union[int, np.integer, HalfClosedInterval]) -> bool:
+        """Determines if an item / other interval is contained in the interval"""
+        if isinstance(item, (int, np.integer)):
+            return bool(self.start <= item and item < self.stop)
+        elif isinstance(item, HalfClosedInterval):
+            return (self.start <= item.start) and (item.stop <= self.stop)
+        else:
+            raise TypeError(f"Expected int, np.integer, or HalfClosedInterval, got {type(item).__name__}")
 
     def __len__(self) -> int:
         """Returns the number of elements in the interval"""

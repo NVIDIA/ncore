@@ -14,13 +14,13 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+import pytest
 
-from parameterized import parameterized
 from python.runfiles import Runfiles
 
 from ncore.impl.data.data3 import ShardDataLoader
 
-from .conversion import Data3Converter
+from .conversion import NCore3To4
 
 
 _RUNFILES = Runfiles.Create()
@@ -30,10 +30,6 @@ class TestData3Converter(unittest.TestCase):
     """Test to verify functionality of V3->V4 data converter"""
 
     def setUp(self):
-        # from scripts.util import breakpoint
-
-        # breakpoint()
-
         # Make printed errors more representable numerically
         np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
 
@@ -54,25 +50,17 @@ class TestData3Converter(unittest.TestCase):
 
         self.shard_data_loader = ShardDataLoader(all_shards)
 
-    @parameterized.expand(
-        [
-            ("itar",),
-            ("itar",),
-            ("directory",),
-            ("directory",),
-        ]
-    )
+    @pytest.mark.skip(reason="require V3 lidar-model data for test")
     def test_convert(
         self,
-        store_type,
     ):
         """Test to make sure serialized data is faithfully reloaded"""
 
         tempdir = tempfile.TemporaryDirectory()
 
         ## Convert reference sequence
-        Data3Converter.convert(
-            self.shard_data_loader,
-            target_output_dir_path=Path(tempdir.name),
-            store_type=store_type,
+        NCore3To4.convert(
+            self.shard_data_loader, output_dir_path=Path(tempdir.name), camera_ids=["camera_front_wide_120fov"]
         )
+
+        # TODO: extend?

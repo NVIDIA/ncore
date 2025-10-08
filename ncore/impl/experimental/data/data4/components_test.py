@@ -20,6 +20,7 @@ import PIL.Image as PILImage
 from parameterized import parameterized
 from scipy.spatial.transform import Rotation as R
 
+from ncore.impl.common.common import HalfClosedInterval
 from ncore.impl.data.types import (
     BBox3,
     BivariateWindshieldModelParameters,
@@ -32,14 +33,16 @@ from ncore.impl.data.types import (
 
 from .components import (
     CameraSensorComponent,
-    CuboidTracksComponent,
+    CuboidsComponent,
+    IntrinsicsComponent,
     LidarSensorComponent,
-    PosesSetComponent,
-    SensorIntrinsicsComponent,
+    MasksComponent,
+    PosesComponent,
+    RadarSensorComponent,
     SequenceComponentStoreReader,
     SequenceComponentStoreWriter,
 )
-from .types import CuboidTrack
+from .types import CuboidTrackObservation
 
 
 class TestData4Reload(unittest.TestCase):
@@ -70,6 +73,9 @@ class TestData4Reload(unittest.TestCase):
             output_dir_path=Path(tempdir.name),
             store_base_name=(ref_sequence_id := "some-sequence-name"),
             sequence_id=ref_sequence_id,
+            sequence_timestamp_interval_us=(
+                ref_sequence_timestamp_interval_us := HalfClosedInterval(int(0 * 1e6), int(1 * 1e6) + 1)
+            ),
             store_type=store_type,
             generic_meta_data=(ref_generic_sequence_meta_data := {"some": 1, "key": 1.2}),
         )
@@ -96,25 +102,30 @@ class TestData4Reload(unittest.TestCase):
                 ),
             ]
         )
-        T_rig_world_timestamps_us = np.array([0 * 1e6, 0.2 * 1e6], dtype=np.uint64)
+        T_rig_world_timestamps_us = np.linspace(
+            ref_sequence_timestamp_interval_us.start,
+            ref_sequence_timestamp_interval_us.stop - 1,
+            num=len(T_rig_worlds),
+            dtype=np.uint64,
+        )
 
         store_writer.register_component_writer(
-            PosesSetComponent.Writer,
+            PosesComponent.Writer,
             ref_poses_id := "some_poses_type",
             group_name=None,  # use default component group
             generic_meta_data=(ref_pose_generic_meta_data := {"some": "thing"}),
-        ).store_dynamic_poses(
-            source_frame="rig",
-            target_frame="world",
+        ).store_dynamic_pose(
+            source_frame_id="rig",
+            target_frame_id="world",
             poses=(ref_T_rig_worlds := T_rig_worlds),
             timestamps_us=(ref_T_rig_world_timestamps_us := T_rig_world_timestamps_us),
         ).store_static_pose(
-            source_frame="world",
-            target_frame="world_global",
+            source_frame_id="world",
+            target_frame_id="world_global",
             pose=(ref_T_world_world_global := T_world_world_global),
         ).store_static_pose(
-            source_frame=(ref_camera_id := "ref_camera_id"),
-            target_frame="rig",
+            source_frame_id=(ref_camera_id := "ref_camera_id"),
+            target_frame_id="rig",
             pose=(
                 ref_camera_T_sensor_rig := np.block(
                     [
@@ -126,11 +137,39 @@ class TestData4Reload(unittest.TestCase):
                     ],
                 ).astype(np.float32)
             ),
+        ).store_static_pose(
+            source_frame_id=(ref_lidar_id := "some-lidar-sensor-name"),
+            target_frame_id="rig",
+            pose=(
+                ref_lidar_T_sensor_rig := np.block(
+                    [
+                        [
+                            R.from_euler("xyz", [2, 1, 3], degrees=True).as_matrix(),
+                            np.array([3, 1, -1]).reshape((3, 1)),
+                        ],
+                        [np.array([0, 0, 0, 1])],
+                    ]
+                ).astype(np.float32)
+            ),
+        ).store_static_pose(
+            source_frame_id=(ref_radar_id := "some-radar-sensor-name"),
+            target_frame_id="rig",
+            pose=(
+                ref_radar_T_sensor_rig := np.block(
+                    [
+                        [
+                            R.from_euler("xyz", [2, 2, 3], degrees=True).as_matrix(),
+                            np.array([3, 2, -1]).reshape((3, 1)),
+                        ],
+                        [np.array([0, 0, 0, 1])],
+                    ]
+                ).astype(np.float32)
+            ),
         )
 
         # Store intrinsics
         intrinsic_writer = store_writer.register_component_writer(
-            SensorIntrinsicsComponent.Writer, ref_intrinsics_id := "default", "intrinsics"
+            IntrinsicsComponent.Writer, ref_intrinsics_id := "default", "intrinsics"
         )
 
         intrinsic_writer.store_camera_intrinsics(
@@ -222,11 +261,10 @@ class TestData4Reload(unittest.TestCase):
                     ),
                 ),
             ),
-            ref_camera_mask_image := PILImage.fromarray(np.random.rand(3840, 2160) > 0.5).resize((480, 270)),
         )
 
         intrinsic_writer.store_lidar_intrinsics(
-            ref_lidar_id := "some-lidar-sensor-name",
+            ref_lidar_id,
             ref_lidar_intrinsics := RowOffsetStructuredSpinningLidarModelParameters(
                 spinning_frequency_hz=10.0,
                 spinning_direction="ccw",
@@ -236,6 +274,23 @@ class TestData4Reload(unittest.TestCase):
                 column_azimuths_rad=np.linspace(-3.141576051712036, 3.141592502593994, 3600, dtype=np.float32),
                 row_azimuth_offsets_rad=np.linspace(0.0, 0.0, 128, dtype=np.float32),
             ),
+        )
+
+        # Store camera masks
+        masks_writer = store_writer.register_component_writer(
+            MasksComponent.Writer,
+            ref_masks_id := "default",
+            "masks",
+            ref_masks_generic_meta_data := {"some-meta-data": np.random.rand(3, 2).tolist()},
+        )
+
+        masks_writer.store_camera_masks(
+            ref_camera_id,
+            {
+                (ref_camera_mask_name := "default"): (
+                    ref_camera_mask_image := PILImage.fromarray(np.random.rand(3840, 2160) > 0.5).resize((480, 270))
+                )
+            },
         )
 
         # Store camera data
@@ -300,48 +355,73 @@ class TestData4Reload(unittest.TestCase):
             ref_lidar_generic_metadata1 := {"even-more-meta-data": {"yesno": None}},
         )
 
-        # Store cuboid tracks
-        tracks_writer = store_writer.register_component_writer(
-            CuboidTracksComponent.Writer,
-            ref_tracks_id := "default",
-            "tracks",
-            ref_tracks_generic_meta_data := {"track-set-meta-data": "some-value"},
+        # Store radar data
+        radar_writer = store_writer.register_component_writer(
+            RadarSensorComponent.Writer,
+            ref_radar_id,
+            "special-radars",
+            ref_radar_generic_meta_data := {"some-radar-meta-data": np.random.rand(3, 2).tolist()},
         )
 
-        tracks_writer.store_tracks(
-            cuboid_tracks=(
-                ref_cuboid_tracks := [
-                    CuboidTrack(
+        radar_writer.store_frame(
+            ref_radar_xyz_m0 := np.random.rand(5, 3).astype(np.float32) + 0.2,
+            ref_radar_timestamp_us0 := np.array([0.1 * 1e6] * 5, dtype=np.uint64),
+            ref_radar_timestamps_us0 := np.array([0.1 * 1e6, 0.1 * 1e6], dtype=np.uint64),
+            ref_radar_generic_data0 := {"some-other-frame-data": np.random.rand(6, 2)},
+            ref_radar_generic_metadata0 := {"some-more-meta-data": {"funny": "yes", "no": True}},
+        )
+
+        radar_writer.store_frame(
+            ref_radar_xyz_m1 := np.random.rand(8, 3).astype(np.float32) + 0.05,
+            ref_radar_timestamp_us1 := np.array([0.2 * 1e6] * 8, dtype=np.uint64),
+            ref_radar_timestamps_us1 := np.array([0.2 * 1e6, 0.2 * 1e6], dtype=np.uint64),
+            ref_radar_generic_data1 := {"some-radar-frame-data": np.random.rand(6, 2)},
+            ref_radar_generic_metadata1 := {"some-more-meta-data": {"funny": ":("}},
+        )
+
+        # Store cuboids
+        cuboids_writer = store_writer.register_component_writer(
+            CuboidsComponent.Writer,
+            ref_cuboids_id := "default",
+            "cuboids",
+            ref_cuboids_generic_meta_data := {"track-set-meta-data": "some-value"},
+        )
+
+        cuboids_writer.store_observations(
+            cuboid_observations=(
+                ref_cuboid_observations := [
+                    CuboidTrackObservation(
                         track_id="track-1",
-                        label_class="car",
-                        reference_frame_name=ref_lidar_id,
+                        class_id="car",
+                        observation_id="obs-1-1",
+                        timestamp_us=int(0.3 * 1e6),
+                        reference_frame_timestamp_us=int(0.5 * 1e6),
+                        bbox3=BBox3(
+                            centroid=(1.0, 2.0, 3.0),
+                            dim=(4.0, 2.0, 1.5),
+                            rot=(0.0, 0.0, 0.0),
+                        ),
+                        reference_frame_id=ref_lidar_id,
                         source=LabelSource.AUTOLABEL,
                         source_version="v0",
-                        observations=[
-                            CuboidTrack.Observation(
-                                observation_id="obs-1-1",
-                                timestamp_us=int(0.3 * 1e6),
-                                reference_frame_timestamp_us=int(0.5 * 1e6),
-                                bbox3=BBox3(
-                                    centroid=(1.0, 2.0, 3.0),
-                                    dim=(4.0, 2.0, 1.5),
-                                    rot=(0.0, 0.0, 0.0),
-                                ),
-                            ),
-                            CuboidTrack.Observation(
-                                observation_id="obs-1-2",
-                                timestamp_us=int(0.4 * 1e6),
-                                reference_frame_timestamp_us=int(1.0 * 1e6),
-                                bbox3=BBox3(
-                                    centroid=(1.5, 2.5, 3.5),
-                                    dim=(4.0, 2.0, 1.5),
-                                    rot=(0.0, 0.0, 0.1),
-                                ),
-                            ),
-                        ],
-                    )
+                    ),
+                    CuboidTrackObservation(
+                        track_id="track-1",
+                        class_id="car",
+                        observation_id="obs-1-2",
+                        timestamp_us=int(0.4 * 1e6),
+                        reference_frame_timestamp_us=int(1.0 * 1e6),
+                        reference_frame_id=ref_lidar_id,
+                        source=LabelSource.AUTOLABEL,
+                        source_version="v0",
+                        bbox3=BBox3(
+                            centroid=(1.5, 2.5, 3.5),
+                            dim=(4.0, 2.0, 1.5),
+                            rot=(0.0, 0.0, 0.1),
+                        ),
+                    ),
                 ]
-            )
+            ),
         )
 
         ## Finalize writers
@@ -352,10 +432,11 @@ class TestData4Reload(unittest.TestCase):
 
         # check sequence data
         self.assertEqual(store_reader.sequence_id, ref_sequence_id)
+        self.assertEqual(store_reader.sequence_timestamp_interval_us, ref_sequence_timestamp_interval_us)
         self.assertEqual(store_reader.generic_meta_data, ref_generic_sequence_meta_data)
 
         # check rig pose / calibration data
-        poses_readers = store_reader.open_component_readers(PosesSetComponent.Reader)
+        poses_readers = store_reader.open_component_readers(PosesComponent.Reader)
 
         self.assertEqual(len(poses_readers), 1)
         poses_reader = poses_readers[ref_poses_id]
@@ -365,20 +446,38 @@ class TestData4Reload(unittest.TestCase):
 
         self.assertTrue(np.all(poses_reader.get_static_pose("world", "world_global") == ref_T_world_world_global))
 
-        T_rig_worlds, T_rig_world_timestamps_us = poses_reader.get_dynamic_poses("rig", "world")
+        T_rig_worlds, T_rig_world_timestamps_us = poses_reader.get_dynamic_pose("rig", "world")
         self.assertTrue(np.all(T_rig_worlds == ref_T_rig_worlds))
         self.assertTrue(np.all(T_rig_world_timestamps_us == ref_T_rig_world_timestamps_us))
 
         self.assertTrue(np.all(poses_reader.get_static_pose(ref_camera_id, "rig") == ref_camera_T_sensor_rig))
+        self.assertTrue(np.all(poses_reader.get_static_pose(ref_lidar_id, "rig") == ref_lidar_T_sensor_rig))
+        self.assertTrue(np.all(poses_reader.get_static_pose(ref_radar_id, "rig") == ref_radar_T_sensor_rig))
 
         with self.assertRaises(KeyError):
             poses_reader.get_static_pose("non-existing-sensor", "rig")
 
         with self.assertRaises(KeyError):
-            poses_reader.get_dynamic_poses("non-existing-frame", "world")
+            poses_reader.get_dynamic_pose("non-existing-frame", "world")
+
+        all_static_poses = dict(poses_reader.get_static_poses())
+        self.assertIn(("world", "world_global"), all_static_poses)
+        self.assertTrue(np.all(all_static_poses[("world", "world_global")] == ref_T_world_world_global))
+        self.assertIn((ref_camera_id, "rig"), all_static_poses)
+        self.assertTrue(np.all(all_static_poses[(ref_camera_id, "rig")] == ref_camera_T_sensor_rig))
+        self.assertIn((ref_lidar_id, "rig"), all_static_poses)
+        self.assertTrue(np.all(all_static_poses[(ref_lidar_id, "rig")] == ref_lidar_T_sensor_rig))
+        self.assertIn((ref_radar_id, "rig"), all_static_poses)
+        self.assertTrue(np.all(all_static_poses[(ref_radar_id, "rig")] == ref_radar_T_sensor_rig))
+
+        all_dynamic_poses = dict(poses_reader.get_dynamic_poses())
+        self.assertIn(("rig", "world"), all_dynamic_poses)
+        dyn_poses, dyn_timestamps = all_dynamic_poses[("rig", "world")]
+        self.assertTrue(np.all(dyn_poses == ref_T_rig_worlds))
+        self.assertTrue(np.all(dyn_timestamps == ref_T_rig_world_timestamps_us))
 
         # check intrinsics data
-        intrinsic_readers = store_reader.open_component_readers(SensorIntrinsicsComponent.Reader)
+        intrinsic_readers = store_reader.open_component_readers(IntrinsicsComponent.Reader)
 
         self.assertEqual(len(intrinsic_readers), 1)
         intrinsic_reader = intrinsic_readers[ref_intrinsics_id]
@@ -391,15 +490,30 @@ class TestData4Reload(unittest.TestCase):
         self.assertIsInstance(
             camera_model_parameters.external_distortion_parameters, BivariateWindshieldModelParameters
         )
-        self.assertEqual(
-            intrinsic_reader.get_camera_mask_image(ref_camera_id).tobytes(), ref_camera_mask_image.tobytes()
-        )
 
         self.assertEqual(
             (lidar_model_parameters := intrinsic_reader.get_lidar_model_parameters(ref_lidar_id)).to_dict(),
             ref_lidar_intrinsics.to_dict(),
         )
         self.assertIsInstance(lidar_model_parameters, RowOffsetStructuredSpinningLidarModelParameters)
+
+        # check masks data
+        masks_readers = store_reader.open_component_readers(MasksComponent.Reader)
+
+        self.assertEqual(len(masks_readers), 1)
+        masks_reader = masks_readers[ref_masks_id]
+
+        self.assertEqual(masks_reader.instance_name, ref_masks_id)
+        self.assertEqual(masks_reader.generic_meta_data, ref_masks_generic_meta_data)
+
+        self.assertEqual(masks_reader.get_camera_mask_names(ref_camera_id), [ref_camera_mask_name])
+        self.assertEqual(
+            masks_reader.get_camera_mask_image(ref_camera_id, ref_camera_mask_name).tobytes(),
+            ref_camera_mask_image.tobytes(),
+        )
+        for mask_name, mask_image in masks_reader.get_camera_mask_images(ref_camera_id):
+            self.assertEqual(mask_name, ref_camera_mask_name)
+            self.assertEqual(mask_image.tobytes(), ref_camera_mask_image.tobytes())
 
         # check camera data
         camera_readers = store_reader.open_component_readers(CameraSensorComponent.Reader)
@@ -427,11 +541,19 @@ class TestData4Reload(unittest.TestCase):
         )
 
         self.assertEqual(
-            camera_reader.get_frame_image_binary_data(ref_camera_timestamps_us0[1]), (ref_image_binary0, "png")
+            (
+                frame0_data := camera_reader.get_frame_handle(ref_camera_timestamps_us0[1]).get_data()
+            ).get_encoded_image_data(),
+            ref_image_binary0,
         )
+        self.assertEqual(frame0_data.get_encoded_image_format(), "png")
         self.assertEqual(
-            camera_reader.get_frame_image_binary_data(ref_camera_timestamps_us1[1]), (ref_image_binary1, "png")
+            (
+                frame1_data := camera_reader.get_frame_handle(ref_camera_timestamps_us1[1]).get_data()
+            ).get_encoded_image_data(),
+            ref_image_binary1,
         )
+        self.assertEqual(frame1_data.get_encoded_image_format(), "png")
 
         self.assertEqual(
             names := camera_reader.get_frame_generic_data_names(ref_camera_timestamps_us0[1]),
@@ -581,12 +703,102 @@ class TestData4Reload(unittest.TestCase):
             lidar_reader.get_frame_generic_meta_data(ref_lidar_timestamps_us1[1]), ref_lidar_generic_metadata1
         )
 
-        # check tracks data
-        tracks_readers = store_reader.open_component_readers(CuboidTracksComponent.Reader)
+        # check radar data
+        radar_readers = store_reader.open_component_readers(RadarSensorComponent.Reader)
 
-        self.assertEqual(len(tracks_readers), 1)
-        tracks_reader = tracks_readers[ref_tracks_id]
-        self.assertEqual(tracks_reader.instance_name, ref_tracks_id)
-        self.assertEqual(tracks_reader.generic_meta_data, ref_tracks_generic_meta_data)
+        self.assertEqual(len(radar_readers), 1)
+        radar_reader = radar_readers[ref_radar_id]
 
-        self.assertEqual(tracks_reader.get_tracks(), ref_cuboid_tracks)
+        self.assertEqual(radar_reader.instance_name, ref_radar_id)
+        self.assertEqual(radar_reader.generic_meta_data, ref_radar_generic_meta_data)
+
+        self.assertTrue(
+            np.all(radar_reader.frames_timestamps_us == np.stack([ref_radar_timestamps_us0, ref_radar_timestamps_us1]))
+        )
+
+        self.assertTrue(
+            np.all(radar_reader.get_frame_timestamps_us(ref_radar_timestamps_us0[1]) == ref_radar_timestamps_us0)
+        )
+        self.assertTrue(
+            np.all(radar_reader.get_frame_timestamps_us(ref_radar_timestamps_us1[1]) == ref_radar_timestamps_us1)
+        )
+
+        self.assertEqual(radar_reader.get_frame_point_cloud_size(ref_radar_timestamps_us0[1]), 5)
+        self.assertEqual(radar_reader.get_frame_point_cloud_size(ref_radar_timestamps_us1[1]), 8)
+
+        ref_point_cloud_data_names = [
+            "xyz_m",
+            "timestamp_us",
+        ]
+        self.assertEqual(
+            set(radar_reader.get_frame_point_cloud_data_names(ref_radar_timestamps_us0[1])),
+            set(ref_point_cloud_data_names),
+        )
+        self.assertEqual(
+            set(radar_reader.get_frame_point_cloud_data_names(ref_radar_timestamps_us1[1])),
+            set(ref_point_cloud_data_names),
+        )
+
+        for name in ref_point_cloud_data_names:
+            self.assertTrue(radar_reader.has_frame_point_cloud_data(ref_radar_timestamps_us0[1], name))
+            self.assertTrue(radar_reader.has_frame_point_cloud_data(ref_radar_timestamps_us1[1], name))
+
+        self.assertTrue(
+            np.all(radar_reader.get_frame_point_cloud_data(ref_radar_timestamps_us0[1], "xyz_m") == ref_radar_xyz_m0)
+        )
+        self.assertTrue(
+            np.all(radar_reader.get_frame_point_cloud_data(ref_radar_timestamps_us1[1], "xyz_m") == ref_radar_xyz_m1)
+        )
+
+        self.assertTrue(
+            np.all(
+                radar_reader.get_frame_point_cloud_data(ref_radar_timestamps_us0[1], "timestamp_us")
+                == ref_radar_timestamp_us0
+            )
+        )
+        self.assertTrue(
+            np.all(
+                radar_reader.get_frame_point_cloud_data(ref_radar_timestamps_us1[1], "timestamp_us")
+                == ref_radar_timestamp_us1
+            )
+        )
+
+        self.assertEqual(
+            names := radar_reader.get_frame_generic_data_names(ref_radar_timestamps_us0[1]),
+            list(ref_radar_generic_data0.keys()),
+        )
+        for name in names:
+            self.assertIsNone(
+                np.testing.assert_array_equal(
+                    radar_reader.get_frame_generic_data(ref_radar_timestamps_us0[1], name),
+                    ref_radar_generic_data0[name],
+                )
+            )
+        self.assertEqual(
+            names := radar_reader.get_frame_generic_data_names(ref_radar_timestamps_us1[1]),
+            list(ref_radar_generic_data1.keys()),
+        )
+        for name in names:
+            self.assertIsNone(
+                np.testing.assert_array_equal(
+                    radar_reader.get_frame_generic_data(ref_radar_timestamps_us1[1], name),
+                    ref_radar_generic_data1[name],
+                )
+            )
+
+        self.assertEqual(
+            radar_reader.get_frame_generic_meta_data(ref_radar_timestamps_us0[1]), ref_radar_generic_metadata0
+        )
+        self.assertEqual(
+            radar_reader.get_frame_generic_meta_data(ref_radar_timestamps_us1[1]), ref_radar_generic_metadata1
+        )
+
+        # check cuboid data
+        cuboid_readers = store_reader.open_component_readers(CuboidsComponent.Reader)
+
+        self.assertEqual(len(cuboid_readers), 1)
+        cuboid_reader = cuboid_readers[ref_cuboids_id]
+        self.assertEqual(cuboid_reader.instance_name, ref_cuboids_id)
+        self.assertEqual(cuboid_reader.generic_meta_data, ref_cuboids_generic_meta_data)
+
+        self.assertEqual(list(cuboid_reader.get_observations()), ref_cuboid_observations)

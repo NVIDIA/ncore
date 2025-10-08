@@ -16,7 +16,11 @@ import sys
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Tuple, Type, TypeVar, Union, cast
+from typing import Dict, Generator, List, Literal, Optional, Tuple, Type, TypeVar, Union, cast
+
+from numcodecs import Blosc
+
+from ncore.impl.common.common import HalfClosedInterval
 
 
 if sys.version_info >= (3, 11):
@@ -33,7 +37,7 @@ import zarr
 
 from ncore.impl.data import data, stores, types
 
-from .types import CuboidTrack
+from .types import CuboidTrackObservation
 
 
 VERSION = "4.0"
@@ -46,13 +50,14 @@ class SequenceComponentStoreWriter:
         self,
         output_dir_path: Path,
         store_base_name: str,
+        # Identifier of the sequence
         sequence_id: str,
-        generic_meta_data: Dict[
-            str, data.JsonLike
-        ],  # generic sequence meta-data (needs to be json-serializable) - will be stored into each component store group
+        # The time range for the sequence
+        sequence_timestamp_interval_us: HalfClosedInterval,
+        # Generic sequence meta-data (needs to be json-serializable) - will be stored into each component store group
+        generic_meta_data: Dict[str, data.JsonLike],
         # Zarr store type: either serialize as .itar archive store (default / production) or plain "directory" store (simpler for introspection / asynchronous / external setup)
         store_type: Literal["itar", "directory"] = "itar",  # valid values: ['itar', 'directory']
-        validate_on_finalize: bool = True,
     ):
         """
         Instantiate sequence store writer and initialize the default data groups and file stores for a given sequence and sensor IDs
@@ -62,6 +67,7 @@ class SequenceComponentStoreWriter:
         self._store_base_name = store_base_name
 
         self._sequence_id = sequence_id
+        self._sequence_timestamp_interval_us = sequence_timestamp_interval_us
         self._generic_meta_data = generic_meta_data
 
         # Individual stores for each group are initialized lazily on-demand (indexed tar file or zarr directories)
@@ -69,12 +75,11 @@ class SequenceComponentStoreWriter:
             str, Tuple[zarr.Group, Path]
         ] = {}  # maps component group names to stores, store path, and base groups
         self._store_type = store_type
-        self._validate_on_finalize = validate_on_finalize
 
         # registered component writers
         self._component_writers: dict[
             str, ComponentWriter
-        ] = {}  # maps from component name to associated component writer
+        ] = {}  # maps from component id to associated component writer
 
     def get_base_group(self, component_group_name: Optional[str]) -> zarr.Group:
         """Lazily initializes ncore base-groups and underlying stores on demand"""
@@ -115,6 +120,10 @@ class SequenceComponentStoreWriter:
         root_group.attrs.put(
             {
                 "sequence_id": self._sequence_id,
+                "sequence_timestamp_interval_us": {
+                    "start": self._sequence_timestamp_interval_us.start,
+                    "stop": self._sequence_timestamp_interval_us.stop,
+                },
                 "generic_meta_data": self._generic_meta_data,
                 "version": VERSION,
                 "component_group_name": component_group_name,
@@ -135,12 +144,6 @@ class SequenceComponentStoreWriter:
         # Finalize all writers
         for component_writer in self._component_writers.values():
             component_writer.finalize()
-
-        # Validate all writers
-        if self._validate_on_finalize:
-            for component_name, component_writer in self._component_writers.items():
-                if not component_writer.validate():
-                    raise RuntimeError(f"Validation of component writer {component_name} failed")
 
         # Make sure the stores are consolidated and closed
         ret = []
@@ -170,12 +173,10 @@ class SequenceComponentStoreWriter:
         assert len(component_instance_name) > 0, "Component instance name must not be empty"
 
         # Create component name from component base name and component instance name
-        component_base_name = component_writer_type.get_component_base_name()
-        component_name = f"{component_base_name}:{component_instance_name}"
+        component_base_name = component_writer_type.get_component_name()
+        component_id = f"{component_base_name}:{component_instance_name}"
 
-        assert component_name not in self._component_writers, (
-            f"Component writer for {component_name} already registered"
-        )
+        assert component_id not in self._component_writers, f"Component writer for {component_id} already registered"
 
         # Create the component in the requested group, separated by component base name
         component_group = (
@@ -184,6 +185,8 @@ class SequenceComponentStoreWriter:
 
         # Prepare meta-data
         meta_data = {
+            "component_name": component_base_name,
+            "component_instance_name": component_instance_name,
             "component_version": component_writer_type.get_component_version(),
             "generic_meta_data": generic_meta_data,
         }
@@ -191,7 +194,9 @@ class SequenceComponentStoreWriter:
         # Store meta-data
         component_group.attrs.put(meta_data)
 
-        self._component_writers[component_name] = (component_writer := component_writer_type(component_group))
+        self._component_writers[component_id] = (
+            component_writer := component_writer_type(component_group, self._sequence_timestamp_interval_us)
+        )
 
         return component_writer
 
@@ -262,16 +267,23 @@ class SequenceComponentStoreReader:
                 component_root_attrs = dict(component_root.attrs.items())
 
                 component_store_sequence_id = component_root_attrs["sequence_id"]
+                component_store_sequence_timestamp_interval_us = HalfClosedInterval(
+                    component_root_attrs["sequence_timestamp_interval_us"]["start"],
+                    component_root_attrs["sequence_timestamp_interval_us"]["stop"],
+                )
                 component_store_generic_meta_data = component_root_attrs["generic_meta_data"]
                 component_root_version = component_root_attrs["version"]
 
                 if not self._component_stores:
                     self._sequence_id: str = component_store_sequence_id
+                    self._sequence_timestamp_interval_us = component_store_sequence_timestamp_interval_us
                     self._generic_meta_data: Dict[str, data.JsonLike] = component_store_generic_meta_data
                     self._version: str = component_root_version
 
                 if not self._sequence_id == component_store_sequence_id:
                     raise RuntimeError("Can't load component store from different sequences")
+                if not self._sequence_timestamp_interval_us == component_store_sequence_timestamp_interval_us:
+                    raise RuntimeError("Can't load component store with different sequence timestamp intervals")
                 if not self._generic_meta_data == component_store_generic_meta_data:
                     raise RuntimeError("Can't load component store with different generic meta-data")
                 if not self._version == component_root_version:
@@ -292,6 +304,10 @@ class SequenceComponentStoreReader:
         return self._sequence_id
 
     @property
+    def sequence_timestamp_interval_us(self) -> HalfClosedInterval:
+        return self._sequence_timestamp_interval_us
+
+    @property
     def generic_meta_data(self) -> Dict[str, data.JsonLike]:
         return self._generic_meta_data
 
@@ -303,10 +319,8 @@ class SequenceComponentStoreReader:
 
         ret = {}
 
-        for component_store in self._component_stores.values():
-            component_root_group = component_store[component_store.attrs["component_root_group_name"]]
-
-            if (component_group := component_root_group.get(component_reader_type.get_component_base_name())) is None:
+        for component_root_group in self._component_stores.values():
+            if (component_group := component_root_group.get(component_reader_type.get_component_name())) is None:
                 continue
 
             # instantiate a reader for each of the components
@@ -327,7 +341,7 @@ class SequenceComponentStoreReader:
 class ComponentWriter(ABC):
     @staticmethod
     @abstractmethod
-    def get_component_base_name() -> str:
+    def get_component_name() -> str:
         """Returns the base name of the component writer"""
         ...
 
@@ -337,23 +351,20 @@ class ComponentWriter(ABC):
         """Returns the version of the current component writer"""
         ...
 
-    def __init__(self, component_group: zarr.Group) -> None:
-        """Initializes a component writer targeting the given component group"""
+    def __init__(self, component_group: zarr.Group, sequence_timestamp_interval_us: HalfClosedInterval) -> None:
+        """Initializes a component writer targeting the given component group and sequence time interval"""
         self._group = component_group
+        self._sequence_timestamp_interval_us = sequence_timestamp_interval_us
 
     def finalize(self) -> None:
         """Overwrite to perform final operations after all user-data was written"""
         pass
 
-    def validate(self) -> bool:
-        """Overwrite to validates the writen data"""
-        return True
-
 
 class ComponentReader(ABC):
     @staticmethod
     @abstractmethod
-    def get_component_base_name() -> str:
+    def get_component_name() -> str:
         """Returns the base name of the current component"""
 
     @staticmethod
@@ -392,26 +403,27 @@ def validate_frame_name(name: str) -> str:
     return name
 
 
-class PosesSetComponent:
+class PosesComponent:
     """Represents a generic set of static / dynamic poses (rigid transformations) between named coordinate frames"""
 
-    COMPONENT_BASE_NAME: str = "poses_set"
+    COMPONENT_NAME: str = "poses"
 
     class Writer(ComponentWriter):
-        """Poses set data component writer"""
+        """Poses data component writer"""
 
         @staticmethod
-        def get_component_base_name() -> str:
+        def get_component_name() -> str:
             """Returns the base name of the current component'"""
-            return PosesSetComponent.COMPONENT_BASE_NAME
+            return PosesComponent.COMPONENT_NAME
 
         @staticmethod
         def get_component_version() -> str:
             """Returns the version of the current component writer"""
             return "0.1"
 
-        def __init__(self, component_group: zarr.Group):
-            super().__init__(component_group)
+        def __init__(self, component_group: zarr.Group, sequence_timestamp_interval_us: HalfClosedInterval) -> None:
+            """Initializes the current component writer targeting the given component group and sequence time interval"""
+            super().__init__(component_group, sequence_timestamp_interval_us)
 
             self.data: Dict = {"static_poses": {}, "dynamic_poses": {}}
 
@@ -423,8 +435,8 @@ class PosesSetComponent:
 
         def store_static_pose(
             self,
-            source_frame: str,
-            target_frame: str,
+            source_frame_id: str,
+            target_frame_id: str,
             pose: np.ndarray,  #: Source-to-target SE3 transformation (float32/64, [4,4])
         ) -> "Self":
             """Store a static pose (rigid transformation) between two named coordinate frames.
@@ -436,20 +448,20 @@ class PosesSetComponent:
             assert np.issubdtype(pose.dtype, np.floating), "Poses must be of float type"
             assert np.all(pose[3, :] == [0.0, 0.0, 0.0, 1.0]), "Invalid SE3 transformation"
 
-            key = f"T_{validate_frame_name(source_frame)}_{validate_frame_name(target_frame)}"
-            inv_key = f"T_{target_frame}_{source_frame}"
+            key = (validate_frame_name(source_frame_id), validate_frame_name(target_frame_id))
+            inv_key = key[::-1]
 
             assert key not in self.data["static_poses"], f"Static pose {key} already exists"
             assert inv_key not in self.data["static_poses"], f"Inverse static pose {inv_key} already exists"
 
-            self.data["static_poses"][key] = {"pose": pose.tolist(), "dtype": str(pose.dtype)}
+            self.data["static_poses"][str(key)] = {"pose": pose.tolist(), "dtype": str(pose.dtype)}
 
             return self
 
-        def store_dynamic_poses(
+        def store_dynamic_pose(
             self,
-            source_frame: str,
-            target_frame: str,
+            source_frame_id: str,
+            target_frame_id: str,
             poses: np.ndarray,  #: Source-to-target SE3 transformation trajectory (float32/64, [N,4,4])
             timestamps_us: np.ndarray,  #: All source-to-target transformation timestamps of the trajectory (uint64, [N,])
         ) -> "Self":
@@ -457,7 +469,7 @@ class PosesSetComponent:
 
             Makes sure the inverse transformation is not already stored."""
 
-            # Sanity checks
+            # Sanity / timestamp consistency checks
             assert poses.shape[1:] == (4, 4)
             assert np.issubdtype(poses.dtype, np.floating), "Poses must be of float type"
             assert np.all(poses[:, 3, :] == [0.0, 0.0, 0.0, 1.0]), "Invalid SE3 transformations"
@@ -467,45 +479,72 @@ class PosesSetComponent:
 
             assert len(poses) == len(timestamps_us)
 
-            key = f"T_{validate_frame_name(source_frame)}_{validate_frame_name(target_frame)}"
-            inv_key = f"T_{target_frame}_{source_frame}"
+            assert len(poses) > 1, "At least two poses required for a dynamic pose trajectory to support interpolation"
+            assert self._sequence_timestamp_interval_us in HalfClosedInterval(
+                timestamps_us[0].item(), timestamps_us[-1].item() + 1
+            ), "Dynamic poses samples must be fully contained in the sequence time range"
+
+            key = (validate_frame_name(source_frame_id), validate_frame_name(target_frame_id))
+            inv_key = key[::-1]
 
             assert key not in self.data["dynamic_poses"], f"Dynamic poses {key} already exists"
             assert inv_key not in self.data["dynamic_poses"], f"Inverse dynamic poses {inv_key} already exists"
 
-            self.data["dynamic_poses"][key] = {"poses": poses.tolist(), "timestamps_us": timestamps_us.tolist()}
+            self.data["dynamic_poses"][str(key)] = {
+                "poses": poses.tolist(),
+                "timestamps_us": timestamps_us.tolist(),
+                "dtype": str(poses.dtype),
+            }
 
             return self
 
     class Reader(ComponentReader):
         @staticmethod
-        def get_component_base_name() -> str:
+        def get_component_name() -> str:
             """Returns the base name of the current component"""
-            return PosesSetComponent.COMPONENT_BASE_NAME
+            return PosesComponent.COMPONENT_NAME
 
         @staticmethod
         def supports_component_version(version: str) -> bool:
             """Returns true if the component version is supported by the reader"""
             return version == "0.1"
 
-        def get_static_pose(self, source_frame: str, target_frame: str) -> np.ndarray:
+        def get_static_poses(self) -> Generator[Tuple[Tuple[str, str], np.ndarray]]:
+            """Returns all static poses (rigid transformations) between named coordinate frames, if available"""
+
+            for key, static_pose in self._group["static_poses"].attrs.items():
+                yield eval(key), np.array(static_pose["pose"], dtype=static_pose["dtype"])
+
+        def get_dynamic_poses(self) -> Generator[Tuple[Tuple[str, str], Tuple[np.ndarray, np.ndarray]]]:
+            """Returns all dynamic poses (time-dependent rigid transformations) between named coordinate frames, if available"""
+
+            for key, dynamic_poses in self._group["dynamic_poses"].attrs.items():
+                yield (
+                    eval(key),
+                    (
+                        np.array(dynamic_poses["poses"], dtype=dynamic_poses["dtype"]),
+                        np.array(dynamic_poses["timestamps_us"], dtype=np.uint64),
+                    ),
+                )
+
+        def get_static_pose(self, source_frame_id: str, target_frame_id: str) -> np.ndarray:
             """Returns static pose (rigid transformation) between two named coordinate frames, if available"""
 
             if (
                 static_pose := self._group["static_poses"].attrs.get(
-                    key := f"T_{validate_frame_name(source_frame)}_{validate_frame_name(target_frame)}"
+                    key := str((validate_frame_name(source_frame_id), validate_frame_name(target_frame_id)))
                 )
             ) is None:
                 raise KeyError(f"Static pose {key} not found")
 
             return np.array(static_pose["pose"], dtype=np.float64)
 
-        def get_dynamic_poses(self, source_frame: str, target_frame: str) -> Tuple[np.ndarray, np.ndarray]:
+        def get_dynamic_pose(self, source_frame_id: str, target_frame_id: str) -> Tuple[np.ndarray, np.ndarray]:
             """Returns dynamic poses (time-dependent rigid transformations) between two named coordinate frames, if available"""
 
             if (
                 dynamic_poses := self._group["dynamic_poses"].attrs.get(
-                    key := f"T_{validate_frame_name(source_frame)}_{validate_frame_name(target_frame)}"
+                    key := str((validate_frame_name(source_frame_id), validate_frame_name(target_frame_id)))
                 )
             ) is None:
                 raise KeyError(f"Dynamic poses {key} not found")
@@ -515,26 +554,27 @@ class PosesSetComponent:
             )
 
 
-class SensorIntrinsicsComponent:
+class IntrinsicsComponent:
     """Sensor intrinsic calibration data component"""
 
-    COMPONENT_BASE_NAME: str = "sensor_intrinsics"
+    COMPONENT_NAME: str = "intrinsics"
 
     class Writer(ComponentWriter):
         """Sensor intrinsics data component writer"""
 
         @staticmethod
-        def get_component_base_name() -> str:
+        def get_component_name() -> str:
             """Returns the base name of the current intrinsic calibration component"""
-            return SensorIntrinsicsComponent.COMPONENT_BASE_NAME
+            return IntrinsicsComponent.COMPONENT_NAME
 
         @staticmethod
         def get_component_version() -> str:
             """Returns the version of the current intrinsic calibration component"""
             return "0.1"
 
-        def __init__(self, component_group: zarr.Group):
-            super().__init__(component_group)
+        def __init__(self, component_group: zarr.Group, sequence_timestamp_interval_us: HalfClosedInterval) -> None:
+            """Initializes the current component writer targeting the given component group and sequence time interval"""
+            super().__init__(component_group, sequence_timestamp_interval_us)
 
             self._group.create_group("cameras")
             self._group.create_group("lidars")
@@ -544,8 +584,6 @@ class SensorIntrinsicsComponent:
             camera_id: str,
             # intrinsics
             camera_model_parameters: types.ConcreteCameraModelParametersUnion,
-            # sensor constants
-            mask_image: Optional[PILImage.Image],
         ) -> "Self":
             """Store camera-associated intrinsics"""
 
@@ -553,16 +591,7 @@ class SensorIntrinsicsComponent:
 
             meta_data = data.encode_camera_model_parameters(camera_model_parameters)
 
-            (camera_grp := self._group["cameras"].create_group(camera_id)).attrs.put(meta_data)
-
-            # Store mask if available
-            if mask_image:
-                with io.BytesIO() as buffer:
-                    FORMAT = "png"
-                    mask_image.save(buffer, format=FORMAT, optimize=True)  # encodes as png
-                    camera_grp.create_dataset("mask", data=np.asarray(buffer.getvalue()), compressor=None).attrs[
-                        "format"
-                    ] = FORMAT
+            self._group["cameras"].create_group(camera_id).attrs.put(meta_data)
 
             return self
 
@@ -582,12 +611,12 @@ class SensorIntrinsicsComponent:
             return self
 
     class Reader(ComponentReader):
-        """Sensor intrinsics data component writer"""
+        """Sensor intrinsics data component reader"""
 
         @staticmethod
-        def get_component_base_name() -> str:
+        def get_component_name() -> str:
             """Returns the base name of the current component"""
-            return SensorIntrinsicsComponent.COMPONENT_BASE_NAME
+            return IntrinsicsComponent.COMPONENT_NAME
 
         @staticmethod
         def supports_component_version(version: str) -> bool:
@@ -598,35 +627,113 @@ class SensorIntrinsicsComponent:
             """Returns the camera model associated with the requested camera sensor"""
             return data.decode_camera_model_parameters(self._group["cameras"][camera_id].attrs)
 
-        def get_camera_mask_image(self, camera_id: str) -> Optional[PILImage.Image]:
-            """Returns constant camera mask image, if available"""
-
-            if (mask_dataset := self._group["cameras"][camera_id].get("mask", default=None)) is None:
-                return None
-
-            return PILImage.open(io.BytesIO(mask_dataset[()]), formats=[mask_dataset.attrs["format"]])
-
         def get_lidar_model_parameters(self, lidar_id: str) -> types.ConcreteLidarModelParametersUnion:
             """Returns the lidar model associated with the requested lidar sensor"""
             return data.decode_lidar_model_parameters(self._group["lidars"][lidar_id].attrs)
 
 
+class MasksComponent:
+    """Sensor masks data component"""
+
+    COMPONENT_NAME: str = "masks"
+
+    class Writer(ComponentWriter):
+        """Sensor masks data component writer"""
+
+        @staticmethod
+        def get_component_name() -> str:
+            """Returns the base name of the current sensor masks component"""
+            return MasksComponent.COMPONENT_NAME
+
+        @staticmethod
+        def get_component_version() -> str:
+            """Returns the version of the current sensor masks component"""
+            return "0.1"
+
+        def __init__(self, component_group: zarr.Group, sequence_timestamp_interval_us: HalfClosedInterval) -> None:
+            """Initializes the current component writer targeting the given component group and sequence time interval"""
+            super().__init__(component_group, sequence_timestamp_interval_us)
+
+            self._group.create_group("cameras")
+
+        def store_camera_masks(
+            self,
+            camera_id: str,
+            # named camera sensor masks
+            mask_images: Dict[str, PILImage.Image],
+        ) -> "Self":
+            """Store camera-associated masks"""
+
+            # Store mask names
+            (camera_grp := self._group["cameras"].create_group(camera_id)).attrs.put(
+                {"mask_names": list(mask_images.keys())}
+            )
+
+            # Store mask images
+            for mask_name, mask_image in mask_images.items():
+                with io.BytesIO() as buffer:
+                    FORMAT = "png"
+                    mask_image.save(buffer, format=FORMAT, optimize=True)  # encodes as png
+                    # store mask data (uncompressed, as already encoded)
+                    camera_grp.create_dataset(mask_name, data=np.asarray(buffer.getvalue()), compressor=None).attrs[
+                        "format"
+                    ] = FORMAT
+
+            return self
+
+    class Reader(ComponentReader):
+        """Sensor masks data component reader"""
+
+        @staticmethod
+        def get_component_name() -> str:
+            """Returns the base name of the current component"""
+            return MasksComponent.COMPONENT_NAME
+
+        @staticmethod
+        def supports_component_version(version: str) -> bool:
+            """Returns true if the component version is supported by the reader"""
+            return version == "0.1"
+
+        def get_camera_mask_names(self, camera_id: str) -> List[str]:
+            """Returns all constant camera mask names"""
+
+            return list(self._group["cameras"][camera_id].attrs.get("mask_names", []))
+
+        def get_camera_mask_image(self, camera_id: str, mask_name: str) -> PILImage.Image:
+            """Returns constant named camera mask image"""
+
+            mask_dataset = self._group["cameras"][camera_id][mask_name]
+
+            return PILImage.open(io.BytesIO(mask_dataset[()]), formats=[mask_dataset.attrs["format"]])
+
+        def get_camera_mask_images(self, camera_id: str) -> Generator[Tuple[str, PILImage.Image]]:
+            """Returns all constant named camera mask images"""
+
+            for mask_name in self.get_camera_mask_names(camera_id):
+                yield mask_name, self.get_camera_mask_image(camera_id, mask_name)
+
+
 class BaseSensorComponentWriter(ComponentWriter):
     """Base class for all sensor component writers"""
 
-    def __init__(self, component_group: zarr.Group):
-        super().__init__(component_group)
+    def __init__(self, component_group: zarr.Group, sequence_timestamp_interval_us: HalfClosedInterval) -> None:
+        """Initializes the current component writer targeting the given component group and sequence time interval"""
+        super().__init__(component_group, sequence_timestamp_interval_us)
 
         self._group.create_group("frames")
+
+        self._frames_timestamps_us: Dict[
+            int, int
+        ] = {}  # collect end-of-frame timestamps mapping to start of frame timestamps
 
     def finalize(self):
         """Perform final operations after all user-data was written to the sensor component"""
 
         # Collect all frame timestamps to be stored as global property (supporting no frames at all and out-of-order frames)
-        frames_timestamps_us = [
-            self._group["frames"][frame_grp]["timestamps_us"][...] for frame_grp in sorted(self._group["frames"].keys())
-        ]
-        frames_timestamps_us = np.array(frames_timestamps_us, dtype=np.uint64).reshape((-1, 2))
+        frames_timestamps_us = np.array(
+            [(self._frames_timestamps_us[end], end) for end in sorted(self._frames_timestamps_us.keys())],
+            dtype=np.uint64,
+        ).reshape((-1, 2))
 
         # Validate all start/end-of-frame timestamps to be monotonically increasing
         assert np.all(frames_timestamps_us[:-1, 0] < frames_timestamps_us[1:, 0]), (
@@ -636,8 +743,8 @@ class BaseSensorComponentWriter(ComponentWriter):
             "End of frame timestamps are not monotonically increasing"
         )
 
-        # Store as global property
-        self._group.create_dataset("frames_timestamps_us", data=frames_timestamps_us)
+        # Store as meta-data of frames group
+        self._group["frames"].attrs.put({"frames_timestamps_us": frames_timestamps_us.tolist()})
 
     def _get_frame_group(
         self,
@@ -651,26 +758,36 @@ class BaseSensorComponentWriter(ComponentWriter):
         else:
             frame_id = timestamps_us
 
-        return self._group["frames"].require_group(util.padded_index_string(frame_id, index_digits=20))
+        return self._group["frames"].require_group(str(frame_id))
 
     def _store_base_frame(
         self,
         # start-of-frame / end-of-frame timestamps
-        timestamps_us: np.ndarray,
+        frame_timestamps_us: np.ndarray,
         # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
         generic_data: Dict[str, np.ndarray],
         generic_meta_data: Dict[str, data.JsonLike],
     ) -> zarr.Group:
-        # Sanity / consistency checks
-        assert np.shape(timestamps_us) == (2,)
-        assert timestamps_us.dtype == np.dtype("uint64")
-        assert timestamps_us[1] >= timestamps_us[0]
+        # Sanity / timestamp consistency checks
+        assert np.shape(frame_timestamps_us) == (2,)
+        assert frame_timestamps_us.dtype == np.dtype("uint64")
+        assert frame_timestamps_us[1] >= frame_timestamps_us[0]
+
+        assert frame_timestamps_us[0].item() in self._sequence_timestamp_interval_us, (
+            "Frame start timestamp must be contained in the sequence time range"
+        )
+        assert frame_timestamps_us[1].item() in self._sequence_timestamp_interval_us, (
+            "Frame end timestamp must be contained in the sequence time range"
+        )
 
         # Initialize frame group
-        frame_group = self._get_frame_group(timestamps_us)
+        frame_group = self._get_frame_group(frame_timestamps_us)
 
-        # Store pose data
-        frame_group.create_dataset("timestamps_us", data=timestamps_us)
+        # Store timestamp data
+        assert frame_timestamps_us[1].item() not in self._frames_timestamps_us, (
+            "Frame with the same end-of-frame timestamp already exists"
+        )
+        self._frames_timestamps_us[frame_timestamps_us[1].item()] = frame_timestamps_us[0].item()
 
         # Store additional generic frame data and meta-data (not dimension / dtype checked)
         (frame_generic_data_group := frame_group.create_group("generic_data")).attrs.put(generic_meta_data)
@@ -690,6 +807,20 @@ class BaseSensorComponentWriter(ComponentWriter):
 class BaseSensorComponentReader(ComponentReader):
     """Base class for all sensor component readers"""
 
+    def __init__(self, component_instance_name: str, component_group: zarr.Group) -> None:
+        """Initializes a component reader for a given component instance name and group"""
+        super().__init__(component_instance_name, component_group)
+
+        if "frames" not in self._group:
+            raise RuntimeError("Sensor component doesn't contain any frames")
+
+        # preload frame timestamps and create map
+        self._frames_timestamps_us = np.array(self._group["frames"].attrs["frames_timestamps_us"], dtype=np.uint64)
+        self._frame_end_to_frame_timestamps_us = {
+            end: np.array([self._frames_timestamps_us[i, 0], end], dtype=np.uint64)
+            for i, end in enumerate(self._frames_timestamps_us[:, 1])
+        }
+
     def _get_frame_group(
         self,
         # end-of-frame timestamp, or start-of-frame / end-of-frame timestamps
@@ -702,14 +833,14 @@ class BaseSensorComponentReader(ComponentReader):
         else:
             frame_id = timestamps_us
 
-        return self._group["frames"][util.padded_index_string(frame_id, index_digits=20)]
+        return self._group["frames"][str(frame_id)]
 
     @property
     def frames_timestamps_us(self) -> np.ndarray:
-        return np.array(self._group["frames_timestamps_us"])
+        return np.array(self._group["frames"].attrs["frames_timestamps_us"], dtype=np.uint64)
 
     def get_frame_timestamps_us(self, timestamp_us: int) -> np.ndarray:
-        return np.array(self._get_frame_group(timestamp_us)["timestamps_us"])
+        return self._frame_end_to_frame_timestamps_us[timestamp_us]
 
     # Generic per-frame data
     def get_frame_generic_data_names(self, timestamp_us: int) -> List[str]:
@@ -728,8 +859,9 @@ class BaseSensorComponentReader(ComponentReader):
         return np.array(self._get_frame_group(timestamp_us)["generic_data"][name])
 
     def get_frame_generic_meta_data(self, timestamp_us: int) -> Dict[str, data.JsonLike]:
-        generic_data_group = self._get_frame_group(timestamp_us)["generic_data"]
-        return dict(generic_data_group.attrs)
+        """Returns generic frame meta-data for a specific frame"""
+
+        return dict(self._get_frame_group(timestamp_us)["generic_data"].attrs)
 
 
 class BasePointCloudSensorComponentWriter(BaseSensorComponentWriter):
@@ -738,13 +870,13 @@ class BasePointCloudSensorComponentWriter(BaseSensorComponentWriter):
     def _store_frame_point_cloud(
         self,
         # start-of-frame / end-of-frame timestamps
-        timestamps_us: np.ndarray,
+        frame_timestamps_us: np.ndarray,
         # point-cloud components - need to have same lenght consistent with point count dimension
         point_count: int,
         point_cloud_data: Dict[str, np.ndarray],
     ) -> zarr.Group:
         # Initialize point cloud group
-        (point_cloud_group := self._get_frame_group(timestamps_us).create_group("point_cloud")).attrs.put(
+        (point_cloud_group := self._get_frame_group(frame_timestamps_us).create_group("point_cloud")).attrs.put(
             {"point_count": point_count}
         )
 
@@ -791,15 +923,15 @@ class BasePointCloudSensorComponentReader(BaseSensorComponentReader):
 class CameraSensorComponent:
     """Camera sensor data component"""
 
-    COMPONENT_BASE_NAME: str = "camera_sensor"
+    COMPONENT_NAME: str = "cameras"
 
     class Writer(BaseSensorComponentWriter):
         """Camera sensor data component writer"""
 
         @staticmethod
-        def get_component_base_name() -> str:
+        def get_component_name() -> str:
             """Returns the base name of the current camera sensor component"""
-            return CameraSensorComponent.COMPONENT_BASE_NAME
+            return CameraSensorComponent.COMPONENT_NAME
 
         @staticmethod
         def get_component_version() -> str:
@@ -812,13 +944,13 @@ class CameraSensorComponent:
             image_binary_data: bytes,
             image_format: str,
             # start-of-frame / end-of-frame timestamps
-            timestamps_us: np.ndarray,
+            frame_timestamps_us: np.ndarray,
             # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
             generic_data: Dict[str, np.ndarray],
             generic_meta_data: Dict[str, data.JsonLike],
         ) -> "Self":
             # Initialize frame
-            frame_group = self._store_base_frame(timestamps_us, generic_data, generic_meta_data)
+            frame_group = self._store_base_frame(frame_timestamps_us, generic_data, generic_meta_data)
 
             # Store image data (uncompressed, as already encoded)
             frame_group.create_dataset("image", data=np.asarray(image_binary_data), compressor=None).attrs["format"] = (
@@ -831,32 +963,50 @@ class CameraSensorComponent:
         """Camera sensor data component reader"""
 
         @staticmethod
-        def get_component_base_name() -> str:
+        def get_component_name() -> str:
             """Returns the base name of the current component"""
-            return CameraSensorComponent.COMPONENT_BASE_NAME
+            return CameraSensorComponent.COMPONENT_NAME
 
         @staticmethod
         def supports_component_version(version: str) -> bool:
             """Returns true if the component version is supported by the reader"""
             return version == "0.1"
 
-        def get_frame_image_binary_data(self, timestamp_us: int) -> Tuple[bytes, str]:
-            image_group = self._get_frame_group(timestamp_us)["image"]
-            return bytes(image_group[()]), str(image_group.attrs["format"])
+        class EncodedImageDataHandle:
+            """References encoded image data without loading it"""
+
+            def __init__(self, image_dataset: zarr.Array):
+                self._image_dataset = image_dataset
+
+            def get_data(self) -> types.EncodedImageData:
+                """Loads the referenced encoded image data to memory"""
+                return types.EncodedImageData(self._image_dataset[()], self._image_dataset.attrs["format"])
+
+        def get_frame_handle(self, timestamp_us: int) -> EncodedImageDataHandle:
+            """Returns the frame's encoded image data"""
+            return self.EncodedImageDataHandle(self._get_frame_group(timestamp_us)["image"])
+
+        def get_frame_data(self, timestamp_us: int) -> types.EncodedImageData:
+            """Returns the frame's encoded image data"""
+            return self.get_frame_handle(timestamp_us).get_data()
+
+        def get_frame_image(self, timestamp_us: int) -> PILImage.Image:
+            """Returns the frame's decoded image data"""
+            return self.get_frame_data(timestamp_us).get_decoded_image()
 
 
 class LidarSensorComponent:
     """Lidar sensor data component"""
 
-    COMPONENT_BASE_NAME: str = "lidar_sensor"
+    COMPONENT_NAME: str = "lidars"
 
     class Writer(BasePointCloudSensorComponentWriter):
         """Lidar sensor data component writer"""
 
         @staticmethod
-        def get_component_base_name() -> str:
+        def get_component_name() -> str:
             """Returns the base name of the current lidar sensor component"""
-            return LidarSensorComponent.COMPONENT_BASE_NAME
+            return LidarSensorComponent.COMPONENT_NAME
 
         @staticmethod
         def get_component_version() -> str:
@@ -869,9 +1019,9 @@ class LidarSensorComponent:
             xyz_m: np.ndarray,  # per-point metric coordinates relative to the sensor frame at measure time (raw / not motion-compensated, needs to be non-zero) (float32, [n, 3])
             intensity: np.ndarray,  # per-point intensity normalized to [0.0, 1.0] range (float32, [n])
             timestamp_us: np.ndarray,  # per-point point timestamp in microseconds (uint64, [n])
-            model_element: Optional[np.ndarray],  # per-point model element indices, if applicable (uint16, [n, 2])
+            model_element: np.ndarray,  # per-point model element indices, if applicable (uint16, [n, 2])
             # start-of-frame / end-of-frame timestamps
-            timestamps_us: np.ndarray,
+            frame_timestamps_us: np.ndarray,
             # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
             generic_data: Dict[str, np.ndarray],
             generic_meta_data: Dict[str, data.JsonLike],
@@ -883,7 +1033,7 @@ class LidarSensorComponent:
             point_count = len(xyz_m)
 
             # Initialize frame
-            self._store_base_frame(timestamps_us, generic_data, generic_meta_data)
+            self._store_base_frame(frame_timestamps_us, generic_data, generic_meta_data)
 
             point_cloud_data = {
                 "xyz_m": xyz_m,
@@ -895,18 +1045,17 @@ class LidarSensorComponent:
 
             assert timestamp_us.dtype == np.dtype("uint64")
             if point_count:
-                assert (timestamps_us[0] <= timestamp_us.min()) and (timestamp_us.max() <= timestamps_us[1]), (
-                    "Point timestamps outside frame time bounds"
-                )
+                assert (frame_timestamps_us[0] <= timestamp_us.min()) and (
+                    timestamp_us.max() <= frame_timestamps_us[1]
+                ), "Point timestamps outside frame time bounds"
             point_cloud_data["timestamp_us"] = timestamp_us
 
-            if model_element is not None:
-                assert model_element.shape == (point_count, 2)
-                assert model_element.dtype == np.dtype("uint16")
-                point_cloud_data["model_element"] = model_element
+            assert model_element.shape == (point_count, 2)
+            assert model_element.dtype == np.dtype("uint16")
+            point_cloud_data["model_element"] = model_element
 
             # Store point-cloud data
-            self._store_frame_point_cloud(timestamps_us, point_count, point_cloud_data)
+            self._store_frame_point_cloud(frame_timestamps_us, point_count, point_cloud_data)
 
             return self
 
@@ -914,9 +1063,9 @@ class LidarSensorComponent:
         """Lidar sensor data component reader"""
 
         @staticmethod
-        def get_component_base_name() -> str:
+        def get_component_name() -> str:
             """Returns the base name of the current component"""
-            return LidarSensorComponent.COMPONENT_BASE_NAME
+            return LidarSensorComponent.COMPONENT_NAME
 
         @staticmethod
         def supports_component_version(version: str) -> bool:
@@ -924,30 +1073,102 @@ class LidarSensorComponent:
             return version == "0.1"
 
 
-class CuboidTracksComponent:
-    """Data component representing cuboid tracks"""
+class RadarSensorComponent:
+    """Radar sensor data component"""
 
-    COMPONENT_BASE_NAME: str = "cuboid_tracks"
+    COMPONENT_NAME: str = "radars"
 
-    class Writer(ComponentWriter):
-        """Cuboid tracks component writer"""
+    class Writer(BasePointCloudSensorComponentWriter):
+        """Radar sensor data component writer"""
 
         @staticmethod
-        def get_component_base_name() -> str:
+        def get_component_name() -> str:
+            """Returns the base name of the current radar sensor component"""
+            return RadarSensorComponent.COMPONENT_NAME
+
+        @staticmethod
+        def get_component_version() -> str:
+            """Returns the version of the current radar sensor component"""
+            return "0.1"
+
+        def store_frame(
+            self,
+            # mandatory point-cloud data
+            xyz_m: np.ndarray,  # per-point metric coordinates relative to the sensor frame at measure time (raw / not motion-compensated, needs to be non-zero) (float32, [n, 3])
+            timestamp_us: np.ndarray,  # per-point point timestamp in microseconds (uint64, [n])
+            # start-of-frame / end-of-frame timestamps
+            frame_timestamps_us: np.ndarray,
+            # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
+            generic_data: Dict[str, np.ndarray],
+            generic_meta_data: Dict[str, data.JsonLike],
+        ) -> "Self":
+            # Sanity / consistency checks
+            assert xyz_m.ndim == 2
+            assert np.shape(xyz_m)[1] == 3
+            assert xyz_m.dtype == np.dtype("float32")
+            point_count = len(xyz_m)
+
+            # Initialize frame
+            self._store_base_frame(frame_timestamps_us, generic_data, generic_meta_data)
+
+            # Store point-cloud data
+            point_cloud_data = {
+                "xyz_m": xyz_m,
+            }
+
+            assert timestamp_us.dtype == np.dtype("uint64")
+            if point_count:
+                assert (frame_timestamps_us[0] <= timestamp_us.min()) and (
+                    timestamp_us.max() <= frame_timestamps_us[1]
+                ), "Point timestamps outside frame time bounds"
+            point_cloud_data["timestamp_us"] = timestamp_us
+
+            self._store_frame_point_cloud(
+                frame_timestamps_us,
+                point_count,
+                point_cloud_data,
+            )
+
+            return self
+
+    class Reader(BasePointCloudSensorComponentReader):
+        """Radar sensor data component reader"""
+
+        @staticmethod
+        def get_component_name() -> str:
+            """Returns the base name of the current component"""
+            return RadarSensorComponent.COMPONENT_NAME
+
+        @staticmethod
+        def supports_component_version(version: str) -> bool:
+            """Returns true if the component version is supported by the reader"""
+            return version == "0.1"
+
+
+class CuboidsComponent:
+    """Data component representing cuboid track observations"""
+
+    COMPONENT_NAME: str = "cuboids"
+
+    class Writer(ComponentWriter):
+        """Cuboid track observations component writer"""
+
+        @staticmethod
+        def get_component_name() -> str:
             """Returns the base name of the current lidar sensor component"""
-            return CuboidTracksComponent.COMPONENT_BASE_NAME
+            return CuboidsComponent.COMPONENT_NAME
 
         @staticmethod
         def get_component_version() -> str:
             """Returns the version of the current lidar sensor component"""
             return "0.1"
 
-        def store_tracks(
+        def store_observations(
             self,
-            cuboid_tracks: List[CuboidTrack],  # individual track instances
+            cuboid_observations: List[CuboidTrackObservation],  # individual observation
         ) -> "Self":
-            self._group.create_group("cuboid_tracks").attrs.put(
-                {"cuboid_tracks": [track.to_dict() for track in cuboid_tracks]}
+            self._group.create_group("cuboids").attrs.put(
+                {"cuboid_track_observations": [obs.to_dict() for obs in cuboid_observations]}
             )
 
             return self
@@ -956,16 +1177,17 @@ class CuboidTracksComponent:
         """Cuboid tracks component reader"""
 
         @staticmethod
-        def get_component_base_name() -> str:
+        def get_component_name() -> str:
             """Returns the base name of the current component"""
-            return CuboidTracksComponent.COMPONENT_BASE_NAME
+            return CuboidsComponent.COMPONENT_NAME
 
         @staticmethod
         def supports_component_version(version: str) -> bool:
             """Returns true if the component version is supported by the reader"""
             return version == "0.1"
 
-        def get_tracks(self) -> List[CuboidTrack]:
-            """Returns all stored cuboid tracks"""
+        def get_observations(self) -> Generator[CuboidTrackObservation]:
+            """Returns all stored cuboid track observations"""
 
-            return [CuboidTrack.from_dict(track) for track in self._group["cuboid_tracks"].attrs["cuboid_tracks"]]
+            for obs in self._group["cuboids"].attrs["cuboid_track_observations"]:
+                yield CuboidTrackObservation.from_dict(obs)

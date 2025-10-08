@@ -16,15 +16,22 @@ import numpy as np
 
 from typing_extensions import Literal
 
+from ncore.impl.common.common import HalfClosedInterval
+from ncore.impl.common.transformations import MotionCompensator
 from ncore.impl.data.data import JsonLike
 from ncore.impl.data.data3 import ShardDataLoader
 from ncore.impl.data.types import FrameTimepoint
 from ncore.impl.experimental.data.data4.components import (
     CameraSensorComponent,
-    PosesSetComponent,
-    SensorIntrinsicsComponent,
+    CuboidsComponent,
+    IntrinsicsComponent,
+    LidarSensorComponent,
+    MasksComponent,
+    PosesComponent,
+    RadarSensorComponent,
     SequenceComponentStoreWriter,
 )
+from ncore.impl.experimental.data.data4.types import CuboidTrackObservation
 
 
 class NCore3To4:
@@ -36,19 +43,23 @@ class NCore3To4:
         source_data_loader: ShardDataLoader,
         ## V4 output
         output_dir_path: Path,
-        # output store type
+        ## Time range selection (None means full range)
+        start_timestamp_us: Optional[int] = None,
+        end_timestamp_us: Optional[int] = None,
+        ## output store type
         store_type: Literal["itar", "directory"] = "itar",  # valid values: ['itar', 'directory']
-        # sensor selection (None means all available sensors of that type)
+        ## sensor selection (None means all available sensors of that type)
         camera_ids: Optional[List[str]] = None,
         lidar_ids: Optional[List[str]] = None,
         radar_ids: Optional[List[str]] = None,
-        # component target group overwrites
+        ## component target group overwrites
         poses_component_group: Optional[str] = None,
         intrinsics_component_group: Optional[str] = None,
+        masks_component_group: Optional[str] = None,
         camera_component_groups: Dict[str, str] = {},  # indexed by camera_id
         lidar_component_groups: Dict[str, str] = {},  # indexed by lidar_id
         radar_component_groups: Dict[str, str] = {},  # indexed by radar_id
-        cuboid_tracks_component_group: Optional[str] = None,
+        cuboid_track_observations_component_group: Optional[str] = None,
         generic_meta_data: Dict[
             str, JsonLike
         ] = {},  # generic sequence meta-data (needs to be json-serializable) - will be merged with source generic meta data
@@ -56,8 +67,26 @@ class NCore3To4:
         """Converts the given V3 sequence (unconditionally rig-trajectory-based) into V4 format,
         storing the result into the given output directory path, potentially overwriting component group names as specified"""
 
-        if not (radar_ids is None or len(radar_ids) == 0):
-            raise NotImplementedError("Conversion of radar sensors is not supported yet")
+        ## infer time range from input poses if required and validate time range selection
+        source_poses = source_data_loader.get_poses()
+        if start_timestamp_us is None:
+            start_timestamp_us = source_poses.T_rig_world_timestamps_us[0].item()
+        if end_timestamp_us is None:
+            end_timestamp_us = source_poses.T_rig_world_timestamps_us[-1].item()
+
+        assert start_timestamp_us < end_timestamp_us, "invalid time bounds"
+
+        target_poses_range = HalfClosedInterval.from_start_end(start_timestamp_us, end_timestamp_us).cover_range(
+            source_poses.T_rig_world_timestamps_us
+        )
+
+        assert len(target_poses_range) >= 2, "at least two poses required in selected time range"
+
+        # define target sequence time interval to coincide with the available egomotion
+        target_sequence_timestamp_interval_us = HalfClosedInterval.from_start_end(
+            source_poses.T_rig_world_timestamps_us[target_poses_range.start].item(),
+            source_poses.T_rig_world_timestamps_us[target_poses_range.stop - 1].item(),
+        )
 
         ## create sequence writer
 
@@ -70,35 +99,43 @@ class NCore3To4:
             output_dir_path=output_dir_path,
             store_base_name=source_data_loader.get_sequence_id(),
             sequence_id=source_data_loader.get_sequence_id(),
+            sequence_timestamp_interval_us=target_sequence_timestamp_interval_us,
             store_type=store_type,
             generic_meta_data={**source_generic_meta_data, **generic_meta_data},
         )
 
         ## create poses component, store rig poses
-        poses_writer = store_writer.register_component_writer(
-            PosesSetComponent.Writer,
-            component_instance_name="poses",
-            group_name=poses_component_group,
-        )
-
-        source_poses = source_data_loader.get_poses()
-
-        poses_writer.store_dynamic_poses(
-            source_frame="rig",
-            target_frame="world",
-            poses=source_poses.T_rig_worlds,
-            timestamps_us=source_poses.T_rig_world_timestamps_us,
+        (
+            poses_writer := store_writer.register_component_writer(
+                PosesComponent.Writer,
+                component_instance_name="default",
+                group_name=poses_component_group,
+            )
+        ).store_dynamic_pose(
+            source_frame_id="rig",
+            target_frame_id="world",
+            # we store rig->world poses as float32 in V4 (sufficiently accurate as relative to local-world)
+            poses=source_poses.T_rig_worlds[target_poses_range].astype(np.float32),
+            timestamps_us=source_poses.T_rig_world_timestamps_us[target_poses_range],
         ).store_static_pose(
-            source_frame="world",
-            target_frame="world_global",
-            pose=source_poses.T_rig_world_base,
+            source_frame_id="world",
+            target_frame_id="world_global",
+            # world->world_global potentially requires high-precision, use float64
+            pose=source_poses.T_rig_world_base.astype(np.float64),
         )
 
         ## create intrinsics component
         intrinsics_writer = store_writer.register_component_writer(
-            SensorIntrinsicsComponent.Writer,
-            component_instance_name="intrinsics",
+            IntrinsicsComponent.Writer,
+            component_instance_name="default",
             group_name=intrinsics_component_group,
+        )
+
+        ## create masks component
+        masks_writer = store_writer.register_component_writer(
+            MasksComponent.Writer,
+            component_instance_name="default",
+            group_name=masks_component_group,
         )
 
         ## iterate over all sensors, convert and store their data
@@ -111,42 +148,224 @@ class NCore3To4:
             intrinsics_writer.store_camera_intrinsics(
                 camera_id=camera_id,
                 camera_model_parameters=camera_sensor.get_camera_model_parameters(),
-                mask_image=camera_sensor.get_camera_mask_image(),
+            )
+
+            # store mask to "default" name if available
+            masks_writer.store_camera_masks(
+                camera_id=camera_id,
+                mask_images={"ego": camera_mask_image}
+                if (camera_mask_image := camera_sensor.get_camera_mask_image())
+                else {},
             )
 
             # store extrinsics
             poses_writer.store_static_pose(
-                source_frame=camera_id,
-                target_frame="rig",
-                pose=camera_sensor.get_T_sensor_rig(),
+                source_frame_id=camera_id,
+                target_frame_id="rig",
+                # we store sensor->rig poses as float32 in V4
+                # (same as in V3, just be explicit about it)
+                pose=camera_sensor.get_T_sensor_rig().astype(np.float32),
             )
 
             # store frames
             camera_writer = store_writer.register_component_writer(
                 CameraSensorComponent.Writer,
                 component_instance_name=camera_id,
-                group_name=camera_component_groups.get(camera_id, None),
+                group_name=camera_component_groups.get(camera_id),
             )
 
-            for source_frame_idx in range(camera_sensor.get_frames_count())[:10]:  # DEBUG: limit to first 10 frames
+            for source_frame_idx in range(camera_sensor.get_frames_count()):
+                # skip frames outside of selected time range
+                frame_timestamps_us = np.array(
+                    [
+                        camera_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.START),
+                        camera_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.END),
+                    ],
+                    dtype=np.uint64,
+                )
+
+                if (
+                    not HalfClosedInterval.from_start_end(*frame_timestamps_us.tolist())
+                    in target_sequence_timestamp_interval_us
+                ):
+                    continue
+
                 frame_image_data = camera_sensor.get_frame_data(source_frame_idx)
 
                 camera_writer.store_frame(
                     image_binary_data=frame_image_data.get_encoded_image_data(),
                     image_format=frame_image_data.get_encoded_image_format(),
-                    timestamps_us=np.array(
-                        [
-                            camera_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.START),
-                            camera_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.END),
-                        ],
-                        dtype=np.uint64,
-                    ),
+                    frame_timestamps_us=frame_timestamps_us,
                     generic_data={
                         generic_data_name: camera_sensor.get_frame_generic_data(source_frame_idx, generic_data_name)
                         for generic_data_name in camera_sensor.get_frame_generic_data_names(source_frame_idx)
                     },
                     generic_meta_data=camera_sensor.get_frame_generic_meta_data(source_frame_idx),
                 )
+
+        # radars
+        for radar_id in radar_ids if radar_ids is not None else source_data_loader.get_radar_ids():
+            radar_sensor = source_data_loader.get_radar_sensor(radar_id)
+
+            # store extrinsics
+            poses_writer.store_static_pose(
+                source_frame_id=radar_id,
+                target_frame_id="rig",
+                # we store sensor->rig poses as float32 in V4
+                # (same as in V3, just be explicit about it)
+                pose=radar_sensor.get_T_sensor_rig().astype(np.float32),
+            )
+
+            # store frames
+            radar_writer = store_writer.register_component_writer(
+                RadarSensorComponent.Writer,
+                component_instance_name=radar_id,
+                group_name=radar_component_groups.get(radar_id),
+            )
+
+            for source_frame_idx in range(radar_sensor.get_frames_count()):
+                # skip frames outside of selected time range
+                frame_timestamps_us = np.array(
+                    [
+                        radar_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.START),
+                        radar_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.END),
+                    ],
+                    dtype=np.uint64,
+                )
+
+                if (
+                    not HalfClosedInterval.from_start_end(*frame_timestamps_us.tolist())
+                    in target_sequence_timestamp_interval_us
+                ):
+                    continue
+
+                # V3 data is stored at "instantaneous" end-of-frame times, so there is no need to undo motion-compensation
+                xyz_m = radar_sensor.get_frame_data(source_frame_idx, "xyz_e")
+                timestamp_us = np.array(
+                    [frame_timestamps_us[1]] * len(xyz_m), dtype=np.uint64
+                )  # all points have the same timestamp in V3 data
+
+                radar_writer.store_frame(
+                    # non-motion-compensated per-point 3D coordinates in the sensor frame at measurement time (float32, [n, 3])
+                    xyz_m=xyz_m,
+                    # per-point point timestamp in microseconds (uint64, [n])
+                    timestamp_us=timestamp_us,
+                    # frame start/end timestamps (uint64, [2])
+                    frame_timestamps_us=frame_timestamps_us,
+                    generic_data={
+                        generic_data_name: radar_sensor.get_frame_generic_data(source_frame_idx, generic_data_name)
+                        for generic_data_name in radar_sensor.get_frame_generic_data_names(source_frame_idx)
+                    },
+                    generic_meta_data=radar_sensor.get_frame_generic_meta_data(source_frame_idx),
+                )
+
+        # lidars
+        cuboid_track_observations: List[
+            CuboidTrackObservation
+        ] = []  # collect cuboid observations (potentially from multiple lidars)
+        for lidar_id in lidar_ids if lidar_ids is not None else source_data_loader.get_lidar_ids():
+            lidar_sensor = source_data_loader.get_lidar_sensor(lidar_id)
+
+            # store intrinsics
+            assert (lidar_model_parameters := lidar_sensor.get_lidar_model_parameters()) is not None, (
+                f"Lidar model parameters missing for lidar '{lidar_id}' - mandatory for V4"
+            )
+            intrinsics_writer.store_lidar_intrinsics(
+                lidar_id=lidar_id,
+                lidar_model_parameters=lidar_model_parameters,
+            )
+
+            # store extrinsics
+            poses_writer.store_static_pose(
+                source_frame_id=lidar_id,
+                target_frame_id="rig",
+                # we store sensor->rig poses as float32 in V4
+                # (same as in V3, just be explicit about it)
+                pose=lidar_sensor.get_T_sensor_rig().astype(np.float32),
+            )
+
+            # store frames
+            lidar_writer = store_writer.register_component_writer(
+                LidarSensorComponent.Writer,
+                component_instance_name=lidar_id,
+                group_name=lidar_component_groups.get(lidar_id),
+            )
+
+            motion_compensator = MotionCompensator.from_sensor_rig(
+                lidar_sensor.get_sensor_id(),
+                lidar_sensor.get_T_sensor_rig(),
+                source_poses.T_rig_worlds,
+                source_poses.T_rig_world_timestamps_us,
+            )
+            for source_frame_idx in range(lidar_sensor.get_frames_count()):
+                # skip frames outside of selected time range
+                frame_timestamps_us = np.array(
+                    [
+                        lidar_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.START),
+                        lidar_sensor.get_frame_timestamp_us(source_frame_idx, FrameTimepoint.END),
+                    ],
+                    dtype=np.uint64,
+                )
+
+                if not HalfClosedInterval(*frame_timestamps_us.tolist()) in target_sequence_timestamp_interval_us:
+                    continue
+
+                # undo motion-compensation of V3 point clouds to non-motion-compensated "raw" V4 point cloud
+                xyz_e = lidar_sensor.get_frame_data(source_frame_idx, "xyz_e")
+                timestamp_us = lidar_sensor.get_frame_data(source_frame_idx, "timestamp_us")
+                xyz_m = motion_compensator.motion_decompensate_points(
+                    sensor_id=lidar_sensor.get_sensor_id(),
+                    xyz_sensorend=xyz_e,
+                    timestamp_us=timestamp_us,
+                    frame_start_timestamp_us=frame_timestamps_us[0],
+                    frame_end_timestamp_us=frame_timestamps_us[1],
+                )
+
+                lidar_writer.store_frame(
+                    # non-motion-compensated per-point 3D coordinates in the sensor frame at measurement time (float32, [n, 3])
+                    xyz_m=xyz_m,
+                    # per-point intensity normalized to [0.0, 1.0] range (float32, [n])
+                    intensity=lidar_sensor.get_frame_data(source_frame_idx, "intensity"),
+                    # per-point point timestamp in microseconds (uint64, [n])
+                    timestamp_us=timestamp_us,
+                    # per-point model element indices, if applicable (uint16, [n, 2])
+                    model_element=lidar_sensor.get_frame_data(source_frame_idx, "model_element"),
+                    # frame start/end timestamps (uint64, [2])
+                    frame_timestamps_us=frame_timestamps_us,
+                    generic_data={
+                        generic_data_name: lidar_sensor.get_frame_generic_data(source_frame_idx, generic_data_name)
+                        for generic_data_name in lidar_sensor.get_frame_generic_data_names(source_frame_idx)
+                    },
+                    generic_meta_data=lidar_sensor.get_frame_generic_meta_data(source_frame_idx),
+                )
+
+                # collect frame labels
+                for frame_label in lidar_sensor.get_frame_labels(source_frame_idx):
+                    if frame_label.timestamp_us not in target_sequence_timestamp_interval_us:
+                        continue  # sanity check skip labels outside of selected time range (should not happen if input data is consistent)
+
+                    cuboid_track_observations.append(
+                        CuboidTrackObservation(
+                            track_id=frame_label.track_id,
+                            class_id=frame_label.label_class,
+                            observation_id=frame_label.label_id,
+                            timestamp_us=frame_label.timestamp_us,
+                            reference_frame_id=lidar_id,
+                            reference_frame_timestamp_us=frame_timestamps_us[
+                                1
+                            ].item(),  # frame end timestamp is the reference time of the V3 observations
+                            bbox3=frame_label.bbox3,
+                            source=frame_label.source,
+                            source_version=frame_label.source_version,
+                        )
+                    )
+
+        # store cuboid track observations
+        store_writer.register_component_writer(
+            CuboidsComponent.Writer,
+            "default",
+            cuboid_track_observations_component_group,
+        ).store_observations(cuboid_track_observations)
 
         ## finalize
         return store_writer.finalize()

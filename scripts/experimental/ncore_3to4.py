@@ -15,6 +15,7 @@ from typing import Literal, Optional, Tuple
 
 import click
 
+from ncore.impl.common.common import time_bounds
 from ncore.impl.data.data3 import ShardDataLoader
 from ncore.impl.experimental.data.data4.conversion import NCore3To4
 
@@ -34,7 +35,7 @@ class CLIBaseParams:
     camera_component_groups: Tuple[Tuple[str, str]]
     lidar_component_groups: Tuple[Tuple[str, str]]
     radar_component_groups: Tuple[Tuple[str, str]]
-    cuboid_tracks_component_group: Optional[str]
+    cuboid_track_observations_component_group: Optional[str]
 
     no_cameras: bool
     camera_ids: Tuple[str]
@@ -43,6 +44,23 @@ class CLIBaseParams:
     no_radars: bool
     radar_ids: Tuple[str]
     verbose: bool
+
+
+class TupleType(click.ParamType):
+    name = "tuple"
+
+    def __init__(self, n: int, separator: str = ":"):
+        self.n = n
+        self.separator = separator
+
+    def convert(self, value, param, ctx):
+        try:
+            parts = value.split(self.separator)
+            if len(parts) != self.n:
+                raise ValueError(f"Expected {self.n} parts, got {len(parts)}")
+            return tuple(parts)
+        except Exception as e:
+            self.fail(f"Could not convert '{value}' to a tuple: {e}")
 
 
 @click.group()
@@ -69,15 +87,13 @@ class CLIBaseParams:
     show_default=True,
     help="Output store type",
 )
-@click.option("--poses-component-group", type=Optional[str], help="Target component group for 'poses'", default=None)
-@click.option(
-    "--intrinsics-component-group", type=Optional[str], help="Target component group for 'intrinsics'", default=None
-)
+@click.option("--poses-component-group", type=str, help="Target component group for 'poses'", default=None)
+@click.option("--intrinsics-component-group", type=str, help="Target component group for 'intrinsics'", default=None)
 @click.option(
     "--camera-component-group",
     "camera_component_groups",
     multiple=True,
-    type=(str, str),
+    type=TupleType(2, ":"),
     help="Target component group for camera sensors (multiple value option, indexed by camera_id)",
     default=[],
 )
@@ -85,7 +101,7 @@ class CLIBaseParams:
     "--lidar-component-group",
     "lidar_component_groups",
     multiple=True,
-    type=(str, str),
+    type=TupleType(2, ":"),
     help="Target component group for lidar sensors (multiple value option, indexed by lidar_id)",
     default=[],
 )
@@ -93,14 +109,14 @@ class CLIBaseParams:
     "--radar-component-group",
     "radar_component_groups",
     multiple=True,
-    type=(str, str),
+    type=TupleType(2, ":"),
     help="Target component group for radar sensors (multiple value option, indexed by radar_id)",
     default=[],
 )
 @click.option(
-    "--cuboid-tracks-component-group",
-    type=Optional[str],
-    help="Target component group for 'cuboid_tracks'",
+    "--cuboid-track-observations-component-group",
+    type=str,
+    help="Target component group for 'cuboid_track_observations'",
     default=None,
 )
 @click.option("--no-cameras", is_flag=True, default=False, help="Disable exporting of any camera sensor")
@@ -149,6 +165,8 @@ def cli(ctx, **kwargs) -> None:
 def ncore_3to4(
     params: CLIBaseParams,
     loader: ShardDataLoader,
+    start_timestamp_us: Optional[int] = None,
+    end_timestamp_us: Optional[int] = None,
 ) -> None:
     """Execute common components of data conversion"""
 
@@ -167,6 +185,8 @@ def ncore_3to4(
 
     ncore_4_paths = NCore3To4.convert(
         source_data_loader=loader,
+        start_timestamp_us=start_timestamp_us,
+        end_timestamp_us=end_timestamp_us,
         output_dir_path=Path(params.output_dir),
         store_type=params.store_type,
         camera_ids=camera_ids,
@@ -177,7 +197,7 @@ def ncore_3to4(
         camera_component_groups=dict(params.camera_component_groups),
         lidar_component_groups=dict(params.lidar_component_groups),
         radar_component_groups=dict(params.radar_component_groups),
-        cuboid_tracks_component_group=params.cuboid_tracks_component_group,
+        cuboid_track_observations_component_group=params.cuboid_track_observations_component_group,
     )
 
     logging.info(f"Wrote dataset to {ncore_4_paths}")
@@ -190,15 +210,47 @@ def full(ctx) -> None:
 
     params: CLIBaseParams = ctx.obj
 
+    ncore_3to4(
+        params,
+        ShardDataLoader(
+            ShardDataLoader.evaluate_shard_file_pattern(params.shard_file_pattern, params.skip_suffixes),
+            params.open_consolidated,
+        ),
+    )
+
+
+@cli.command()
+@click.option(
+    "--seek-sec",
+    type=click.FloatRange(min=0.0, max_open=True),
+    help="Time to skip for the dataset conversion (in seconds)",
+)
+@click.option(
+    "--duration-sec",
+    type=click.FloatRange(min=0.0, max_open=True),
+    help="Restrict total duration of the dataset conversion (in seconds)",
+)
+@click.pass_context
+def offset(ctx, seek_sec: float | None, duration_sec: float | None) -> None:
+    """Offset-based subrange selection"""
+
+    params: CLIBaseParams = ctx.obj
+
     # determine time-ranges from seek/duration relative to data
     loader = ShardDataLoader(
         ShardDataLoader.evaluate_shard_file_pattern(params.shard_file_pattern, params.skip_suffixes),
         params.open_consolidated,
     )
 
+    start_timestamp_us, end_timestamp_us = time_bounds(
+        loader.get_poses().T_rig_world_timestamps_us.tolist(), seek_sec, duration_sec
+    )
+
     ncore_3to4(
         params,
         loader,
+        start_timestamp_us,
+        end_timestamp_us,
     )
 
 
