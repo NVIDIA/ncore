@@ -32,7 +32,7 @@ import ncore.impl.common.common as common
 import ncore.impl.common.transformations as transformations
 
 from . import data, stores, types, util
-from .data import JsonLike
+from .data import JsonLike, evaluate_file_pattern
 
 
 _logger = logging.getLogger(__name__)
@@ -775,34 +775,7 @@ class ShardDataLoader:
 
         """
 
-        pattern_basepath = Path(pattern).parent
-        pattern_name = Path(pattern).name
-
-        evaluated_name_patterns = []
-
-        # expand integer ranges like '[1-13]'
-        if range_match := re.search(r"\[(\d+)-(\d+)\]", pattern_name):
-            low = int(range_match.group(1))
-            high = int(range_match.group(2))
-
-            for i in range(low, high + 1):
-                evaluated_name_patterns.append(pattern_name.replace(f"[{low}-{high}]", str(i) + "-"))
-        else:
-            evaluated_name_patterns.append(pattern_name)
-
-        matches: set[Path] = set()
-        for evaluated_pattern in evaluated_name_patterns:
-            for candidate in pattern_basepath.iterdir():
-                if candidate.name.startswith(evaluated_pattern):
-                    skip = False
-                    for skip_suffix in skip_suffixes:
-                        if str(candidate).endswith(skip_suffix):
-                            skip = True
-                            break
-                    if not skip:
-                        matches.add(candidate)
-
-        return [str(match) for match in list(matches)]
+        return evaluate_file_pattern(pattern, skip_suffixes=skip_suffixes)
 
     def __init__(
         self,
