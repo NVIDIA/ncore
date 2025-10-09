@@ -299,6 +299,19 @@ class SequenceComponentStoreReader:
         if self._version != VERSION:
             raise ValueError(f"Loading incompatible version {self._version}, supporting {VERSION} only")
 
+    def reload_resources(self) -> None:
+        """Trigger a reload of each itar store - useful to re-initialize file objects in multi-process settings"""
+        component_store: Union[zarr.Group, stores.ConsolidatedCompressedMetadataStore]
+        for component_store in self._component_stores.values():
+            # unwind one layer of possible consolidated metadata store
+            if isinstance(
+                compressed_consolidated_store := component_store.store, stores.ConsolidatedCompressedMetadataStore
+            ):
+                component_store = compressed_consolidated_store
+
+            if isinstance(store := component_store.store, stores.IndexedTarStore):
+                store.reload_resources()
+
     @property
     def sequence_id(self) -> str:
         return self._sequence_id
@@ -838,6 +851,10 @@ class BaseSensorComponentReader(ComponentReader):
     @property
     def frames_timestamps_us(self) -> np.ndarray:
         return np.array(self._group["frames"].attrs["frames_timestamps_us"], dtype=np.uint64)
+
+    @property
+    def frames_count(self) -> int:
+        return len(self._frames_timestamps_us)
 
     def get_frame_timestamps_us(self, timestamp_us: int) -> np.ndarray:
         return self._frame_end_to_frame_timestamps_us[timestamp_us]

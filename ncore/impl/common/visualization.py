@@ -174,8 +174,6 @@ class LabelVisualizer:
             )
 
     def _add_bbox(self, bbox: np.ndarray, label_class: str, identifier: str, confidence: float = 1.0) -> None:
-        # TODO: This orientation seems correct to me, but we should double check it as the definition is weird
-
         orientation = R.from_euler("xyz", bbox[6:9], degrees=False).as_matrix()
         self.bounding_boxes.append(
             ml3d.vis.BoundingBox3D(

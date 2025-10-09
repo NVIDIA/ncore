@@ -24,6 +24,23 @@ if TYPE_CHECKING:
 from ncore.impl.data.data3 import PointCloudSensor
 
 
+class TupleType(click.ParamType):
+    name = "tuple"
+
+    def __init__(self, n: int, separator: str = ":"):
+        self.n = n
+        self.separator = separator
+
+    def convert(self, value, param, ctx):
+        try:
+            parts = value.split(self.separator)
+            if len(parts) != self.n:
+                raise ValueError(f"Expected {self.n} parts, got {len(parts)}")
+            return tuple(parts)
+        except Exception as e:
+            self.fail(f"Could not convert '{value}' to a tuple: {e}")
+
+
 class NPArrayParamType(click.ParamType):
     name = "NPArray"
     """ Click cmdl argument type for numpy arrays """

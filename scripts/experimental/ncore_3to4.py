@@ -18,6 +18,7 @@ import click
 from ncore.impl.common.common import time_bounds
 from ncore.impl.data.data3 import ShardDataLoader
 from ncore.impl.experimental.data.data4.conversion import NCore3To4
+from scripts.util import TupleType
 
 
 @dataclass(kw_only=True, slots=True, frozen=True)
@@ -44,23 +45,6 @@ class CLIBaseParams:
     no_radars: bool
     radar_ids: Tuple[str]
     verbose: bool
-
-
-class TupleType(click.ParamType):
-    name = "tuple"
-
-    def __init__(self, n: int, separator: str = ":"):
-        self.n = n
-        self.separator = separator
-
-    def convert(self, value, param, ctx):
-        try:
-            parts = value.split(self.separator)
-            if len(parts) != self.n:
-                raise ValueError(f"Expected {self.n} parts, got {len(parts)}")
-            return tuple(parts)
-        except Exception as e:
-            self.fail(f"Could not convert '{value}' to a tuple: {e}")
 
 
 @click.group()

@@ -83,4 +83,23 @@ pytest_test(
     ],
 )
 
+py_library(
+    name = "pylib_compat",
+    srcs = [
+        "compat.py",
+    ],
+    deps = [
+        requirement("numpy"),
+        requirement("pillow"),
+        ":pylib_components",
+        ":pylib_types",
+        "//ncore/impl/common:pylib_common",
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_data3",
+        "//ncore/impl/data:pylib_types",
+        "//ncore/impl/data:pylib_util",
+    ],
+)
+
 bzlformat_pkg(name = "bzlformat")

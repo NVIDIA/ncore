@@ -12,7 +12,7 @@ import dataclasses
 import logging
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import click
 import numpy as np
@@ -23,11 +23,17 @@ from scipy.spatial.transform import Rotation as R
 from ncore.impl.common.transformations import MotionCompensator, se3_inverse, transform_point_cloud
 from ncore.impl.common.visualization import plot_points_on_image
 from ncore.impl.data import types
-from ncore.impl.data.data3 import CameraSensor, LidarSensor, PointCloudSensor, ShardDataLoader
+from ncore.impl.data.data3 import ShardDataLoader
 from ncore.impl.data.util import padded_index_string
+from ncore.impl.experimental.data.data4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
+from ncore.impl.experimental.data.data4.components import SequenceComponentStoreReader
 from ncore.impl.sensors.camera import CameraModel
 from ncore.impl.sensors.lidar import StructuredLidarModel
 from scripts.util import NPArrayParamType
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def se3_matrix(se3_delta: np.ndarray) -> np.ndarray:
@@ -40,10 +46,31 @@ def se3_matrix(se3_delta: np.ndarray) -> np.ndarray:
     return T
 
 
-@click.command()
-@click.option(
-    "--shard-file-pattern", type=str, help="Data shard pattern to load (supports range expansion)", required=True
-)
+@dataclasses.dataclass(kw_only=True, slots=True, frozen=True)
+class CLIBaseParams:
+    """Parameters passed to non-command-based CLI part"""
+
+    sensor_id: str
+    sensor_extrinsic_delta: np.ndarray
+    camera_id: str
+    camera_extrinsic_delta: np.ndarray
+    start_frame: Optional[int]
+    stop_frame: Optional[int]
+    step_frame: Optional[int]
+    point_size: float
+    device: str
+    pose: str
+    output_dir: str
+    external_distortion: bool
+    file_prefix: str
+    file_suffix: str
+    encode_images: bool
+    enable_lidar_model: bool
+    timestamp_image_names: bool
+    open_consolidated: bool
+
+
+@click.group()
 @click.option("--sensor-id", type=str, help="Sensor whose point cloud will be projected", required=True)
 @click.option(
     "--sensor-extrinsic-delta",
@@ -70,6 +97,7 @@ def se3_matrix(se3_delta: np.ndarray) -> np.ndarray:
     help="Step used to downsample the number of frames",
     default=None,
 )
+@click.option("--open-consolidated/--no-open-consolidated", default=True, help="Pre-load shard meta-data?")
 @click.option(
     "--point-size",
     type=click.FloatRange(min=0.0, max_open=True),
@@ -108,123 +136,147 @@ def se3_matrix(se3_delta: np.ndarray) -> np.ndarray:
     default=False,
     help="Store image with timestamp filenames or frame-index filenames",
 )
-def ncore_project_pc_to_img(
-    shard_file_pattern: str,
-    sensor_id: str,
-    sensor_extrinsic_delta: np.ndarray,
-    camera_id: str,
-    camera_extrinsic_delta: np.ndarray,
-    start_frame: Optional[int],
-    stop_frame: Optional[int],
-    step_frame: Optional[int],
-    point_size: float,
-    device: str,
-    pose: str,
-    output_dir: str,
-    external_distortion: bool,
-    file_prefix: str,
-    file_suffix: str,
-    encode_images: bool,
-    enable_lidar_model: bool,
-    timestamp_image_names: bool,
-):
-    """Projects the point cloud to the camera image, comparing projection w. and w/o rolling shutter compensation"""
+@click.pass_context
+def cli(ctx, **kwargs) -> None:
+    ctx.obj = CLIBaseParams(**kwargs)
 
-    # Initialize the logger
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger(__name__)
+
+@cli.command()
+@click.option(
+    "--shard-file-pattern", type=str, help="Data shard pattern to load (supports range expansion)", required=True
+)
+@click.pass_context
+def v3(
+    ctx,
+    shard_file_pattern: str,
+) -> None:
+    params: CLIBaseParams = ctx.obj
 
     shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
-    loader = ShardDataLoader(shards)
-    pc_sensor = loader.get_sensor(sensor_id)
-    assert isinstance(pc_sensor, PointCloudSensor), "only point-cloud sensors are supported as source sensor"
-    cam_sensor = loader.get_sensor(camera_id)
-    assert isinstance(cam_sensor, CameraSensor), "only image sensors are supported as the target sensor"
+    loader = ShardDataLoader(shards, open_consolidated=params.open_consolidated)
+
+    run(
+        params,
+        SequenceLoaderV3(
+            loader,
+        ),
+    )
+
+
+@cli.command()
+@click.option("data_stores", "--data-store", multiple=True, type=str, help="Data store paths", required=True)
+@click.option("--poses-component-group", type=str, help="Component group for 'poses'", default="default")
+@click.option("--intrinsics-component-group", type=str, help="Component group for 'intrinsics'", default="default")
+@click.option("--masks-component-group", type=str, help="Component group for 'masks'", default="default")
+@click.option(
+    "--cuboids-component-group",
+    type=str,
+    help="Component group for 'cuboids'",
+    default="default",
+)
+@click.pass_context
+def v4(
+    ctx,
+    data_stores: Tuple[str, ...],
+    poses_component_group: str,
+    intrinsics_component_group: str,
+    masks_component_group: str,
+    cuboids_component_group: str,
+) -> None:
+    params: CLIBaseParams = ctx.obj
+
+    loader = SequenceComponentStoreReader(
+        [Path(store_path) for store_path in data_stores],
+        open_consolidated=params.open_consolidated,
+    )
+
+    run(
+        params,
+        SequenceLoaderV4(
+            loader,
+            poses_component_group_name=poses_component_group,
+            intrinsics_component_group_name=intrinsics_component_group,
+            masks_component_group_name=masks_component_group,
+            cuboids_component_group_name=cuboids_component_group,
+        ),
+    )
+
+
+def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
+    lidar_sensor = loader.get_lidar_sensor(params.sensor_id)
+    cam_sensor = loader.get_camera_sensor(params.camera_id)
 
     # Get the camera frame indices from the index range
-    indices = cam_sensor.get_frame_index_range(start_frame, stop_frame, step_frame)
+    indices = cam_sensor.get_frame_index_range(params.start_frame, params.stop_frame, params.step_frame)
     logger.info(f"Starting the pc projection. {len(indices)} frames will be processed.")
 
-    # Construct transformations
-    T_sensor_rig = se3_matrix(sensor_extrinsic_delta) @ pc_sensor.get_T_sensor_rig()
-    T_camera_rig = se3_matrix(camera_extrinsic_delta) @ cam_sensor.get_T_sensor_rig()
-
-    poses = loader.get_poses()
-
-    msg = f"Camera torch model @ {device} | projection with {pose} poses"
+    msg = f"Camera torch model @ {params.device} | projection with {params.pose} poses"
 
     # Initialize the camera model on requested device
-    cam_model_params = cam_sensor.get_camera_model_parameters()
+    cam_model_params = cam_sensor.model_parameters
 
     # Drop external distortion if not allowed
-    if not external_distortion:
+    if not params.external_distortion:
         cam_model_params = dataclasses.replace(cam_model_params, external_distortion_parameters=None)
 
     if cam_model_params.external_distortion_parameters is not None:
         msg += " | with external distortion"
 
-    cam_model = CameraModel.from_parameters(cam_model_params, device=device)
+    cam_model = CameraModel.from_parameters(cam_model_params, device=params.device)
 
     # Initialize the lidar model if requested
     lidar_model: Optional[StructuredLidarModel] = None
-    if enable_lidar_model:
-        assert isinstance(pc_sensor, LidarSensor), "only lidar sensors are supported for lidar model"
+    if params.enable_lidar_model:
+        lidar_model = StructuredLidarModel.maybe_from_parameters(lidar_sensor.model_parameters, device=params.device)
 
-        lidar_model = StructuredLidarModel.maybe_from_parameters(pc_sensor.get_lidar_model_parameters(), device=device)
-
-        assert lidar_model is not None, f"No structured lidar model available for lidar sensor {sensor_id}"
+        assert lidar_model is not None, f"No structured lidar model available for lidar sensor {params.sensor_id}"
 
         msg += " | with structured lidar model"
 
     for frame_index in tqdm.tqdm(indices):
         # Get the camera timestamp and find the closes lidar frame
-        cam_timestamp = cam_sensor.get_frame_timestamp_us(frame_index)
-        pc_frame_index = pc_sensor.get_closest_frame_index(cam_timestamp)
+        pc_frame_index = lidar_sensor.get_closest_frame_index(
+            cam_timestamp := cam_sensor.get_frame_timestamp_us(frame_index, types.FrameTimepoint.END)
+        )
 
         # Load the camera image and the point cloud
         img_frame = cam_sensor.get_frame_image_array(frame_index)
-        pc = pc_sensor.get_frame_data(pc_frame_index, "xyz_e")
 
         if lidar_model is not None:
             ## Generate sensor points from model elements with length of the source data
             sensor_pc = (
                 lidar_model.elements_to_sensor_points(
-                    pc_sensor.get_frame_data(pc_frame_index, "model_element"),
-                    np.linalg.norm(pc - pc_sensor.get_frame_data(pc_frame_index, "xyz_s"), axis=1),
+                    lidar_sensor.get_frame_data(pc_frame_index, "model_element"),
+                    np.linalg.norm(lidar_sensor.get_frame_point_cloud(frame_index, motion_compensation=False), axis=1),
                 )
                 .cpu()
                 .numpy()
             )
 
             ## Perform motion-compensation
-            motion_compensator = MotionCompensator.from_sensor_rig(
-                sensor_id=sensor_id,
-                T_sensor_rig=T_sensor_rig,
-                T_rig_worlds=poses.T_rig_worlds,
-                T_rig_worlds_timestamps_us=poses.T_rig_world_timestamps_us,
-            )
+            motion_compensator = MotionCompensator(lidar_sensor.pose_graph)
 
             pc = motion_compensator.motion_compensate_points(
-                sensor_id=sensor_id,
+                sensor_id=params.sensor_id,
                 xyz_pointtime=sensor_pc,
-                timestamp_us=pc_sensor.get_frame_data(pc_frame_index, "timestamp_us"),
-                frame_start_timestamp_us=pc_sensor.get_frame_timestamp_us(pc_frame_index, types.FrameTimepoint.START),
-                frame_end_timestamp_us=pc_sensor.get_frame_timestamp_us(pc_frame_index, types.FrameTimepoint.END),
+                timestamp_us=lidar_sensor.get_frame_data(pc_frame_index, "timestamp_us"),
+                frame_start_timestamp_us=lidar_sensor.get_frame_timestamp_us(
+                    pc_frame_index, types.FrameTimepoint.START
+                ),
+                frame_end_timestamp_us=lidar_sensor.get_frame_timestamp_us(pc_frame_index, types.FrameTimepoint.END),
             ).xyz_e_sensorend
+        else:
+            pc = lidar_sensor.get_frame_point_cloud(frame_index, motion_compensation=True)
 
         # Transform the point cloud to the world coordinate frame
-        pc = transform_point_cloud(pc, pc_sensor.get_frame_T_rig_world(pc_frame_index) @ T_sensor_rig)
+        pc = transform_point_cloud(pc, lidar_sensor.get_frame_T_sensor_world(pc_frame_index, types.FrameTimepoint.END))
 
-        T_world_camera_start = se3_inverse(
-            cam_sensor.get_frame_T_rig_world(frame_index, types.FrameTimepoint.START) @ T_camera_rig
-        )
-        T_world_camera_end = se3_inverse(
-            cam_sensor.get_frame_T_rig_world(frame_index, types.FrameTimepoint.END) @ T_camera_rig
-        )
+        T_world_camera_start = se3_inverse(cam_sensor.get_frame_T_sensor_world(frame_index, types.FrameTimepoint.START))
+        T_world_camera_end = se3_inverse(cam_sensor.get_frame_T_sensor_world(frame_index, types.FrameTimepoint.END))
 
         logger.info(msg)
 
-        match pose:
+        match params.pose:
             case "rolling-shutter":
                 world_point_projections = cam_model.world_points_to_image_points_shutter_pose(
                     pc,
@@ -256,26 +308,28 @@ def ncore_project_pc_to_img(
         dist_rs = np.linalg.norm(transformed_points, axis=1, keepdims=True)
 
         save_path: Optional[Path] = None
-        if encode_images:
-            assert len(output_dir)
+        if params.encode_images:
+            assert len(params.output_dir)
 
-            output_path = Path(output_dir)
+            output_path = Path(params.output_dir)
             output_path.mkdir(parents=True, exist_ok=True)
 
-            if timestamp_image_names:
-                save_path = output_path / (file_prefix + str(cam_timestamp) + file_suffix + ".png")
+            if params.timestamp_image_names:
+                save_path = output_path / (params.file_prefix + str(cam_timestamp) + params.file_suffix + ".png")
             else:
-                save_path = output_path / (file_prefix + padded_index_string(frame_index) + file_suffix + ".png")
+                save_path = output_path / (
+                    params.file_prefix + padded_index_string(frame_index) + params.file_suffix + ".png"
+                )
 
         plot_points_on_image(
             np.concatenate((image_point_coords[:, :2], dist_rs), axis=1),
             img_frame,
-            msg if not encode_images else "",
-            point_size=point_size,
-            show=not encode_images,
+            msg if not params.encode_images else "",
+            point_size=params.point_size,
+            show=not params.encode_images,
             save_path=str(save_path),
         )
 
 
 if __name__ == "__main__":
-    ncore_project_pc_to_img(show_default=True)
+    cli(show_default=True)

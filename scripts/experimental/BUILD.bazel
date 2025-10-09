@@ -25,10 +25,48 @@ py_binary(
     deps = [
         requirement("click"),
         "//ncore/impl/common:pylib_common",
-        "//ncore/impl/experimental/data/data4:pylib_conversion",
         "//ncore/impl/data:pylib_data3",
+        "//ncore/impl/experimental/data/data4:pylib_conversion",
+        "//scripts:pylib_util",
+    ],
+)
 
-        # DBG
+py_binary(
+    name = "ncore_visualize_labels",
+    srcs = ["ncore_visualize_labels.py"],
+    deps = [
+        requirement("click"),
+        requirement("tqdm"),
+        requirement("pandas"),
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/common:pylib_visualization",
+        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_data3",
+        "//ncore/impl/data:pylib_types",
+        "//ncore/impl/experimental/data/data4:pylib_compat",
+        "//ncore/impl/experimental/data/data4:pylib_components",
+        "//ncore/impl/experimental/data/data4:pylib_types",
+        "//scripts:pylib_util",
+    ],
+)
+
+py_binary(
+    name = "ncore_project_pc_to_img",
+    srcs = ["ncore_project_pc_to_img.py"],
+    deps = [
+        requirement("click"),
+        requirement("tqdm"),
+        requirement("numpy"),
+        requirement("scipy"),
+        requirement("pyside6"),  # required to open Qt6 windows
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/common:pylib_visualization",
+        "//ncore/impl/data:pylib_data3",
+        "//ncore/impl/data:pylib_types",
+        "//ncore/impl/data:pylib_util",
+        "//ncore/impl/experimental/data/data4:pylib_compat",
+        "//ncore/impl/sensors:pylib_camera",
+        "//ncore/impl/sensors:pylib_lidar",
         "//scripts:pylib_util",
     ],
 )
