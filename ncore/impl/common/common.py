@@ -339,11 +339,16 @@ T = TypeVar("T")
 U = TypeVar("U")
 
 
-def unpack_optional(maybe_value: Optional[T]) -> T:
-    """Unpacks the value of an optional, raising if value is missing"""
+def unpack_optional(maybe_value: Optional[T], default: Optional[T] = None, msg: Optional[str] = None) -> T:
+    """Unpacks the value of an optional or returns a default if provided, otherwise raises a ValueError with custom message (if provided)."""
     if maybe_value is None:
-        raise ValueError("Can't unpack empty optional")
+        # Check if we can return a default value instead
+        if default is not None:
+            return default
+        # Not possible to unpack an empty optional and no default is given -> raise ValueError
+        raise ValueError(msg or "Can't unpack empty optional")
 
+    # If the optional is not empty, return its value
     return maybe_value
 
 
