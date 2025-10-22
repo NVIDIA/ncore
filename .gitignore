@@ -11,3 +11,5 @@ _build/
 
 *.swp
 *.swo
+
+MODULE.bazel.lock
