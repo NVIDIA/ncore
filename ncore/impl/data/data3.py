@@ -16,6 +16,7 @@ import json
 import logging
 import re
 
+from collections import defaultdict
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple, Union, cast
@@ -37,7 +38,17 @@ CAMERAS_BASE_GROUP = "cameras"
 LIDARS_BASE_GROUP = "lidars"
 RADARS_BASE_GROUP = "radars"
 
-JsonLike = Union[Dict[str, "JsonLike"], List["JsonLike"], str, int, float, bool, None]
+JsonLike = Union[
+    Dict[str, "JsonLike"],
+    List["JsonLike"],
+    str,
+    int,
+    float,
+    bool,
+    None,
+    # special-case shouldn't be needed, but required to make mypy happy
+    List[int],
+]
 
 _logger = logging.getLogger(__name__)
 
@@ -1090,3 +1101,90 @@ class ShardDataLoader:
                 for track_label in tracks_group["track_labels"]
             }
         )
+
+    def get_sequence_meta(self) -> JsonLike:
+        """Returns full sequence meta-data as a dictionary"""
+
+        output: Dict[str, JsonLike] = {
+            "sequence_id": self.get_sequence_id(),
+            "pose-range": {
+                "start-timestamp_us": int(
+                    (sequence_pose_timestamps_us := self.get_poses().T_rig_world_timestamps_us)[0]
+                ),
+                "end-timestamp_us": int(sequence_pose_timestamps_us[-1]),
+                "num-poses": len(sequence_pose_timestamps_us),
+            },
+            "shard-ids": self.get_shard_ids(),
+        }
+        sequence_start_timestamp_us, sequence_end_timestamp_us = (
+            sequence_pose_timestamps_us[0],
+            sequence_pose_timestamps_us[-1],
+        )
+
+        ## Shard-wide information
+        shards: List[JsonLike] = []
+        shard_pose_offset = 0
+        sensor_frame_offset: dict[str, int] = defaultdict(int)
+        for shard_idx, (shard_id, shard_file) in enumerate(zip(self.get_shard_ids(), self.get_shard_paths())):
+            start_shard_idx = shard_idx
+            stop_shard_idx = shard_idx + 1
+
+            shard_pose_timestamps_us = self.get_poses(
+                start_shard_idx=start_shard_idx, stop_shard_idx=stop_shard_idx
+            ).T_rig_world_timestamps_us
+
+            # sanity checks
+            assert (
+                sequence_start_timestamp_us <= shard_pose_timestamps_us[0]
+                and shard_pose_timestamps_us[-1] <= sequence_end_timestamp_us
+            ), f"shard {shard_idx} pose timestamps inconsistent with sequence pose timestamps"
+
+            shard: Dict[str, JsonLike] = {
+                "id": shard_id,
+                "path": (shard_path := Path(shard_file)).name,
+                "md5": common.md5(shard_path),
+                "pose-range": {
+                    "start-timestamp_us": int(shard_pose_timestamps_us[0]),
+                    "end-timestamp_us": int(shard_pose_timestamps_us[-1]),
+                    "num-poses": len(shard_pose_timestamps_us),
+                    "sequence-pose-offset": shard_pose_offset,
+                    "sequence-time-offset_us": int(shard_pose_timestamps_us[0] - sequence_start_timestamp_us),
+                    "sequence-time-offset_sec": (shard_pose_timestamps_us[0] - sequence_start_timestamp_us) / 1e6,
+                },
+            }
+            shard_pose_offset += len(shard_pose_timestamps_us)
+
+            sensors: Dict[str, JsonLike] = {}
+
+            for sensor_id in self.get_sensor_ids():
+                sensor = self.get_sensor(sensor_id)
+
+                sensor_frame_timestamps_us = sensor.get_frames_timestamps_us(
+                    start_shard_idx=start_shard_idx, stop_shard_idx=stop_shard_idx
+                )
+
+                # sanity checks
+                assert (
+                    sequence_start_timestamp_us <= sensor_frame_timestamps_us[0]
+                    and sensor_frame_timestamps_us[-1] <= sequence_end_timestamp_us
+                ), f"sensor {sensor_id} frame timestamps inconsistent with sequence pose timestamps"
+
+                sensors[sensor_id] = {
+                    "frame-range": {
+                        "start-timestamp_us": int(sensor_frame_timestamps_us[0]),
+                        "end-timestamp_us": int(sensor_frame_timestamps_us[-1]),
+                        "num-frames": len(sensor_frame_timestamps_us),
+                        "sequence-frame-offset": sensor_frame_offset[sensor_id],
+                        "sequence-time-offset_us": int(sensor_frame_timestamps_us[0] - sequence_start_timestamp_us),
+                        "sequence-time-offset_sec": (sensor_frame_timestamps_us[0] - sequence_start_timestamp_us) / 1e6,
+                    },
+                }
+                sensor_frame_offset[sensor_id] += len(sensor_frame_timestamps_us)
+
+            shard["sensors"] = sensors
+
+            shards.append(shard)
+
+        output["shards"] = shards
+
+        return output
