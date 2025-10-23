@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 import time
@@ -42,6 +43,15 @@ def load_jsonl(jsonl_path: Union[str, Path]) -> List[dict]:
             object_list.append(json.loads(line))
 
     return object_list
+
+
+def md5(path: Path, chunk_size: int = 128 * 2**9) -> str:
+    """Compute the MD5 hash of a file"""
+    hash_md5 = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(chunk_size), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 
 class PoseInterpolator:
