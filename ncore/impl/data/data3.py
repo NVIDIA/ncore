@@ -14,7 +14,6 @@ import concurrent.futures
 import io
 import json
 import logging
-import re
 
 from collections import defaultdict
 from pathlib import Path
@@ -1073,7 +1072,7 @@ class ShardDataLoader:
             shard: Dict[str, JsonLike] = {
                 "id": shard_id,
                 "path": shard_path.name,
-                "md5": common.md5(shard_path),
+                "md5": common.MD5Hasher.hash(shard_path),
                 "pose-range": {
                     "start-timestamp_us": int(shard_pose_timestamps_us[0]),
                     "end-timestamp_us": int(shard_pose_timestamps_us[-1]),

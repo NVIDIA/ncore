@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple, TypeVar, Union, cast
+from typing import TYPE_CHECKING, Callable, List, Optional, Tuple, TypeVar, Union, cast
 
 import numpy as np
 import PIL.Image as PILImage
@@ -28,7 +28,11 @@ from scipy.spatial.transform import Rotation as R
 from upath import UPath
 
 
-def load_jsonl(jsonl_path: Union[str, Path]) -> List[dict]:
+if TYPE_CHECKING:
+    from _hashlib import HASH as Hash
+
+
+def load_jsonl(jsonl_path: Union[str, Path, UPath]) -> List[dict]:
     """
     Loads a jsonl (json-lines) file (each line corresponds to a serialized json object) - see jsonlines.org
 
@@ -39,20 +43,111 @@ def load_jsonl(jsonl_path: Union[str, Path]) -> List[dict]:
     """
 
     object_list = []
-    with open(jsonl_path, "r") as fp:
+    with UPath(jsonl_path).open("r") as fp:
         for line in fp:
             object_list.append(json.loads(line))
 
     return object_list
 
 
-def md5(path: UPath, chunk_size: int = 128 * 2**9) -> str:
-    """Compute the MD5 hash of a file"""
-    hash_md5 = hashlib.md5()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(chunk_size), b""):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
+class MD5Hasher:
+    """Helper class for MD5 hashing operations on files or full directories."""
+
+    @staticmethod
+    def _update_from_file(filename: UPath, hash: "Hash", chunk_size: int) -> "Hash":
+        """Update the provided hash object with the contents of the file.
+
+        Reads the file in chunks and updates the hash object incrementally to handle large files efficiently.
+
+        Args:
+            filename: Path to the file to hash
+            hash: Hash object to update (e.g., hashlib.md5())
+            chunk_size: Size of chunks to read from the file
+
+        Returns:
+            The updated hash object
+        """
+        assert filename.is_file()
+        with filename.open("rb") as f:
+            for chunk in iter(lambda: f.read(chunk_size), b""):
+                hash.update(chunk)
+        return hash
+
+    @staticmethod
+    def _hash_file(filename: UPath, chunk_size: int) -> str:
+        """Compute the MD5 hash of a file.
+
+        Args:
+            filename: Path to the file to hash
+            chunk_size: Size of chunks to read from the file
+
+        Returns:
+            Hexadecimal string representation of the file's MD5 hash
+        """
+        return str(MD5Hasher._update_from_file(filename, hashlib.md5(), chunk_size).hexdigest())
+
+    @staticmethod
+    def _update_from_dir(directory: UPath, hash: "Hash", chunk_size: int) -> "Hash":
+        """Update the provided hash object with the contents of the directory (recursively).
+
+        Traverses the directory tree in sorted order (case-insensitive) and updates the hash with:
+        - Each file/directory name (encoded as bytes)
+        - Contents of each file
+        - Recursively processes subdirectories
+
+        Args:
+            directory: Path to the directory to hash
+            hash: Hash object to update (e.g., hashlib.md5())
+            chunk_size: Size of chunks to read when processing files
+
+        Returns:
+            The updated hash object
+        """
+        assert directory.is_dir()
+        for path in sorted(directory.iterdir(), key=lambda p: str(p).lower()):
+            hash.update(path.name.encode())
+            if path.is_file():
+                hash = MD5Hasher._update_from_file(path, hash, chunk_size)
+            elif path.is_dir():
+                hash = MD5Hasher._update_from_dir(path, hash, chunk_size)
+        return hash
+
+    @staticmethod
+    def _hash_dir(directory: UPath, chunk_size: int) -> str:
+        """Compute the MD5 hash of a directory (recursively).
+
+        Computes a deterministic hash of the entire directory structure including all files,
+        subdirectories, and their names.
+
+        Args:
+            directory: Path to the directory to hash
+            chunk_size: Size of chunks to read when processing files
+
+        Returns:
+            Hexadecimal string representation of the directory's MD5 hash
+        """
+        return str(MD5Hasher._update_from_dir(directory, hashlib.md5(), chunk_size).hexdigest())
+
+    @staticmethod
+    def hash(path: UPath, chunk_size: int = 128 * 2**9) -> str:
+        """Compute the MD5 hash of a file or directory.
+
+        Args:
+            path: Path to the file or directory to hash
+            chunk_size: Size of chunks to read when processing files (default: 128 * 512 bytes)
+
+        Returns:
+            Hexadecimal string representation of the MD5 hash
+
+        Raises:
+            ValueError: If path is neither a file nor a directory
+        """
+        if path.is_file():
+            return MD5Hasher._hash_file(path, chunk_size)
+        elif path.is_dir():
+            return MD5Hasher._hash_dir(path, chunk_size)
+        else:
+            raise ValueError(f"Path '{path}' is neither a file nor a directory")
 
 
 class PoseInterpolator:

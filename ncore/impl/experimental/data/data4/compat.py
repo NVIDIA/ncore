@@ -99,6 +99,10 @@ class SequenceLoaderProtocol(Protocol):
         """Reloads any resources used by the internal sequence loader (potentially required for multi-process data loading)"""
         ...
 
+    def get_sequence_meta(self) -> JsonLike:
+        """Returns sequence-wide meta-data summary"""
+        ...
+
     @property
     def camera_ids(self) -> List[str]:
         """All camera sensor IDs in the sequence"""

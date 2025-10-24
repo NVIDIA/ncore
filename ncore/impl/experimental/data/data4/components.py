@@ -20,7 +20,7 @@ from typing import Dict, Generator, List, Literal, Optional, Tuple, Type, TypeVa
 
 from numcodecs import Blosc
 
-from ncore.impl.common.common import HalfClosedInterval
+from ncore.impl.common.common import HalfClosedInterval, md5
 
 
 if sys.version_info >= (3, 11):
@@ -223,11 +223,11 @@ class SequenceComponentStoreReader:
         assert len(component_store_paths), "No component inputs provided"
 
         # Load component stores concurrently (to hide latency) and check for sequence consistency
-        self._component_stores: Dict[str, zarr.Group] = {}  # use str as the generic path / URL type
+        self._component_stores: Dict[str, Tuple[zarr.Group, Path]] = {}  # use str as the generic path / URL type
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
 
-            def thread_load_component_store(component_store_path: Path) -> zarr.Group:
+            def thread_load_component_store(component_store_path: Path) -> Tuple[zarr.Group, Path]:
                 """Thread-executed shard opening"""
 
                 # Make sure paths are absolute at this point - in the future we might have fully-resolved URLs instead here, too
@@ -253,7 +253,7 @@ class SequenceComponentStoreReader:
                     else zarr.open(store=component_store, mode="r")
                 )
 
-                return cast(zarr.Group, component_root)
+                return cast(zarr.Group, component_root), component_store_path
 
             for future in concurrent.futures.as_completed(
                 [
@@ -262,7 +262,7 @@ class SequenceComponentStoreReader:
                 ]
             ):
                 # Note: thread completion order is not relevant here
-                component_root = future.result()
+                component_root, component_store_path = future.result()
 
                 component_root_attrs = dict(component_root.attrs.items())
 
@@ -293,7 +293,7 @@ class SequenceComponentStoreReader:
                 if component_group_name in self._component_stores:
                     raise RuntimeError(f"Component group {component_group_name} loaded multiple times")
 
-                self._component_stores[component_group_name] = component_root
+                self._component_stores[component_group_name] = (component_root, component_store_path)
 
         # Check version-compatibility
         if self._version != VERSION:
@@ -302,7 +302,7 @@ class SequenceComponentStoreReader:
     def reload_resources(self) -> None:
         """Trigger a reload of each itar store - useful to re-initialize file objects in multi-process settings"""
         component_store: Union[zarr.Group, stores.ConsolidatedCompressedMetadataStore]
-        for component_store in self._component_stores.values():
+        for component_store, _ in self._component_stores.values():
             # unwind one layer of possible consolidated metadata store
             if isinstance(
                 compressed_consolidated_store := component_store.store, stores.ConsolidatedCompressedMetadataStore
@@ -332,7 +332,7 @@ class SequenceComponentStoreReader:
 
         ret = {}
 
-        for component_root_group in self._component_stores.values():
+        for component_root_group, _ in self._component_stores.values():
             if (component_group := component_root_group.get(component_reader_type.get_component_name())) is None:
                 continue
 
@@ -349,6 +349,45 @@ class SequenceComponentStoreReader:
                 ret[component_instance_name] = component_reader_type(component_instance_name, component_group)
 
         return ret
+
+    def get_sequence_meta(self) -> data.JsonLike:
+        """Returns full sequence meta-data as a dictionary"""
+
+        # collect component names and instances per store and component
+        component_stores_info: List[data.JsonLike] = []
+        for component_root_group, component_store_path in self._component_stores.values():
+            components: Dict[str, data.JsonLike] = {}
+            for component_name, component in component_root_group.items():
+                # collect component names and instances
+                component_instances: Dict[str, data.JsonLike] = {}
+                for component_instance_name, component_instance in component.items():
+                    component_instance_attrs = component_instance.attrs
+                    component_instances[component_instance_name] = {
+                        "version": component_instance_attrs["component_version"],
+                        "generic_meta_data": component_instance_attrs["generic_meta_data"],
+                    }
+
+                components[component_name] = component_instances
+
+            component_stores_info.append(
+                {
+                    "path": component_store_path.name,
+                    "md5": md5(component_store_path),
+                    "components": components,
+                }
+            )
+
+        # combine with sequence-wide information
+        return {
+            "sequence_id": self._sequence_id,
+            "sequence_timestamp_interval_us": {
+                "start": self._sequence_timestamp_interval_us.start,
+                "stop": self._sequence_timestamp_interval_us.stop,
+            },
+            "generic_meta_data": self._generic_meta_data,
+            "version": self._version,
+            "component_stores": component_stores_info,
+        }
 
 
 class ComponentWriter(ABC):

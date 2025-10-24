@@ -70,3 +70,14 @@ py_binary(
         "//scripts:pylib_util",
     ],
 )
+
+py_binary(
+    name = "ncore_sequence_meta",
+    srcs = ["ncore_sequence_meta.py"],
+    deps = [
+        requirement("click"),
+        "//ncore/impl/data:pylib_data3",
+        "//ncore/impl/experimental/data/data4:pylib_compat",
+        "//ncore/impl/experimental/data/data4:pylib_components",
+    ],
+)
