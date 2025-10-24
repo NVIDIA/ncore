@@ -67,7 +67,20 @@ class PoseInterpolator:
         (np.array): interpolated poses in se3 representation [m,4,4]
     """
 
+    @property
+    def poses(self) -> np.ndarray:
+        """Returns the original poses used for interpolation"""
+        return self._poses
+
+    @property
+    def timestamps(self) -> np.ndarray:
+        """Returns the timestamps corresponding to the original poses used for interpolation"""
+        return self._timestamps
+
     def __init__(self, poses, timestamps):
+        self._poses = poses
+        self._timestamps = timestamps
+
         self.slerp = spatial.transform.Slerp(timestamps, R.from_matrix(poses[:, :3, :3]))
         self.f_x = interpolate.interp1d(timestamps, poses[:, 0, 3])
         self.f_y = interpolate.interp1d(timestamps, poses[:, 1, 3])
@@ -75,13 +88,10 @@ class PoseInterpolator:
 
         self.last_row = np.array([0, 0, 0, 1], dtype=np.float32).reshape(1, 1, -1)
 
-        self.start_timestamp = timestamps[0]
-        self.end_timestamp = timestamps[-1]
-
     def in_range(self, ts) -> bool:
         """Returns true if all provided timestamps (scalar or array-like) are within the interpolation range"""
         return (
-            np.logical_and(self.start_timestamp <= (ts_array := np.asarray(ts)), ts_array <= self.end_timestamp)
+            np.logical_and(self._timestamps[0] <= (ts_array := np.asarray(ts)), ts_array <= self._timestamps[-1])
             .all()
             .item()
         )

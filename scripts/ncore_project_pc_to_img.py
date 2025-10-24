@@ -20,8 +20,7 @@ import tqdm
 
 from scipy.spatial.transform import Rotation as R
 
-from ncore.impl.common.common import PoseInterpolator
-from ncore.impl.common.transformations import se3_inverse, transform_point_cloud
+from ncore.impl.common.transformations import MotionCompensator, se3_inverse, transform_point_cloud
 from ncore.impl.common.visualization import plot_points_on_image
 from ncore.impl.data import types
 from ncore.impl.data.data3 import CameraSensor, LidarSensor, PointCloudSensor, ShardDataLoader
@@ -151,7 +150,6 @@ def ncore_project_pc_to_img(
     T_camera_rig = se3_matrix(camera_extrinsic_delta) @ cam_sensor.get_T_sensor_rig()
 
     poses = loader.get_poses()
-    pose_interpolator = PoseInterpolator(poses.T_rig_worlds, poses.T_rig_world_timestamps_us)
 
     msg = f"Camera torch model @ {device} | projection with {pose} poses"
 
@@ -188,7 +186,7 @@ def ncore_project_pc_to_img(
         pc = pc_sensor.get_frame_data(pc_frame_index, "xyz_e")
 
         if lidar_model is not None:
-            ## Generate sensor points from model elements
+            ## Generate sensor points from model elements with length of the source data
             sensor_pc = (
                 lidar_model.elements_to_sensor_points(
                     pc_sensor.get_frame_data(pc_frame_index, "model_element"),
@@ -199,32 +197,18 @@ def ncore_project_pc_to_img(
             )
 
             ## Perform motion-compensation
-
-            # Interpolate egomotion at frame end timestamp for sensor reference pose at end-of-spin time
-            frame_end_timestamp_us = pc_sensor.get_frame_timestamp_us(pc_frame_index, types.FrameTimepoint.END)
-            T_world_sensorRef = se3_inverse(
-                pose_interpolator.interpolate_to_timestamps(frame_end_timestamp_us)[0] @ T_sensor_rig
+            motion_compensator = MotionCompensator(
+                T_sensor_rig=T_sensor_rig,
+                T_rig_worlds=poses.T_rig_worlds,
+                T_rig_worlds_timestamps_us=poses.T_rig_world_timestamps_us,
             )
 
-            # Determine unique timestamps to only perform actually required pose interpolations (a lot of points share the same timestamp)
-            timestamp_unique, unique_timestamp_reverse_idxs = np.unique(
-                pc_sensor.get_frame_data(pc_frame_index, "timestamp_us"), return_inverse=True
-            )
-
-            # Lidar frame poses for each point (will throw in case invalid timestamps are loaded) expressed in the reference sensor's frame
-            # sensor_sensorRef = world_sensorRef * sensor_world = world_sensorRef * (rig_world * sensor_rig)
-            T_sensor_sensorRef_unique = (
-                T_world_sensorRef @ pose_interpolator.interpolate_to_timestamps(timestamp_unique) @ T_sensor_rig
-            )
-
-            # Pick sensor positions (in end-of-spin reference pose) for each start point (blow up to original potentially non-unique timestamp range)
-            xyz_s = T_sensor_sensorRef_unique[unique_timestamp_reverse_idxs, :3, -1]  # N x 3
-
-            xyz = (T_sensor_sensorRef_unique[unique_timestamp_reverse_idxs, :3, :3] @ sensor_pc[:, :, None]).squeeze(
-                -1
-            ) + xyz_s  # N x 3
-
-            pc = xyz
+            pc = motion_compensator.motion_compensate_points(
+                xyz_pointtime=sensor_pc,
+                timestamp_us=pc_sensor.get_frame_data(pc_frame_index, "timestamp_us"),
+                frame_start_timestamp_us=pc_sensor.get_frame_timestamp_us(pc_frame_index, types.FrameTimepoint.START),
+                frame_end_timestamp_us=pc_sensor.get_frame_timestamp_us(pc_frame_index, types.FrameTimepoint.END),
+            ).xyz_e_sensorend
 
         # Transform the point cloud to the world coordinate frame
         pc = transform_point_cloud(pc, pc_sensor.get_frame_T_rig_world(pc_frame_index) @ T_sensor_rig)
