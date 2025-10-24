@@ -539,22 +539,46 @@ def ecef_2_ENU(loc_ref_point: np.ndarray, earth_model: str = "WGS84"):
 class MotionCompensator:
     """Performs motion compensation / decompensation of points measured relative to time-dependent frames"""
 
-    def __init__(
-        self,
+    @staticmethod
+    def from_sensor_rig(
+        sensor_id: str,
         T_sensor_rig: np.ndarray,
         T_rig_worlds: np.ndarray,
         T_rig_worlds_timestamps_us: np.ndarray,
+    ) -> MotionCompensator:
+        """Constructs a motion-compensator from a sensor-rig transformations for a specific sensor only"""
+
+        return MotionCompensator(
+            PoseGraphInterpolator(
+                [
+                    PoseGraphInterpolator.Edge(
+                        source_node="rig",
+                        target_node="world",
+                        T_source_target=T_rig_worlds,
+                        timestamps_us=T_rig_worlds_timestamps_us,
+                    ),
+                    PoseGraphInterpolator.Edge(
+                        source_node=sensor_id,
+                        target_node="rig",
+                        T_source_target=T_sensor_rig,
+                        timestamps_us=None,
+                    ),
+                ]
+            )
+        )
+
+    def __init__(
+        self,
+        pose_graph: PoseGraphInterpolator,
     ):
         """
-        Initializes motion-compensator with common parameters
+        Initializes motion-compensator to use a pose-graph interpolator
 
         Args:
-            T_sensor_rig (np.array): sensor extrinsics [4,4]
-            T_rig_worlds (np.array): rig poses relative to the world frame [M,4,4]
-            T_rig_worlds (np.array): timestamps of rig poses frame [M]
+            pose_graph (PoseGraphInterpolator): Should contain transformations from sensors to 'world' frame
         """
-        self.T_sensor_rig = T_sensor_rig
-        self.rig_pose_interpolator = PoseInterpolator(T_rig_worlds, T_rig_worlds_timestamps_us)
+
+        self._pose_graph = pose_graph
 
     @dataclass
     class MotionCompensationResult:
@@ -565,6 +589,7 @@ class MotionCompensator:
 
     def motion_compensate_points(
         self,
+        sensor_id: str,
         xyz_pointtime: np.ndarray,
         timestamp_us: np.ndarray,
         frame_start_timestamp_us: int,
@@ -574,6 +599,7 @@ class MotionCompensator:
         Perform motion compensation of points in time-dependent sensor frame at measurement time to common *end-of-frame* sensor frame
 
         Args:
+            sensor_id (str): sensor the points are relative to
             xyz_pointtime(np.ndarray): points in time-dependent sensor frame (~before motion compensation), [N,3]
             timestamp_us(np.ndarray): timestamps of points, [N]
             frame_start_timestamp_us(list): frame start timestamp, [2]
@@ -595,18 +621,16 @@ class MotionCompensator:
         )
 
         # Interpolate egomotion at frame end timestamp for sensor reference pose at end-of-frame time
-        T_world_sensorRef = se3_inverse(
-            self.rig_pose_interpolator.interpolate_to_timestamps(frame_end_timestamp_us) @ self.T_sensor_rig
+        T_world_sensorRef = self._pose_graph.evaluate_poses(
+            "world", sensor_id, np.array(frame_end_timestamp_us, dtype=np.uint64)
         )
 
         # Determine unique timestamps to only perform actually required pose interpolations (a lot of points share the same timestamp)
         timestamp_unique, unique_timestamp_reverse_idxs = np.unique(timestamp_us, return_inverse=True)
 
         # Frame poses for each point (will throw in case invalid timestamps are loaded) expressed in the reference sensor's frame
-        T_sensor_sensorRef_unique = (
-            T_world_sensorRef
-            @ self.rig_pose_interpolator.interpolate_to_timestamps(timestamp_unique)
-            @ self.T_sensor_rig
+        T_sensor_sensorRef_unique = T_world_sensorRef @ self._pose_graph.evaluate_poses(
+            sensor_id, "world", timestamp_unique
         )
 
         # Pick sensor positions (in end-of-frame reference pose) for each start point (blow up to original potentially non-unique timestamp range)
@@ -621,6 +645,7 @@ class MotionCompensator:
 
     def motion_decompensate_points(
         self,
+        sensor_id: str,
         xyz_sensorend: np.ndarray,
         timestamp_us: np.ndarray,
         frame_start_timestamp_us: int,
@@ -630,6 +655,7 @@ class MotionCompensator:
         Decompensate motion of motin-compensated ponts to bring points into time-dependent sensor-frame
 
         Args:
+            sensor_id (str): sensor the points are relative to
             xyz_sensorend (np.array): motion-compensated points relative to sensor-end-frame to be decompensated, [N,3]
             timestamp_us(np.ndarray): timestamps of points, [N]
             frame_start_timestamp_us(list): frame start timestamp, [2]
@@ -649,9 +675,8 @@ class MotionCompensator:
         )
 
         # Construct relative pose from end-of-frame reference coordinate system to start-of-frame coordinate system
-        T_sensor_worlds = (
-            self.rig_pose_interpolator.interpolate_to_timestamps([frame_start_timestamp_us, frame_end_timestamp_us])
-            @ self.T_sensor_rig
+        T_sensor_worlds = self._pose_graph.evaluate_poses(
+            sensor_id, "world", np.array([frame_start_timestamp_us, frame_end_timestamp_us], dtype=np.uint64)
         )
 
         T_sensor_end_sensor_start = se3_inverse(T_sensor_worlds[0]) @ T_sensor_worlds[1]

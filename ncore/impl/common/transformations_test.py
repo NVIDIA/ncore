@@ -50,8 +50,11 @@ class TestMotionCompensator(unittest.TestCase):
     def test_idempotence(self):
         """Test to verify compensation / decompensation are symmetric"""
 
-        motion_compensator = MotionCompensator(
-            self.lidar_sensor.get_T_sensor_rig(), self.poses.T_rig_worlds, self.poses.T_rig_world_timestamps_us
+        motion_compensator = MotionCompensator.from_sensor_rig(
+            self.lidar_sensor.get_sensor_id(),
+            self.lidar_sensor.get_T_sensor_rig(),
+            self.poses.T_rig_worlds,
+            self.poses.T_rig_world_timestamps_us,
         )
 
         # Check on a few frames only
@@ -66,12 +69,20 @@ class TestMotionCompensator(unittest.TestCase):
 
             # Run decompensation
             xyz_pointtime = motion_compensator.motion_decompensate_points(
-                xyz_e, timestamp_us, frame_start_timestamps_us, frame_end_timestamps_us
+                self.lidar_sensor.get_sensor_id(),
+                xyz_e,
+                timestamp_us,
+                frame_start_timestamps_us,
+                frame_end_timestamps_us,
             )
 
             # Re-run compensation on non-compensated points
             motion_compensation_result = motion_compensator.motion_compensate_points(
-                xyz_pointtime, timestamp_us, frame_start_timestamps_us, frame_end_timestamps_us
+                self.lidar_sensor.get_sensor_id(),
+                xyz_pointtime,
+                timestamp_us,
+                frame_start_timestamps_us,
+                frame_end_timestamps_us,
             )
 
             # Check for consistency

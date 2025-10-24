@@ -197,13 +197,15 @@ def ncore_project_pc_to_img(
             )
 
             ## Perform motion-compensation
-            motion_compensator = MotionCompensator(
+            motion_compensator = MotionCompensator.from_sensor_rig(
+                sensor_id=sensor_id,
                 T_sensor_rig=T_sensor_rig,
                 T_rig_worlds=poses.T_rig_worlds,
                 T_rig_worlds_timestamps_us=poses.T_rig_world_timestamps_us,
             )
 
             pc = motion_compensator.motion_compensate_points(
+                sensor_id=sensor_id,
                 xyz_pointtime=sensor_pc,
                 timestamp_us=pc_sensor.get_frame_data(pc_frame_index, "timestamp_us"),
                 frame_start_timestamp_us=pc_sensor.get_frame_timestamp_us(pc_frame_index, types.FrameTimepoint.START),
