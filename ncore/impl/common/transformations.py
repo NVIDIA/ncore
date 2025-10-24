@@ -10,12 +10,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 
 from scipy.spatial.transform import Rotation as R
 
 from ncore.impl.common.common import PoseInterpolator
+
+
+if TYPE_CHECKING:
+    import numpy.typing as npt  # type: ignore[import-not-found]
 
 
 def so3_trans_2_se3(so3, trans):
@@ -534,22 +539,46 @@ def ecef_2_ENU(loc_ref_point: np.ndarray, earth_model: str = "WGS84"):
 class MotionCompensator:
     """Performs motion compensation / decompensation of points measured relative to time-dependent frames"""
 
-    def __init__(
-        self,
+    @staticmethod
+    def from_sensor_rig(
+        sensor_id: str,
         T_sensor_rig: np.ndarray,
         T_rig_worlds: np.ndarray,
         T_rig_worlds_timestamps_us: np.ndarray,
+    ) -> MotionCompensator:
+        """Constructs a motion-compensator from a sensor-rig transformations for a specific sensor only"""
+
+        return MotionCompensator(
+            PoseGraphInterpolator(
+                [
+                    PoseGraphInterpolator.Edge(
+                        source_node="rig",
+                        target_node="world",
+                        T_source_target=T_rig_worlds,
+                        timestamps_us=T_rig_worlds_timestamps_us,
+                    ),
+                    PoseGraphInterpolator.Edge(
+                        source_node=sensor_id,
+                        target_node="rig",
+                        T_source_target=T_sensor_rig,
+                        timestamps_us=None,
+                    ),
+                ]
+            )
+        )
+
+    def __init__(
+        self,
+        pose_graph: PoseGraphInterpolator,
     ):
         """
-        Initializes motion-compensator with common parameters
+        Initializes motion-compensator to use a pose-graph interpolator
 
         Args:
-            T_sensor_rig (np.array): sensor extrinsics [4,4]
-            T_rig_worlds (np.array): rig poses relative to the world frame [M,4,4]
-            T_rig_worlds (np.array): timestamps of rig poses frame [M]
+            pose_graph (PoseGraphInterpolator): Should contain transformations from sensors to 'world' frame
         """
-        self.T_sensor_rig = T_sensor_rig
-        self.rig_pose_interpolator = PoseInterpolator(T_rig_worlds, T_rig_worlds_timestamps_us)
+
+        self._pose_graph = pose_graph
 
     @dataclass
     class MotionCompensationResult:
@@ -560,6 +589,7 @@ class MotionCompensator:
 
     def motion_compensate_points(
         self,
+        sensor_id: str,
         xyz_pointtime: np.ndarray,
         timestamp_us: np.ndarray,
         frame_start_timestamp_us: int,
@@ -569,6 +599,7 @@ class MotionCompensator:
         Perform motion compensation of points in time-dependent sensor frame at measurement time to common *end-of-frame* sensor frame
 
         Args:
+            sensor_id (str): sensor the points are relative to
             xyz_pointtime(np.ndarray): points in time-dependent sensor frame (~before motion compensation), [N,3]
             timestamp_us(np.ndarray): timestamps of points, [N]
             frame_start_timestamp_us(list): frame start timestamp, [2]
@@ -590,18 +621,16 @@ class MotionCompensator:
         )
 
         # Interpolate egomotion at frame end timestamp for sensor reference pose at end-of-frame time
-        T_world_sensorRef = se3_inverse(
-            self.rig_pose_interpolator.interpolate_to_timestamps(frame_end_timestamp_us) @ self.T_sensor_rig
+        T_world_sensorRef = self._pose_graph.evaluate_poses(
+            "world", sensor_id, np.array(frame_end_timestamp_us, dtype=np.uint64)
         )
 
         # Determine unique timestamps to only perform actually required pose interpolations (a lot of points share the same timestamp)
         timestamp_unique, unique_timestamp_reverse_idxs = np.unique(timestamp_us, return_inverse=True)
 
         # Frame poses for each point (will throw in case invalid timestamps are loaded) expressed in the reference sensor's frame
-        T_sensor_sensorRef_unique = (
-            T_world_sensorRef
-            @ self.rig_pose_interpolator.interpolate_to_timestamps(timestamp_unique)
-            @ self.T_sensor_rig
+        T_sensor_sensorRef_unique = T_world_sensorRef @ self._pose_graph.evaluate_poses(
+            sensor_id, "world", timestamp_unique
         )
 
         # Pick sensor positions (in end-of-frame reference pose) for each start point (blow up to original potentially non-unique timestamp range)
@@ -616,6 +645,7 @@ class MotionCompensator:
 
     def motion_decompensate_points(
         self,
+        sensor_id: str,
         xyz_sensorend: np.ndarray,
         timestamp_us: np.ndarray,
         frame_start_timestamp_us: int,
@@ -625,6 +655,7 @@ class MotionCompensator:
         Decompensate motion of motin-compensated ponts to bring points into time-dependent sensor-frame
 
         Args:
+            sensor_id (str): sensor the points are relative to
             xyz_sensorend (np.array): motion-compensated points relative to sensor-end-frame to be decompensated, [N,3]
             timestamp_us(np.ndarray): timestamps of points, [N]
             frame_start_timestamp_us(list): frame start timestamp, [2]
@@ -644,9 +675,8 @@ class MotionCompensator:
         )
 
         # Construct relative pose from end-of-frame reference coordinate system to start-of-frame coordinate system
-        T_sensor_worlds = (
-            self.rig_pose_interpolator.interpolate_to_timestamps([frame_start_timestamp_us, frame_end_timestamp_us])
-            @ self.T_sensor_rig
+        T_sensor_worlds = self._pose_graph.evaluate_poses(
+            sensor_id, "world", np.array([frame_start_timestamp_us, frame_end_timestamp_us], dtype=np.uint64)
         )
 
         T_sensor_end_sensor_start = se3_inverse(T_sensor_worlds[0]) @ T_sensor_worlds[1]
@@ -668,3 +698,162 @@ class MotionCompensator:
         ).squeeze(1)
 
         return xyz_pointtime
+
+
+class PoseGraphInterpolator:
+    """
+    Interpolates rigid poses between named nodes in a pose graph. Edges in the pose graph can be static or dynamic (time-dependent)
+    """
+
+    class Edge:
+        """
+        Represents an edge in the pose graph, either static or dynamic (time-dependent)
+        """
+
+        def __init__(
+            self, source_node: str, target_node: str, T_source_target: np.ndarray, timestamps_us: Optional[np.ndarray]
+        ):
+            self.source_node = source_node
+            self.target_node = target_node
+            self.T_source_target = T_source_target  # either [4,4] (static) or [n,4,4] (dynamic)
+            self.timestamps_us = timestamps_us  # either None (static) or [n] (dynamic)
+
+            self.interpolator: Optional[PoseInterpolator] = None
+            if timestamps_us is not None:
+                assert len(self.T_source_target.shape) == 3 and self.T_source_target.shape[0] == len(timestamps_us)
+                assert self.T_source_target.shape[1:] == (4, 4)
+                self.interpolator = PoseInterpolator(self.T_source_target, timestamps_us)
+            else:
+                assert self.T_source_target.shape == (4, 4)
+
+        def get_T(self, source_node: str, target_node: str, timestamps_us: np.ndarray) -> np.ndarray:
+            """Returns the transformation from source to target node at the given timestamps
+
+            Args:
+                source_node (str): name of the source node
+                target_node (str): name of the target node
+                timestamps_us (np.ndarray): timestamps at which to evaluate the pose - defines the batch shape
+
+            Returns:
+                np.ndarray: evaluated poses from source to target node at the given timestamps [batch-shape,4,4]
+            """
+
+            assert np.issubdtype(timestamps_us.dtype, np.integer), "Timestamps must be of integer type"
+
+            batch_shape = timestamps_us.shape
+
+            if self.interpolator is not None:
+                # perform interpolation
+                T_source_target = self.interpolator.interpolate_to_timestamps(timestamps_us.flatten()).reshape(
+                    batch_shape + (4, 4)
+                )
+            else:
+                # static edge case, not time-dependent, simply repeat for batch shape
+                T_source_target = np.tile(self.T_source_target, (batch_shape + (1, 1)))
+
+            if source_node == self.source_node and target_node == self.target_node:
+                # return direct edge value
+                return T_source_target
+            elif source_node == self.target_node and target_node == self.source_node:
+                # return inverted edge value
+                return se3_inverse(T_source_target, unbatch=False).reshape(batch_shape + (4, 4))
+            else:
+                raise KeyError("Invalid source/target node for edge")
+
+    def __init__(self, edges: List[Edge]):
+        # Collect graph
+        self._nodes: Set[str] = set()
+        for edge in edges:
+            self._nodes.add(edge.source_node)
+            self._nodes.add(edge.target_node)
+
+        # Precompute all-pairs paths assuming undirected graph, check for cycles
+        self._edge_map = {(edge.source_node, edge.target_node): edge for edge in edges}
+        self._paths: Dict[str, Dict[str, List[Tuple[str, str]]]] = {}
+        for node in self._nodes:
+            self._paths[node] = {node: []}
+            visited = {node}
+            queue = [node]
+            while queue:
+                current = queue.pop(0)
+                for neighbor in [e.target_node for e in edges if e.source_node == current] + [
+                    e.source_node for e in edges if e.target_node == current
+                ]:
+                    if neighbor not in visited:
+                        visited.add(neighbor)
+                        queue.append(neighbor)
+                        self._paths[node][neighbor] = self._paths[node][current] + [
+                            (current, neighbor) if (current, neighbor) in self._edge_map else (neighbor, current)
+                        ]
+            if len(visited) != len(self._nodes):
+                raise ValueError("Pose graph is not fully connected")
+
+        # Map of normalized (sorted) node names to edges for more efficient lookup at graph traversal time
+        self._normalized_edge_map = {tuple(sorted((k[0], k[1]))): edge for k, edge in self._edge_map.items()}
+
+        # Check for cycles (simple check: number of edges must be |nodes|-1 for a tree)
+        if len(edges) >= len(self._nodes):
+            raise ValueError("Pose graph contains cycles")
+
+    @property
+    def nodes(self) -> Set[str]:
+        """Returns the set of nodes in the pose graph"""
+        return self._nodes
+
+    def get_edge(self, source_node: str, target_node: str) -> Optional[Edge]:
+        """Returns the edge between the given source and target node, or None if no such edge exists
+
+        Args:
+            source_node (str): name of the source
+            target_node (str): name of the target
+
+        Returns:
+            Optional[Edge]: edge between source and target node, or None if no such edge exists
+        """
+        return self._edge_map.get((source_node, target_node), None)
+
+    def evaluate_poses(
+        self, source_node: str, target_node: str, timestamps_us: np.ndarray, dtype: "npt.DTypeLike" = np.float64
+    ) -> np.ndarray:
+        """
+        Evaluates relative pose from source to target node frames at the given timestamps. Performs
+        graph traversal and pose evaluation / composition (interpolation for time-dependent edges) as needed.
+
+        Args:
+            source_node (str): name of the source node
+            target_node (str): name of the target node
+            timestamps_us (np.ndarray): timestamps at which to evaluate the pose - defines the batch shape
+            dtype: desired output dtype of composition and the returned poses
+
+        Returns:
+            np.ndarray: evaluated poses from source to target node at the given timestamps [batch-shape,4,4]
+        """
+
+        batch_shape = timestamps_us.shape
+        T_source_target: np.ndarray = np.tile(np.eye(4, dtype=dtype), (batch_shape + (1, 1)))
+
+        if source_node not in self._nodes:
+            raise KeyError(f"Source node {source_node} not in pose graph")
+        if target_node not in self._nodes:
+            raise KeyError(f"Target node {target_node} not in pose graph")
+        if source_node == target_node:
+            return T_source_target
+
+        if (path := self._paths[source_node].get(target_node)) is None:
+            raise KeyError(f"No path from {source_node} to {target_node} in pose graph")
+
+        # traverse path, compose associated transformations
+        for edge_nodes in path:
+            edge = self._normalized_edge_map[tuple(sorted((edge_nodes[0], edge_nodes[1])))]
+
+            # determine evaluation direction and perform edge evaluation for requested timestamps + map to required dtype
+            if edge.source_node == source_node:
+                T_edge = edge.get_T(edge_nodes[0], edge_nodes[1], timestamps_us)
+                source_node = edge_nodes[1]
+            else:
+                T_edge = edge.get_T(edge_nodes[1], edge_nodes[0], timestamps_us)
+                source_node = edge_nodes[0]
+
+            T_source_target = T_edge.astype(dtype) @ T_source_target
+
+        return T_source_target
