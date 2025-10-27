@@ -11,7 +11,11 @@ py_library(
     srcs = [
         "__init__.py",
     ],
-    deps = ["//ncore/impl/experimental/data/data4:pylib_components"],
+    deps = [
+        "//ncore/impl/experimental/data/data4:pylib_compat",
+        "//ncore/impl/experimental/data/data4:pylib_components",
+        "//ncore/impl/experimental/data/data4:pylib_conversion",
+    ],
 )
 
 pytest_test(
