@@ -16,7 +16,7 @@ import numpy as np
 
 from scipy.spatial.transform import Rotation as R
 
-from ncore.impl.common.common import PoseInterpolator
+from ncore.impl.common.common import PoseInterpolator, unpack_optional
 
 
 if TYPE_CHECKING:
@@ -629,9 +629,9 @@ class MotionCompensator:
         timestamp_unique, unique_timestamp_reverse_idxs = np.unique(timestamp_us, return_inverse=True)
 
         # Frame poses for each point (will throw in case invalid timestamps are loaded) expressed in the reference sensor's frame
-        T_sensor_sensorRef_unique = T_world_sensorRef @ self._pose_graph.evaluate_poses(
-            sensor_id, "world", timestamp_unique
-        )
+        T_sensor_sensorRef_unique = (
+            T_world_sensorRef @ self._pose_graph.evaluate_poses(sensor_id, "world", timestamp_unique)
+        ).astype(np.float32)
 
         # Pick sensor positions (in end-of-frame reference pose) for each start point (blow up to original potentially non-unique timestamp range)
         xyz_s_sensorend = T_sensor_sensorRef_unique[unique_timestamp_reverse_idxs, :3, -1]  # N x 3
@@ -679,7 +679,7 @@ class MotionCompensator:
             sensor_id, "world", np.array([frame_start_timestamp_us, frame_end_timestamp_us], dtype=np.uint64)
         )
 
-        T_sensor_end_sensor_start = se3_inverse(T_sensor_worlds[0]) @ T_sensor_worlds[1]
+        T_sensor_end_sensor_start = (se3_inverse(T_sensor_worlds[0]) @ T_sensor_worlds[1]).astype(np.float32)
 
         relative_frame_interpolator = PoseInterpolator(
             np.stack([T_sensor_end_sensor_start, np.eye(4, dtype=np.float32)]),
@@ -690,7 +690,9 @@ class MotionCompensator:
         timestamp_unique, unique_timestamp_reverse_idxs = np.unique(timestamp_us, return_inverse=True)
 
         # Interpolate the decompensation transformations
-        T_sensor_end_sensor_pointtime_unique = relative_frame_interpolator.interpolate_to_timestamps(timestamp_unique)
+        T_sensor_end_sensor_pointtime_unique = relative_frame_interpolator.interpolate_to_timestamps(
+            timestamp_unique, dtype=np.float32
+        )
 
         # Apply the decompensation transformations
         xyz_pointtime = transform_point_cloud(
@@ -707,7 +709,9 @@ class PoseGraphInterpolator:
 
     class Edge:
         """
-        Represents an edge in the pose graph, either static or dynamic (time-dependent)
+        Represents an edge in the pose graph, either static or dynamic (time-dependent).
+
+        The computational data-type is given by the input arrays.
         """
 
         def __init__(
@@ -736,6 +740,7 @@ class PoseGraphInterpolator:
 
             Returns:
                 np.ndarray: evaluated poses from source to target node at the given timestamps [batch-shape,4,4]
+                            in the data-type of the edge
             """
 
             assert np.issubdtype(timestamps_us.dtype, np.integer), "Timestamps must be of integer type"
@@ -744,9 +749,9 @@ class PoseGraphInterpolator:
 
             if self.interpolator is not None:
                 # perform interpolation
-                T_source_target = self.interpolator.interpolate_to_timestamps(timestamps_us.flatten()).reshape(
-                    batch_shape + (4, 4)
-                )
+                T_source_target = self.interpolator.interpolate_to_timestamps(
+                    timestamps_us.flatten(), dtype=self.T_source_target.dtype
+                ).reshape(batch_shape + (4, 4))
             else:
                 # static edge case, not time-dependent, simply repeat for batch shape
                 T_source_target = np.tile(self.T_source_target, (batch_shape + (1, 1)))
@@ -812,9 +817,7 @@ class PoseGraphInterpolator:
         """
         return self._edge_map.get((source_node, target_node), None)
 
-    def evaluate_poses(
-        self, source_node: str, target_node: str, timestamps_us: np.ndarray, dtype: "npt.DTypeLike" = np.float64
-    ) -> np.ndarray:
+    def evaluate_poses(self, source_node: str, target_node: str, timestamps_us: np.ndarray) -> np.ndarray:
         """
         Evaluates relative pose from source to target node frames at the given timestamps. Performs
         graph traversal and pose evaluation / composition (interpolation for time-dependent edges) as needed.
@@ -823,26 +826,25 @@ class PoseGraphInterpolator:
             source_node (str): name of the source node
             target_node (str): name of the target node
             timestamps_us (np.ndarray): timestamps at which to evaluate the pose - defines the batch shape
-            dtype: desired output dtype of composition and the returned poses
 
         Returns:
             np.ndarray: evaluated poses from source to target node at the given timestamps [batch-shape,4,4]
         """
 
         batch_shape = timestamps_us.shape
-        T_source_target: np.ndarray = np.tile(np.eye(4, dtype=dtype), (batch_shape + (1, 1)))
 
         if source_node not in self._nodes:
             raise KeyError(f"Source node {source_node} not in pose graph")
         if target_node not in self._nodes:
             raise KeyError(f"Target node {target_node} not in pose graph")
         if source_node == target_node:
-            return T_source_target
+            return np.tile(np.eye(4, dtype=np.float32), (batch_shape + (1, 1)))
 
         if (path := self._paths[source_node].get(target_node)) is None:
             raise KeyError(f"No path from {source_node} to {target_node} in pose graph")
 
         # traverse path, compose associated transformations
+        T_source_target: Optional[np.ndarray] = None
         for edge_nodes in path:
             edge = self._normalized_edge_map[tuple(sorted((edge_nodes[0], edge_nodes[1])))]
 
@@ -854,6 +856,9 @@ class PoseGraphInterpolator:
                 T_edge = edge.get_T(edge_nodes[1], edge_nodes[0], timestamps_us)
                 source_node = edge_nodes[0]
 
-            T_source_target = T_edge.astype(dtype) @ T_source_target
+            if T_source_target is None:
+                T_source_target = T_edge
+            else:
+                T_source_target = T_edge @ T_source_target
 
-        return T_source_target
+        return unpack_optional(T_source_target)

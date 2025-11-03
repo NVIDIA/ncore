@@ -82,9 +82,7 @@ class PoseInterpolator:
         self._timestamps = timestamps
 
         self.slerp = spatial.transform.Slerp(timestamps, R.from_matrix(poses[:, :3, :3]))
-        self.f_x = interpolate.interp1d(timestamps, poses[:, 0, 3])
-        self.f_y = interpolate.interp1d(timestamps, poses[:, 1, 3])
-        self.f_z = interpolate.interp1d(timestamps, poses[:, 2, 3])
+        self.f_t = interpolate.interp1d(timestamps, poses[:, 0:3, 3], axis=0)
 
         self.last_row = np.array([0, 0, 0, 1], dtype=np.float32).reshape(1, 1, -1)
 
@@ -96,16 +94,16 @@ class PoseInterpolator:
             .item()
         )
 
-    def interpolate_to_timestamps(self, ts_target):
-        x_interp = self.f_x(ts_target).reshape(-1, 1, 1).astype(np.float32)
-        y_interp = self.f_y(ts_target).reshape(-1, 1, 1).astype(np.float32)
-        z_interp = self.f_z(ts_target).reshape(-1, 1, 1).astype(np.float32)
-        R_interp = self.slerp(ts_target).as_matrix().reshape(-1, 3, 3).astype(np.float32)
-
-        t_interp = np.concatenate([x_interp, y_interp, z_interp], axis=-2)
+    def interpolate_to_timestamps(self, ts_target, dtype=np.float32) -> np.ndarray:
+        t_interp = self.f_t(ts_target).reshape(-1, 3, 1).astype(dtype)
+        R_interp = self.slerp(ts_target).as_matrix().reshape(-1, 3, 3).astype(dtype)
 
         return np.concatenate(
-            (np.concatenate([R_interp, t_interp], axis=-1), np.tile(self.last_row, (R_interp.shape[0], 1, 1))), axis=1
+            (
+                np.concatenate([R_interp, t_interp], axis=-1),
+                np.tile(self.last_row.astype(dtype=dtype), (R_interp.shape[0], 1, 1)),
+            ),
+            axis=1,
         )
 
 
