@@ -11,5 +11,4 @@ docs/tools/proj1.png filter=lfs diff=lfs merge=lfs -text
 docs/tools/semantic-seg.png filter=lfs diff=lfs merge=lfs -text
 docs/tools/pc0.png filter=lfs diff=lfs merge=lfs -text
 docs/tools/pc.png filter=lfs diff=lfs merge=lfs -text
-ncore/impl/sensors/test_data/row-offset-spinning-lidar-model-parameters.json filter=lfs diff=lfs merge=lfs -text
 MODULE.bazel.lock filter=lfs diff=lfs merge=lfs -text
