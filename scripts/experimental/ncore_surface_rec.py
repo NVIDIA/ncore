@@ -170,4 +170,4 @@ def load_fused_pc(shard_file_pattern, sensor_id, max_dist=-1, start_frame=None, 
 
 
 if __name__ == "__main__":
-    ncore_surface_rec()
+    ncore_surface_rec(show_default=True)

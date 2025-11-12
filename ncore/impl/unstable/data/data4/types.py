@@ -33,7 +33,7 @@ class CuboidTrackObservation(dataclasses_json.DataClassJsonMixin):
     """Individual cuboid track observation relative to a reference frame"""
 
     track_id: str  #: Unique identifier of the object's track this observation is associated with
-    observation_id: str  #: Identifier of the current observation (unique among all observations)
+    observation_id: str  #: Unique identifier of the current observation (unique among all observations)
     class_id: str  #: String-representation of the labeled class of the object
 
     timestamp_us: (

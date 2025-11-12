@@ -15,12 +15,11 @@ import logging
 import sys
 
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import Dict, Generator, List, Literal, Optional, Tuple, Type, TypeVar, Union, cast
 
 from numcodecs import Blosc
 
-from ncore.impl.common.common import HalfClosedInterval, md5
+from ncore.impl.common.common import HalfClosedInterval, MD5Hasher
 
 
 if sys.version_info >= (3, 11):
@@ -35,6 +34,8 @@ import numpy as np
 import PIL.Image as PILImage
 import zarr
 
+from upath import UPath
+
 from ncore.impl.data import data, stores, types
 
 from .types import CuboidTrackObservation
@@ -46,9 +47,27 @@ VERSION = "4.0"
 class SequenceComponentStoreWriter:
     """SequenceComponentWriter manages store groups for writing for NCore V4 / zarr data components for a single NCore sequence"""
 
+    @staticmethod
+    def from_reader(
+        output_dir_path: UPath,
+        store_base_name: str,
+        sequence_reader: SequenceComponentStoreReader,
+        store_type: Literal["itar", "directory"] = "itar",  # valid values: ['itar', 'directory']
+    ) -> SequenceComponentStoreWriter:
+        """Creates a SequenceComponentStoreWriter from an existing SequenceComponentStoreReader instance to share consistent per-sequence meta-data"""
+
+        return SequenceComponentStoreWriter(
+            output_dir_path=output_dir_path,
+            store_base_name=store_base_name,
+            sequence_id=sequence_reader.sequence_id,
+            sequence_timestamp_interval_us=sequence_reader.sequence_timestamp_interval_us,
+            generic_meta_data=sequence_reader.generic_meta_data,
+            store_type=store_type,
+        )
+
     def __init__(
         self,
-        output_dir_path: Path,
+        output_dir_path: UPath,
         store_base_name: str,
         # Identifier of the sequence
         sequence_id: str,
@@ -72,7 +91,7 @@ class SequenceComponentStoreWriter:
 
         # Individual stores for each group are initialized lazily on-demand (indexed tar file or zarr directories)
         self._stores_rootgroups: dict[
-            str, Tuple[zarr.Group, Path]
+            str, Tuple[zarr.Group, UPath]
         ] = {}  # maps component group names to stores, store path, and base groups
         self._store_type = store_type
 
@@ -80,6 +99,18 @@ class SequenceComponentStoreWriter:
         self._component_writers: dict[
             str, ComponentWriter
         ] = {}  # maps from component id to associated component writer
+
+    @property
+    def sequence_id(self) -> str:
+        return self._sequence_id
+
+    @property
+    def sequence_timestamp_interval_us(self) -> HalfClosedInterval:
+        return self._sequence_timestamp_interval_us
+
+    @property
+    def generic_meta_data(self) -> Dict[str, data.JsonLike]:
+        return self._generic_meta_data
 
     def get_base_group(self, component_group_name: Optional[str]) -> zarr.Group:
         """Lazily initializes ncore base-groups and underlying stores on demand"""
@@ -136,7 +167,7 @@ class SequenceComponentStoreWriter:
         return root_group
 
     # To be called after all data was written
-    def finalize(self) -> List[Path]:
+    def finalize(self) -> List[UPath]:
         """Validates all writers and closes all stores after consolidating their meta data.
 
         Returns a list of the store paths
@@ -205,12 +236,12 @@ class SequenceComponentStoreReader:
     """SequenceComponentReader manages data component store groups for reading for NCore V4 / zarr data for a single NCore sequence"""
 
     def __init__(
-        self, component_store_paths: List[Path], open_consolidated: bool = True, max_threads: int | None = None
+        self, component_store_paths: List[UPath], open_consolidated: bool = True, max_threads: int | None = None
     ):
         """Initialize a SequenceComponentReader for a virtual sequence represented by a list of components.
 
         Args:
-            component_store_paths: Paths / URLs to component stores to load, which need to represent a *single* sequence
+            component_store_paths: Universal paths / URLs to component stores to load, which need to represent a *single* sequence
             open_consolidated: If 'True', pre-load per-component meta-data when opening the components.
                                This is advisable if component data is accessed from *non-local*
                                storage to prevent latencies introduced when accessing the data.
@@ -223,11 +254,11 @@ class SequenceComponentStoreReader:
         assert len(component_store_paths), "No component inputs provided"
 
         # Load component stores concurrently (to hide latency) and check for sequence consistency
-        self._component_stores: Dict[str, Tuple[zarr.Group, Path]] = {}  # use str as the generic path / URL type
+        self._component_stores: Dict[str, Tuple[zarr.Group, UPath]] = {}  # use str as the generic path / URL type
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
 
-            def thread_load_component_store(component_store_path: Path) -> Tuple[zarr.Group, Path]:
+            def thread_load_component_store(component_store_path: UPath) -> Tuple[zarr.Group, UPath]:
                 """Thread-executed shard opening"""
 
                 # Make sure paths are absolute at this point - in the future we might have fully-resolved URLs instead here, too
@@ -266,13 +297,19 @@ class SequenceComponentStoreReader:
 
                 component_root_attrs = dict(component_root.attrs.items())
 
+                # Check sequence compatibility
+                component_root_version = component_root_attrs["version"]
+                if component_root_version not in [VERSION]:
+                    raise RuntimeError(
+                        f"Can't load V4 component store {component_store_path} with incompatible data version {component_root_version}"
+                    )
+
                 component_store_sequence_id = component_root_attrs["sequence_id"]
                 component_store_sequence_timestamp_interval_us = HalfClosedInterval(
                     component_root_attrs["sequence_timestamp_interval_us"]["start"],
                     component_root_attrs["sequence_timestamp_interval_us"]["stop"],
                 )
                 component_store_generic_meta_data = component_root_attrs["generic_meta_data"]
-                component_root_version = component_root_attrs["version"]
 
                 if not self._component_stores:
                     self._sequence_id: str = component_store_sequence_id
@@ -372,7 +409,7 @@ class SequenceComponentStoreReader:
             component_stores_info.append(
                 {
                     "path": component_store_path.name,
-                    "md5": md5(component_store_path),
+                    "md5": MD5Hasher.hash(component_store_path),
                     "components": components,
                 }
             )
@@ -471,7 +508,7 @@ class PosesComponent:
         @staticmethod
         def get_component_version() -> str:
             """Returns the version of the current component writer"""
-            return "0.1"
+            return "v1"
 
         def __init__(self, component_group: zarr.Group, sequence_timestamp_interval_us: HalfClosedInterval) -> None:
             """Initializes the current component writer targeting the given component group and sequence time interval"""
@@ -559,7 +596,7 @@ class PosesComponent:
         @staticmethod
         def supports_component_version(version: str) -> bool:
             """Returns true if the component version is supported by the reader"""
-            return version == "0.1"
+            return version == "v1"
 
         def get_static_poses(self) -> Generator[Tuple[Tuple[str, str], np.ndarray]]:
             """Returns all static poses (rigid transformations) between named coordinate frames, if available"""
@@ -622,7 +659,7 @@ class IntrinsicsComponent:
         @staticmethod
         def get_component_version() -> str:
             """Returns the version of the current intrinsic calibration component"""
-            return "0.1"
+            return "v1"
 
         def __init__(self, component_group: zarr.Group, sequence_timestamp_interval_us: HalfClosedInterval) -> None:
             """Initializes the current component writer targeting the given component group and sequence time interval"""
@@ -673,7 +710,7 @@ class IntrinsicsComponent:
         @staticmethod
         def supports_component_version(version: str) -> bool:
             """Returns true if the component version is supported by the reader"""
-            return version == "0.1"
+            return version == "v1"
 
         def get_camera_model_parameters(self, camera_id: str) -> types.ConcreteCameraModelParametersUnion:
             """Returns the camera model associated with the requested camera sensor"""
@@ -700,7 +737,7 @@ class MasksComponent:
         @staticmethod
         def get_component_version() -> str:
             """Returns the version of the current sensor masks component"""
-            return "0.1"
+            return "v1"
 
         def __init__(self, component_group: zarr.Group, sequence_timestamp_interval_us: HalfClosedInterval) -> None:
             """Initializes the current component writer targeting the given component group and sequence time interval"""
@@ -744,7 +781,7 @@ class MasksComponent:
         @staticmethod
         def supports_component_version(version: str) -> bool:
             """Returns true if the component version is supported by the reader"""
-            return version == "0.1"
+            return version == "v1"
 
         def get_camera_mask_names(self, camera_id: str) -> List[str]:
             """Returns all constant camera mask names"""
@@ -992,7 +1029,7 @@ class CameraSensorComponent:
         @staticmethod
         def get_component_version() -> str:
             """Returns the version of the current camera sensor component"""
-            return "0.1"
+            return "v1"
 
         def store_frame(
             self,
@@ -1026,7 +1063,7 @@ class CameraSensorComponent:
         @staticmethod
         def supports_component_version(version: str) -> bool:
             """Returns true if the component version is supported by the reader"""
-            return version == "0.1"
+            return version == "v1"
 
         class EncodedImageDataHandle:
             """References encoded image data without loading it"""
@@ -1067,7 +1104,7 @@ class LidarSensorComponent:
         @staticmethod
         def get_component_version() -> str:
             """Returns the version of the current lidar sensor component"""
-            return "0.1"
+            return "v1"
 
         def store_frame(
             self,
@@ -1126,7 +1163,7 @@ class LidarSensorComponent:
         @staticmethod
         def supports_component_version(version: str) -> bool:
             """Returns true if the component version is supported by the reader"""
-            return version == "0.1"
+            return version == "v1"
 
 
 class RadarSensorComponent:
@@ -1145,7 +1182,7 @@ class RadarSensorComponent:
         @staticmethod
         def get_component_version() -> str:
             """Returns the version of the current radar sensor component"""
-            return "0.1"
+            return "v1"
 
         def store_frame(
             self,
@@ -1198,7 +1235,7 @@ class RadarSensorComponent:
         @staticmethod
         def supports_component_version(version: str) -> bool:
             """Returns true if the component version is supported by the reader"""
-            return version == "0.1"
+            return version == "v1"
 
 
 class CuboidsComponent:
@@ -1217,7 +1254,7 @@ class CuboidsComponent:
         @staticmethod
         def get_component_version() -> str:
             """Returns the version of the current lidar sensor component"""
-            return "0.1"
+            return "v1"
 
         def store_observations(
             self,
@@ -1240,7 +1277,7 @@ class CuboidsComponent:
         @staticmethod
         def supports_component_version(version: str) -> bool:
             """Returns true if the component version is supported by the reader"""
-            return version == "0.1"
+            return version == "v1"
 
         def get_observations(self) -> Generator[CuboidTrackObservation]:
             """Returns all stored cuboid track observations"""

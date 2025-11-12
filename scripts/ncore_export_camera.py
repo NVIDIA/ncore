@@ -7,25 +7,51 @@
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
-
 import logging
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import click
 import cv2
 import numpy as np
 import tqdm
 
-from ncore.impl.data.data3 import CameraSensor, ShardDataLoader
+from ncore.impl.data.data3 import ShardDataLoader
 from ncore.impl.data.util import padded_index_string
+from ncore.impl.unstable.data.data4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
+from ncore.impl.unstable.data.data4.components import SequenceComponentStoreReader
 
 
-@click.command()
-@click.option(
-    "--shard-file-pattern", type=str, help="Data shard pattern to load (supports range expansion)", required=True
-)
+@dataclass(kw_only=True, slots=True, frozen=True)
+class CLIBaseParams:
+    """Parameters passed to non-command-based CLI part.
+
+    Attributes:
+        camera_id: ID of the camera sensor to visualize (e.g., 'camera_front_wide_120fov')
+        output_dir: Path to the output folder
+        start_frame: Optional starting frame index for export range
+        stop_frame: Optional ending frame index (exclusive) for export range
+        step_frame: Optional step size for downsampling frames
+        encode_images: Whether to encode image files for frames
+        timestamp_image_names: Whether to use timestamps for image filenames
+        encode_video: Whether to encode a video of the frames
+        encode_video_fps: Frame-rate for video encoding
+    """
+
+    camera_id: str
+    output_dir: str
+    start_frame: Optional[int]
+    stop_frame: Optional[int]
+    step_frame: Optional[int]
+    encode_images: bool
+    timestamp_image_names: bool
+    encode_video: bool
+    encode_video_fps: int
+
+
+@click.group()
 @click.option("--output-dir", type=str, help="Path to the output folder", required=True)
 @click.option(
     "--camera-id", type=str, help="Camera sensor to export image frames for", default="camera_front_wide_120fov"
@@ -51,44 +77,99 @@ from ncore.impl.data.util import padded_index_string
 )
 @click.option("--encode-video", is_flag=True, default=False, help="Encode video of frames")
 @click.option("--encode-video-fps", type=int, default=30, help="Frame-rate for video encoding")
-def ncore_export_camera(
-    shard_file_pattern: str,
-    output_dir: str,
-    camera_id: str,
-    start_frame: Optional[int],
-    stop_frame: Optional[int],
-    step_frame: Optional[int],
-    encode_images: bool,
-    timestamp_image_names: bool,
-    encode_video: bool,
-    encode_video_fps: int,
-):
+@click.pass_context
+def cli(ctx, **kwargs):
     """Exports camera frames to image files, and optionally encodes frames to a video file"""
 
+    ctx.obj = CLIBaseParams(**kwargs)
+
+
+@cli.command()
+@click.option(
+    "--shard-file-pattern", type=str, help="Data shard pattern to load (supports range expansion)", required=True
+)
+@click.pass_context
+def v3(
+    ctx,
+    shard_file_pattern: str,
+) -> None:
+    params: CLIBaseParams = ctx.obj
+
+    shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
+    loader = ShardDataLoader(shards)
+
+    run(
+        params,
+        SequenceLoaderV3(
+            loader,
+        ),
+    )
+
+
+@cli.command()
+@click.option(
+    "component_stores", "--component-store", multiple=True, type=str, help="Data component store paths", required=True
+)
+@click.option("--poses-component-group", type=str, help="Component group for 'poses'", default="default")
+@click.option("--intrinsics-component-group", type=str, help="Component group for 'intrinsics'", default="default")
+@click.option("--masks-component-group", type=str, help="Component group for 'masks'", default="default")
+@click.option(
+    "--cuboids-component-group",
+    type=str,
+    help="Component group for 'cuboids'",
+    default="default",
+)
+@click.pass_context
+def v4(
+    ctx,
+    component_stores: Tuple[str, ...],
+    poses_component_group: str,
+    intrinsics_component_group: str,
+    masks_component_group: str,
+    cuboids_component_group: str,
+) -> None:
+    params: CLIBaseParams = ctx.obj
+
+    loader = SequenceComponentStoreReader(
+        [Path(store_path) for store_path in component_stores],
+    )
+
+    run(
+        params,
+        SequenceLoaderV4(
+            loader,
+            poses_component_group_name=poses_component_group,
+            intrinsics_component_group_name=intrinsics_component_group,
+            masks_component_group_name=masks_component_group,
+            cuboids_component_group_name=cuboids_component_group,
+        ),
+    )
+
+
+def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
     # Initialize the logger
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
-    loader = ShardDataLoader(shards)
-    assert isinstance(sensor := loader.get_sensor(camera_id), CameraSensor), "only camera sensors supported"
+    sensor = loader.get_camera_sensor(params.camera_id)
 
     # Create output path
-    output_path = Path(output_dir)
+    output_path = Path(params.output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    indices = sensor.get_frame_index_range(start_frame, stop_frame, step_frame)
-    logger.info(f"Starting frame export for '{camera_id}' into '{output_path}'. {len(indices)} frames will be exported")
-
+    indices = sensor.get_frame_index_range(params.start_frame, params.stop_frame, params.step_frame)
+    logger.info(
+        f"Starting frame export for '{params.camera_id}' into '{output_path}'. {len(indices)} frames will be exported"
+    )
     # Instantiate video encoder if requested
-    video_writer: cv2.VideoWriter | None = None
+    video_writer: Optional[cv2.VideoWriter] = None
     video_path = None
-    if encode_video:
-        w, h = sensor.get_camera_model_parameters().resolution[:]
+    if params.encode_video:
+        w, h = sensor.model_parameters.resolution[:]
         video_writer = cv2.VideoWriter(
-            str(video_path := (output_path / camera_id).with_suffix(".mp4")),
+            str(video_path := (output_path / params.camera_id).with_suffix(".mp4")),
             cv2.VideoWriter_fourcc(*"mp4v"),  # type: ignore
-            encode_video_fps,
+            params.encode_video_fps,
             (int(w), int(h)),
         )
 
@@ -97,10 +178,10 @@ def ncore_export_camera(
         image_data = sensor.get_frame_data(frame_index)
 
         # Store encoded frame data to image files
-        if encode_images:
+        if params.encode_images:
             fname = (
                 padded_index_string(frame_index)
-                if not timestamp_image_names
+                if not params.timestamp_image_names
                 else str(sensor.get_frame_timestamp_us(frame_index))
             )
 
@@ -125,4 +206,4 @@ def ncore_export_camera(
 
 
 if __name__ == "__main__":
-    ncore_export_camera()
+    cli(show_default=True)

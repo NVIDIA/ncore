@@ -35,10 +35,12 @@ py_binary(
         requirement("numpy"),
         requirement("click"),
         requirement("tqdm"),
-        ":pylib_util",
+        "//ncore/impl/common:pylib_common",
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_data3",
         "//ncore/impl/data:pylib_util",
+        "//ncore/impl/unstable/data/data4:pylib_compat",
+        "//ncore/impl/unstable/data/data4:pylib_components",
     ],
 )
 
@@ -51,6 +53,8 @@ NCORE_EXPORT_CAMERA_DEPS = [
     requirement("opencv-python"),
     "//ncore/impl/data:pylib_data3",
     "//ncore/impl/data:pylib_util",
+    "//ncore/impl/unstable/data/data4:pylib_compat",
+    "//ncore/impl/unstable/data/data4:pylib_components",
 ]
 
 py_binary(
@@ -99,16 +103,14 @@ oci_push(
 #################################################################
 
 py_binary(
-    name = "ncore_surface_rec",
-    srcs = ["ncore_surface_rec.py"],
+    name = "ncore_3to4",
+    srcs = ["ncore_3to4.py"],
     deps = [
         requirement("click"),
-        requirement("tqdm"),
-        requirement("point-cloud-utils"),
-        ":pylib_util",
-        "//3rdparty/poisson_recon:pylib",
-        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/common:pylib_common",
         "//ncore/impl/data:pylib_data3",
+        "//ncore/impl/unstable/data/data4:pylib_conversion",
+        "//scripts:pylib_util",
     ],
 )
 
@@ -120,9 +122,15 @@ py_binary(
     deps = [
         requirement("click"),
         requirement("tqdm"),
-        ":pylib_util",
+        requirement("pandas"),
         "//ncore/impl/common:pylib_visualization",
+        "//ncore/impl/data:pylib_data",
         "//ncore/impl/data:pylib_data3",
+        "//ncore/impl/data:pylib_types",
+        "//ncore/impl/unstable/data/data4:pylib_compat",
+        "//ncore/impl/unstable/data/data4:pylib_components",
+        "//ncore/impl/unstable/data/data4:pylib_types",
+        "//scripts:pylib_util",
     ],
 )
 
@@ -141,8 +149,10 @@ py_binary(
         "//ncore/impl/common:pylib_visualization",
         "//ncore/impl/data:pylib_data3",
         "//ncore/impl/data:pylib_types",
+        "//ncore/impl/data:pylib_util",
         "//ncore/impl/sensors:pylib_camera",
         "//ncore/impl/sensors:pylib_lidar",
+        "//ncore/impl/unstable/data/data4:pylib_compat",
         "//scripts:pylib_util",
     ],
 )
@@ -161,6 +171,8 @@ py_binary(
         "//ncore/impl/data:pylib_data3",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/sensors:pylib_camera",
+        "//ncore/impl/unstable/data/data4:pylib_compat",
+        "//ncore/impl/unstable/data/data4:pylib_components",
     ],
 )
 
@@ -173,29 +185,7 @@ py_binary(
     deps = [
         requirement("click"),
         "//ncore/impl/data:pylib_data3",
-    ],
-)
-
-#################################################################
-
-py_binary(
-    name = "ncore_to_map_transform",
-    srcs = ["ncore_to_map_transform.py"],
-    deps = [
-        requirement("click"),
-        requirement("numpy"),
-        "//ncore/impl/common:pylib_transformations",
-        "//ncore/impl/data:pylib_data3",
-    ],
-)
-
-# self-contained python zip file for target
-filegroup(
-    name = "ncore_to_map_transform_zip",
-    srcs = [":ncore_to_map_transform"],
-    output_group = "python_zip_file",
-    tags = [
-        "manual",
-        "no-remote-cache",
+        "//ncore/impl/unstable/data/data4:pylib_compat",
+        "//ncore/impl/unstable/data/data4:pylib_components",
     ],
 )

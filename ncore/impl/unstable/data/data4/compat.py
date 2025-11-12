@@ -63,7 +63,7 @@ from ncore.impl.data import data3, types, util
 from ncore.impl.data.data import JsonLike
 from ncore.impl.data.data3 import LidarSensor, ShardDataLoader
 from ncore.impl.data.types import FrameTimepoint
-from ncore.impl.experimental.data.data4.components import (
+from ncore.impl.unstable.data.data4.components import (
     BasePointCloudSensorComponentReader,
     CameraSensorComponent,
     CuboidsComponent,
@@ -74,7 +74,7 @@ from ncore.impl.experimental.data.data4.components import (
     RadarSensorComponent,
     SequenceComponentStoreReader,
 )
-from ncore.impl.experimental.data.data4.types import CuboidTrackObservation
+from ncore.impl.unstable.data.data4.types import CuboidTrackObservation
 
 
 class SequenceLoaderProtocol(Protocol):
@@ -143,6 +143,14 @@ class SequenceLoaderProtocol(Protocol):
 class SensorProtocol(Protocol):
     """SensorProtocol provides unified access to a relevant subset of common NCore V3 and default V4 sensor data APIs"""
 
+    _pose_graph: PoseGraphInterpolator
+
+    def __init__(
+        self,
+        pose_graph: PoseGraphInterpolator,
+    ):
+        self._pose_graph: PoseGraphInterpolator = pose_graph
+
     @property
     def sensor_id(self) -> str:
         """The ID of the sensor"""
@@ -163,11 +171,15 @@ class SensorProtocol(Protocol):
 
         return self.frames_timestamps_us[:, frame_timepoint.value]
 
-    ## Poses (use pose-graph exclusively)
+    ## Poses API (use pose-graph exclusively)
     @property
     def pose_graph(self) -> PoseGraphInterpolator:
-        """Convenience access to the sequence-wide pose graph"""
-        ...
+        """Access the sensor-associated pose graph (usually the sequence-wide one, unless overwritten)"""
+        return self._pose_graph
+
+    def set_pose_graph(self, pose_graph: PoseGraphInterpolator) -> None:
+        """Assigns a new pose graph to the sensor instance (e.g., to overwrite / use a sensor-exclusive pose graph)"""
+        self._pose_graph = pose_graph
 
     @property
     def T_sensor_rig(self) -> Optional[np.ndarray]:
@@ -367,7 +379,7 @@ class PointCloudSensorProtocol(SensorProtocol, Protocol):
             frame_index: Index of the frame
 
         Returns:
-            Array of per-point distances
+            Array of per-point distances [N,]
         """
         ...
 
@@ -530,10 +542,11 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             ],
             pose_graph: PoseGraphInterpolator,
         ):
+            super().__init__(pose_graph)
+
             self._reader: Union[
                 CameraSensorComponent.Reader, LidarSensorComponent.Reader, RadarSensorComponent.Reader
             ] = sensor_reader
-            self._pose_graph: PoseGraphInterpolator = pose_graph
 
             # preload frame timestamps once
             self._frames_timestamps_us = self._reader.frames_timestamps_us
@@ -553,18 +566,13 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
         def frames_timestamps_us(self) -> np.ndarray:
             return self._frames_timestamps_us
 
-        @property
-        @override
-        def pose_graph(self) -> PoseGraphInterpolator:
-            return self._pose_graph
-
         # Generic per-frame data
         @override
         def get_frame_generic_data_names(self, frame_index: int) -> List[str]:
             """List of all generic frame-data names"""
 
             return self._reader.get_frame_generic_data_names(
-                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value]
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item()
             )
 
         @override
@@ -572,7 +580,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             """Signals if named generic frame-data exists"""
 
             return self._reader.has_frame_generic_data(
-                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value], name
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(), name
             )
 
         @override
@@ -580,7 +588,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             """Returns generic frame-data for a specific frame and name"""
 
             return self._reader.get_frame_generic_data(
-                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value], name
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(), name
             )
 
         @override
@@ -588,7 +596,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             """Returns generic frame meta-data for a specific frame"""
 
             return self._reader.get_frame_generic_meta_data(
-                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value]
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item()
             )
 
     class CameraSensor(Sensor, CameraSensorProtocol):
@@ -631,12 +639,17 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
         @override
         def get_frame_handle(self, frame_index: int) -> CameraSensorProtocol.EncodedImageDataHandleProtocol:
             """Returns the frame's encoded image data"""
-            return self.camera_reader.get_frame_handle(self.frames_timestamps_us[frame_index, FrameTimepoint.END.value])
+            return self.camera_reader.get_frame_handle(
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item()
+            )
 
     @override
     def get_camera_sensor(self, sensor_id: str) -> CameraSensorProtocol:
         return self.CameraSensor(
-            reader=unpack_optional(self._cameras_readers.get(sensor_id), msg=f"Camera sensor '{sensor_id}' not found"),
+            reader=unpack_optional(
+                self._cameras_readers.get(sensor_id),
+                msg=f"Camera sensor '{sensor_id}' not available in loaded camera sensor groups",
+            ),
             mask_reader=self._masks_reader,
             pose_graph=self._pose_graph,
             model_parameters=self._intrinsics_reader.get_camera_model_parameters(sensor_id),
@@ -666,13 +679,13 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
         @override
         def has_frame_data(self, frame_index: int, name: str) -> bool:
             return self.point_cloud_reader.has_frame_point_cloud_data(
-                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value], name
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(), name
             )
 
         @override
         def get_frame_data(self, frame_index: int, name: str) -> np.ndarray:
             return self.point_cloud_reader.get_frame_point_cloud_data(
-                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value], name
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(), name
             )
 
         @override
@@ -720,14 +733,13 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
                     "xyz_m",
                 ),
                 axis=1,
-                keepdims=True,
             )
 
         @override
         def get_frame_point_cloud_size(self, frame_index: int) -> int:
             """Returns the number of points in the point-cloud for a specific frame without decoding it"""
             return self.point_cloud_reader.get_frame_point_cloud_size(
-                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value]
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item()
             )
 
     class LidarSensor(PointCloudSensor, LidarSensorProtocol):
@@ -762,7 +774,10 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
     @override
     def get_lidar_sensor(self, sensor_id: str) -> LidarSensorProtocol:
         return self.LidarSensor(
-            reader=unpack_optional(self._lidars_readers.get(sensor_id), msg=f"Lidar sensor '{sensor_id}' not found"),
+            reader=unpack_optional(
+                self._lidars_readers.get(sensor_id),
+                msg=f"Lidar sensor '{sensor_id}' not available in loaded lidar sensor groups",
+            ),
             pose_graph=self._pose_graph,
             model_parameters=self._intrinsics_reader.get_lidar_model_parameters(sensor_id),
         )
@@ -789,7 +804,10 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
     @override
     def get_radar_sensor(self, sensor_id: str) -> RadarSensorProtocol:
         return self.RadarSensor(
-            reader=unpack_optional(self._radars_readers.get(sensor_id), msg=f"Radar sensor '{sensor_id}' not found"),
+            reader=unpack_optional(
+                self._radars_readers.get(sensor_id),
+                msg=f"Radar sensor '{sensor_id}' not available in loaded radar sensor groups",
+            ),
             pose_graph=self._pose_graph,
         )
 
@@ -906,8 +924,9 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
             sensor: Union[data3.CameraSensor, data3.LidarSensor, data3.RadarSensor],
             pose_graph: PoseGraphInterpolator,
         ):
+            super().__init__(pose_graph)
+
             self._sensor = sensor
-            self._pose_graph = pose_graph
 
             # preload frame timestamps once [need to iterate through all frames to get start timestamp also in V3]
             self._frames_timestamps_us = np.array(
@@ -935,11 +954,6 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
         @override
         def frames_timestamps_us(self) -> np.ndarray:
             return self._frames_timestamps_us
-
-        @property
-        @override
-        def pose_graph(self) -> PoseGraphInterpolator:
-            return self._pose_graph
 
         # Generic per-frame data
         @override
@@ -1105,7 +1119,6 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
             return np.linalg.norm(
                 xyz_e - xyz_s,
                 axis=1,
-                keepdims=True,
             )
 
         @override

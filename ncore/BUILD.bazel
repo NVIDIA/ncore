@@ -9,10 +9,13 @@ py_library(
     data = ["py.typed"],
     visibility = ["//visibility:public"],
     deps = [
+        # stable packages
         "@ncore_repo//ncore/data:pylib",
         "@ncore_repo//ncore/data/v3:pylib",
-        "@ncore_repo//ncore/experimental/data/v4:pylib",
         "@ncore_repo//ncore/sensors:pylib",
+
+        # unstable packages
+        "@ncore_repo//ncore/unstable/data/v4:pylib",
     ],
 )
 

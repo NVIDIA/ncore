@@ -1,6 +1,5 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@ncore_pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_library")
 load("//bazel/pytest:defs.bzl", "pytest_test")
@@ -35,6 +34,7 @@ py_library(
         requirement("numpy"),
         requirement("pillow"),
         requirement("dataclasses-json"),
+        requirement("universal-pathlib"),
     ],
 )
 
@@ -47,6 +47,7 @@ pytest_test(
         requirement("scipy"),
         requirement("parameterized"),
         requirement("pillow"),
+        requirement("universal-pathlib"),
 
         # DBG
         "//scripts:pylib_util",
@@ -78,6 +79,7 @@ pytest_test(
     ],
     deps = [
         ":pylib_conversion",
+        "//ncore/impl/data:pylib_data",
         requirement("numpy"),
         "@rules_python//python/runfiles",
     ],
@@ -101,5 +103,3 @@ py_library(
         "//ncore/impl/data:pylib_util",
     ],
 )
-
-bzlformat_pkg(name = "bzlformat")

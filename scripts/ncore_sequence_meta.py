@@ -7,19 +7,63 @@
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
-
 import json
 import logging
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
 
 import click
 
 from ncore.impl.data.data3 import ShardDataLoader
+from ncore.impl.unstable.data.data4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
+from ncore.impl.unstable.data.data4.components import SequenceComponentStoreReader
 
 
-@click.command()
+logger = logging.getLogger(__name__)
+
+
+@dataclass(kw_only=True, slots=True, frozen=True)
+class CLIBaseParams:
+    """Parameters passed to non-command-based CLI part.
+
+    Attributes:
+        output_dir: Directory path where the output JSON file will be written
+        output_file: Optional custom filename for the output. If None, uses <sequence_id>.json
+        open_consolidated: Whether to pre-load consolidated zarr metadata for faster access
+        debug: Enable debug-level logging output
+    """
+
+    output_dir: str
+    output_file: Optional[str]
+    open_consolidated: bool
+    debug: bool
+
+
+@click.group()
+@click.option("--output-dir", type=str, help="Path to the output folder", required=True)
+@click.option(
+    "--output-file",
+    type=str,
+    default=None,
+    help="Filename of generated file (json) - <sequence_id>.json will be used by default if not provided",
+    required=False,
+)
+@click.option("--open-consolidated/--no-open-consolidated", default=True, help="Pre-load shard meta-data?")
+@click.option("--debug", is_flag=True, default=False, help="Enables debug logging outputs")
+@click.pass_context
+def cli(ctx, **kwargs) -> None:
+    """Main CLI entry point for sequence metadata extraction."""
+    ctx.obj = CLIBaseParams(**kwargs)
+
+    # Initialize the logger
+    logging.basicConfig(
+        level=logging.DEBUG if ctx.obj.debug else logging.INFO,
+    )
+
+
+@cli.command()
 @click.option(
     "--shard-file-pattern", type=str, help="Data shard pattern to load (supports range expansion)", required=True
 )
@@ -31,48 +75,103 @@ from ncore.impl.data.data3 import ShardDataLoader
     help="Suffixes to skip when evaluating shard file pattern",
     default=None,
 )
-@click.option("--output-dir", type=str, help="Path to the output folder", required=True)
-@click.option(
-    "--output-file",
-    type=str,
-    default=None,
-    help="Filename of generated file (json) - <sequence_id>.json will be used by default if not provided",
-    required=False,
-)
-@click.option("--open-consolidated/--no-open-consolidated", default=True, help="Pre-load shard meta-data?")
-@click.option("--debug", is_flag=True, default=False, help="Enables debug logging outputs")
-def ncore_sequence_meta(
+@click.pass_context
+def v3(
+    ctx,
     shard_file_pattern: str,
     shard_file_skip_suffixes: Tuple[str],
-    output_dir: str,
-    output_file: Optional[str],
-    open_consolidated: bool,
-    debug: bool,
-):
-    """Summarizes and exports data-ranges within a virtual shard sequence"""
+) -> None:
+    """Extract metadata from NCore V3 (shard-based) sequence data.
 
-    # Initialize the logger
-    logging.basicConfig(
-        level=logging.DEBUG if debug else logging.INFO,
-    )
-    logger = logging.getLogger(__name__)
+    Args:
+        shard_file_pattern: Glob pattern for shard files (supports range expansion like shard_[0-10].zarr)
+        shard_file_skip_suffixes: File suffixes to exclude when matching the pattern
+    """
+    params: CLIBaseParams = ctx.obj
 
     loader = ShardDataLoader(
         ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern, skip_suffixes=shard_file_skip_suffixes),
-        open_consolidated=open_consolidated,
+        open_consolidated=params.open_consolidated,
     )
+
+    run(params, SequenceLoaderV3(loader))
+
+
+@cli.command()
+@click.option(
+    "component_stores", "--component-store", multiple=True, type=str, help="Data component store paths", required=True
+)
+@click.option("--poses-component-group", type=str, help="Component group for 'poses'", default="default")
+@click.option("--intrinsics-component-group", type=str, help="Component group for 'intrinsics'", default="default")
+@click.option("--masks-component-group", type=str, help="Component group for 'masks'", default="default")
+@click.option(
+    "--cuboids-component-group",
+    type=str,
+    help="Component group for 'cuboids'",
+    default="default",
+)
+@click.pass_context
+def v4(
+    ctx,
+    component_stores: Tuple[str],
+    poses_component_group: str,
+    intrinsics_component_group: str,
+    masks_component_group: str,
+    cuboids_component_group: str,
+) -> None:
+    """Extract metadata from NCore V4 (component-based) sequence data.
+
+    Args:
+        component_stores: Paths to V4 component store files (can specify multiple)
+        poses_component_group: Name of the poses component group to use
+        intrinsics_component_group: Name of the intrinsics component group to use
+        masks_component_group: Name of the masks component group to use
+        cuboids_component_group: Name of the cuboids component group to use
+    """
+    params: CLIBaseParams = ctx.obj
+
+    loader = SequenceComponentStoreReader(
+        [Path(store_path) for store_path in component_stores],
+        open_consolidated=params.open_consolidated,
+    )
+
+    run(
+        params,
+        SequenceLoaderV4(
+            loader,
+            poses_component_group_name=poses_component_group,
+            intrinsics_component_group_name=intrinsics_component_group,
+            masks_component_group_name=masks_component_group,
+            cuboids_component_group_name=cuboids_component_group,
+        ),
+    )
+
+
+def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
+    """Extracts sequence metadata and exports it as JSON.
+
+    Collects comprehensive metadata from the sequence including:
+    - Sequence ID and timestamp range
+    - Component store information with MD5 checksums
+    - Component versions and configurations
+    - Generic metadata fields
+
+    Args:
+        params: CLI parameters specifying output location and options
+        loader: Sequence loader (V3 or V4) providing unified data access
+    """
 
     ## Collect sequence-wide information
     output = loader.get_sequence_meta()
 
     ## Serialize output
-    output_path = Path(output_dir)
+    output_path = Path(params.output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    if output_file:
-        output_path /= output_file
+    if params.output_file:
+        output_path /= params.output_file
     else:
-        output_path /= f"{loader.get_sequence_id()}.json"
+        output_path /= f"{loader.sequence_id}.json"
 
     with open(output_path, "w") as f:
         json.dump(output, f, indent=2)
@@ -81,4 +180,4 @@ def ncore_sequence_meta(
 
 
 if __name__ == "__main__":
-    ncore_sequence_meta()
+    cli(show_default=True)

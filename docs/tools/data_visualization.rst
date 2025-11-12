@@ -15,6 +15,7 @@ Example invocation::
 
     bazel run //scripts:ncore_project_pc_to_img \
         -- \
+        v3 \
         --shard-file-pattern=<SHARD_FILE_PATTERN> \
         --sensor-id=lidar00 \
         --camera-id=camera01
@@ -41,6 +42,7 @@ Example invocation::
 
     bazel run //scripts:ncore_visualize_labels \
         -- \
+        v3 \
         --shard-file-pattern=<SHARD_FILE_PATTERN>
 
 .. figure:: pc0.png

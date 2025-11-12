@@ -10,8 +10,9 @@
 
 import logging
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import click
 import numpy as np
@@ -21,21 +22,49 @@ from point_cloud_utils import TriangleMesh
 
 from ncore.impl.common.transformations import transform_point_cloud
 from ncore.impl.data import types
-from ncore.impl.data.data3 import CameraSensor, PointCloudSensor, ShardDataLoader
+from ncore.impl.data.data3 import ShardDataLoader
 from ncore.impl.data.util import padded_index_string
 from ncore.impl.sensors.camera import CameraModel
+from ncore.impl.unstable.data.data4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
+from ncore.impl.unstable.data.data4.components import SequenceComponentStoreReader
 
 
-@click.command()
-@click.option(
-    "--shard-file-pattern", type=str, help="Data shard pattern to load (supports range expansion)", required=True
-)
+@dataclass(kw_only=True, slots=True, frozen=True)
+class CLIBaseParams:
+    """Parameters passed to non-command-based CLI part.
+
+    Attributes:
+        output_dir: Path to the output folder
+        lidar_id: ID of the lidar sensor to export colored PLY files for
+        camera_id: ID of the camera sensor to project points onto for coloring
+        start_frame: Optional starting frame index for export range
+        stop_frame: Optional ending frame index (exclusive) for export range
+        step_frame: Optional step size for downsampling frames
+        device: Device used for computation via torch ('cuda' or 'cpu')
+        camera_pose: Per-pixel poses to use for projection
+        point_cloud_space: Output space of the colored point cloud ('world' or 'sensor')
+        output_filepattern: PLY output filename pattern ('frame-index' or 'timestamps-us')
+    """
+
+    output_dir: str
+    lidar_id: str
+    camera_id: str
+    start_frame: Optional[int]
+    stop_frame: Optional[int]
+    step_frame: Optional[int]
+    device: str
+    camera_pose: str
+    point_cloud_space: str
+    output_filepattern: str
+
+
+@click.group()
 @click.option("--output-dir", type=str, help="Path to the output folder", required=True)
-@click.option("--sensor-id", type=str, help="Sensor to export ply files for", default="lidar_gt_top_p128_v4p5")
+@click.option("--lidar-id", type=str, help="Lidar sensor to export ply files for", default="lidar_gt_top_p128")
 @click.option(
     "--camera-id",
     type=str,
-    help="Sensor on which points will be projected to color",
+    help="Camera sensor on which points will be projected to color",
     default="camera_front_wide_120fov",
 )
 @click.option(
@@ -77,61 +106,141 @@ from ncore.impl.sensors.camera import CameraModel
     help="PLY output filename pattern, either store by <frame-index>.ply or by <timestamp-us>.ply [end-of-frame timestamp]",
     default="frame-index",
 )
-def ncore_export_colored_pc(
+@click.pass_context
+def cli(ctx, **kwargs) -> None:
+    """Projects the point cloud to the camera image and exports colored PLY files"""
+    ctx.obj = CLIBaseParams(**kwargs)
+
+
+@cli.command()
+@click.option(
+    "--shard-file-pattern", type=str, help="Data shard pattern to load (supports range expansion)", required=True
+)
+@click.pass_context
+def v3(
+    ctx,
     shard_file_pattern: str,
-    output_dir: str,
-    sensor_id: str,
-    camera_id: str,
-    start_frame: Optional[int],
-    stop_frame: Optional[int],
-    step_frame: Optional[int],
-    device: str,
-    camera_pose: str,
-    point_cloud_space: str,
-    output_filepattern: str,
-):
-    """Projects the point cloud to the camera image, comparing projection w. and w/o rolling shutter compensation"""
+) -> None:
+    """Export colored PLY files from NCore V3 (shard-based) sequence data.
+
+    Args:
+        shard_file_pattern: Glob pattern for shard files (supports range expansion like shard_[0-10].zarr)
+    """
+    params: CLIBaseParams = ctx.obj
+
+    shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
+    loader = ShardDataLoader(shards)
+
+    run(
+        params,
+        SequenceLoaderV3(
+            loader,
+        ),
+    )
+
+
+@cli.command()
+@click.option(
+    "component_stores", "--component-store", multiple=True, type=str, help="Data component store paths", required=True
+)
+@click.option("--poses-component-group", type=str, help="Component group for 'poses'", default="default")
+@click.option("--intrinsics-component-group", type=str, help="Component group for 'intrinsics'", default="default")
+@click.option("--masks-component-group", type=str, help="Component group for 'masks'", default="default")
+@click.option(
+    "--cuboids-component-group",
+    type=str,
+    help="Component group for 'cuboids'",
+    default="default",
+)
+@click.pass_context
+def v4(
+    ctx,
+    component_stores: Tuple[str, ...],
+    poses_component_group: str,
+    intrinsics_component_group: str,
+    masks_component_group: str,
+    cuboids_component_group: str,
+) -> None:
+    """Export colored PLY files from NCore V4 (component-based) sequence data.
+
+    Args:
+        component_stores: Paths to V4 component store files (can specify multiple)
+        poses_component_group: Name of the poses component group to use
+        intrinsics_component_group: Name of the intrinsics component group to use
+        masks_component_group: Name of the masks component group to use
+        cuboids_component_group: Name of the cuboids component group to use
+    """
+    params: CLIBaseParams = ctx.obj
+
+    loader = SequenceComponentStoreReader(
+        [Path(store_path) for store_path in component_stores],
+    )
+
+    run(
+        params,
+        SequenceLoaderV4(
+            loader,
+            poses_component_group_name=poses_component_group,
+            intrinsics_component_group_name=intrinsics_component_group,
+            masks_component_group_name=masks_component_group,
+            cuboids_component_group_name=cuboids_component_group,
+        ),
+    )
+
+
+def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
+    """Exports colored point cloud frames as PLY files.
+
+    Projects lidar point clouds onto camera images to obtain RGB colors for each point,
+    accounting for rolling shutter effects if requested. Saves each frame as a PLY file
+    containing both 3D positions and RGB colors.
+
+    Args:
+        params: CLI parameters specifying output location, sensors, and options
+        loader: Sequence loader (V3 or V4) providing unified data access
+    """
 
     # Initialize the logger
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
-    loader = ShardDataLoader(shards)
-    assert isinstance(pc_sensor := loader.get_sensor(sensor_id), PointCloudSensor), (
-        "only point-cloud sensors are supported as source sensors"
-    )
-    assert isinstance(cam_sensor := loader.get_sensor(camera_id), CameraSensor), (
-        "only camera sensors are supported as color sensors"
-    )
+    pc_sensor = loader.get_lidar_sensor(params.lidar_id)
+    cam_sensor = loader.get_camera_sensor(params.camera_id)
 
     # Initialize the camera model on requested device
-    cam_model = CameraModel.from_parameters(cam_sensor.get_camera_model_parameters(), device=device)
+    cam_model = CameraModel.from_parameters(cam_sensor.model_parameters, device=params.device)
 
-    output_path = Path(output_dir)
+    output_path = Path(params.output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # Get the camera frame indices from the index range
-    pc_frame_indices = pc_sensor.get_frame_index_range(start_frame, stop_frame, step_frame)
-    logger.info(f"Starting the pc projection. {len(pc_frame_indices)} frames will be processed.")
+    # Get the point cloud frame indices from the index range
+    pc_frame_indices = pc_sensor.get_frame_index_range(params.start_frame, params.stop_frame, params.step_frame)
+    logger.info(
+        f"Starting colored PLY export for '{params.lidar_id}' and '{params.camera_id}' into '{output_path}'. "
+        f"{len(pc_frame_indices)} frames will be processed."
+    )
+
     for pc_frame_index in tqdm.tqdm(pc_frame_indices):
-        # Get the pc timestamp and find the closes camera frame
+        # Get the pc timestamp and find the closest camera frame
         pc_timestamp_us = pc_sensor.get_frame_timestamp_us(pc_frame_index)
         cam_frame_index = cam_sensor.get_closest_frame_index(pc_timestamp_us)
 
         # Load the camera image and the point cloud
         img_frame = cam_sensor.get_frame_image_array(cam_frame_index)
-        xyz_sensor = pc_sensor.get_frame_data(pc_frame_index, "xyz_e")
+        xyz_sensor = pc_sensor.get_frame_point_cloud(
+            pc_frame_index, motion_compensation=True, with_start_points=False
+        ).xyz_m_end
 
         # Transform the point cloud to the world coordinate frame
         xyz_world = transform_point_cloud(xyz_sensor, pc_sensor.get_frame_T_sensor_world(pc_frame_index))
 
-        T_world_sensor_start = cam_sensor.get_frame_T_world_sensor(cam_frame_index, types.FrameTimepoint.START)
-        T_world_sensor_end = cam_sensor.get_frame_T_world_sensor(cam_frame_index, types.FrameTimepoint.END)
+        T_world_sensor_start, T_world_sensor_end = cam_sensor.get_frames_T_source_target(
+            "world", cam_sensor.sensor_id, np.array(cam_frame_index)
+        )
 
-        logger.info(f"Starting the projection with torch implementation on device={device}")
+        logger.debug(f"Starting the projection with torch implementation on device={params.device}")
 
-        match camera_pose:
+        match params.camera_pose:
             case "rolling-shutter":
                 world_point_projections = cam_model.world_points_to_image_points_shutter_pose(
                     xyz_world,
@@ -170,7 +279,7 @@ def ncore_export_colored_pc(
         ]
 
         tm = TriangleMesh()
-        match point_cloud_space:
+        match params.point_cloud_space:
             case "world":
                 tm.vertex_data.positions = xyz_world[valid_idx]
             case "sensor":
@@ -178,12 +287,14 @@ def ncore_export_colored_pc(
         tm.vertex_data.colors = point_colors
 
         # Save the ply file
-        match output_filepattern:
+        match params.output_filepattern:
             case "frame-index":
                 tm.save(str(output_path / (padded_index_string(pc_frame_index) + ".ply")))
             case "timestamps-us":
                 tm.save(str(output_path / (str(pc_timestamp_us) + ".ply")))
 
+    logger.info(f"Exported {len(pc_frame_indices)} colored PLY files to {output_path}")
+
 
 if __name__ == "__main__":
-    ncore_export_colored_pc()
+    cli(show_default=True)

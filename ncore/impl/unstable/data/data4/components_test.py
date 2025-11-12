@@ -12,13 +12,12 @@ import io
 import tempfile
 import unittest
 
-from pathlib import Path
-
 import numpy as np
 import PIL.Image as PILImage
 
 from parameterized import parameterized
 from scipy.spatial.transform import Rotation as R
+from upath import UPath
 
 from ncore.impl.common.common import HalfClosedInterval
 from ncore.impl.data.types import (
@@ -33,6 +32,8 @@ from ncore.impl.data.types import (
 
 from .components import (
     CameraSensorComponent,
+    ComponentReader,
+    ComponentWriter,
     CuboidsComponent,
     IntrinsicsComponent,
     LidarSensorComponent,
@@ -70,7 +71,7 @@ class TestData4Reload(unittest.TestCase):
 
         ## Create reference sequence
         store_writer = SequenceComponentStoreWriter(
-            output_dir_path=Path(tempdir.name),
+            output_dir_path=UPath(tempdir.name),
             store_base_name=(ref_sequence_id := "some-sequence-name"),
             sequence_id=ref_sequence_id,
             sequence_timestamp_interval_us=(
@@ -379,7 +380,18 @@ class TestData4Reload(unittest.TestCase):
             ref_radar_generic_metadata1 := {"some-more-meta-data": {"funny": ":("}},
         )
 
-        # Store cuboids
+        ## Finalize writers up to here
+        store_paths = store_writer.finalize()
+
+        ## Simulated adding additional components by instantiating a new sequence writer from the existing meta-data
+        store_writer = SequenceComponentStoreWriter.from_reader(
+            output_dir_path=store_writer._output_dir_path,
+            store_base_name=store_writer._store_base_name,
+            sequence_reader=SequenceComponentStoreReader(store_paths, open_consolidated=open_consolidated),
+            store_type=store_type,
+        )
+
+        # Store cuboids with the new writer
         cuboids_writer = store_writer.register_component_writer(
             CuboidsComponent.Writer,
             ref_cuboids_id := "default",
@@ -424,8 +436,8 @@ class TestData4Reload(unittest.TestCase):
             ),
         )
 
-        ## Finalize writers
-        store_paths = store_writer.finalize()
+        ## Finalize additional writers
+        store_paths += store_writer.finalize()
 
         ## Reload sequence and verify consistency
         store_reader = SequenceComponentStoreReader(store_paths, open_consolidated=open_consolidated)
@@ -802,3 +814,411 @@ class TestData4Reload(unittest.TestCase):
         self.assertEqual(cuboid_reader.generic_meta_data, ref_cuboids_generic_meta_data)
 
         self.assertEqual(list(cuboid_reader.get_observations()), ref_cuboid_observations)
+
+
+class TestDataNewComponent(unittest.TestCase):
+    """
+    Test to demonstrate how to extend an existing dataset with a new custom component.
+
+    This serves as a reference example for users who want to:
+    1. Create a custom component with reader/writer classes
+    2. Extend an existing dataset by adding new component data
+    3. Handle component versioning correctly
+    """
+
+    def setUp(self):
+        np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
+
+    @parameterized.expand(
+        [
+            ("itar",),
+            ("directory",),
+        ]
+    )
+    def test_new_component_extension(self, store_type):
+        """
+        Complete example of extending a dataset with a custom component.
+
+        Steps demonstrated:
+        1. Create initial dataset with basic pose data
+        2. Define a custom component (VelocityComponent) with reader/writer
+        3. Extend the dataset using SequenceComponentStoreWriter.from_reader()
+        4. Verify the extended dataset can be read correctly
+        [test-only: 5. Test version compatibility (reader handling old/new versions)]
+        """
+
+        tempdir = tempfile.TemporaryDirectory()
+
+        # ============================================================================
+        # STEP 1: Create an initial dataset with just some static pose reference data
+        # ============================================================================
+
+        print("\n=== Step 1: Creating initial dataset with pose data ===")
+
+        initial_store_writer = SequenceComponentStoreWriter(
+            output_dir_path=UPath(tempdir.name),
+            store_base_name=(sequence_id := "test-sequence"),
+            sequence_id=sequence_id,
+            sequence_timestamp_interval_us=(timestamp_interval := HalfClosedInterval(int(0 * 1e6), int(10 * 1e6) + 1)),
+            store_type=store_type,
+            generic_meta_data={"dataset": "test", "version": 1.0},
+        )
+
+        # Store a simple static pose (sensor to rig transformation)
+        ref_T_sensor_rig = np.array(
+            [
+                [1.0, 0.0, 0.0, 0.5],
+                [0.0, 1.0, 0.0, 1.0],
+                [0.0, 0.0, 1.0, 0.2],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            dtype=np.float32,
+        )
+
+        initial_store_writer.register_component_writer(
+            PosesComponent.Writer,
+            instance_name := "default_poses",
+            group_name=None,
+            generic_meta_data={"description": "Basic pose data"},
+        ).store_static_pose(
+            source_frame_id="sensor",
+            target_frame_id="rig",
+            pose=ref_T_sensor_rig,
+        )
+
+        # Finalize the initial dataset
+        initial_store_paths = initial_store_writer.finalize()
+        print(f"Initial dataset created at: {tempdir.name}")
+
+        # ============================================================================
+        # STEP 2: Define a custom component with reader and writer classes
+        # ============================================================================
+
+        print("\n=== Step 2: Defining custom VelocityComponent ===")
+
+        # This is a simple example component that stores velocity data over time
+        class VelocityComponent:
+            """Custom component for storing velocity vectors over time"""
+
+            COMPONENT_NAME: str = "velocity"
+
+            class Writer(ComponentWriter):
+                """Writer for velocity data - version v1"""
+
+                @staticmethod
+                def get_component_name() -> str:
+                    return VelocityComponent.COMPONENT_NAME
+
+                @staticmethod
+                def get_component_version() -> str:
+                    return "v1"  # This is version 1 of our component
+
+                def __init__(self, component_group, sequence_timestamp_interval_us):
+                    super().__init__(component_group, sequence_timestamp_interval_us)
+                    self.velocities = []
+                    self.timestamps = []
+
+                def store_velocity(
+                    self,
+                    velocity: np.ndarray,  # 3D velocity vector [vx, vy, vz]
+                    timestamp_us: int,
+                ):
+                    """Store a velocity measurement at a specific timestamp"""
+                    assert velocity.shape == (3,), "Velocity must be a 3D vector"
+                    assert np.issubdtype(velocity.dtype, np.floating), "Velocity must be float type"
+
+                    self.velocities.append(velocity)
+                    self.timestamps.append(timestamp_us)
+                    return self
+
+                def finalize(self):
+                    """Write all velocity data to zarr storage"""
+                    if self.velocities:
+                        velocities_array = np.stack(self.velocities)
+                        timestamps_array = np.array(self.timestamps, dtype=np.uint64)
+
+                        # Store as zarr arrays
+                        self._group.create_dataset(
+                            "velocities",
+                            data=velocities_array,
+                            dtype=velocities_array.dtype,
+                        )
+                        self._group.create_dataset(
+                            "timestamps_us",
+                            data=timestamps_array,
+                            dtype=np.uint64,
+                        )
+
+            class Reader(ComponentReader):
+                """Reader for velocity data - supports v1"""
+
+                @staticmethod
+                def get_component_name() -> str:
+                    return VelocityComponent.COMPONENT_NAME
+
+                @staticmethod
+                def supports_component_version(version: str) -> bool:
+                    # This reader only supports v1
+                    return version == "v1"
+
+                def get_velocities(self) -> Tuple[np.ndarray, np.ndarray]:
+                    """Returns (velocities, timestamps_us) arrays"""
+                    velocities = np.array(self._group["velocities"][:])
+                    timestamps_us = np.array(self._group["timestamps_us"][:])
+                    return velocities, timestamps_us
+
+        # ============================================================================
+        # STEP 3: Extend the existing dataset with the new custom component
+        # ============================================================================
+
+        print("\n=== Step 3: Extending dataset with VelocityComponent ===")
+
+        # First, open a reader to the initial dataset
+        initial_reader = SequenceComponentStoreReader(component_store_paths=initial_store_paths)
+
+        # Verify we can read the initial data
+        poses_readers = initial_reader.open_component_readers(PosesComponent.Reader)
+        self.assertEqual(len(poses_readers), 1)
+        self.assertIn(instance_name, poses_readers)
+
+        # Create a new writer that extends the existing dataset IN PLACE
+        # This is the KEY step: use from_reader() to create a writer with the same metadata
+        # Note: Use the SAME output directory and base name to extend the existing dataset
+        # The from_reader() method copies sequence metadata but NOT component data
+        extended_store_writer = SequenceComponentStoreWriter.from_reader(
+            sequence_reader=initial_reader,
+            output_dir_path=UPath(tempdir.name),  # Same directory as initial
+            store_base_name=sequence_id + "-extension",
+            store_type=store_type,
+        )
+
+        # Now add our custom velocity component to the extended dataset
+        ref_velocities = np.array(
+            [
+                [1.0, 0.0, 0.0],  # Moving in +x direction
+                [1.5, 0.5, 0.0],  # Accelerating, slight +y
+                [2.0, 1.0, 0.1],  # Continuing acceleration
+                [2.0, 1.0, 0.0],  # Constant velocity
+                [1.5, 0.5, 0.0],  # Decelerating
+            ],
+            dtype=np.float32,
+        )
+
+        ref_velocity_timestamps = np.array(
+            [
+                int(0 * 1e6),
+                int(2 * 1e6),
+                int(4 * 1e6),
+                int(6 * 1e6),
+                int(8 * 1e6),
+            ],
+            dtype=np.uint64,
+        )
+
+        velocity_writer = extended_store_writer.register_component_writer(
+            VelocityComponent.Writer,
+            velocity_instance_name := "ego_velocity",
+            group_name="velocity",  # Optional: organize in a subgroup
+            generic_meta_data={"units": "m/s", "reference_frame": "rig"},
+        )
+
+        # Store all velocity measurements
+        for vel, ts in zip(ref_velocities, ref_velocity_timestamps):
+            velocity_writer.store_velocity(vel, ts)
+
+        # Finalize the extended dataset - this adds new component paths
+        extended_store_paths = initial_store_paths + extended_store_writer.finalize()
+        print(f"Extended dataset with velocity component at: {tempdir.name}")
+
+        # ============================================================================
+        # STEP 4: Verify we can reload the extended dataset correctly
+        # ============================================================================
+
+        print("\n=== Step 4: Verifying extended dataset ===")
+
+        # Open a reader for the extended dataset
+        extended_reader = SequenceComponentStoreReader(component_store_paths=extended_store_paths)
+
+        # Verify sequence metadata is preserved
+        self.assertEqual(extended_reader.sequence_id, sequence_id)
+        self.assertEqual(
+            extended_reader.sequence_timestamp_interval_us,
+            timestamp_interval,
+        )
+
+        # Verify original pose data is still present
+        extended_poses_readers = extended_reader.open_component_readers(PosesComponent.Reader)
+        self.assertEqual(len(extended_poses_readers), 1)
+        self.assertIn(instance_name, extended_poses_readers)
+
+        # Check the static pose is still there
+        static_poses = list(extended_poses_readers[instance_name].get_static_poses())
+        self.assertEqual(len(static_poses), 1)
+        (src, tgt), pose = static_poses[0]
+        self.assertEqual(src, "sensor")
+        self.assertEqual(tgt, "rig")
+        np.testing.assert_array_almost_equal(pose, ref_T_sensor_rig)
+
+        # Verify our new velocity component is present and readable
+        velocity_readers = extended_reader.open_component_readers(VelocityComponent.Reader)
+        self.assertEqual(len(velocity_readers), 1)
+        self.assertIn(velocity_instance_name, velocity_readers)
+
+        velocity_reader = velocity_readers[velocity_instance_name]
+        self.assertEqual(velocity_reader.instance_name, velocity_instance_name)
+        self.assertEqual(velocity_reader.component_version, "v1")
+        self.assertEqual(
+            velocity_reader.generic_meta_data,
+            {"units": "m/s", "reference_frame": "rig"},
+        )
+
+        # Read and verify velocity data
+        loaded_velocities, loaded_timestamps = velocity_reader.get_velocities()
+        np.testing.assert_array_almost_equal(loaded_velocities, ref_velocities)
+        np.testing.assert_array_equal(loaded_timestamps, ref_velocity_timestamps)
+
+        print("✓ Extended dataset verified successfully!")
+
+        # ============================================================================
+        # STEP 5 (Optional): Test component version compatibility
+        # ============================================================================
+
+        print("\n=== Step 5: Testing component version compatibility ===")
+
+        # Define a v2 writer with additional features (acceleration data)
+        class VelocityComponentV2:
+            """Version 2 with acceleration data"""
+
+            COMPONENT_NAME: str = "velocity"
+
+            class Writer(ComponentWriter):
+                @staticmethod
+                def get_component_name() -> str:
+                    return VelocityComponentV2.COMPONENT_NAME
+
+                @staticmethod
+                def get_component_version() -> str:
+                    return "v2"  # New version
+
+                def __init__(self, component_group, sequence_timestamp_interval_us):
+                    super().__init__(component_group, sequence_timestamp_interval_us)
+                    self.velocities = []
+                    self.accelerations = []  # NEW: acceleration data
+                    self.timestamps = []
+
+                def store_velocity_with_acceleration(
+                    self,
+                    velocity: np.ndarray,
+                    acceleration: np.ndarray,  # NEW parameter
+                    timestamp_us: int,
+                ):
+                    """Store velocity and acceleration at a timestamp"""
+                    self.velocities.append(velocity)
+                    self.accelerations.append(acceleration)
+                    self.timestamps.append(timestamp_us)
+                    return self
+
+                def finalize(self):
+                    if self.velocities:
+                        velocities_array = np.stack(self.velocities)
+                        accelerations_array = np.stack(self.accelerations)
+                        timestamps_array = np.array(self.timestamps, dtype=np.uint64)
+
+                        self._group.create_dataset("velocities", data=velocities_array)
+                        self._group.create_dataset("accelerations", data=accelerations_array)  # NEW
+                        self._group.create_dataset("timestamps_us", data=timestamps_array)
+
+        # Create a backward-compatible reader that can read both v1 and v2
+        class VelocityComponentBackwardCompatibleReader(ComponentReader):
+            """Reader that supports both v1 and v2"""
+
+            @staticmethod
+            def get_component_name() -> str:
+                return "velocity"
+
+            @staticmethod
+            def supports_component_version(version: str) -> bool:
+                # This reader can handle v1 and v2
+                return version in ["v1", "v2"]
+
+            def get_velocities(self) -> Tuple[np.ndarray, np.ndarray]:
+                """Returns velocities (works for both v1 and v2)"""
+                velocities = np.array(self._group["velocities"][:])
+                timestamps_us = np.array(self._group["timestamps_us"][:])
+                return velocities, timestamps_us
+
+            def get_accelerations(self) -> np.ndarray:
+                """Returns accelerations (only available in v2)"""
+                if self.component_version == "v1":
+                    raise ValueError("Acceleration data not available in v1")
+                return np.array(self._group["accelerations"][:])
+
+        # Test that v1 reader cannot read v2 data
+        v2_store_writer = SequenceComponentStoreWriter(
+            output_dir_path=UPath(tempdir.name) / "v2",
+            store_base_name="test_v2",
+            sequence_id="test_v2",
+            sequence_timestamp_interval_us=timestamp_interval,
+            store_type=store_type,
+            generic_meta_data={"version": "v2_test"},
+        )
+
+        ref_accelerations = np.array(
+            [
+                [0.5, 0.5, 0.1],
+                [0.5, 0.5, -0.1],
+                [0.0, 0.0, 0.0],
+                [-0.5, -0.5, 0.0],
+                [-0.5, -0.5, 0.0],
+            ],
+            dtype=np.float32,
+        )
+
+        v2_writer = v2_store_writer.register_component_writer(
+            VelocityComponentV2.Writer,
+            "velocity_v2",
+            group_name="velocity",
+        )
+
+        for vel, acc, ts in zip(ref_velocities, ref_accelerations, ref_velocity_timestamps):
+            v2_writer.store_velocity_with_acceleration(vel, acc, ts)
+
+        v2_store_paths = v2_store_writer.finalize()
+
+        # Try to open with v1 reader - should fail because it doesn't support v2
+        v2_reader = SequenceComponentStoreReader(component_store_paths=v2_store_paths)
+
+        # This should return empty dict because v1 reader doesn't support v2
+        v1_readers_for_v2 = v2_reader.open_component_readers(VelocityComponent.Reader)
+        self.assertEqual(len(v1_readers_for_v2), 0, "v1 reader should not be able to read v2 components")
+        print("✓ v1 reader correctly skips v2 components (returns empty dict)")
+
+        # But backward-compatible reader should work
+        bc_readers = v2_reader.open_component_readers(VelocityComponentBackwardCompatibleReader)
+        self.assertEqual(len(bc_readers), 1)
+        bc_reader = bc_readers["velocity_v2"]
+
+        # Can read velocities from v2
+        loaded_vel, loaded_ts = bc_reader.get_velocities()
+        np.testing.assert_array_almost_equal(loaded_vel, ref_velocities)
+
+        # Can also read accelerations from v2
+        loaded_acc = bc_reader.get_accelerations()
+        np.testing.assert_array_almost_equal(loaded_acc, ref_accelerations)
+
+        # Test that backward-compatible reader can also read v1 data
+        bc_readers_v1 = extended_reader.open_component_readers(VelocityComponentBackwardCompatibleReader)
+        self.assertEqual(len(bc_readers_v1), 1)
+        bc_reader_v1 = bc_readers_v1[velocity_instance_name]
+
+        # Can read velocities from v1
+        loaded_vel_v1, _ = bc_reader_v1.get_velocities()
+        np.testing.assert_array_almost_equal(loaded_vel_v1, ref_velocities)
+
+        # But cannot read accelerations from v1
+        with self.assertRaises(ValueError) as context:
+            bc_reader_v1.get_accelerations()
+        self.assertIn("not available in v1", str(context.exception))
+
+        print("✓ Version compatibility tests passed!")
+        print("\n=== All tests completed successfully! ===")

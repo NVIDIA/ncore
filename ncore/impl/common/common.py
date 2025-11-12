@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import sys
 import time
 
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, List, Optional, Tuple, TypeVar, Union, cast
+from typing import TYPE_CHECKING, Callable, Generator, Iterable, List, Optional, Tuple, TypeVar, Union, cast
 
 import numpy as np
 import PIL.Image as PILImage
@@ -462,3 +463,45 @@ def map_optional(maybe_value: Optional[T], func: Callable[[T], U]) -> Optional[U
         return None
 
     return func(maybe_value)
+
+
+def log_progress(
+    iterable: Iterable[T],
+    logger: logging.Logger,
+    total: Optional[int] = None,
+    label: str = "",
+    step_frequency: int = 1,
+    level: int = logging.INFO,
+    nest_level: int = 0,
+) -> Generator[T, None, None]:
+    """
+    Generator wrapper that logs progress at specified frequency with nesting support.
+
+    Args:
+        iterable: The iterable to wrap
+        logger: Logger instance to use for logging
+        total: Total count (auto-computed if not provided)
+        label: Label prefix for log messages
+        step_frequency: Log every N steps (1 = every step, 10 = every 10th step)
+        level: Logging level (default INFO)
+        nest_level: Nesting level for indentation (0 = no indent, 1 = "  ", 2 = "    ", etc.)
+
+    Yields:
+        Items from the iterable
+    """
+    if total is None:
+        iterable = list(iterable)
+        total = len(iterable)
+
+    indent = "  " * nest_level
+
+    for current, item in enumerate(iterable, 1):
+        yield item
+
+        if current % step_frequency == 0 or current == total:
+            percent = current / total
+            bar = "█" * int(30 * percent) + "-" * (30 - int(30 * percent))
+            msg = f"{indent}[{bar}] {current}/{total}"
+            if label:
+                msg = f"{indent}{label}: [{bar}] {current}/{total}"
+            logger.log(level, msg)

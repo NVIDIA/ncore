@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: LicenseRef-NvidiaProprietary
 #
 # NVIDIA CORPORATION and its licensors retain all intellectual property
@@ -8,9 +8,7 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
-"""Package exposing methods related to NCORE's V4 data interaction APIs"""
+def test_import_package():
+    """Make sure package can be imported"""
 
-from ncore.impl.experimental.data.data4.components import SequenceComponentStoreWriter
-
-
-__all__ = ["SequenceComponentStoreWriter"]
+    import ncore.unstable.data.v4
