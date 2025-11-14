@@ -87,7 +87,13 @@ class TestMotionCompensator(unittest.TestCase):
 
             # Check for consistency
             self.assertIsNone(
-                np.testing.assert_array_almost_equal(xyz_s, motion_compensation_result.xyz_s_sensorend),
+                np.testing.assert_array_almost_equal(
+                    xyz_s,
+                    motion_compensation_result.xyz_s_sensorend,
+                    # lower-precision check only because of numerical errors building up + not doing
+                    # *repeated* linear interpolatins in MotionCompensator for poses as in the source test data
+                    decimal=5,
+                ),
                 f"frame_idx {frame_idx}",
             )
             self.assertIsNone(
@@ -147,12 +153,18 @@ class TestPoseGraphInterpolator(unittest.TestCase):
         timestamps_us = np.array([0, 10], dtype=np.uint64)
 
         self.edges = [
-            PoseGraphInterpolator.Edge("V1", "V2", np.stack([np.eye(4), get_SE3(np.array([1, 0, 0]))]), timestamps_us),
-            PoseGraphInterpolator.Edge("V1", "V7", get_SE3(np.array([0, 1, 0])), None),
-            PoseGraphInterpolator.Edge("V1", "V3", get_SE3(np.array([0, 1, 0])), None),
-            PoseGraphInterpolator.Edge("V1", "V4", np.stack([np.eye(4), get_SE3(np.array([2, 0, 0]))]), timestamps_us),
-            PoseGraphInterpolator.Edge("V2", "V5", get_SE3(np.array([0, 1, 0])), None),
-            PoseGraphInterpolator.Edge("V6", "V2", np.stack([np.eye(4), get_SE3(np.array([0, 0, 1]))]), timestamps_us),
+            PoseGraphInterpolator.Edge(
+                "V1", "V2", np.stack([np.eye(4), get_SE3(np.array([1, 0, 0]))]).astype(np.float32), timestamps_us
+            ),
+            PoseGraphInterpolator.Edge("V1", "V7", get_SE3(np.array([0, 1, 0])).astype(np.float64), None),
+            PoseGraphInterpolator.Edge("V1", "V3", get_SE3(np.array([0, 1, 0])).astype(np.float32), None),
+            PoseGraphInterpolator.Edge(
+                "V1", "V4", np.stack([np.eye(4), get_SE3(np.array([2, 0, 0]))]).astype(np.float32), timestamps_us
+            ),
+            PoseGraphInterpolator.Edge("V2", "V5", get_SE3(np.array([0, 1, 0])).astype(np.float32), None),
+            PoseGraphInterpolator.Edge(
+                "V6", "V2", np.stack([np.eye(4), get_SE3(np.array([0, 0, 1]))]).astype(np.float32), timestamps_us
+            ),
         ]
 
     def test_init_graph(self):
@@ -188,52 +200,51 @@ class TestPoseGraphInterpolator(unittest.TestCase):
 
         PoseGraphInterpolator(self.edges)  # should not raise any exception on valid graph
 
-    @parameterized.parameterized.expand(
-        [
-            (np.float32,),
-            (np.float64,),
-        ]
-    )
-    def test_interpolation(self, dtype: np.dtype):
+    def test_interpolation(self):
         """Test to verify pose interpolation along different paths through a graph"""
 
         graph = PoseGraphInterpolator(self.edges)
 
         with self.assertRaises(KeyError):
             # non-existing start node
-            graph.evaluate_poses("foo", "V1", np.array([0], dtype=np.uint64), dtype=dtype)
+            graph.evaluate_poses("foo", "V1", np.array([0], dtype=np.uint64))
 
         with self.assertRaises(KeyError):
             # non-existing end node
-            graph.evaluate_poses("V1", "foo", np.array([0], dtype=np.uint64), dtype=dtype)
+            graph.evaluate_poses("V1", "foo", np.array([0], dtype=np.uint64))
 
         # self-pose is identity
         self.assertTrue(
             np.array_equal(
-                graph.evaluate_poses("V1", "V1", np.array([0], dtype=np.uint64), dtype=dtype),
+                res := graph.evaluate_poses("V1", "V1", np.array([0], dtype=np.uint64)),
                 np.eye(4)[np.newaxis],
             )
         )
+        self.assertTrue(res.dtype == np.float32)
 
         # verify different timestamp dtypes and empty batch shape on self / static edges
         self.assertTrue(
             np.array_equal(
-                graph.evaluate_poses("V1", "V1", np.empty((), dtype=np.int8), dtype=dtype),
+                graph.evaluate_poses("V1", "V1", np.empty((), dtype=np.int8)),
                 np.eye(4),
             )
         )
         self.assertTrue(
             np.array_equal(
-                graph.evaluate_poses("V7", "V1", np.empty((), dtype=np.int32), dtype=dtype),
+                res := graph.evaluate_poses("V7", "V1", np.empty((), dtype=np.int32)),
                 get_SE3(np.array([0, -1, 0])),
             )
+        )
+        self.assertTrue(
+            # V7 <- V1 is static edge with float64 pose
+            res.dtype == np.float64
         )
 
         # V7 < - V1 -> V3  is static
         self.assertTrue(
             # one hop
             np.array_equal(
-                graph.evaluate_poses("V1", "V3", np.array([0, 5, 10], dtype=np.uint64), dtype=dtype),
+                graph.evaluate_poses("V1", "V3", np.array([0, 5, 10], dtype=np.uint64)),
                 np.repeat(get_SE3(np.array([0, 1, 0]))[np.newaxis], 3, axis=0),
             )
         )
@@ -241,47 +252,53 @@ class TestPoseGraphInterpolator(unittest.TestCase):
         self.assertTrue(
             # two hops, one inverse
             np.array_equal(
-                graph.evaluate_poses("V7", "V3", np.array([0, 5, 10], dtype=np.uint64), dtype=dtype),
+                res := graph.evaluate_poses("V7", "V3", np.array([0, 5, 10], dtype=np.uint64)),
                 np.repeat(get_SE3(np.array([0, 0, 0]))[np.newaxis], 3, axis=0),
             )
+        )
+        self.assertTrue(
+            # V7 <- V1 is static edge with float64 pose
+            res.dtype == np.float64
         )
 
         # V1 -> V4 is dynamic
         self.assertTrue(
             np.array_equal(
-                graph.evaluate_poses("V1", "V4", np.array([0, 5, 10], dtype=np.uint64), dtype=dtype),
+                res := graph.evaluate_poses("V1", "V4", np.array([0, 5, 10], dtype=np.uint64)),
                 np.stack([get_SE3(np.array([0, 0, 0])), get_SE3(np.array([1, 0, 0])), get_SE3(np.array([2, 0, 0]))]),
             )
         )
+        self.assertTrue(res.dtype == np.float32)
 
         # V1 -> V2 <- V6 is dynamic
         self.assertTrue(
             np.array_equal(
-                graph.evaluate_poses("V1", "V6", np.array([0, 5, 10], dtype=np.uint64), dtype=dtype),
+                res := graph.evaluate_poses("V1", "V6", np.array([0, 5, 10], dtype=np.uint64)),
                 np.stack(
                     [get_SE3(np.array([0, 0, 0])), get_SE3(np.array([0.5, 0, -0.5])), get_SE3(np.array([1, 0, -1]))]
                 ),
             )
         )
+        self.assertTrue(res.dtype == np.float32)
 
         # V7 <- V1 -> V2 <- V6 is mixed static / dynamic
         self.assertTrue(
             np.array_equal(
-                graph.evaluate_poses("V7", "V6", np.array([0, 5, 10], dtype=np.uint64), dtype=dtype),
+                res := graph.evaluate_poses("V7", "V6", np.array([0, 5, 10], dtype=np.uint64)),
                 np.stack(
                     [get_SE3(np.array([0, -1, 0])), get_SE3(np.array([0.5, -1, -0.5])), get_SE3(np.array([1, -1, -1]))]
                 ),
             )
         )
+        self.assertTrue(res.dtype == np.float64)
 
         # verify batch-shape handling
         self.assertTrue(
             np.array_equal(
-                graph.evaluate_poses(
-                    "V7", "V6", np.array([0, 5, 10], dtype=np.uint64).reshape((1, 3, 1, 1)), dtype=dtype
-                ),
+                res := graph.evaluate_poses("V7", "V6", np.array([0, 5, 10], dtype=np.uint64).reshape((1, 3, 1, 1))),
                 np.stack(
                     [get_SE3(np.array([0, -1, 0])), get_SE3(np.array([0.5, -1, -0.5])), get_SE3(np.array([1, -1, -1]))]
                 ).reshape((1, 3, 1, 1, 4, 4)),
             )
         )
+        self.assertTrue(res.dtype == np.float64)
