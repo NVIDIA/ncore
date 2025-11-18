@@ -32,6 +32,8 @@ from upath import UPath
 if TYPE_CHECKING:
     from _hashlib import HASH as Hash
 
+    import numpy.typing as npt  # type: ignore[import-not-found]
+
 
 def load_jsonl(jsonl_path: Union[str, Path, UPath]) -> List[dict]:
     """
@@ -191,7 +193,7 @@ class PoseInterpolator:
             .item()
         )
 
-    def interpolate_to_timestamps(self, ts_target, dtype=np.float32) -> np.ndarray:
+    def interpolate_to_timestamps(self, ts_target, dtype: npt.DTypeLike = np.float32) -> np.ndarray:
         t_interp = self.f_t(ts_target).reshape(-1, 3, 1).astype(dtype)
         R_interp = self.slerp(ts_target).as_matrix().reshape(-1, 3, 3).astype(dtype)
 

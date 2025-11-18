@@ -715,7 +715,11 @@ class PoseGraphInterpolator:
         """
 
         def __init__(
-            self, source_node: str, target_node: str, T_source_target: np.ndarray, timestamps_us: Optional[np.ndarray]
+            self,
+            source_node: str,
+            target_node: str,
+            T_source_target: npt.NDArray[np.floating],
+            timestamps_us: Optional[npt.NDArray[np.uint64]],
         ):
             self.source_node = source_node
             self.target_node = target_node
@@ -730,7 +734,9 @@ class PoseGraphInterpolator:
             else:
                 assert self.T_source_target.shape == (4, 4)
 
-        def get_T(self, source_node: str, target_node: str, timestamps_us: np.ndarray) -> np.ndarray:
+        def get_T(
+            self, source_node: str, target_node: str, timestamps_us: npt.NDArray[np.uint64]
+        ) -> npt.NDArray[np.floating]:
             """Returns the transformation from source to target node at the given timestamps
 
             Args:
@@ -794,7 +800,7 @@ class PoseGraphInterpolator:
                 raise ValueError("Pose graph is not fully connected")
 
         # Map of normalized (sorted) node names to edges for more efficient lookup at graph traversal time
-        self._normalized_edge_map = {tuple(sorted((k[0], k[1]))): edge for k, edge in self._edge_map.items()}
+        self._normalized_edge_map = {self.normalize_node_pair(k[0], k[1]): edge for k, edge in self._edge_map.items()}
 
         # Check for cycles (simple check: number of edges must be |nodes|-1 for a tree)
         if len(edges) >= len(self._nodes):
@@ -805,19 +811,43 @@ class PoseGraphInterpolator:
         """Returns the set of nodes in the pose graph"""
         return self._nodes
 
-    def get_edge(self, source_node: str, target_node: str) -> Optional[Edge]:
+    @staticmethod
+    def normalize_node_pair(node_a: str, node_b: str) -> Tuple[str, str]:
+        """Returns a normalized (sorted) tuple of the given node names
+
+        Args:
+            node_a (str): name of the first node
+            node_b (str): name of the second node
+
+        Returns:
+            Tuple[str, str]: normalized (sorted) tuple of the given node names
+        """
+        return (node_a, node_b) if node_a < node_b else (node_b, node_a)
+
+    @property
+    def normalized_edge_map(self) -> Dict[Tuple[str, str], Edge]:
+        """Returns the normalized (sorted by node names) edge map of the pose graph"""
+        return self._normalized_edge_map
+
+    def get_edge(self, source_node: str, target_node: str, normalized: bool = False) -> Optional[Edge]:
         """Returns the edge between the given source and target node, or None if no such edge exists
 
         Args:
             source_node (str): name of the source
             target_node (str): name of the target
+            normalized (bool): if True, looks up the edge in normalized (sorted) manner
 
         Returns:
             Optional[Edge]: edge between source and target node, or None if no such edge exists
         """
-        return self._edge_map.get((source_node, target_node), None)
+        if normalized:
+            return self._normalized_edge_map.get(self.normalize_node_pair(source_node, target_node), None)
+        else:
+            return self._edge_map.get((source_node, target_node), None)
 
-    def evaluate_poses(self, source_node: str, target_node: str, timestamps_us: np.ndarray) -> np.ndarray:
+    def evaluate_poses(
+        self, source_node: str, target_node: str, timestamps_us: npt.NDArray[np.uint64]
+    ) -> npt.NDArray[np.floating]:
         """
         Evaluates relative pose from source to target node frames at the given timestamps. Performs
         graph traversal and pose evaluation / composition (interpolation for time-dependent edges) as needed.
@@ -846,7 +876,7 @@ class PoseGraphInterpolator:
         # traverse path, compose associated transformations
         T_source_target: Optional[np.ndarray] = None
         for edge_nodes in path:
-            edge = self._normalized_edge_map[tuple(sorted((edge_nodes[0], edge_nodes[1])))]
+            edge = self._normalized_edge_map[self.normalize_node_pair(edge_nodes[0], edge_nodes[1])]
 
             # determine evaluation direction and perform edge evaluation for requested timestamps + map to required dtype
             if edge.source_node == source_node:
