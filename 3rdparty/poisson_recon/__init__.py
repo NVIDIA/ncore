@@ -12,15 +12,26 @@ import os
 import pathlib
 
 
+try:
+    from python.runfiles import Runfiles
+
+    # bazel-build-setup
+    _RUNFILES = Runfiles.Create()
+except ImportError:
+    # wheel setup
+    _RUNFILES = None
+
+
 def reconstruct_surface(
     input_file: str, output_file: str, width: float = 0.1, density: bool = True, samples_per_node: float = 1.0
 ):
     """Runs Poisson surface extraction executable on a given input file, producing a reconstruction mesh as output"""
 
     # find executable based on context
-    if (path := pathlib.Path("external/poisson_recon/poisson_recon_bin")).exists():
+    if _RUNFILES is not None:
         # bazel-build setup
-        pass
+        assert isinstance(rlocation := _RUNFILES.Rlocation("poisson_recon/poisson_recon_bin"), str)
+        path = pathlib.Path(rlocation)
     elif (path := pathlib.Path(__file__).parent.parent / "poisson_recon_bin").exists():
         # wheel setup
         pass

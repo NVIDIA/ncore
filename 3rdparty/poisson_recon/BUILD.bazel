@@ -14,6 +14,7 @@ py_library(
     ],
     data = ["@poisson_recon//:poisson_recon_bin"],
     imports = [".."],
+    deps = ["@rules_python//python/runfiles"],
 )
 
 # Collect all dependencies to export exectuable and interface function in wheel
