@@ -32,7 +32,7 @@ py_wheel(
     homepage = "https://github.com/mkazhdan/PoissonRecon",
     platform = "manylinux2014_x86_64",
     strip_path_prefixes = ["3rdparty"],
-    version = "13.74.1",
+    version = "13.74.2",
     deps = [
         ":poisson_recon_pkg",
     ],
