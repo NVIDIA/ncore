@@ -183,11 +183,20 @@ class NCore3To4:
                     [frame_timestamps_us[1]] * len(xyz_m), dtype=np.uint64
                 )  # all points have the same timestamp in V3 data
 
+                # extract directions / distances
+                distance_m = np.linalg.norm(xyz_m, axis=1)
+                direction = xyz_m / distance_m[:, np.newaxis]
+
+                # filter for non-negative distances
+                valid_mask = distance_m > 0
+
                 radar_writer.store_frame(
-                    # non-motion-compensated per-point 3D coordinates in the sensor frame at measurement time (float32, [n, 3])
-                    xyz_m=xyz_m,
+                    # non-motion-compensated per-point 3D directions in the sensor frame at measurement time (float32, [n, 3])
+                    direction=direction[valid_mask],
                     # per-point point timestamp in microseconds (uint64, [n])
-                    timestamp_us=timestamp_us,
+                    timestamp_us=timestamp_us[valid_mask],
+                    # single per-point return (only single return supported in V3))
+                    distance_m=distance_m[valid_mask][np.newaxis],
                     # frame start/end timestamps (uint64, [2])
                     frame_timestamps_us=frame_timestamps_us,
                     generic_data={
@@ -266,9 +275,13 @@ class NCore3To4:
                 if not HalfClosedInterval(*frame_timestamps_us.tolist()) in store_writer.sequence_timestamp_interval_us:
                     continue
 
-                # undo motion-compensation of V3 point clouds to non-motion-compensated "raw" V4 point cloud
+                # load relevant V3 data components
                 xyz_e = lidar_sensor.get_frame_data(source_frame_idx, "xyz_e")
                 timestamp_us = lidar_sensor.get_frame_data(source_frame_idx, "timestamp_us")
+                model_element = lidar_sensor.get_frame_data(source_frame_idx, "model_element")
+                intensity = lidar_sensor.get_frame_data(source_frame_idx, "intensity")
+
+                # undo motion-compensation of V3 point clouds to non-motion-compensated "raw" V4 point cloud
                 xyz_m = motion_compensator.motion_decompensate_points(
                     sensor_id=lidar_sensor.get_sensor_id(),
                     xyz_sensorend=xyz_e,
@@ -277,15 +290,24 @@ class NCore3To4:
                     frame_end_timestamp_us=frame_timestamps_us[1],
                 )
 
+                # extract directions / distances
+                distance_m = np.linalg.norm(xyz_m, axis=1)
+                direction = xyz_m / distance_m[:, np.newaxis]
+
+                # filter for non-negative distances
+                valid_mask = distance_m > 0
+
                 lidar_writer.store_frame(
-                    # non-motion-compensated per-point 3D coordinates in the sensor frame at measurement time (float32, [n, 3])
-                    xyz_m=xyz_m,
-                    # per-point intensity normalized to [0.0, 1.0] range (float32, [n])
-                    intensity=lidar_sensor.get_frame_data(source_frame_idx, "intensity"),
+                    # non-motion-compensated per-ray 3D directions in the sensor frame at measurement time (float32, [n, 3])
+                    direction=direction[valid_mask],
                     # per-point point timestamp in microseconds (uint64, [n])
-                    timestamp_us=timestamp_us,
+                    timestamp_us=timestamp_us[valid_mask],
                     # per-point model element indices, if applicable (uint16, [n, 2])
-                    model_element=lidar_sensor.get_frame_data(source_frame_idx, "model_element"),
+                    model_element=model_element[valid_mask],
+                    # per-point distance (only single return supported in V3) [n, r] with r=1)
+                    distance_m=distance_m[valid_mask][np.newaxis],
+                    # per-point intensity normalized to [0.0, 1.0] range (float32, [n, r] with r=1)
+                    intensity=intensity[valid_mask][np.newaxis],
                     # frame start/end timestamps (uint64, [2])
                     frame_timestamps_us=frame_timestamps_us,
                     generic_data={

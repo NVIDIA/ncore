@@ -39,7 +39,8 @@ class CLIBaseParams:
     """Parameters passed to non-command-based CLI part.
 
     Attributes:
-        sensor_id: ID of the sensor to visualize (e.g., 'lidar_gt_top_p128', 'camera_front')
+        sensor_id: ID of the sensor to visualize (e.g., 'lidar_gt_top_p128')
+        sensor_return_index: Return index of the ray bundle sensor
         start_frame: Optional starting frame index for visualization range
         stop_frame: Optional ending frame index (exclusive) for visualization range
         step_frame: Optional step size for downsampling frames
@@ -48,6 +49,7 @@ class CLIBaseParams:
     """
 
     sensor_id: str
+    sensor_return_index: int
     start_frame: Optional[int]
     stop_frame: Optional[int]
     step_frame: Optional[int]
@@ -57,6 +59,12 @@ class CLIBaseParams:
 
 @click.group()
 @click.option("--sensor-id", type=str, help="Sensor to visualize labels for", default="lidar_gt_top_p128")
+@click.option(
+    "--sensor-return-index",
+    type=int,
+    help="Return index of the ray bundle sensor",
+    default=0,
+)
 @click.option(
     "--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial frame to be visualized", default=None
 )
@@ -193,10 +201,13 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
 
         # Import the point cloud and add it to the visualizer
         xyz_m_end = sensor.get_frame_point_cloud(
-            frame_index, motion_compensation=params.motion_compensation, with_start_points=False
+            frame_index,
+            motion_compensation=params.motion_compensation,
+            with_start_points=False,
+            return_index=params.sensor_return_index,
         ).xyz_m_end
-        intensity = sensor.get_frame_data(frame_index, "intensity")
-        timestamp_us = sensor.get_frame_data(frame_index, "timestamp_us")
+        intensity = sensor.get_frame_ray_bundle_return_intensity(frame_index, return_index=params.sensor_return_index)
+        timestamp_us = sensor.get_frame_ray_bundle_timestamp_us(frame_index)
 
         dynamic_flag = (
             sensor.get_frame_generic_data(frame_index, "dynamic_flag")

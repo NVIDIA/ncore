@@ -957,60 +957,127 @@ class BaseSensorComponentReader(ComponentReader):
         return dict(self._get_frame_group(timestamp_us)["generic_data"].attrs)
 
 
-class BasePointCloudSensorComponentWriter(BaseSensorComponentWriter):
-    """Base class for all point cloud sensor component writers"""
+class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
+    """Base class for all ray bundle sensor component writers"""
 
-    def _store_frame_point_cloud(
+    def _store_frame_ray_bundle(
         self,
         # start-of-frame / end-of-frame timestamps
         frame_timestamps_us: np.ndarray,
-        # point-cloud components - need to have same lenght consistent with point count dimension
-        point_count: int,
-        point_cloud_data: Dict[str, np.ndarray],
-    ) -> zarr.Group:
-        # Initialize point cloud group
-        (point_cloud_group := self._get_frame_group(frame_timestamps_us).create_group("point_cloud")).attrs.put(
-            {"point_count": point_count}
+        # number of rays and returns per ray
+        n_rays: int,
+        n_returns: int,
+        # per-ray data components with N leading dimension along with chunk specifiers
+        ray_data: Dict[str, Tuple[np.ndarray, Tuple[int, ...]]],
+        # per-return data components with (N, R) leading dimension along with chunk specifiers. Non-existing values are indicated via NaNs
+        return_data: Dict[str, Tuple[np.ndarray, Tuple[int, ...]]],
+    ) -> None:
+        ## Initialize ray bundle group
+        (ray_bundle_group := self._get_frame_group(frame_timestamps_us).create_group("ray_bundle")).attrs.put(
+            {"n_rays": n_rays}
         )
 
-        # Store point cloud components
-        for name, data in point_cloud_data.items():
-            assert len(data) == point_count, f"{name} doesn't have required point count"
-
-            point_cloud_group.create_dataset(
+        # Store per-ray data
+        for name, (data, chunks) in ray_data.items():
+            assert len(data) == n_rays, f"{name} doesn't have required ray count"
+            ray_bundle_group.create_dataset(
                 name,
                 data=data,
-                # we are not accessing sub-ranges, so disable chunking
-                chunks=data.shape,
+                chunks=chunks,
                 # use compression that is fast to decode on modern hardware
                 compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
             )
 
-        return point_cloud_group
+        ## Initialize ray bundle returns group
+        (
+            ray_bundle_returns_group := self._get_frame_group(frame_timestamps_us).create_group("ray_bundle_returns")
+        ).attrs.put({"n_returns": n_returns})
+
+        # Store per-return data
+        abscent_mask = None
+        for name, (data, chunks) in return_data.items():
+            assert data.shape[:2] == (n_returns, n_rays), (
+                f"{name} doesn't have required ray / return count {(n_returns, n_rays)}"
+            )
+
+            # TODO: extend with support for checks of multi-dimensional returns
+            if abscent_mask is None:
+                # initialize absent mask from first return data
+                abscent_mask = np.isnan(data)
+            else:
+                # validate absent mask consistency
+                assert np.array_equal(abscent_mask, np.isnan(data)), f"Inconsistent NaN masks in return data {name}"
+
+            ray_bundle_returns_group.create_dataset(
+                name,
+                data=data,
+                chunks=chunks,
+                # use compression that is fast to decode on modern hardware
+                compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
+            )
 
 
-class BasePointCloudSensorComponentReader(BaseSensorComponentReader):
-    """Base class for all point cloud sensor component readers"""
+class BaseRayBundleSensorComponentReader(BaseSensorComponentReader):
+    """Base class for all ray bundle sensor component readers"""
 
-    def get_frame_point_cloud_size(self, timestamp_us: int) -> int:
-        """Returns the number of point cloud points for a specific frame"""
+    # per-ray data
+    def _get_ray_bundle_group(self, timestamp_us: int) -> zarr.Group:
+        """Returns the ray bundle group of a frame"""
 
-        return self._get_frame_group(timestamp_us)["point_cloud"].attrs["point_count"]
+        return self._get_frame_group(timestamp_us)["ray_bundle"]
 
-    def get_frame_point_cloud_data_names(self, timestamp_us: int) -> List[str]:
-        """List of all point cloud data names for a frame"""
+    def get_frame_ray_bundle_count(self, timestamp_us: int) -> int:
+        """Returns the number of rays and ray returns for a specific frame"""
 
-        return list(self._get_frame_group(timestamp_us)["point_cloud"].keys())
+        return self._get_ray_bundle_group(timestamp_us).attrs["n_rays"]
 
-    def has_frame_point_cloud_data(self, timestamp_us: int, name: str) -> bool:
-        """Signals if named point cloud data exists for a frame"""
+    def get_frame_ray_bundle_data_names(self, timestamp_us: int) -> List[str]:
+        """List of all ray bundle data names for a frame"""
 
-        return name in self._get_frame_group(timestamp_us)["point_cloud"].keys()
+        return list(self._get_ray_bundle_group(timestamp_us).keys())
 
-    def get_frame_point_cloud_data(self, timestamp_us: int, name: str) -> np.ndarray:
-        """Returns named point cloud data for a frame"""
+    def has_frame_ray_bundle_data(self, timestamp_us: int, name: str) -> bool:
+        """Signals if named ray bundle data exists for a frame"""
 
-        return np.array(self._get_frame_group(timestamp_us)["point_cloud"][name])
+        return name in self._get_ray_bundle_group(timestamp_us).keys()
+
+    def get_frame_ray_bundle_data(self, timestamp_us: int, name: str) -> np.ndarray:
+        """Returns named ray bundle data for a frame"""
+
+        return np.array(self._get_ray_bundle_group(timestamp_us)[name])
+
+    # per-ray return data
+    def _get_ray_bundle_returns_group(self, timestamp_us: int) -> zarr.Group:
+        """Returns the ray bundle returns group of a frame"""
+
+        return self._get_frame_group(timestamp_us)["ray_bundle_returns"]
+
+    def get_frame_ray_bundle_return_count(self, timestamp_us: int) -> int:
+        """Returns the number of ray returns for a specific frame"""
+
+        return self._get_ray_bundle_returns_group(timestamp_us).attrs["n_returns"]
+
+    def get_frame_ray_bundle_return_data_names(self, timestamp_us: int) -> List[str]:
+        """List of all ray bundle return data names for a frame"""
+
+        return list(self._get_ray_bundle_returns_group(timestamp_us).keys())
+
+    def has_frame_ray_bundle_return_data(self, timestamp_us: int, name: str) -> bool:
+        """Signals if named ray bundle return data exists for a frame"""
+
+        return name in self._get_ray_bundle_returns_group(timestamp_us).keys()
+
+    def get_frame_ray_bundle_return_data(self, timestamp_us: int, name: str, return_index: Optional[int]) -> np.ndarray:
+        """Returns named ray bundle return data for a frame, optionally indexed by return index to accelerate data-retrieval"""
+
+        return_array = self._get_ray_bundle_returns_group(timestamp_us)[
+            name
+        ]  # only references the underlying Array, don't load it's data yet
+
+        if return_index is None:
+            return np.array(return_array[slice(return_array.shape[0]), ...])  # load all returns
+        else:
+            return np.array(return_array[return_index, ...])  # load specific return only
 
 
 class CameraSensorComponent:
@@ -1093,7 +1160,7 @@ class LidarSensorComponent:
 
     COMPONENT_NAME: str = "lidars"
 
-    class Writer(BasePointCloudSensorComponentWriter):
+    class Writer(BaseRayBundleSensorComponentWriter):
         """Lidar sensor data component writer"""
 
         @staticmethod
@@ -1108,51 +1175,75 @@ class LidarSensorComponent:
 
         def store_frame(
             self,
-            # mandatory point-cloud data
-            xyz_m: np.ndarray,  # per-point metric coordinates relative to the sensor frame at measure time (raw / not motion-compensated, needs to be non-zero) (float32, [n, 3])
-            intensity: np.ndarray,  # per-point intensity normalized to [0.0, 1.0] range (float32, [n])
-            timestamp_us: np.ndarray,  # per-point point timestamp in microseconds (uint64, [n])
-            model_element: np.ndarray,  # per-point model element indices, if applicable (uint16, [n, 2])
+            # ray-associated data for N rays (data common to all returns)
+            direction: np.ndarray,  # per-ray unit-norm direction vectors in sensor frame at measure time (raw / not motion-compensated, needs to have unit norm) (float32, [N, 3])
+            timestamp_us: np.ndarray,  # per-ray timestamp in microseconds (uint64, [N])
+            model_element: np.ndarray,  # per-ray model element indices, if applicable (uint16, [N, 2])
+            # per-ray return data for R returns - non-existing values are indicated via NaNs
+            distance_m: np.ndarray,  # per-point metric distance along the ray at measure time time (raw / not motion-compensated, needs to be non-negative) (float32, [R, N])
+            intensity: np.ndarray,  # per-point intensity normalized to [0.0, 1.0] range (float32, [R, N])
             # start-of-frame / end-of-frame timestamps
             frame_timestamps_us: np.ndarray,
             # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
             generic_data: Dict[str, np.ndarray],
             generic_meta_data: Dict[str, data.JsonLike],
         ) -> "Self":
-            # Sanity / consistency checks
-            assert xyz_m.ndim == 2
-            assert np.shape(xyz_m)[1] == 3
-            assert xyz_m.dtype == np.dtype("float32")
-            point_count = len(xyz_m)
+            ## Sanity / consistency checks
+            assert direction.ndim == 2
+            assert np.shape(direction)[1] == 3
+            assert direction.dtype == np.dtype("float32")
 
-            # Initialize frame
+            # make sure directions are unit-norm
+            assert np.all(np.abs(np.sum(direction**2, axis=1) - 1.0) < 1e-4), "Direction vectors are not unit-norm"
+
+            n_rays = len(direction)
+
+            ## Initialize frame
             self._store_base_frame(frame_timestamps_us, generic_data, generic_meta_data)
 
-            point_cloud_data = {
-                "xyz_m": xyz_m,
+            ## Per frame data
+            ray_data: Dict[str, Tuple[np.ndarray, Tuple[int, ...]]] = {
+                "direction": (direction, direction.shape),
             }
 
-            assert intensity.dtype == np.dtype("float32")
-            assert 0.0 <= intensity.min() and intensity.max() <= 1.0, "Intensity not normalized"
-            point_cloud_data["intensity"] = intensity
-
             assert timestamp_us.dtype == np.dtype("uint64")
-            if point_count:
+            assert timestamp_us.shape == (n_rays,)
+            if n_rays:
                 assert (frame_timestamps_us[0] <= timestamp_us.min()) and (
                     timestamp_us.max() <= frame_timestamps_us[1]
                 ), "Point timestamps outside frame time bounds"
-            point_cloud_data["timestamp_us"] = timestamp_us
+            ray_data["timestamp_us"] = (timestamp_us, timestamp_us.shape)
 
-            assert model_element.shape == (point_count, 2)
+            assert model_element.shape == (n_rays, 2)
             assert model_element.dtype == np.dtype("uint16")
-            point_cloud_data["model_element"] = model_element
+            ray_data["model_element"] = (model_element, model_element.shape)
 
-            # Store point-cloud data
-            self._store_frame_point_cloud(frame_timestamps_us, point_count, point_cloud_data)
+            ## Per return data
+
+            return_data: Dict[str, Tuple[np.ndarray, Tuple[int, ...]]] = {}
+
+            # distance
+            assert distance_m.ndim == 2
+            n_returns = distance_m.shape[0]
+            assert distance_m.shape[1] == n_rays
+            assert distance_m.dtype == np.dtype("float32")
+            distance_m_finite = distance_m[np.isfinite(distance_m)]
+            assert np.all(distance_m_finite >= 0.0), "Distance contains negative values"
+            return_data["distance_m"] = (distance_m, (1, n_rays))  # chunk along returns
+
+            # intensity
+            assert intensity.shape == (n_returns, n_rays)
+            assert intensity.dtype == np.dtype("float32")
+            intensity_finite = intensity[np.isfinite(intensity)]
+            assert np.all(0.0 <= intensity_finite) and np.all(intensity_finite <= 1.0), "Intensity not normalized"
+            return_data["intensity"] = (intensity, (1, n_rays))  # chunk along returns
+
+            # Store point-clouds data
+            self._store_frame_ray_bundle(frame_timestamps_us, n_rays, n_returns, ray_data, return_data)
 
             return self
 
-    class Reader(BasePointCloudSensorComponentReader):
+    class Reader(BaseRayBundleSensorComponentReader):
         """Lidar sensor data component reader"""
 
         @staticmethod
@@ -1171,7 +1262,7 @@ class RadarSensorComponent:
 
     COMPONENT_NAME: str = "radars"
 
-    class Writer(BasePointCloudSensorComponentWriter):
+    class Writer(BaseRayBundleSensorComponentWriter):
         """Radar sensor data component writer"""
 
         @staticmethod
@@ -1186,45 +1277,62 @@ class RadarSensorComponent:
 
         def store_frame(
             self,
-            # mandatory point-cloud data
-            xyz_m: np.ndarray,  # per-point metric coordinates relative to the sensor frame at measure time (raw / not motion-compensated, needs to be non-zero) (float32, [n, 3])
-            timestamp_us: np.ndarray,  # per-point point timestamp in microseconds (uint64, [n])
+            # ray-associated data for N rays (data common to all returns)
+            direction: np.ndarray,  # per-point unit-norm direction vectors in sensor frame at measure time (raw / not motion-compensated, needs to have unit norm) (float32, [N, 3])
+            timestamp_us: np.ndarray,  # per-point timestamp in microseconds (uint64, [N])
+            # per-ray return data for R returns - non-existing values are indicated via NaNs
+            distance_m: np.ndarray,  # per-point metric distance along the ray at measure time time (raw / not motion-compensated, needs to be non-negative) (float32, [R, N])
             # start-of-frame / end-of-frame timestamps
             frame_timestamps_us: np.ndarray,
             # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
             generic_data: Dict[str, np.ndarray],
             generic_meta_data: Dict[str, data.JsonLike],
         ) -> "Self":
-            # Sanity / consistency checks
-            assert xyz_m.ndim == 2
-            assert np.shape(xyz_m)[1] == 3
-            assert xyz_m.dtype == np.dtype("float32")
-            point_count = len(xyz_m)
+            ## Sanity / consistency checks
+            assert direction.ndim == 2
+            assert np.shape(direction)[1] == 3
+            assert direction.dtype == np.dtype("float32")
 
-            # Initialize frame
+            # make sure directions are unit-norm
+            assert np.all(np.abs(np.sum(direction**2, axis=1) - 1.0) < 1e-4), "Direction vectors are not unit-norm"
+
+            n_rays = len(direction)
+
+            ## Initialize frame
             self._store_base_frame(frame_timestamps_us, generic_data, generic_meta_data)
 
-            # Store point-cloud data
-            point_cloud_data = {
-                "xyz_m": xyz_m,
+            ## Per frame data
+            ray_data: Dict[str, Tuple[np.ndarray, Tuple[int, ...]]] = {
+                "direction": (direction, direction.shape),
             }
 
             assert timestamp_us.dtype == np.dtype("uint64")
-            if point_count:
+            assert timestamp_us.shape == (n_rays,)
+            if n_rays:
                 assert (frame_timestamps_us[0] <= timestamp_us.min()) and (
                     timestamp_us.max() <= frame_timestamps_us[1]
                 ), "Point timestamps outside frame time bounds"
-            point_cloud_data["timestamp_us"] = timestamp_us
+            ray_data["timestamp_us"] = (timestamp_us, timestamp_us.shape)
 
-            self._store_frame_point_cloud(
-                frame_timestamps_us,
-                point_count,
-                point_cloud_data,
-            )
+            ## Per return data
+
+            return_data: Dict[str, Tuple[np.ndarray, Tuple[int, ...]]] = {}
+
+            # distance
+            assert distance_m.ndim == 2
+            n_returns = distance_m.shape[0]
+            assert distance_m.shape[1] == n_rays
+            assert distance_m.dtype == np.dtype("float32")
+            distance_m_finite = distance_m[np.isfinite(distance_m)]
+            assert np.all(distance_m_finite >= 0.0), "Distance contains negative values"
+            return_data["distance_m"] = (distance_m, (1, n_rays))  # chunk along returns
+
+            # Store point-clouds data
+            self._store_frame_ray_bundle(frame_timestamps_us, n_rays, n_returns, ray_data, return_data)
 
             return self
 
-    class Reader(BasePointCloudSensorComponentReader):
+    class Reader(BaseRayBundleSensorComponentReader):
         """Radar sensor data component reader"""
 
         @staticmethod

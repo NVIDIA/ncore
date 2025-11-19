@@ -17,7 +17,8 @@ Key Components:
     - SequenceLoaderProtocol: Unified interface for sequence-level data access
     - SensorProtocol: Common interface for sensor data (cameras, lidars, radars)
     - CameraSensorProtocol: Camera-specific extensions
-    - PointCloudSensorProtocol: Point cloud sensor interface (lidar/radar)
+    - RayBundleSensorProtocol: Ray bundle sensor interface (lidar/radar)
+    - LidarSensorProtocol: Lidar-specific extensions
     - SequenceLoaderV3: Adapter for V3 shard-based data
     - SequenceLoaderV4: Adapter for V4 component-based data
 
@@ -64,7 +65,7 @@ from ncore.impl.data.data import JsonLike
 from ncore.impl.data.data3 import LidarSensor, ShardDataLoader
 from ncore.impl.data.types import FrameTimepoint
 from ncore.impl.unstable.data.data4.components import (
-    BasePointCloudSensorComponentReader,
+    BaseRayBundleSensorComponentReader,
     CameraSensorComponent,
     CuboidsComponent,
     IntrinsicsComponent,
@@ -330,15 +331,61 @@ class CameraSensorProtocol(SensorProtocol, Protocol):
         return np.asarray(self.get_frame_image(frame_index))
 
 
-class PointCloudSensorProtocol(SensorProtocol, Protocol):
-    """PointCloudSensorProtocol provides unified access to a relevant subset of common NCore V3 and default V4 point cloud sensor APIs"""
+class RayBundleSensorProtocol(SensorProtocol, Protocol):
+    """RayBundleSensorProtocol provides unified access to a relevant subset of common NCore V3 and default V4 ray-bundle sensor APIs"""
 
-    def has_frame_data(self, frame_index: int, name: str) -> bool:
-        """Signals if specifically named frame-data property exists"""
+    def get_frame_ray_bundle_count(self, frame_index: int) -> int:
+        """Returns the number of rays for a specific frame without decoding it.
+
+        Args:
+            frame_index: Index of the frame
+
+        Returns:
+            Number of rays for a specific frame
+        """
         ...
 
-    def get_frame_data(self, frame_index: int, name: str) -> np.ndarray:
-        """Returns frame-data for a specific frame and name"""
+    def get_frame_ray_bundle_direction(self, frame_index: int) -> npt.NDArray[np.float32]:
+        """Returns the per-ray directions for the ray-bundle for a specific frame.
+
+        Args:
+            frame_index: Index of the frame
+        Returns:
+            Array of per-ray directions [N,3]
+        """
+        ...
+
+    def get_frame_ray_bundle_timestamp_us(self, frame_index: int) -> npt.NDArray[np.uint64]:
+        """Returns the per-ray timestamps for the ray-bundle for a specific frame.
+
+        Args:
+            frame_index: Index of the frame
+        Returns:
+            Array of per-ray timestamps [N,]
+        """
+        ...
+
+    def get_frame_ray_bundle_return_count(self, frame_index: int) -> int:
+        """Returns the number of different ray returns for a specific frame without decoding it.
+
+        Args:
+            frame_index: Index of the frame
+
+        Returns:
+            Number of ray returns for a specific frame
+        """
+        ...
+
+    def get_frame_ray_bundle_return_distance(self, frame_index: int, return_index: int = 0) -> npt.NDArray[np.float32]:
+        """Returns the per-ray measured distances for the ray bundle returns of a specific frame.
+
+        Args:
+            frame_index: Index of the frame
+            return_index: Index of the ray bundle return to retrieve (for multi-return sensors)
+
+        Returns:
+            Array of per-ray distances [N,]
+        """
         ...
 
     @dataclass
@@ -357,7 +404,7 @@ class PointCloudSensorProtocol(SensorProtocol, Protocol):
         xyz_m_end: np.ndarray
 
     def get_frame_point_cloud(
-        self, frame_index: int, motion_compensation: bool, with_start_points: bool
+        self, frame_index: int, motion_compensation: bool, with_start_points: bool, return_index: int = 0
     ) -> FramePointCloud:
         """Returns a frame-point cloud motion-compensated or non-motion-compensated for a specific frame.
 
@@ -366,36 +413,15 @@ class PointCloudSensorProtocol(SensorProtocol, Protocol):
             motion_compensation: If True, returns points in sensor frame at end-of-frame time.
                 If False, returns points in sensor frame at point-time
             with_start_points: If True, include ray segment start points
+            return_index: Index of the point cloud return to retrieve (for multi-return sensors)
 
         Returns:
             FramePointCloud containing the point cloud data with requested motion compensation
         """
         ...
 
-    def get_frame_point_cloud_distance(self, frame_index: int) -> np.ndarray:
-        """Returns the per-point measured distances for the point-cloud for a specific frame.
 
-        Args:
-            frame_index: Index of the frame
-
-        Returns:
-            Array of per-point distances [N,]
-        """
-        ...
-
-    def get_frame_point_cloud_size(self, frame_index: int) -> int:
-        """Returns the number of points in the point-cloud for a specific frame without decoding it.
-
-        Args:
-            frame_index: Index of the frame
-
-        Returns:
-            Number of points in the point cloud
-        """
-        ...
-
-
-class LidarSensorProtocol(PointCloudSensorProtocol, Protocol):
+class LidarSensorProtocol(RayBundleSensorProtocol, Protocol):
     """LidarSensorProtocol provides unified access to a relevant subset of common NCore V3 and default V4 lidar sensor APIs"""
 
     @property
@@ -403,8 +429,30 @@ class LidarSensorProtocol(PointCloudSensorProtocol, Protocol):
         """Returns parameters specific to the lidar's intrinsic model (optional as not mandatory in V3)"""
         ...
 
+    def get_frame_ray_bundle_model_element(self, frame_index: int) -> npt.NDArray[np.uint16]:
+        """Returns the per-ray model elements for a ray bundle for a specific frame.
 
-class RadarSensorProtocol(PointCloudSensorProtocol, Protocol):
+        Args:
+            frame_index: Index of the frame
+        Returns:
+            Array of per-ray model elements [N,]
+        """
+        ...
+
+    def get_frame_ray_bundle_return_intensity(self, frame_index: int, return_index: int = 0) -> npt.NDArray[np.float32]:
+        """Returns the per-ray measured intensities for a ray bundle return for a specific frame.
+
+        Args:
+            frame_index: Index of the frame
+            return_index: Index of the ray bundle return to retrieve (for multi-return sensors)
+
+        Returns:
+            Array of per-ray intensities [N,]
+        """
+        ...
+
+
+class RadarSensorProtocol(RayBundleSensorProtocol, Protocol):
     """RadarSensorProtocol provides unified access to a relevant subset of common NCore V3 and default V4 radar sensor APIs"""
 
     ...
@@ -655,11 +703,11 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             model_parameters=self._intrinsics_reader.get_camera_model_parameters(sensor_id),
         )
 
-    class PointCloudSensor(Sensor, PointCloudSensorProtocol):
-        """Base point cloud sensor implementation for V4 data (lidar/radar).
+    class RayBundleSensor(Sensor, RayBundleSensorProtocol):
+        """Base ray bundle sensor implementation for V4 data (lidar/radar).
 
         Args:
-            reader: Point cloud sensor component reader (lidar or radar)
+            reader: Ray bundle sensor component reader (lidar or radar)
             pose_graph: Pose graph interpolator for coordinate transformations and motion compensation
         """
 
@@ -673,76 +721,92 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             self._motion_compensator: MotionCompensator = MotionCompensator(pose_graph)
 
         @property
-        def point_cloud_reader(self) -> BasePointCloudSensorComponentReader:
-            return cast(BasePointCloudSensorComponentReader, self._reader)
+        def ray_bundle_reader(self) -> BaseRayBundleSensorComponentReader:
+            return cast(BaseRayBundleSensorComponentReader, self._reader)
 
         @override
-        def has_frame_data(self, frame_index: int, name: str) -> bool:
-            return self.point_cloud_reader.has_frame_point_cloud_data(
-                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(), name
+        def get_frame_ray_bundle_count(self, frame_index: int) -> int:
+            """Returns the number of rays for a specific frame without decoding it"""
+            return self.ray_bundle_reader.get_frame_ray_bundle_count(
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item()
             )
 
         @override
-        def get_frame_data(self, frame_index: int, name: str) -> np.ndarray:
-            return self.point_cloud_reader.get_frame_point_cloud_data(
-                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(), name
+        def get_frame_ray_bundle_return_count(self, frame_index: int) -> int:
+            """Returns the number of different ray returns for a specific frame without decoding it"""
+            return self.ray_bundle_reader.get_frame_ray_bundle_return_count(
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item()
+            )
+
+        @override
+        def get_frame_ray_bundle_direction(self, frame_index):
+            """Returns the per-ray directions for the ray-bundle for a specific frame"""
+            return self.ray_bundle_reader.get_frame_ray_bundle_data(
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(), "direction"
+            )
+
+        @override
+        def get_frame_ray_bundle_timestamp_us(self, frame_index: int) -> npt.NDArray[np.uint64]:
+            """Returns the per-ray timestamps for the ray-bundle for a specific frame"""
+            return self.ray_bundle_reader.get_frame_ray_bundle_data(
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(), "timestamp_us"
             )
 
         @override
         def get_frame_point_cloud(
-            self, frame_index: int, motion_compensation: bool, with_start_points: bool
-        ) -> PointCloudSensorProtocol.FramePointCloud:
+            self, frame_index: int, motion_compensation: bool, with_start_points: bool, return_index: int = 0
+        ) -> RayBundleSensorProtocol.FramePointCloud:
             """Returns motion-compensated or non-motion-compensated point-cloud for a specific frame"""
             frame_timestamps_us = self.frames_timestamps_us[frame_index, :]
 
-            # V4 stores non-motion-compensated point-clouds in 'xyz_m' field
-            xyz = self.point_cloud_reader.get_frame_point_cloud_data(
-                int(frame_timestamps_us[FrameTimepoint.END.value]), "xyz_m"
+            # V4 stores non-motion-compensated ray directions in 'direction' field and return-specific distances
+            xyz_m = (
+                self.ray_bundle_reader.get_frame_ray_bundle_data(
+                    int(frame_timestamps_us[FrameTimepoint.END.value]), "direction"
+                )
+                * self.ray_bundle_reader.get_frame_ray_bundle_return_data(
+                    int(frame_timestamps_us[FrameTimepoint.END.value]), "distance_m", return_index=return_index
+                )[:, np.newaxis]
             )
 
             if not motion_compensation:
-                return PointCloudSensorProtocol.FramePointCloud(
+                return RayBundleSensorProtocol.FramePointCloud(
                     motion_compensation=False,
-                    xyz_m_start=np.zeros_like(xyz) if with_start_points else None,
-                    xyz_m_end=xyz,
+                    xyz_m_start=np.zeros_like(xyz_m) if with_start_points else None,
+                    xyz_m_end=xyz_m,
                 )
 
             # Apply motion compensation
             motion_compensation_result = self._motion_compensator.motion_compensate_points(
                 sensor_id=self.sensor_id,
-                xyz_pointtime=xyz,
-                timestamp_us=self.get_frame_data(frame_index, "timestamp_us"),
+                xyz_pointtime=xyz_m,
+                timestamp_us=self.ray_bundle_reader.get_frame_ray_bundle_data(
+                    int(frame_timestamps_us[FrameTimepoint.END.value]), "timestamp_us"
+                ),
                 frame_start_timestamp_us=int(frame_timestamps_us[FrameTimepoint.START.value]),
                 frame_end_timestamp_us=int(frame_timestamps_us[FrameTimepoint.END.value]),
             )
-            return PointCloudSensorProtocol.FramePointCloud(
+            return RayBundleSensorProtocol.FramePointCloud(
                 motion_compensation=True,
                 xyz_m_start=motion_compensation_result.xyz_s_sensorend if with_start_points else None,
                 xyz_m_end=motion_compensation_result.xyz_e_sensorend,
             )
 
         @override
-        def get_frame_point_cloud_distance(self, frame_index: int) -> np.ndarray:
-            """Returns the per-point measured distances for the point-cloud for a specific frame."""
+        def get_frame_ray_bundle_return_distance(
+            self, frame_index: int, return_index: int = 0
+        ) -> npt.NDArray[np.float32]:
+            """Returns the per-ray measured distances for the ray bundle return for a specific frame"""
 
             # V4 stores non-motion-compensated point cloud in 'xyz_m' field, so we can use it's norm
             # as the measured distance
-            return np.linalg.norm(
-                self.point_cloud_reader.get_frame_point_cloud_data(
-                    int(self.frames_timestamps_us[frame_index, FrameTimepoint.END.value]),
-                    "xyz_m",
-                ),
-                axis=1,
+            return self.ray_bundle_reader.get_frame_ray_bundle_return_data(
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(),
+                "distance_m",
+                return_index=return_index,
             )
 
-        @override
-        def get_frame_point_cloud_size(self, frame_index: int) -> int:
-            """Returns the number of points in the point-cloud for a specific frame without decoding it"""
-            return self.point_cloud_reader.get_frame_point_cloud_size(
-                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item()
-            )
-
-    class LidarSensor(PointCloudSensor, LidarSensorProtocol):
+    class LidarSensor(RayBundleSensor, LidarSensorProtocol):
         """Lidar sensor implementation for V4 data.
 
         Args:
@@ -771,6 +835,27 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             """Returns parameters specific to the lidar's intrinsic model"""
             return self._model_parameters
 
+        @override
+        def get_frame_ray_bundle_model_element(self, frame_index: int) -> npt.NDArray[np.uint16]:
+            """Returns the per-ray model elements for a ray bundle for a specific frame"""
+
+            return self.lidar_reader.get_frame_ray_bundle_data(
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(),
+                "model_element",
+            )
+
+        @override
+        def get_frame_ray_bundle_return_intensity(
+            self, frame_index: int, return_index: int = 0
+        ) -> npt.NDArray[np.float32]:
+            """Returns the per-ray measured intensities for a ray bundle return for a specific frame"""
+
+            return self.lidar_reader.get_frame_ray_bundle_return_data(
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(),
+                "intensity",
+                return_index=return_index,
+            )
+
     @override
     def get_lidar_sensor(self, sensor_id: str) -> LidarSensorProtocol:
         return self.LidarSensor(
@@ -782,7 +867,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             model_parameters=self._intrinsics_reader.get_lidar_model_parameters(sensor_id),
         )
 
-    class RadarSensor(PointCloudSensor, RadarSensorProtocol):
+    class RadarSensor(RayBundleSensor, RadarSensorProtocol):
         """Radar sensor implementation for V4 data.
 
         Args:
@@ -1043,11 +1128,11 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
             pose_graph=self.pose_graph,
         )
 
-    class PointCloudSensor(Sensor, PointCloudSensorProtocol):
-        """Base point cloud sensor implementation for V3 data (lidar/radar).
+    class RayBundleSensor(Sensor, RayBundleSensorProtocol):
+        """Base ray bundle sensor implementation for V3 data (lidar/radar).
 
         Args:
-            sensor: V3 point cloud sensor instance (lidar or radar)
+            sensor: V3 ray bundle sensor instance (lidar or radar)
             pose_graph: Pose graph interpolator for coordinate transformations and motion compensation
         """
 
@@ -1065,26 +1150,18 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
             return cast(data3.PointCloudSensor, self._sensor)
 
         @override
-        def has_frame_data(self, frame_index: int, name: str) -> bool:
-            return self.point_cloud_sensor.has_frame_data(frame_index, name)
-
-        @override
-        def get_frame_data(self, frame_index: int, name: str) -> np.ndarray:
-            assert name not in ("xyz_e", "xyz_s"), "Please use 'get_frame_point_cloud' API to access point coordinates"
-
-            return self.point_cloud_sensor.get_frame_data(frame_index, name)
-
-        @override
         def get_frame_point_cloud(
-            self, frame_index: int, motion_compensation: bool, with_start_points: bool
-        ) -> PointCloudSensorProtocol.FramePointCloud:
+            self, frame_index: int, motion_compensation: bool, with_start_points: bool, return_index: int = 0
+        ) -> RayBundleSensorProtocol.FramePointCloud:
             """Returns motion-compensated or non-motion-compensated point-cloud for a specific frame"""
+
+            assert return_index == 0, "V3 point-cloud sensors do not support multiple returns"
 
             # V3 stores motion-compensated point-clouds in 'xyz_e' field
             xyz_e = self.point_cloud_sensor.get_frame_data(frame_index, "xyz_e")
 
             if motion_compensation:
-                return PointCloudSensorProtocol.FramePointCloud(
+                return RayBundleSensorProtocol.FramePointCloud(
                     motion_compensation=True,
                     xyz_m_start=self.point_cloud_sensor.get_frame_data(frame_index, "xyz_s")
                     if with_start_points
@@ -1097,20 +1174,53 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
             xyz_m_end = self._motion_compensator.motion_decompensate_points(
                 sensor_id=self.sensor_id,
                 xyz_sensorend=xyz_e,
-                timestamp_us=self.get_frame_data(frame_index, "timestamp_us"),
+                timestamp_us=self.point_cloud_sensor.get_frame_data(frame_index, "timestamp_us"),
                 frame_start_timestamp_us=int(frame_timestamps_us[FrameTimepoint.START.value]),
                 frame_end_timestamp_us=int(frame_timestamps_us[FrameTimepoint.END.value]),
             )
 
-            return PointCloudSensorProtocol.FramePointCloud(
+            return RayBundleSensorProtocol.FramePointCloud(
                 motion_compensation=False,
                 xyz_m_start=np.zeros_like(xyz_m_end) if with_start_points else None,
                 xyz_m_end=xyz_m_end,
             )
 
         @override
-        def get_frame_point_cloud_distance(self, frame_index: int) -> np.ndarray:
-            """Returns the per-point measured distances for the point-cloud for a specific frame."""
+        def get_frame_ray_bundle_count(self, frame_index: int) -> int:
+            """Returns the number of rays for a specific frame without decoding it"""
+            return self.point_cloud_sensor.get_frame_point_count(frame_index)
+
+        @override
+        def get_frame_ray_bundle_direction(self, frame_index):
+            """Returns the per-ray directions for the ray-bundle for a specific frame"""
+
+            # V3 stores motion-compensated point clouds - we need to undo motion compensation to get directions
+
+            pc = self.get_frame_point_cloud(
+                frame_index, motion_compensation=False, with_start_points=False, return_index=0
+            )
+
+            direction = pc.xyz_m_end / np.linalg.norm(pc.xyz_m_end, axis=1, keepdims=True)
+
+            return direction
+
+        @override
+        def get_frame_ray_bundle_timestamp_us(self, frame_index: int) -> npt.NDArray[np.uint64]:
+            """Returns the per-ray timestamps for the ray-bundle for a specific frame"""
+            return self.point_cloud_sensor.get_frame_data(frame_index, "timestamp_us")
+
+        @override
+        def get_frame_ray_bundle_return_count(self, frame_index: int) -> int:
+            """Returns the number of different ray returns for a specific frame without decoding it"""
+            return 1  # V3 point-cloud sensors do not support multiple returns
+
+        @override
+        def get_frame_ray_bundle_return_distance(
+            self, frame_index: int, return_index: int = 0
+        ) -> npt.NDArray[np.float32]:
+            """Returns the per-ray measured distances for the ray bundle return for a specific frame"""
+
+            assert return_index == 0, "V3 point-cloud sensors do not support multiple returns"
 
             # V3 stores motion-compensated ray stated/end points, use their difference for per-point distances
             xyz_s = self.point_cloud_sensor.get_frame_data(frame_index, "xyz_s")
@@ -1121,13 +1231,7 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
                 axis=1,
             )
 
-        @override
-        def get_frame_point_cloud_size(self, frame_index: int) -> int:
-            """Returns the number of points in the point-cloud for a specific frame without decoding it"""
-
-            return self.point_cloud_sensor.get_frame_point_count(frame_index)
-
-    class LidarSensor(PointCloudSensor, LidarSensorProtocol):
+    class LidarSensor(RayBundleSensor, LidarSensorProtocol):
         """Lidar sensor implementation for V3 data.
 
         Args:
@@ -1152,6 +1256,21 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
             """Returns parameters specific to the lidar's intrinsic model"""
             return self.lidar_sensor.get_lidar_model_parameters()
 
+        @override
+        def get_frame_ray_bundle_model_element(self, frame_index: int) -> npt.NDArray[np.uint16]:
+            """Returns the per-ray model elements for a ray bundle for a specific frame"""
+            return self.lidar_sensor.get_frame_data(frame_index, "model_element")
+
+        @override
+        def get_frame_ray_bundle_return_intensity(
+            self, frame_index: int, return_index: int = 0
+        ) -> npt.NDArray[np.float32]:
+            """Returns the per-ray measured intensities for a ray bundle return for a specific frame"""
+
+            assert return_index == 0, "V3 point-cloud sensors do not support multiple returns"
+
+            return self.point_cloud_sensor.get_frame_data(frame_index, "intensity")
+
     @override
     def get_lidar_sensor(self, sensor_id: str) -> LidarSensorProtocol:
         return self.LidarSensor(
@@ -1161,7 +1280,7 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
             pose_graph=self._pose_graph,
         )
 
-    class RadarSensor(PointCloudSensor, RadarSensorProtocol):
+    class RadarSensor(RayBundleSensor, RadarSensorProtocol):
         """Radar sensor implementation for V3 data.
 
         Args:

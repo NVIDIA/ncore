@@ -52,6 +52,7 @@ class CLIBaseParams:
 
     sensor_id: str
     sensor_extrinsic_delta: np.ndarray
+    sensor_return_index: int
     camera_id: str
     camera_extrinsic_delta: np.ndarray
     start_frame: Optional[int]
@@ -74,9 +75,15 @@ class CLIBaseParams:
 @click.option("--sensor-id", type=str, help="Sensor whose point cloud will be projected", required=True)
 @click.option(
     "--sensor-extrinsic-delta",
-    help="Optional: 6d [transl,rot-vec]-encoded extrinsic delta of point-cloud sensor",
+    help="Optional: 6d [transl,rot-vec]-encoded extrinsic delta of ray bundle sensor",
     type=NPArrayParamType(dim=(6,), dtype=np.float32),
     default="[0,0,0,0,0,0]",
+)
+@click.option(
+    "--sensor-return-index",
+    help="Optional: Return index of the ray bundle sensor",
+    type=int,
+    default=0,
 )
 @click.option("--camera-id", type=str, help="Camera sensor to project on", required=True)
 @click.option(
@@ -248,8 +255,10 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
             ## Generate sensor points from model elements with length of the source data
             sensor_pc = (
                 lidar_model.elements_to_sensor_points(
-                    lidar_sensor.get_frame_data(pc_frame_index, "model_element"),
-                    lidar_sensor.get_frame_point_cloud_distance(frame_index),
+                    lidar_sensor.get_frame_ray_bundle_model_element(pc_frame_index),
+                    lidar_sensor.get_frame_ray_bundle_return_distance(
+                        frame_index, return_index=params.sensor_return_index
+                    ),
                 )
                 .cpu()
                 .numpy()
@@ -261,7 +270,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
             pc = motion_compensator.motion_compensate_points(
                 sensor_id=params.sensor_id,
                 xyz_pointtime=sensor_pc,
-                timestamp_us=lidar_sensor.get_frame_data(pc_frame_index, "timestamp_us"),
+                timestamp_us=lidar_sensor.get_frame_ray_bundle_timestamp_us(pc_frame_index),
                 frame_start_timestamp_us=lidar_sensor.get_frame_timestamp_us(
                     pc_frame_index, types.FrameTimepoint.START
                 ),
@@ -269,7 +278,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
             ).xyz_e_sensorend
         else:
             pc = lidar_sensor.get_frame_point_cloud(
-                frame_index, motion_compensation=True, with_start_points=False
+                frame_index, motion_compensation=True, with_start_points=False, return_index=params.sensor_return_index
             ).xyz_m_end
 
         # Transform the point cloud to the world coordinate frame

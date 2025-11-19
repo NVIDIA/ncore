@@ -35,6 +35,7 @@ class CLIBaseParams:
     Attributes:
         output_dir: Path to the output folder
         lidar_id: ID of the lidar sensor to export PLY files for
+        lidar_return_index: Return index of the lidar ray bundle sensor
         start_frame: Optional starting frame index for export range
         stop_frame: Optional ending frame index (exclusive) for export range
         step_frame: Optional step size for downsampling frames
@@ -45,6 +46,7 @@ class CLIBaseParams:
 
     output_dir: str
     lidar_id: str
+    lidar_return_index: int
     start_frame: Optional[int]
     stop_frame: Optional[int]
     step_frame: Optional[int]
@@ -56,6 +58,12 @@ class CLIBaseParams:
 @click.group()
 @click.option("--output-dir", type=str, help="Path to the output folder", required=True)
 @click.option("--lidar-id", type=str, help="Lidar sensor to export ply files for", default="lidar_gt_top_p128")
+@click.option(
+    "--lidar-return-index",
+    type=int,
+    help="Return index of the lidar ray bundle sensor",
+    default=0,
+)
 @click.option(
     "--start-frame", type=click.IntRange(min=0, max_open=True), help="Initial frame to be exported", default=None
 )
@@ -208,13 +216,18 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
 
         pc = TriangleMesh()
         pc_return = sensor.get_frame_point_cloud(
-            frame_index, motion_compensation=params.motion_compensation, with_start_points=True
+            frame_index,
+            motion_compensation=params.motion_compensation,
+            with_start_points=True,
+            return_index=params.lidar_return_index,
         )
         pc.vertex_data.positions = transform_point_cloud(pc_return.xyz_m_end, T_sensor_target)
         pc.vertex_data.custom_attributes["xyz_s"] = transform_point_cloud(pc_return.xyz_m_start, T_sensor_target)
 
         # intensity N x 1
-        pc.vertex_data.custom_attributes["intensity"] = sensor.get_frame_data(frame_index, "intensity")
+        pc.vertex_data.custom_attributes["intensity"] = sensor.get_frame_ray_bundle_return_intensity(
+            frame_index, return_index=params.lidar_return_index
+        )
 
         # conditional dynamic_flag N x 1
         if sensor.has_frame_generic_data(frame_index, "dynamic_flag"):
@@ -224,7 +237,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
 
         # Compute offset in "inverse" fashion to prevent wrapping around zero for uint64
         negative_offset_timestamp = (
-            sensor.get_frame_timestamp_us(frame_index) - sensor.get_frame_data(frame_index, "timestamp_us")
+            sensor.get_frame_timestamp_us(frame_index) - sensor.get_frame_ray_bundle_timestamp_us(frame_index)
         ).astype(np.int32)
         pc.vertex_data.custom_attributes["negative_offset_timestamp_us"] = negative_offset_timestamp
 

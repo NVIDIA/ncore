@@ -12,6 +12,8 @@ import io
 import tempfile
 import unittest
 
+from typing import Tuple
+
 import numpy as np
 import PIL.Image as PILImage
 
@@ -336,21 +338,37 @@ class TestData4Reload(unittest.TestCase):
             ref_lidar_generic_meta_data := {"some-lidar-meta-data": np.random.rand(3, 2).tolist()},
         )
 
+        def normalize_points(vectors: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+            norms = np.linalg.norm(vectors, axis=1)
+            return vectors / norms[:, np.newaxis], norms
+
+        ref_lidar_direction0, lidar_distance_m0 = normalize_points(np.random.rand(5, 3).astype(np.float32) + 0.1)
+
         lidar_writer.store_frame(
-            ref_lidar_xyz_m0 := np.random.rand(5, 3).astype(np.float32) + 0.1,
-            ref_lidar_intensity0 := np.random.rand(5).astype(np.float32),
+            ref_lidar_direction0,
             ref_lidar_timestamp_us0 := np.linspace(0 * 1e6, 0.5 * 1e6, num=5, dtype=np.uint64),
             ref_lidar_model_element0 := np.arange(5 * 2, dtype=np.uint16).reshape((5, 2)),
+            ref_lidar_distance_m0 := lidar_distance_m0[np.newaxis, :],
+            ref_lidar_intensity0 := np.random.rand(1, 5).astype(np.float32),
             ref_lidar_timestamps_us0 := np.array([0 * 1e6, 0.5 * 1e6], dtype=np.uint64),
             ref_lidar_generic_data0 := {"some-other-frame-data": np.random.rand(6, 2)},
             ref_lidar_generic_metadata0 := {"some-more-meta-data": {"yes": None, "no": True}},
         )
 
+        ref_lidar_direction_1, lidar_distance_m1 = normalize_points(np.random.rand(8, 3).astype(np.float32) + 0.1)
+
+        abscent_mask = np.random.rand(8) > 0.3
+        ref_lidar_distance_m1 = np.stack((lidar_distance_m1, lidar_distance_m1 + 0.1))
+        ref_lidar_distance_m1[:, abscent_mask] = np.nan
+        ref_lidar_intensity1 = np.random.rand(2, 8).astype(np.float32)
+        ref_lidar_intensity1[:, abscent_mask] = np.nan
+
         lidar_writer.store_frame(
-            ref_lidar_xyz_m1 := np.random.rand(8, 3).astype(np.float32) + 0.1,
-            ref_lidar_intensity1 := np.random.rand(8).astype(np.float32),
+            ref_lidar_direction_1,
             ref_lidar_timestamp_us1 := np.linspace(0.5 * 1e6, 1 * 1e6, num=8, dtype=np.uint64),
             ref_lidar_model_element1 := np.arange(8 * 2, dtype=np.uint16).reshape((8, 2)),
+            ref_lidar_distance_m1,
+            ref_lidar_intensity1,
             ref_lidar_timestamps_us1 := np.array([0.5 * 1e6, 1 * 1e6], dtype=np.uint64),
             ref_lidar_generic_data1 := {"some-other-frame-data": np.random.rand(2, 2)},
             ref_lidar_generic_metadata1 := {"even-more-meta-data": {"yesno": None}},
@@ -364,17 +382,23 @@ class TestData4Reload(unittest.TestCase):
             ref_radar_generic_meta_data := {"some-radar-meta-data": np.random.rand(3, 2).tolist()},
         )
 
+        ref_radar_direction_m0, radar_distance_m0 = normalize_points(np.random.rand(5, 3).astype(np.float32) + 0.2)
+
         radar_writer.store_frame(
-            ref_radar_xyz_m0 := np.random.rand(5, 3).astype(np.float32) + 0.2,
+            ref_radar_direction_m0,
             ref_radar_timestamp_us0 := np.array([0.1 * 1e6] * 5, dtype=np.uint64),
+            ref_radar_distance_m0 := radar_distance_m0[np.newaxis, :],
             ref_radar_timestamps_us0 := np.array([0.1 * 1e6, 0.1 * 1e6], dtype=np.uint64),
             ref_radar_generic_data0 := {"some-other-frame-data": np.random.rand(6, 2)},
             ref_radar_generic_metadata0 := {"some-more-meta-data": {"funny": "yes", "no": True}},
         )
 
+        ref_radar_direction_m1, radar_distance_m1 = normalize_points(np.random.rand(8, 3).astype(np.float32) + 0.2)
+
         radar_writer.store_frame(
-            ref_radar_xyz_m1 := np.random.rand(8, 3).astype(np.float32) + 0.05,
+            ref_radar_direction_m1,
             ref_radar_timestamp_us1 := np.array([0.2 * 1e6] * 8, dtype=np.uint64),
+            ref_radar_distance_m1 := np.stack((radar_distance_m1, radar_distance_m1 + 0.2)),
             ref_radar_timestamps_us1 := np.array([0.2 * 1e6, 0.2 * 1e6], dtype=np.uint64),
             ref_radar_generic_data1 := {"some-radar-frame-data": np.random.rand(6, 2)},
             ref_radar_generic_metadata1 := {"some-more-meta-data": {"funny": ":("}},
@@ -617,71 +641,148 @@ class TestData4Reload(unittest.TestCase):
             np.all(lidar_reader.get_frame_timestamps_us(ref_lidar_timestamps_us1[1]) == ref_lidar_timestamps_us1)
         )
 
-        self.assertEqual(lidar_reader.get_frame_point_cloud_size(ref_lidar_timestamps_us0[1]), 5)
-        self.assertEqual(lidar_reader.get_frame_point_cloud_size(ref_lidar_timestamps_us1[1]), 8)
-
-        ref_point_cloud_data_names = [
-            "xyz_m",
-            "intensity",
+        self.assertEqual(lidar_reader.get_frame_ray_bundle_count(ref_lidar_timestamps_us0[1]), 5)
+        self.assertEqual(lidar_reader.get_frame_ray_bundle_count(ref_lidar_timestamps_us1[1]), 8)
+        ref_ray_bundle_data_names = [
+            "direction",
             "timestamp_us",
             "model_element",
         ]
         self.assertEqual(
-            set(lidar_reader.get_frame_point_cloud_data_names(ref_lidar_timestamps_us0[1])),
-            set(ref_point_cloud_data_names),
+            set(lidar_reader.get_frame_ray_bundle_data_names(ref_lidar_timestamps_us0[1])),
+            set(ref_ray_bundle_data_names),
         )
         self.assertEqual(
-            set(lidar_reader.get_frame_point_cloud_data_names(ref_lidar_timestamps_us1[1])),
-            set(ref_point_cloud_data_names),
+            set(lidar_reader.get_frame_ray_bundle_data_names(ref_lidar_timestamps_us1[1])),
+            set(ref_ray_bundle_data_names),
         )
+        for name in ref_ray_bundle_data_names:
+            self.assertTrue(lidar_reader.has_frame_ray_bundle_data(ref_lidar_timestamps_us0[1], name))
+            self.assertTrue(lidar_reader.has_frame_ray_bundle_data(ref_lidar_timestamps_us1[1], name))
 
-        for name in ref_point_cloud_data_names:
-            self.assertTrue(lidar_reader.has_frame_point_cloud_data(ref_lidar_timestamps_us0[1], name))
-            self.assertTrue(lidar_reader.has_frame_point_cloud_data(ref_lidar_timestamps_us1[1], name))
-
-        self.assertTrue(
-            np.all(lidar_reader.get_frame_point_cloud_data(ref_lidar_timestamps_us0[1], "xyz_m") == ref_lidar_xyz_m0)
+        self.assertEqual(lidar_reader.get_frame_ray_bundle_return_count(ref_lidar_timestamps_us0[1]), 1)
+        self.assertEqual(lidar_reader.get_frame_ray_bundle_return_count(ref_lidar_timestamps_us1[1]), 2)
+        ref_ray_bundle_returns_data_names = [
+            "distance_m",
+            "intensity",
+        ]
+        self.assertEqual(
+            set(lidar_reader.get_frame_ray_bundle_return_data_names(ref_lidar_timestamps_us0[1])),
+            set(ref_ray_bundle_returns_data_names),
         )
-        self.assertTrue(
-            np.all(lidar_reader.get_frame_point_cloud_data(ref_lidar_timestamps_us1[1], "xyz_m") == ref_lidar_xyz_m1)
+        self.assertEqual(
+            set(lidar_reader.get_frame_ray_bundle_return_data_names(ref_lidar_timestamps_us1[1])),
+            set(ref_ray_bundle_returns_data_names),
         )
+        for name in ref_ray_bundle_returns_data_names:
+            self.assertTrue(lidar_reader.has_frame_ray_bundle_return_data(ref_lidar_timestamps_us0[1], name))
+            self.assertTrue(lidar_reader.has_frame_ray_bundle_return_data(ref_lidar_timestamps_us1[1], name))
 
         self.assertTrue(
             np.all(
-                lidar_reader.get_frame_point_cloud_data(ref_lidar_timestamps_us0[1], "intensity")
-                == ref_lidar_intensity0
+                lidar_reader.get_frame_ray_bundle_data(ref_lidar_timestamps_us0[1], "direction") == ref_lidar_direction0
             )
         )
         self.assertTrue(
             np.all(
-                lidar_reader.get_frame_point_cloud_data(ref_lidar_timestamps_us1[1], "intensity")
-                == ref_lidar_intensity1
+                lidar_reader.get_frame_ray_bundle_data(ref_lidar_timestamps_us1[1], "direction")
+                == ref_lidar_direction_1
             )
         )
 
         self.assertTrue(
             np.all(
-                lidar_reader.get_frame_point_cloud_data(ref_lidar_timestamps_us0[1], "timestamp_us")
+                lidar_reader.get_frame_ray_bundle_data(ref_lidar_timestamps_us0[1], "timestamp_us")
                 == ref_lidar_timestamp_us0
             )
         )
         self.assertTrue(
             np.all(
-                lidar_reader.get_frame_point_cloud_data(ref_lidar_timestamps_us1[1], "timestamp_us")
+                lidar_reader.get_frame_ray_bundle_data(ref_lidar_timestamps_us1[1], "timestamp_us")
                 == ref_lidar_timestamp_us1
             )
         )
 
         self.assertTrue(
             np.all(
-                lidar_reader.get_frame_point_cloud_data(ref_lidar_timestamps_us0[1], "model_element")
+                lidar_reader.get_frame_ray_bundle_data(ref_lidar_timestamps_us0[1], "model_element")
                 == ref_lidar_model_element0
             )
         )
         self.assertTrue(
             np.all(
-                lidar_reader.get_frame_point_cloud_data(ref_lidar_timestamps_us1[1], "model_element")
+                lidar_reader.get_frame_ray_bundle_data(ref_lidar_timestamps_us1[1], "model_element")
                 == ref_lidar_model_element1
+            )
+        )
+
+        self.assertTrue(
+            np.all(
+                lidar_reader.get_frame_ray_bundle_return_data(ref_lidar_timestamps_us0[1], "distance_m", None)
+                == ref_lidar_distance_m0
+            )
+        )
+        self.assertTrue(
+            np.all(
+                lidar_reader.get_frame_ray_bundle_return_data(ref_lidar_timestamps_us0[1], "distance_m", 0)
+                == ref_lidar_distance_m0[0]
+            )
+        )
+        self.assertTrue(
+            np.array_equal(
+                lidar_reader.get_frame_ray_bundle_return_data(ref_lidar_timestamps_us1[1], "distance_m", None),
+                ref_lidar_distance_m1,
+                equal_nan=True,
+            )
+        )
+        self.assertTrue(
+            np.array_equal(
+                lidar_reader.get_frame_ray_bundle_return_data(ref_lidar_timestamps_us1[1], "distance_m", 0),
+                ref_lidar_distance_m1[0],
+                equal_nan=True,
+            )
+        )
+        self.assertTrue(
+            np.array_equal(
+                lidar_reader.get_frame_ray_bundle_return_data(ref_lidar_timestamps_us1[1], "distance_m", 1),
+                ref_lidar_distance_m1[1],
+                equal_nan=True,
+            )
+        )
+
+        self.assertTrue(
+            np.array_equal(
+                lidar_reader.get_frame_ray_bundle_return_data(ref_lidar_timestamps_us0[1], "intensity", None),
+                ref_lidar_intensity0,
+                equal_nan=True,
+            )
+        )
+        self.assertTrue(
+            np.array_equal(
+                lidar_reader.get_frame_ray_bundle_return_data(ref_lidar_timestamps_us0[1], "intensity", 0),
+                ref_lidar_intensity0[0],
+                equal_nan=True,
+            )
+        )
+        self.assertTrue(
+            np.array_equal(
+                lidar_reader.get_frame_ray_bundle_return_data(ref_lidar_timestamps_us1[1], "intensity", None),
+                ref_lidar_intensity1,
+                equal_nan=True,
+            )
+        )
+        self.assertTrue(
+            np.array_equal(
+                lidar_reader.get_frame_ray_bundle_return_data(ref_lidar_timestamps_us1[1], "intensity", 0),
+                ref_lidar_intensity1[0],
+                equal_nan=True,
+            )
+        )
+        self.assertTrue(
+            np.array_equal(
+                lidar_reader.get_frame_ray_bundle_return_data(ref_lidar_timestamps_us1[1], "intensity", 1),
+                ref_lidar_intensity1[1],
+                equal_nan=True,
             )
         )
 
@@ -735,43 +836,100 @@ class TestData4Reload(unittest.TestCase):
             np.all(radar_reader.get_frame_timestamps_us(ref_radar_timestamps_us1[1]) == ref_radar_timestamps_us1)
         )
 
-        self.assertEqual(radar_reader.get_frame_point_cloud_size(ref_radar_timestamps_us0[1]), 5)
-        self.assertEqual(radar_reader.get_frame_point_cloud_size(ref_radar_timestamps_us1[1]), 8)
-
-        ref_point_cloud_data_names = [
-            "xyz_m",
+        self.assertEqual(radar_reader.get_frame_ray_bundle_count(ref_radar_timestamps_us0[1]), 5)
+        self.assertEqual(radar_reader.get_frame_ray_bundle_count(ref_radar_timestamps_us1[1]), 8)
+        ref_ray_bundle_data_names = [
+            "direction",
             "timestamp_us",
         ]
         self.assertEqual(
-            set(radar_reader.get_frame_point_cloud_data_names(ref_radar_timestamps_us0[1])),
-            set(ref_point_cloud_data_names),
+            set(radar_reader.get_frame_ray_bundle_data_names(ref_radar_timestamps_us0[1])),
+            set(ref_ray_bundle_data_names),
         )
         self.assertEqual(
-            set(radar_reader.get_frame_point_cloud_data_names(ref_radar_timestamps_us1[1])),
-            set(ref_point_cloud_data_names),
+            set(radar_reader.get_frame_ray_bundle_data_names(ref_radar_timestamps_us1[1])),
+            set(ref_ray_bundle_data_names),
         )
+        for name in ref_ray_bundle_data_names:
+            self.assertTrue(radar_reader.has_frame_ray_bundle_data(ref_radar_timestamps_us0[1], name))
+            self.assertTrue(radar_reader.has_frame_ray_bundle_data(ref_radar_timestamps_us1[1], name))
 
-        for name in ref_point_cloud_data_names:
-            self.assertTrue(radar_reader.has_frame_point_cloud_data(ref_radar_timestamps_us0[1], name))
-            self.assertTrue(radar_reader.has_frame_point_cloud_data(ref_radar_timestamps_us1[1], name))
+        self.assertEqual(radar_reader.get_frame_ray_bundle_return_count(ref_radar_timestamps_us0[1]), 1)
+        self.assertEqual(radar_reader.get_frame_ray_bundle_return_count(ref_radar_timestamps_us1[1]), 2)
+        ref_ray_bundle_returns_data_names = [
+            "distance_m",
+        ]
+        self.assertEqual(
+            set(radar_reader.get_frame_ray_bundle_return_data_names(ref_radar_timestamps_us0[1])),
+            set(ref_ray_bundle_returns_data_names),
+        )
+        self.assertEqual(
+            set(radar_reader.get_frame_ray_bundle_return_data_names(ref_radar_timestamps_us1[1])),
+            set(ref_ray_bundle_returns_data_names),
+        )
+        for name in ref_ray_bundle_returns_data_names:
+            self.assertTrue(radar_reader.has_frame_ray_bundle_return_data(ref_radar_timestamps_us0[1], name))
+            self.assertTrue(radar_reader.has_frame_ray_bundle_return_data(ref_radar_timestamps_us1[1], name))
 
         self.assertTrue(
-            np.all(radar_reader.get_frame_point_cloud_data(ref_radar_timestamps_us0[1], "xyz_m") == ref_radar_xyz_m0)
+            np.all(
+                radar_reader.get_frame_ray_bundle_data(ref_radar_timestamps_us0[1], "direction")
+                == ref_radar_direction_m0
+            )
         )
         self.assertTrue(
-            np.all(radar_reader.get_frame_point_cloud_data(ref_radar_timestamps_us1[1], "xyz_m") == ref_radar_xyz_m1)
+            np.all(
+                radar_reader.get_frame_ray_bundle_data(ref_radar_timestamps_us1[1], "direction")
+                == ref_radar_direction_m1
+            )
         )
 
         self.assertTrue(
             np.all(
-                radar_reader.get_frame_point_cloud_data(ref_radar_timestamps_us0[1], "timestamp_us")
+                radar_reader.get_frame_ray_bundle_data(ref_radar_timestamps_us0[1], "timestamp_us")
                 == ref_radar_timestamp_us0
             )
         )
         self.assertTrue(
             np.all(
-                radar_reader.get_frame_point_cloud_data(ref_radar_timestamps_us1[1], "timestamp_us")
+                radar_reader.get_frame_ray_bundle_data(ref_radar_timestamps_us1[1], "timestamp_us")
                 == ref_radar_timestamp_us1
+            )
+        )
+
+        self.assertTrue(
+            np.array_equal(
+                radar_reader.get_frame_ray_bundle_return_data(ref_radar_timestamps_us0[1], "distance_m", None),
+                ref_radar_distance_m0,
+                equal_nan=True,
+            )
+        )
+        self.assertTrue(
+            np.array_equal(
+                radar_reader.get_frame_ray_bundle_return_data(ref_radar_timestamps_us0[1], "distance_m", 0),
+                ref_radar_distance_m0[0],
+                equal_nan=True,
+            )
+        )
+        self.assertTrue(
+            np.array_equal(
+                radar_reader.get_frame_ray_bundle_return_data(ref_radar_timestamps_us1[1], "distance_m", None),
+                ref_radar_distance_m1,
+                equal_nan=True,
+            )
+        )
+        self.assertTrue(
+            np.array_equal(
+                radar_reader.get_frame_ray_bundle_return_data(ref_radar_timestamps_us1[1], "distance_m", 0),
+                ref_radar_distance_m1[0],
+                equal_nan=True,
+            )
+        )
+        self.assertTrue(
+            np.array_equal(
+                radar_reader.get_frame_ray_bundle_return_data(ref_radar_timestamps_us1[1], "distance_m", 1),
+                ref_radar_distance_m1[1],
+                equal_nan=True,
             )
         )
 

@@ -36,6 +36,7 @@ class CLIBaseParams:
     Attributes:
         output_dir: Path to the output folder
         lidar_id: ID of the lidar sensor to export colored PLY files for
+        lidar_return_index: Return index of the lidar ray bundle sensor
         camera_id: ID of the camera sensor to project points onto for coloring
         start_frame: Optional starting frame index for export range
         stop_frame: Optional ending frame index (exclusive) for export range
@@ -48,6 +49,7 @@ class CLIBaseParams:
 
     output_dir: str
     lidar_id: str
+    lidar_return_index: int
     camera_id: str
     start_frame: Optional[int]
     stop_frame: Optional[int]
@@ -61,6 +63,12 @@ class CLIBaseParams:
 @click.group()
 @click.option("--output-dir", type=str, help="Path to the output folder", required=True)
 @click.option("--lidar-id", type=str, help="Lidar sensor to export ply files for", default="lidar_gt_top_p128")
+@click.option(
+    "--lidar-return-index",
+    type=int,
+    help="Return index of the lidar ray bundle sensor",
+    default=0,
+)
 @click.option(
     "--camera-id",
     type=str,
@@ -228,7 +236,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
         # Load the camera image and the point cloud
         img_frame = cam_sensor.get_frame_image_array(cam_frame_index)
         xyz_sensor = pc_sensor.get_frame_point_cloud(
-            pc_frame_index, motion_compensation=True, with_start_points=False
+            pc_frame_index, motion_compensation=True, with_start_points=False, return_index=params.lidar_return_index
         ).xyz_m_end
 
         # Transform the point cloud to the world coordinate frame
