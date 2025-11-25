@@ -26,6 +26,8 @@ import numpy as np
 import PIL.Image as PILImage
 import zarr
 
+from upath import UPath
+
 import ncore.impl.common.common as common
 import ncore.impl.common.transformations as transformations
 
@@ -852,11 +854,14 @@ class ShardDataLoader:
 
         return [str(match) for match in list(matches)]
 
-    def __init__(self, shard_paths: List[str], open_consolidated: bool = True, max_threads: int | None = None):
+    def __init__(
+        self, shard_paths: List[Union[str, Path, UPath]], open_consolidated: bool = True, max_threads: int | None = None
+    ):
         """Initialize a ShardDataLoader for a virtual sequence represented by a list of shard files.
 
         Args:
-            shard_files: Paths / URLs to shard files to load, which need to represent a *continuous* sequence
+            shard_files: (Universal) Paths (e.g. local paths, S3 buckets, URLs, Github links, etc.) to shard
+                         files to load, which need to represent a *continuous* sequence
             open_consolidated: If 'True', pre-load per-shard meta-data when opening the shards.
                                This is advisable if shard data is accessed from *non-local*
                                storage to prevent latencies introduced when accessing the data.
@@ -881,7 +886,7 @@ class ShardDataLoader:
                 """Thread-executed shard opening"""
 
                 # Make sure paths are absolute at this point - in the future we might have fully-resolved URLs instead here, too
-                shard_path = Path(shard_path).absolute()
+                shard_path = UPath(shard_path).absolute()
 
                 _logger.info(f"ShardDataLoader: Loading shard {shard_path}")
 

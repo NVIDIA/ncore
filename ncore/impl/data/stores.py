@@ -27,6 +27,8 @@ import cbor2
 import numcodecs
 import zarr
 
+from upath import UPath
+
 
 _logger = logging.getLogger(__name__)
 
@@ -69,12 +71,12 @@ class IndexedTarStore(zarr._storage.store.Store):
 
         records: Dict[str, IndexedTarStore.TarRecord] = field(default_factory=dict)
 
-    def __init__(self, itar_path: Union[str, Path], mode: Literal["r", "w"] = "r"):
+    def __init__(self, itar_path: Union[str, Path, UPath], mode: Literal["r", "w"] = "r"):
         if mode not in ["r", "w"]:
             raise ValueError("TarRecordIndex: only r/w modes supported")
 
         # store properties
-        itar_path = Path(itar_path).absolute()
+        itar_path = UPath(itar_path).absolute()
 
         self.mode = mode
 
@@ -86,9 +88,7 @@ class IndexedTarStore(zarr._storage.store.Store):
         # open file object and tar file
 
         # require file to be both writeable and readable when writing
-        self.tar_file_object: Union[io.BufferedReader, io.BufferedRandom] = (
-            open(itar_path, "wb+") if self.mode == "w" else open(itar_path, "rb")
-        )
+        self.tar_file_object: BinaryIO = itar_path.open("wb+") if self.mode == "w" else itar_path.open("rb")
         self.tar_file = tarfile.TarFile(fileobj=self.tar_file_object, mode=self.mode)
 
         # init / load index table
