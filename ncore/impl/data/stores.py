@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum, auto, unique
 from pathlib import Path
 from threading import RLock
-from typing import BinaryIO, Dict, Iterator, Literal, NamedTuple, Union
+from typing import BinaryIO, Dict, Iterator, Literal, NamedTuple, Union, cast
 
 import cbor2
 import numcodecs
@@ -76,8 +76,6 @@ class IndexedTarStore(zarr._storage.store.Store):
             raise ValueError("TarRecordIndex: only r/w modes supported")
 
         # store properties
-        itar_path = UPath(itar_path).absolute()
-
         self.mode = mode
 
         # Current understanding is that tarfile module in stdlib is not thread-safe,
@@ -87,8 +85,14 @@ class IndexedTarStore(zarr._storage.store.Store):
 
         # open file object and tar file
 
-        # require file to be both writeable and readable when writing
-        self.tar_file_object: BinaryIO = itar_path.open("wb+") if self.mode == "w" else itar_path.open("rb")
+        # require file to be both writeable and readable when writing, but UPath does not support wb+ yet.
+        self.tar_file_object: BinaryIO
+        if mode == "r":
+            self.tar_file_object = UPath(itar_path).absolute().open("rb")
+        else:
+            assert not isinstance(itar_path, UPath), "UPath does not support writing mode yet"
+            self.tar_file_object = Path(itar_path).absolute().open("wb+")
+
         self.tar_file = tarfile.TarFile(fileobj=self.tar_file_object, mode=self.mode)
 
         # init / load index table
