@@ -99,6 +99,10 @@ fasteners==0.18 \
     --hash=sha256:1d4caf5f8db57b0e4107d94fd5a1d02510a450dced6ca77d1839064c1bacf20c \
     --hash=sha256:cb7c13ef91e0c7e4fe4af38ecaf6b904ec3f5ce0dda06d34924b6b74b869d953
     # via zarr
+fsspec==2025.3.0 \
+    --hash=sha256:a935fd1ea872591f2b5148907d103488fc523295e6c64b835cfad8c3eca44972 \
+    --hash=sha256:efb87af3efa9103f94ca91a7f8cb7a4df91af9f74fc106c9c7ea0efd7277c1b3
+    # via universal-pathlib
 iniconfig==2.0.0 \
     --hash=sha256:2d91e135bf72d31a410b17c16da610a82cb55f6b0477d1a902134b24a455b8b3 \
     --hash=sha256:b6a85871a79d2e3b22d2d1b94ac2824226a63c6b741c88f7ae975f18b6778374
@@ -299,6 +303,10 @@ typing-inspect==0.9.0 \
     --hash=sha256:9ee6fc59062311ef8547596ab6b955e1b8aa46242d854bfc78f4f6b0eff35f9f \
     --hash=sha256:b23fc42ff6f6ef6954e4852c1fb512cdd18dbea03134f91f856a95ccc9461f78
     # via dataclasses-json
+universal-pathlib==0.2.6 \
+    --hash=sha256:50817aaeaa9f4163cb1e76f5bdf84207fa05ce728b23fd779479b3462e5430ac \
+    --hash=sha256:700dec2b58ef34b87998513de6d2ae153b22f083197dfafb8544744edabd1b18
+    # via -r 3rdparty/python/requirements_3_8.in
 zarr==2.13.3 \
     --hash=sha256:883305e8ded972e25992269b0355436f11d7057b2943d278bf33cdcd2debfe2d \
     --hash=sha256:db24b090616c638f65e33a6bc5d956d642221182961515ccbc28b17fb0d0b48c

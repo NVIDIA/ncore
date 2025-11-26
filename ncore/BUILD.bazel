@@ -42,9 +42,9 @@ py_wheel(
         "cbor2",
         "scipy",
         "torch",
-        "universal_pathlib"
+        "universal_pathlib",
     ],
-    version = "0.16.18",
+    version = "0.16.19",
     deps = [
         ":ncore_pkg",
     ],
