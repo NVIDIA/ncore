@@ -429,13 +429,13 @@ class LidarSensorProtocol(RayBundleSensorProtocol, Protocol):
         """Returns parameters specific to the lidar's intrinsic model (optional as not mandatory in V3)"""
         ...
 
-    def get_frame_ray_bundle_model_element(self, frame_index: int) -> npt.NDArray[np.uint16]:
-        """Returns the per-ray model elements for a ray bundle for a specific frame.
+    def get_frame_ray_bundle_model_element(self, frame_index: int) -> Optional[npt.NDArray[np.uint16]]:
+        """Returns the per-ray model elements for a ray bundle for a specific frame, if available.
 
         Args:
             frame_index: Index of the frame
         Returns:
-            Array of per-ray model elements [N,]
+            Array of per-ray model elements [N,] or None if not available
         """
         ...
 
@@ -812,18 +812,18 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
         Args:
             reader: Lidar component reader
             pose_graph: Pose graph interpolator for coordinate transformations
-            model_parameters: Lidar intrinsic model parameters
+            model_parameters: Lidar intrinsic model parameters, if available
         """
 
         def __init__(
             self,
             reader: LidarSensorComponent.Reader,
             pose_graph: PoseGraphInterpolator,
-            model_parameters: types.ConcreteLidarModelParametersUnion,
+            model_parameters: Optional[types.ConcreteLidarModelParametersUnion],
         ):
             super().__init__(reader, pose_graph)
 
-            self._model_parameters: types.ConcreteLidarModelParametersUnion = model_parameters
+            self._model_parameters: Optional[types.ConcreteLidarModelParametersUnion] = model_parameters
 
         @property
         def lidar_reader(self) -> LidarSensorComponent.Reader:
@@ -831,18 +831,23 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
 
         @property
         @override
-        def model_parameters(self) -> types.ConcreteLidarModelParametersUnion:
-            """Returns parameters specific to the lidar's intrinsic model"""
+        def model_parameters(self) -> Optional[types.ConcreteLidarModelParametersUnion]:
+            """Returns parameters specific to the lidar's intrinsic model, if available"""
             return self._model_parameters
 
         @override
-        def get_frame_ray_bundle_model_element(self, frame_index: int) -> npt.NDArray[np.uint16]:
-            """Returns the per-ray model elements for a ray bundle for a specific frame"""
+        def get_frame_ray_bundle_model_element(self, frame_index: int) -> Optional[npt.NDArray[np.uint16]]:
+            """Returns the per-ray model elements for a ray bundle for a specific frame, if available"""
 
-            return self.lidar_reader.get_frame_ray_bundle_data(
-                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(),
-                "model_element",
-            )
+            if self.lidar_reader.has_frame_ray_bundle_data(
+                timestamp_us := self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(), "model_element"
+            ):
+                return self.lidar_reader.get_frame_ray_bundle_data(
+                    timestamp_us,
+                    "model_element",
+                )
+
+            return None
 
         @override
         def get_frame_ray_bundle_return_intensity(
@@ -1257,9 +1262,13 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
             return self.lidar_sensor.get_lidar_model_parameters()
 
         @override
-        def get_frame_ray_bundle_model_element(self, frame_index: int) -> npt.NDArray[np.uint16]:
-            """Returns the per-ray model elements for a ray bundle for a specific frame"""
-            return self.lidar_sensor.get_frame_data(frame_index, "model_element")
+        def get_frame_ray_bundle_model_element(self, frame_index: int) -> Optional[npt.NDArray[np.uint16]]:
+            """Returns the per-ray model elements for a ray bundle for a specific frame, if available"""
+
+            if self.lidar_sensor.has_frame_data(frame_index, "model_element"):
+                return self.lidar_sensor.get_frame_data(frame_index, "model_element")
+
+            return None
 
         @override
         def get_frame_ray_bundle_return_intensity(

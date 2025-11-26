@@ -226,14 +226,12 @@ class NCore3To4:
         ):
             lidar_sensor = source_data_loader.get_lidar_sensor(lidar_id)
 
-            # store intrinsics
-            assert (lidar_model_parameters := lidar_sensor.get_lidar_model_parameters()) is not None, (
-                f"Lidar model parameters missing for lidar '{lidar_id}' - mandatory for V4"
-            )
-            intrinsics_writer.store_lidar_intrinsics(
-                lidar_id=lidar_id,
-                lidar_model_parameters=lidar_model_parameters,
-            )
+            # store intrinsics conditionally
+            if (lidar_model_parameters := lidar_sensor.get_lidar_model_parameters()) is not None:
+                intrinsics_writer.store_lidar_intrinsics(
+                    lidar_id=lidar_id,
+                    lidar_model_parameters=lidar_model_parameters,
+                )
 
             # store extrinsics
             poses_writer.store_static_pose(
@@ -278,7 +276,6 @@ class NCore3To4:
                 # load relevant V3 data components
                 xyz_e = lidar_sensor.get_frame_data(source_frame_idx, "xyz_e")
                 timestamp_us = lidar_sensor.get_frame_data(source_frame_idx, "timestamp_us")
-                model_element = lidar_sensor.get_frame_data(source_frame_idx, "model_element")
                 intensity = lidar_sensor.get_frame_data(source_frame_idx, "intensity")
 
                 # undo motion-compensation of V3 point clouds to non-motion-compensated "raw" V4 point cloud
@@ -303,7 +300,11 @@ class NCore3To4:
                     # per-point point timestamp in microseconds (uint64, [n])
                     timestamp_us=timestamp_us[valid_mask],
                     # per-point model element indices, if applicable (uint16, [n, 2])
-                    model_element=model_element[valid_mask],
+                    model_element=(
+                        lidar_sensor.get_frame_data(source_frame_idx, "model_element")[valid_mask]
+                        if lidar_model_parameters is not None
+                        else None
+                    ),
                     # per-point distance (only single return supported in V3) [n, r] with r=1)
                     distance_m=distance_m[valid_mask][np.newaxis],
                     # per-point intensity normalized to [0.0, 1.0] range (float32, [n, r] with r=1)

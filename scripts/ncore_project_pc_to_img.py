@@ -20,6 +20,7 @@ import tqdm
 
 from scipy.spatial.transform import Rotation as R
 
+from ncore.impl.common.common import unpack_optional
 from ncore.impl.common.transformations import MotionCompensator, se3_inverse, transform_point_cloud
 from ncore.impl.common.visualization import plot_points_on_image
 from ncore.impl.data import types
@@ -255,9 +256,12 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
             ## Generate sensor points from model elements with length of the source data
             sensor_pc = (
                 lidar_model.elements_to_sensor_points(
-                    lidar_sensor.get_frame_ray_bundle_model_element(pc_frame_index),
+                    unpack_optional(
+                        lidar_sensor.get_frame_ray_bundle_model_element(pc_frame_index),
+                        msg=f"Lidar model elements not available for frame {pc_frame_index}",
+                    ),
                     lidar_sensor.get_frame_ray_bundle_return_distance(
-                        frame_index, return_index=params.sensor_return_index
+                        pc_frame_index, return_index=params.sensor_return_index
                     ),
                 )
                 .cpu()

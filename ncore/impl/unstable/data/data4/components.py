@@ -716,9 +716,14 @@ class IntrinsicsComponent:
             """Returns the camera model associated with the requested camera sensor"""
             return data.decode_camera_model_parameters(self._group["cameras"][camera_id].attrs)
 
-        def get_lidar_model_parameters(self, lidar_id: str) -> types.ConcreteLidarModelParametersUnion:
+        def get_lidar_model_parameters(self, lidar_id: str) -> Optional[types.ConcreteLidarModelParametersUnion]:
             """Returns the lidar model associated with the requested lidar sensor"""
-            return data.decode_lidar_model_parameters(self._group["lidars"][lidar_id].attrs)
+            lidars_group = self._group["lidars"]
+
+            if lidar_id not in lidars_group:
+                return None
+
+            return data.decode_lidar_model_parameters(lidars_group[lidar_id].attrs)
 
 
 class MasksComponent:
@@ -1178,7 +1183,7 @@ class LidarSensorComponent:
             # ray-associated data for N rays (data common to all returns)
             direction: np.ndarray,  # per-ray unit-norm direction vectors in sensor frame at measure time (raw / not motion-compensated, needs to have unit norm) (float32, [N, 3])
             timestamp_us: np.ndarray,  # per-ray timestamp in microseconds (uint64, [N])
-            model_element: np.ndarray,  # per-ray model element indices, if applicable (uint16, [N, 2])
+            model_element: Optional[np.ndarray],  # per-ray model element indices, if applicable (uint16, [N, 2])
             # per-ray return data for R returns - non-existing values are indicated via NaNs
             distance_m: np.ndarray,  # per-point metric distance along the ray at measure time time (raw / not motion-compensated, needs to be non-negative) (float32, [R, N])
             intensity: np.ndarray,  # per-point intensity normalized to [0.0, 1.0] range (float32, [R, N])
@@ -1214,9 +1219,10 @@ class LidarSensorComponent:
                 ), "Point timestamps outside frame time bounds"
             ray_data["timestamp_us"] = (timestamp_us, timestamp_us.shape)
 
-            assert model_element.shape == (n_rays, 2)
-            assert model_element.dtype == np.dtype("uint16")
-            ray_data["model_element"] = (model_element, model_element.shape)
+            if model_element is not None:
+                assert model_element.shape == (n_rays, 2)
+                assert model_element.dtype == np.dtype("uint16")
+                ray_data["model_element"] = (model_element, model_element.shape)
 
             ## Per return data
 

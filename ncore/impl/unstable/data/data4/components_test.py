@@ -21,7 +21,7 @@ from parameterized import parameterized
 from scipy.spatial.transform import Rotation as R
 from upath import UPath
 
-from ncore.impl.common.common import HalfClosedInterval
+from ncore.impl.common.common import HalfClosedInterval, unpack_optional
 from ncore.impl.data.types import (
     BBox3,
     BivariateWindshieldModelParameters,
@@ -366,7 +366,7 @@ class TestData4Reload(unittest.TestCase):
         lidar_writer.store_frame(
             ref_lidar_direction_1,
             ref_lidar_timestamp_us1 := np.linspace(0.5 * 1e6, 1 * 1e6, num=8, dtype=np.uint64),
-            ref_lidar_model_element1 := np.arange(8 * 2, dtype=np.uint16).reshape((8, 2)),
+            ref_lidar_model_element1 := None,
             ref_lidar_distance_m1,
             ref_lidar_intensity1,
             ref_lidar_timestamps_us1 := np.array([0.5 * 1e6, 1 * 1e6], dtype=np.uint64),
@@ -528,7 +528,9 @@ class TestData4Reload(unittest.TestCase):
         )
 
         self.assertEqual(
-            (lidar_model_parameters := intrinsic_reader.get_lidar_model_parameters(ref_lidar_id)).to_dict(),
+            (
+                lidar_model_parameters := unpack_optional(intrinsic_reader.get_lidar_model_parameters(ref_lidar_id))
+            ).to_dict(),
             ref_lidar_intrinsics.to_dict(),
         )
         self.assertIsInstance(lidar_model_parameters, RowOffsetStructuredSpinningLidarModelParameters)
@@ -646,18 +648,19 @@ class TestData4Reload(unittest.TestCase):
         ref_ray_bundle_data_names = [
             "direction",
             "timestamp_us",
-            "model_element",
         ]
         self.assertEqual(
             set(lidar_reader.get_frame_ray_bundle_data_names(ref_lidar_timestamps_us0[1])),
-            set(ref_ray_bundle_data_names),
+            set(ref_ray_bundle_data_names + ["model_element"]),
         )
         self.assertEqual(
             set(lidar_reader.get_frame_ray_bundle_data_names(ref_lidar_timestamps_us1[1])),
             set(ref_ray_bundle_data_names),
         )
-        for name in ref_ray_bundle_data_names:
+        for name in ref_ray_bundle_data_names + ["model_element"]:
             self.assertTrue(lidar_reader.has_frame_ray_bundle_data(ref_lidar_timestamps_us0[1], name))
+
+        for name in ref_ray_bundle_data_names:
             self.assertTrue(lidar_reader.has_frame_ray_bundle_data(ref_lidar_timestamps_us1[1], name))
 
         self.assertEqual(lidar_reader.get_frame_ray_bundle_return_count(ref_lidar_timestamps_us0[1]), 1)
@@ -707,12 +710,6 @@ class TestData4Reload(unittest.TestCase):
             np.all(
                 lidar_reader.get_frame_ray_bundle_data(ref_lidar_timestamps_us0[1], "model_element")
                 == ref_lidar_model_element0
-            )
-        )
-        self.assertTrue(
-            np.all(
-                lidar_reader.get_frame_ray_bundle_data(ref_lidar_timestamps_us1[1], "model_element")
-                == ref_lidar_model_element1
             )
         )
 
