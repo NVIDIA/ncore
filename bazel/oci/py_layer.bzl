@@ -70,7 +70,7 @@ def py_layers(name, binary, tags, compress):
             srcs = [binary],
             mtree = "{}.{}_tar_manifest".format(name, layer),
             tags = tags,
-            compress = compress, 
+            compress = compress,
         )
 
     return result

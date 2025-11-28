@@ -1,6 +1,5 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@ncore_pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary")
 
@@ -11,5 +10,3 @@ py_binary(
         requirement("jupyter_server"),
     ],
 )
-
-bzlformat_pkg(name = "bzlformat")

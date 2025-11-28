@@ -1,6 +1,5 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@python_versions//3.11:defs.bzl", compile_pip_requirements_3_11 = "compile_pip_requirements")
 load("@python_versions//3.8:defs.bzl", compile_pip_requirements_3_8 = "compile_pip_requirements")
 
@@ -30,5 +29,3 @@ compile_pip_requirements_3_8(
         "no-mypy",
     ],
 )
-
-bzlformat_pkg(name = "bzlformat")

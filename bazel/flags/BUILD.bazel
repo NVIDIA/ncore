@@ -1,7 +1,6 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -9,5 +8,3 @@ bool_flag(
     name = "low_memory",
     build_setting_default = False,
 )
-
-bzlformat_pkg(name = "bzlformat")

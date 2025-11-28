@@ -78,16 +78,6 @@ sudo chmod +x /usr/local/bin/bazel
 
 # Execution
 
-## Format all bazel files
-
-Execute
-
-```
-bazel run //:bzlformat_all
-```
-
-to format all bazel source files (`//:bzlformat_missing_pkgs_fix` can be used to register new files)
-
 ## Format all code files
 
 Execute
@@ -96,7 +86,13 @@ Execute
 bazel run //:format
 ```
 
-to format all source files. Use `bazel run //:format.check` to only check for code-formatting violations.
+to format all source files. Use `bazel run //:format.check` to only check for
+code-formatting violations.
+
+Note a special case for Bazel: the commands above are used both for traditional
+formatting and for linter warnings. Bazel attempts to fix some of the linter
+warnings automatically as part of the `//:format` target, but others will be
+left untouched and need to be manually corrected by the user.
 
 ## Static Code Analysis
 

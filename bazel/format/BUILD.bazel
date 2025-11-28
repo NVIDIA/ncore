@@ -1,7 +1,7 @@
 # Copyright (c) 2025 NVIDIA CORPORATION.  All rights reserved.
 
 load("@aspect_rules_lint//format:defs.bzl", "format_multirun")
-load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 
 sh_binary(
     name = "ruff-isort",
@@ -22,10 +22,16 @@ format_multirun(
     # of `python = "@multitool//tools/ruff"`.
     # See more at https://docs.astral.sh/ruff/formatter/#sorting-imports.
     python = ":ruff-isort",
+    starlark = "@buildifier_prebuilt//:buildifier",
+    starlark_check_args = [
+        "--mode=diff",
+        "--lint=warn",
+    ],
+    starlark_fix_args = [
+        "--lint=fix",
+    ],
     visibility = [
         # Add visibility for //:format
         "//:__pkg__",
     ],
 )
-
-bzlformat_pkg(name = "bzlformat")

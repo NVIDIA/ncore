@@ -55,9 +55,6 @@ build+test:
   script:
     - bazelisk version
 
-    # Check format declarations are not missing
-    - bazelisk run //:bzlformat_missing_pkgs_test
-
     # Check code format
     - bazelisk run //:format.check
 
