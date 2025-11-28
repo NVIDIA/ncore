@@ -2,8 +2,8 @@
 
 """ Wrap py_test with a common pytest wrapper """
 
-load("@rules_python//python:defs.bzl", "py_test")
 load("@ncore_pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_test")
 
 def pytest_test(name, srcs, python_versions = ["3.11", "3.8"], deps = [], args = [], **kwargs):
     """

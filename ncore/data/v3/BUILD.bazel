@@ -1,6 +1,5 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@rules_python//python:defs.bzl", "py_library")
 load("//bazel/pytest:defs.bzl", "pytest_test")
 
@@ -21,5 +20,3 @@ pytest_test(
         ":pylib",
     ],
 )
-
-bzlformat_pkg(name = "bzlformat")

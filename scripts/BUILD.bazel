@@ -1,6 +1,5 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
 load("@ncore_pip_deps//:requirements.bzl", "requirement")
 load("@rules_oci//oci:defs.bzl", "oci_load", "oci_push")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library")
@@ -196,5 +195,3 @@ filegroup(
         "no-remote-cache",
     ],
 )
-
-bzlformat_pkg(name = "bzlformat")

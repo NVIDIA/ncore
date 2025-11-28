@@ -4,18 +4,23 @@
 This module defines the dependencies and extensions for the ncore project.
 """
 
-module(name = "ncore", repo_name = "ncore_repo")
+module(
+    name = "ncore",
+    repo_name = "ncore_repo",
+)
 
 bazel_dep(name = "aspect_bazel_lib", version = "2.13.0")
-bazel_dep(name = "aspect_rules_lint", version = "1.2.2")
+bazel_dep(name = "aspect_rules_lint", version = "1.9.1")
 bazel_dep(name = "rules_mypy", version = "0.40.0")
-bazel_dep(name = "cgrindel_bazel_starlib", version = "0.27.0")
+bazel_dep(name = "rules_shell", version = "0.5.0")
+bazel_dep(name = "buildifier_prebuilt", version = "8.2.1")
 bazel_dep(name = "rules_cc", version = "0.1.1")
 bazel_dep(name = "bazel_skylib", version = "1.7.1")
 bazel_dep(name = "platforms", version = "0.0.11")
 
 ## rules_python
 bazel_dep(name = "rules_python", version = "1.2.0")
+
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(
     is_default = True,
@@ -28,31 +33,34 @@ use_repo(python, "python_3_11", "python_3_8", "python_versions")
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
+    experimental_index_url = "https://pypi.org/simple",  # download wheels via bazel downloader instead of pip
     hub_name = "ncore_pip_deps",
     python_version = "3.11",
     requirements_lock = "//3rdparty/python:requirements_3_11.txt",
-    experimental_index_url = "https://pypi.org/simple",  # download wheels via bazel downloader instead of pip
 )
 pip.parse(
+    experimental_index_url = "https://pypi.org/simple",  # download wheels via bazel downloader instead of pip
     hub_name = "ncore_pip_deps",
     python_version = "3.8",
     requirements_lock = "//3rdparty/python:requirements_3_8.txt",
-    experimental_index_url = "https://pypi.org/simple",  # download wheels via bazel downloader instead of pip
 )
 use_repo(pip, "ncore_pip_deps")
 
 ## rules_multitool (for ruff formatter)
 bazel_dep(name = "rules_multitool", version = "1.0.0")
+
 multitool = use_extension("@rules_multitool//multitool:extension.bzl", "multitool")
 use_repo(multitool, "multitool")
 
 ## rules_oci
 bazel_dep(name = "rules_oci", version = "2.2.0")
-single_version_override(module_name = "rules_oci",
+single_version_override(
+    module_name = "rules_oci",
     patch_strip = 1,
     patches = ["@@//:3rdparty/oci/oci.patch"],
     version = "2.2.0",
 )
+
 oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
 oci.pull(
     name = "ncore_dev_image",
@@ -63,15 +71,16 @@ use_repo(oci, "ncore_dev_image")
 
 ## external / test data
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
 http_archive(
     name = "poisson_recon",
-    sha256 = "7fa4176d913a632afcde38308f4e41bac67ffdc6c6e88f73f434c8083e3d780e",
-    # source-repo: https://github.com/mkazhdan/PoissonRecon, commit f1c71fe
-    urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/repo-PoissonRecon/f1c71fe/repo-PoissonRecon-f1c71fe.tar.gz"],
     build_file = "//3rdparty/poisson_recon:poisson_recon.BUILD",
-    strip_prefix = "PoissonRecon",
     patch_args = ["-p1"],
     patches = ["//3rdparty/poisson_recon:poisson_recon.patch"],
+    sha256 = "7fa4176d913a632afcde38308f4e41bac67ffdc6c6e88f73f434c8083e3d780e",
+    strip_prefix = "PoissonRecon",
+    # source-repo: https://github.com/mkazhdan/PoissonRecon, commit f1c71fe
+    urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/repo-PoissonRecon/f1c71fe/repo-PoissonRecon-f1c71fe.tar.gz"],
 )
 
 http_archive(

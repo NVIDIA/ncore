@@ -1,5 +1,9 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
+"""
+This module defines repository rules for including external dependencies required by the project.
+"""
+
 load("@bazel_tools//tools/build_defs/repo:http.bzl", _http_archive = "http_archive")
 load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
 
@@ -41,7 +45,7 @@ def register_repositories():
         sha256 = "43e375213dabe0c3928e65412ea7ec16850db93285c8c6f8b0eaa41cacd0f882",
         urls = [
             "https://github.com/cgrindel/bazel-starlib/releases/download/v0.21.0/bazel-starlib.v0.21.0.tar.gz",
-            ],
+        ],
     )
 
     http_archive(

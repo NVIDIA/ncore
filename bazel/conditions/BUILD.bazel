@@ -1,10 +1,6 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-load("@cgrindel_bazel_starlib//bzlformat:defs.bzl", "bzlformat_pkg")
-
 config_setting(
     name = "low_memory",
     flag_values = {"//bazel/flags:low_memory": "True"},
 )
-
-bzlformat_pkg(name = "bzlformat")
