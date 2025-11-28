@@ -22,6 +22,7 @@ import PIL.Image as PILImage
 
 from python.runfiles import Runfiles
 from scipy.spatial.transform import Rotation as R
+from upath import UPath
 
 from .data3 import CameraSensor, ContainerDataWriter, LidarSensor, Sensor, ShardDataLoader
 from .types import (
@@ -115,6 +116,7 @@ class TestData3Loader(unittest.TestCase):
 
             # make sure returned paths are absolute and ordered by shard-id
             self.assertEqual(loader.get_shard_paths(), [str(Path(p).absolute()) for p in self.all_shards[start:stop]])
+            self.assertEqual(loader.get_shard_upaths(), [UPath(p).absolute() for p in self.all_shards[start:stop]])
             self.assertEqual(loader.get_shard_ids(), list(range(start, stop)))
 
             # check global tracks API

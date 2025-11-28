@@ -880,8 +880,8 @@ class ShardDataLoader:
 
         # Load shards concurrently (to hide latency) and check for sequence consistency and continuity of shards
         shards_map: Dict[
-            int, Tuple[str, zarr.Group, stores.IndexedTarStore]
-        ] = {}  # use str as the generic path / URL type
+            int, Tuple[UPath, zarr.Group, stores.IndexedTarStore]
+        ] = {}  # use UPath as the generic path / URL type
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_threads) as executor:
 
@@ -903,7 +903,7 @@ class ShardDataLoader:
 
                 _logger.debug(f"ShardDataLoader: {shard_path} time_load={timer.elapsed_sec()}sec")
 
-                return str(shard_path), shard_root, shard_store
+                return shard_path, shard_root, shard_store
 
             for future in concurrent.futures.as_completed(
                 [executor.submit(thread_load_shard, shard_path) for shard_path in shard_paths]
@@ -976,7 +976,7 @@ class ShardDataLoader:
             raise ValueError(f"Loading non-continuous sequence of shards: {self._shard_ids}")
 
         # *Linear* sequences of shards
-        self._shard_paths = [shards_map[shard_id][0] for shard_id in self._shard_ids]
+        self._shard_upaths = [shards_map[shard_id][0] for shard_id in self._shard_ids]
         self._shard_roots = [shards_map[shard_id][1] for shard_id in self._shard_ids]
         self._shard_stores = [shards_map[shard_id][2] for shard_id in self._shard_ids]
 
@@ -1050,7 +1050,11 @@ class ShardDataLoader:
 
     def get_shard_paths(self) -> List[str]:
         """Returns paths to loaded shards (ordered by linear shard ID)"""
-        return self._shard_paths
+        return [str(shard_upath) for shard_upath in self._shard_upaths]
+
+    def get_shard_upaths(self) -> List[UPath]:
+        """Returns universal paths to loaded shards (ordered by linear shard ID)"""
+        return self._shard_upaths
 
     def get_shard_ids(self) -> List[int]:
         """Returns linearly ordered list of loaded shard IDs"""
