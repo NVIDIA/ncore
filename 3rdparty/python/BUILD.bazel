@@ -1,5 +1,6 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
+load("@rules_multirun//:defs.bzl", "multirun")
 load("@rules_uv//uv:pip.bzl", "pip_compile")
 
 # Check that our compiled pip requirements are up-to-date
@@ -27,4 +28,14 @@ pip_compile(
     py3_runtime = "@python_3_8//:py3_runtime",
     requirements_in = "requirements_3_8.in",
     requirements_txt = "requirements_3_8.txt",
+)
+
+# Single command to update all requirements files (no order dependency)
+multirun(
+    name = "update_all_requirements",
+    commands = [
+        ":requirements_3_11",
+        ":requirements_3_8",
+    ],
+    keep_going = False,  # Fail on error
 )
