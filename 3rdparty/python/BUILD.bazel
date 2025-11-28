@@ -1,31 +1,30 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-load("@python_versions//3.11:defs.bzl", compile_pip_requirements_3_11 = "compile_pip_requirements")
-load("@python_versions//3.8:defs.bzl", compile_pip_requirements_3_8 = "compile_pip_requirements")
+load("@rules_uv//uv:pip.bzl", "pip_compile")
 
 # Check that our compiled pip requirements are up-to-date
-compile_pip_requirements_3_11(
+PIP_COMPILE_ARGS = [
+    "--generate-hashes",
+    "--emit-index-url",
+    "--emit-find-links",
+    "--index-strategy",
+    "unsafe-best-match",
+]
+
+pip_compile(
     name = "requirements_3_11",
-    timeout = "eternal",
-    extra_args = ["--allow-unsafe"],
-    python_version = "3.11",
+    size = "medium",
+    args = PIP_COMPILE_ARGS,
+    py3_runtime = "@python_3_11//:py3_runtime",
     requirements_in = "requirements_3_11.in",
     requirements_txt = "requirements_3_11.txt",
-    tags = [
-        "manual",
-        "no-mypy",
-    ],
 )
 
-compile_pip_requirements_3_8(
+pip_compile(
     name = "requirements_3_8",
-    timeout = "eternal",
-    extra_args = ["--allow-unsafe"],
-    python_version = "3.8",
+    size = "medium",
+    args = PIP_COMPILE_ARGS,
+    py3_runtime = "@python_3_8//:py3_runtime",
     requirements_in = "requirements_3_8.in",
     requirements_txt = "requirements_3_8.txt",
-    tags = [
-        "manual",
-        "no-mypy",
-    ],
 )
