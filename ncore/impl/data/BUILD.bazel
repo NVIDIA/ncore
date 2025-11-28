@@ -20,6 +20,7 @@ py_library(
         "//ncore/impl/common:pylib_transformations",
         requirement("zarr"),
         requirement("pillow"),
+        requirement("universal_pathlib"),
     ],
 )
 
@@ -43,6 +44,7 @@ py_library(
     ],
     deps = [
         requirement("zarr"),
+        requirement("universal_pathlib"),
         requirement("cbor2"),
     ],
 )

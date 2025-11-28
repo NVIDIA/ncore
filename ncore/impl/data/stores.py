@@ -21,11 +21,14 @@ from dataclasses import dataclass, field
 from enum import IntEnum, auto, unique
 from pathlib import Path
 from threading import RLock
-from typing import BinaryIO, Dict, Iterator, Literal, NamedTuple, Union
+from typing import IO, Any, BinaryIO, Dict, Iterator, Literal, NamedTuple, Union
 
 import cbor2
 import numcodecs
+import upath
 import zarr
+
+from upath import UPath
 
 
 _logger = logging.getLogger(__name__)
@@ -69,13 +72,11 @@ class IndexedTarStore(zarr._storage.store.Store):
 
         records: Dict[str, IndexedTarStore.TarRecord] = field(default_factory=dict)
 
-    def __init__(self, itar_path: Union[str, Path], mode: Literal["r", "w"] = "r"):
+    def __init__(self, itar_path: Union[str, Path, UPath], mode: Literal["r", "w"] = "r"):
         if mode not in ["r", "w"]:
             raise ValueError("TarRecordIndex: only r/w modes supported")
 
         # store properties
-        itar_path = Path(itar_path).absolute()
-
         self.mode = mode
 
         # Current understanding is that tarfile module in stdlib is not thread-safe,
@@ -83,16 +84,28 @@ class IndexedTarStore(zarr._storage.store.Store):
         # been investigated in detail, perhaps no lock is needed if mode='r'.
         self.mutex = RLock()
 
-        # open file object and tar file
+        # convert str / Path to absolute UPath uncondtionally
+        itar_upath = UPath(itar_path)
+        if itar_upath.protocol == "":
+            # use UPath-internal `file://` protocol for local files
+            itar_upath = UPath("file://" + str(itar_upath))
 
-        # require file to be both writeable and readable when writing
-        self.tar_file_object: Union[io.BufferedReader, io.BufferedRandom] = (
-            open(itar_path, "wb+") if self.mode == "w" else open(itar_path, "rb")
-        )
+        self.itar_upath = itar_upath.absolute()
+
+        # open file object and tar file (require file to be both writeable and readable when writing)
+        self.tar_file_object: IO[Any]
+        if self.mode == "r":
+            self.tar_file_object = self.itar_upath.open("rb")
+        else:
+            # universal_path for Python 3.8 (<=0.2.6) doesn't expose a
+            # write/read mode in it's static type-hints, although "wb+" is still accepted
+            # if the FS supports it, so ignore type-checker here
+            self.tar_file_object = self.itar_upath.open("wb+")  # type: ignore[call-overload]
+
         self.tar_file = tarfile.TarFile(fileobj=self.tar_file_object, mode=self.mode)
 
         # init / load index table
-        if mode == "r":
+        if self.mode == "r":
             self.index = self._load_tar_index(self.tar_file_object)
         else:
             self.index = self.TarRecordIndex()
@@ -192,13 +205,19 @@ class IndexedTarStore(zarr._storage.store.Store):
     def reload_resources(self):
         """Reloads the tar file object *only* - useful to re-initialize the store in multi-process 'fork()' settings"""
         with self.mutex:
-            # get current tar file path and seek positions
-            itar_path = self.tar_file_object.name
+            # get current tar file path and seek positions, and close file object
             current_position = self.tar_file_object.tell()
-
-            # reload file (require file to be both writeable and readable when writing)
             self.tar_file_object.close()
-            self.tar_file_object = open(itar_path, "wb+") if self.mode == "w" else open(itar_path, "rb")
+
+            # reload file object (require file to be both writeable and readable when writing)
+            if self.mode == "r":
+                self.tar_file_object = self.itar_upath.open("rb")
+            else:
+                # universal_path for Python 3.8 (<=0.2.6) doesn't expose a
+                # write/read mode in it's static type-hints, although "wb+" is still accepted
+                # if the FS supports it, so ignore type-checker here
+                self.tar_file_object = self.itar_upath.open("wb+")  # type: ignore[call-overload]
+
             self.tar_file.fileobj = self.tar_file_object
 
             # seek to previous position
@@ -231,7 +250,7 @@ class IndexedTarStore(zarr._storage.store.Store):
         CBOR_LZMA_XZ_V1 = auto()
 
     @classmethod
-    def _load_tar_index(cls, tar_file_object: BinaryIO) -> TarRecordIndex:
+    def _load_tar_index(cls, tar_file_object: IO[Any]) -> TarRecordIndex:
         """Loads a tar record index from the end of a tar file object"""
 
         # Load header
