@@ -855,7 +855,10 @@ class ShardDataLoader:
         return [str(match) for match in list(matches)]
 
     def __init__(
-        self, shard_paths: List[Union[str, Path, UPath]], open_consolidated: bool = True, max_threads: int | None = None
+        self,
+        shard_paths: Union[List[str], List[Path], List[UPath]],
+        open_consolidated: bool = True,
+        max_threads: int | None = None,
     ):
         """Initialize a ShardDataLoader for a virtual sequence represented by a list of shard files.
 
@@ -882,10 +885,10 @@ class ShardDataLoader:
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_threads) as executor:
 
-            def thread_load_shard(shard_path):
+            def thread_load_shard(shard_path: Union[str, Path, UPath]):
                 """Thread-executed shard opening"""
 
-                # Make sure paths are absolute at this point - in the future we might have fully-resolved URLs instead here, too
+                # Make sure paths are absolute at this point
                 shard_path = UPath(shard_path).absolute()
 
                 _logger.info(f"ShardDataLoader: Loading shard {shard_path}")
