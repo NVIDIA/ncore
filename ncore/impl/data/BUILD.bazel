@@ -80,6 +80,7 @@ pytest_test(
         requirement("parameterized"),
         requirement("pillow"),
         requirement("scipy"),
+        requirement("universal_pathlib"),
         "@rules_python//python/runfiles",
     ],
 )

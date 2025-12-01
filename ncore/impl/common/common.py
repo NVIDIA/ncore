@@ -25,6 +25,7 @@ import PIL.Image as PILImage
 
 from scipy import interpolate, spatial
 from scipy.spatial.transform import Rotation as R
+from upath import UPath
 
 
 def load_jsonl(jsonl_path: Union[str, Path]) -> List[dict]:
@@ -45,10 +46,10 @@ def load_jsonl(jsonl_path: Union[str, Path]) -> List[dict]:
     return object_list
 
 
-def md5(path: Path, chunk_size: int = 128 * 2**9) -> str:
+def md5(path: UPath, chunk_size: int = 128 * 2**9) -> str:
     """Compute the MD5 hash of a file"""
     hash_md5 = hashlib.md5()
-    with open(path, "rb") as f:
+    with path.open("rb") as f:
         for chunk in iter(lambda: f.read(chunk_size), b""):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
