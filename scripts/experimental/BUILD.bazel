@@ -47,4 +47,3 @@ py_binary(
         "//ncore/impl/data:pylib_data3",
     ],
 )
-

@@ -16,10 +16,12 @@ import json
 import logging
 
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple, Union, cast
 
+import dataclasses_json
 import numcodecs
 import numpy as np
 import PIL.Image as PILImage
@@ -32,6 +34,7 @@ import ncore.impl.common.transformations as transformations
 
 from . import data, stores, types, util
 from .data import JsonLike, evaluate_file_pattern
+from .types import BBox3, LabelSource
 
 
 _logger = logging.getLogger(__name__)
@@ -41,6 +44,86 @@ SENSORS_BASE_GROUP = "sensors"
 CAMERAS_BASE_GROUP = "cameras"
 LIDARS_BASE_GROUP = "lidars"
 RADARS_BASE_GROUP = "radars"
+
+## Types specific to data3
+
+
+@dataclass
+class Poses:
+    """Represents a collection of timestamped poses (rig-to-local-world transformation)"""
+
+    T_rig_world_base: np.ndarray  #: Base rig-to-global-world SE3 transformation (float64, [4,4])
+    T_rig_worlds: np.ndarray  #: All rig-to-local-world SE3 transformations of the trajectory (float64, [N,4,4])
+    T_rig_world_timestamps_us: (
+        np.ndarray
+    )  #: All rig-to-local-world transformation timestamps of the trajectory (uint64, [N,])
+
+    def __post_init__(self):
+        # Sanity checks
+        assert self.T_rig_world_base.shape == (4, 4)
+        assert self.T_rig_world_base.dtype == np.dtype("float64")
+
+        assert self.T_rig_worlds.shape[1:] == (4, 4)
+        assert self.T_rig_worlds.dtype == np.dtype("float64")
+
+        assert self.T_rig_world_timestamps_us.ndim == 1
+        assert self.T_rig_world_timestamps_us.dtype == np.dtype("uint64")
+
+        assert self.T_rig_worlds.shape[0] == self.T_rig_world_timestamps_us.shape[0]
+
+
+@dataclass
+class FrameLabel3(dataclasses_json.DataClassJsonMixin):
+    """Description of a 3D frame-associated label"""
+
+    label_id: str  #: Identifier of the current frame label (unique among all labels)
+    track_id: str  #: Unique identifier of the object's track this label is associated with
+    label_class: str  #: String-representation of the class associated with this label
+    bbox3: BBox3  #: Bounding-box coordinates of the object relative to the frame's end-of-frame coordinate system
+    global_speed: float  #: Instantaneous global speed [m/s] of the object
+    timestamp_us: int  #: The timestamp associated with the centroid of the label (possibly an accurate in-frame time)
+    confidence: Optional[float]  #: If available, the confidence score of the label [0..1]
+    source: LabelSource = util.enum_field(LabelSource)  #: The source for the current label
+    source_version: Optional[str] = (
+        None  #: If provided, the unique version ID of the source for the current label (to distinguish between different versions of the same source)
+    )
+
+    def __post_init__(self):
+        # Sanity checks
+        assert isinstance(self.label_id, str)
+        assert isinstance(self.track_id, str)
+        assert isinstance(self.label_class, str)
+        assert isinstance(self.bbox3, BBox3)
+        assert isinstance(self.global_speed, float)
+        assert isinstance(self.timestamp_us, int)
+        assert isinstance(self.confidence, (type(None), float))
+
+        if not isinstance(self.source, LabelSource):
+            self.source = LabelSource(self.source)
+        assert self.source in LabelSource.__members__.values()
+
+        assert isinstance(self.source_version, (type(None), str))
+
+
+@dataclass
+class TrackLabel(dataclasses_json.DataClassJsonMixin):
+    """Description of an individual object-specific track"""
+
+    sensors: Dict[
+        str, List[int]
+    ]  #: Represents all frame-timestamps (map values) of the object's observations in different sensors (map keys)
+
+
+@dataclass
+class Tracks(dataclasses_json.DataClassJsonMixin):
+    """Represents a collection of tracks"""
+
+    track_labels: Dict[
+        str, TrackLabel
+    ]  #: Represents individual object tracks (map values) referenced by `track_id`'s (map keys, same as in `FrameLabel3`)
+
+
+## Data3-specific DataWriter and DataLoader implementations
 
 
 class ContainerDataWriter:
@@ -150,13 +233,13 @@ class ContainerDataWriter:
         return self.output_container_path
 
     # Individual 'store*' methods performing data sanity checks and serialize consistent output formats
-    def store_poses(self, poses: types.Poses) -> None:
+    def store_poses(self, poses: Poses) -> None:
         poses_grp = self.container_root.require_group("poses")
         poses_grp.create_dataset("T_rig_world_base", data=poses.T_rig_world_base)
         poses_grp.create_dataset("T_rig_worlds", data=poses.T_rig_worlds)
         poses_grp.create_dataset("T_rig_world_timestamps_us", data=poses.T_rig_world_timestamps_us)
 
-    def store_tracks(self, tracks: types.Tracks) -> None:
+    def store_tracks(self, tracks: Tracks) -> None:
         # Store track labels
         tracks_grp = self.container_root.require_group("tracks")
         tracks_grp.create_dataset(
@@ -295,7 +378,7 @@ class ContainerDataWriter:
         timestamp_us: np.ndarray,
         model_element: Optional[np.ndarray],  # model elements, if applicable
         # label data
-        frame_labels: List[types.FrameLabel3],
+        frame_labels: List[FrameLabel3],
         # poses
         T_rig_worlds: np.ndarray,
         timestamps_us: np.ndarray,
@@ -730,11 +813,11 @@ class PointCloudSensor(Sensor):
 class LidarSensor(PointCloudSensor):
     """Provides access to lidar-specific sensor-data"""
 
-    def get_frame_labels(self, continuous_frame_index: int) -> List[types.FrameLabel3]:
+    def get_frame_labels(self, continuous_frame_index: int) -> List[FrameLabel3]:
         """Returns frame-labels for a specific frame"""
 
         return [
-            types.FrameLabel3.from_dict(frame_label, infer_missing=True)
+            FrameLabel3.from_dict(frame_label, infer_missing=True)
             for frame_label in self._get_frame_group(continuous_frame_index)["frame_labels"]
         ]
 
@@ -907,7 +990,7 @@ class ShardDataLoader:
         for shard_store in self._shard_stores:
             shard_store.reload_resources()
 
-    def get_poses(self, start_shard_idx: Optional[int] = None, stop_shard_idx: Optional[int] = None) -> types.Poses:
+    def get_poses(self, start_shard_idx: Optional[int] = None, stop_shard_idx: Optional[int] = None) -> Poses:
         """Returns all timestamped poses associated with the session (default) or a range of shards [start,stop)"""
 
         # Load common base pose
@@ -944,7 +1027,7 @@ class ShardDataLoader:
         if not np.all(unique_idxs[:-1] < unique_idxs[1:]):
             raise ValueError(f"Concatenated pose timestamps not strictly monotonically increasing")
 
-        return types.Poses(np.array(T_rig_world_base), np.vstack(T_rig_worlds)[unique_idxs], T_rig_world_timestamps_us)
+        return Poses(np.array(T_rig_world_base), np.vstack(T_rig_worlds)[unique_idxs], T_rig_world_timestamps_us)
 
     def get_sequence_id(self, with_shard_range: bool = False) -> str:
         """Provides access to a unique identifier of the loaded shard data, optionally including the linear range of shards
@@ -1016,7 +1099,7 @@ class ShardDataLoader:
         """Returns all radar sensor ids"""
         return list(self._radar_ids)
 
-    def get_tracks(self) -> types.Tracks:
+    def get_tracks(self) -> Tracks:
         """Returns all object tracks"""
 
         root_shard = self._shard_roots[0]  # can use first root shard as track labels are the same per shard
@@ -1025,9 +1108,9 @@ class ShardDataLoader:
         # 'labels' group / 'track_labels' dataset
         tracks_group = root_shard["labels"] if "labels" in root_shard else root_shard["tracks"]
 
-        return types.Tracks(
+        return Tracks(
             track_labels={
-                track_label[0]: types.TrackLabel.from_dict(track_label[1], infer_missing=True)
+                track_label[0]: TrackLabel.from_dict(track_label[1], infer_missing=True)
                 for track_label in tracks_group["track_labels"]
             }
         )

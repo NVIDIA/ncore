@@ -10,7 +10,29 @@
 
 """Package exposing methods related to NCORE's V3 data interaction APIs"""
 
-from ncore.impl.data.data3 import CameraSensor, LidarSensor, PointCloudSensor, RadarSensor, Sensor, ShardDataLoader
+from ncore.impl.data.data3 import (
+    CameraSensor,
+    FrameLabel3,
+    LidarSensor,
+    PointCloudSensor,
+    Poses,
+    RadarSensor,
+    Sensor,
+    ShardDataLoader,
+    TrackLabel,
+    Tracks,
+)
 
 
-__all__ = ["ShardDataLoader", "Sensor", "CameraSensor", "PointCloudSensor", "LidarSensor", "RadarSensor"]
+__all__ = [
+    "ShardDataLoader",
+    "Sensor",
+    "CameraSensor",
+    "PointCloudSensor",
+    "LidarSensor",
+    "RadarSensor",
+    "FrameLabel3",
+    "Poses",
+    "TrackLabel",
+    "Tracks",
+]

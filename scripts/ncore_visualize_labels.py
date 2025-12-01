@@ -27,8 +27,7 @@ import pandas as pd
 import tqdm
 
 from ncore.impl.common.visualization import LabelVisualizer
-from ncore.impl.data.data3 import ShardDataLoader
-from ncore.impl.data.types import FrameLabel3
+from ncore.impl.data.data3 import FrameLabel3, ShardDataLoader
 from ncore.impl.unstable.data.data4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
 from ncore.impl.unstable.data.data4.components import SequenceComponentStoreReader
 from ncore.impl.unstable.data.data4.types import CuboidTrackObservation

@@ -24,16 +24,14 @@ from python.runfiles import Runfiles
 from scipy.spatial.transform import Rotation as R
 from upath import UPath
 
-from .data3 import CameraSensor, ContainerDataWriter, LidarSensor, Sensor, ShardDataLoader
+from .data3 import CameraSensor, ContainerDataWriter, FrameLabel3, LidarSensor, Poses, Sensor, ShardDataLoader
 from .types import (
     BBox3,
     BivariateWindshieldModelParameters,
-    FrameLabel3,
     FrameTimepoint,
     FThetaCameraModelParameters,
     LabelSource,
     OpenCVFisheyeCameraModelParameters,
-    Poses,
     ReferencePolynomial,
     RowOffsetStructuredSpinningLidarModelParameters,
     ShutterType,
