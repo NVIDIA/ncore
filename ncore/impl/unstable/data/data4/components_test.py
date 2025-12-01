@@ -66,9 +66,6 @@ class TestData4Reload(unittest.TestCase):
     def test_reload(self, store_type, open_consolidated):
         """Test to make sure serialized data is faithfully reloaded"""
 
-        # from scripts.util import breakpoint
-        # breakpoint()
-
         tempdir = tempfile.TemporaryDirectory()
 
         ## Create reference sequence

@@ -48,9 +48,6 @@ pytest_test(
         requirement("parameterized"),
         requirement("pillow"),
         requirement("universal-pathlib"),
-
-        # DBG
-        "//scripts:pylib_util",
     ],
 )
 
@@ -68,6 +65,7 @@ py_library(
         requirement("numpy"),
         requirement("pillow"),
         requirement("dataclasses-json"),
+        requirement("universal-pathlib"),
     ],
 )
 
@@ -78,9 +76,13 @@ pytest_test(
         "@test-data-v3-shards//:test-shards",
     ],
     deps = [
+        ":pylib_compat",
+        ":pylib_components",
         ":pylib_conversion",
         "//ncore/impl/data:pylib_data",
         requirement("numpy"),
+        requirement("parameterized"),
+        requirement("universal-pathlib"),
         "@rules_python//python/runfiles",
     ],
 )
@@ -101,5 +103,23 @@ py_library(
         "//ncore/impl/data:pylib_data3",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data:pylib_util",
+    ],
+)
+
+pytest_test(
+    name = "pytest_compat",
+    srcs = ["compat_test.py"],
+    data = [
+        "@test-data-v3-shards//:test-shards",
+    ],
+    deps = [
+        ":pylib_compat",
+        ":pylib_components",
+        ":pylib_conversion",
+        "//ncore/impl/common:pylib_common",
+        requirement("numpy"),
+        requirement("parameterized"),
+        requirement("universal-pathlib"),
+        "@rules_python//python/runfiles",
     ],
 )

@@ -146,12 +146,6 @@ class SensorProtocol(Protocol):
 
     _pose_graph: PoseGraphInterpolator
 
-    def __init__(
-        self,
-        pose_graph: PoseGraphInterpolator,
-    ):
-        self._pose_graph: PoseGraphInterpolator = pose_graph
-
     @property
     def sensor_id(self) -> str:
         """The ID of the sensor"""
@@ -193,7 +187,7 @@ class SensorProtocol(Protocol):
             4x4 transformation matrix if the static transformation exists, None otherwise
         """
         try:
-            return self.pose_graph.evaluate_poses(
+            return self._pose_graph.evaluate_poses(
                 source_node=self.sensor_id,
                 target_node="rig",
                 timestamps_us=np.empty((), dtype=np.uint64),
@@ -590,7 +584,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             ],
             pose_graph: PoseGraphInterpolator,
         ):
-            super().__init__(pose_graph)
+            self.set_pose_graph(pose_graph)
 
             self._reader: Union[
                 CameraSensorComponent.Reader, LidarSensorComponent.Reader, RadarSensorComponent.Reader
@@ -1014,7 +1008,7 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
             sensor: Union[data3.CameraSensor, data3.LidarSensor, data3.RadarSensor],
             pose_graph: PoseGraphInterpolator,
         ):
-            super().__init__(pose_graph)
+            self.set_pose_graph(pose_graph)
 
             self._sensor = sensor
 
@@ -1211,8 +1205,15 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
 
         @override
         def get_frame_ray_bundle_timestamp_us(self, frame_index: int) -> npt.NDArray[np.uint64]:
-            """Returns the per-ray timestamps for the ray-bundle for a specific frame"""
-            return self.point_cloud_sensor.get_frame_data(frame_index, "timestamp_us")
+            """Returns the per-ray timestamps for the ray-bundle for a specific frame if available (V3 lidar), otherwise replicates frame timestamp (V3 radar)"""
+            if self.point_cloud_sensor.has_frame_data(frame_index, "timestamp_us"):
+                return self.point_cloud_sensor.get_frame_data(frame_index, "timestamp_us")
+            else:
+                return np.array(
+                    [self.point_cloud_sensor.get_frame_timestamp_us(frame_index, FrameTimepoint.END)]
+                    * self.get_frame_ray_bundle_count(frame_index),
+                    dtype=np.uint64,
+                )
 
         @override
         def get_frame_ray_bundle_return_count(self, frame_index: int) -> int:

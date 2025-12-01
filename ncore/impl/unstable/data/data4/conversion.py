@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import logging
 
-from pathlib import Path
 from typing import Dict, List, Optional, cast
 
 import numpy as np
 
 from typing_extensions import Literal
+from upath import UPath
 
 from ncore.impl.common.common import HalfClosedInterval, log_progress
 from ncore.impl.common.transformations import MotionCompensator
@@ -346,7 +346,7 @@ class NCore3To4:
         ## V3 input
         source_data_loader: ShardDataLoader,
         ## V4 output
-        output_dir_path: Path,
+        output_dir_path: UPath,
         ## Time range selection (None means full range)
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
