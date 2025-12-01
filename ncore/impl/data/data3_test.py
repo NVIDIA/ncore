@@ -115,8 +115,7 @@ class TestData3Loader(unittest.TestCase):
             self.assertEqual(loader.get_egomotion_type(), "icp")
 
             # make sure returned paths are absolute and ordered by shard-id
-            self.assertEqual(loader.get_shard_paths(), [str(Path(p).absolute()) for p in self.all_shards[start:stop]])
-            self.assertEqual(loader.get_shard_upaths(), [UPath(p).absolute() for p in self.all_shards[start:stop]])
+            self.assertEqual(loader.get_shard_paths(), [UPath(p).absolute() for p in self.all_shards[start:stop]])
             self.assertEqual(loader.get_shard_ids(), list(range(start, stop)))
 
             # check global tracks API

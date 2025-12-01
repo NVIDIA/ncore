@@ -18,6 +18,7 @@ py_library(
         requirement("numpy"),
         requirement("scipy"),
         requirement("pillow"),
+        requirement("universal_pathlib"),
     ],
 )
 

@@ -888,7 +888,7 @@ class ShardDataLoader:
             def thread_load_shard(shard_path: Union[str, Path, UPath]):
                 """Thread-executed shard opening"""
 
-                # Make sure paths are absolute at this point
+                # Make sure paths are absolute UPaths at this point
                 shard_path = UPath(shard_path).absolute()
 
                 _logger.info(f"ShardDataLoader: Loading shard {shard_path}")
@@ -976,7 +976,7 @@ class ShardDataLoader:
             raise ValueError(f"Loading non-continuous sequence of shards: {self._shard_ids}")
 
         # *Linear* sequences of shards
-        self._shard_upaths = [shards_map[shard_id][0] for shard_id in self._shard_ids]
+        self._shard_paths = [shards_map[shard_id][0] for shard_id in self._shard_ids]
         self._shard_roots = [shards_map[shard_id][1] for shard_id in self._shard_ids]
         self._shard_stores = [shards_map[shard_id][2] for shard_id in self._shard_ids]
 
@@ -1048,13 +1048,9 @@ class ShardDataLoader:
         """Provides access to a egomotion type identifier of the loaded shard data"""
         return self._egomotion_type
 
-    def get_shard_paths(self) -> List[str]:
-        """Returns paths to loaded shards (ordered by linear shard ID)"""
-        return [str(shard_upath) for shard_upath in self._shard_upaths]
-
-    def get_shard_upaths(self) -> List[UPath]:
+    def get_shard_paths(self) -> List[UPath]:
         """Returns universal paths to loaded shards (ordered by linear shard ID)"""
-        return self._shard_upaths
+        return self._shard_paths
 
     def get_shard_ids(self) -> List[int]:
         """Returns linearly ordered list of loaded shard IDs"""
@@ -1137,7 +1133,7 @@ class ShardDataLoader:
         shards: List[JsonLike] = []
         shard_pose_offset = 0
         sensor_frame_offset: dict[str, int] = defaultdict(int)
-        for shard_idx, (shard_id, shard_file) in enumerate(zip(self.get_shard_ids(), self.get_shard_paths())):
+        for shard_idx, (shard_id, shard_path) in enumerate(zip(self.get_shard_ids(), self.get_shard_paths())):
             start_shard_idx = shard_idx
             stop_shard_idx = shard_idx + 1
 
@@ -1153,7 +1149,7 @@ class ShardDataLoader:
 
             shard: Dict[str, JsonLike] = {
                 "id": shard_id,
-                "path": (shard_path := Path(shard_file)).name,
+                "path": shard_path.name,
                 "md5": common.md5(shard_path),
                 "pose-range": {
                     "start-timestamp_us": int(shard_pose_timestamps_us[0]),
