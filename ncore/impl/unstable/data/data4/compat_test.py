@@ -380,6 +380,16 @@ class TestCompatV3(unittest.TestCase):
             self.assertIsNotNone(obs.timestamp_us)
             self.assertIsNotNone(obs.bbox3)
 
+    def test_sequence_paths(self):
+        """Test sequence_paths property"""
+        paths = self.loader.sequence_paths
+        self.assertIsInstance(paths, list)
+        self.assertEqual(len(paths), 3)
+        for path in paths:
+            self.assertRegex(
+                path.name, r"c9b05cf4-afb9-11ec-b3c2-00044bf65fcb@1648597318700123-1648599151600035_\d+-\d+\.zarr\.itar"
+            )
+
     def test_reload_resources(self):
         """Test reload_resources method"""
         # Should not raise an exception
@@ -734,6 +744,16 @@ class TestCompatV4(unittest.TestCase):
         # Test get_frame_image_array
         image_array = camera.get_frame_image_array(frame_idx)
         self.assertIsInstance(image_array, np.ndarray)
+
+    def test_sequence_paths(self):
+        """Test sequence_paths property"""
+        paths = self.loader.sequence_paths
+        self.assertIsInstance(paths, list)
+        self.assertEqual(len(paths), 1)
+        for path in paths:
+            self.assertEqual(
+                path.name, "c9b05cf4-afb9-11ec-b3c2-00044bf65fcb@1648597318700123-1648599151600035.ncore4.zarr.itar"
+            )
 
     def test_reload_resources(self):
         """Test reload_resources in V4"""

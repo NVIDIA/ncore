@@ -361,6 +361,10 @@ class SequenceComponentStoreReader:
     def generic_meta_data(self) -> Dict[str, data.JsonLike]:
         return self._generic_meta_data
 
+    @property
+    def component_store_paths(self) -> List[UPath]:
+        return [path for _, path in self._component_stores.values()]
+
     def open_component_readers(
         self,
         component_reader_type: Type[CR],

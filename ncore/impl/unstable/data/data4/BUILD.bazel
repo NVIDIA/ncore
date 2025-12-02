@@ -95,6 +95,7 @@ py_library(
     deps = [
         requirement("numpy"),
         requirement("pillow"),
+        requirement("universal-pathlib"),
         ":pylib_components",
         ":pylib_types",
         "//ncore/impl/common:pylib_common",

@@ -53,6 +53,7 @@ import numpy as np
 import PIL.Image as PILImage
 
 from typing_extensions import override
+from upath import UPath
 
 
 if TYPE_CHECKING:
@@ -94,6 +95,11 @@ class SequenceLoaderProtocol(Protocol):
     @property
     def sequence_timestamp_interval_us(self) -> HalfClosedInterval:
         """The time range of the sequence in microseconds"""
+        ...
+
+    @property
+    def sequence_paths(self) -> List[UPath]:
+        """List of all dataset paths comprising this sequence (shards / components)"""
         ...
 
     def reload_resources(self) -> None:
@@ -541,6 +547,11 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
     def sequence_timestamp_interval_us(self) -> HalfClosedInterval:
         return self._reader.sequence_timestamp_interval_us
 
+    @property
+    @override
+    def sequence_paths(self) -> List[UPath]:
+        return self._reader.component_store_paths
+
     @override
     def reload_resources(self) -> None:
         self._reader.reload_resources()
@@ -966,6 +977,11 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
             int(T_rig_world_timestamps_us[0].item()),
             int(T_rig_world_timestamps_us[-1].item()),
         )
+
+    @property
+    @override
+    def sequence_paths(self) -> List[UPath]:
+        return self._loader.get_shard_paths()
 
     @override
     def reload_resources(self) -> None:
