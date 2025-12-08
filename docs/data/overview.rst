@@ -13,6 +13,9 @@ Access to the data is provided via a common and simple to use API, which enables
 The canonical data format supports both NV-internal AV-data (``Hyperion 8`` / future-variants) and robotics (``Carter`` platform) recordings,
 as well as 3rdparty datasets like the `Waymo Open Datasets <https://waymo.com/open/>`_. 
 
-The latest revision of the NCore datasets format is :ref:`Version 3 <v3-data-format>`, which implements a *cloud-optimized* storage format of dataset sequences partitioned into self-contained data *shards*.
+NCore provides two data format versions:
 
-A specification of the canonical data format and data-specific properties is given in :ref:`data_conventions`.
+* :ref:`Version 3 (V3) <v3-data-format>` - The production-verified *shard-based* format implementing cloud-optimized storage of dataset sequences partitioned into self-contained data shards.
+* :ref:`Version 4 (V4) <v4-data-format>` - The next-generation *component-based* format enabling modular, independently-managed data components with enhanced flexibility and scalability.
+
+Both formats share the same coordinate system conventions and core data representations. Coordinate system conventions are described in :ref:`data_conventions`, while detailed format specifications are provided in :ref:`data_formats`.

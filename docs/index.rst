@@ -14,6 +14,7 @@ The SDK is developed within the Nvidia Toronto AI Lab.
 
    data/overview
    data/conventions
+   data/formats
 
 .. toctree::
    :maxdepth: 1
