@@ -17,6 +17,7 @@ import numpy as np
 import parameterized
 
 from python.runfiles import Runfiles
+from typing_extensions import Literal
 from upath import UPath
 
 from ncore.impl.data.data3 import ShardDataLoader
@@ -55,8 +56,9 @@ class TestData3Converter(unittest.TestCase):
         self.shard_data_loader = ShardDataLoader(all_shards)
         self.v3_loader = SequenceLoaderV3(self.shard_data_loader)
 
-    def test_convert_basic(self):
-        """Test basic conversion from V3 to V4"""
+    @parameterized.parameterized.expand([("default",), ("separate-sensors",), ("separate-all",)])
+    def test_convert_profiles(self, profile: Literal["default", "separate-sensors", "separate-all"]):
+        """Test basic conversion from V3 to V4 with different profiles"""
         tempdir = tempfile.TemporaryDirectory()
 
         # Convert reference sequence with single camera
@@ -66,6 +68,9 @@ class TestData3Converter(unittest.TestCase):
             camera_ids=["camera_front_wide_120fov"],
             lidar_ids=[],
             radar_ids=[],
+            component_groups=NCore3To4.create_component_groups(
+                source_data_loader=self.shard_data_loader, profile=profile
+            ),
         )
 
         # Verify output paths were created
@@ -76,7 +81,7 @@ class TestData3Converter(unittest.TestCase):
         tempdir.cleanup()
 
     @parameterized.parameterized.expand([("itar",), ("directory",)])
-    def test_convert_store_types(self, store_type):
+    def test_convert_store_types(self, store_type: Literal["itar", "directory"]):
         """Test conversion with different store types"""
         tempdir = tempfile.TemporaryDirectory()
 
@@ -245,9 +250,6 @@ class TestData3Converter(unittest.TestCase):
         # Select lidar sensor
         lidar_ids = self.v3_loader.lidar_ids
 
-        if len(lidar_ids) == 0:
-            self.skipTest("No lidars in V3 data")
-
         # Convert
         output_paths = NCore3To4.convert(
             self.shard_data_loader,
@@ -284,11 +286,7 @@ class TestData3Converter(unittest.TestCase):
         """Test that converted lidar frames match original V3 data"""
         tempdir = tempfile.TemporaryDirectory()
 
-        lidar_ids = self.v3_loader.lidar_ids
-        if len(lidar_ids) == 0:
-            self.skipTest("No lidars in V3 data")
-
-        lidar_id = lidar_ids[0]
+        lidar_id = self.v3_loader.lidar_ids[0]
 
         # Convert
         output_paths = NCore3To4.convert(
@@ -305,9 +303,6 @@ class TestData3Converter(unittest.TestCase):
 
         v3_lidar = self.v3_loader.get_lidar_sensor(lidar_id)
         v4_lidar = v4_loader.get_lidar_sensor(lidar_id)
-
-        if v4_lidar.frames_count == 0:
-            self.skipTest("No lidar frames in converted data")
 
         # Get timestamps
         v3_timestamps = v3_lidar.frames_timestamps_us
@@ -398,9 +393,6 @@ class TestData3Converter(unittest.TestCase):
 
         v3_radar = self.v3_loader.get_radar_sensor(radar_id)
         v4_radar = v4_loader.get_radar_sensor(radar_id)
-
-        if v4_radar.frames_count == 0:
-            self.skipTest("No radar frames in converted data")
 
         # Get timestamps
         v3_timestamps = v3_radar.frames_timestamps_us

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 
+from dataclasses import dataclass
 from typing import Dict, List, Optional, cast
 
 import numpy as np
@@ -40,6 +41,94 @@ _logger = logging.getLogger(__name__)
 
 
 class NCore3To4:
+    @dataclass
+    class ComponentGroups:
+        """Component group assignments for all components in the V4 data output."""
+
+        poses_component_group: Optional[str]
+        intrinsics_component_group: Optional[str]
+        masks_component_group: Optional[str]
+        camera_component_groups: Dict[str, str]  # indexed by camera_id
+        lidar_component_groups: Dict[str, str]  # indexed by lidar_id
+        radar_component_groups: Dict[str, str]  # indexed by radar_id
+        cuboid_track_observations_component_group: Optional[str]
+
+    @staticmethod
+    def create_component_groups(
+        source_data_loader: ShardDataLoader,
+        profile: Literal["default", "separate-sensors", "separate-all"],
+        # Component-specific overrides
+        poses_component_group: Optional[str] = None,
+        intrinsics_component_group: Optional[str] = None,
+        masks_component_group: Optional[str] = None,
+        camera_component_groups: Optional[Dict[str, str]] = None,
+        lidar_component_groups: Optional[Dict[str, str]] = None,
+        radar_component_groups: Optional[Dict[str, str]] = None,
+        cuboid_track_observations_component_group: Optional[str] = None,
+    ) -> ComponentGroups:
+        """Factory function to create ComponentGroups based on a profile.
+
+        Args:
+            source_data_loader: ShardDataLoader to determine available sensors
+            profile: One of:
+                - "default": Use provided overrites or fall back to default groups
+                - "separate-sensors": Each sensor gets its own group named "<sensor_id>", remaining components use default store
+                - "separate-all": Each component type gets its own group named after the component type, e.g. "poses", "intrinsics", respecting overwrites if provided
+            poses_component_group: Override for poses group
+            intrinsics_component_group: Override for intrinsics group
+            masks_component_group: Override for masks group
+            camera_component_groups: Override for per-camera groups
+            lidar_component_groups: Override for per-lidar groups
+            radar_component_groups: Override for per-radar groups
+            cuboid_track_observations_component_group: Override for cuboids group
+
+        Returns:
+            ComponentGroups with groups assigned according to profile
+        """
+        # Get all available sensor IDs and assign each sensor to its own group
+        camera_groups = {camera_id: camera_id for camera_id in source_data_loader.get_camera_ids()}
+        lidar_groups = {lidar_id: lidar_id for lidar_id in source_data_loader.get_lidar_ids()}
+        radar_groups = {radar_id: radar_id for radar_id in source_data_loader.get_radar_ids()}
+
+        if profile == "default":
+            return NCore3To4.ComponentGroups(
+                poses_component_group=poses_component_group,
+                intrinsics_component_group=intrinsics_component_group,
+                masks_component_group=masks_component_group,
+                camera_component_groups=camera_component_groups if camera_component_groups else {},
+                lidar_component_groups=lidar_component_groups if lidar_component_groups else {},
+                radar_component_groups=radar_component_groups if radar_component_groups else {},
+                cuboid_track_observations_component_group=cuboid_track_observations_component_group,
+            )
+
+        elif profile == "separate-sensors":
+            return NCore3To4.ComponentGroups(
+                poses_component_group=poses_component_group,
+                intrinsics_component_group=intrinsics_component_group,
+                masks_component_group=masks_component_group,
+                camera_component_groups=camera_groups,
+                lidar_component_groups=lidar_groups,
+                radar_component_groups=radar_groups,
+                cuboid_track_observations_component_group=cuboid_track_observations_component_group,
+            )
+
+        elif profile == "separate-all":
+            return NCore3To4.ComponentGroups(
+                poses_component_group="poses" if poses_component_group is None else poses_component_group,
+                intrinsics_component_group="intrinsics"
+                if intrinsics_component_group is None
+                else intrinsics_component_group,
+                masks_component_group="masks" if masks_component_group is None else masks_component_group,
+                camera_component_groups=camera_groups,
+                lidar_component_groups=lidar_groups,
+                radar_component_groups=radar_groups,
+                cuboid_track_observations_component_group="cuboids"
+                if cuboid_track_observations_component_group is None
+                else cuboid_track_observations_component_group,
+            )
+        else:
+            raise ValueError(f"Unknown profile: {profile}. Must be one of 'default', 'separate-sensors', 'separate-all")
+
     """Performs data conversion from NCore 3 to NCore 4 format"""
 
     @staticmethod
@@ -349,26 +438,26 @@ class NCore3To4:
         ## Time range selection (None means full range)
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
-        ## output store type
+        ## Output store type
         store_type: Literal["itar", "directory"] = "itar",  # valid values: ['itar', 'directory']
-        ## sensor selection (None means all available sensors of that type)
+        ## Sensor selection (None means all available sensors of that type)
         camera_ids: Optional[List[str]] = None,
         lidar_ids: Optional[List[str]] = None,
         radar_ids: Optional[List[str]] = None,
-        ## component target group overwrites
-        poses_component_group: Optional[str] = None,
-        intrinsics_component_group: Optional[str] = None,
-        masks_component_group: Optional[str] = None,
-        camera_component_groups: Dict[str, str] = {},  # indexed by camera_id
-        lidar_component_groups: Dict[str, str] = {},  # indexed by lidar_id
-        radar_component_groups: Dict[str, str] = {},  # indexed by radar_id
-        cuboid_track_observations_component_group: Optional[str] = None,
-        generic_meta_data: Dict[
-            str, JsonLike
-        ] = {},  # generic sequence meta-data (needs to be json-serializable) - will be merged with source generic meta data
+        ## Component target groups
+        component_groups: Optional[NCore3To4.ComponentGroups] = None,
+        ## Generic sequence meta-data (needs to be json-serializable) - will be merged with source generic meta data
+        generic_meta_data: Dict[str, JsonLike] = {},
     ) -> List[UPath]:
         """Converts the given V3 sequence (unconditionally rig-trajectory-based) into V4 format,
         storing the result into the given output directory, potentially overwriting component group names as specified"""
+
+        if component_groups is None:
+            # Use default profile if not specified
+            component_groups = NCore3To4.create_component_groups(
+                source_data_loader=source_data_loader,
+                profile="default",
+            )
 
         ## infer time range from input poses if required and validate time range selection
         source_poses = source_data_loader.get_poses()
@@ -410,7 +499,7 @@ class NCore3To4:
             poses_writer := store_writer.register_component_writer(
                 PosesComponent.Writer,
                 component_instance_name="default",
-                group_name=poses_component_group,
+                group_name=component_groups.poses_component_group,
             )
         ).store_dynamic_pose(
             source_frame_id="rig",
@@ -429,14 +518,14 @@ class NCore3To4:
         intrinsics_writer = store_writer.register_component_writer(
             IntrinsicsComponent.Writer,
             component_instance_name="default",
-            group_name=intrinsics_component_group,
+            group_name=component_groups.intrinsics_component_group,
         )
 
         ## create masks component
         masks_writer = store_writer.register_component_writer(
             MasksComponent.Writer,
             component_instance_name="default",
-            group_name=masks_component_group,
+            group_name=component_groups.masks_component_group,
         )
 
         ## iterate over all sensors, convert and store their data
@@ -449,7 +538,7 @@ class NCore3To4:
             intrinsics_writer=intrinsics_writer,
             masks_writer=masks_writer,
             camera_ids=camera_ids,
-            camera_component_groups=camera_component_groups,
+            camera_component_groups=component_groups.camera_component_groups,
         )
 
         # radars
@@ -458,7 +547,7 @@ class NCore3To4:
             store_writer=store_writer,
             poses_writer=poses_writer,
             radar_ids=radar_ids,
-            radar_component_groups=radar_component_groups,
+            radar_component_groups=component_groups.radar_component_groups,
         )
 
         # lidars (collect cuboid track observations to be stored into separate component)
@@ -469,14 +558,14 @@ class NCore3To4:
             intrinsics_writer=intrinsics_writer,
             source_poses=source_poses,
             lidar_ids=lidar_ids,
-            lidar_component_groups=lidar_component_groups,
+            lidar_component_groups=component_groups.lidar_component_groups,
         )
 
         # store cuboid track observations
         store_writer.register_component_writer(
             CuboidsComponent.Writer,
             "default",
-            cuboid_track_observations_component_group,
+            component_groups.cuboid_track_observations_component_group,
         ).store_observations(cuboid_track_observations)
 
         ## finalize

@@ -10,10 +10,11 @@
 import logging
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Literal, Optional, Tuple
 
 import click
+
+from upath import UPath
 
 from ncore.impl.common.common import time_bounds
 from ncore.impl.data.data3 import ShardDataLoader
@@ -31,6 +32,7 @@ class CLIBaseParams:
 
     output_dir: str
     store_type: Literal["itar", "directory"]
+    profile: Literal["default", "separate-sensors", "separate-all"]
     poses_component_group: Optional[str]
     intrinsics_component_group: Optional[str]
     camera_component_groups: Tuple[Tuple[str, str]]
@@ -71,14 +73,26 @@ class CLIBaseParams:
     show_default=True,
     help="Output store type",
 )
-@click.option("--poses-component-group", type=str, help="Target component group for 'poses'", default=None)
-@click.option("--intrinsics-component-group", type=str, help="Target component group for 'intrinsics'", default=None)
+@click.option(
+    "--profile",
+    type=click.Choice(["default", "separate-sensors", "separate-all"], case_sensitive=False),
+    default="separate-sensors",
+    show_default=True,
+    help=""""Output profile, one of:
+        - "default": All components defaults or overrides
+        - "separate-sensors": Each sensor gets its own group named "<sensor_id>", remaining components use overrides
+        - "separate-all": Each component type gets its own group named after the component type, e.g. "poses", "intrinsics", respecting overwrites if provided""",
+)
+@click.option("--poses-component-group", type=str, help="Target component group overwrite for 'poses'", default=None)
+@click.option(
+    "--intrinsics-component-group", type=str, help="Target component group overwrite for 'intrinsics'", default=None
+)
 @click.option(
     "--camera-component-group",
     "camera_component_groups",
     multiple=True,
     type=TupleType(2, ":"),
-    help="Target component group for camera sensors (multiple value option, indexed by camera_id)",
+    help="Target component group overwrite for camera sensors (multiple value option, indexed by camera_id)",
     default=[],
 )
 @click.option(
@@ -86,7 +100,7 @@ class CLIBaseParams:
     "lidar_component_groups",
     multiple=True,
     type=TupleType(2, ":"),
-    help="Target component group for lidar sensors (multiple value option, indexed by lidar_id)",
+    help="Target component group overwrite for lidar sensors (multiple value option, indexed by lidar_id)",
     default=[],
 )
 @click.option(
@@ -94,13 +108,13 @@ class CLIBaseParams:
     "radar_component_groups",
     multiple=True,
     type=TupleType(2, ":"),
-    help="Target component group for radar sensors (multiple value option, indexed by radar_id)",
+    help="Target component group overwrite for radar sensors (multiple value option, indexed by radar_id)",
     default=[],
 )
 @click.option(
     "--cuboid-track-observations-component-group",
     type=str,
-    help="Target component group for 'cuboid_track_observations'",
+    help="Target component group overwrite for 'cuboid_track_observations'",
     default=None,
 )
 @click.option("--no-cameras", is_flag=True, default=False, help="Disable exporting of any camera sensor")
@@ -171,17 +185,21 @@ def ncore_3to4(
         source_data_loader=loader,
         start_timestamp_us=start_timestamp_us,
         end_timestamp_us=end_timestamp_us,
-        output_dir_path=Path(params.output_dir),
+        output_dir_path=UPath(params.output_dir),
         store_type=params.store_type,
         camera_ids=camera_ids,
         lidar_ids=lidar_ids,
         radar_ids=radar_ids,
-        poses_component_group=params.poses_component_group,
-        intrinsics_component_group=params.intrinsics_component_group,
-        camera_component_groups=dict(params.camera_component_groups),
-        lidar_component_groups=dict(params.lidar_component_groups),
-        radar_component_groups=dict(params.radar_component_groups),
-        cuboid_track_observations_component_group=params.cuboid_track_observations_component_group,
+        component_groups=NCore3To4.create_component_groups(
+            source_data_loader=loader,
+            profile=params.profile,
+            poses_component_group=params.poses_component_group,
+            intrinsics_component_group=params.intrinsics_component_group,
+            camera_component_groups=dict(params.camera_component_groups),
+            lidar_component_groups=dict(params.lidar_component_groups),
+            radar_component_groups=dict(params.radar_component_groups),
+            cuboid_track_observations_component_group=params.cuboid_track_observations_component_group,
+        ),
     )
 
     logging.info(f"Wrote dataset to {ncore_4_paths}")
