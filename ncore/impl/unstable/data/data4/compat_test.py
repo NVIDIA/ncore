@@ -376,7 +376,6 @@ class TestCompatV3(unittest.TestCase):
         for obs in observations[:5]:  # Check first few
             self.assertIsNotNone(obs.track_id)
             self.assertIsNotNone(obs.class_id)
-            self.assertIsNotNone(obs.observation_id)
             self.assertIsNotNone(obs.timestamp_us)
             self.assertIsNotNone(obs.bbox3)
 

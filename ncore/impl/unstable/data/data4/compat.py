@@ -1358,7 +1358,6 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
                     # convert V3 FrameLabel3 to CuboidTrackObservation
                     CuboidTrackObservation(
                         track_id=frame_label.track_id,
-                        observation_id=frame_label.label_id,
                         class_id=frame_label.label_class,
                         timestamp_us=frame_label.timestamp_us,
                         # V3 cuboids labels are unconditionally relative to the

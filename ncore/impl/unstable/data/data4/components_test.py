@@ -426,7 +426,6 @@ class TestData4Reload(unittest.TestCase):
                     CuboidTrackObservation(
                         track_id="track-1",
                         class_id="car",
-                        observation_id="obs-1-1",
                         timestamp_us=int(0.3 * 1e6),
                         reference_frame_timestamp_us=int(0.5 * 1e6),
                         bbox3=BBox3(
@@ -441,7 +440,6 @@ class TestData4Reload(unittest.TestCase):
                     CuboidTrackObservation(
                         track_id="track-1",
                         class_id="car",
-                        observation_id="obs-1-2",
                         timestamp_us=int(0.4 * 1e6),
                         reference_frame_timestamp_us=int(1.0 * 1e6),
                         reference_frame_id=ref_lidar_id,

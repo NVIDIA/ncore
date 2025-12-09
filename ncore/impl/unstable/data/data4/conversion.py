@@ -327,7 +327,6 @@ class NCore3To4:
                         CuboidTrackObservation(
                             track_id=frame_label.track_id,
                             class_id=frame_label.label_class,
-                            observation_id=frame_label.label_id,
                             timestamp_us=frame_label.timestamp_us,
                             reference_frame_id=lidar_id,
                             reference_frame_timestamp_us=frame_timestamps_us[

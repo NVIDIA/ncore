@@ -178,7 +178,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
         )
 
         return FrameLabel3(
-            label_id=cuboid_track_observation.observation_id,
+            label_id=f"{cuboid_track_observation.track_id}_{cuboid_track_observation.timestamp_us}",
             track_id=cuboid_track_observation.track_id,
             label_class=cuboid_track_observation.class_id,
             bbox3=cuboid_track_observation.bbox3,
