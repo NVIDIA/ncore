@@ -21,7 +21,7 @@ from ncore.impl.data.data3 import ShardDataLoader
 from ncore.impl.data.types import FrameTimepoint
 
 from .compat import SequenceLoaderV3, SequenceLoaderV4
-from .components import SequenceComponentStoreReader
+from .components import SequenceComponentGroupsReader
 from .conversion import NCore3To4
 
 
@@ -438,7 +438,7 @@ class TestCompatV3V4Consistency(unittest.TestCase):
         )
 
         # Load V4 data
-        v4_reader = SequenceComponentStoreReader(output_paths)
+        v4_reader = SequenceComponentGroupsReader(output_paths)
         self.v4_loader = SequenceLoaderV4(v4_reader)
 
     def tearDown(self):
@@ -665,7 +665,7 @@ class TestCompatV4(unittest.TestCase):
         )
 
         # Load V4 data
-        self.v4_reader = SequenceComponentStoreReader(output_paths)
+        self.v4_reader = SequenceComponentGroupsReader(output_paths)
         self.loader = SequenceLoaderV4(self.v4_reader)
 
     def tearDown(self):

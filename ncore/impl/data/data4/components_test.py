@@ -42,8 +42,8 @@ from .components import (
     MasksComponent,
     PosesComponent,
     RadarSensorComponent,
-    SequenceComponentStoreReader,
-    SequenceComponentStoreWriter,
+    SequenceComponentGroupsReader,
+    SequenceComponentGroupsWriter,
 )
 from .types import CuboidTrackObservation
 
@@ -69,7 +69,7 @@ class TestData4Reload(unittest.TestCase):
         tempdir = tempfile.TemporaryDirectory()
 
         ## Create reference sequence
-        store_writer = SequenceComponentStoreWriter(
+        store_writer = SequenceComponentGroupsWriter(
             output_dir_path=UPath(tempdir.name),
             store_base_name=(ref_sequence_id := "some-sequence-name"),
             sequence_id=ref_sequence_id,
@@ -405,10 +405,10 @@ class TestData4Reload(unittest.TestCase):
         store_paths = store_writer.finalize()
 
         ## Simulated adding additional components by instantiating a new sequence writer from the existing meta-data
-        store_writer = SequenceComponentStoreWriter.from_reader(
+        store_writer = SequenceComponentGroupsWriter.from_reader(
             output_dir_path=store_writer._output_dir_path,
             store_base_name=store_writer._store_base_name,
-            sequence_reader=SequenceComponentStoreReader(store_paths, open_consolidated=open_consolidated),
+            sequence_reader=SequenceComponentGroupsReader(store_paths, open_consolidated=open_consolidated),
             store_type=store_type,
         )
 
@@ -459,7 +459,7 @@ class TestData4Reload(unittest.TestCase):
         store_paths += store_writer.finalize()
 
         ## Reload sequence and verify consistency
-        store_reader = SequenceComponentStoreReader(store_paths, open_consolidated=open_consolidated)
+        store_reader = SequenceComponentGroupsReader(store_paths, open_consolidated=open_consolidated)
 
         # check sequence data
         self.assertEqual(store_reader.sequence_id, ref_sequence_id)
@@ -992,7 +992,7 @@ class TestDataNewComponent(unittest.TestCase):
         Steps demonstrated:
         1. Create initial dataset with basic pose data
         2. Define a custom component (VelocityComponent) with reader/writer
-        3. Extend the dataset using SequenceComponentStoreWriter.from_reader()
+        3. Extend the dataset using SequenceComponentGroupsWriter.from_reader()
         4. Verify the extended dataset can be read correctly
         [test-only: 5. Test version compatibility (reader handling old/new versions)]
         """
@@ -1005,7 +1005,7 @@ class TestDataNewComponent(unittest.TestCase):
 
         print("\n=== Step 1: Creating initial dataset with pose data ===")
 
-        initial_store_writer = SequenceComponentStoreWriter(
+        initial_store_writer = SequenceComponentGroupsWriter(
             output_dir_path=UPath(tempdir.name),
             store_base_name=(sequence_id := "test-sequence"),
             sequence_id=sequence_id,
@@ -1124,7 +1124,7 @@ class TestDataNewComponent(unittest.TestCase):
         print("\n=== Step 3: Extending dataset with VelocityComponent ===")
 
         # First, open a reader to the initial dataset
-        initial_reader = SequenceComponentStoreReader(component_store_paths=initial_store_paths)
+        initial_reader = SequenceComponentGroupsReader(component_group_paths=initial_store_paths)
 
         # Verify we can read the initial data
         poses_readers = initial_reader.open_component_readers(PosesComponent.Reader)
@@ -1135,7 +1135,7 @@ class TestDataNewComponent(unittest.TestCase):
         # This is the KEY step: use from_reader() to create a writer with the same metadata
         # Note: Use the SAME output directory and base name to extend the existing dataset
         # The from_reader() method copies sequence metadata but NOT component data
-        extended_store_writer = SequenceComponentStoreWriter.from_reader(
+        extended_store_writer = SequenceComponentGroupsWriter.from_reader(
             sequence_reader=initial_reader,
             output_dir_path=UPath(tempdir.name),  # Same directory as initial
             store_base_name=sequence_id + "-extension",
@@ -1187,7 +1187,7 @@ class TestDataNewComponent(unittest.TestCase):
         print("\n=== Step 4: Verifying extended dataset ===")
 
         # Open a reader for the extended dataset
-        extended_reader = SequenceComponentStoreReader(component_store_paths=extended_store_paths)
+        extended_reader = SequenceComponentGroupsReader(component_group_paths=extended_store_paths)
 
         # Verify sequence metadata is preserved
         self.assertEqual(extended_reader.sequence_id, sequence_id)
@@ -1304,7 +1304,7 @@ class TestDataNewComponent(unittest.TestCase):
                 return np.array(self._group["accelerations"][:])
 
         # Test that v1 reader cannot read v2 data
-        v2_store_writer = SequenceComponentStoreWriter(
+        v2_store_writer = SequenceComponentGroupsWriter(
             output_dir_path=UPath(tempdir.name) / "v2",
             store_base_name="test_v2",
             sequence_id="test_v2",
@@ -1336,7 +1336,7 @@ class TestDataNewComponent(unittest.TestCase):
         v2_store_paths = v2_store_writer.finalize()
 
         # Try to open with v1 reader - should fail because it doesn't support v2
-        v2_reader = SequenceComponentStoreReader(component_store_paths=v2_store_paths)
+        v2_reader = SequenceComponentGroupsReader(component_group_paths=v2_store_paths)
 
         # This should return empty dict because v1 reader doesn't support v2
         v1_readers_for_v2 = v2_reader.open_component_readers(VelocityComponent.Reader)

@@ -24,7 +24,7 @@ from ncore.impl.data.data3 import ShardDataLoader
 from ncore.impl.data.types import FrameTimepoint
 
 from .compat import SequenceLoaderV3, SequenceLoaderV4
-from .components import SequenceComponentStoreReader
+from .components import SequenceComponentGroupsReader
 from .conversion import NCore3To4
 
 
@@ -97,7 +97,7 @@ class TestData3Converter(unittest.TestCase):
         self.assertGreater(len(output_paths), 0)
 
         # Verify we can load the converted data
-        reader = SequenceComponentStoreReader(output_paths)
+        reader = SequenceComponentGroupsReader(output_paths)
         loader = SequenceLoaderV4(reader)
         self.assertEqual(len(loader.camera_ids), 1)
 
@@ -119,7 +119,7 @@ class TestData3Converter(unittest.TestCase):
         )
 
         # Load converted data
-        v4_reader = SequenceComponentStoreReader(output_paths)
+        v4_reader = SequenceComponentGroupsReader(output_paths)
         v4_loader = SequenceLoaderV4(v4_reader)
 
         # Verify cameras were converted
@@ -166,7 +166,7 @@ class TestData3Converter(unittest.TestCase):
         )
 
         # Load
-        v4_reader = SequenceComponentStoreReader(output_paths)
+        v4_reader = SequenceComponentGroupsReader(output_paths)
         v4_loader = SequenceLoaderV4(v4_reader)
 
         v3_camera = self.v3_loader.get_camera_sensor(camera_id)
@@ -221,7 +221,7 @@ class TestData3Converter(unittest.TestCase):
         )
 
         # Load
-        v4_reader = SequenceComponentStoreReader(output_paths)
+        v4_reader = SequenceComponentGroupsReader(output_paths)
         v4_loader = SequenceLoaderV4(v4_reader)
 
         # Verify radars were converted
@@ -260,7 +260,7 @@ class TestData3Converter(unittest.TestCase):
         )
 
         # Load
-        v4_reader = SequenceComponentStoreReader(output_paths)
+        v4_reader = SequenceComponentGroupsReader(output_paths)
         v4_loader = SequenceLoaderV4(v4_reader)
 
         # Verify lidars were converted
@@ -298,7 +298,7 @@ class TestData3Converter(unittest.TestCase):
         )
 
         # Load
-        v4_reader = SequenceComponentStoreReader(output_paths)
+        v4_reader = SequenceComponentGroupsReader(output_paths)
         v4_loader = SequenceLoaderV4(v4_reader)
 
         v3_lidar = self.v3_loader.get_lidar_sensor(lidar_id)
@@ -388,7 +388,7 @@ class TestData3Converter(unittest.TestCase):
         )
 
         # Load
-        v4_reader = SequenceComponentStoreReader(output_paths)
+        v4_reader = SequenceComponentGroupsReader(output_paths)
         v4_loader = SequenceLoaderV4(v4_reader)
 
         v3_radar = self.v3_loader.get_radar_sensor(radar_id)
@@ -460,7 +460,7 @@ class TestData3Converter(unittest.TestCase):
         )
 
         # Load
-        v4_reader = SequenceComponentStoreReader(output_paths)
+        v4_reader = SequenceComponentGroupsReader(output_paths)
         v4_loader = SequenceLoaderV4(v4_reader)
 
         # Get common timestamp
@@ -503,7 +503,7 @@ class TestData3Converter(unittest.TestCase):
         )
 
         # Load
-        v4_reader = SequenceComponentStoreReader(output_paths)
+        v4_reader = SequenceComponentGroupsReader(output_paths)
         v4_loader = SequenceLoaderV4(v4_reader)
 
         # Check that V4 interval is within specified range
@@ -534,7 +534,7 @@ class TestData3Converter(unittest.TestCase):
         )
 
         # Load
-        v4_reader = SequenceComponentStoreReader(output_paths)
+        v4_reader = SequenceComponentGroupsReader(output_paths)
         v4_loader = SequenceLoaderV4(v4_reader)
 
         # Check that custom metadata is present
@@ -564,7 +564,7 @@ class TestData3Converter(unittest.TestCase):
         )
 
         # Load
-        v4_reader = SequenceComponentStoreReader(output_paths)
+        v4_reader = SequenceComponentGroupsReader(output_paths)
         v4_loader = SequenceLoaderV4(v4_reader)
 
         # Get sequence meta from both loaders
@@ -591,7 +591,7 @@ class TestData3Converter(unittest.TestCase):
         )
 
         # Load
-        v4_reader = SequenceComponentStoreReader(output_paths)
+        v4_reader = SequenceComponentGroupsReader(output_paths)
         v4_loader = SequenceLoaderV4(v4_reader)
 
         # Verify all converted sensors are accessible

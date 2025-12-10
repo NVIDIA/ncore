@@ -10,17 +10,30 @@
 
 from __future__ import annotations
 
+import concurrent
 import io
 import logging
 import sys
 
 from abc import ABC, abstractmethod
-from typing import Dict, Generator, List, Literal, Optional, Tuple, Type, TypeVar, Union, cast
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Literal, Optional, Tuple, Type, TypeVar, Union, cast
+
+import numpy as np
+import PIL.Image as PILImage
+import zarr
 
 from numcodecs import Blosc
+from upath import UPath
 
 from ncore.impl.common.common import HalfClosedInterval, MD5Hasher
+from ncore.impl.data import data, stores, types
 
+from .types import CuboidTrackObservation
+
+
+if TYPE_CHECKING:
+    import numpy.typing as npt  # type: ignore[import-not-found]
 
 if sys.version_info >= (3, 11):
     # Older python versions have issues with type-hints for nested types in
@@ -28,35 +41,22 @@ if sys.version_info >= (3, 11):
     # - alias these globally as a workaround
     from typing import Self
 
-import concurrent
-
-import numpy as np
-import PIL.Image as PILImage
-import zarr
-
-from upath import UPath
-
-from ncore.impl.data import data, stores, types
-
-from .types import CuboidTrackObservation
-
-
 VERSION = "4.0"
 
 
-class SequenceComponentStoreWriter:
-    """SequenceComponentWriter manages store groups for writing for NCore V4 / zarr data components for a single NCore sequence"""
+class SequenceComponentGroupsWriter:
+    """SequenceComponentGroupsWriter manages store groups for writing for NCore V4 / zarr data components for a single NCore sequence"""
 
     @staticmethod
     def from_reader(
         output_dir_path: UPath,
         store_base_name: str,
-        sequence_reader: SequenceComponentStoreReader,
+        sequence_reader: SequenceComponentGroupsReader,
         store_type: Literal["itar", "directory"] = "itar",  # valid values: ['itar', 'directory']
-    ) -> SequenceComponentStoreWriter:
-        """Creates a SequenceComponentStoreWriter from an existing SequenceComponentStoreReader instance to share consistent per-sequence meta-data"""
+    ) -> SequenceComponentGroupsWriter:
+        """Creates a SequenceComponentGroupsWriter from an existing SequenceComponentGroupsReader instance to share consistent per-sequence meta-data"""
 
-        return SequenceComponentStoreWriter(
+        return SequenceComponentGroupsWriter(
             output_dir_path=output_dir_path,
             store_base_name=store_base_name,
             sequence_id=sequence_reader.sequence_id,
@@ -79,7 +79,7 @@ class SequenceComponentStoreWriter:
         store_type: Literal["itar", "directory"] = "itar",  # valid values: ['itar', 'directory']
     ):
         """
-        Instantiate sequence store writer and initialize the default data groups and file stores for a given sequence and sensor IDs
+        Instantiate sequence component groups writer and initialize the default data groups and file stores for a given sequence and sensor IDs
         """
 
         self._output_dir_path = output_dir_path
@@ -232,16 +232,19 @@ class SequenceComponentStoreWriter:
         return component_writer
 
 
-class SequenceComponentStoreReader:
-    """SequenceComponentReader manages data component store groups for reading for NCore V4 / zarr data for a single NCore sequence"""
+class SequenceComponentGroupsReader:
+    """SequenceComponentReader manages data component groups for reading for NCore V4 / zarr data for a single NCore sequence"""
 
     def __init__(
-        self, component_store_paths: List[UPath], open_consolidated: bool = True, max_threads: int | None = None
+        self,
+        component_group_paths: List[UPath] | List[Path],
+        open_consolidated: bool = True,
+        max_threads: int | None = None,
     ):
         """Initialize a SequenceComponentReader for a virtual sequence represented by a list of components.
 
         Args:
-            component_store_paths: Universal paths / URLs to component stores to load, which need to represent a *single* sequence
+            component_group_paths: Universal paths / URLs to component groups to load, which need to represent a *single* sequence
             open_consolidated: If 'True', pre-load per-component meta-data when opening the components.
                                This is advisable if component data is accessed from *non-local*
                                storage to prevent latencies introduced when accessing the data.
@@ -251,18 +254,18 @@ class SequenceComponentStoreReader:
                                use interpreter-default number of threads for a ThreadPoolExecutor)
         """
 
-        assert len(component_store_paths), "No component inputs provided"
+        assert len(component_group_paths), "No component inputs provided"
 
         # Load component stores concurrently (to hide latency) and check for sequence consistency
         self._component_stores: Dict[str, Tuple[zarr.Group, UPath]] = {}  # use str as the generic path / URL type
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
 
-            def thread_load_component_store(component_store_path: UPath) -> Tuple[zarr.Group, UPath]:
+            def thread_load_component_store(component_store_path: UPath | Path) -> Tuple[zarr.Group, UPath]:
                 """Thread-executed shard opening"""
 
-                # Make sure paths are absolute at this point - in the future we might have fully-resolved URLs instead here, too
-                component_store_path = component_store_path.absolute()
+                # Make sure paths are absolute at this point
+                component_store_path = UPath(component_store_path).absolute()
 
                 logging.info(f"SequenceStoreReader: Loading component store {component_store_path}")
 
@@ -289,7 +292,7 @@ class SequenceComponentStoreReader:
             for future in concurrent.futures.as_completed(
                 [
                     executor.submit(thread_load_component_store, component_store_path)
-                    for component_store_path in component_store_paths
+                    for component_store_path in component_group_paths
                 ]
             ):
                 # Note: thread completion order is not relevant here
@@ -530,7 +533,7 @@ class PosesComponent:
             self,
             source_frame_id: str,
             target_frame_id: str,
-            pose: np.ndarray,  #: Source-to-target SE3 transformation (float32/64, [4,4])
+            pose: npt.NDArray[np.floating],  #: Source-to-target SE3 transformation (float32/64, [4,4])
         ) -> "Self":
             """Store a static pose (rigid transformation) between two named coordinate frames.
 
@@ -555,8 +558,10 @@ class PosesComponent:
             self,
             source_frame_id: str,
             target_frame_id: str,
-            poses: np.ndarray,  #: Source-to-target SE3 transformation trajectory (float32/64, [N,4,4])
-            timestamps_us: np.ndarray,  #: All source-to-target transformation timestamps of the trajectory (uint64, [N,])
+            poses: npt.NDArray[np.floating],  #: Source-to-target SE3 transformation trajectory (float32/64, [N,4,4])
+            timestamps_us: npt.NDArray[
+                np.uint64
+            ],  #: All source-to-target transformation timestamps of the trajectory (uint64, [N,])
         ) -> "Self":
             """Store a trajectory of dynamic poses (time-dependent rigid transformations) between two named coordinate frames.
 
@@ -602,13 +607,15 @@ class PosesComponent:
             """Returns true if the component version is supported by the reader"""
             return version == "v1"
 
-        def get_static_poses(self) -> Generator[Tuple[Tuple[str, str], np.ndarray]]:
+        def get_static_poses(self) -> Generator[Tuple[Tuple[str, str], npt.NDArray[np.floating]]]:
             """Returns all static poses (rigid transformations) between named coordinate frames, if available"""
 
             for key, static_pose in self._group["static_poses"].attrs.items():
                 yield eval(key), np.array(static_pose["pose"], dtype=static_pose["dtype"])
 
-        def get_dynamic_poses(self) -> Generator[Tuple[Tuple[str, str], Tuple[np.ndarray, np.ndarray]]]:
+        def get_dynamic_poses(
+            self,
+        ) -> Generator[Tuple[Tuple[str, str], Tuple[npt.NDArray[np.floating], npt.NDArray[np.uint64]]]]:
             """Returns all dynamic poses (time-dependent rigid transformations) between named coordinate frames, if available"""
 
             for key, dynamic_poses in self._group["dynamic_poses"].attrs.items():
@@ -620,7 +627,7 @@ class PosesComponent:
                     ),
                 )
 
-        def get_static_pose(self, source_frame_id: str, target_frame_id: str) -> np.ndarray:
+        def get_static_pose(self, source_frame_id: str, target_frame_id: str) -> npt.NDArray[np.floating]:
             """Returns static pose (rigid transformation) between two named coordinate frames, if available"""
 
             if (
@@ -632,7 +639,9 @@ class PosesComponent:
 
             return np.array(static_pose["pose"], dtype=np.float64)
 
-        def get_dynamic_pose(self, source_frame_id: str, target_frame_id: str) -> Tuple[np.ndarray, np.ndarray]:
+        def get_dynamic_pose(
+            self, source_frame_id: str, target_frame_id: str
+        ) -> Tuple[npt.NDArray[np.floating], npt.NDArray[np.uint64]]:
             """Returns dynamic poses (time-dependent rigid transformations) between two named coordinate frames, if available"""
 
             if (
@@ -847,7 +856,7 @@ class BaseSensorComponentWriter(ComponentWriter):
     def _get_frame_group(
         self,
         # end-of-frame timestamp, or start-of-frame / end-of-frame timestamps
-        timestamps_us: Union[int, np.ndarray],
+        timestamps_us: Union[int, npt.NDArray[np.uint64]],
     ) -> zarr.Group:
         """Returns the group of a frame, initializing it if required"""
 
@@ -861,9 +870,9 @@ class BaseSensorComponentWriter(ComponentWriter):
     def _store_base_frame(
         self,
         # start-of-frame / end-of-frame timestamps
-        frame_timestamps_us: np.ndarray,
+        frame_timestamps_us: npt.NDArray[np.uint64],
         # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
-        generic_data: Dict[str, np.ndarray],
+        generic_data: Dict[str, npt.NDArray[Any]],
         generic_meta_data: Dict[str, data.JsonLike],
     ) -> zarr.Group:
         # Sanity / timestamp consistency checks
@@ -922,7 +931,7 @@ class BaseSensorComponentReader(ComponentReader):
     def _get_frame_group(
         self,
         # end-of-frame timestamp, or start-of-frame / end-of-frame timestamps
-        timestamps_us: Union[int, np.ndarray],
+        timestamps_us: Union[int, npt.NDArray[np.uint64]],
     ) -> zarr.Group:
         """Returns the group of a frame"""
 
@@ -934,14 +943,14 @@ class BaseSensorComponentReader(ComponentReader):
         return self._group["frames"][str(frame_id)]
 
     @property
-    def frames_timestamps_us(self) -> np.ndarray:
+    def frames_timestamps_us(self) -> npt.NDArray[np.uint64]:
         return np.array(self._group["frames"].attrs["frames_timestamps_us"], dtype=np.uint64)
 
     @property
     def frames_count(self) -> int:
         return len(self._frames_timestamps_us)
 
-    def get_frame_timestamps_us(self, timestamp_us: int) -> np.ndarray:
+    def get_frame_timestamps_us(self, timestamp_us: int) -> npt.NDArray[np.uint64]:
         return self._frame_end_to_frame_timestamps_us[timestamp_us]
 
     # Generic per-frame data
@@ -955,7 +964,7 @@ class BaseSensorComponentReader(ComponentReader):
 
         return name in self.get_frame_generic_data_names(timestamp_us)
 
-    def get_frame_generic_data(self, timestamp_us: int, name: str) -> np.ndarray:
+    def get_frame_generic_data(self, timestamp_us: int, name: str) -> npt.NDArray[Any]:
         """Returns generic frame-data for a specific frame and name"""
 
         return np.array(self._get_frame_group(timestamp_us)["generic_data"][name])
@@ -972,14 +981,14 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
     def _store_frame_ray_bundle(
         self,
         # start-of-frame / end-of-frame timestamps
-        frame_timestamps_us: np.ndarray,
+        frame_timestamps_us: npt.NDArray[np.uint64],
         # number of rays and returns per ray
         n_rays: int,
         n_returns: int,
         # per-ray data components with N leading dimension along with chunk specifiers
-        ray_data: Dict[str, Tuple[np.ndarray, Tuple[int, ...]]],
+        ray_data: Dict[str, Tuple[npt.NDArray[Any], Tuple[int, ...]]],
         # per-return data components with (N, R) leading dimension along with chunk specifiers. Non-existing values are indicated via NaNs
-        return_data: Dict[str, Tuple[np.ndarray, Tuple[int, ...]]],
+        return_data: Dict[str, Tuple[npt.NDArray[np.float32], Tuple[int, ...]]],
     ) -> None:
         ## Initialize ray bundle group
         (ray_bundle_group := self._get_frame_group(frame_timestamps_us).create_group("ray_bundle")).attrs.put(
@@ -1048,9 +1057,9 @@ class BaseRayBundleSensorComponentReader(BaseSensorComponentReader):
     def has_frame_ray_bundle_data(self, timestamp_us: int, name: str) -> bool:
         """Signals if named ray bundle data exists for a frame"""
 
-        return name in self._get_ray_bundle_group(timestamp_us).keys()
+        return name in self._get_ray_bundle_group(timestamp_us)
 
-    def get_frame_ray_bundle_data(self, timestamp_us: int, name: str) -> np.ndarray:
+    def get_frame_ray_bundle_data(self, timestamp_us: int, name: str) -> npt.NDArray[Any]:
         """Returns named ray bundle data for a frame"""
 
         return np.array(self._get_ray_bundle_group(timestamp_us)[name])
@@ -1074,9 +1083,11 @@ class BaseRayBundleSensorComponentReader(BaseSensorComponentReader):
     def has_frame_ray_bundle_return_data(self, timestamp_us: int, name: str) -> bool:
         """Signals if named ray bundle return data exists for a frame"""
 
-        return name in self._get_ray_bundle_returns_group(timestamp_us).keys()
+        return name in self._get_ray_bundle_returns_group(timestamp_us)
 
-    def get_frame_ray_bundle_return_data(self, timestamp_us: int, name: str, return_index: Optional[int]) -> np.ndarray:
+    def get_frame_ray_bundle_return_data(
+        self, timestamp_us: int, name: str, return_index: Optional[int]
+    ) -> npt.NDArray[np.float32]:
         """Returns named ray bundle return data for a frame, optionally indexed by return index to accelerate data-retrieval"""
 
         return_array = self._get_ray_bundle_returns_group(timestamp_us)[
@@ -1113,9 +1124,9 @@ class CameraSensorComponent:
             image_binary_data: bytes,
             image_format: str,
             # start-of-frame / end-of-frame timestamps
-            frame_timestamps_us: np.ndarray,
+            frame_timestamps_us: npt.NDArray[np.uint64],
             # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
-            generic_data: Dict[str, np.ndarray],
+            generic_data: Dict[str, npt.NDArray[Any]],
             generic_meta_data: Dict[str, data.JsonLike],
         ) -> "Self":
             # Initialize frame
@@ -1185,16 +1196,22 @@ class LidarSensorComponent:
         def store_frame(
             self,
             # ray-associated data for N rays (data common to all returns)
-            direction: np.ndarray,  # per-ray unit-norm direction vectors in sensor frame at measure time (raw / not motion-compensated, needs to have unit norm) (float32, [N, 3])
-            timestamp_us: np.ndarray,  # per-ray timestamp in microseconds (uint64, [N])
-            model_element: Optional[np.ndarray],  # per-ray model element indices, if applicable (uint16, [N, 2])
+            direction: npt.NDArray[
+                np.float32
+            ],  # per-ray unit-norm direction vectors in sensor frame at measure time (raw / not motion-compensated, needs to have unit norm) (float32, [N, 3])
+            timestamp_us: npt.NDArray[np.uint64],  # per-ray timestamp in microseconds (uint64, [N])
+            model_element: Optional[
+                npt.NDArray[np.uint16]
+            ],  # per-ray model element indices, if applicable (uint16, [N, 2])
             # per-ray return data for R returns - non-existing values are indicated via NaNs
-            distance_m: np.ndarray,  # per-point metric distance along the ray at measure time time (raw / not motion-compensated, needs to be non-negative) (float32, [R, N])
-            intensity: np.ndarray,  # per-point intensity normalized to [0.0, 1.0] range (float32, [R, N])
+            distance_m: npt.NDArray[
+                np.float32
+            ],  # per-point metric distance along the ray at measure time time (raw / not motion-compensated, needs to be non-negative) (float32, [R, N])
+            intensity: npt.NDArray[np.float32],  # per-point intensity normalized to [0.0, 1.0] range (float32, [R, N])
             # start-of-frame / end-of-frame timestamps
-            frame_timestamps_us: np.ndarray,
+            frame_timestamps_us: npt.NDArray[np.uint64],
             # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
-            generic_data: Dict[str, np.ndarray],
+            generic_data: Dict[str, npt.NDArray[Any]],
             generic_meta_data: Dict[str, data.JsonLike],
         ) -> "Self":
             ## Sanity / consistency checks
@@ -1211,7 +1228,7 @@ class LidarSensorComponent:
             self._store_base_frame(frame_timestamps_us, generic_data, generic_meta_data)
 
             ## Per frame data
-            ray_data: Dict[str, Tuple[np.ndarray, Tuple[int, ...]]] = {
+            ray_data: Dict[str, Tuple[npt.NDArray[Any], Tuple[int, ...]]] = {
                 "direction": (direction, direction.shape),
             }
 
@@ -1230,7 +1247,7 @@ class LidarSensorComponent:
 
             ## Per return data
 
-            return_data: Dict[str, Tuple[np.ndarray, Tuple[int, ...]]] = {}
+            return_data: Dict[str, Tuple[npt.NDArray[np.float32], Tuple[int, ...]]] = {}
 
             # distance
             assert distance_m.ndim == 2
@@ -1288,14 +1305,18 @@ class RadarSensorComponent:
         def store_frame(
             self,
             # ray-associated data for N rays (data common to all returns)
-            direction: np.ndarray,  # per-point unit-norm direction vectors in sensor frame at measure time (raw / not motion-compensated, needs to have unit norm) (float32, [N, 3])
-            timestamp_us: np.ndarray,  # per-point timestamp in microseconds (uint64, [N])
+            direction: npt.NDArray[
+                np.float32
+            ],  # per-point unit-norm direction vectors in sensor frame at measure time (raw / not motion-compensated, needs to have unit norm) (float32, [N, 3])
+            timestamp_us: npt.NDArray[np.uint64],  # per-point timestamp in microseconds (uint64, [N])
             # per-ray return data for R returns - non-existing values are indicated via NaNs
-            distance_m: np.ndarray,  # per-point metric distance along the ray at measure time time (raw / not motion-compensated, needs to be non-negative) (float32, [R, N])
+            distance_m: npt.NDArray[
+                np.float32
+            ],  # per-point metric distance along the ray at measure time time (raw / not motion-compensated, needs to be non-negative) (float32, [R, N])
             # start-of-frame / end-of-frame timestamps
-            frame_timestamps_us: np.ndarray,
+            frame_timestamps_us: npt.NDArray[np.uint64],
             # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
-            generic_data: Dict[str, np.ndarray],
+            generic_data: Dict[str, npt.NDArray[Any]],
             generic_meta_data: Dict[str, data.JsonLike],
         ) -> "Self":
             ## Sanity / consistency checks
@@ -1312,7 +1333,7 @@ class RadarSensorComponent:
             self._store_base_frame(frame_timestamps_us, generic_data, generic_meta_data)
 
             ## Per frame data
-            ray_data: Dict[str, Tuple[np.ndarray, Tuple[int, ...]]] = {
+            ray_data: Dict[str, Tuple[npt.NDArray[Any], Tuple[int, ...]]] = {
                 "direction": (direction, direction.shape),
             }
 
@@ -1326,7 +1347,7 @@ class RadarSensorComponent:
 
             ## Per return data
 
-            return_data: Dict[str, Tuple[np.ndarray, Tuple[int, ...]]] = {}
+            return_data: Dict[str, Tuple[npt.NDArray[np.float32], Tuple[int, ...]]] = {}
 
             # distance
             assert distance_m.ndim == 2

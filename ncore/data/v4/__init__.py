@@ -10,7 +10,8 @@
 
 """Package exposing methods related to NCORE's V4 data interaction APIs"""
 
-from ncore.impl.unstable.data.data4.components import (
+from ncore.impl.data.data4.compat import SequenceLoaderV3, SequenceLoaderV4
+from ncore.impl.data.data4.components import (
     CameraSensorComponent,
     ComponentReader,
     ComponentWriter,
@@ -20,14 +21,17 @@ from ncore.impl.unstable.data.data4.components import (
     MasksComponent,
     PosesComponent,
     RadarSensorComponent,
-    SequenceComponentStoreReader,
-    SequenceComponentStoreWriter,
+    SequenceComponentGroupsReader,
+    SequenceComponentGroupsWriter,
 )
+from ncore.impl.data.data4.conversion import NCore3To4
+from ncore.impl.data.data4.types import CuboidTrackObservation
 
 
 __all__ = [
-    "SequenceComponentStoreWriter",
-    "SequenceComponentStoreReader",
+    # component APIs
+    "SequenceComponentGroupsWriter",
+    "SequenceComponentGroupsReader",
     "ComponentWriter",
     "ComponentReader",
     "PosesComponent",
@@ -37,4 +41,11 @@ __all__ = [
     "LidarSensorComponent",
     "RadarSensorComponent",
     "CuboidsComponent",
+    # compat APIs
+    "SequenceLoaderV3",
+    "SequenceLoaderV4",
+    # conversion APIs
+    "NCore3To4",
+    # types
+    "CuboidTrackObservation",
 ]

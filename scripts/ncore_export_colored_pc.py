@@ -23,10 +23,10 @@ from point_cloud_utils import TriangleMesh
 from ncore.impl.common.transformations import transform_point_cloud
 from ncore.impl.data import types
 from ncore.impl.data.data3 import ShardDataLoader
+from ncore.impl.data.data4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
+from ncore.impl.data.data4.components import SequenceComponentGroupsReader
 from ncore.impl.data.util import padded_index_string
 from ncore.impl.sensors.camera import CameraModel
-from ncore.impl.unstable.data.data4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
-from ncore.impl.unstable.data.data4.components import SequenceComponentStoreReader
 
 
 @dataclass(kw_only=True, slots=True, frozen=True)
@@ -149,7 +149,7 @@ def v3(
 
 @cli.command()
 @click.option(
-    "component_stores", "--component-store", multiple=True, type=str, help="Data component store paths", required=True
+    "component_groups", "--component-group", multiple=True, type=str, help="Data component group paths", required=True
 )
 @click.option("--poses-component-group", type=str, help="Component group for 'poses'", default="default")
 @click.option("--intrinsics-component-group", type=str, help="Component group for 'intrinsics'", default="default")
@@ -163,7 +163,7 @@ def v3(
 @click.pass_context
 def v4(
     ctx,
-    component_stores: Tuple[str, ...],
+    component_groups: Tuple[str, ...],
     poses_component_group: str,
     intrinsics_component_group: str,
     masks_component_group: str,
@@ -172,7 +172,7 @@ def v4(
     """Export colored PLY files from NCore V4 (component-based) sequence data.
 
     Args:
-        component_stores: Paths to V4 component store files (can specify multiple)
+        component_groups: Paths to V4 component groups (can specify multiple)
         poses_component_group: Name of the poses component group to use
         intrinsics_component_group: Name of the intrinsics component group to use
         masks_component_group: Name of the masks component group to use
@@ -180,8 +180,8 @@ def v4(
     """
     params: CLIBaseParams = ctx.obj
 
-    loader = SequenceComponentStoreReader(
-        [Path(store_path) for store_path in component_stores],
+    loader = SequenceComponentGroupsReader(
+        [Path(group_path) for group_path in component_groups],
     )
 
     run(

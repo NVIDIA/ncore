@@ -31,7 +31,7 @@ The compatibility layer handles differences between V3 and V4 formats including:
 
 Example:
     # Load V4 data
-    reader = SequenceComponentStoreReader([Path("file.zarr.itar"), Path("some/folder.zarr")])
+    reader = SequenceComponentGroupsReader([Path("file.zarr.itar"), Path("some/folder.zarr")])
     loader = SequenceLoaderV4(reader)
 
     # Load V3 data
@@ -47,7 +47,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, Generator, List, Optional, Protocol, Tuple, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Protocol, Tuple, Union, cast
 
 import numpy as np
 import PIL.Image as PILImage
@@ -55,17 +55,12 @@ import PIL.Image as PILImage
 from typing_extensions import override
 from upath import UPath
 
-
-if TYPE_CHECKING:
-    import numpy.typing as npt  # type: ignore[import-not-found]
-
 from ncore.impl.common.common import HalfClosedInterval, unpack_optional
 from ncore.impl.common.transformations import MotionCompensator, PoseGraphInterpolator
 from ncore.impl.data import data3, types, util
 from ncore.impl.data.data import JsonLike
 from ncore.impl.data.data3 import LidarSensor, ShardDataLoader
-from ncore.impl.data.types import FrameTimepoint
-from ncore.impl.unstable.data.data4.components import (
+from ncore.impl.data.data4.components import (
     BaseRayBundleSensorComponentReader,
     CameraSensorComponent,
     CuboidsComponent,
@@ -74,9 +69,14 @@ from ncore.impl.unstable.data.data4.components import (
     MasksComponent,
     PosesComponent,
     RadarSensorComponent,
-    SequenceComponentStoreReader,
+    SequenceComponentGroupsReader,
 )
-from ncore.impl.unstable.data.data4.types import CuboidTrackObservation
+from ncore.impl.data.data4.types import CuboidTrackObservation
+from ncore.impl.data.types import FrameTimepoint
+
+
+if TYPE_CHECKING:
+    import numpy.typing as npt  # type: ignore[import-not-found]
 
 
 class SequenceLoaderProtocol(Protocol):
@@ -163,11 +163,11 @@ class SensorProtocol(Protocol):
         ...
 
     @property
-    def frames_timestamps_us(self) -> np.ndarray:
+    def frames_timestamps_us(self) -> npt.NDArray[np.uint64]:
         """The start/end timestamps of the frames associated with the sensor [(N,2) array]"""
         ...
 
-    def get_frames_timestamps_us(self, frame_timepoint: FrameTimepoint = FrameTimepoint.END) -> np.ndarray:
+    def get_frames_timestamps_us(self, frame_timepoint: FrameTimepoint = FrameTimepoint.END) -> npt.NDArray[np.uint64]:
         """Returns the timestamps of all frames at the specified frame-relative timepoint (start or end) [shape (N,)]"""
 
         return self.frames_timestamps_us[:, frame_timepoint.value]
@@ -183,7 +183,7 @@ class SensorProtocol(Protocol):
         self._pose_graph = pose_graph
 
     @property
-    def T_sensor_rig(self) -> Optional[np.ndarray]:
+    def T_sensor_rig(self) -> Optional[npt.NDArray[np.floating]]:
         """Return static extrinsic transformation from sensor to rig coordinate frame.
 
         Returns the 4x4 homogeneous transformation matrix T_sensor_rig that transforms
@@ -203,7 +203,7 @@ class SensorProtocol(Protocol):
 
     def get_frame_T_sensor_world(
         self, frame_index: int, frame_timepoint: FrameTimepoint = FrameTimepoint.END
-    ) -> np.ndarray:
+    ) -> npt.NDArray[np.floating]:
         """Evaluates the sensor-to-world pose for a specific frame and frame timepoint (start or end) [(4,4) array]"""
 
         # Rely on a special case of the generic frame pose evaluation
@@ -219,9 +219,9 @@ class SensorProtocol(Protocol):
         self,
         source_node: str,
         target_node: str,
-        frame_indices: np.ndarray,
+        frame_indices: npt.NDArray[np.integer],
         frame_timepoint: Optional[FrameTimepoint] = None,
-    ) -> np.ndarray:
+    ) -> npt.NDArray[np.floating]:
         """Evaluates relative poses at timestamps inferred from frame indices.
 
         Computes transformation matrices T_source_target that transform points from the
@@ -260,7 +260,7 @@ class SensorProtocol(Protocol):
         """Signals if named generic frame-data exists"""
         ...
 
-    def get_frame_generic_data(self, frame_index: int, name: str) -> np.ndarray:
+    def get_frame_generic_data(self, frame_index: int, name: str) -> npt.NDArray[Any]:
         """Returns generic frame-data for a specific frame and name"""
         ...
 
@@ -326,7 +326,7 @@ class CameraSensorProtocol(SensorProtocol, Protocol):
         """Returns the frame's decoded image data"""
         return self.get_frame_data(frame_index).get_decoded_image()
 
-    def get_frame_image_array(self, frame_index: int) -> np.ndarray:
+    def get_frame_image_array(self, frame_index: int) -> npt.NDArray[np.uint8]:
         """Returns decoded image data as array [W,H,C]"""
         return np.asarray(self.get_frame_image(frame_index))
 
@@ -400,8 +400,8 @@ class RayBundleSensorProtocol(SensorProtocol, Protocol):
         """
 
         motion_compensation: bool
-        xyz_m_start: Optional[np.ndarray]
-        xyz_m_end: np.ndarray
+        xyz_m_start: Optional[npt.NDArray[np.floating]]
+        xyz_m_end: npt.NDArray[np.floating]
 
     def get_frame_point_cloud(
         self, frame_index: int, motion_compensation: bool, with_start_points: bool, return_index: int = 0
@@ -474,14 +474,14 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
 
     def __init__(
         self,
-        reader: SequenceComponentStoreReader,
+        reader: SequenceComponentGroupsReader,
         # Component group names to load
         poses_component_group_name: str = "default",
         intrinsics_component_group_name: str = "default",
         masks_component_group_name: str = "default",
         cuboids_component_group_name: str = "default",
     ):
-        self._reader: SequenceComponentStoreReader = reader
+        self._reader: SequenceComponentGroupsReader = reader
 
         # open all default component readers
         assert poses_component_group_name in (
@@ -616,7 +616,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
 
         @property
         @override
-        def frames_timestamps_us(self) -> np.ndarray:
+        def frames_timestamps_us(self) -> npt.NDArray[np.uint64]:
             return self._frames_timestamps_us
 
         # Generic per-frame data
@@ -637,7 +637,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             )
 
         @override
-        def get_frame_generic_data(self, frame_index: int, name: str) -> np.ndarray:
+        def get_frame_generic_data(self, frame_index: int, name: str) -> npt.NDArray[Any]:
             """Returns generic frame-data for a specific frame and name"""
 
             return self._reader.get_frame_generic_data(
@@ -1037,7 +1037,7 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
                     ]
                     for frame_idx in sensor.get_frame_index_range()
                 ],
-                dtype=np.int64,
+                dtype=np.uint64,
             )
 
         @property
@@ -1052,7 +1052,7 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
 
         @property
         @override
-        def frames_timestamps_us(self) -> np.ndarray:
+        def frames_timestamps_us(self) -> npt.NDArray[np.uint64]:
             return self._frames_timestamps_us
 
         # Generic per-frame data
@@ -1069,7 +1069,7 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
             return self._sensor.has_frame_generic_data(frame_index, name)
 
         @override
-        def get_frame_generic_data(self, frame_index: int, name: str) -> np.ndarray:
+        def get_frame_generic_data(self, frame_index: int, name: str) -> npt.NDArray[Any]:
             """Returns generic frame-data for a specific frame and name"""
 
             return self._sensor.get_frame_generic_data(frame_index, name)
@@ -1083,14 +1083,14 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
         # Compat-API pose access
         @property
         @override
-        def T_sensor_rig(self) -> Optional[np.ndarray]:
+        def T_sensor_rig(self) -> Optional[npt.NDArray[np.floating]]:
             # Return static extrinsic (unconditionally available in V3)
             return self._sensor.get_T_sensor_rig()
 
         @override
         def get_frame_T_sensor_world(
             self, frame_index: int, frame_timepoint: FrameTimepoint = FrameTimepoint.END
-        ) -> np.ndarray:
+        ) -> npt.NDArray[np.floating]:
             # Rely on hardcoded poses in V3 API
             return self._sensor.get_frame_T_sensor_world(frame_index, frame_timepoint)
 

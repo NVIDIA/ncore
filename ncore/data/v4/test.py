@@ -11,4 +11,4 @@
 def test_import_package():
     """Make sure package can be imported"""
 
-    import ncore.unstable.data.v4
+    import ncore.data.v4

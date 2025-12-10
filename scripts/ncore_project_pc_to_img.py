@@ -25,11 +25,11 @@ from ncore.impl.common.transformations import MotionCompensator, se3_inverse, tr
 from ncore.impl.common.visualization import plot_points_on_image
 from ncore.impl.data import types
 from ncore.impl.data.data3 import ShardDataLoader
+from ncore.impl.data.data4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
+from ncore.impl.data.data4.components import SequenceComponentGroupsReader
 from ncore.impl.data.util import padded_index_string
 from ncore.impl.sensors.camera import CameraModel
 from ncore.impl.sensors.lidar import StructuredLidarModel
-from ncore.impl.unstable.data.data4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
-from ncore.impl.unstable.data.data4.components import SequenceComponentStoreReader
 from scripts.util import NPArrayParamType
 
 
@@ -173,7 +173,7 @@ def v3(
 
 @cli.command()
 @click.option(
-    "component_stores", "--component-store", multiple=True, type=str, help="Data component store paths", required=True
+    "component_groups", "--component-group", multiple=True, type=str, help="Data component group paths", required=True
 )
 @click.option("--poses-component-group", type=str, help="Component group for 'poses'", default="default")
 @click.option("--intrinsics-component-group", type=str, help="Component group for 'intrinsics'", default="default")
@@ -187,7 +187,7 @@ def v3(
 @click.pass_context
 def v4(
     ctx,
-    component_stores: Tuple[str, ...],
+    component_groups: Tuple[str, ...],
     poses_component_group: str,
     intrinsics_component_group: str,
     masks_component_group: str,
@@ -195,8 +195,8 @@ def v4(
 ) -> None:
     params: CLIBaseParams = ctx.obj
 
-    loader = SequenceComponentStoreReader(
-        [Path(store_path) for store_path in component_stores],
+    loader = SequenceComponentGroupsReader(
+        [Path(group_path) for group_path in component_groups],
         open_consolidated=params.open_consolidated,
     )
 

@@ -561,11 +561,11 @@ V4 sequences are loaded by specifying one or more component store paths:
 
 .. code-block:: python
 
-   from ncore.unstable.data.v4 import SequenceComponentStoreReader
+   from ncore.data.v4 import SequenceComponentGroupsReader
    from pathlib import Path
    
    # Load sequence from multiple component stores
-   reader = SequenceComponentStoreReader([
+   reader = SequenceComponentGroupsReader([
        Path("ncore4.zarr.itar"),           # default components
        Path("ncore4-calibv2.zarr.itar"),   # alternative calibration
    ])
@@ -598,6 +598,6 @@ and preservation of all metadata and calibrations.
 .. [#f4] NCore V4 component stores are represented by
          `zarr <https://zarr.readthedocs.io/en/stable/>`_ groups within
          either a custom ``.zarr.itar`` archive format or plain directory
-         stores. The ``SequenceComponentStoreReader`` and
-         ``SequenceComponentStoreWriter`` types provide the primary APIs for
+         stores. The ``SequenceComponentGroupsReader`` and
+         ``SequenceComponentGroupsWriter`` types provide the primary APIs for
          loading and creating V4 data.

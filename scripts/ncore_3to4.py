@@ -18,7 +18,7 @@ from upath import UPath
 
 from ncore.impl.common.common import time_bounds
 from ncore.impl.data.data3 import ShardDataLoader
-from ncore.impl.unstable.data.data4.conversion import NCore3To4
+from ncore.impl.data.data4.conversion import NCore3To4
 from scripts.util import TupleType
 
 

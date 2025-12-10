@@ -23,8 +23,7 @@ from ncore.impl.common.common import HalfClosedInterval, log_progress
 from ncore.impl.common.transformations import MotionCompensator
 from ncore.impl.data.data import JsonLike
 from ncore.impl.data.data3 import Poses, ShardDataLoader
-from ncore.impl.data.types import FrameTimepoint
-from ncore.impl.unstable.data.data4.components import (
+from ncore.impl.data.data4.components import (
     CameraSensorComponent,
     CuboidsComponent,
     IntrinsicsComponent,
@@ -32,9 +31,10 @@ from ncore.impl.unstable.data.data4.components import (
     MasksComponent,
     PosesComponent,
     RadarSensorComponent,
-    SequenceComponentStoreWriter,
+    SequenceComponentGroupsWriter,
 )
-from ncore.impl.unstable.data.data4.types import CuboidTrackObservation
+from ncore.impl.data.data4.types import CuboidTrackObservation
+from ncore.impl.data.types import FrameTimepoint
 
 
 _logger = logging.getLogger(__name__)
@@ -134,7 +134,7 @@ class NCore3To4:
     @staticmethod
     def _convert_cameras(
         source_data_loader: ShardDataLoader,
-        store_writer: SequenceComponentStoreWriter,
+        store_writer: SequenceComponentGroupsWriter,
         poses_writer: PosesComponent.Writer,
         intrinsics_writer: IntrinsicsComponent.Writer,
         masks_writer: MasksComponent.Writer,
@@ -216,7 +216,7 @@ class NCore3To4:
     @staticmethod
     def _convert_radars(
         source_data_loader: ShardDataLoader,
-        store_writer: SequenceComponentStoreWriter,
+        store_writer: SequenceComponentGroupsWriter,
         poses_writer: PosesComponent.Writer,
         radar_ids: Optional[List[str]],
         radar_component_groups: Dict[str, str],
@@ -298,7 +298,7 @@ class NCore3To4:
     @staticmethod
     def _convert_lidars(
         source_data_loader: ShardDataLoader,
-        store_writer: SequenceComponentStoreWriter,
+        store_writer: SequenceComponentGroupsWriter,
         poses_writer: PosesComponent.Writer,
         intrinsics_writer: IntrinsicsComponent.Writer,
         source_poses: Poses,
@@ -485,7 +485,7 @@ class NCore3To4:
         source_generic_meta_data["calibration_type"] = source_data_loader.get_calibration_type()
         source_generic_meta_data["egomotion_type"] = source_data_loader.get_egomotion_type()
 
-        store_writer = SequenceComponentStoreWriter(
+        store_writer = SequenceComponentGroupsWriter(
             output_dir_path=output_dir_path,
             store_base_name=source_data_loader.get_sequence_id(),
             sequence_id=source_data_loader.get_sequence_id(),
