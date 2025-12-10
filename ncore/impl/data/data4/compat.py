@@ -286,12 +286,24 @@ class SensorProtocol(Protocol):
 
         return int(self.frames_timestamps_us[frame_index, frame_timepoint.value])
 
-    def get_closest_frame_index(
-        self, timestamp_us: int, relative_frame_timepoint: FrameTimepoint = FrameTimepoint.END
-    ) -> int:
-        """Given a timestamp, returns the frame index of the closes frame based on the specified relative frame timepoint (start or end)"""
+    def get_closest_frame_index(self, timestamp_us: int, relative_frame_time: float = 1.0) -> int:
+        """Given a timestamp, returns the frame index of the closest frame based on the specified relative frame time-point (0.0 ~= start-of-frames / 1.0 ~= end-of-frames)"""
 
-        return util.closest_index_sorted(self.frames_timestamps_us[:, relative_frame_timepoint.value], timestamp_us)
+        # Special cases: avoid computation for boundary values
+        if relative_frame_time == 0.0:
+            target_timestamps_us = self.frames_timestamps_us[:, 0]
+        elif relative_frame_time == 1.0:
+            target_timestamps_us = self.frames_timestamps_us[:, 1]
+        else:
+            assert 0.0 <= relative_frame_time <= 1.0, (
+                f"relative_frame_time must be in [0, 1], got {relative_frame_time}"
+            )
+            target_timestamps_us = (
+                self.frames_timestamps_us[:, 0]
+                + relative_frame_time * (self.frames_timestamps_us[:, 1] - self.frames_timestamps_us[:, 0])
+            ).astype(np.uint64)
+
+        return util.closest_index_sorted(target_timestamps_us, timestamp_us)
 
 
 class CameraSensorProtocol(SensorProtocol, Protocol):

@@ -697,7 +697,7 @@ class Sensor:
         return int(self._get_frame_group(continuous_frame_index)["timestamps_us"][frame_timepoint.value])
 
     def get_closest_frame_index(self, timestamp_us: int) -> int:
-        """Given a timestamp, returns the frame index of the closes frame"""
+        """Given a timestamp, returns the frame index of the closest frame"""
 
         return util.closest_index_sorted(self.get_frames_timestamps_us(), timestamp_us)
 

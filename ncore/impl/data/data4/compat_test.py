@@ -389,6 +389,72 @@ class TestCompatV3(unittest.TestCase):
                 path.name, r"c9b05cf4-afb9-11ec-b3c2-00044bf65fcb@1648597318700123-1648599151600035_\d+-\d+\.zarr\.itar"
             )
 
+    def test_get_closest_frame_index_relative_frame_time(self):
+        """Test get_closest_frame_index with various relative_frame_time values"""
+        camera = self.loader.get_camera_sensor("camera_front_wide_120fov")
+
+        # Get frame timestamps
+        timestamps = camera.frames_timestamps_us
+        self.assertEqual(timestamps.shape[0], 27)
+
+        # Test with relative_frame_time = 0.0 (start of frame)
+        # Should find the closest frame based on frame start time
+        test_frame_idx = 5
+        test_start_timestamp = timestamps[test_frame_idx, 0]
+        found_idx = camera.get_closest_frame_index(test_start_timestamp, relative_frame_time=0.0)
+        self.assertEqual(found_idx, test_frame_idx)
+
+        # Test with relative_frame_time = 1.0 (end of frame, default)
+        # Should find the closest frame based on frame end time
+        test_end_timestamp = timestamps[test_frame_idx, 1]
+        found_idx = camera.get_closest_frame_index(test_end_timestamp, relative_frame_time=1.0)
+        self.assertEqual(found_idx, test_frame_idx)
+
+        # Test with relative_frame_time = 0.5 (middle of frame)
+        # Should find the closest frame based on frame midpoint
+        mid_timestamp = (timestamps[test_frame_idx, 0] + timestamps[test_frame_idx, 1]) // 2
+        found_idx = camera.get_closest_frame_index(mid_timestamp, relative_frame_time=0.5)
+        self.assertEqual(found_idx, test_frame_idx)
+
+        # Test that different relative_frame_time values can yield different results
+        # when timestamps fall between frames
+        timestamp_between_frames = timestamps[test_frame_idx, 1] + 100000
+
+        # At relative_frame_time=0.0, it should look at frame start times
+        idx_at_start = camera.get_closest_frame_index(timestamp_between_frames, relative_frame_time=0.0)
+
+        # At relative_frame_time=1.0, it should look at frame end times
+        idx_at_end = camera.get_closest_frame_index(timestamp_between_frames, relative_frame_time=1.0)
+
+        # These may differ depending on the timestamp distribution
+        # Just verify they are valid indices
+        self.assertGreaterEqual(idx_at_start, 0)
+        self.assertLess(idx_at_start, camera.frames_count)
+        self.assertGreaterEqual(idx_at_end, 0)
+        self.assertLess(idx_at_end, camera.frames_count)
+
+    def test_get_closest_frame_index_relative_frame_time_bounds(self):
+        """Test that get_closest_frame_index validates relative_frame_time is in [0, 1]"""
+        camera = self.loader.get_camera_sensor("camera_front_wide_120fov")
+
+        # Test valid values at boundaries
+        test_timestamp = camera.frames_timestamps_us[0, 0]
+
+        # Should not raise for valid values
+        camera.get_closest_frame_index(test_timestamp, relative_frame_time=0.0)
+        camera.get_closest_frame_index(test_timestamp, relative_frame_time=0.5)
+        camera.get_closest_frame_index(test_timestamp, relative_frame_time=1.0)
+
+        # Test invalid values
+        with self.assertRaises(AssertionError):
+            camera.get_closest_frame_index(test_timestamp, relative_frame_time=-0.1)
+
+        with self.assertRaises(AssertionError):
+            camera.get_closest_frame_index(test_timestamp, relative_frame_time=1.1)
+
+        with self.assertRaises(AssertionError):
+            camera.get_closest_frame_index(test_timestamp, relative_frame_time=2.0)
+
     def test_reload_resources(self):
         """Test reload_resources method"""
         # Should not raise an exception
@@ -762,6 +828,40 @@ class TestCompatV4(unittest.TestCase):
         # Should still be able to access data after reload
         camera = self.loader.get_camera_sensor("camera_front_wide_120fov")
         self.assertGreater(camera.frames_count, 0)
+
+    def test_get_closest_frame_index_relative_frame_time_v4(self):
+        """Test get_closest_frame_index with various relative_frame_time values for V4 data"""
+        camera = self.loader.get_camera_sensor("camera_front_wide_120fov")
+
+        # Get frame timestamps
+        timestamps = camera.frames_timestamps_us
+        self.assertGreater(timestamps.shape[0], 0)
+
+        # Test with relative_frame_time = 0.0 (start of frame)
+        # Should find the closest frame based on frame start time
+        test_frame_idx = 0
+        test_start_timestamp = timestamps[test_frame_idx, 0]
+        found_idx = camera.get_closest_frame_index(test_start_timestamp, relative_frame_time=0.0)
+        self.assertEqual(found_idx, test_frame_idx)
+
+        # Test with relative_frame_time = 1.0 (end of frame, default)
+        # Should find the closest frame based on frame end time
+        test_end_timestamp = timestamps[test_frame_idx, 1]
+        found_idx = camera.get_closest_frame_index(test_end_timestamp, relative_frame_time=1.0)
+        self.assertEqual(found_idx, test_frame_idx)
+
+        # Test with relative_frame_time = 0.5 (middle of frame)
+        # Should find the closest frame based on frame midpoint
+        mid_timestamp = (timestamps[test_frame_idx, 0] + timestamps[test_frame_idx, 1]) // 2
+        found_idx = camera.get_closest_frame_index(mid_timestamp, relative_frame_time=0.5)
+        self.assertEqual(found_idx, test_frame_idx)
+
+        # Test boundary values
+        if timestamps.shape[0] > 1:
+            test_frame_idx = 1
+            test_start_timestamp = timestamps[test_frame_idx, 0]
+            found_idx = camera.get_closest_frame_index(test_start_timestamp, relative_frame_time=0.0)
+            self.assertEqual(found_idx, test_frame_idx)
 
     def test_lidar_sensor_basic(self):
         """Test basic lidar sensor properties in V4"""
