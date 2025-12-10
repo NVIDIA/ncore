@@ -28,8 +28,7 @@ The SDK is developed within the Nvidia Toronto AI Lab.
    :caption: Tools / Applications
 
    tools/data_visualization
-   tools/segmentation
-   tools/reconstruction
+   tools/data_conversion
 
 .. toctree::
    :maxdepth: 1

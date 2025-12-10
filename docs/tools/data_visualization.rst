@@ -15,10 +15,10 @@ Example invocation::
 
     bazel run //scripts:ncore_project_pc_to_img \
         -- \
-        v3 \
-        --shard-file-pattern=<SHARD_FILE_PATTERN> \
         --sensor-id=lidar00 \
-        --camera-id=camera01
+        --camera-id=camera01 \
+        [v3 --shard-file-pattern=<SHARD_FILE_PATTERN> / v4 --component-group=<COMPONENT_GROUP0> --component-group=<COMPONENT_GROUP1> ...]
+
 
 .. figure:: proj0.png
    :figwidth: 50%
@@ -55,8 +55,7 @@ Example invocation::
    :figwidth: 50%
    :width: 80%
 
-   Color-coded per-point dynamic-object flags
-   (red indicating dynamic points)
+   Color-coded per-point dynamic-object flags (red indicating dynamic points)
 
 Frame-Exporting
 ---------------
@@ -67,10 +66,10 @@ Example invocation::
 
     bazel run //scripts:ncore_export_ply \
         -- \
-        --shard-file-pattern=<SHARD_FILE_PATTERN> \
         --output-dir=<OUTPUT_FOLDER> \
         --sensor-id=lidar00 \
-        --frame=world
+        --frame=world \
+        [v3 --shard-file-pattern=<SHARD_FILE_PATTERN> / v4 --component-group=<COMPONENT_GROUP0> --component-group=<COMPONENT_GROUP1> ...]
 
 .. figure:: pc.png
    :figwidth: 50%
@@ -86,6 +85,7 @@ Example invocation::
 
     bazel run //scripts:ncore_export_image \
         -- \
-        --shard-file-pattern=<SHARD_FILE_PATTERN> \
         --output-dir=<OUTPUT_FOLDER> \
         --camera-id=camera00
+        [v3 --shard-file-pattern=<SHARD_FILE_PATTERN> / v4 --component-group=<COMPONENT_GROUP0> --component-group=<COMPONENT_GROUP1> ...]
+
