@@ -106,8 +106,8 @@ class SequenceLoaderProtocol(Protocol):
         """Reloads any resources used by the internal sequence loader (potentially required for multi-process data loading)"""
         ...
 
-    def get_sequence_meta(self) -> JsonLike:
-        """Returns sequence-wide meta-data summary"""
+    def get_sequence_meta(self) -> Dict[str, JsonLike]:
+        """Returns sequence-wide meta-data summary (format is instance-dependent)"""
         ...
 
     @property
@@ -569,8 +569,8 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
         self._reader.reload_resources()
 
     @override
-    def get_sequence_meta(self) -> JsonLike:
-        return self._reader.get_sequence_meta()
+    def get_sequence_meta(self) -> Dict[str, JsonLike]:
+        return cast(Dict[str, JsonLike], self._reader.get_sequence_meta().to_dict())
 
     @property
     @override
@@ -1000,7 +1000,7 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
         self._loader.reload_store_resources()
 
     @override
-    def get_sequence_meta(self) -> JsonLike:
+    def get_sequence_meta(self) -> Dict[str, JsonLike]:
         return self._loader.get_sequence_meta()
 
     @property

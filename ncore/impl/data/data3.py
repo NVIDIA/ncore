@@ -1115,7 +1115,7 @@ class ShardDataLoader:
             }
         )
 
-    def get_sequence_meta(self) -> JsonLike:
+    def get_sequence_meta(self) -> Dict[str, JsonLike]:
         """Returns full sequence meta-data as a dictionary"""
 
         output: Dict[str, JsonLike] = {

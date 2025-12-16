@@ -518,6 +518,11 @@ class TestCompatV3V4Consistency(unittest.TestCase):
         # V3 includes shard range, V4 doesn't, so check base sequence ID
         self.assertTrue(v4_id in v3_id or v3_id in v4_id)
 
+        v3_meta = self.v3_loader.get_sequence_meta()
+        v4_meta = self.v4_loader.get_sequence_meta()
+
+        self.assertEqual(v3_meta["sequence_id"], v4_meta["sequence_id"])
+
     def test_sequence_timestamp_interval_consistency(self):
         """Verify timestamp intervals are consistent"""
         v3_interval = self.v3_loader.sequence_timestamp_interval_us

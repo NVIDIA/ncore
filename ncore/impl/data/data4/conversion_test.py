@@ -8,6 +8,7 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
+import json
 import tempfile
 import unittest
 
@@ -574,6 +575,15 @@ class TestData3Converter(unittest.TestCase):
         # Both should return dict-like objects
         self.assertIsNotNone(v3_meta)
         self.assertIsNotNone(v4_meta)
+
+        # Reload V4 from serialized sequence meta path
+        seq_meta_path = UPath(tempdir.name) / f"{v4_loader.sequence_id}.ncore4.json"
+        with seq_meta_path.open("w") as f:
+            json.dump(v4_loader.get_sequence_meta(), f, indent=2)
+
+        v4_reader_json = SequenceComponentGroupsReader([seq_meta_path])
+
+        self.assertEqual(v4_reader.get_sequence_meta(), v4_reader_json.get_sequence_meta())
 
         tempdir.cleanup()
 

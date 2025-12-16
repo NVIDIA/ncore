@@ -17,9 +17,24 @@ import logging
 import sys
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Generator, List, Literal, Optional, Tuple, Type, TypeVar, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Generator,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+)
 
+import dataclasses_json
 import numpy as np
 import PIL.Image as PILImage
 import zarr
@@ -43,6 +58,39 @@ if sys.version_info >= (3, 11):
     from typing import Self
 
 VERSION = "4.0"
+
+
+@dataclass
+class SequenceMeta(dataclasses_json.DataClassJsonMixin):
+    """Strongly typed representation for V4 sequence metadata"""
+
+    @dataclass
+    class TimestampInterval(dataclasses_json.DataClassJsonMixin):
+        """Timestamp interval with start and stop times in microseconds"""
+
+        start: int
+        stop: int
+
+    @dataclass
+    class ComponentInstanceMeta(dataclasses_json.DataClassJsonMixin):
+        """Component instance metadata"""
+
+        version: str
+        generic_meta_data: Dict[str, Any]
+
+    @dataclass
+    class ComponentStoreMeta(dataclasses_json.DataClassJsonMixin):
+        """Component store metadata"""
+
+        path: str
+        md5: str
+        components: Dict[str, Dict[str, "SequenceMeta.ComponentInstanceMeta"]]
+
+    sequence_id: str
+    sequence_timestamp_interval_us: SequenceMeta.TimestampInterval
+    generic_meta_data: Dict[str, Any]
+    version: str
+    component_stores: List[SequenceMeta.ComponentStoreMeta]
 
 
 class SequenceComponentGroupsWriter:
@@ -251,10 +299,10 @@ class SequenceComponentGroupsReader:
             if component_group_path.is_file() and component_group_path.suffix == ".json":
                 # sequence meta-data file - load and expand
                 with component_group_path.open("r") as f:
-                    sequence_meta = json.load(f)
+                    sequence_meta = SequenceMeta.from_dict(json.load(f))
 
-                for component_store_info in sequence_meta["component_stores"]:
-                    ret.append(component_group_path.parent / UPath(component_store_info["path"]))
+                for component_store_info in sequence_meta.component_stores:
+                    ret.append(component_group_path.parent / UPath(component_store_info.path))
             else:
                 # direct component group path
                 ret.append(component_group_path)
@@ -423,44 +471,44 @@ class SequenceComponentGroupsReader:
 
         return ret
 
-    def get_sequence_meta(self) -> data.JsonLike:
-        """Returns full sequence meta-data as a dictionary"""
+    def get_sequence_meta(self) -> SequenceMeta:
+        """Returns full sequence meta-data summary (json-serializable)"""
 
         # collect component names and instances per store and component
-        component_stores_info: List[data.JsonLike] = []
+        component_stores_info: List[SequenceMeta.ComponentStoreMeta] = []
         for component_root_group, component_store_path in self._component_stores.values():
-            components: Dict[str, data.JsonLike] = {}
+            components: Dict[str, Dict[str, SequenceMeta.ComponentInstanceMeta]] = {}
             for component_name, component in component_root_group.items():
                 # collect component names and instances
-                component_instances: Dict[str, data.JsonLike] = {}
+                component_instances: Dict[str, SequenceMeta.ComponentInstanceMeta] = {}
                 for component_instance_name, component_instance in component.items():
                     component_instance_attrs = component_instance.attrs
-                    component_instances[component_instance_name] = {
-                        "version": component_instance_attrs["component_version"],
-                        "generic_meta_data": component_instance_attrs["generic_meta_data"],
-                    }
+                    component_instances[component_instance_name] = SequenceMeta.ComponentInstanceMeta(
+                        version=component_instance_attrs["component_version"],
+                        generic_meta_data=component_instance_attrs["generic_meta_data"],
+                    )
 
                 components[component_name] = component_instances
 
             component_stores_info.append(
-                {
-                    "path": component_store_path.name,
-                    "md5": MD5Hasher.hash(component_store_path),
-                    "components": components,
-                }
+                SequenceMeta.ComponentStoreMeta(
+                    path=component_store_path.name,
+                    md5=MD5Hasher.hash(component_store_path),
+                    components=components,
+                )
             )
 
         # combine with sequence-wide information
-        return {
-            "sequence_id": self._sequence_id,
-            "sequence_timestamp_interval_us": {
-                "start": self._sequence_timestamp_interval_us.start,
-                "stop": self._sequence_timestamp_interval_us.stop,
-            },
-            "generic_meta_data": self._generic_meta_data,
-            "version": self._version,
-            "component_stores": component_stores_info,
-        }
+        return SequenceMeta(
+            sequence_id=self._sequence_id,
+            sequence_timestamp_interval_us=SequenceMeta.TimestampInterval(
+                start=self._sequence_timestamp_interval_us.start,
+                stop=self._sequence_timestamp_interval_us.stop,
+            ),
+            generic_meta_data=self._generic_meta_data,
+            version=self._version,
+            component_stores=component_stores_info,
+        )
 
 
 class ComponentWriter(ABC):
