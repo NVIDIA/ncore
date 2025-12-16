@@ -8,3 +8,4 @@
    :maxdepth: 1
 
    data.v3
+   data.v4

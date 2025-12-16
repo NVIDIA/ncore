@@ -1,0 +1,127 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
+load("@ncore_pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_library")
+load("//bazel/pytest:defs.bzl", "pytest_test")
+
+package(default_visibility = ["//:code_package_group"])
+
+py_library(
+    name = "pylib_types",
+    srcs = [
+        "types.py",
+    ],
+    deps = [
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/data:pylib_types",
+        "//ncore/impl/data:pylib_util",
+        requirement("dataclasses-json"),
+        requirement("numpy"),
+    ],
+)
+
+py_library(
+    name = "pylib_components",
+    srcs = [
+        "components.py",
+    ],
+    deps = [
+        ":pylib_types",
+        "//ncore/impl/common:pylib_common",
+        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_stores",
+        requirement("zarr"),
+        requirement("numpy"),
+        requirement("pillow"),
+        requirement("dataclasses-json"),
+        requirement("universal-pathlib"),
+    ],
+)
+
+pytest_test(
+    name = "pytest_components",
+    srcs = ["components_test.py"],
+    deps = [
+        ":pylib_components",
+        requirement("numpy"),
+        requirement("scipy"),
+        requirement("parameterized"),
+        requirement("pillow"),
+        requirement("universal-pathlib"),
+    ],
+)
+
+py_library(
+    name = "pylib_conversion",
+    srcs = [
+        "conversion.py",
+    ],
+    deps = [
+        ":pylib_components",
+        ":pylib_types",
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/data:pylib_data3",
+        requirement("zarr"),
+        requirement("numpy"),
+        requirement("pillow"),
+        requirement("dataclasses-json"),
+        requirement("universal-pathlib"),
+    ],
+)
+
+pytest_test(
+    name = "pytest_conversion",
+    srcs = ["conversion_test.py"],
+    data = [
+        "@test-data-v3-shards//:test-shards",
+    ],
+    deps = [
+        ":pylib_compat",
+        ":pylib_components",
+        ":pylib_conversion",
+        "//ncore/impl/data:pylib_data3",
+        "//ncore/impl/data:pylib_types",
+        requirement("numpy"),
+        requirement("parameterized"),
+        requirement("universal-pathlib"),
+        "@rules_python//python/runfiles",
+    ],
+)
+
+py_library(
+    name = "pylib_compat",
+    srcs = [
+        "compat.py",
+    ],
+    deps = [
+        requirement("numpy"),
+        requirement("pillow"),
+        requirement("universal-pathlib"),
+        ":pylib_components",
+        ":pylib_types",
+        "//ncore/impl/common:pylib_common",
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_data3",
+        "//ncore/impl/data:pylib_types",
+        "//ncore/impl/data:pylib_util",
+    ],
+)
+
+pytest_test(
+    name = "pytest_compat",
+    srcs = ["compat_test.py"],
+    data = [
+        "@test-data-v3-shards//:test-shards",
+    ],
+    deps = [
+        ":pylib_compat",
+        ":pylib_components",
+        ":pylib_conversion",
+        "//ncore/impl/common:pylib_common",
+        requirement("numpy"),
+        requirement("parameterized"),
+        requirement("universal-pathlib"),
+        "@rules_python//python/runfiles",
+    ],
+)

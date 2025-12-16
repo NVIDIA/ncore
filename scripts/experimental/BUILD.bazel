@@ -14,7 +14,36 @@ py_binary(
         requirement("torch"),
         requirement("scipy"),
         requirement("pillow"),
-        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_data3",
         "//ncore/impl/sensors:pylib_camera",
+    ],
+)
+
+#################################################################
+
+py_binary(
+    name = "ncore_surface_rec",
+    srcs = ["ncore_surface_rec.py"],
+    deps = [
+        requirement("click"),
+        requirement("tqdm"),
+        requirement("point-cloud-utils"),
+        "//3rdparty/poisson_recon:pylib",
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/data:pylib_data3",
+        "//scripts:pylib_util",
+    ],
+)
+
+#################################################################
+
+py_binary(
+    name = "ncore_to_map_transform",
+    srcs = ["ncore_to_map_transform.py"],
+    deps = [
+        requirement("click"),
+        requirement("numpy"),
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/data:pylib_data3",
     ],
 )

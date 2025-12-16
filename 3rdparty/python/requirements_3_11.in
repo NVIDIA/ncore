@@ -21,6 +21,7 @@ torch==1.13.0+cu116
 
 # Script dependencies
 tqdm
+pandas
 matplotlib>=3.6.2
 pyside6
 opencv-python

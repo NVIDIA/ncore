@@ -9,9 +9,20 @@ package(default_visibility = ["//:code_package_group"])
 py_library(
     name = "pylib_data",
     srcs = [
+        "data.py",
+    ],
+    deps = [
+        ":pylib_types",
+    ],
+)
+
+py_library(
+    name = "pylib_data3",
+    srcs = [
         "data3.py",
     ],
     deps = [
+        ":pylib_data",
         ":pylib_stores",
         ":pylib_types",
         ":pylib_util",
@@ -19,6 +30,8 @@ py_library(
         "//ncore/impl/common:pylib_transformations",
         requirement("zarr"),
         requirement("pillow"),
+        requirement("numpy"),
+        requirement("dataclasses-json"),
         requirement("universal_pathlib"),
     ],
 )
@@ -76,7 +89,7 @@ pytest_test(
         "@test-data-v3-shards//:test-shards",
     ],
     deps = [
-        ":pylib_data",
+        ":pylib_data3",
         requirement("parameterized"),
         requirement("pillow"),
         requirement("scipy"),

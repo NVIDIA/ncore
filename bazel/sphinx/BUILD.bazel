@@ -15,6 +15,7 @@ py_binary(
         requirement("ipython"),
         "@ncore_repo//ncore/data:pylib",
         "@ncore_repo//ncore/data/v3:pylib",
+        "@ncore_repo//ncore/data/v4:pylib",
         "@ncore_repo//ncore/sensors:pylib",
     ],
 )

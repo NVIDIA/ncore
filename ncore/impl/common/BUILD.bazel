@@ -47,7 +47,8 @@ py_library(
         requirement("open3d"),
         requirement("tensorflow"),  # required by open3d.ml.tf
         requirement("multimethod"),
-        "//ncore/impl/data:pylib_types",
+        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_data3",
     ],
 )
 
@@ -63,7 +64,7 @@ pytest_test(
         requirement("parameterized"),
         ":pylib_common",
         ":pylib_transformations",
-        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_data3",
         "//ncore/impl/data:pylib_types",
         "@rules_python//python/runfiles",
     ],

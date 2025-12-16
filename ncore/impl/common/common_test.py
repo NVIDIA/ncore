@@ -104,6 +104,11 @@ class TestHalfClosedInterval(unittest.TestCase):
         # Empty interval
         self.assertEqual(len(HalfClosedInterval(1, 1)), 0)
 
+        # Check start/end
+        self.assertEqual(len(HalfClosedInterval.from_start_end(0, 1)), 2)
+        self.assertEqual(len(HalfClosedInterval.from_start_end(1, 1)), 1)
+        self.assertEqual(len(HalfClosedInterval.from_start_end(1, 0)), 0)
+
         # Invalid interval -> exception
         with self.assertRaises(Exception):
             HalfClosedInterval(0, -1)
@@ -118,6 +123,13 @@ class TestHalfClosedInterval(unittest.TestCase):
         self.assertFalse(-1 in interval_0_3)
         self.assertFalse(3 in interval_0_3)
         self.assertFalse(4 in interval_0_3)
+
+        self.assertTrue(HalfClosedInterval(0, 3) in interval_0_3)
+        self.assertTrue(HalfClosedInterval(1, 3) in interval_0_3)
+        self.assertTrue(HalfClosedInterval(1, 2) in interval_0_3)
+        self.assertFalse(HalfClosedInterval(-1, 3) in interval_0_3)
+        self.assertFalse(HalfClosedInterval(0, 4) in interval_0_3)
+        self.assertFalse(HalfClosedInterval(3, 4) in interval_0_3)
 
     def test_intersection(self):
         """Test to verify HalfClosedInterval.intersection()"""

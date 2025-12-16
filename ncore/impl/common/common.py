@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import sys
 import time
 
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple, TypeVar, Union, cast
+from typing import TYPE_CHECKING, Callable, Generator, Iterable, List, Optional, Tuple, TypeVar, Union, cast
 
 import numpy as np
 import PIL.Image as PILImage
@@ -28,7 +29,13 @@ from scipy.spatial.transform import Rotation as R
 from upath import UPath
 
 
-def load_jsonl(jsonl_path: Union[str, Path]) -> List[dict]:
+if TYPE_CHECKING:
+    from _hashlib import HASH as Hash
+
+    import numpy.typing as npt  # type: ignore[import-not-found]
+
+
+def load_jsonl(jsonl_path: Union[str, Path, UPath]) -> List[dict]:
     """
     Loads a jsonl (json-lines) file (each line corresponds to a serialized json object) - see jsonlines.org
 
@@ -39,20 +46,111 @@ def load_jsonl(jsonl_path: Union[str, Path]) -> List[dict]:
     """
 
     object_list = []
-    with open(jsonl_path, "r") as fp:
+    with UPath(jsonl_path).open("r") as fp:
         for line in fp:
             object_list.append(json.loads(line))
 
     return object_list
 
 
-def md5(path: UPath, chunk_size: int = 128 * 2**9) -> str:
-    """Compute the MD5 hash of a file"""
-    hash_md5 = hashlib.md5()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(chunk_size), b""):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
+class MD5Hasher:
+    """Helper class for MD5 hashing operations on files or full directories."""
+
+    @staticmethod
+    def _update_from_file(filename: UPath, hash: "Hash", chunk_size: int) -> "Hash":
+        """Update the provided hash object with the contents of the file.
+
+        Reads the file in chunks and updates the hash object incrementally to handle large files efficiently.
+
+        Args:
+            filename: Path to the file to hash
+            hash: Hash object to update (e.g., hashlib.md5())
+            chunk_size: Size of chunks to read from the file
+
+        Returns:
+            The updated hash object
+        """
+        assert filename.is_file()
+        with filename.open("rb") as f:
+            for chunk in iter(lambda: f.read(chunk_size), b""):
+                hash.update(chunk)
+        return hash
+
+    @staticmethod
+    def _hash_file(filename: UPath, chunk_size: int) -> str:
+        """Compute the MD5 hash of a file.
+
+        Args:
+            filename: Path to the file to hash
+            chunk_size: Size of chunks to read from the file
+
+        Returns:
+            Hexadecimal string representation of the file's MD5 hash
+        """
+        return str(MD5Hasher._update_from_file(filename, hashlib.md5(), chunk_size).hexdigest())
+
+    @staticmethod
+    def _update_from_dir(directory: UPath, hash: "Hash", chunk_size: int) -> "Hash":
+        """Update the provided hash object with the contents of the directory (recursively).
+
+        Traverses the directory tree in sorted order (case-insensitive) and updates the hash with:
+        - Each file/directory name (encoded as bytes)
+        - Contents of each file
+        - Recursively processes subdirectories
+
+        Args:
+            directory: Path to the directory to hash
+            hash: Hash object to update (e.g., hashlib.md5())
+            chunk_size: Size of chunks to read when processing files
+
+        Returns:
+            The updated hash object
+        """
+        assert directory.is_dir()
+        for path in sorted(directory.iterdir(), key=lambda p: str(p).lower()):
+            hash.update(path.name.encode())
+            if path.is_file():
+                hash = MD5Hasher._update_from_file(path, hash, chunk_size)
+            elif path.is_dir():
+                hash = MD5Hasher._update_from_dir(path, hash, chunk_size)
+        return hash
+
+    @staticmethod
+    def _hash_dir(directory: UPath, chunk_size: int) -> str:
+        """Compute the MD5 hash of a directory (recursively).
+
+        Computes a deterministic hash of the entire directory structure including all files,
+        subdirectories, and their names.
+
+        Args:
+            directory: Path to the directory to hash
+            chunk_size: Size of chunks to read when processing files
+
+        Returns:
+            Hexadecimal string representation of the directory's MD5 hash
+        """
+        return str(MD5Hasher._update_from_dir(directory, hashlib.md5(), chunk_size).hexdigest())
+
+    @staticmethod
+    def hash(path: UPath, chunk_size: int = 128 * 2**9) -> str:
+        """Compute the MD5 hash of a file or directory.
+
+        Args:
+            path: Path to the file or directory to hash
+            chunk_size: Size of chunks to read when processing files (default: 128 * 512 bytes)
+
+        Returns:
+            Hexadecimal string representation of the MD5 hash
+
+        Raises:
+            ValueError: If path is neither a file nor a directory
+        """
+        if path.is_file():
+            return MD5Hasher._hash_file(path, chunk_size)
+        elif path.is_dir():
+            return MD5Hasher._hash_dir(path, chunk_size)
+        else:
+            raise ValueError(f"Path '{path}' is neither a file nor a directory")
 
 
 class PoseInterpolator:
@@ -95,7 +193,7 @@ class PoseInterpolator:
             .item()
         )
 
-    def interpolate_to_timestamps(self, ts_target, dtype=np.float32) -> np.ndarray:
+    def interpolate_to_timestamps(self, ts_target, dtype: npt.DTypeLike = np.float32) -> np.ndarray:
         t_interp = self.f_t(ts_target).reshape(-1, 3, 1).astype(dtype)
         R_interp = self.slerp(ts_target).as_matrix().reshape(-1, 3, 3).astype(dtype)
 
@@ -285,15 +383,25 @@ class HalfClosedInterval:
     start: int
     stop: int
 
+    @staticmethod
+    def from_start_end(start: int, end: int) -> HalfClosedInterval:
+        """Creates a half-closed interval from start and end (inclusive)"""
+        return HalfClosedInterval(start, end + 1)
+
     def __post_init__(self) -> None:
         """Makes sure interval is well-defined"""
         assert isinstance(self.start, int)
         assert isinstance(self.stop, int)
         assert self.start <= self.stop
 
-    def __contains__(self, item: int) -> bool:
-        """Determines if an item is contained in the interval"""
-        return self.start <= item < self.stop
+    def __contains__(self, item: Union[int, np.integer, HalfClosedInterval]) -> bool:
+        """Determines if an item / other interval is contained in the interval"""
+        if isinstance(item, (int, np.integer)):
+            return bool(self.start <= item and item < self.stop)
+        elif isinstance(item, HalfClosedInterval):
+            return (self.start <= item.start) and (item.stop <= self.stop)
+        else:
+            raise TypeError(f"Expected int, np.integer, or HalfClosedInterval, got {type(item).__name__}")
 
     def __len__(self) -> int:
         """Returns the number of elements in the interval"""
@@ -357,3 +465,45 @@ def map_optional(maybe_value: Optional[T], func: Callable[[T], U]) -> Optional[U
         return None
 
     return func(maybe_value)
+
+
+def log_progress(
+    iterable: Iterable[T],
+    logger: logging.Logger,
+    total: Optional[int] = None,
+    label: str = "",
+    step_frequency: int = 1,
+    level: int = logging.INFO,
+    nest_level: int = 0,
+) -> Generator[T, None, None]:
+    """
+    Generator wrapper that logs progress at specified frequency with nesting support.
+
+    Args:
+        iterable: The iterable to wrap
+        logger: Logger instance to use for logging
+        total: Total count (auto-computed if not provided)
+        label: Label prefix for log messages
+        step_frequency: Log every N steps (1 = every step, 10 = every 10th step)
+        level: Logging level (default INFO)
+        nest_level: Nesting level for indentation (0 = no indent, 1 = "  ", 2 = "    ", etc.)
+
+    Yields:
+        Items from the iterable
+    """
+    if total is None:
+        iterable = list(iterable)
+        total = len(iterable)
+
+    indent = "  " * nest_level
+
+    for current, item in enumerate(iterable, 1):
+        yield item
+
+        if current % step_frequency == 0 or current == total:
+            percent = current / total
+            bar = "█" * int(30 * percent) + "-" * (30 - int(30 * percent))
+            msg = f"{indent}[{bar}] {current}/{total}"
+            if label:
+                msg = f"{indent}{label}: [{bar}] {current}/{total}"
+            logger.log(level, msg)

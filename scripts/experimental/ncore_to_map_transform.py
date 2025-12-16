@@ -193,4 +193,4 @@ def ncore_to_map_transform(
 
 
 if __name__ == "__main__":
-    ncore_to_map_transform()
+    ncore_to_map_transform(show_default=True)

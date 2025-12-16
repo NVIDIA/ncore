@@ -160,4 +160,4 @@ def ncore_rgb_ray_mesh_intersection(
 
 
 if __name__ == "__main__":
-    ncore_rgb_ray_mesh_intersection()
+    ncore_rgb_ray_mesh_intersection(show_default=True)

@@ -14,13 +14,14 @@ import concurrent.futures
 import io
 import json
 import logging
-import re
 
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple, Union, cast
 
+import dataclasses_json
 import numcodecs
 import numpy as np
 import PIL.Image as PILImage
@@ -31,8 +32,12 @@ from upath import UPath
 import ncore.impl.common.common as common
 import ncore.impl.common.transformations as transformations
 
-from . import stores, types, util
+from . import data, stores, types, util
+from .data import JsonLike, evaluate_file_pattern
+from .types import BBox3, LabelSource
 
+
+_logger = logging.getLogger(__name__)
 
 VERSION = "3.0.0"
 SENSORS_BASE_GROUP = "sensors"
@@ -40,19 +45,85 @@ CAMERAS_BASE_GROUP = "cameras"
 LIDARS_BASE_GROUP = "lidars"
 RADARS_BASE_GROUP = "radars"
 
-JsonLike = Union[
-    Dict[str, "JsonLike"],
-    List["JsonLike"],
-    str,
-    int,
-    float,
-    bool,
-    None,
-    # special-case shouldn't be needed, but required to make mypy happy
-    List[int],
-]
+## Types specific to data3
 
-_logger = logging.getLogger(__name__)
+
+@dataclass
+class Poses:
+    """Represents a collection of timestamped poses (rig-to-local-world transformation)"""
+
+    T_rig_world_base: np.ndarray  #: Base rig-to-global-world SE3 transformation (float64, [4,4])
+    T_rig_worlds: np.ndarray  #: All rig-to-local-world SE3 transformations of the trajectory (float64, [N,4,4])
+    T_rig_world_timestamps_us: (
+        np.ndarray
+    )  #: All rig-to-local-world transformation timestamps of the trajectory (uint64, [N,])
+
+    def __post_init__(self):
+        # Sanity checks
+        assert self.T_rig_world_base.shape == (4, 4)
+        assert self.T_rig_world_base.dtype == np.dtype("float64")
+
+        assert self.T_rig_worlds.shape[1:] == (4, 4)
+        assert self.T_rig_worlds.dtype == np.dtype("float64")
+
+        assert self.T_rig_world_timestamps_us.ndim == 1
+        assert self.T_rig_world_timestamps_us.dtype == np.dtype("uint64")
+
+        assert self.T_rig_worlds.shape[0] == self.T_rig_world_timestamps_us.shape[0]
+
+
+@dataclass
+class FrameLabel3(dataclasses_json.DataClassJsonMixin):
+    """Description of a 3D frame-associated label"""
+
+    label_id: str  #: Identifier of the current frame label (unique among all labels)
+    track_id: str  #: Unique identifier of the object's track this label is associated with
+    label_class: str  #: String-representation of the class associated with this label
+    bbox3: BBox3  #: Bounding-box coordinates of the object relative to the frame's end-of-frame coordinate system
+    global_speed: float  #: Instantaneous global speed [m/s] of the object
+    timestamp_us: int  #: The timestamp associated with the centroid of the label (possibly an accurate in-frame time)
+    confidence: Optional[float]  #: If available, the confidence score of the label [0..1]
+    source: LabelSource = util.enum_field(LabelSource)  #: The source for the current label
+    source_version: Optional[str] = (
+        None  #: If provided, the unique version ID of the source for the current label (to distinguish between different versions of the same source)
+    )
+
+    def __post_init__(self):
+        # Sanity checks
+        assert isinstance(self.label_id, str)
+        assert isinstance(self.track_id, str)
+        assert isinstance(self.label_class, str)
+        assert isinstance(self.bbox3, BBox3)
+        assert isinstance(self.global_speed, float)
+        assert isinstance(self.timestamp_us, int)
+        assert isinstance(self.confidence, (type(None), float))
+
+        if not isinstance(self.source, LabelSource):
+            self.source = LabelSource(self.source)
+        assert self.source in LabelSource.__members__.values()
+
+        assert isinstance(self.source_version, (type(None), str))
+
+
+@dataclass
+class TrackLabel(dataclasses_json.DataClassJsonMixin):
+    """Description of an individual object-specific track"""
+
+    sensors: Dict[
+        str, List[int]
+    ]  #: Represents all frame-timestamps (map values) of the object's observations in different sensors (map keys)
+
+
+@dataclass
+class Tracks(dataclasses_json.DataClassJsonMixin):
+    """Represents a collection of tracks"""
+
+    track_labels: Dict[
+        str, TrackLabel
+    ]  #: Represents individual object tracks (map values) referenced by `track_id`'s (map keys, same as in `FrameLabel3`)
+
+
+## Data3-specific DataWriter and DataLoader implementations
 
 
 class ContainerDataWriter:
@@ -162,13 +233,13 @@ class ContainerDataWriter:
         return self.output_container_path
 
     # Individual 'store*' methods performing data sanity checks and serialize consistent output formats
-    def store_poses(self, poses: types.Poses) -> None:
+    def store_poses(self, poses: Poses) -> None:
         poses_grp = self.container_root.require_group("poses")
         poses_grp.create_dataset("T_rig_world_base", data=poses.T_rig_world_base)
         poses_grp.create_dataset("T_rig_worlds", data=poses.T_rig_worlds)
         poses_grp.create_dataset("T_rig_world_timestamps_us", data=poses.T_rig_world_timestamps_us)
 
-    def store_tracks(self, tracks: types.Tracks) -> None:
+    def store_tracks(self, tracks: Tracks) -> None:
         # Store track labels
         tracks_grp = self.container_root.require_group("tracks")
         tracks_grp.create_dataset(
@@ -202,14 +273,9 @@ class ContainerDataWriter:
         # Prepare meta-data
         meta_data = {
             "T_sensor_rig": T_sensor_rig.tolist(),
-            "camera_model_type": camera_model_parameters.type(),
-            "camera_model_parameters": camera_model_parameters.to_dict(),
             "generic_meta_data": generic_meta_data,
         }
-
-        # Store type of external distortion, if available
-        if camera_model_parameters.external_distortion_parameters:
-            meta_data["external_distortion_type"] = camera_model_parameters.external_distortion_parameters.type()
+        meta_data.update(data.encode_camera_model_parameters(camera_model_parameters))
 
         # Store meta-data
         (camera_grp := self.container_root[SENSORS_BASE_GROUP][CAMERAS_BASE_GROUP][camera_id]).attrs.put(meta_data)
@@ -292,8 +358,7 @@ class ContainerDataWriter:
 
         # Store lidar model parameters, if available
         if lidar_model_parameters:
-            meta_data["lidar_model_type"] = lidar_model_parameters.type()
-            meta_data["lidar_model_parameters"] = lidar_model_parameters.to_dict()
+            meta_data.update(data.encode_lidar_model_parameters(lidar_model_parameters))
 
         # Store meta-data
         (lidar_grp := self.container_root[SENSORS_BASE_GROUP][LIDARS_BASE_GROUP][lidar_id]).attrs.put(meta_data)
@@ -313,7 +378,7 @@ class ContainerDataWriter:
         timestamp_us: np.ndarray,
         model_element: Optional[np.ndarray],  # model elements, if applicable
         # label data
-        frame_labels: List[types.FrameLabel3],
+        frame_labels: List[FrameLabel3],
         # poses
         T_rig_worlds: np.ndarray,
         timestamps_us: np.ndarray,
@@ -632,7 +697,7 @@ class Sensor:
         return int(self._get_frame_group(continuous_frame_index)["timestamps_us"][frame_timepoint.value])
 
     def get_closest_frame_index(self, timestamp_us: int) -> int:
-        """Given a timestamp, returns the frame index of the closes frame"""
+        """Given a timestamp, returns the frame index of the closest frame"""
 
         return util.closest_index_sorted(self.get_frames_timestamps_us(), timestamp_us)
 
@@ -705,34 +770,7 @@ class CameraSensor(Sensor):
     def get_camera_model_parameters(self) -> types.ConcreteCameraModelParametersUnion:
         """Returns parameters specific to the camera's intrinsic model"""
 
-        # Copy as we might modify the dictionary in place
-        camera_model_parameters = self._sensor_meta.camera_model_parameters.copy()
-
-        # Hook up typed external distortion type, if present
-        external_distortion_type: Optional[str] = self._sensor_meta.__dict__.get("external_distortion_type")
-        if external_distortion_type is not None:
-            if external_distortion_type == "bivariate-windshield":
-                camera_model_parameters["external_distortion_parameters"] = (
-                    types.BivariateWindshieldModelParameters.from_dict(
-                        camera_model_parameters["external_distortion_parameters"]
-                    )
-                )
-            else:
-                raise ValueError(f"Unknown external distortion type: {external_distortion_type}")
-
-        # Return typed camera model parameters
-        if self._sensor_meta.camera_model_type == "ftheta":
-            return types.FThetaCameraModelParameters.from_dict(camera_model_parameters)
-        elif self._sensor_meta.camera_model_type in [
-            "opencv-pinhole",
-            # keep 'pinhole' for backwards-compatibility with existing data
-            "pinhole",
-        ]:
-            return types.OpenCVPinholeCameraModelParameters.from_dict(camera_model_parameters)
-        elif self._sensor_meta.camera_model_type == "opencv-fisheye":
-            return types.OpenCVFisheyeCameraModelParameters.from_dict(camera_model_parameters)
-
-        raise ValueError(f"Unknown camera model type: {self._sensor_meta.camera_model_type}")
+        return data.decode_camera_model_parameters(self._sensor_meta.__dict__)
 
     # Camera Mask
     def get_camera_mask_image(self) -> Optional[PILImage.Image]:
@@ -775,11 +813,11 @@ class PointCloudSensor(Sensor):
 class LidarSensor(PointCloudSensor):
     """Provides access to lidar-specific sensor-data"""
 
-    def get_frame_labels(self, continuous_frame_index: int) -> List[types.FrameLabel3]:
+    def get_frame_labels(self, continuous_frame_index: int) -> List[FrameLabel3]:
         """Returns frame-labels for a specific frame"""
 
         return [
-            types.FrameLabel3.from_dict(frame_label, infer_missing=True)
+            FrameLabel3.from_dict(frame_label, infer_missing=True)
             for frame_label in self._get_frame_group(continuous_frame_index)["frame_labels"]
         ]
 
@@ -798,13 +836,7 @@ class LidarSensor(PointCloudSensor):
         if lidar_model_type is None:
             return None
 
-        lidar_model_parameters = self._sensor_meta.lidar_model_parameters
-
-        # Return typed lidar model parameters
-        if lidar_model_type == types.RowOffsetStructuredSpinningLidarModelParameters.type():
-            return types.RowOffsetStructuredSpinningLidarModelParameters.from_dict(lidar_model_parameters)
-
-        raise ValueError(f"Unknown lidar model type: {lidar_model_type}")
+        return data.decode_lidar_model_parameters(self._sensor_meta.__dict__)
 
 
 class RadarSensor(PointCloudSensor):
@@ -825,34 +857,7 @@ class ShardDataLoader:
 
         """
 
-        pattern_basepath = Path(pattern).parent
-        pattern_name = Path(pattern).name
-
-        evaluated_name_patterns = []
-
-        # expand integer ranges like '[1-13]'
-        if range_match := re.search(r"\[(\d+)-(\d+)\]", pattern_name):
-            low = int(range_match.group(1))
-            high = int(range_match.group(2))
-
-            for i in range(low, high + 1):
-                evaluated_name_patterns.append(pattern_name.replace(f"[{low}-{high}]", str(i) + "-"))
-        else:
-            evaluated_name_patterns.append(pattern_name)
-
-        matches: set[Path] = set()
-        for evaluated_pattern in evaluated_name_patterns:
-            for candidate in pattern_basepath.iterdir():
-                if candidate.name.startswith(evaluated_pattern):
-                    skip = False
-                    for skip_suffix in skip_suffixes:
-                        if str(candidate).endswith(skip_suffix):
-                            skip = True
-                            break
-                    if not skip:
-                        matches.add(candidate)
-
-        return [str(match) for match in list(matches)]
+        return evaluate_file_pattern(pattern, skip_suffixes=skip_suffixes)
 
     def __init__(
         self,
@@ -985,7 +990,7 @@ class ShardDataLoader:
         for shard_store in self._shard_stores:
             shard_store.reload_resources()
 
-    def get_poses(self, start_shard_idx: Optional[int] = None, stop_shard_idx: Optional[int] = None) -> types.Poses:
+    def get_poses(self, start_shard_idx: Optional[int] = None, stop_shard_idx: Optional[int] = None) -> Poses:
         """Returns all timestamped poses associated with the session (default) or a range of shards [start,stop)"""
 
         # Load common base pose
@@ -1022,7 +1027,7 @@ class ShardDataLoader:
         if not np.all(unique_idxs[:-1] < unique_idxs[1:]):
             raise ValueError(f"Concatenated pose timestamps not strictly monotonically increasing")
 
-        return types.Poses(np.array(T_rig_world_base), np.vstack(T_rig_worlds)[unique_idxs], T_rig_world_timestamps_us)
+        return Poses(np.array(T_rig_world_base), np.vstack(T_rig_worlds)[unique_idxs], T_rig_world_timestamps_us)
 
     def get_sequence_id(self, with_shard_range: bool = False) -> str:
         """Provides access to a unique identifier of the loaded shard data, optionally including the linear range of shards
@@ -1094,7 +1099,7 @@ class ShardDataLoader:
         """Returns all radar sensor ids"""
         return list(self._radar_ids)
 
-    def get_tracks(self) -> types.Tracks:
+    def get_tracks(self) -> Tracks:
         """Returns all object tracks"""
 
         root_shard = self._shard_roots[0]  # can use first root shard as track labels are the same per shard
@@ -1103,14 +1108,14 @@ class ShardDataLoader:
         # 'labels' group / 'track_labels' dataset
         tracks_group = root_shard["labels"] if "labels" in root_shard else root_shard["tracks"]
 
-        return types.Tracks(
+        return Tracks(
             track_labels={
-                track_label[0]: types.TrackLabel.from_dict(track_label[1], infer_missing=True)
+                track_label[0]: TrackLabel.from_dict(track_label[1], infer_missing=True)
                 for track_label in tracks_group["track_labels"]
             }
         )
 
-    def get_sequence_meta(self) -> JsonLike:
+    def get_sequence_meta(self) -> Dict[str, JsonLike]:
         """Returns full sequence meta-data as a dictionary"""
 
         output: Dict[str, JsonLike] = {
@@ -1150,7 +1155,7 @@ class ShardDataLoader:
             shard: Dict[str, JsonLike] = {
                 "id": shard_id,
                 "path": shard_path.name,
-                "md5": common.md5(shard_path),
+                "md5": common.MD5Hasher.hash(shard_path),
                 "pose-range": {
                     "start-timestamp_us": int(shard_pose_timestamps_us[0]),
                     "end-timestamp_us": int(shard_pose_timestamps_us[-1]),

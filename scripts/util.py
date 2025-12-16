@@ -11,21 +11,41 @@
 import logging
 
 from pathlib import Path
-from typing import Final, Optional, Tuple
+from typing import TYPE_CHECKING, Final, Optional, Tuple
 
 import click
 import debugpy
 import numpy as np
-import numpy.typing as npt
+
+
+if TYPE_CHECKING:
+    import numpy.typing as npt  # type: ignore[import-not-found]
 
 from ncore.impl.data.data3 import PointCloudSensor
+
+
+class TupleType(click.ParamType):
+    name = "tuple"
+
+    def __init__(self, n: int, separator: str = ":"):
+        self.n = n
+        self.separator = separator
+
+    def convert(self, value, param, ctx):
+        try:
+            parts = value.split(self.separator)
+            if len(parts) != self.n:
+                raise ValueError(f"Expected {self.n} parts, got {len(parts)}")
+            return tuple(parts)
+        except Exception as e:
+            self.fail(f"Could not convert '{value}' to a tuple: {e}")
 
 
 class NPArrayParamType(click.ParamType):
     name = "NPArray"
     """ Click cmdl argument type for numpy arrays """
 
-    def __init__(self, dim: Tuple[int, ...] = (-1,), dtype: npt.DTypeLike = np.float32):
+    def __init__(self, dim: Tuple[int, ...] = (-1,), dtype: "npt.DTypeLike" = np.float32):
         super().__init__()
         self.dim = dim
         self.dtype = np.dtype(dtype)
