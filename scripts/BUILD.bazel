@@ -110,6 +110,7 @@ py_binary(
         requirement("universal_pathlib"),
         "//ncore/impl/common:pylib_common",
         "//ncore/impl/data:pylib_data3",
+        "//ncore/impl/data/data4:pylib_components",
         "//ncore/impl/data/data4:pylib_conversion",
         "//scripts:pylib_util",
     ],

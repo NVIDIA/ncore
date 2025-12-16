@@ -128,7 +128,12 @@ def v3(
 
 @cli.command()
 @click.option(
-    "component_groups", "--component-group", multiple=True, type=str, help="Data component group paths", required=True
+    "component_groups",
+    "--component-group",
+    multiple=True,
+    type=str,
+    help="Data component group / sequence meta paths",
+    required=True,
 )
 @click.option("--poses-component-group", type=str, help="Component group for 'poses'", default="default")
 @click.option("--intrinsics-component-group", type=str, help="Component group for 'intrinsics'", default="default")

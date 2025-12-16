@@ -7,6 +7,7 @@
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
+import json
 import logging
 
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from upath import UPath
 
 from ncore.impl.common.common import time_bounds
 from ncore.impl.data.data3 import ShardDataLoader
+from ncore.impl.data.data4.components import SequenceComponentGroupsReader
 from ncore.impl.data.data4.conversion import NCore3To4
 from scripts.util import TupleType
 
@@ -29,6 +31,7 @@ class CLIBaseParams:
     shard_file_pattern: str
     skip_suffixes: Tuple[str]
     open_consolidated: bool
+    sequence_meta: bool
 
     output_dir: str
     store_type: Literal["itar", "directory"]
@@ -65,6 +68,7 @@ class CLIBaseParams:
     default=None,
 )
 @click.option("--open-consolidated/--no-open-consolidated", default=True, help="Pre-load shard meta-data?")
+@click.option("--sequence-meta/--no-sequence-meta", default=True, help="Generate sequence meta-data?")
 @click.option("--output-dir", type=str, help="Path to the output folder", required=True)
 @click.option(
     "--store-type",
@@ -181,11 +185,12 @@ def ncore_3to4(
     if params.no_radars:
         radar_ids = []
 
+    # Perform V3 to V4 conversion
     ncore_4_paths = NCore3To4.convert(
         source_data_loader=loader,
         start_timestamp_us=start_timestamp_us,
         end_timestamp_us=end_timestamp_us,
-        output_dir_path=UPath(params.output_dir),
+        output_dir_path=(output_dir_path := UPath(params.output_dir)),
         store_type=params.store_type,
         camera_ids=camera_ids,
         lidar_ids=lidar_ids,
@@ -203,6 +208,20 @@ def ncore_3to4(
     )
 
     logging.info(f"Wrote dataset to {ncore_4_paths}")
+
+    # Output sequence meta file if requested
+    if params.sequence_meta:
+        sequence_component_reader = SequenceComponentGroupsReader(
+            ncore_4_paths,
+            open_consolidated=params.open_consolidated,
+        )
+
+        sequence_meta_path = output_dir_path / f"{sequence_component_reader.sequence_id}.ncore4.json"
+
+        with sequence_meta_path.open("w") as f:
+            json.dump(sequence_component_reader.get_sequence_meta(), f, indent=2)
+
+        logging.info(f"Wrote meta data {str(sequence_meta_path)}")
 
 
 @cli.command()

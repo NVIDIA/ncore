@@ -17,7 +17,7 @@ Example invocation::
         -- \
         --sensor-id=lidar00 \
         --camera-id=camera01 \
-        [v3 --shard-file-pattern=<SHARD_FILE_PATTERN> / v4 --component-group=<COMPONENT_GROUP0> --component-group=<COMPONENT_GROUP1> ...]
+        [v3 --shard-file-pattern=<SHARD_FILE_PATTERN> / v4 --component-group=<SEQUENCE_META.json> OR --component-group=<COMPONENT_GROUP0> --component-group=<COMPONENT_GROUP1> ...]
 
 
 .. figure:: proj0.png
@@ -87,5 +87,4 @@ Example invocation::
         -- \
         --output-dir=<OUTPUT_FOLDER> \
         --camera-id=camera00
-        [v3 --shard-file-pattern=<SHARD_FILE_PATTERN> / v4 --component-group=<COMPONENT_GROUP0> --component-group=<COMPONENT_GROUP1> ...]
-
+        [v3 --shard-file-pattern=<SHARD_FILE_PATTERN> / v4 --component-group=<SEQUENCE_META.json> OR --component-group=<COMPONENT_GROUP0> --component-group=<COMPONENT_GROUP1> ...]

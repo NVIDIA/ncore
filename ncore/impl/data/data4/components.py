@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import concurrent
 import io
+import json
 import logging
 import sys
 
@@ -235,6 +236,31 @@ class SequenceComponentGroupsWriter:
 class SequenceComponentGroupsReader:
     """SequenceComponentReader manages data component groups for reading for NCore V4 / zarr data for a single NCore sequence"""
 
+    @staticmethod
+    def expand_component_group_paths(
+        component_group_paths: List[UPath] | List[Path],
+    ) -> List[UPath]:
+        """Expands possible sequence meta-data files in the given list of component group
+        paths to the actual component group paths they reference"""
+
+        ret: List[UPath] = []
+
+        for component_group_path in component_group_paths:
+            component_group_path = UPath(component_group_path).absolute()
+
+            if component_group_path.is_file() and component_group_path.suffix == ".json":
+                # sequence meta-data file - load and expand
+                with component_group_path.open("r") as f:
+                    sequence_meta = json.load(f)
+
+                for component_store_info in sequence_meta["component_stores"]:
+                    ret.append(component_group_path.parent / UPath(component_store_info["path"]))
+            else:
+                # direct component group path
+                ret.append(component_group_path)
+
+        return ret
+
     def __init__(
         self,
         component_group_paths: List[UPath] | List[Path],
@@ -244,7 +270,8 @@ class SequenceComponentGroupsReader:
         """Initialize a SequenceComponentReader for a virtual sequence represented by a list of components.
 
         Args:
-            component_group_paths: Universal paths / URLs to component groups to load, which need to represent a *single* sequence
+            component_group_paths: Universal paths / URLs to component groups to load (which may include sequence meta-data files),
+                                   which need to represent a *single* sequence
             open_consolidated: If 'True', pre-load per-component meta-data when opening the components.
                                This is advisable if component data is accessed from *non-local*
                                storage to prevent latencies introduced when accessing the data.
@@ -254,32 +281,34 @@ class SequenceComponentGroupsReader:
                                use interpreter-default number of threads for a ThreadPoolExecutor)
         """
 
-        assert len(component_group_paths), "No component inputs provided"
+        component_group_upaths: List[UPath] = self.expand_component_group_paths(component_group_paths)
+
+        assert len(component_group_upaths), "No component inputs provided"
 
         # Load component stores concurrently (to hide latency) and check for sequence consistency
         self._component_stores: Dict[str, Tuple[zarr.Group, UPath]] = {}  # use str as the generic path / URL type
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
 
-            def thread_load_component_store(component_store_path: UPath | Path) -> Tuple[zarr.Group, UPath]:
+            def thread_load_component_store(component_store_upath: UPath) -> Tuple[zarr.Group, UPath]:
                 """Thread-executed shard opening"""
 
                 # Make sure paths are absolute at this point
-                component_store_path = UPath(component_store_path).absolute()
+                component_store_upath = component_store_upath.absolute()
 
-                logging.info(f"SequenceStoreReader: Loading component store {component_store_path}")
+                logging.info(f"SequenceStoreReader: Loading component store {component_store_upath}")
 
                 component_store: zarr._storage.store.Store
-                if component_store_path.is_file():
-                    if not component_store_path.name.endswith(".zarr.itar"):
+                if component_store_upath.is_file():
+                    if not component_store_upath.name.endswith(".zarr.itar"):
                         # not a supported file-based store format
                         raise RuntimeError(
-                            f"Unsupported file-based store format {component_store_path}, expected .zarr.itar"
+                            f"Unsupported file-based store format {component_store_upath}, expected .zarr.itar"
                         )
 
-                    component_store = stores.IndexedTarStore(component_store_path, mode="r")
+                    component_store = stores.IndexedTarStore(component_store_upath, mode="r")
                 else:
-                    component_store = zarr.storage.DirectoryStore(component_store_path)
+                    component_store = zarr.storage.DirectoryStore(component_store_upath)
 
                 component_root = (
                     stores.open_compressed_consolidated(store=component_store, mode="r")
@@ -287,12 +316,12 @@ class SequenceComponentGroupsReader:
                     else zarr.open(store=component_store, mode="r")
                 )
 
-                return cast(zarr.Group, component_root), component_store_path
+                return cast(zarr.Group, component_root), component_store_upath
 
             for future in concurrent.futures.as_completed(
                 [
-                    executor.submit(thread_load_component_store, component_store_path)
-                    for component_store_path in component_group_paths
+                    executor.submit(thread_load_component_store, component_store_upath)
+                    for component_store_upath in component_group_upaths
                 ]
             ):
                 # Note: thread completion order is not relevant here
