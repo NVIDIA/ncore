@@ -63,7 +63,7 @@ def numpy_array_field(datatype: "npt.DTypeLike", default=None):
     """Provides encoder / decoder functionality for numpy arrays into field types compatible with dataclass-JSON"""
 
     def decoder(*args, **kwargs):
-        return np.array(*args, dtype=datatype, **kwargs)
+        return np.array(*args, **kwargs).astype(datatype)
 
     metadata = dataclasses_json.config(encoder=np.ndarray.tolist, decoder=decoder)
 

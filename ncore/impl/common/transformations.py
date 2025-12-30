@@ -20,7 +20,7 @@ from ncore.impl.common.common import PoseInterpolator, unpack_optional
 
 
 if TYPE_CHECKING:
-    import numpy.typing as npt  # type: ignore[import-not-found]
+    import numpy.typing as npt  # type: ignore[import-not-found]  # noqa: F401
 
 
 def so3_trans_2_se3(so3, trans):

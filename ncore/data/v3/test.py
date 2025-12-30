@@ -11,4 +11,4 @@
 def test_import_package():
     """Make sure package can be imported"""
 
-    import ncore.data.v3
+    import ncore.data.v3  # noqa: F401

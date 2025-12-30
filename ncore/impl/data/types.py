@@ -577,7 +577,7 @@ class RowOffsetStructuredSpinningLidarModelParameters(
         assert np.all(np.diff(relative_row_elevations_rad.relative_angle_rad) > 0), (
             "Row elevation angles must be sorted in descending order (cw)"
         )
-        assert np.all(relative_row_elevations_rad.wrap_around_flag == False), (
+        assert np.all(~relative_row_elevations_rad.wrap_around_flag), (
             "Row elevation angles must not wrap around the start element"
         )
 
@@ -588,7 +588,7 @@ class RowOffsetStructuredSpinningLidarModelParameters(
         assert np.all(np.diff(relative_column_azimuths_rad.relative_angle_rad) > 0), (
             "Column azimuth angles must be sorted in the spinning direction so the diff between relative angles of consecutive columns should always be positive"
         )
-        assert np.all(relative_row_elevations_rad.wrap_around_flag == False), (
+        assert np.all(~relative_row_elevations_rad.wrap_around_flag), (
             "Column azimuth angles (without offsets) must not wrap around the start element"
         )
 

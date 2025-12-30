@@ -119,7 +119,7 @@ class BivariateWindshieldModel(ExternalDistortionModel):
             to_torch(windshield_distortion_parameters.vertical_poly_inverse, device=self.device, dtype=self.dtype),
         )
 
-        self.reference_poly = windshield_distortion_parameters.reference_poly
+        self.reference_poly: types.ReferencePolynomial = windshield_distortion_parameters.reference_poly
 
         # Compute the order of the polynomial
         self.order_phi = self.compute_poly_order(self.horizontal_poly)
@@ -242,14 +242,17 @@ class CameraModel(BaseModel, ABC):
         self.register_buffer(
             "resolution", to_torch(camera_model_parameters.resolution.astype(np.int32), device=self.device)
         )
-        self.shutter_type = camera_model_parameters.shutter_type
+        self.shutter_type: types.ShutterType = camera_model_parameters.shutter_type
 
         # Initialize external distortion module if available
         self.register_module(
             "external_distortion",
-            map_optional(
-                camera_model_parameters.external_distortion_parameters,
-                lambda x: ExternalDistortionModel.from_parameters(x, self.device, self.dtype),
+            cast(
+                Optional[torch.nn.Module],
+                map_optional(
+                    camera_model_parameters.external_distortion_parameters,
+                    lambda x: ExternalDistortionModel.from_parameters(x, self.device, self.dtype),
+                ),
             ),
         )
 
@@ -1227,7 +1230,7 @@ class FThetaCameraModel(CameraModel):
         super().__init__(camera_model_parameters, device, dtype)
         del (device, dtype)
 
-        self.reference_poly = camera_model_parameters.reference_poly
+        self.reference_poly: types.FThetaCameraModelParameters.PolynomialType = camera_model_parameters.reference_poly
 
         # FThetaCameraModelParameters are defined such that the image coordinate origin corresponds to
         # the center of the first pixel. To conform to the CameraModel specification (having the image
@@ -1288,8 +1291,8 @@ class FThetaCameraModel(CameraModel):
             ),
         )
 
-        self.max_angle = float(camera_model_parameters.max_angle)
-        self.newton_iterations = newton_iterations
+        self.max_angle: float = float(camera_model_parameters.max_angle)
+        self.newton_iterations: int = newton_iterations
 
         # 2D pixel-distance threshold
         assert min_2d_norm > 0, "require positive minimum norm threshold"
@@ -1316,7 +1319,10 @@ class FThetaCameraModel(CameraModel):
         return types.FThetaCameraModelParameters(
             resolution=self.resolution.cpu().numpy().astype(np.uint64),
             shutter_type=self.shutter_type,
-            external_distortion_parameters=map_optional(self.external_distortion, lambda x: x.get_parameters()),
+            external_distortion_parameters=cast(
+                Optional[types.ConcreteExternalDistortionParametersUnion],
+                map_optional(self.external_distortion, lambda x: x.get_parameters()),
+            ),
             principal_point=self.principal_point.cpu().numpy().astype(np.float32) - 0.5,
             reference_poly=self.reference_poly,
             angle_to_pixeldist_poly=self.fw_poly.cpu().numpy().astype(np.float32),
@@ -1489,7 +1495,10 @@ class OpenCVPinholeCameraModel(CameraModel):
         return types.OpenCVPinholeCameraModelParameters(
             resolution=self.resolution.cpu().numpy().astype(np.uint64),
             shutter_type=self.shutter_type,
-            external_distortion_parameters=map_optional(self.external_distortion, lambda x: x.get_parameters()),
+            external_distortion_parameters=cast(
+                Optional[types.ConcreteExternalDistortionParametersUnion],
+                map_optional(self.external_distortion, lambda x: x.get_parameters()),
+            ),
             principal_point=self.principal_point.cpu().numpy().astype(np.float32),
             focal_length=self.focal_length.cpu().numpy().astype(np.float32),
             radial_coeffs=self.radial_coeffs.cpu().numpy().astype(np.float32),
@@ -1672,8 +1681,8 @@ class OpenCVFisheyeCameraModel(CameraModel):
             to_torch(camera_model_parameters.focal_length, device=self.device, dtype=self.dtype),
         )
 
-        self.max_angle = float(camera_model_parameters.max_angle)
-        self.newton_iterations = newton_iterations
+        self.max_angle: float = float(camera_model_parameters.max_angle)
+        self.newton_iterations: int = newton_iterations
 
         # 2D pixel-distance threshold
         assert min_2d_norm > 0, "require positive minimum norm threshold"
@@ -1712,7 +1721,10 @@ class OpenCVFisheyeCameraModel(CameraModel):
         return types.OpenCVFisheyeCameraModelParameters(
             resolution=self.resolution.cpu().numpy().astype(np.uint64),
             shutter_type=self.shutter_type,
-            external_distortion_parameters=map_optional(self.external_distortion, lambda x: x.get_parameters()),
+            external_distortion_parameters=cast(
+                Optional[types.ConcreteExternalDistortionParametersUnion],
+                map_optional(self.external_distortion, lambda x: x.get_parameters()),
+            ),
             principal_point=self.principal_point.cpu().numpy().astype(np.float32),
             focal_length=self.focal_length.cpu().numpy().astype(np.float32),
             radial_coeffs=self.forward_poly[[3, 5, 7, 9]].cpu().numpy().astype(np.float32),

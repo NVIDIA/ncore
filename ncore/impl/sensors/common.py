@@ -8,7 +8,7 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
-from typing import Optional, Union
+from typing import Optional, Union, cast
 
 import numpy as np
 import torch
@@ -32,13 +32,13 @@ class BaseModel(torch.nn.Module):
         if isinstance(device, str):
             device = torch.device(device)
 
-        self.init_device = device
+        self.init_device: torch.device = device
 
         # Make sure dtype is a torch floating point dtype
         if not dtype.is_floating_point:
             raise TypeError(f"Expected floating point dtype, but got {dtype}")
 
-        self.init_dtype = dtype
+        self.init_dtype: torch.dtype = dtype
 
     @property
     def device(self) -> torch.device:
@@ -81,6 +81,8 @@ def to_torch(
     if isinstance(var, np.ndarray):
         # Torch doesn't support uint32 and uint64 so we cast them to signed integers beforehand
         # Note that this can cause problems
+
+        var = cast(np.ndarray, var)
 
         if var.dtype == np.uint16:
             assert np.all(var <= np.iinfo(np.int16).max), (

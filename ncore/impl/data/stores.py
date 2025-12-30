@@ -21,20 +21,21 @@ from dataclasses import dataclass, field
 from enum import IntEnum, auto, unique
 from pathlib import Path
 from threading import RLock
-from typing import IO, Any, BinaryIO, Dict, Iterator, Literal, NamedTuple, Union
+from typing import IO, Any, Dict, Iterator, Literal, NamedTuple, Union
 
 import cbor2
-import numcodecs
-import upath
 import zarr
 
+from numcodecs import compat
 from upath import UPath
+from zarr._storage.store import Store
+from zarr.util import json_loads
 
 
 _logger = logging.getLogger(__name__)
 
 
-class IndexedTarStore(zarr._storage.store.Store):
+class IndexedTarStore(Store):
     """A zarr store over *indexed* tar files
 
     Parameters
@@ -150,7 +151,7 @@ class IndexedTarStore(zarr._storage.store.Store):
             if item in self.index.records:
                 raise ValueError(f"{item} already exists, update is not supported")
 
-            value_bytes: bytes = numcodecs.compat.ensure_bytes(value)
+            value_bytes: bytes = compat.ensure_bytes(value)
             value_size: int = len(value_bytes)
 
             # Remember current tar file position, which is the start of the header
@@ -285,7 +286,7 @@ class IndexedTarStore(zarr._storage.store.Store):
         return cls.TarRecordIndex({item: cls.TarRecord(offset_datas[i], sizes[i]) for i, item in enumerate(items)})
 
     @classmethod
-    def _save_tar_index(cls, tar_file_object: BinaryIO, index: TarRecordIndex):
+    def _save_tar_index(cls, tar_file_object: IO[Any], index: TarRecordIndex):
         """Saves a tar record index at the end of a tar file object (needs to be finalized / have two empty blocks appended already)"""
 
         def fill_block():
@@ -363,7 +364,7 @@ def consolidate_compressed_metadata(store: zarr.storage.BaseStore, metadata_key=
     # Collect all meta-data
     out = {
         "zarr_consolidated_format": 1,
-        "metadata": {key: zarr.util.json_loads(store[key]) for key in store if is_zarr_key(key)},
+        "metadata": {key: json_loads(store[key]) for key in store if is_zarr_key(key)},
     }
 
     with io.BytesIO() as metadata_buffer:
@@ -379,7 +380,7 @@ class ConsolidatedCompressedMetadataStore(zarr.storage.ConsolidatedMetadataStore
 
     # Overwrite constructor to perform decompression of metadata
     def __init__(self, store: zarr.storage.StoreLike, metadata_key=".zmetadata.cbor.xz"):
-        self.store = zarr._storage.store.Store._ensure_store(store)
+        self.store = Store._ensure_store(store)
 
         # retrieve consolidated metadata
         meta = cbor2.loads(lzma.LZMADecompressor().decompress(self.store[metadata_key]))
