@@ -19,7 +19,7 @@ build --incompatible_strict_action_env
 build --incompatible_allow_tags_propagation
 
 # Check the ctime of input files of an action before uploading it to a remote cache (there may be cases where the Linux kernel delays writing of files, which could cause false positives)
-build --experimental_guard_against_concurrent_changes
+build --guard_against_concurrent_changes
 
 #? --config=low_memory            Low-memory builds (e.g., for memory-constrained CI machines)
 build:low_memory --@//bazel/flags:low_memory=True
