@@ -232,7 +232,6 @@ class SensorProtocol(Protocol):
             target_node: Name of the target coordinate frame
             frame_indices: Array of frame indices at which to evaluate poses
             frame_timepoint: Frame-relative timepoint (START or END). If None, returns both
-            dtype: Data type for the output transformation matrices
 
         Returns:
             Transformation matrices with shape [frame_indices-shape,2,4,4] if frame_timepoint
