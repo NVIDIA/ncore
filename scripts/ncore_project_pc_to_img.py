@@ -291,10 +291,16 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
             ).xyz_m_end
 
         # Transform the point cloud to the world coordinate frame
-        pc = transform_point_cloud(pc, lidar_sensor.get_frame_T_sensor_world(pc_frame_index, types.FrameTimepoint.END))
+        pc = transform_point_cloud(
+            pc, lidar_sensor.get_frames_T_sensor_target("world", pc_frame_index, types.FrameTimepoint.END)
+        )
 
-        T_world_camera_start = se3_inverse(cam_sensor.get_frame_T_sensor_world(frame_index, types.FrameTimepoint.START))
-        T_world_camera_end = se3_inverse(cam_sensor.get_frame_T_sensor_world(frame_index, types.FrameTimepoint.END))
+        T_world_camera_start = se3_inverse(
+            cam_sensor.get_frames_T_sensor_target("world", frame_index, types.FrameTimepoint.START)
+        )
+        T_world_camera_end = se3_inverse(
+            cam_sensor.get_frames_T_sensor_target("world", frame_index, types.FrameTimepoint.END)
+        )
 
         logger.info(msg)
 

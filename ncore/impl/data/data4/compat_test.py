@@ -194,10 +194,21 @@ class TestCompatV3(unittest.TestCase):
         self.assertIsNotNone(T_sensor_rig)
         self.assertEqual(unpack_optional(T_sensor_rig).shape, (4, 4))
 
-        # Test get_frame_T_sensor_world
-        T_sensor_world = camera.get_frame_T_sensor_world(0)
-        self.assertIsNotNone(T_sensor_world)
-        self.assertEqual(T_sensor_world.shape, (4, 4))
+        # Test get_frames_T_sensor_target
+        self.assertEqual(camera.get_frames_T_sensor_target("world", 0).shape, (4, 4))
+        self.assertEqual(camera.get_frames_T_sensor_target("world", np.array([0, 1, 2])).shape, (3, 4, 4))
+        self.assertEqual(camera.get_frames_T_sensor_target("world", 1, frame_timepoint=None).shape, (2, 4, 4))
+        self.assertEqual(
+            camera.get_frames_T_sensor_target("world", np.array([1, 2, 3]), frame_timepoint=None).shape, (3, 2, 4, 4)
+        )
+
+        # Test get_frames_T_source_sensor
+        self.assertEqual(camera.get_frames_T_source_sensor("world", 0).shape, (4, 4))
+        self.assertEqual(camera.get_frames_T_source_sensor("world", np.array([0, 1, 2])).shape, (3, 4, 4))
+        self.assertEqual(camera.get_frames_T_source_sensor("world", 1, frame_timepoint=None).shape, (2, 4, 4))
+        self.assertEqual(
+            camera.get_frames_T_source_sensor("world", np.array([1, 2, 3]), frame_timepoint=None).shape, (3, 2, 4, 4)
+        )
 
     def test_camera_sensor_generic_data(self):
         """Test generic data access for camera frames"""
@@ -303,10 +314,26 @@ class TestCompatV3(unittest.TestCase):
         self.assertIsNotNone(T_sensor_rig)
         self.assertEqual(unpack_optional(T_sensor_rig).shape, (4, 4))
 
-        # Test get_frame_T_sensor_world
-        T_sensor_world = lidar.get_frame_T_sensor_world(0)
-        self.assertIsNotNone(T_sensor_world)
-        self.assertEqual(T_sensor_world.shape, (4, 4))
+        # Test get_frames_T_sensor_target
+        self.assertEqual(lidar.get_frames_T_sensor_target("world", 0).shape, (4, 4))
+        self.assertEqual(lidar.get_frames_T_sensor_target("world", np.array([0, 1, 2])).shape, (3, 4, 4))
+        self.assertEqual(lidar.get_frames_T_sensor_target("world", 1, frame_timepoint=None).shape, (2, 4, 4))
+        self.assertEqual(
+            lidar.get_frames_T_sensor_target("world", np.array([1, 2, 3]), frame_timepoint=None).shape, (3, 2, 4, 4)
+        )
+
+        # Test get_frames_T_source_sensor
+        self.assertEqual(lidar.get_frames_T_source_sensor("world", 0).shape, (4, 4))
+        self.assertEqual(lidar.get_frames_T_source_sensor("world", np.array([0, 1, 2])).shape, (3, 4, 4))
+        self.assertEqual(lidar.get_frames_T_source_sensor("world", 1, frame_timepoint=None).shape, (2, 4, 4))
+        self.assertEqual(
+            lidar.get_frames_T_source_sensor("world", np.array([1, 2, 3]), frame_timepoint=None).shape, (3, 2, 4, 4)
+        )
+
+        # Test get_frames_T_source_sensor
+        T_world_sensor = lidar.get_frames_T_source_sensor("world", 0)
+        self.assertIsNotNone(T_world_sensor)
+        self.assertEqual(T_world_sensor.shape, (4, 4))
 
     def test_radar_sensor_basic(self):
         """Test basic radar sensor properties"""
@@ -936,7 +963,18 @@ class TestCompatV4(unittest.TestCase):
         """Test lidar sensor transformations in V4"""
         lidar = self.loader.get_lidar_sensor("lidar_gt_top_p128_v4p5")
 
-        # Test get_frame_T_sensor_world
-        T_sensor_world = lidar.get_frame_T_sensor_world(0)
-        self.assertIsNotNone(T_sensor_world)
-        self.assertEqual(T_sensor_world.shape, (4, 4))
+        # Test get_frames_T_sensor_target
+        self.assertEqual(lidar.get_frames_T_sensor_target("world", 0).shape, (4, 4))
+        self.assertEqual(lidar.get_frames_T_sensor_target("world", np.array([0, 1, 2])).shape, (3, 4, 4))
+        self.assertEqual(lidar.get_frames_T_sensor_target("world", 1, frame_timepoint=None).shape, (2, 4, 4))
+        self.assertEqual(
+            lidar.get_frames_T_sensor_target("world", np.array([1, 2, 3]), frame_timepoint=None).shape, (3, 2, 4, 4)
+        )
+
+        # Test get_frames_T_source_sensor
+        self.assertEqual(lidar.get_frames_T_source_sensor("world", 0).shape, (4, 4))
+        self.assertEqual(lidar.get_frames_T_source_sensor("world", np.array([0, 1, 2])).shape, (3, 4, 4))
+        self.assertEqual(lidar.get_frames_T_source_sensor("world", 1, frame_timepoint=None).shape, (2, 4, 4))
+        self.assertEqual(
+            lidar.get_frames_T_source_sensor("world", np.array([1, 2, 3]), frame_timepoint=None).shape, (3, 2, 4, 4)
+        )

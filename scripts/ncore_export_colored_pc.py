@@ -244,10 +244,10 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
         ).xyz_m_end
 
         # Transform the point cloud to the world coordinate frame
-        xyz_world = transform_point_cloud(xyz_sensor, pc_sensor.get_frame_T_sensor_world(pc_frame_index))
+        xyz_world = transform_point_cloud(xyz_sensor, pc_sensor.get_frames_T_sensor_target("world", pc_frame_index))
 
-        T_world_sensor_start, T_world_sensor_end = cam_sensor.get_frames_T_source_target(
-            "world", cam_sensor.sensor_id, np.array(cam_frame_index)
+        T_world_sensor_start, T_world_sensor_end = cam_sensor.get_frames_T_source_sensor(
+            "world", cam_frame_index, frame_timepoint=None
         )
 
         logger.debug(f"Starting the projection with torch implementation on device={params.device}")
