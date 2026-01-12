@@ -211,24 +211,24 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
             to_torch(parameters.row_azimuth_offsets_rad, device=self.device, dtype=self.dtype),
         )
 
-        self.angles_to_columns_map_resolution_factor = angles_to_columns_map_resolution_factor
-        self.angles_to_columns_map_dtype = angles_to_columns_map_dtype
+        self.angles_to_columns_map_resolution_factor: int = angles_to_columns_map_resolution_factor
+        self.angles_to_columns_map_dtype: torch.dtype = angles_to_columns_map_dtype
         self.angles_to_columns_map: Optional[torch.Tensor] = None
 
-        self.spinning_frequency_hz = parameters.spinning_frequency_hz
-        self.spinning_direction = parameters.spinning_direction
-        self.n_rows = parameters.n_rows
-        self.n_columns = parameters.n_columns
+        self.spinning_frequency_hz: float = parameters.spinning_frequency_hz
+        self.spinning_direction: Literal["cw", "ccw"] = parameters.spinning_direction
+        self.n_rows: int = parameters.n_rows
+        self.n_columns: int = parameters.n_columns
 
         # Compute FOV bounds from parameters (using same precision as current model)
-        self.fov_eps_rad = fov_eps_factor * torch.finfo(self.dtype).eps
+        self.fov_eps_rad: float = fov_eps_factor * torch.finfo(self.dtype).eps
         np_dtype = {
             torch.float16: np.float16,
             torch.float32: np.float32,
             torch.float64: np.float64,
         }[self.dtype]  # map torch dtype to numpy dtype for parameter-based FOV evaluation
-        self.fov_vert = parameters.get_vertical_fov(np_dtype)
-        self.fov_horiz = parameters.get_horizontal_fov(np_dtype)
+        self.fov_vert: util.FOV = parameters.get_vertical_fov(np_dtype)
+        self.fov_horiz: util.FOV = parameters.get_horizontal_fov(np_dtype)
 
         if angles_to_columns_map_init:
             self._init_angles_to_columns_map()
@@ -348,10 +348,10 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
             indexing="ij",
         )
 
-        self.map_resolution_horiz_rad = self.fov_horiz.span_rad / (
+        self.map_resolution_horiz_rad: float = self.fov_horiz.span_rad / (
             self.angles_to_columns_map_resolution_factor * self.n_columns - 1
         )
-        self.map_resolution_vert_rad = self.fov_vert.span_rad / (
+        self.map_resolution_vert_rad: float = self.fov_vert.span_rad / (
             self.angles_to_columns_map_resolution_factor * self.n_rows - 1
         )
 
@@ -379,7 +379,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
 
         # Compute the NN of each grid ray in the sensor rays
         # TODO: can we move this to torch/CUDA? do we assume that we always have access?
-        kdtree = scipy_spatial.cKDTree(sensor_rays.sensor_rays.cpu().numpy())
+        kdtree = scipy_spatial.cKDTree(sensor_rays.sensor_rays.cpu().numpy())  # ty:ignore[unresolved-attribute]
         _, idxs = kdtree.query(grid_rays.sensor_rays.cpu().numpy())
         idxs = to_torch(idxs, device=self.device, dtype=torch.int32)
 
@@ -666,7 +666,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         # Copy the values in the output variable
         return_var = self.WorldRaysReturn(
             world_rays=torch.cat(
-                tensors=(cast(torch.Tensor, world_position_rs), cast(torch.Tensor, world_ray_directions_rs)), dim=1
+                tensors=(cast(torch.Tensor, world_position_rs), world_ray_directions_rs), dim=1
             )  # [n_elements, 6])
         )
 

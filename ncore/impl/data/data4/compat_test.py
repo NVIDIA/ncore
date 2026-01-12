@@ -13,7 +13,7 @@ import unittest
 
 import numpy as np
 
-from python.runfiles import Runfiles
+from python.runfiles import Runfiles  # ty:ignore[unresolved-import]
 from upath import UPath
 
 from ncore.impl.common.common import unpack_optional
@@ -192,7 +192,7 @@ class TestCompatV3(unittest.TestCase):
         # Test T_sensor_rig
         T_sensor_rig = camera.T_sensor_rig
         self.assertIsNotNone(T_sensor_rig)
-        self.assertEqual(T_sensor_rig.shape, (4, 4))
+        self.assertEqual(unpack_optional(T_sensor_rig).shape, (4, 4))
 
         # Test get_frame_T_sensor_world
         T_sensor_world = camera.get_frame_T_sensor_world(0)
@@ -301,7 +301,7 @@ class TestCompatV3(unittest.TestCase):
         # Test T_sensor_rig
         T_sensor_rig = lidar.T_sensor_rig
         self.assertIsNotNone(T_sensor_rig)
-        self.assertEqual(T_sensor_rig.shape, (4, 4))
+        self.assertEqual(unpack_optional(T_sensor_rig).shape, (4, 4))
 
         # Test get_frame_T_sensor_world
         T_sensor_world = lidar.get_frame_T_sensor_world(0)
@@ -888,7 +888,7 @@ class TestCompatV4(unittest.TestCase):
         # Test T_sensor_rig
         T_sensor_rig = lidar.T_sensor_rig
         self.assertIsNotNone(T_sensor_rig)
-        self.assertEqual(T_sensor_rig.shape, (4, 4))
+        self.assertEqual(unpack_optional(T_sensor_rig).shape, (4, 4))
 
     def test_lidar_sensor_point_cloud(self):
         """Test lidar point cloud access in V4"""

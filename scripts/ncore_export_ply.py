@@ -200,7 +200,6 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
     logger = logging.getLogger(__name__)
 
     sensor = loader.get_lidar_sensor(params.lidar_id)
-    pose_graph = loader.pose_graph
 
     output_path = Path(params.output_dir)
     output_path.mkdir(parents=True, exist_ok=True)

@@ -6,16 +6,17 @@
 # and any modifications thereto.  Any use, reproduction, disclosure or
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
-
-
 import itertools
 import json
 import unittest
+
+from typing import Tuple
 
 import numpy as np
 import parameterized
 import torch
 
+from ncore.impl.common.common import unpack_optional
 from ncore.impl.common.transformations import se3_inverse
 from ncore.impl.data.types import RowOffsetStructuredSpinningLidarModelParameters
 from ncore.impl.sensors.common import to_torch
@@ -61,6 +62,10 @@ class TestRowOffsetStructuredSpinningLidarModelParameters(unittest.TestCase):
 class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
     """Test to verify functionality of RowOffsetStructuredSpinningLidarModel's methods"""
 
+    device: torch.device
+    dtype: torch.dtype
+    param_file_mapresfactor: Tuple[str, int]
+
     def setUp(self):
         with open(f"ncore/impl/sensors/test_data/{self.param_file_mapresfactor[0]}", "r") as fp:
             self.model_parameters = RowOffsetStructuredSpinningLidarModelParameters.from_dict(json.load(fp))
@@ -97,7 +102,7 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
         self.assertEqual(self.model_parameters.to_json(), self.lidar_model.get_parameters().to_json())
 
         # flip flop device using nn.Module magic
-        self.lidar_model.to(device=(new_device_str := "cuda" if self.device == "cpu" else "cpu"))
+        self.lidar_model.to(device=torch.device(new_device_str := "cuda" if self.device == "cpu" else "cpu"))
         self.assertEqual(
             self.lidar_model.row_elevations_rad.device.type, new_device_str
         )  # make sure the new device is correct
@@ -234,6 +239,6 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
                 )
                 < 1e-3
             )
-            / len(sensor_angles_return.valid_indices)
+            / len(unpack_optional(sensor_angles_return.valid_indices))
             > 0.98
         )

@@ -21,7 +21,6 @@ import tqdm
 from point_cloud_utils import TriangleMesh
 
 from ncore.impl.common.transformations import transform_point_cloud
-from ncore.impl.data import types
 from ncore.impl.data.data3 import ShardDataLoader
 from ncore.impl.data.data4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
 from ncore.impl.data.data4.components import SequenceComponentGroupsReader

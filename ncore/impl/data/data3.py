@@ -1021,11 +1021,11 @@ class ShardDataLoader:
 
         # Verify that overlapping poses showed up duplicated only once after concatenation
         if not np.all(unique_counts <= 2):
-            raise ValueError(f"Concatenated pose timestamps contain more than a single overlapping common pose")
+            raise ValueError("Concatenated pose timestamps contain more than a single overlapping common pose")
 
         # Make sure that concatenated timestamps were actually already sorted before unification
         if not np.all(unique_idxs[:-1] < unique_idxs[1:]):
-            raise ValueError(f"Concatenated pose timestamps not strictly monotonically increasing")
+            raise ValueError("Concatenated pose timestamps not strictly monotonically increasing")
 
         return Poses(np.array(T_rig_world_base), np.vstack(T_rig_worlds)[unique_idxs], T_rig_world_timestamps_us)
 

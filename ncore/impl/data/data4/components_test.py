@@ -363,7 +363,7 @@ class TestData4Reload(unittest.TestCase):
         lidar_writer.store_frame(
             ref_lidar_direction_1,
             ref_lidar_timestamp_us1 := np.linspace(0.5 * 1e6, 1 * 1e6, num=8, dtype=np.uint64),
-            ref_lidar_model_element1 := None,
+            None,
             ref_lidar_distance_m1,
             ref_lidar_intensity1,
             ref_lidar_timestamps_us1 := np.array([0.5 * 1e6, 1 * 1e6], dtype=np.uint64),

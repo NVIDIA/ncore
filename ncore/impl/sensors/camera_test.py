@@ -12,7 +12,7 @@ import dataclasses
 import itertools
 import unittest
 
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, cast
 
 import cv2
 import numpy as np
@@ -21,6 +21,7 @@ import scipy
 import scipy.linalg
 import torch
 
+from ncore.impl.common.common import unpack_optional
 from ncore.impl.data.types import (
     BivariateWindshieldModelParameters,
     ConcreteCameraModelParametersUnion,
@@ -39,7 +40,9 @@ from ncore.impl.sensors.camera import (
     OpenCVPinholeCameraModel,
     to_torch,
 )
-from ncore.impl.sensors.common import to_torch
+
+
+ConcreteCameraModelUnion = Union[FThetaCameraModel, OpenCVPinholeCameraModel, OpenCVFisheyeCameraModel]
 
 
 class ReferenceFThetaCamera:
@@ -211,6 +214,9 @@ class CommonTestCase(unittest.TestCase):
 )
 class TestReferenceFThetaCamera(CommonTestCase):
     """Parameterized test cases validating both the reference implementation and the torch-based camera model"""
+
+    device: str
+    dtype: torch.dtype
 
     def test_imagePoints2rays(self):
         """test backward polynomial coefficients from r**1, r**2, ... r**4"""
@@ -608,8 +614,8 @@ class TestReferenceFThetaCamera(CommonTestCase):
             return_valid_indices=True,
             return_all_projections=True,
         )
-        self.assertTrue(len(image_point_invalid.valid_indices) == 0)
-        self.assertTrue(len(image_point_invalid.image_points) > 0)
+        self.assertTrue(len(unpack_optional(image_point_invalid.valid_indices)) == 0)
+        self.assertTrue(len(unpack_optional(image_point_invalid.image_points)) > 0)
 
         # Test single pose projection
         image_points = ftheta_cam.world_points_to_image_points_static_pose(world_points, T_world_sensor_start)
@@ -624,7 +630,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
         image_point_invalid = ftheta_cam.world_points_to_image_points_static_pose(
             np.array([[0, 0, -1]]), T_world_sensor_start, return_valid_indices=True, return_all_projections=True
         )
-        self.assertTrue(len(image_point_invalid.valid_indices) == 0)
+        self.assertTrue(len(unpack_optional(image_point_invalid.valid_indices)) == 0)
         self.assertTrue(len(image_point_invalid.image_points) > 0)
 
     def test_inputs_and_input_types(self):
@@ -659,7 +665,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
         ftheta_cam.image_points_to_camera_rays(pixel.astype(np.float32))
         ftheta_cam.pixels_to_camera_rays(pixel.astype(np.int32))
         ftheta_cam.world_points_to_image_points_shutter_pose(
-            ray, np.eye(4), np.eye(4), **{"start_timestamp_us": 90, "end_timestamp_us": 100, "return_timestamps": True}
+            ray, np.eye(4), np.eye(4), start_timestamp_us=90, end_timestamp_us=100, return_timestamps=True
         )
 
 
@@ -706,6 +712,9 @@ def ftheta_from_reference(
     ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
 )
 class TestPinholeCamera(CommonTestCase):
+    device: str
+    dtype: torch.dtype
+
     def test_imagePoints2rays_rays2imagePoints_consistency(self):
         """Tests self-consistency of torch-based Pinhole camera model"""
 
@@ -855,6 +864,9 @@ class ReferenceSimplePinholeCamera:
     ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
 )
 class TestJacobian(CommonTestCase):
+    device: str
+    dtype: torch.dtype
+
     def test_pinhole_reference(self):
         """Tests consistency of camera model Jacobians with reference implementation"""
 
@@ -886,7 +898,7 @@ class TestJacobian(CommonTestCase):
         )
 
         cam_model_ref = ReferenceSimplePinholeCamera(
-            cam_model_params, {torch.float32: np.float32, torch.float64: np.float64}[self.dtype]
+            cam_model_params, cast(np.dtype, {torch.float32: np.float32, torch.float64: np.float64}[self.dtype])
         )
         cam_model = CameraModel.from_parameters(cam_model_params, device=self.device, dtype=self.dtype)
 
@@ -901,7 +913,9 @@ class TestJacobian(CommonTestCase):
 
             np.testing.assert_array_almost_equal(pref, proj.image_points.detach()[0].cpu().numpy())
             np.testing.assert_array_almost_equal(
-                Jref, proj.jacobians.detach()[0].cpu().numpy(), decimal=6 if self.dtype == torch.float64 else 3
+                Jref,
+                unpack_optional(proj.jacobians).detach()[0].cpu().numpy(),
+                decimal=6 if self.dtype == torch.float64 else 3,
             )
 
     def test_jacobian_consistency(self):
@@ -1055,7 +1069,9 @@ class TestJacobian(CommonTestCase):
                 )
 
                 # Make sure API-computed Jacobian coincides with autograd result
-                np.testing.assert_array_almost_equal(Jref.cpu().numpy(), proj.jacobians[i].cpu().numpy())
+                np.testing.assert_array_almost_equal(
+                    Jref.cpu().numpy(), unpack_optional(proj.jacobians)[i].cpu().numpy()
+                )
 
                 self.assertTrue(
                     proj.valid_flag[i] if i < len(rays3d) - len(invalid_rays3d) else not proj.valid_flag[i]
@@ -1066,6 +1082,9 @@ class TestJacobian(CommonTestCase):
     ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
 )
 class TestFisheyeCamera(CommonTestCase):
+    device: str
+    dtype: torch.dtype
+
     MAX_DEVIATION_IN_IMAGE_COORDINATES = 0.001
     MAX_DEVIATION_IN_RAY_COORDINATES = 0.001
 
@@ -1309,6 +1328,9 @@ class CameraModelsBaseTestCase(CommonTestCase):
     ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
 )
 class TestParameterIO(CameraModelsBaseTestCase):
+    device: str
+    dtype: torch.dtype
+
     def test_model_parameters_roundtrip(self):
         """Validate model parameters obtained from torch model instances are correctly mapped back to the input versions
         between device transfers"""
@@ -1319,11 +1341,13 @@ class TestParameterIO(CameraModelsBaseTestCase):
 
                 self.assertEqual(cam_model.resolution.device.type, self.device)  # make sure original device is correct
 
+                cam_model = cast(ConcreteCameraModelUnion, cam_model)
+
                 # make sure retrieved parameters correspond to reference
                 self.assertEqual(cam_model_params.to_json(), cam_model.get_parameters().to_json())
 
                 # flip flop device using nn.Module magic
-                cam_model.to(device=(new_device_str := "cuda" if self.device == "cpu" else "cpu"))
+                cam_model.to(device=torch.device(new_device_str := "cuda" if self.device == "cpu" else "cpu"))
                 self.assertEqual(
                     cam_model.resolution.device.type, new_device_str
                 )  # make sure the new device is correct
@@ -1336,6 +1360,9 @@ class TestParameterIO(CameraModelsBaseTestCase):
     ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
 )
 class TestTransformParameters(CameraModelsBaseTestCase):
+    device: str
+    dtype: torch.dtype
+
     MAX_DEVIATION_IN_IMAGE_COORDINATES = 0.001
 
     def test_image_domain_transform(self):
@@ -1438,6 +1465,9 @@ class TestTransformParameters(CameraModelsBaseTestCase):
     ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
 )
 class TestExternalDistortion(CommonTestCase):
+    device: str
+    dtype: torch.dtype
+
     def test_from_parameters(self):
         # Verify that, when provided BivariateWindshieldModelParameters, a BivariateWindshieldModel object is returned
         horizontal_poly = np.zeros((3), dtype=np.float32)
@@ -1459,6 +1489,9 @@ class TestExternalDistortion(CommonTestCase):
     ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
 )
 class TestBivariateWindshieldModel(CommonTestCase):
+    device: str
+    dtype: torch.dtype
+
     def test_init(self):
         """Tests initialization of BivariateWindshieldModel"""
 
@@ -1482,7 +1515,7 @@ class TestBivariateWindshieldModel(CommonTestCase):
         coeffs = torch.zeros(3, dtype=self.dtype, device=self.device)
         x = torch.tensor([-1.0, 2.0, 3.0], dtype=self.dtype, device=self.device)
         y = torch.tensor([-2.0, 1.0, 3.0, 5.0], dtype=self.dtype, device=self.device)
-        with self.assertRaises(ValueError) as context:
+        with self.assertRaises(ValueError) as _:
             BivariateWindshieldModel.poly_eval_2d(coeffs, x, y, order=1)
 
         coeffs = torch.zeros(3, dtype=self.dtype, device=self.device)

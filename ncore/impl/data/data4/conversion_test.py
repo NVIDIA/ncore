@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 import parameterized
 
-from python.runfiles import Runfiles
+from python.runfiles import Runfiles  # ty:ignore[unresolved-import]
 from typing_extensions import Literal
 from upath import UPath
 

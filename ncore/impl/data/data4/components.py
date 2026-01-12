@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-import concurrent
+import concurrent.futures
 import io
 import json
 import logging
@@ -41,6 +41,7 @@ import zarr
 
 from numcodecs import Blosc
 from upath import UPath
+from zarr._storage.store import Store
 
 from ncore.impl.common.common import HalfClosedInterval, MD5Hasher
 from ncore.impl.data import data, stores, types
@@ -181,7 +182,7 @@ class SequenceComponentGroupsWriter:
             # append group name as suffix to store name if given
             store_name += f"-{component_group_name}"
 
-        store: zarr._storage.store.Store
+        store: Store
         if self._store_type == "itar":
             # container-based zarr stores <base-name>.<store_name>.zarr.itar
             store_path = self._output_dir_path / f"{self._store_base_name}.{store_name}.zarr.itar"
@@ -346,7 +347,7 @@ class SequenceComponentGroupsReader:
 
                 logging.info(f"SequenceStoreReader: Loading component store {component_store_upath}")
 
-                component_store: zarr._storage.store.Store
+                component_store: Store
                 if component_store_upath.is_file():
                     if not component_store_upath.name.endswith(".zarr.itar"):
                         # not a supported file-based store format
@@ -1073,11 +1074,11 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
         )
 
         # Store per-ray data
-        for name, (data, chunks) in ray_data.items():
-            assert len(data) == n_rays, f"{name} doesn't have required ray count"
+        for name, (ray_data_data, chunks) in ray_data.items():
+            assert len(ray_data_data) == n_rays, f"{name} doesn't have required ray count"
             ray_bundle_group.create_dataset(
                 name,
-                data=data,
+                data=ray_data_data,
                 chunks=chunks,
                 # use compression that is fast to decode on modern hardware
                 compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
@@ -1090,22 +1091,24 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
 
         # Store per-return data
         abscent_mask = None
-        for name, (data, chunks) in return_data.items():
-            assert data.shape[:2] == (n_returns, n_rays), (
+        for name, (ray_data_data, chunks) in return_data.items():
+            assert ray_data_data.shape[:2] == (n_returns, n_rays), (
                 f"{name} doesn't have required ray / return count {(n_returns, n_rays)}"
             )
 
             # TODO: extend with support for checks of multi-dimensional returns
             if abscent_mask is None:
                 # initialize absent mask from first return data
-                abscent_mask = np.isnan(data)
+                abscent_mask = np.isnan(ray_data_data)
             else:
                 # validate absent mask consistency
-                assert np.array_equal(abscent_mask, np.isnan(data)), f"Inconsistent NaN masks in return data {name}"
+                assert np.array_equal(abscent_mask, np.isnan(ray_data_data)), (
+                    f"Inconsistent NaN masks in return data {name}"
+                )
 
             ray_bundle_returns_group.create_dataset(
                 name,
-                data=data,
+                data=ray_data_data,
                 chunks=chunks,
                 # use compression that is fast to decode on modern hardware
                 compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),

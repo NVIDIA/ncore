@@ -195,8 +195,8 @@ class NCore3To4:
                 )
 
                 if (
-                    not HalfClosedInterval.from_start_end(*frame_timestamps_us.tolist())
-                    in store_writer.sequence_timestamp_interval_us
+                    HalfClosedInterval.from_start_end(*frame_timestamps_us.tolist())
+                    not in store_writer.sequence_timestamp_interval_us
                 ):
                     continue
 
@@ -261,8 +261,8 @@ class NCore3To4:
                 )
 
                 if (
-                    not HalfClosedInterval.from_start_end(*frame_timestamps_us.tolist())
-                    in store_writer.sequence_timestamp_interval_us
+                    HalfClosedInterval.from_start_end(*frame_timestamps_us.tolist())
+                    not in store_writer.sequence_timestamp_interval_us
                 ):
                     continue
 
@@ -359,7 +359,7 @@ class NCore3To4:
                     dtype=np.uint64,
                 )
 
-                if not HalfClosedInterval(*frame_timestamps_us.tolist()) in store_writer.sequence_timestamp_interval_us:
+                if HalfClosedInterval(*frame_timestamps_us.tolist()) not in store_writer.sequence_timestamp_interval_us:
                     continue
 
                 # load relevant V3 data components

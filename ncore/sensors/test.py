@@ -11,4 +11,4 @@
 def test_import_package():
     """Make sure package can be imported"""
 
-    import ncore.sensors
+    import ncore.sensors  # noqa: F401
