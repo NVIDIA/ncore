@@ -52,7 +52,7 @@ from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Protocol
 import numpy as np
 import PIL.Image as PILImage
 
-from typing_extensions import override
+from typing_extensions import override, runtime_checkable
 from upath import UPath
 
 from ncore.impl.common.common import HalfClosedInterval, unpack_optional
@@ -79,6 +79,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt  # type: ignore[import-not-found]
 
 
+@runtime_checkable
 class SequenceLoaderProtocol(Protocol):
     """SequenceLoaderProtocol provides unified access to a relevant subset of common NCore V3 and default V4 sequence data APIs"""
 
@@ -147,6 +148,7 @@ class SequenceLoaderProtocol(Protocol):
         ...
 
 
+@runtime_checkable
 class SensorProtocol(Protocol):
     """SensorProtocol provides unified access to a relevant subset of common NCore V3 and default V4 sensor data APIs"""
 
@@ -318,6 +320,7 @@ class CameraSensorProtocol(SensorProtocol, Protocol):
         ...
 
     # Image Frame Data
+    @runtime_checkable
     class EncodedImageDataHandleProtocol(Protocol):
         """References encoded image data without loading it"""
 
