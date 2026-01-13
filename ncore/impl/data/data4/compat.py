@@ -357,6 +357,7 @@ class SensorProtocol(Protocol):
         return util.closest_index_sorted(target_timestamps_us, timestamp_us)
 
 
+@runtime_checkable
 class CameraSensorProtocol(SensorProtocol, Protocol):
     """CameraSensorProtocol provides unified access to a relevant subset of common NCore V3 and default V4 camera sensor APIs"""
 
@@ -395,6 +396,7 @@ class CameraSensorProtocol(SensorProtocol, Protocol):
         return np.asarray(self.get_frame_image(frame_index))
 
 
+@runtime_checkable
 class RayBundleSensorProtocol(SensorProtocol, Protocol):
     """RayBundleSensorProtocol provides unified access to a relevant subset of common NCore V3 and default V4 ray-bundle sensor APIs"""
 
@@ -485,6 +487,7 @@ class RayBundleSensorProtocol(SensorProtocol, Protocol):
         ...
 
 
+@runtime_checkable
 class LidarSensorProtocol(RayBundleSensorProtocol, Protocol):
     """LidarSensorProtocol provides unified access to a relevant subset of common NCore V3 and default V4 lidar sensor APIs"""
 
@@ -516,6 +519,7 @@ class LidarSensorProtocol(RayBundleSensorProtocol, Protocol):
         ...
 
 
+@runtime_checkable
 class RadarSensorProtocol(RayBundleSensorProtocol, Protocol):
     """RadarSensorProtocol provides unified access to a relevant subset of common NCore V3 and default V4 radar sensor APIs"""
 
