@@ -216,7 +216,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
         elif params.frame == "rig":
             T_sensor_target = unpack_optional(sensor.T_sensor_rig)
         elif params.frame == "world":
-            T_sensor_target = sensor.get_frame_T_sensor_world(frame_index)
+            T_sensor_target = sensor.get_frames_T_sensor_target("world", frame_index)
 
         pc = TriangleMesh()
         pc_return = sensor.get_frame_point_cloud(

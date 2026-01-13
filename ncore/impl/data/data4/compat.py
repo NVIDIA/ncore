@@ -52,7 +52,7 @@ from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Protocol
 import numpy as np
 import PIL.Image as PILImage
 
-from typing_extensions import override
+from typing_extensions import override, runtime_checkable
 from upath import UPath
 
 from ncore.impl.common.common import HalfClosedInterval, unpack_optional
@@ -79,6 +79,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt  # type: ignore[import-not-found]
 
 
+@runtime_checkable
 class SequenceLoaderProtocol(Protocol):
     """SequenceLoaderProtocol provides unified access to a relevant subset of common NCore V3 and default V4 sequence data APIs"""
 
@@ -147,6 +148,7 @@ class SequenceLoaderProtocol(Protocol):
         ...
 
 
+@runtime_checkable
 class SensorProtocol(Protocol):
     """SensorProtocol provides unified access to a relevant subset of common NCore V3 and default V4 sensor data APIs"""
 
@@ -172,7 +174,7 @@ class SensorProtocol(Protocol):
 
         return self.frames_timestamps_us[:, frame_timepoint.value]
 
-    ## Poses API (use pose-graph exclusively)
+    ## Poses API (uses pose-graph exclusively)
     @property
     def pose_graph(self) -> PoseGraphInterpolator:
         """Access the sensor-associated pose graph (usually the sequence-wide one, unless overwritten)"""
@@ -182,12 +184,16 @@ class SensorProtocol(Protocol):
         """Assigns a new pose graph to the sensor instance (e.g., to overwrite / use a sensor-exclusive pose graph)"""
         self._pose_graph = pose_graph
 
+    ## Convenience pose accessors for common sensor transforms
     @property
-    def T_sensor_rig(self) -> Optional[npt.NDArray[np.floating]]:
-        """Return static extrinsic transformation from sensor to rig coordinate frame.
+    def T_sensor_rig(self, rig_node: str = "rig") -> Optional[npt.NDArray[np.floating]]:
+        """Return static extrinsic transformation from sensor to named rig coordinate frame.
 
         Returns the 4x4 homogeneous transformation matrix T_sensor_rig that transforms
         points from the sensor coordinate frame to the rig coordinate frame.
+
+        Args:
+            rig_node: Name of the rig coordinate frame (default: "rig")
 
         Returns:
             4x4 transformation matrix if the static transformation exists, None otherwise
@@ -195,32 +201,75 @@ class SensorProtocol(Protocol):
         try:
             return self._pose_graph.evaluate_poses(
                 source_node=self.sensor_id,
-                target_node="rig",
+                target_node=rig_node,
                 timestamps_us=np.empty((), dtype=np.uint64),
             )
         except KeyError:
             return None
 
-    def get_frame_T_sensor_world(
-        self, frame_index: int, frame_timepoint: FrameTimepoint = FrameTimepoint.END
+    # Generic relative pose evaluation
+    def get_frames_T_source_sensor(
+        self,
+        source_node: str,
+        frame_indices: Union[int, npt.NDArray[np.integer]],
+        frame_timepoint: Optional[FrameTimepoint] = FrameTimepoint.END,
     ) -> npt.NDArray[np.floating]:
-        """Evaluates the sensor-to-world pose for a specific frame and frame timepoint (start or end) [(4,4) array]"""
+        """Evaluates relative sensor-relative poses at timestamps inferred from frame indices.
 
-        # Rely on a special case of the generic frame pose evaluation
+        Computes transformation matrices T_source_sensor that transform points from the
+        source coordinate frame to the sensor coordinate frame at specified frame times.
+
+        Args:
+            source_node: Name of the source coordinate frame
+            frame_indices: Individual index or array of frame indices at which to evaluate poses
+            frame_timepoint: Frame-relative timepoint (START or END). If None, returns both
+
+        Returns:
+            Transformation matrices with shape [frame_indices-shape,2,4,4] if frame_timepoint
+            is None (both start and end poses), else [frame_indices-shape,4,4] (single timepoint)
+        """
+
         return self.get_frames_T_source_target(
-            source_node=self.sensor_id,
-            target_node="world",
-            frame_indices=np.array(frame_index, dtype=np.int64),
+            source_node=source_node,
+            target_node=self.sensor_id,
+            frame_indices=frame_indices,
             frame_timepoint=frame_timepoint,
         )
 
-    # Generic relative pose evaluation
+    def get_frames_T_sensor_target(
+        self,
+        target_node: str,
+        frame_indices: Union[int, npt.NDArray[np.integer]],
+        frame_timepoint: Optional[FrameTimepoint] = FrameTimepoint.END,
+    ) -> npt.NDArray[np.floating]:
+        """Evaluates relative poses of the sensor at timestamps inferred from frame indices.
+
+        Computes transformation matrices T_sensor_target that transform points from the
+        sensor coordinate frame to the target coordinate frame at specified frame times.
+
+        Args:
+            target_node: Name of the target coordinate frame
+            frame_indices: Individual index or array of frame indices at which to evaluate poses
+            frame_timepoint: Frame-relative timepoint (START or END). If None, returns both
+
+        Returns:
+            Transformation matrices with shape [frame_indices-shape,2,4,4] if frame_timepoint
+            is None (both start and end poses), else [frame_indices-shape,4,4] (single timepoint)
+        """
+
+        return self.get_frames_T_source_target(
+            source_node=self.sensor_id,
+            target_node=target_node,
+            frame_indices=frame_indices,
+            frame_timepoint=frame_timepoint,
+        )
+
     def get_frames_T_source_target(
         self,
         source_node: str,
         target_node: str,
-        frame_indices: npt.NDArray[np.integer],
-        frame_timepoint: Optional[FrameTimepoint] = None,
+        frame_indices: Union[int, npt.NDArray[np.integer]],
+        frame_timepoint: Optional[FrameTimepoint] = FrameTimepoint.END,
     ) -> npt.NDArray[np.floating]:
         """Evaluates relative poses at timestamps inferred from frame indices.
 
@@ -228,16 +277,18 @@ class SensorProtocol(Protocol):
         source coordinate frame to the target coordinate frame at specified frame times.
 
         Args:
-            source_node: Name of the source coordinate frame
+            source_node: Name of the source coordinate frame (defaults to sensor_id if None)
             target_node: Name of the target coordinate frame
-            frame_indices: Array of frame indices at which to evaluate poses
+            frame_indices: Individual index or array of frame indices at which to evaluate poses
             frame_timepoint: Frame-relative timepoint (START or END). If None, returns both
-            dtype: Data type for the output transformation matrices
 
         Returns:
             Transformation matrices with shape [frame_indices-shape,2,4,4] if frame_timepoint
             is None (both start and end poses), else [frame_indices-shape,4,4] (single timepoint)
         """
+
+        if isinstance(frame_indices, int):
+            frame_indices = np.array(frame_indices, dtype=np.int64)
 
         if frame_timepoint is None:
             # Return start and end poses at given frame indices
@@ -319,6 +370,7 @@ class CameraSensorProtocol(SensorProtocol, Protocol):
         ...
 
     # Image Frame Data
+    @runtime_checkable
     class EncodedImageDataHandleProtocol(Protocol):
         """References encoded image data without loading it"""
 
@@ -1091,20 +1143,6 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
             """Returns generic frame meta-data for a specific frame"""
 
             return self._sensor.get_frame_generic_meta_data(frame_index)
-
-        # Compat-API pose access
-        @property
-        @override
-        def T_sensor_rig(self) -> Optional[npt.NDArray[np.floating]]:
-            # Return static extrinsic (unconditionally available in V3)
-            return self._sensor.get_T_sensor_rig()
-
-        @override
-        def get_frame_T_sensor_world(
-            self, frame_index: int, frame_timepoint: FrameTimepoint = FrameTimepoint.END
-        ) -> npt.NDArray[np.floating]:
-            # Rely on hardcoded poses in V3 API
-            return self._sensor.get_frame_T_sensor_world(frame_index, frame_timepoint)
 
     class CameraSensor(Sensor, CameraSensorProtocol):
         """Camera sensor implementation for V3 data.
