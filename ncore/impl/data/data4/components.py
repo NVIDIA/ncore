@@ -38,10 +38,12 @@ import dataclasses_json
 import numpy as np
 import PIL.Image as PILImage
 import zarr
+import zarr.storage
 
 from numcodecs import Blosc
 from upath import UPath
 from zarr._storage.store import Store
+from zarr.attrs import Attributes
 
 from ncore.impl.common.common import HalfClosedInterval, MD5Hasher
 from ncore.impl.data import data, stores, types
@@ -756,8 +758,8 @@ class IntrinsicsComponent:
             """Initializes the current component writer targeting the given component group and sequence time interval"""
             super().__init__(component_group, sequence_timestamp_interval_us)
 
-            self._group.create_group("cameras")
-            self._group.create_group("lidars")
+            self._cameras_group = self._group.create_group("cameras")
+            self._lidars_group = self._group.create_group("lidars")
 
         def store_camera_intrinsics(
             self,
@@ -771,7 +773,7 @@ class IntrinsicsComponent:
 
             meta_data = data.encode_camera_model_parameters(camera_model_parameters)
 
-            self._group["cameras"].create_group(camera_id).attrs.put(meta_data)
+            self._cameras_group.create_group(camera_id).attrs.put(meta_data)
 
             return self
 
@@ -786,7 +788,7 @@ class IntrinsicsComponent:
             # Prepare meta-data containing the serialization of the mandatory lidar model
             meta_data = data.encode_lidar_model_parameters(lidar_model_parameters)
 
-            self._group["lidars"].create_group(lidar_id).attrs.put(meta_data)
+            self._lidars_group.create_group(lidar_id).attrs.put(meta_data)
 
             return self
 
@@ -805,7 +807,7 @@ class IntrinsicsComponent:
 
         def get_camera_model_parameters(self, camera_id: str) -> types.ConcreteCameraModelParametersUnion:
             """Returns the camera model associated with the requested camera sensor"""
-            return data.decode_camera_model_parameters(self._group["cameras"][camera_id].attrs)
+            return data.decode_camera_model_parameters(cast(zarr.Group, self._group["cameras"][camera_id]).attrs)
 
         def get_lidar_model_parameters(self, lidar_id: str) -> Optional[types.ConcreteLidarModelParametersUnion]:
             """Returns the lidar model associated with the requested lidar sensor"""
@@ -814,7 +816,7 @@ class IntrinsicsComponent:
             if lidar_id not in lidars_group:
                 return None
 
-            return data.decode_lidar_model_parameters(lidars_group[lidar_id].attrs)
+            return data.decode_lidar_model_parameters(cast(zarr.Group, lidars_group[lidar_id]).attrs)
 
 
 class MasksComponent:
@@ -839,7 +841,7 @@ class MasksComponent:
             """Initializes the current component writer targeting the given component group and sequence time interval"""
             super().__init__(component_group, sequence_timestamp_interval_us)
 
-            self._group.create_group("cameras")
+            self._cameras_group = self._group.create_group("cameras")
 
         def store_camera_masks(
             self,
@@ -850,7 +852,7 @@ class MasksComponent:
             """Store camera-associated masks"""
 
             # Store mask names
-            (camera_grp := self._group["cameras"].create_group(camera_id)).attrs.put(
+            (camera_grp := self._cameras_group.create_group(camera_id)).attrs.put(
                 {"mask_names": list(mask_images.keys())}
             )
 
@@ -882,12 +884,12 @@ class MasksComponent:
         def get_camera_mask_names(self, camera_id: str) -> List[str]:
             """Returns all constant camera mask names"""
 
-            return list(self._group["cameras"][camera_id].attrs.get("mask_names", []))
+            return list(cast(zarr.Group, self._group["cameras"][camera_id]).attrs.get("mask_names", []))
 
         def get_camera_mask_image(self, camera_id: str, mask_name: str) -> PILImage.Image:
             """Returns constant named camera mask image"""
 
-            mask_dataset = self._group["cameras"][camera_id][mask_name]
+            mask_dataset = cast(zarr.Array, cast(zarr.Group, self._group["cameras"][camera_id])[mask_name])
 
             return PILImage.open(io.BytesIO(mask_dataset[()]), formats=[mask_dataset.attrs["format"]])
 
@@ -905,7 +907,7 @@ class BaseSensorComponentWriter(ComponentWriter):
         """Initializes the current component writer targeting the given component group and sequence time interval"""
         super().__init__(component_group, sequence_timestamp_interval_us)
 
-        self._group.create_group("frames")
+        self._frames_group = self._group.create_group("frames")
 
         self._frames_timestamps_us: Dict[
             int, int
@@ -929,7 +931,7 @@ class BaseSensorComponentWriter(ComponentWriter):
         )
 
         # Store as meta-data of frames group
-        self._group["frames"].attrs.put({"frames_timestamps_us": frames_timestamps_us.tolist()})
+        self._frames_group.attrs.put({"frames_timestamps_us": frames_timestamps_us.tolist()})
 
     def _get_frame_group(
         self,
@@ -943,7 +945,7 @@ class BaseSensorComponentWriter(ComponentWriter):
         else:
             frame_id = timestamps_us
 
-        return self._group["frames"].require_group(str(frame_id))
+        return self._frames_group.require_group(str(frame_id))
 
     def _store_base_frame(
         self,

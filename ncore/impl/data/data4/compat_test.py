@@ -13,7 +13,7 @@ import unittest
 
 import numpy as np
 
-from python.runfiles import Runfiles  # ty:ignore[unresolved-import]
+from python.runfiles import Runfiles  # pyright: ignore[reportMissingImports] # ty:ignore[unresolved-import]
 from upath import UPath
 
 from ncore.impl.common.common import unpack_optional
