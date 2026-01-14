@@ -27,6 +27,7 @@ from ncore.impl.data.types import FrameTimepoint
 from .compat import SequenceLoaderV3, SequenceLoaderV4
 from .components import SequenceComponentGroupsReader
 from .conversion import NCore3To4
+from .types import ComponentGroupAssignments
 
 
 _RUNFILES = Runfiles.Create()
@@ -69,8 +70,11 @@ class TestData3Converter(unittest.TestCase):
             camera_ids=["camera_front_wide_120fov"],
             lidar_ids=[],
             radar_ids=[],
-            component_groups=NCore3To4.create_component_groups(
-                source_data_loader=self.shard_data_loader, profile=profile
+            component_groups=ComponentGroupAssignments.create(
+                camera_ids=self.shard_data_loader.get_camera_ids(),
+                lidar_ids=self.shard_data_loader.get_lidar_ids(),
+                radar_ids=self.shard_data_loader.get_radar_ids(),
+                profile=profile,
             ),
         )
 

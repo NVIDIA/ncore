@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 
-from dataclasses import dataclass
 from typing import Dict, List, Optional, cast
 
 import numpy as np
@@ -33,7 +32,7 @@ from ncore.impl.data.data4.components import (
     RadarSensorComponent,
     SequenceComponentGroupsWriter,
 )
-from ncore.impl.data.data4.types import CuboidTrackObservation
+from ncore.impl.data.data4.types import ComponentGroupAssignments, CuboidTrackObservation
 from ncore.impl.data.types import FrameTimepoint
 
 
@@ -41,94 +40,6 @@ _logger = logging.getLogger(__name__)
 
 
 class NCore3To4:
-    @dataclass
-    class ComponentGroups:
-        """Component group assignments for all components in the V4 data output."""
-
-        poses_component_group: Optional[str]
-        intrinsics_component_group: Optional[str]
-        masks_component_group: Optional[str]
-        camera_component_groups: Dict[str, str]  # indexed by camera_id
-        lidar_component_groups: Dict[str, str]  # indexed by lidar_id
-        radar_component_groups: Dict[str, str]  # indexed by radar_id
-        cuboid_track_observations_component_group: Optional[str]
-
-    @staticmethod
-    def create_component_groups(
-        source_data_loader: ShardDataLoader,
-        profile: Literal["default", "separate-sensors", "separate-all"],
-        # Component-specific overrides
-        poses_component_group: Optional[str] = None,
-        intrinsics_component_group: Optional[str] = None,
-        masks_component_group: Optional[str] = None,
-        camera_component_groups: Optional[Dict[str, str]] = None,
-        lidar_component_groups: Optional[Dict[str, str]] = None,
-        radar_component_groups: Optional[Dict[str, str]] = None,
-        cuboid_track_observations_component_group: Optional[str] = None,
-    ) -> ComponentGroups:
-        """Factory function to create ComponentGroups based on a profile.
-
-        Args:
-            source_data_loader: ShardDataLoader to determine available sensors
-            profile: One of:
-                - "default": Use provided overrites or fall back to default groups
-                - "separate-sensors": Each sensor gets its own group named "<sensor_id>", remaining components use default store
-                - "separate-all": Each component type gets its own group named after the component type, e.g. "poses", "intrinsics", respecting overwrites if provided
-            poses_component_group: Override for poses group
-            intrinsics_component_group: Override for intrinsics group
-            masks_component_group: Override for masks group
-            camera_component_groups: Override for per-camera groups
-            lidar_component_groups: Override for per-lidar groups
-            radar_component_groups: Override for per-radar groups
-            cuboid_track_observations_component_group: Override for cuboids group
-
-        Returns:
-            ComponentGroups with groups assigned according to profile
-        """
-        # Get all available sensor IDs and assign each sensor to its own group
-        camera_groups = {camera_id: camera_id for camera_id in source_data_loader.get_camera_ids()}
-        lidar_groups = {lidar_id: lidar_id for lidar_id in source_data_loader.get_lidar_ids()}
-        radar_groups = {radar_id: radar_id for radar_id in source_data_loader.get_radar_ids()}
-
-        if profile == "default":
-            return NCore3To4.ComponentGroups(
-                poses_component_group=poses_component_group,
-                intrinsics_component_group=intrinsics_component_group,
-                masks_component_group=masks_component_group,
-                camera_component_groups=camera_component_groups if camera_component_groups else {},
-                lidar_component_groups=lidar_component_groups if lidar_component_groups else {},
-                radar_component_groups=radar_component_groups if radar_component_groups else {},
-                cuboid_track_observations_component_group=cuboid_track_observations_component_group,
-            )
-
-        elif profile == "separate-sensors":
-            return NCore3To4.ComponentGroups(
-                poses_component_group=poses_component_group,
-                intrinsics_component_group=intrinsics_component_group,
-                masks_component_group=masks_component_group,
-                camera_component_groups=camera_groups,
-                lidar_component_groups=lidar_groups,
-                radar_component_groups=radar_groups,
-                cuboid_track_observations_component_group=cuboid_track_observations_component_group,
-            )
-
-        elif profile == "separate-all":
-            return NCore3To4.ComponentGroups(
-                poses_component_group="poses" if poses_component_group is None else poses_component_group,
-                intrinsics_component_group="intrinsics"
-                if intrinsics_component_group is None
-                else intrinsics_component_group,
-                masks_component_group="masks" if masks_component_group is None else masks_component_group,
-                camera_component_groups=camera_groups,
-                lidar_component_groups=lidar_groups,
-                radar_component_groups=radar_groups,
-                cuboid_track_observations_component_group="cuboids"
-                if cuboid_track_observations_component_group is None
-                else cuboid_track_observations_component_group,
-            )
-        else:
-            raise ValueError(f"Unknown profile: {profile}. Must be one of 'default', 'separate-sensors', 'separate-all")
-
     """Performs data conversion from NCore 3 to NCore 4 format"""
 
     @staticmethod
@@ -138,12 +49,12 @@ class NCore3To4:
         poses_writer: PosesComponent.Writer,
         intrinsics_writer: IntrinsicsComponent.Writer,
         masks_writer: MasksComponent.Writer,
-        camera_ids: Optional[List[str]],
+        camera_ids: List[str],
         camera_component_groups: Dict[str, str],
     ) -> None:
         """Convert and store camera sensor data from V3 to V4 format"""
         for camera_id in log_progress(
-            camera_ids if camera_ids is not None else source_data_loader.get_camera_ids(),
+            camera_ids,
             _logger,
             label="Converting cameras",
         ):
@@ -218,12 +129,12 @@ class NCore3To4:
         source_data_loader: ShardDataLoader,
         store_writer: SequenceComponentGroupsWriter,
         poses_writer: PosesComponent.Writer,
-        radar_ids: Optional[List[str]],
+        radar_ids: List[str],
         radar_component_groups: Dict[str, str],
     ) -> None:
         """Convert and store radar sensor data from V3 to V4 format"""
         for radar_id in log_progress(
-            radar_ids if radar_ids is not None else source_data_loader.get_radar_ids(),
+            radar_ids,
             _logger,
             label="Converting radars",
         ):
@@ -302,14 +213,14 @@ class NCore3To4:
         poses_writer: PosesComponent.Writer,
         intrinsics_writer: IntrinsicsComponent.Writer,
         source_poses: Poses,
-        lidar_ids: Optional[List[str]],
+        lidar_ids: List[str],
         lidar_component_groups: Dict[str, str],
     ) -> List[CuboidTrackObservation]:
         """Convert and store lidar sensor data from V3 to V4 format. Returns collected cuboid track observations."""
         cuboid_track_observations: List[CuboidTrackObservation] = []
 
         for lidar_id in log_progress(
-            lidar_ids if lidar_ids is not None else source_data_loader.get_lidar_ids(),
+            lidar_ids,
             _logger,
             label="Converting lidars",
         ):
@@ -445,17 +356,23 @@ class NCore3To4:
         lidar_ids: Optional[List[str]] = None,
         radar_ids: Optional[List[str]] = None,
         ## Component target groups
-        component_groups: Optional[NCore3To4.ComponentGroups] = None,
+        component_groups: Optional[ComponentGroupAssignments] = None,
         ## Generic sequence meta-data (needs to be json-serializable) - will be merged with source generic meta data
         generic_meta_data: Dict[str, JsonLike] = {},
     ) -> List[UPath]:
         """Converts the given V3 sequence (unconditionally rig-trajectory-based) into V4 format,
         storing the result into the given output directory, potentially overwriting component group names as specified"""
 
+        camera_ids = camera_ids if camera_ids is not None else source_data_loader.get_camera_ids()
+        lidar_ids = lidar_ids if lidar_ids is not None else source_data_loader.get_lidar_ids()
+        radar_ids = radar_ids if radar_ids is not None else source_data_loader.get_radar_ids()
+
         if component_groups is None:
             # Use default profile if not specified
-            component_groups = NCore3To4.create_component_groups(
-                source_data_loader=source_data_loader,
+            component_groups = ComponentGroupAssignments.create(
+                camera_ids=camera_ids,
+                lidar_ids=lidar_ids,
+                radar_ids=radar_ids,
                 profile="default",
             )
 
