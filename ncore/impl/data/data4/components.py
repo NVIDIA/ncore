@@ -58,7 +58,7 @@ if sys.version_info >= (3, 11):
     # - alias these globally as a workaround
     from typing import Self
 
-VERSION = "4.0"
+VERSION = "v4"
 
 
 @dataclass
