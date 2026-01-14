@@ -145,7 +145,7 @@ class ComponentGroupAssignments:
             source_data_loader: ShardDataLoader to determine available sensors
             profile: One of:
                 - "default": Use provided overrites or fall back to default groups
-                - "separate-sensors": Each sensor gets its own group named "<sensor_id>", remaining components use default store
+                - "separate-sensors": Each sensor gets its own group named "<sensor_id>" unless overwritten, remaining components use default store
                 - "separate-all": Each component type gets its own group named after the component type, e.g. "poses", "intrinsics", respecting overwrites if provided
             poses_component_group: Override for poses group
             intrinsics_component_group: Override for intrinsics group
@@ -162,6 +162,14 @@ class ComponentGroupAssignments:
         camera_groups = {camera_id: camera_id for camera_id in camera_ids}
         lidar_groups = {lidar_id: lidar_id for lidar_id in lidar_ids}
         radar_groups = {radar_id: radar_id for radar_id in radar_ids}
+
+        # Apply optional overwrites
+        if camera_component_groups is not None:
+            camera_groups.update(camera_component_groups)
+        if lidar_component_groups is not None:
+            lidar_groups.update(lidar_component_groups)
+        if radar_component_groups is not None:
+            radar_groups.update(radar_component_groups)
 
         if profile == "default":
             return ComponentGroupAssignments(
