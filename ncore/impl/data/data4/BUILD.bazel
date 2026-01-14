@@ -79,6 +79,7 @@ pytest_test(
         ":pylib_compat",
         ":pylib_components",
         ":pylib_conversion",
+        ":pylib_types",
         "//ncore/impl/data:pylib_data3",
         "//ncore/impl/data:pylib_types",
         requirement("numpy"),

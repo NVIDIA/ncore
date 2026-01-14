@@ -21,6 +21,7 @@ from ncore.impl.common.common import time_bounds
 from ncore.impl.data.data3 import ShardDataLoader
 from ncore.impl.data.data4.components import SequenceComponentGroupsReader
 from ncore.impl.data.data4.conversion import NCore3To4
+from ncore.impl.data.data4.types import ComponentGroupAssignments
 from scripts.util import TupleType
 
 
@@ -195,8 +196,10 @@ def ncore_3to4(
         camera_ids=camera_ids,
         lidar_ids=lidar_ids,
         radar_ids=radar_ids,
-        component_groups=NCore3To4.create_component_groups(
-            source_data_loader=loader,
+        component_groups=ComponentGroupAssignments.create(
+            camera_ids=loader.get_camera_ids(),
+            lidar_ids=loader.get_lidar_ids(),
+            radar_ids=loader.get_radar_ids(),
             profile=params.profile,
             poses_component_group=params.poses_component_group,
             intrinsics_component_group=params.intrinsics_component_group,
