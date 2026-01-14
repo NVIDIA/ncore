@@ -219,7 +219,7 @@ def ncore_3to4(
         sequence_meta_path = output_dir_path / f"{sequence_component_reader.sequence_id}.ncore4.json"
 
         with sequence_meta_path.open("w") as f:
-            json.dump(sequence_component_reader.get_sequence_meta(), f, indent=2)
+            json.dump(sequence_component_reader.get_sequence_meta().to_dict(), f, indent=2)
 
         logging.info(f"Wrote meta data {str(sequence_meta_path)}")
 
