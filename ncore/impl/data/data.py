@@ -10,7 +10,7 @@
 import re
 
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Union
+from typing import Dict, Iterable, List, Mapping, Optional, Union
 
 from . import types
 
@@ -81,7 +81,7 @@ def encode_camera_model_parameters(camera_model_parameters: types.ConcreteCamera
     return encoded
 
 
-def decode_camera_model_parameters(encoded_parameters: Dict) -> types.ConcreteCameraModelParametersUnion:
+def decode_camera_model_parameters(encoded_parameters: Mapping) -> types.ConcreteCameraModelParametersUnion:
     """Decodes model-typed dictionary parameters specific to the camera's intrinsic model"""
 
     camera_model_type = encoded_parameters["camera_model_type"]
@@ -127,7 +127,7 @@ def encode_lidar_model_parameters(lidar_model_parameters: types.ConcreteLidarMod
     return encoded
 
 
-def decode_lidar_model_parameters(encoded_parameters: Dict) -> types.ConcreteLidarModelParametersUnion:
+def decode_lidar_model_parameters(encoded_parameters: Mapping) -> types.ConcreteLidarModelParametersUnion:
     """Decodes model-typed dictionary parameters specific to the lidars's intrinsic model"""
 
     lidar_model_type = encoded_parameters["lidar_model_type"]

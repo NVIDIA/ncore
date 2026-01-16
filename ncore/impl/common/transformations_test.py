@@ -13,9 +13,8 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import parameterized
 
-from python.runfiles import Runfiles
+from python.runfiles import Runfiles  # pyright: ignore[reportMissingImports] # ty:ignore[unresolved-import]
 
 from ncore.impl.common.transformations import MotionCompensator, PoseGraphInterpolator
 from ncore.impl.data import types
@@ -225,13 +224,13 @@ class TestPoseGraphInterpolator(unittest.TestCase):
         # verify different timestamp dtypes and empty batch shape on self / static edges
         self.assertTrue(
             np.array_equal(
-                graph.evaluate_poses("V1", "V1", np.empty((), dtype=np.int8)),
+                graph.evaluate_poses("V1", "V1", np.empty((), dtype=np.uint64)),
                 np.eye(4),
             )
         )
         self.assertTrue(
             np.array_equal(
-                res := graph.evaluate_poses("V7", "V1", np.empty((), dtype=np.int32)),
+                res := graph.evaluate_poses("V7", "V1", np.empty((), dtype=np.uint64)),
                 get_SE3(np.array([0, -1, 0])),
             )
         )
