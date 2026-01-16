@@ -249,9 +249,12 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
         msg += " | with structured lidar model"
 
     for frame_index in tqdm.tqdm(indices):
-        # Get the camera timestamp and find the closes lidar frame
+        # Get the camera timestamp and find the closes lidar frame (relative to center of camera frame timestamps)
+        cam_timestamp_start_us = cam_sensor.get_frame_timestamp_us(frame_index, types.FrameTimepoint.START)
+        cam_timestamp_end_us = cam_sensor.get_frame_timestamp_us(frame_index, types.FrameTimepoint.END)
         pc_frame_index = lidar_sensor.get_closest_frame_index(
-            cam_timestamp := cam_sensor.get_frame_timestamp_us(frame_index, types.FrameTimepoint.END)
+            cam_timestamp_start_us + (cam_timestamp_end_us - cam_timestamp_start_us) // 2,
+            relative_frame_time=0.5,
         )
 
         # Load the camera image and the point cloud
@@ -287,7 +290,10 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
             ).xyz_e_sensorend
         else:
             pc = lidar_sensor.get_frame_point_cloud(
-                frame_index, motion_compensation=True, with_start_points=False, return_index=params.sensor_return_index
+                pc_frame_index,
+                motion_compensation=True,
+                with_start_points=False,
+                return_index=params.sensor_return_index,
             ).xyz_m_end
 
         # Transform the point cloud to the world coordinate frame
@@ -343,7 +349,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
             output_path.mkdir(parents=True, exist_ok=True)
 
             if params.timestamp_image_names:
-                save_path = output_path / (params.file_prefix + str(cam_timestamp) + params.file_suffix + ".png")
+                save_path = output_path / (params.file_prefix + str(cam_timestamp_end_us) + params.file_suffix + ".png")
             else:
                 save_path = output_path / (
                     params.file_prefix + padded_index_string(frame_index) + params.file_suffix + ".png"
