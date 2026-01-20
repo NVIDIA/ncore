@@ -16,8 +16,6 @@ py_library(
     ],
     deps = [
         requirement("numpy"),
-        requirement("scipy"),
-        requirement("pillow"),
         requirement("universal_pathlib"),
     ],
 )

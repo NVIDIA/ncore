@@ -898,7 +898,6 @@ class ShardDataLoader:
 
                 _logger.info(f"ShardDataLoader: Loading shard {shard_path}")
 
-                timer = common.SimpleTimer()
                 shard_store = stores.IndexedTarStore(shard_path)
                 shard_root = (
                     stores.open_compressed_consolidated(store=shard_store, mode="r")
@@ -906,7 +905,7 @@ class ShardDataLoader:
                     else zarr.open(store=shard_store, mode="r")
                 )
 
-                _logger.debug(f"ShardDataLoader: {shard_path} time_load={timer.elapsed_sec()}sec")
+                _logger.debug(f"ShardDataLoader: {shard_path} opened successfully")
 
                 return shard_path, shard_root, shard_store
 
