@@ -102,6 +102,26 @@ oci_push(
 
 #################################################################
 
+py_library(
+    name = "pylib_visualization",
+    srcs = [
+        "visualization.py",
+    ],
+    deps = [
+        requirement("numpy"),
+        requirement("scipy"),
+        requirement("tqdm"),
+        requirement("matplotlib"),
+        requirement("open3d"),
+        requirement("tensorflow"),  # required by open3d.ml.tf
+        requirement("multimethod"),
+        "//ncore/impl/data:pylib_data",
+        "//ncore/impl/data:pylib_data3",
+    ],
+)
+
+#################################################################
+
 py_binary(
     name = "ncore_3to4",
     srcs = ["ncore_3to4.py"],
@@ -126,7 +146,7 @@ py_binary(
         requirement("click"),
         requirement("tqdm"),
         requirement("pandas"),
-        "//ncore/impl/common:pylib_visualization",
+        ":pylib_visualization",
         "//ncore/impl/data:pylib_data",
         "//ncore/impl/data:pylib_data3",
         "//ncore/impl/data:pylib_types",
@@ -148,8 +168,8 @@ py_binary(
         requirement("numpy"),
         requirement("scipy"),
         requirement("pyside6"),  # required to open Qt6 windows
+        ":pylib_visualization",
         "//ncore/impl/common:pylib_transformations",
-        "//ncore/impl/common:pylib_visualization",
         "//ncore/impl/data:pylib_data3",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data:pylib_util",

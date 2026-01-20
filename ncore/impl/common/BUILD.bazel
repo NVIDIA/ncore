@@ -34,24 +34,6 @@ py_library(
     ],
 )
 
-py_library(
-    name = "pylib_visualization",
-    srcs = [
-        "visualization.py",
-    ],
-    deps = [
-        requirement("numpy"),
-        requirement("scipy"),
-        requirement("tqdm"),
-        requirement("matplotlib"),
-        requirement("open3d"),
-        requirement("tensorflow"),  # required by open3d.ml.tf
-        requirement("multimethod"),
-        "//ncore/impl/data:pylib_data",
-        "//ncore/impl/data:pylib_data3",
-    ],
-)
-
 pytest_test(
     name = "test",
     srcs = glob(["*test.py"]),

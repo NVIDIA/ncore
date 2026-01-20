@@ -26,11 +26,11 @@ import click
 import pandas as pd
 import tqdm
 
-from ncore.impl.common.visualization import LabelVisualizer
 from ncore.impl.data.data3 import FrameLabel3, ShardDataLoader
 from ncore.impl.data.data4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
 from ncore.impl.data.data4.components import SequenceComponentGroupsReader
 from ncore.impl.data.data4.types import CuboidTrackObservation
+from scripts.visualization import LabelVisualizer
 
 
 @dataclass(kw_only=True, slots=True, frozen=True)

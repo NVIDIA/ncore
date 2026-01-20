@@ -22,7 +22,6 @@ from scipy.spatial.transform import Rotation as R
 
 from ncore.impl.common.common import unpack_optional
 from ncore.impl.common.transformations import MotionCompensator, se3_inverse, transform_point_cloud
-from ncore.impl.common.visualization import plot_points_on_image
 from ncore.impl.data import types
 from ncore.impl.data.data3 import ShardDataLoader
 from ncore.impl.data.data4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
@@ -31,6 +30,7 @@ from ncore.impl.data.util import padded_index_string
 from ncore.impl.sensors.camera import CameraModel
 from ncore.impl.sensors.lidar import StructuredLidarModel
 from scripts.util import NPArrayParamType
+from scripts.visualization import plot_points_on_image
 
 
 logging.basicConfig(level=logging.INFO)
