@@ -29,8 +29,8 @@ import zarr
 
 from upath import UPath
 
-import ncore.impl.common.common as common
 import ncore.impl.common.transformations as transformations
+import ncore.impl.common.util as common_util
 
 from . import data, stores, types, util
 from .data import JsonLike, evaluate_file_pattern
@@ -1154,7 +1154,7 @@ class ShardDataLoader:
             shard: Dict[str, JsonLike] = {
                 "id": shard_id,
                 "path": shard_path.name,
-                "md5": common.MD5Hasher.hash(shard_path),
+                "md5": common_util.MD5Hasher.hash(shard_path),
                 "pose-range": {
                     "start-timestamp_us": int(shard_pose_timestamps_us[0]),
                     "end-timestamp_us": int(shard_pose_timestamps_us[-1]),

@@ -12,12 +12,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import sys
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Generator, Iterable, List, Optional, TypeVar, Union
-
-import numpy as np
+from typing import TYPE_CHECKING, Callable, Generator, Iterable, Optional, TypeVar
 
 from upath import UPath
 
@@ -124,101 +120,6 @@ class MD5Hasher:
             return MD5Hasher._hash_dir(path, chunk_size)
         else:
             raise ValueError(f"Path '{path}' is neither a file nor a directory")
-
-
-def time_bounds(timestamps_us: List[int], seek_sec: Optional[float], duration_sec: Optional[float]) -> tuple[int, int]:
-    """
-    Determine start and end timestamps given optional seek and duration times
-
-    Args:
-        timestamps_us : list of all available timestamps (in microseconds)
-        seek_sec: Optional: if non-None, the time (in seconds)  to skip starting from the first timestamp
-        duration_sec: Optional: if non-None, the total time (in seconds) between the start and end time bounds
-
-    Return:
-        start_timestamp_us: first valid timestamp in restricted bounds (in microseconds)
-        end_timestamp_us: last valid timestamp in restricted bounds (in microseconds)
-    """
-
-    start_timestamp_us = int(timestamps_us[0])
-    end_timestamp_us = int(timestamps_us[-1])
-
-    if seek_sec is not None:
-        assert seek_sec >= 0.0, "Require positive seek time"
-        start_timestamp_us += int(seek_sec * 1e6)
-
-    if duration_sec is not None:
-        assert duration_sec > 0.0, "Require positive duration time"
-        end_timestamp_us = start_timestamp_us + int(duration_sec * 1e6)
-
-    assert start_timestamp_us < end_timestamp_us, "Arguments lead to invalid time bounds"
-
-    return start_timestamp_us, end_timestamp_us
-
-
-@dataclass(**({"slots": True, "frozen": True} if sys.version_info >= (3, 10) else {"frozen": True}))
-class HalfClosedInterval:
-    """Represents a half closed interval [start, stop) of integers"""
-
-    start: int
-    stop: int
-
-    @staticmethod
-    def from_start_end(start: int, end: int) -> HalfClosedInterval:
-        """Creates a half-closed interval from start and end (inclusive)"""
-        return HalfClosedInterval(start, end + 1)
-
-    def __post_init__(self) -> None:
-        """Makes sure interval is well-defined"""
-        assert isinstance(self.start, int)
-        assert isinstance(self.stop, int)
-        assert self.start <= self.stop
-
-    def __contains__(self, item: Union[int, np.integer, HalfClosedInterval]) -> bool:
-        """Determines if an item / other interval is contained in the interval"""
-        if isinstance(item, (int, np.integer)):
-            return bool(self.start <= item and item < self.stop)
-        elif isinstance(item, HalfClosedInterval):
-            return (self.start <= item.start) and (item.stop <= self.stop)
-        else:
-            raise TypeError(f"Expected int, np.integer, or HalfClosedInterval, got {type(item).__name__}")
-
-    def __len__(self) -> int:
-        """Returns the number of elements in the interval"""
-        return self.stop - self.start
-
-    def intersection(self, other: HalfClosedInterval) -> Optional[HalfClosedInterval]:
-        """Computes the intersection of two half-closed interval"""
-        if other.start >= self.stop or other.stop <= self.start:
-            return None
-
-        return HalfClosedInterval(max(self.start, other.start), min(self.stop, other.stop))
-
-    def overlaps(self, other: HalfClosedInterval) -> bool:
-        """Checks if the interval has a non-zero overlap with an other closed interval"""
-        return self.intersection(other) is not None
-
-    def cover_range(self, sorted_samples: np.ndarray) -> range:
-        """Given a set of *sorted* samples (not validated), return the corresponding range for samples
-        that are within the interval"""
-        if (
-            not len(sorted_samples)
-            or len(self) == 0
-            or not self.intersection(
-                # generate closed integer interval [floor(sample[0]), ceil(samples[-1])+1] guaranteed to containing all samples[i]
-                HalfClosedInterval(int(np.floor(sorted_samples[0])), int(np.ceil(sorted_samples[-1])) + 1)
-            )
-        ):
-            # empty range for empty samples, empty interval, or missing intersection
-            return range(0)
-
-        # non-empty range case
-        cover_range_start = np.argmax(self.start <= sorted_samples).item()
-        cover_range_stop = (
-            np.argmin(sorted_samples < self.stop).item() if self.stop < sorted_samples[-1] else len(sorted_samples)
-        )  # full range of frames
-
-        return range(cover_range_start, cover_range_stop)
 
 
 # Helper functions for working with optionals

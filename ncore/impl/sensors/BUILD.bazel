@@ -26,7 +26,7 @@ py_library(
         requirement("numpy"),
         requirement("torch"),
         ":pylib_common",
-        "//ncore/impl/common:pylib_common",
+        "//ncore/impl/common:pylib_util",
         "//ncore/impl/data:pylib_types",
     ],
 )
@@ -75,8 +75,8 @@ pytest_test(
     deps = [
         ":pylib_common",
         ":pylib_lidar",
-        "//ncore/impl/common:pylib_common",
         "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/common:pylib_util",
         requirement("numpy"),
         requirement("torch"),
         requirement("parameterized"),

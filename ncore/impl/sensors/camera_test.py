@@ -21,7 +21,7 @@ import scipy
 import scipy.linalg
 import torch
 
-from ncore.impl.common.common import unpack_optional
+from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.types import (
     BivariateWindshieldModelParameters,
     ConcreteCameraModelParametersUnion,

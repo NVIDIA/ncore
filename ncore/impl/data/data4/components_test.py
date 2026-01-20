@@ -22,7 +22,8 @@ from parameterized import parameterized
 from scipy.spatial.transform import Rotation as R
 from upath import UPath
 
-from ncore.impl.common.common import HalfClosedInterval, unpack_optional
+from ncore.impl.common.transformations import HalfClosedInterval
+from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.types import (
     BBox3,
     BivariateWindshieldModelParameters,

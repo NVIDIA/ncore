@@ -16,7 +16,7 @@ import numpy as np
 from python.runfiles import Runfiles  # pyright: ignore[reportMissingImports] # ty:ignore[unresolved-import]
 from upath import UPath
 
-from ncore.impl.common.common import unpack_optional
+from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.data3 import ShardDataLoader
 from ncore.impl.data.types import FrameTimepoint
 

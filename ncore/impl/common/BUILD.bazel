@@ -10,12 +10,11 @@ load(
 package(default_visibility = ["//:code_package_group"])
 
 py_library(
-    name = "pylib_common",
+    name = "pylib_util",
     srcs = [
-        "common.py",
+        "util.py",
     ],
     deps = [
-        requirement("numpy"),
         requirement("universal_pathlib"),
     ],
 )
@@ -26,7 +25,7 @@ py_library(
         "transformations.py",
     ],
     deps = [
-        ":pylib_common",
+        ":pylib_util",
         requirement("numpy"),
         requirement("scipy"),
     ],
@@ -42,8 +41,8 @@ pytest_test(
         requirement("numpy"),
         requirement("scipy"),
         requirement("parameterized"),
-        ":pylib_common",
         ":pylib_transformations",
+        ":pylib_util",
         "//ncore/impl/data:pylib_data3",
         "//ncore/impl/data:pylib_types",
         "@rules_python//python/runfiles",

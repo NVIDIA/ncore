@@ -19,7 +19,7 @@ from typing import Optional, Tuple, Union, cast
 import numpy as np
 import torch
 
-from ncore.impl.common.common import map_optional
+from ncore.impl.common.util import map_optional
 from ncore.impl.data import types
 from ncore.impl.sensors.common import (
     BaseModel,
