@@ -581,7 +581,7 @@ class TestData3Converter(unittest.TestCase):
         self.assertIsNotNone(v4_meta)
 
         # Reload V4 from serialized sequence meta path
-        seq_meta_path = UPath(tempdir.name) / f"{v4_loader.sequence_id}.ncore4.json"
+        seq_meta_path = UPath(tempdir.name) / f"{v4_loader.sequence_id}.json"
         with seq_meta_path.open("w") as f:
             json.dump(v4_loader.get_sequence_meta(), f, indent=2)
 
