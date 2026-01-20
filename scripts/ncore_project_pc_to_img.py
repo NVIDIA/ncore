@@ -239,7 +239,8 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
 
     cam_model = CameraModel.from_parameters(cam_model_params, device=params.device)
 
-    # Initialize the lidar model if requested
+    # Initialize motion compensator, and the lidar model if requested
+    motion_compensator = MotionCompensator(lidar_sensor.pose_graph)
     lidar_model: Optional[StructuredLidarModel] = None
     if params.enable_lidar_model:
         lidar_model = StructuredLidarModel.maybe_from_parameters(lidar_sensor.model_parameters, device=params.device)
@@ -277,8 +278,6 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
             )
 
             ## Perform motion-compensation
-            motion_compensator = MotionCompensator(lidar_sensor.pose_graph)
-
             pc = motion_compensator.motion_compensate_points(
                 sensor_id=params.sensor_id,
                 xyz_pointtime=sensor_pc,

@@ -278,6 +278,15 @@ class NCore3To4:
                 timestamp_us = lidar_sensor.get_frame_data(source_frame_idx, "timestamp_us")
                 intensity = lidar_sensor.get_frame_data(source_frame_idx, "intensity")
 
+                # strict: filter out points outside of frame time bounds (as some V3 data may contain such points)
+                valid_time_mask = np.logical_and(
+                    timestamp_us >= frame_timestamps_us[0], timestamp_us <= frame_timestamps_us[1]
+                )
+
+                xyz_e = xyz_e[valid_time_mask]
+                timestamp_us = timestamp_us[valid_time_mask]
+                intensity = intensity[valid_time_mask]
+
                 # undo motion-compensation of V3 point clouds to non-motion-compensated "raw" V4 point cloud
                 xyz_m = motion_compensator.motion_decompensate_points(
                     sensor_id=lidar_sensor.get_sensor_id(),
