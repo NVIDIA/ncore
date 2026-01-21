@@ -21,7 +21,7 @@ import numpy as np
 if TYPE_CHECKING:
     import numpy.typing as npt  # type: ignore[import-not-found]
 
-from ncore.impl.data.data3 import PointCloudSensor
+from ncore.impl.data.v3.shards import PointCloudSensor
 
 
 class TupleType(click.ParamType):

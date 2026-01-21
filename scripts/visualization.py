@@ -18,7 +18,7 @@ from matplotlib import pyplot as plt
 from multimethod import multimethod
 from scipy.spatial.transform import Rotation as R
 
-from ncore.impl.data.data3 import FrameLabel3
+from ncore.impl.data.v3.types import FrameLabel3
 
 
 def rgba(r):

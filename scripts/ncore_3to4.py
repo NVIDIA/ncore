@@ -18,7 +18,7 @@ import click
 from upath import UPath
 
 from ncore.impl.common.transformations import time_bounds
-from ncore.impl.data.data3 import ShardDataLoader
+from ncore.impl.data.v3.shards import ShardDataLoader
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 from ncore.impl.data.v4.conversion import NCore3To4
 from ncore.impl.data.v4.types import ComponentGroupAssignments

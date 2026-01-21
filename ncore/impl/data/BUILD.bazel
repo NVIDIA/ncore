@@ -17,32 +17,13 @@ py_library(
 )
 
 py_library(
-    name = "pylib_data3",
-    srcs = [
-        "data3.py",
-    ],
-    deps = [
-        ":pylib_data",
-        ":pylib_stores",
-        ":pylib_types",
-        ":pylib_util",
-        "//ncore/impl/common:pylib_transformations",
-        "//ncore/impl/common:pylib_util",
-        requirement("zarr"),
-        requirement("pillow"),
-        requirement("numpy"),
-        requirement("dataclasses-json"),
-        requirement("universal_pathlib"),
-    ],
-)
-
-py_library(
     name = "pylib_types",
     srcs = [
         "types.py",
     ],
     deps = [
         ":pylib_util",
+        "//ncore/impl/common:pylib_transformations",
         requirement("numpy"),
         requirement("dataclasses-json"),
         requirement("pillow"),
@@ -72,6 +53,23 @@ py_library(
     ],
 )
 
+py_library(
+    name = "pylib_compat",
+    srcs = [
+        "compat.py",
+    ],
+    deps = [
+        ":pylib_data",
+        ":pylib_types",
+        ":pylib_util",
+        "//ncore/impl/common:pylib_transformations",
+        requirement("universal_pathlib"),
+        requirement("numpy"),
+        requirement("pillow"),
+        requirement("typing-extensions"),
+    ],
+)
+
 pytest_test(
     name = "pytest_util",
     srcs = [
@@ -79,22 +77,6 @@ pytest_test(
     ],
     deps = [
         ":pylib_util",
-    ],
-)
-
-pytest_test(
-    name = "pytest_data3",
-    srcs = ["data3_test.py"],
-    data = [
-        "@test-data-v3-shards//:test-shards",
-    ],
-    deps = [
-        ":pylib_data3",
-        requirement("parameterized"),
-        requirement("pillow"),
-        requirement("scipy"),
-        requirement("universal_pathlib"),
-        "@rules_python//python/runfiles",
     ],
 )
 

@@ -13,18 +13,19 @@ import tempfile
 import unittest
 
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import parameterized
 
 from python.runfiles import Runfiles  # ty:ignore[unresolved-import]
-from typing_extensions import Literal
 from upath import UPath
 
-from ncore.impl.data.data3 import ShardDataLoader
 from ncore.impl.data.types import FrameTimepoint
+from ncore.impl.data.v3.compat import SequenceLoaderV3
+from ncore.impl.data.v3.shards import ShardDataLoader
 
-from .compat import SequenceLoaderV3, SequenceLoaderV4
+from .compat import SequenceLoaderV4
 from .components import SequenceComponentGroupsReader
 from .conversion import NCore3To4
 from .types import ComponentGroupAssignments

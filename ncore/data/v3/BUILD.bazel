@@ -11,7 +11,8 @@ py_library(
         "__init__.py",
     ],
     deps = [
-        "//ncore/impl/data:pylib_data3",
+        "//ncore/impl/data/v3:pylib_compat",
+        "//ncore/impl/data/v3:pylib_shards",
     ],
 )
 

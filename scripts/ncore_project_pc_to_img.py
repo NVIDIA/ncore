@@ -23,10 +23,11 @@ from scipy.spatial.transform import Rotation as R
 from ncore.impl.common.transformations import MotionCompensator, se3_inverse, transform_point_cloud
 from ncore.impl.common.util import unpack_optional
 from ncore.impl.data import types
-from ncore.impl.data.data3 import ShardDataLoader
-from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
-from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 from ncore.impl.data.util import padded_index_string
+from ncore.impl.data.v3.compat import SequenceLoaderV3
+from ncore.impl.data.v3.shards import ShardDataLoader
+from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
+from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 from ncore.impl.sensors.camera import CameraModel
 from ncore.impl.sensors.lidar import StructuredLidarModel
 from scripts.util import NPArrayParamType

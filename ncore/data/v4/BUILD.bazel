@@ -13,8 +13,6 @@ py_library(
     deps = [
         "//ncore/impl/data/v4:pylib_compat",
         "//ncore/impl/data/v4:pylib_components",
-        "//ncore/impl/data/v4:pylib_conversion",
-        "//ncore/impl/data/v4:pylib_types",
     ],
 )
 

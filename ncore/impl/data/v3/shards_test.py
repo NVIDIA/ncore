@@ -20,12 +20,11 @@ import numpy as np
 import parameterized
 import PIL.Image as PILImage
 
-from python.runfiles import Runfiles
+from python.runfiles import Runfiles  # pyright: ignore[reportMissingImports] # ty:ignore[unresolved-import]
 from scipy.spatial.transform import Rotation as R
 from upath import UPath
 
-from .data3 import CameraSensor, ContainerDataWriter, FrameLabel3, LidarSensor, Poses, Sensor, ShardDataLoader
-from .types import (
+from ncore.impl.data.types import (
     BBox3,
     BivariateWindshieldModelParameters,
     FrameTimepoint,
@@ -36,6 +35,9 @@ from .types import (
     RowOffsetStructuredSpinningLidarModelParameters,
     ShutterType,
 )
+
+from .shards import CameraSensor, ContainerDataWriter, LidarSensor, Sensor, ShardDataLoader
+from .types import FrameLabel3, Poses
 
 
 _RUNFILES = Runfiles.Create()

@@ -10,7 +10,8 @@
 
 """Package exposing methods related to NCORE's V3 data interaction APIs"""
 
-from ncore.impl.data.data3 import (
+from ncore.impl.data.v3.compat import SequenceLoaderV3
+from ncore.impl.data.v3.shards import (
     CameraSensor,
     FrameLabel3,
     LidarSensor,
@@ -25,6 +26,7 @@ from ncore.impl.data.data3 import (
 
 
 __all__ = [
+    # shard APIs
     "ShardDataLoader",
     "Sensor",
     "CameraSensor",
@@ -35,4 +37,6 @@ __all__ = [
     "Poses",
     "TrackLabel",
     "Tracks",
+    # compat APIs
+    "SequenceLoaderV3",
 ]

@@ -26,10 +26,12 @@ import click
 import pandas as pd
 import tqdm
 
-from ncore.impl.data.data3 import FrameLabel3, ShardDataLoader
-from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
+from ncore.impl.data.types import CuboidTrackObservation
+from ncore.impl.data.v3.compat import SequenceLoaderV3
+from ncore.impl.data.v3.shards import ShardDataLoader
+from ncore.impl.data.v3.types import FrameLabel3
+from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
-from ncore.impl.data.v4.types import CuboidTrackObservation
 from scripts.visualization import LabelVisualizer
 
 

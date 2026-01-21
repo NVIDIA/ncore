@@ -16,12 +16,10 @@ import json
 import logging
 
 from collections import defaultdict
-from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple, Union, cast
 
-import dataclasses_json
 import numcodecs
 import numpy as np
 import PIL.Image as PILImage
@@ -29,12 +27,11 @@ import zarr
 
 from upath import UPath
 
-import ncore.impl.common.transformations as transformations
+import ncore.impl.common.transformations as common_transformations
 import ncore.impl.common.util as common_util
 
-from . import data, stores, types, util
-from .data import JsonLike, evaluate_file_pattern
-from .types import BBox3, LabelSource
+from ncore.impl.data import data, stores, types, util
+from ncore.impl.data.v3.types import FrameLabel3, Poses, TrackLabel, Tracks
 
 
 _logger = logging.getLogger(__name__)
@@ -45,85 +42,7 @@ CAMERAS_BASE_GROUP = "cameras"
 LIDARS_BASE_GROUP = "lidars"
 RADARS_BASE_GROUP = "radars"
 
-## Types specific to data3
-
-
-@dataclass
-class Poses:
-    """Represents a collection of timestamped poses (rig-to-local-world transformation)"""
-
-    T_rig_world_base: np.ndarray  #: Base rig-to-global-world SE3 transformation (float64, [4,4])
-    T_rig_worlds: np.ndarray  #: All rig-to-local-world SE3 transformations of the trajectory (float64, [N,4,4])
-    T_rig_world_timestamps_us: (
-        np.ndarray
-    )  #: All rig-to-local-world transformation timestamps of the trajectory (uint64, [N,])
-
-    def __post_init__(self):
-        # Sanity checks
-        assert self.T_rig_world_base.shape == (4, 4)
-        assert self.T_rig_world_base.dtype == np.dtype("float64")
-
-        assert self.T_rig_worlds.shape[1:] == (4, 4)
-        assert self.T_rig_worlds.dtype == np.dtype("float64")
-
-        assert self.T_rig_world_timestamps_us.ndim == 1
-        assert self.T_rig_world_timestamps_us.dtype == np.dtype("uint64")
-
-        assert self.T_rig_worlds.shape[0] == self.T_rig_world_timestamps_us.shape[0]
-
-
-@dataclass
-class FrameLabel3(dataclasses_json.DataClassJsonMixin):
-    """Description of a 3D frame-associated label"""
-
-    label_id: str  #: Identifier of the current frame label (unique among all labels)
-    track_id: str  #: Unique identifier of the object's track this label is associated with
-    label_class: str  #: String-representation of the class associated with this label
-    bbox3: BBox3  #: Bounding-box coordinates of the object relative to the frame's end-of-frame coordinate system
-    global_speed: float  #: Instantaneous global speed [m/s] of the object
-    timestamp_us: int  #: The timestamp associated with the centroid of the label (possibly an accurate in-frame time)
-    confidence: Optional[float]  #: If available, the confidence score of the label [0..1]
-    source: LabelSource = util.enum_field(LabelSource)  #: The source for the current label
-    source_version: Optional[str] = (
-        None  #: If provided, the unique version ID of the source for the current label (to distinguish between different versions of the same source)
-    )
-
-    def __post_init__(self):
-        # Sanity checks
-        assert isinstance(self.label_id, str)
-        assert isinstance(self.track_id, str)
-        assert isinstance(self.label_class, str)
-        assert isinstance(self.bbox3, BBox3)
-        assert isinstance(self.global_speed, float)
-        assert isinstance(self.timestamp_us, int)
-        assert isinstance(self.confidence, (type(None), float))
-
-        if not isinstance(self.source, LabelSource):
-            self.source = LabelSource(self.source)
-        assert self.source in LabelSource.__members__.values()
-
-        assert isinstance(self.source_version, (type(None), str))
-
-
-@dataclass
-class TrackLabel(dataclasses_json.DataClassJsonMixin):
-    """Description of an individual object-specific track"""
-
-    sensors: Dict[
-        str, List[int]
-    ]  #: Represents all frame-timestamps (map values) of the object's observations in different sensors (map keys)
-
-
-@dataclass
-class Tracks(dataclasses_json.DataClassJsonMixin):
-    """Represents a collection of tracks"""
-
-    track_labels: Dict[
-        str, TrackLabel
-    ]  #: Represents individual object tracks (map values) referenced by `track_id`'s (map keys, same as in `FrameLabel3`)
-
-
-## Data3-specific DataWriter and DataLoader implementations
+## Data3-specific shard DataWriter and DataLoader implementations
 
 
 class ContainerDataWriter:
@@ -139,7 +58,7 @@ class ContainerDataWriter:
         calibration_type: str,
         egomotion_type: str,
         sequence_id: str,
-        generic_meta_data: Dict[str, JsonLike],  # generic sequence meta-data (needs to be json-serializable)
+        generic_meta_data: Dict[str, data.JsonLike],  # generic sequence meta-data (needs to be json-serializable)
         shard_id: int,
         shard_count: int,
         store_shard_meta: bool,
@@ -263,7 +182,7 @@ class ContainerDataWriter:
         # sensor constants
         mask_image: Optional[PILImage.Image],
         # generic sensor meta-data (needs to be json-serializable)
-        generic_meta_data: Dict[str, JsonLike],
+        generic_meta_data: Dict[str, data.JsonLike],
     ) -> None:
         assert np.shape(T_sensor_rig) == (4, 4)
         assert T_sensor_rig.dtype == np.dtype("float32")
@@ -305,7 +224,7 @@ class ContainerDataWriter:
         timestamps_us: np.ndarray,
         # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
         generic_data: Dict[str, np.ndarray],
-        generic_meta_data: Dict[str, JsonLike],
+        generic_meta_data: Dict[str, data.JsonLike],
     ) -> None:
         # sanity / consistency checks
         assert np.shape(T_rig_worlds) == (2, 4, 4)
@@ -343,7 +262,7 @@ class ContainerDataWriter:
         # intrinsics
         lidar_model_parameters: Optional[types.ConcreteLidarModelParametersUnion],
         # generic sensor meta-data (has to be json-serializable)
-        generic_meta_data: Dict[str, JsonLike],
+        generic_meta_data: Dict[str, data.JsonLike],
     ) -> None:
         assert np.shape(T_sensor_rig) == (4, 4)
         assert T_sensor_rig.dtype == np.dtype("float32")
@@ -384,7 +303,7 @@ class ContainerDataWriter:
         timestamps_us: np.ndarray,
         # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
         generic_data: Dict[str, np.ndarray],
-        generic_meta_data: Dict[str, JsonLike],
+        generic_meta_data: Dict[str, data.JsonLike],
     ) -> None:
         # sanity / consistency checks
         assert xyz_e.ndim == 2
@@ -449,7 +368,7 @@ class ContainerDataWriter:
         # extrinsics
         T_sensor_rig: np.ndarray,
         # generic sensor meta-data (has to be json-serializable)
-        generic_meta_data: Dict[str, JsonLike],
+        generic_meta_data: Dict[str, data.JsonLike],
     ) -> None:
         assert T_sensor_rig.shape == (4, 4)
         assert T_sensor_rig.dtype == np.dtype("float32")
@@ -480,7 +399,7 @@ class ContainerDataWriter:
         timestamps_us: np.ndarray,
         # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
         generic_data: Dict[str, np.ndarray],
-        generic_meta_data: Dict[str, JsonLike],
+        generic_meta_data: Dict[str, data.JsonLike],
     ) -> None:
         # sanity / consistency checks
 
@@ -613,10 +532,10 @@ class Sensor:
 
     def get_T_rig_sensor(self) -> np.ndarray:
         """Returns constant rig-to-sensor pose"""
-        return transformations.se3_inverse(self.get_T_sensor_rig())
+        return common_transformations.se3_inverse(self.get_T_sensor_rig())
 
     # Generic sensor meta-data
-    def get_generic_meta_data(self) -> Dict[str, JsonLike]:
+    def get_generic_meta_data(self) -> Dict[str, data.JsonLike]:
         """Returns the generic sensor meta-data"""
 
         if "generic_meta_data" not in self._sensor_meta.__dict__:
@@ -674,7 +593,7 @@ class Sensor:
         self, continuous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END
     ) -> np.ndarray:
         """Returns start/end world-to-rig pose of specific frame"""
-        return transformations.se3_inverse(self.get_frame_T_rig_world(continuous_frame_index, frame_timepoint))
+        return common_transformations.se3_inverse(self.get_frame_T_rig_world(continuous_frame_index, frame_timepoint))
 
     def get_frame_T_sensor_world(
         self, continuous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END
@@ -687,7 +606,9 @@ class Sensor:
         self, continuous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END
     ) -> np.ndarray:
         """Returns start/end world-to-sensor pose of specific frame"""
-        return transformations.se3_inverse(self.get_frame_T_sensor_world(continuous_frame_index, frame_timepoint))
+        return common_transformations.se3_inverse(
+            self.get_frame_T_sensor_world(continuous_frame_index, frame_timepoint)
+        )
 
     def get_frame_timestamp_us(
         self, continuous_frame_index: int, frame_timepoint: types.FrameTimepoint = types.FrameTimepoint.END
@@ -726,7 +647,7 @@ class Sensor:
 
         return self._get_frame_group(continuous_frame_index)["generic_data"][name][()]
 
-    def get_frame_generic_meta_data(self, continuous_frame_index) -> Dict[str, JsonLike]:
+    def get_frame_generic_meta_data(self, continuous_frame_index) -> Dict[str, data.JsonLike]:
         """Returns generic frame meta-data for a specific frame"""
 
         if "generic_data" not in (frame_group := self._get_frame_group(continuous_frame_index)):
@@ -857,7 +778,7 @@ class ShardDataLoader:
 
         """
 
-        return evaluate_file_pattern(pattern, skip_suffixes=skip_suffixes)
+        return data.evaluate_file_pattern(pattern, skip_suffixes=skip_suffixes)
 
     def __init__(
         self,
@@ -917,7 +838,7 @@ class ShardDataLoader:
 
                 shard_sequence_id = shard_root.attrs.get("sequence_id")
                 shard_generic_meta_data = cast(
-                    Optional[Dict[str, JsonLike]],
+                    Optional[Dict[str, data.JsonLike]],
                     shard_root.attrs.get(
                         "generic_meta_data",
                         # Backwards-compatibility for data that didn't store generic_meta_data
@@ -1039,7 +960,7 @@ class ShardDataLoader:
             return f"{self._sequence_id}_{'_'.join([str(shard_id) for shard_id in self._shard_ids])}"
         return self._sequence_id
 
-    def get_generic_meta_data(self) -> Dict[str, JsonLike]:
+    def get_generic_meta_data(self) -> Dict[str, data.JsonLike]:
         """Returns generic sequence meta-data"""
 
         return self._generic_meta_data if self._generic_meta_data else {}
@@ -1114,10 +1035,10 @@ class ShardDataLoader:
             }
         )
 
-    def get_sequence_meta(self) -> Dict[str, JsonLike]:
+    def get_sequence_meta(self) -> Dict[str, data.JsonLike]:
         """Returns full sequence meta-data as a dictionary"""
 
-        output: Dict[str, JsonLike] = {
+        output: Dict[str, data.JsonLike] = {
             "sequence_id": self.get_sequence_id(),
             "pose-range": {
                 "start-timestamp_us": int(
@@ -1134,7 +1055,7 @@ class ShardDataLoader:
         )
 
         ## Shard-wide information
-        shards: List[JsonLike] = []
+        shards: List[data.JsonLike] = []
         shard_pose_offset = 0
         sensor_frame_offset: dict[str, int] = defaultdict(int)
         for shard_idx, (shard_id, shard_path) in enumerate(zip(self.get_shard_ids(), self.get_shard_paths())):
@@ -1151,7 +1072,7 @@ class ShardDataLoader:
                 and shard_pose_timestamps_us[-1] <= sequence_end_timestamp_us
             ), f"shard {shard_idx} pose timestamps inconsistent with sequence pose timestamps"
 
-            shard: Dict[str, JsonLike] = {
+            shard: Dict[str, data.JsonLike] = {
                 "id": shard_id,
                 "path": shard_path.name,
                 "md5": common_util.MD5Hasher.hash(shard_path),
@@ -1166,7 +1087,7 @@ class ShardDataLoader:
             }
             shard_pose_offset += len(shard_pose_timestamps_us)
 
-            sensors: Dict[str, JsonLike] = {}
+            sensors: Dict[str, data.JsonLike] = {}
 
             for sensor_id in self.get_sensor_ids():
                 sensor = self.get_sensor(sensor_id)

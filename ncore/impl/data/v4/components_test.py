@@ -26,6 +26,7 @@ from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.types import (
     BBox3,
     BivariateWindshieldModelParameters,
+    CuboidTrackObservation,
     LabelSource,
     OpenCVFisheyeCameraModelParameters,
     ReferencePolynomial,
@@ -46,7 +47,6 @@ from .components import (
     SequenceComponentGroupsReader,
     SequenceComponentGroupsWriter,
 )
-from .types import CuboidTrackObservation
 
 
 class TestData4Reload(unittest.TestCase):

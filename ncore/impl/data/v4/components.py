@@ -48,8 +48,6 @@ from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import MD5Hasher
 from ncore.impl.data import data, stores, types
 
-from .types import CuboidTrackObservation
-
 
 if TYPE_CHECKING:
     import numpy.typing as npt  # type: ignore[import-not-found]
@@ -1479,7 +1477,7 @@ class CuboidsComponent:
 
         def store_observations(
             self,
-            cuboid_observations: List[CuboidTrackObservation],  # individual observation
+            cuboid_observations: List[types.CuboidTrackObservation],  # individual observation
         ) -> "Self":
             obs_dict_list = []
             for obs in cuboid_observations:
@@ -1509,8 +1507,8 @@ class CuboidsComponent:
             """Returns true if the component version is supported by the reader"""
             return version == "v1"
 
-        def get_observations(self) -> Generator[CuboidTrackObservation]:
+        def get_observations(self) -> Generator[types.CuboidTrackObservation]:
             """Returns all stored cuboid track observations"""
 
             for obs in self._group["cuboids"].attrs["cuboid_track_observations"]:
-                yield CuboidTrackObservation.from_dict(obs)
+                yield types.CuboidTrackObservation.from_dict(obs)
