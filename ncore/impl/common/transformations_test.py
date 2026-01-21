@@ -23,7 +23,8 @@ from ncore.impl.common.transformations import (
     is_within_3d_bboxes,
 )
 from ncore.impl.data import types
-from ncore.impl.data.data3 import ShardDataLoader
+from ncore.impl.data.data4.compat import SequenceLoaderV4
+from ncore.impl.data.data4.components import SequenceComponentGroupsReader
 
 
 _RUNFILES = Runfiles.Create()
@@ -188,56 +189,55 @@ class TestMotionCompensator(unittest.TestCase):
         # Make printed errors more representable numerically
         np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
 
-        # Load a lidar sensor as a source for motion-compensated point cloud data
-        all_shards = sorted(
-            [
-                str(p)
-                for p in Path(
+        # Load a lidar sensor as a source for non-motion-compensated point cloud data
+        self.loader = SequenceLoaderV4(
+            SequenceComponentGroupsReader(
+                [
                     _RUNFILES.Rlocation(
-                        "test-data-v3-shards/c9b05cf4-afb9-11ec-b3c2-00044bf65fcb@1648597318700123-1648599151600035_0-3.zarr.itar"
+                        "test-data-v4/c9b05cf4-afb9-11ec-b3c2-00044bf65fcb@1648597318700123-1648599151600035.json"
                     )
-                ).parent.iterdir()
-                if p.match("*.itar")
-            ]
+                ],
+            )
         )
-
-        loader = ShardDataLoader(all_shards)
-        self.poses = loader.get_poses()
-        self.lidar_sensor = ShardDataLoader(all_shards).get_lidar_sensor("lidar_gt_top_p128_v4p5")
 
     def test_idempotence(self):
         """Test to verify compensation / decompensation are symmetric"""
 
-        motion_compensator = MotionCompensator.from_sensor_rig(
-            self.lidar_sensor.get_sensor_id(),
-            self.lidar_sensor.get_T_sensor_rig(),
-            self.poses.T_rig_worlds,
-            self.poses.T_rig_world_timestamps_us,
-        )
+        motion_compensator = MotionCompensator(self.loader.pose_graph)
+        lidar_sensor = self.loader.get_lidar_sensor("lidar_gt_top_p128_v4p5")
 
         # Check on a few frames only
-        for frame_idx in range(1, 3):
-            # Load motion-compensated reference point cloud
-            xyz_s = self.lidar_sensor.get_frame_data(frame_idx, "xyz_s")
-            xyz_e = self.lidar_sensor.get_frame_data(frame_idx, "xyz_e")
-            timestamp_us = self.lidar_sensor.get_frame_data(frame_idx, "timestamp_us")
+        for frame_idx in range(0, 2):
+            # Load non motion-compensated reference point cloud
+            xyz_m_ref = lidar_sensor.get_frame_point_cloud(
+                frame_idx, motion_compensation=False, with_start_points=False, return_index=0
+            ).xyz_m_end
+            timestamp_us = lidar_sensor.get_frame_ray_bundle_timestamp_us(frame_idx)
 
-            frame_start_timestamps_us = self.lidar_sensor.get_frame_timestamp_us(frame_idx, types.FrameTimepoint.START)
-            frame_end_timestamps_us = self.lidar_sensor.get_frame_timestamp_us(frame_idx, types.FrameTimepoint.END)
+            frame_start_timestamps_us = lidar_sensor.get_frame_timestamp_us(frame_idx, types.FrameTimepoint.START)
+            frame_end_timestamps_us = lidar_sensor.get_frame_timestamp_us(frame_idx, types.FrameTimepoint.END)
 
-            # Run decompensation
-            xyz_pointtime = motion_compensator.motion_decompensate_points(
-                self.lidar_sensor.get_sensor_id(),
-                xyz_e,
+            # Run compensation, this gives both motion-compensated start/end points
+            motion_compensation_result = motion_compensator.motion_compensate_points(
+                lidar_sensor.sensor_id,
+                xyz_m_ref,
                 timestamp_us,
                 frame_start_timestamps_us,
                 frame_end_timestamps_us,
             )
 
-            # Re-run compensation on non-compensated points
-            motion_compensation_result = motion_compensator.motion_compensate_points(
-                self.lidar_sensor.get_sensor_id(),
-                xyz_pointtime,
+            # Re-run decompensation on compensated points
+            xyz_m = motion_compensator.motion_decompensate_points(
+                lidar_sensor.sensor_id,
+                motion_compensation_result.xyz_e_sensorend,
+                timestamp_us,
+                frame_start_timestamps_us,
+                frame_end_timestamps_us,
+            )
+
+            xyz_s_m = motion_compensator.motion_decompensate_points(
+                lidar_sensor.sensor_id,
+                motion_compensation_result.xyz_s_sensorend,
                 timestamp_us,
                 frame_start_timestamps_us,
                 frame_end_timestamps_us,
@@ -246,23 +246,24 @@ class TestMotionCompensator(unittest.TestCase):
             # Check for consistency
             self.assertIsNone(
                 np.testing.assert_array_almost_equal(
-                    xyz_s,
-                    motion_compensation_result.xyz_s_sensorend,
-                    # lower-precision check only because of numerical errors building up + not doing
-                    # *repeated* linear interpolatins in MotionCompensator for poses as in the source test data
-                    decimal=5,
-                ),
-                f"frame_idx {frame_idx}",
-            )
-            self.assertIsNone(
-                np.testing.assert_array_almost_equal(
-                    xyz_e,
-                    motion_compensation_result.xyz_e_sensorend,
+                    np.zeros_like(delta_s := np.linalg.norm(xyz_s_m, axis=1)),
+                    delta_s,
                     # lower-precision check only because of numerical errors building up + not doing
                     # *repeated* linear interpolatins in MotionCompensator for poses as in the source test data
                     decimal=2,
                 ),
-                f"frame_idx {frame_idx}",
+                f"inconsistent start points, frame_idx {frame_idx}",
+            )
+
+            self.assertIsNone(
+                np.testing.assert_array_almost_equal(
+                    np.zeros_like(delta_e := np.linalg.norm(xyz_m - xyz_m_ref, axis=1)),
+                    delta_e,
+                    # lower-precision check only because of numerical errors building up + not doing
+                    # *repeated* linear interpolatins in MotionCompensator for poses as in the source test data
+                    decimal=2,
+                ),
+                f"inconsistent end points, frame_idx {frame_idx}",
             )
 
 
