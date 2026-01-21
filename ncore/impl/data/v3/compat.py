@@ -302,13 +302,22 @@ class SequenceLoaderV3(SequenceLoaderProtocol):
 
             # Apply motion de-compensation
             frame_timestamps_us = self.frames_timestamps_us[frame_index, :]
-            xyz_m_end = self._motion_compensator.motion_decompensate_points(
-                sensor_id=self.sensor_id,
-                xyz_sensorend=xyz_e,
-                timestamp_us=self.get_frame_ray_bundle_timestamp_us(frame_index),
-                frame_start_timestamp_us=int(frame_timestamps_us[FrameTimepoint.START.value]),
-                frame_end_timestamp_us=int(frame_timestamps_us[FrameTimepoint.END.value]),
-            )
+            frame_start_timestamp_us = int(frame_timestamps_us[FrameTimepoint.START.value])
+            frame_end_timestamp_us = int(frame_timestamps_us[FrameTimepoint.END.value])
+
+            if frame_start_timestamp_us != frame_end_timestamp_us:
+                # regular case for non-instant frames
+                xyz_m_end = self._motion_compensator.motion_decompensate_points(
+                    sensor_id=self.sensor_id,
+                    xyz_sensorend=xyz_e,
+                    timestamp_us=self.get_frame_ray_bundle_timestamp_us(frame_index),
+                    frame_start_timestamp_us=frame_start_timestamp_us,
+                    frame_end_timestamp_us=frame_end_timestamp_us,
+                )
+            else:
+                # instant frames don't require motion-decompensation as point coordinates
+                # are relative to a single frame pose already
+                xyz_m_end = xyz_e
 
             return RayBundleSensorProtocol.FramePointCloud(
                 motion_compensation=False,

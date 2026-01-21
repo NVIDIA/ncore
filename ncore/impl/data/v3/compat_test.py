@@ -355,15 +355,10 @@ class TestCompatV3(unittest.TestCase):
         radar_ids = self.loader.radar_ids
         radar = self.loader.get_radar_sensor(radar_ids[0])
 
-        if radar.frames_count == 0:
-            self.skipTest("No radar frames available")
-
         frame_idx = 0
 
         # Test get_frame_ray_bundle_count
         count = radar.get_frame_ray_bundle_count(frame_idx)
-        if count == 0:
-            self.skipTest("No radar points in frame")
 
         # Test get_frame_ray_bundle_timestamp_us
         timestamps = radar.get_frame_ray_bundle_timestamp_us(frame_idx)
@@ -373,13 +368,9 @@ class TestCompatV3(unittest.TestCase):
         distances = radar.get_frame_ray_bundle_return_distance(frame_idx)
         self.assertEqual(distances.shape[0], count)
 
-        # Test get_frame_ray_bundle_direction (may require motion decompensation)
-        try:
-            directions = radar.get_frame_ray_bundle_direction(frame_idx)
-            self.assertEqual(directions.shape, (count, 3))
-        except (KeyError, ValueError):
-            # Some V3 radar data may not support direction queries
-            self.skipTest("V3 radar data does not support direction queries")
+        # Test get_frame_ray_bundle_direction
+        directions = radar.get_frame_ray_bundle_direction(frame_idx)
+        self.assertEqual(directions.shape, (count, 3))
 
     def test_cuboid_track_observations(self):
         """Test cuboid track observations access"""
