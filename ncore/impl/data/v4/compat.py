@@ -60,7 +60,7 @@ from ncore.impl.common.util import unpack_optional
 from ncore.impl.data import data3, types, util
 from ncore.impl.data.data import JsonLike
 from ncore.impl.data.data3 import LidarSensor, ShardDataLoader
-from ncore.impl.data.data4.components import (
+from ncore.impl.data.v4.components import (
     BaseRayBundleSensorComponentReader,
     CameraSensorComponent,
     CuboidsComponent,
@@ -71,7 +71,7 @@ from ncore.impl.data.data4.components import (
     RadarSensorComponent,
     SequenceComponentGroupsReader,
 )
-from ncore.impl.data.data4.types import CuboidTrackObservation
+from ncore.impl.data.v4.types import CuboidTrackObservation
 from ncore.impl.data.types import FrameTimepoint
 
 

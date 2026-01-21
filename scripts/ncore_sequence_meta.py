@@ -17,8 +17,8 @@ from typing import Optional, Tuple
 import click
 
 from ncore.impl.data.data3 import ShardDataLoader
-from ncore.impl.data.data4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
-from ncore.impl.data.data4.components import SequenceComponentGroupsReader
+from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
+from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 
 
 logger = logging.getLogger(__name__)

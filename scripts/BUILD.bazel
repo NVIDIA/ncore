@@ -39,8 +39,8 @@ py_binary(
         "//ncore/impl/common:pylib_util",
         "//ncore/impl/data:pylib_data3",
         "//ncore/impl/data:pylib_util",
-        "//ncore/impl/data/data4:pylib_compat",
-        "//ncore/impl/data/data4:pylib_components",
+        "//ncore/impl/data/v4:pylib_compat",
+        "//ncore/impl/data/v4:pylib_components",
     ],
 )
 
@@ -53,8 +53,8 @@ NCORE_EXPORT_CAMERA_DEPS = [
     requirement("opencv-python"),
     "//ncore/impl/data:pylib_data3",
     "//ncore/impl/data:pylib_util",
-    "//ncore/impl/data/data4:pylib_compat",
-    "//ncore/impl/data/data4:pylib_components",
+    "//ncore/impl/data/v4:pylib_compat",
+    "//ncore/impl/data/v4:pylib_components",
 ]
 
 py_binary(
@@ -130,9 +130,9 @@ py_binary(
         requirement("universal_pathlib"),
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_data3",
-        "//ncore/impl/data/data4:pylib_components",
-        "//ncore/impl/data/data4:pylib_conversion",
-        "//ncore/impl/data/data4:pylib_types",
+        "//ncore/impl/data/v4:pylib_components",
+        "//ncore/impl/data/v4:pylib_conversion",
+        "//ncore/impl/data/v4:pylib_types",
         "//scripts:pylib_util",
     ],
 )
@@ -150,9 +150,9 @@ py_binary(
         "//ncore/impl/data:pylib_data",
         "//ncore/impl/data:pylib_data3",
         "//ncore/impl/data:pylib_types",
-        "//ncore/impl/data/data4:pylib_compat",
-        "//ncore/impl/data/data4:pylib_components",
-        "//ncore/impl/data/data4:pylib_types",
+        "//ncore/impl/data/v4:pylib_compat",
+        "//ncore/impl/data/v4:pylib_components",
+        "//ncore/impl/data/v4:pylib_types",
         "//scripts:pylib_util",
     ],
 )
@@ -173,7 +173,7 @@ py_binary(
         "//ncore/impl/data:pylib_data3",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data:pylib_util",
-        "//ncore/impl/data/data4:pylib_compat",
+        "//ncore/impl/data/v4:pylib_compat",
         "//ncore/impl/sensors:pylib_camera",
         "//ncore/impl/sensors:pylib_lidar",
         "//scripts:pylib_util",
@@ -193,8 +193,8 @@ py_binary(
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_data3",
         "//ncore/impl/data:pylib_types",
-        "//ncore/impl/data/data4:pylib_compat",
-        "//ncore/impl/data/data4:pylib_components",
+        "//ncore/impl/data/v4:pylib_compat",
+        "//ncore/impl/data/v4:pylib_components",
         "//ncore/impl/sensors:pylib_camera",
     ],
 )
@@ -208,7 +208,7 @@ py_binary(
     deps = [
         requirement("click"),
         "//ncore/impl/data:pylib_data3",
-        "//ncore/impl/data/data4:pylib_compat",
-        "//ncore/impl/data/data4:pylib_components",
+        "//ncore/impl/data/v4:pylib_compat",
+        "//ncore/impl/data/v4:pylib_components",
     ],
 )

@@ -22,7 +22,7 @@ from ncore.impl.common.transformations import HalfClosedInterval, MotionCompensa
 from ncore.impl.common.util import log_progress
 from ncore.impl.data.data import JsonLike
 from ncore.impl.data.data3 import Poses, ShardDataLoader
-from ncore.impl.data.data4.components import (
+from ncore.impl.data.v4.components import (
     CameraSensorComponent,
     CuboidsComponent,
     IntrinsicsComponent,
@@ -32,7 +32,7 @@ from ncore.impl.data.data4.components import (
     RadarSensorComponent,
     SequenceComponentGroupsWriter,
 )
-from ncore.impl.data.data4.types import ComponentGroupAssignments, CuboidTrackObservation
+from ncore.impl.data.v4.types import ComponentGroupAssignments, CuboidTrackObservation
 from ncore.impl.data.types import FrameTimepoint
 
 

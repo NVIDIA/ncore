@@ -23,8 +23,8 @@ from ncore.impl.common.transformations import (
     is_within_3d_bboxes,
 )
 from ncore.impl.data import types
-from ncore.impl.data.data4.compat import SequenceLoaderV4
-from ncore.impl.data.data4.components import SequenceComponentGroupsReader
+from ncore.impl.data.v4.compat import SequenceLoaderV4
+from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 
 
 _RUNFILES = Runfiles.Create()
