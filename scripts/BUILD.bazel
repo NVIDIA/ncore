@@ -51,7 +51,7 @@ NCORE_EXPORT_CAMERA_DEPS = [
     requirement("click"),
     requirement("tqdm"),
     requirement("numpy"),
-    requirement("opencv-python"),
+    requirement("opencv-python-headless"),
     "//ncore/impl/data:pylib_util",
     "//ncore/impl/data/v3:pylib_compat",
     "//ncore/impl/data/v3:pylib_shards",

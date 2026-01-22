@@ -165,17 +165,17 @@ numpy==1.19.5 \
     # via
     #   -r 3rdparty/python/requirements_3_8.in
     #   numcodecs
-    #   opencv-python
+    #   opencv-python-headless
     #   scipy
     #   zarr
-opencv-python==4.8.0.76 \
-    --hash=sha256:48eb3121d809a873086d6677565e3ac963e6946110d13cd115533fa70e2aa2eb \
-    --hash=sha256:56d84c43ce800938b9b1ec74b33942b2edbcef3f70c2754eb9bfe5dff1ee3ace \
-    --hash=sha256:67bce4b9aad307c98a9a07c6afb7de3a4e823c1f4991d6d8e88e229e7dfeee59 \
-    --hash=sha256:93871871b1c9d6b125cddd45b0638a2fa01ee9fd37f5e428823f750e404f2f15 \
-    --hash=sha256:9bcb4944211acf13742dbfd9d3a11dc4e36353ffa1746f2c7dcd6a01c32d1376 \
-    --hash=sha256:b2349dc9f97ed6c9ba163d0a7a24bcef9695a3e216cd143e92f1b9659c5d9a49 \
-    --hash=sha256:ba32cfa75a806abd68249699d34420737d27b5678553387fc5768747a6492147
+opencv-python-headless==4.8.0.76 \
+    --hash=sha256:220d2e292fa45ef0582aab730460bbc15cfe61f2089208167a372ccf76f01e21 \
+    --hash=sha256:8ee3bf1c9086493c340c6a87899f1c7778d729de92bce8560b8c31ab8a9cdf79 \
+    --hash=sha256:9c094faf6ec7bd360244647b26ebdf8f54edec1d9292cb9179fff9badcca7be8 \
+    --hash=sha256:bc15726187dae26d8a08777faf6bc71d38f20c785c102677f58ba0e935003afb \
+    --hash=sha256:c675b8dec6298ba6a1eec2ce24077a393b4236a043f68dfacb06bf594354ce06 \
+    --hash=sha256:df0608de207ae9b094ad9eaf1a475cf6e9a069fb12cd289d4a18cefdab2f8aa8 \
+    --hash=sha256:f85d2e3b9d952db35d31f9db8882d073c903921b72b8db1cfed8bbc75e8d3e63
     # via -r 3rdparty/python/requirements_3_8.in
 packaging==23.1 \
     --hash=sha256:994793af429502c4ea2ebf6bf664629d07c1a9fe974af92966e4b8d2df7edc61 \
@@ -294,6 +294,7 @@ typing-extensions==4.7.1 \
     --hash=sha256:440d5dd3af93b060174bf433bccd69b0babc3b15b1a8dca43789fd7f61514b36 \
     --hash=sha256:b75ddc264f0ba5615db7ba217daeb99701ad295353c45f9e95963337ceeeffb2
     # via
+    #   -r 3rdparty/python/requirements_3_8.in
     #   torch
     #   typing-inspect
 typing-inspect==0.9.0 \

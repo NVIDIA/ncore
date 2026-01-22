@@ -38,7 +38,7 @@ pytest_test(
     ],
     deps = [
         requirement("numpy"),
-        requirement("opencv-python"),
+        requirement("opencv-python-headless"),
         requirement("parameterized"),
         requirement("scipy"),
         requirement("torch"),
