@@ -43,8 +43,8 @@ from .types import FrameLabel3, Poses
 _RUNFILES = Runfiles.Create()
 
 
-class TestData3Loader(unittest.TestCase):
-    """Test to verify functionality of V3 data loader"""
+class TestData3LoaderReferenceValues(unittest.TestCase):
+    """Test to verify functionality of V3 data loader against known reference values"""
 
     def setUp(self):
         # Make printed errors more representable numerically
