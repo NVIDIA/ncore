@@ -46,7 +46,7 @@ from zarr._storage.store import Store
 
 from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import MD5Hasher
-from ncore.impl.data import data, stores, types
+from ncore.impl.data import stores, types
 
 
 if TYPE_CHECKING:
@@ -124,7 +124,7 @@ class SequenceComponentGroupsWriter:
         # The time range for the sequence
         sequence_timestamp_interval_us: HalfClosedInterval,
         # Generic sequence meta-data (needs to be json-serializable) - will be stored into each component store group
-        generic_meta_data: Dict[str, data.JsonLike],
+        generic_meta_data: Dict[str, types.JsonLike],
         # Zarr store type: either serialize as .itar archive store (default / production) or plain "directory" store (simpler for introspection / asynchronous / external setup)
         store_type: Literal["itar", "directory"] = "itar",  # valid values: ['itar', 'directory']
     ):
@@ -159,7 +159,7 @@ class SequenceComponentGroupsWriter:
         return self._sequence_timestamp_interval_us
 
     @property
-    def generic_meta_data(self) -> Dict[str, data.JsonLike]:
+    def generic_meta_data(self) -> Dict[str, types.JsonLike]:
         return self._generic_meta_data
 
     def get_base_group(self, component_group_name: Optional[str]) -> zarr.Group:
@@ -246,7 +246,7 @@ class SequenceComponentGroupsWriter:
         component_instance_name: str,
         group_name: Optional[str] = None,
         # generic sensor meta-data (needs to be json-serializable)
-        generic_meta_data: Dict[str, data.JsonLike] = {},
+        generic_meta_data: Dict[str, types.JsonLike] = {},
     ) -> CW:
         """Instantiates a component writer instance for the given component type, component instance name, and group name.
         Additionally stores associated generic meta data"""
@@ -395,7 +395,7 @@ class SequenceComponentGroupsReader:
                 if not self._component_stores:
                     self._sequence_id: str = component_store_sequence_id
                     self._sequence_timestamp_interval_us = component_store_sequence_timestamp_interval_us
-                    self._generic_meta_data: Dict[str, data.JsonLike] = component_store_generic_meta_data
+                    self._generic_meta_data: Dict[str, types.JsonLike] = component_store_generic_meta_data
                     self._version: str = component_root_version
 
                 if not self._sequence_id == component_store_sequence_id:
@@ -439,7 +439,7 @@ class SequenceComponentGroupsReader:
         return self._sequence_timestamp_interval_us
 
     @property
-    def generic_meta_data(self) -> Dict[str, data.JsonLike]:
+    def generic_meta_data(self) -> Dict[str, types.JsonLike]:
         return self._generic_meta_data
 
     @property
@@ -561,7 +561,7 @@ class ComponentReader(ABC):
         return self._group.attrs["component_version"]
 
     @property
-    def generic_meta_data(self) -> Dict[str, data.JsonLike]:
+    def generic_meta_data(self) -> Dict[str, types.JsonLike]:
         """Returns the generic meta data of the loaded component"""
         return self._group.attrs["generic_meta_data"]
 
@@ -769,7 +769,7 @@ class IntrinsicsComponent:
 
             # Prepare meta-data containing the serialization of the mandatory camera model / optional external distortion parameters
 
-            meta_data = data.encode_camera_model_parameters(camera_model_parameters)
+            meta_data = types.encode_camera_model_parameters(camera_model_parameters)
 
             self._cameras_group.create_group(camera_id).attrs.put(meta_data)
 
@@ -784,7 +784,7 @@ class IntrinsicsComponent:
             """Store lidar-associated intrinsics"""
 
             # Prepare meta-data containing the serialization of the mandatory lidar model
-            meta_data = data.encode_lidar_model_parameters(lidar_model_parameters)
+            meta_data = types.encode_lidar_model_parameters(lidar_model_parameters)
 
             self._lidars_group.create_group(lidar_id).attrs.put(meta_data)
 
@@ -805,7 +805,7 @@ class IntrinsicsComponent:
 
         def get_camera_model_parameters(self, camera_id: str) -> types.ConcreteCameraModelParametersUnion:
             """Returns the camera model associated with the requested camera sensor"""
-            return data.decode_camera_model_parameters(cast(zarr.Group, self._group["cameras"][camera_id]).attrs)
+            return types.decode_camera_model_parameters(cast(zarr.Group, self._group["cameras"][camera_id]).attrs)
 
         def get_lidar_model_parameters(self, lidar_id: str) -> Optional[types.ConcreteLidarModelParametersUnion]:
             """Returns the lidar model associated with the requested lidar sensor"""
@@ -814,7 +814,7 @@ class IntrinsicsComponent:
             if lidar_id not in lidars_group:
                 return None
 
-            return data.decode_lidar_model_parameters(cast(zarr.Group, lidars_group[lidar_id]).attrs)
+            return types.decode_lidar_model_parameters(cast(zarr.Group, lidars_group[lidar_id]).attrs)
 
 
 class MasksComponent:
@@ -951,7 +951,7 @@ class BaseSensorComponentWriter(ComponentWriter):
         frame_timestamps_us: npt.NDArray[np.uint64],
         # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
         generic_data: Dict[str, npt.NDArray[Any]],
-        generic_meta_data: Dict[str, data.JsonLike],
+        generic_meta_data: Dict[str, types.JsonLike],
     ) -> zarr.Group:
         # Sanity / timestamp consistency checks
         assert np.shape(frame_timestamps_us) == (2,)
@@ -1047,7 +1047,7 @@ class BaseSensorComponentReader(ComponentReader):
 
         return np.array(self._get_frame_group(timestamp_us)["generic_data"][name])
 
-    def get_frame_generic_meta_data(self, timestamp_us: int) -> Dict[str, data.JsonLike]:
+    def get_frame_generic_meta_data(self, timestamp_us: int) -> Dict[str, types.JsonLike]:
         """Returns generic frame meta-data for a specific frame"""
 
         return dict(self._get_frame_group(timestamp_us)["generic_data"].attrs)
@@ -1207,7 +1207,7 @@ class CameraSensorComponent:
             frame_timestamps_us: npt.NDArray[np.uint64],
             # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
             generic_data: Dict[str, npt.NDArray[Any]],
-            generic_meta_data: Dict[str, data.JsonLike],
+            generic_meta_data: Dict[str, types.JsonLike],
         ) -> "Self":
             # Initialize frame
             frame_group = self._store_base_frame(frame_timestamps_us, generic_data, generic_meta_data)
@@ -1292,7 +1292,7 @@ class LidarSensorComponent:
             frame_timestamps_us: npt.NDArray[np.uint64],
             # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
             generic_data: Dict[str, npt.NDArray[Any]],
-            generic_meta_data: Dict[str, data.JsonLike],
+            generic_meta_data: Dict[str, types.JsonLike],
         ) -> "Self":
             ## Sanity / consistency checks
             assert direction.ndim == 2
@@ -1397,7 +1397,7 @@ class RadarSensorComponent:
             frame_timestamps_us: npt.NDArray[np.uint64],
             # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
             generic_data: Dict[str, npt.NDArray[Any]],
-            generic_meta_data: Dict[str, data.JsonLike],
+            generic_meta_data: Dict[str, types.JsonLike],
         ) -> "Self":
             ## Sanity / consistency checks
             assert direction.ndim == 2

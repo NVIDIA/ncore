@@ -7,16 +7,6 @@ load("//bazel/pytest:defs.bzl", "pytest_test")
 package(default_visibility = ["//:code_package_group"])
 
 py_library(
-    name = "pylib_data",
-    srcs = [
-        "data.py",
-    ],
-    deps = [
-        ":pylib_types",
-    ],
-)
-
-py_library(
     name = "pylib_types",
     srcs = [
         "types.py",
@@ -50,6 +40,7 @@ py_library(
     deps = [
         requirement("numpy"),
         requirement("dataclasses-json"),
+        requirement("universal_pathlib"),
     ],
 )
 
@@ -59,7 +50,6 @@ py_library(
         "compat.py",
     ],
     deps = [
-        ":pylib_data",
         ":pylib_types",
         ":pylib_util",
         "//ncore/impl/common:pylib_transformations",

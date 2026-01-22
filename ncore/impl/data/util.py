@@ -7,12 +7,15 @@
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
+import re
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, Iterable, List, Literal, TypeVar, cast
 
 import dataclasses_json
 import numpy as np
+
+from upath import UPath
 
 
 if TYPE_CHECKING:
@@ -85,6 +88,44 @@ def enum_field(enum_class, default=None):
         return enum_class.__members__[variant]
 
     return field(default=default, metadata=dataclasses_json.config(encoder=encoder, decoder=decoder))
+
+
+def evaluate_file_pattern(pattern: str, skip_suffixes: Iterable[str] = ()) -> List[str]:
+    """Given a file-pattern returns a list of matching and existing files
+
+    Supported patterns (mutually exclusive):
+    - integer-ranges: '/some/path/file-[1-3]' will be expanded to [/some/path/file-1, /some/path/file-2, /some/path/file-3]
+
+    """
+
+    pattern_basepath = UPath(pattern).parent
+    pattern_name = UPath(pattern).name
+
+    evaluated_name_patterns = []
+
+    # expand integer ranges like '[1-13]'
+    if range_match := re.search(r"\[(\d+)-(\d+)\]", pattern_name):
+        low = int(range_match.group(1))
+        high = int(range_match.group(2))
+
+        for i in range(low, high + 1):
+            evaluated_name_patterns.append(pattern_name.replace(f"[{low}-{high}]", str(i) + "-"))
+    else:
+        evaluated_name_patterns.append(pattern_name)
+
+    matches: set[UPath] = set()
+    for evaluated_pattern in evaluated_name_patterns:
+        for candidate in pattern_basepath.iterdir():
+            if candidate.name.startswith(evaluated_pattern):
+                skip = False
+                for skip_suffix in skip_suffixes:
+                    if str(candidate).endswith(skip_suffix):
+                        skip = True
+                        break
+                if not skip:
+                    matches.add(candidate)
+
+    return [str(match) for match in list(matches)]
 
 
 # A generic type supporting basic artithmetic operations like +, -, *, /, etc. - in particular implemented by float, torch.Tensor, np.ndarray, etc.

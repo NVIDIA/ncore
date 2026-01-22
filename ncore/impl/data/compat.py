@@ -55,13 +55,13 @@ from typing_extensions import runtime_checkable
 from upath import UPath
 
 from ncore.impl.common.transformations import HalfClosedInterval, PoseGraphInterpolator
-from ncore.impl.data.data import JsonLike
 from ncore.impl.data.types import (
     ConcreteCameraModelParametersUnion,
     ConcreteLidarModelParametersUnion,
     CuboidTrackObservation,
     EncodedImageData,
     FrameTimepoint,
+    JsonLike,
 )
 from ncore.impl.data.util import closest_index_sorted
 

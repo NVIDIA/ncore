@@ -28,12 +28,12 @@ from ncore.impl.data.compat import (
     SensorProtocol,
     SequenceLoaderProtocol,
 )
-from ncore.impl.data.data import JsonLike
 from ncore.impl.data.types import (
     ConcreteCameraModelParametersUnion,
     ConcreteLidarModelParametersUnion,
     CuboidTrackObservation,
     FrameTimepoint,
+    JsonLike,
 )
 from ncore.impl.data.v3.shards import CameraSensor, LidarSensor, PointCloudSensor, RadarSensor, ShardDataLoader
 

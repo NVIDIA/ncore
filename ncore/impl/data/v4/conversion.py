@@ -19,8 +19,7 @@ from upath import UPath
 
 from ncore.impl.common.transformations import HalfClosedInterval, MotionCompensator
 from ncore.impl.common.util import log_progress
-from ncore.impl.data.data import JsonLike
-from ncore.impl.data.types import CuboidTrackObservation, FrameTimepoint
+from ncore.impl.data.types import CuboidTrackObservation, FrameTimepoint, JsonLike
 from ncore.impl.data.v3.shards import ShardDataLoader
 from ncore.impl.data.v3.types import Poses
 from ncore.impl.data.v4.components import (

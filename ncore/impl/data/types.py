@@ -18,7 +18,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from enum import IntEnum, auto, unique
 from functools import lru_cache
-from typing import TYPE_CHECKING, Literal, Optional, Protocol, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Mapping, Optional, Protocol, Tuple, TypeVar, Union
 
 import dataclasses_json
 import numpy as np
@@ -37,6 +37,21 @@ if sys.version_info >= (3, 11):
     # combination with typing.get_type_hints() (used by, e.g., 'dataclasses_json')
     # - alias these globally as a workaround
     from typing import Self
+
+
+## JSON-like structures
+
+JsonLike = Union[
+    Dict[str, "JsonLike"],
+    List["JsonLike"],
+    str,
+    int,
+    float,
+    bool,
+    None,
+    # special-case shouldn't be needed, but required to make mypy happy
+    List[int],
+]
 
 
 ## Data classes representing stored data types
@@ -512,6 +527,54 @@ ConcreteCameraModelParametersUnion = Union[
 ]
 
 
+def encode_camera_model_parameters(camera_model_parameters: ConcreteCameraModelParametersUnion) -> Dict:
+    """Encodes camera intrinsic model parameters to serializable model-typed dictionary"""
+
+    encoded = {
+        "camera_model_type": camera_model_parameters.type(),
+        "camera_model_parameters": camera_model_parameters.to_dict(),
+    }
+
+    # Store type of external distortion, if available
+    if camera_model_parameters.external_distortion_parameters:
+        encoded["external_distortion_type"] = camera_model_parameters.external_distortion_parameters.type()
+
+    return encoded
+
+
+def decode_camera_model_parameters(encoded_parameters: Mapping) -> ConcreteCameraModelParametersUnion:
+    """Decodes model-typed dictionary parameters specific to the camera's intrinsic model"""
+
+    camera_model_type = encoded_parameters["camera_model_type"]
+
+    # Copy as we might modify the dictionary in place
+    camera_model_parameters = encoded_parameters["camera_model_parameters"].copy()
+
+    # Hook up typed external distortion type, if present
+    external_distortion_type: Optional[str] = encoded_parameters.get("external_distortion_type")
+    if external_distortion_type is not None:
+        if external_distortion_type == "bivariate-windshield":
+            camera_model_parameters["external_distortion_parameters"] = BivariateWindshieldModelParameters.from_dict(
+                camera_model_parameters["external_distortion_parameters"]
+            )
+        else:
+            raise ValueError(f"Unknown external distortion type: {external_distortion_type}")
+
+    # Return typed camera model parameters
+    if camera_model_type == "ftheta":
+        return FThetaCameraModelParameters.from_dict(camera_model_parameters)
+    elif camera_model_type in [
+        "opencv-pinhole",
+        # keep 'pinhole' for backwards-compatibility with existing data
+        "pinhole",
+    ]:
+        return OpenCVPinholeCameraModelParameters.from_dict(camera_model_parameters)
+    elif camera_model_type == "opencv-fisheye":
+        return OpenCVFisheyeCameraModelParameters.from_dict(camera_model_parameters)
+
+    raise ValueError(f"Unknown camera model type: {camera_model_type}")
+
+
 @dataclass()
 class BaseLidarModelParameters:
     """Represents parameters common to all lidar models"""
@@ -642,6 +705,29 @@ class RowOffsetStructuredSpinningLidarModelParameters(
 
 # Represents the collection of all concrete lidar model parameter type
 ConcreteLidarModelParametersUnion = Union[RowOffsetStructuredSpinningLidarModelParameters]
+
+
+def encode_lidar_model_parameters(lidar_model_parameters: ConcreteLidarModelParametersUnion) -> Dict:
+    """Encodes lidar intrinsic model parameters to serializable model-typed dictionary"""
+
+    encoded = {
+        "lidar_model_type": lidar_model_parameters.type(),
+        "lidar_model_parameters": lidar_model_parameters.to_dict(),
+    }
+
+    return encoded
+
+
+def decode_lidar_model_parameters(encoded_parameters: Mapping) -> ConcreteLidarModelParametersUnion:
+    """Decodes model-typed dictionary parameters specific to the lidars's intrinsic model"""
+
+    lidar_model_type = encoded_parameters["lidar_model_type"]
+
+    # Return typed lidar model parameters
+    if lidar_model_type == RowOffsetStructuredSpinningLidarModelParameters.type():
+        return RowOffsetStructuredSpinningLidarModelParameters.from_dict(encoded_parameters["lidar_model_parameters"])
+
+    raise ValueError(f"Unknown lidar model type: {lidar_model_type}")
 
 
 @dataclass

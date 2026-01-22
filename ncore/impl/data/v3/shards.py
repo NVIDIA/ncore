@@ -30,7 +30,7 @@ from upath import UPath
 import ncore.impl.common.transformations as common_transformations
 import ncore.impl.common.util as common_util
 
-from ncore.impl.data import data, stores, types, util
+from ncore.impl.data import stores, types, util
 from ncore.impl.data.v3.types import FrameLabel3, Poses, TrackLabel, Tracks
 
 
@@ -58,7 +58,7 @@ class ContainerDataWriter:
         calibration_type: str,
         egomotion_type: str,
         sequence_id: str,
-        generic_meta_data: Dict[str, data.JsonLike],  # generic sequence meta-data (needs to be json-serializable)
+        generic_meta_data: Dict[str, types.JsonLike],  # generic sequence meta-data (needs to be json-serializable)
         shard_id: int,
         shard_count: int,
         store_shard_meta: bool,
@@ -182,7 +182,7 @@ class ContainerDataWriter:
         # sensor constants
         mask_image: Optional[PILImage.Image],
         # generic sensor meta-data (needs to be json-serializable)
-        generic_meta_data: Dict[str, data.JsonLike],
+        generic_meta_data: Dict[str, types.JsonLike],
     ) -> None:
         assert np.shape(T_sensor_rig) == (4, 4)
         assert T_sensor_rig.dtype == np.dtype("float32")
@@ -194,7 +194,7 @@ class ContainerDataWriter:
             "T_sensor_rig": T_sensor_rig.tolist(),
             "generic_meta_data": generic_meta_data,
         }
-        meta_data.update(data.encode_camera_model_parameters(camera_model_parameters))
+        meta_data.update(types.encode_camera_model_parameters(camera_model_parameters))
 
         # Store meta-data
         (camera_grp := self.container_root[SENSORS_BASE_GROUP][CAMERAS_BASE_GROUP][camera_id]).attrs.put(meta_data)
@@ -224,7 +224,7 @@ class ContainerDataWriter:
         timestamps_us: np.ndarray,
         # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
         generic_data: Dict[str, np.ndarray],
-        generic_meta_data: Dict[str, data.JsonLike],
+        generic_meta_data: Dict[str, types.JsonLike],
     ) -> None:
         # sanity / consistency checks
         assert np.shape(T_rig_worlds) == (2, 4, 4)
@@ -262,7 +262,7 @@ class ContainerDataWriter:
         # intrinsics
         lidar_model_parameters: Optional[types.ConcreteLidarModelParametersUnion],
         # generic sensor meta-data (has to be json-serializable)
-        generic_meta_data: Dict[str, data.JsonLike],
+        generic_meta_data: Dict[str, types.JsonLike],
     ) -> None:
         assert np.shape(T_sensor_rig) == (4, 4)
         assert T_sensor_rig.dtype == np.dtype("float32")
@@ -277,7 +277,7 @@ class ContainerDataWriter:
 
         # Store lidar model parameters, if available
         if lidar_model_parameters:
-            meta_data.update(data.encode_lidar_model_parameters(lidar_model_parameters))
+            meta_data.update(types.encode_lidar_model_parameters(lidar_model_parameters))
 
         # Store meta-data
         (lidar_grp := self.container_root[SENSORS_BASE_GROUP][LIDARS_BASE_GROUP][lidar_id]).attrs.put(meta_data)
@@ -303,7 +303,7 @@ class ContainerDataWriter:
         timestamps_us: np.ndarray,
         # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
         generic_data: Dict[str, np.ndarray],
-        generic_meta_data: Dict[str, data.JsonLike],
+        generic_meta_data: Dict[str, types.JsonLike],
     ) -> None:
         # sanity / consistency checks
         assert xyz_e.ndim == 2
@@ -368,7 +368,7 @@ class ContainerDataWriter:
         # extrinsics
         T_sensor_rig: np.ndarray,
         # generic sensor meta-data (has to be json-serializable)
-        generic_meta_data: Dict[str, data.JsonLike],
+        generic_meta_data: Dict[str, types.JsonLike],
     ) -> None:
         assert T_sensor_rig.shape == (4, 4)
         assert T_sensor_rig.dtype == np.dtype("float32")
@@ -399,7 +399,7 @@ class ContainerDataWriter:
         timestamps_us: np.ndarray,
         # generic per-frame data (key-value pairs, *not* dimension / dtype validated) and meta-data
         generic_data: Dict[str, np.ndarray],
-        generic_meta_data: Dict[str, data.JsonLike],
+        generic_meta_data: Dict[str, types.JsonLike],
     ) -> None:
         # sanity / consistency checks
 
@@ -535,7 +535,7 @@ class Sensor:
         return common_transformations.se3_inverse(self.get_T_sensor_rig())
 
     # Generic sensor meta-data
-    def get_generic_meta_data(self) -> Dict[str, data.JsonLike]:
+    def get_generic_meta_data(self) -> Dict[str, types.JsonLike]:
         """Returns the generic sensor meta-data"""
 
         if "generic_meta_data" not in self._sensor_meta.__dict__:
@@ -647,7 +647,7 @@ class Sensor:
 
         return self._get_frame_group(continuous_frame_index)["generic_data"][name][()]
 
-    def get_frame_generic_meta_data(self, continuous_frame_index) -> Dict[str, data.JsonLike]:
+    def get_frame_generic_meta_data(self, continuous_frame_index) -> Dict[str, types.JsonLike]:
         """Returns generic frame meta-data for a specific frame"""
 
         if "generic_data" not in (frame_group := self._get_frame_group(continuous_frame_index)):
@@ -691,7 +691,7 @@ class CameraSensor(Sensor):
     def get_camera_model_parameters(self) -> types.ConcreteCameraModelParametersUnion:
         """Returns parameters specific to the camera's intrinsic model"""
 
-        return data.decode_camera_model_parameters(self._sensor_meta.__dict__)
+        return types.decode_camera_model_parameters(self._sensor_meta.__dict__)
 
     # Camera Mask
     def get_camera_mask_image(self) -> Optional[PILImage.Image]:
@@ -757,7 +757,7 @@ class LidarSensor(PointCloudSensor):
         if lidar_model_type is None:
             return None
 
-        return data.decode_lidar_model_parameters(self._sensor_meta.__dict__)
+        return types.decode_lidar_model_parameters(self._sensor_meta.__dict__)
 
 
 class RadarSensor(PointCloudSensor):
@@ -778,7 +778,7 @@ class ShardDataLoader:
 
         """
 
-        return data.evaluate_file_pattern(pattern, skip_suffixes=skip_suffixes)
+        return util.evaluate_file_pattern(pattern, skip_suffixes=skip_suffixes)
 
     def __init__(
         self,
@@ -838,7 +838,7 @@ class ShardDataLoader:
 
                 shard_sequence_id = shard_root.attrs.get("sequence_id")
                 shard_generic_meta_data = cast(
-                    Optional[Dict[str, data.JsonLike]],
+                    Optional[Dict[str, types.JsonLike]],
                     shard_root.attrs.get(
                         "generic_meta_data",
                         # Backwards-compatibility for data that didn't store generic_meta_data
@@ -960,7 +960,7 @@ class ShardDataLoader:
             return f"{self._sequence_id}_{'_'.join([str(shard_id) for shard_id in self._shard_ids])}"
         return self._sequence_id
 
-    def get_generic_meta_data(self) -> Dict[str, data.JsonLike]:
+    def get_generic_meta_data(self) -> Dict[str, types.JsonLike]:
         """Returns generic sequence meta-data"""
 
         return self._generic_meta_data if self._generic_meta_data else {}
@@ -1035,10 +1035,10 @@ class ShardDataLoader:
             }
         )
 
-    def get_sequence_meta(self) -> Dict[str, data.JsonLike]:
+    def get_sequence_meta(self) -> Dict[str, types.JsonLike]:
         """Returns full sequence meta-data as a dictionary"""
 
-        output: Dict[str, data.JsonLike] = {
+        output: Dict[str, types.JsonLike] = {
             "sequence_id": self.get_sequence_id(),
             "pose-range": {
                 "start-timestamp_us": int(
@@ -1055,7 +1055,7 @@ class ShardDataLoader:
         )
 
         ## Shard-wide information
-        shards: List[data.JsonLike] = []
+        shards: List[types.JsonLike] = []
         shard_pose_offset = 0
         sensor_frame_offset: dict[str, int] = defaultdict(int)
         for shard_idx, (shard_id, shard_path) in enumerate(zip(self.get_shard_ids(), self.get_shard_paths())):
@@ -1072,7 +1072,7 @@ class ShardDataLoader:
                 and shard_pose_timestamps_us[-1] <= sequence_end_timestamp_us
             ), f"shard {shard_idx} pose timestamps inconsistent with sequence pose timestamps"
 
-            shard: Dict[str, data.JsonLike] = {
+            shard: Dict[str, types.JsonLike] = {
                 "id": shard_id,
                 "path": shard_path.name,
                 "md5": common_util.MD5Hasher.hash(shard_path),
@@ -1087,7 +1087,7 @@ class ShardDataLoader:
             }
             shard_pose_offset += len(shard_pose_timestamps_us)
 
-            sensors: Dict[str, data.JsonLike] = {}
+            sensors: Dict[str, types.JsonLike] = {}
 
             for sensor_id in self.get_sensor_ids():
                 sensor = self.get_sensor(sensor_id)
