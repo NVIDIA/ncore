@@ -154,6 +154,15 @@ class TestData3Converter(unittest.TestCase):
             if v3_T is not None and v4_T is not None:
                 np.testing.assert_allclose(v3_T, v4_T, rtol=1e-5, atol=1e-6)
 
+        # Verify poses can be evaluated for all frame timestamps
+        for camera_id in camera_ids:
+            with self.subTest(sensor_id=camera_id):
+                camera = v4_loader.get_camera_sensor(camera_id)
+                timestamps = camera.frames_timestamps_us
+                poses = v4_loader.pose_graph.evaluate_poses("rig", "world", timestamps)
+                self.assertEqual(poses.shape, (len(timestamps), 2, 4, 4))
+                self.assertTrue(np.allclose(poses[:, :, 3, :], np.array([0.0, 0.0, 0.0, 1.0])))
+
         tempdir.cleanup()
 
     def test_convert_camera_frames_consistency(self):
@@ -247,6 +256,15 @@ class TestData3Converter(unittest.TestCase):
             if v3_T is not None and v4_T is not None:
                 np.testing.assert_allclose(v3_T, v4_T, rtol=1e-5, atol=1e-6)
 
+        # Verify poses can be evaluated for all frame timestamps
+        for radar_id in radar_ids:
+            with self.subTest(sensor_id=radar_id):
+                radar = v4_loader.get_radar_sensor(radar_id)
+                timestamps = radar.frames_timestamps_us
+                poses = v4_loader.pose_graph.evaluate_poses("rig", "world", timestamps)
+                self.assertEqual(poses.shape, (len(timestamps), 2, 4, 4))
+                self.assertTrue(np.allclose(poses[:, :, 3, :], np.array([0.0, 0.0, 0.0, 1.0])))
+
         tempdir.cleanup()
 
     def test_convert_with_lidars(self):
@@ -285,6 +303,15 @@ class TestData3Converter(unittest.TestCase):
             v4_T = v4_lidar.T_sensor_rig
             if v3_T is not None and v4_T is not None:
                 np.testing.assert_allclose(v3_T, v4_T, rtol=1e-5, atol=1e-6)
+
+        # Verify poses can be evaluated for all frame timestamps
+        for lidar_id in lidar_ids:
+            with self.subTest(sensor_id=lidar_id):
+                lidar = v4_loader.get_lidar_sensor(lidar_id)
+                timestamps = lidar.frames_timestamps_us
+                poses = v4_loader.pose_graph.evaluate_poses("rig", "world", timestamps)
+                self.assertEqual(poses.shape, (len(timestamps), 2, 4, 4))
+                self.assertTrue(np.allclose(poses[:, :, 3, :], np.array([0.0, 0.0, 0.0, 1.0])))
 
         tempdir.cleanup()
 
