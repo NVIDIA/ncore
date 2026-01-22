@@ -10,8 +10,6 @@
 
 import unittest
 
-from pathlib import Path
-
 import numpy as np
 
 from python.runfiles import Runfiles  # pyright: ignore[reportMissingImports] # ty:ignore[unresolved-import]

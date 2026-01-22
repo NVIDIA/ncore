@@ -12,16 +12,12 @@ py_library(
     srcs = [
         "util.py",
     ],
-    visibility = [
-        "//scripts:__subpackages__",
-        # DEBUG:
-        "//ncore/impl:__subpackages__",
-    ],
+    # used in various places also outside of the repo, so make it public
+    visibility = ["//visibility:public"],
     deps = [
         requirement("numpy"),
         requirement("click"),
         requirement("debugpy"),
-        "//ncore/impl/data/v3:pylib_shards",
     ],
 )
 

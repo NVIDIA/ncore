@@ -39,14 +39,10 @@ pytest_test(
     ],
     deps = [
         requirement("numpy"),
-        requirement("scipy"),
-        requirement("parameterized"),
         ":pylib_transformations",
-        ":pylib_util",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data/v4:pylib_compat",
         "//ncore/impl/data/v4:pylib_components",
-        "//scripts:pylib_util",
         "@rules_python//python/runfiles",
     ],
 )

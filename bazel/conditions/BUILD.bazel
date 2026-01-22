@@ -1,6 +1,0 @@
-# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
-
-config_setting(
-    name = "low_memory",
-    flag_values = {"//bazel/flags:low_memory": "True"},
-)
