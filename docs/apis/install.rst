@@ -3,7 +3,7 @@
 Wheel Installation
 ==================
 
-The NCore-SDK python APIs are provided as ``pip``-installable wheels maintained in the repositories `package registry <https://gitlab-master.nvidia.com/nrs/ncore/-/packages>`_.
+The NCore python APIs are provided as ``pip``-installable wheels maintained in the repositories `package registry <https://gitlab-master.nvidia.com/nrs/ncore/-/packages>`_.
 
 The wheels are called ``ncore`` and can be installed by specifying the project's index URL as follows::
 

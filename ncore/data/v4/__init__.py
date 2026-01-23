@@ -8,7 +8,7 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
-"""Package exposing methods related to NCORE's V4 data interaction APIs"""
+"""Package exposing methods related to NCore's V4 data interaction APIs"""
 
 from ncore.impl.data.v4.compat import SequenceLoaderV4
 from ncore.impl.data.v4.components import (

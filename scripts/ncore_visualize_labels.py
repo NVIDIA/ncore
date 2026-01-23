@@ -29,7 +29,17 @@ import tqdm
 from ncore.impl.data.types import CuboidTrackObservation
 from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
-from scripts.visualization import LabelVisualizer
+
+
+try:
+    from scripts.visualization import LabelVisualizer
+except ImportError:
+    # if included externally as 'ncore_repo' use fully-evaluated path
+    try:
+        from ncore_repo.scripts.visualization import LabelVisualizer  # type: ignore
+    except ImportError:
+        # fall back to 'external'-prefixed 'ncore_repo' reference if required
+        from external.ncore_repo.scripts.visualization import LabelVisualizer  # type: ignore
 
 
 @dataclass(kw_only=True, slots=True, frozen=True)

@@ -6,27 +6,16 @@
 Data Formats
 ============
 
-This document describes the NCORE data format specifications for storing
+This document describes the NCore data format specifications for storing
 sensor data, poses, calibrations, and annotations.
 
 
-Data Format Versions
---------------------
+Data Format
+-----------
 
-NCORE supports two data format versions, each optimized for different use cases:
-
-**V3 (Shard-based Format)** - The established production-verified format in which sequences
-are partitioned into self-contained shard archives. Each shard is a monolithic unit
-containing all sensor data, poses, and labels for a portion of a sequence, stored as
-zarr groups within indexed tar archives (``.itar`` files). This format is optimal for:
-
-* Sequential processing of large datasets consisting of multiple shards
-* Backwards compatibility with existing pipelines
-* Simple deployment in which all data is accessed together
-
-**V4 (Component-based Format)** - The next-generation modular format that
+NCore current data format version is **V4 (Component-based Format)** - a modular format that
 separates data into independent component stores. Each component (poses,
-intrinsics, sensors, labels, etc.) is stored as a separate zarr store that can
+intrinsics, sensors, labels, etc.) is stored as a separate zarr component that can
 be independently managed, versioned, and combined. This format enables:
 
 * Flexible data composition from multiple sources
@@ -35,297 +24,8 @@ be independently managed, versioned, and combined. This format enables:
 * Extensibility through custom component types
 * Fine-grained access control and data sharing
 
-Both formats use the same coordinate system conventions and transformations described
-in :ref:`data_conventions`. The choice between V3 and V4 depends on workflow requirements,
-with V4 recommended for new development requiring modularity and scalability.
-
-
-.. _v3-data-format:
-
-V3: Shard Data Hierarchy (Shard-Based Format)
-----------------------------------------------
-
-The per-shard data converted using NCORE V3 converters is represented as
-*self-contained* shard archives [#f1]_.
-
-Within each shard archive the data is represented in the following
-dataset hierarchy [#f2]_:
-
-.. code-block:: text
-
-   /
-   │
-   ├── {generic_meta_data}...
-   │
-   ├── poses
-   │   ├── T_rig_world_base (4, 4) float64
-   │   ├── T_rig_world_timestamps_us (I,) uint64
-   │   └── T_rig_worlds (I, 4, 4) float64
-   │
-   ├── {labels}
-   │   └── track_labels () object
-   │
-   └── sensors
-      ├── cameras
-      │   ├── camera_front_wide_120fov
-      │   ⁞   ├── frame_timestamps_us (J,) uint64
-      │   ⁞   │
-      │   ⁞   ├── {mask} () |Sx
-      │   ⁞   │
-      │   ⁞   ├── {generic_meta_data}...
-      │   ⁞   │
-      │   ⁞   ├── 000000
-      │   ⁞   │   ├── T_rig_worlds (2, 4, 4) float32
-      │   ⁞   │   ├── timestamps_us (2,) uint64
-      │   ⁞   │   │
-      │   ⁞   │   ├── image () |Sx
-      │   ⁞   │   │      
-      │   ⁞   │   ├── {generic_data}...
-      │   ⁞   │   └── {generic_meta_data}...
-      │   ⁞   │
-      │   ⁞   └── 000001...
-      │
-      ├── lidars
-      │   ├── lidar_gt_top_p128_v4p5
-      │   ⁞   ├── frame_timestamps_us (K,) uint64
-      │   ⁞   │
-      │   ⁞   ├── {generic_meta_data}...
-      │   ⁞   │
-      │   ⁞   ├── 000000
-      │   ⁞   │   ├── T_rig_worlds (2, 4, 4) float32
-      │   ⁞   │   ├── timestamps_us (2,) uint64
-      │   ⁞   │   │
-      │   ⁞   │   ├── frame_labels (M,) object
-      │   ⁞   │   │
-      │   ⁞   │   ├── dynamic_flag (N,) int8 [deprecated - see footnote 4]
-      │   ⁞   │   ├── intensity (N,) float32
-      │   ⁞   │   ├── timestamp_us (N,) uint64
-      │   ⁞   │   ├── xyz_e (N, 3) float32
-      │   ⁞   │   ├── xyz_s (N, 3) float32
-      │   ⁞   │   │
-      │   ⁞   │   ├── {generic_data}...
-      │   ⁞   │   └── {generic_meta_data}...
-      │   ⁞   │
-      │   ⁞   └── 000001...
-      │
-      └── {radars}
-          ├── radar_corner_front_left
-          ⁞   ├── frame_timestamps_us (K,) uint64
-          ⁞   │
-          ⁞   ├── {generic_meta_data}...
-          ⁞   │
-          ⁞   └── 000000...
-
-For instance, the dataset representing the encoded image of the first
-frame of the camera with ID ``camera_front_wide_120fov`` is referenced
-by the path ``/sensors/cameras/camera_front_wide_120fov/000000/image``
-within this dataset hierarchy.
-
-Pose Data
-~~~~~~~~~
-
-The timestamped trajectory of the rig frame is stored in the dataset
-``/poses/T_rig_worlds`` as SE3 transformation matrices from the rig to
-the local world coordinate system (float64, [n,4,4]) with associated
-timestamps ``/poses/T_rig_world_timestamps_us`` (in microseconds
-(uint64, [n])).
-
-All of these poses are relative to the single base pose stored in the
-dataset ``/poses/T_rig_world_base`` (float64, [4,4], see details in
-:ref:`data_conventions`).
-
-Sensor Data
-~~~~~~~~~~~
-
-**Images**
-
-Camera-associated image data is saved either in binary `jpeg` (raw
-sensor data) or in the `png` (masks / semantic segmentations) formats.
-The concrete format of image data is available in the dataset
-attributes, e.g.,
-``/sensors/cameras/camera_front_wide_120fov/mask.attrs['format']`` is
-the image format of the static mask associated with the camera
-``camera_front_wide_120fov``.
-
-**Point clouds**
-
-Lidar and radar point clouds are saved as compressed and named per-point
-datasets per frame.
-
-Lidar data contains the following columns:
-
-* ``xyz_s`` - 3D coordinate of the *start* of the ray in the sensor's
-  end-of-spin reference frame (float32, [n,3])
-* ``xyz_e`` - Motion-compensated 3D coordinate of the *end* of the ray
-  in the sensor's end-of-spin reference frame (float32, [n,3])
-* ``intensity`` - measured intensity (float32, [n]): normalized to
-  ``[0.0, 1.0]`` range
-* ``dynamic_flag`` - dynamic flag (int8, [n]): ``-1`` if not evaluated,
-  ``0`` for static points, and ``1`` for dynamic points. Note: points
-  are classified as dynamic if the associated object-track is dynamic
-  at *any* point in time of the sequence [deprecated [#f3]_]
-* ``timestamp_us`` - point timestamp in microseconds (uint64, [n])
-
-Radar data contains the following columns:
-
-* ``xyz_s`` - 3D coordinate of the start of the ray in the sensor's
-  end-of-frame reference frame (float32, [n,3])
-* ``xyz_e`` - 3D coordinate of the end of the ray in the sensor's
-  end-of-frame reference frame (float32, [n,3])
-
-Additional radar readings (like radial velocities / radar-cross-section
-measurements) are exposed in dataset-specific generic per-frame data.
-
-**Metadata**
-
-Metadata is available per frame, but also for individual sensors and for
-the general sequence.
-
-Per-frame metadata contains the following datasets for all sensors and
-all frames:
-
-* ``timestamps_us`` - timestamps of the frame's start and end point in
-  microseconds (uint64, [2,])
-* ``T_rig_worlds`` - SE3 transformation matrices from the rig to the
-  world coordinate system at the start and end timestamp of the frame
-  (float32, [2,4,4])
-* ``generic_data`` - a group with non-enforced dataset members
-  (usually data-source dependent, encoding data-source specific
-  per-frame data not common to all data-sources)
-
-For individual sensor types, we also save sequence-wide sensor-specific
-meta data either as attributes of the sensor-group or individual datasets:
-
-*All Sensors*:
-
-* ``T_sensor_rig``- SE3 transformation matrix from the sensor to the rig
-  coordinate system (float32, [4,4])
-* ``frame_timestamps_us`` - end-of-frame timestamps of all the sensor's
-  frames in microseconds (uint64, [J,])
-* ``generic_meta_data`` - a group with non-enforced members
-  (usually data-source dependent, encoding data-source specific sensor
-  meta data not common to all data-sources)
-
-*Cameras*:
-
-* ``camera_model_type`` - camera model type (str, one of [ftheta,
-  opencv-pinhole, opencv-fisheye])
-
-The field ``camera_model_parameters`` will unconditionally contain:
-
-* ``resolution`` - width and height of the image in pixels (uint32,
-  [2,])
-* ``shutter_type`` - shutter type of the camera's imaging sensor (str, one of
-  [ROLLING_TOP_TO_BOTTOM, ROLLING_LEFT_TO_RIGHT, ROLLING_BOTTOM_TO_TOP,
-  ROLLING_RIGHT_TO_LEFT, GLOBAL])
-
-If ``camera_model_type = 'ftheta'`` the following intrinsic parameters
-will additionally be available in ``camera_model_parameters``:
-
-* ``principal_point`` - u and v coordinate of the principal point,
-  following the NVIDIA default convention for FTheta camera models
-  in which the pixel indices represent the center of the pixel
-  (not the top-left corners). NOTE: principal point coordinates
-  will be adapted internally in camera model APIs to reflect
-  the :ref:`image coordinate conventions
-  <image_coordinate_conventions>` (float32, [2,])
-
-* ``reference_poly`` - indicating which of the two polynomials is the
-  *reference* polynomial - the other polynomial is only an approximation
-  of the inverse of the reference polynomial (str, one of
-  [PIXELDIST_TO_ANGLE, ANGLE_TO_PIXELDIST])
-* ``pixeldist_to_angle_poly`` - coefficients of the backward distortion
-  polynomial (conditionally approximate, depending on
-  ``reference_poly``), mapping pixel-distances to angles [rad] (float32,
-  [6,])
-* ``angle_to_pixeldist_poly`` - coefficients of the forward distortion
-  polynomial (conditionally approximate, depending on
-  ``reference_poly``), mapping angles [rad] to pixel-distances (float32,
-  [6,])
-* ``max_angle`` - maximal extrinsic ray angle [rad] with the principal
-  direction (float32)
-* ``linear_cde`` - Coefficients of the constrained linear term
-  :math:`\begin{bmatrix} c & d \\ e & 1 \end{bmatrix}` transforming between
-  sensor coordinates (in mm) to image coordinates (in px) (float32, [3,])
-
-If ``camera_model_type` = 'opencv-pinhole'`` the following intrinsic parameters
-will additionally be available in ``camera_model_parameters``:
-
-* ``principal_point`` - u and v coordinate of the principal point,
-  following the :ref:`image coordinate conventions
-  <image_coordinate_conventions>` (float32, [2,])
-* ``focal_length`` - focal lengths in u and v direction, resp., mapping
-  (distorted) normalized camera coordinates to image coordinates relative
-  to the principal point (float32, [2,])
-* ``radial_coeffs`` - radial distortion coefficients
-  ``[k1,k2,k3,k4,k5,k6]`` parameterizing the rational radial distortion
-  factor :math:`\frac{1 + k_1r^2 + k_2r^4 + k_3r^6}{1 + k_4r^2 + k_5r^4
-  + k_6r^6}` for squared norms :math:`r^2` of normalized camera
-  coordinates (float32, [6,])
-* ``tangential_coeffs`` - tangential distortion coefficients ``[p1,p2]``
-  parameterizing the tangential distortion components
-  :math:`\begin{bmatrix} 2p_1x'y' + p_2 \left(r^2 + 2{x'}^2 \right) \\
-  p_1 \left(r^2 + 2{y'}^2 \right) + 2p_2x'y' \end{bmatrix}` for
-  normalized camera coordinates :math:`\begin{bmatrix} x' \\ y'
-  \end{bmatrix}` (float32, [2,])
-* ``thin_prism_coeffs`` - thins prism distortion coefficients
-  ``[s1,s2,s3,s4]`` parameterizing the thin prism distortion components
-  :math:`\begin{bmatrix} s_1r^2 + s_2r^4 \\ s_3r^2 + s_4r^4
-  \end{bmatrix}` for squared norms :math:`r^2` of normalized camera
-  coordinates (float32, [4,])
-
-If ``camera_model_type` = 'opencv-fisheye'`` the following intrinsic parameters
-will additionally be available in ``camera_model_parameters``:
-
-* ``principal_point`` - u and v coordinate of the principal point,
-  following the :ref:`image coordinate conventions
-  <image_coordinate_conventions>` (float32, [2,])
-* ``focal_length`` - focal lengths in u and v direction, resp., mapping
-  (distorted) normalized camera coordinates to image coordinates relative
-  to the principal point (float32, [2,])
-* ``radial_coeffs`` - radial distortion coefficients representing
-  OpenCV-style ``[k1,k2,k3,k4]`` parameters of the
-  fisheye distortion polynomial :math:`\theta(1 + k_1\theta^2 +
-  k_2\theta^4 + k_3\theta^6 + k_4\theta^8)` for extrinsic camera ray
-  angles :math:`\theta` with the principal direction (float32, [4,])
-* ``max_angle`` - maximal extrinsic ray angle [rad] with the principal
-  direction (float32)
-
-Finally, we also save general metadata related to the session (input
-data and versioning):
-
-* ``version`` - version of the dataset (str)
-* ``egomotion_type`` - type of ego-motion that was used to generate the
-  data (str)
-* ``calibration_type`` - type of sensor calibration that was used to
-  generate the data (str)
-* ``camera_ids`` / ``lidar_ids`` / ``radar_ids`` - individual lists of
-  sensor names processed available in the data ([str])
-* ``sequence_id`` - the identifier of the source dataset, if available
-  (str)
-* ``shard_id`` - the index of the current shard within all shards
-  generated for a given sequence
-* ``shard_count`` - the total number of shards generated for a given
-  sequence
-
-Labels
-~~~~~~
-
-**4D autolabels**
-
-Annotation data is stored in a segmented format:
-
-* All observations of each unique track instance is stored in a
-  session-wide format in the ``/labels/track_labels`` dataset by
-  *references* to the individual sensor frames that are observing the
-  track's instance.
-* Individual time-associated instances of each track observation (e.g.,
-  3D bounding boxes in lidar frames or 2D bounding boxes in camera
-  frames) are stored in the per-frame meta data of each sensor's frame.
-  For instance, the dataset
-  ``/sensors/lidars/lidar_gt_top_p128_v4p5/000000/frame_labels`` contains
-  the observed track instances in the first frame of a given lidar.
-
+The format uses coordinate system conventions and transformations described
+in :ref:`data_conventions`.
 
 .. _v4-data-format:
 
@@ -333,9 +33,9 @@ V4: Component Store Hierarchy (Component-Based Format)
 -------------------------------------------------------
 
 The component-based V4 data format represents sequences as collections of
-*component groups* [#f4]_. Unlike V3's monolithic shards, V4
-distributes data across modular components that can be independently managed,
-versioned, and combined to form virtual sequences.
+*component groups* [#f1]_. V4 distributes data across modular components
+that can be independently managed, versioned, and combined to form virtual
+sequences.
 
 Component Architecture
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -404,20 +104,18 @@ The poses component stores both static (time-invariant) and dynamic
                    └── dtype: str
 
 For ego-vehicle trajectories, the rig-to-world transformation is typically
-stored as a dynamic pose under the key ``("rig", "world")``, with the base
-world coordinate frame maintained for consistency with V3. transformations
-from local world to global world frames (like ECEF) are
-represented by the ``("world", "world_global")`` record.
+stored as a dynamic pose under the key ``("rig", "world")``. Transformations
+from local world to global world frames (like ECEF) are represented by the
+``("world", "world_global")`` record.
 
 Static poses are used for sensor extrinsic calibrations. For example, a
 camera-to-rig transformation would be stored under the key
-``("camera_front_wide_120fov", "rig")``, analogous to the ``T_sensor_rig``
-calibration in the V3 format.
+``("camera_front_wide_120fov", "rig")``.
 
 Intrinsics Component
 ~~~~~~~~~~~~~~~~~~~~
 
-Camera and lidar intrinsic model parameters follow the same specifications as V3:
+Camera and lidar intrinsic model parameters:
 
 .. code-block:: text
 
@@ -435,9 +133,367 @@ Camera and lidar intrinsic model parameters follow the same specifications as V3
                    ├── lidar_model_type: str
                    └── lidar_model_parameters: {...}
 
-Model types and parameters are identical to those specified in the V3 format
-(`ftheta`, `opencv-pinhole`, `opencv-fisheye` for camera sensors;
-`row-offset-spinning` for lidar sensors).
+Model types include `ftheta`, `opencv-pinhole`, and `opencv-fisheye` for
+camera sensors, and `row-offset-spinning` for lidar sensors.
+
+.. _camera_model_parameterizations:
+
+Camera Model Parameterizations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Camera models may optionally include external distortion parameters to account for distortion sources outside the camera itself (e.g., windshields). See :ref:`external_distortion_models` for details.
+
+The ``camera_model_parameters`` dictionary will unconditionally contain:
+
+* ``resolution`` - width and height of the image in pixels (uint32, [2,])
+* ``shutter_type`` - shutter type of the camera's imaging sensor (str, one of
+  [ROLLING_TOP_TO_BOTTOM, ROLLING_LEFT_TO_RIGHT, ROLLING_BOTTOM_TO_TOP,
+  ROLLING_RIGHT_TO_LEFT, GLOBAL])
+
+.. _ftheta_camera_model:
+
+**FTheta Camera Model**
+
+If ``camera_model_type = 'ftheta'`` the following intrinsic parameters
+will additionally be available in ``camera_model_parameters``:
+
+* ``principal_point`` - u and v coordinate of the principal point,
+  following the NVIDIA default convention for FTheta camera models
+  in which the pixel indices represent the center of the pixel
+  (not the top-left corners). NOTE: principal point coordinates
+  will be adapted internally in camera model APIs to reflect
+  the :ref:`image coordinate conventions
+  <image_coordinate_conventions>` (float32, [2,])
+
+* ``reference_poly`` - indicating which of the two polynomials is the
+  *reference* polynomial - the other polynomial is only an approximation
+  of the inverse of the reference polynomial (str, one of
+  [PIXELDIST_TO_ANGLE, ANGLE_TO_PIXELDIST])
+* ``pixeldist_to_angle_poly`` - coefficients of the backward distortion
+  polynomial (conditionally approximate, depending on
+  ``reference_poly``), mapping pixel-distances to angles [rad] (float32,
+  [6,])
+* ``angle_to_pixeldist_poly`` - coefficients of the forward distortion
+  polynomial (conditionally approximate, depending on
+  ``reference_poly``), mapping angles [rad] to pixel-distances (float32,
+  [6,])
+* ``max_angle`` - maximal extrinsic ray angle [rad] with the principal
+  direction (float32)
+* ``linear_cde`` - Coefficients of the constrained linear term
+  :math:`\begin{bmatrix} c & d \\ e & 1 \end{bmatrix}` transforming between
+  sensor coordinates (in mm) to image coordinates (in px) (float32, [3,])
+
+**Mathematical Model:**
+
+The FTheta model projects 3D camera rays to image coordinates through the following steps:
+
+1. **Ray to Angle**: Convert camera ray direction [x, y, z] to angle θ:
+   
+   .. math::
+   
+      \theta = \arctan2(\sqrt{x^2 + y^2}, z)
+
+2. **Angle to Pixel Distance**: Apply the forward polynomial f(θ):
+   
+   .. math::
+   
+      \delta = f(\theta) = c_0 + c_1\theta + c_2\theta^2 + c_3\theta^3 + c_4\theta^4 + c_5\theta^5
+
+3. **Linear Transformation**: Apply constrained linear transformation A and add principal point:
+   
+   .. math::
+   
+      \begin{bmatrix} u \\ v \end{bmatrix} = 
+      \begin{bmatrix} c & d \\ e & 1 \end{bmatrix}
+      \frac{\delta}{\sqrt{x^2 + y^2}}
+      \begin{bmatrix} x \\ y \end{bmatrix} + 
+      \begin{bmatrix} u_0 \\ v_0 \end{bmatrix}
+
+The inverse operation uses the backward polynomial (either reference or approximate inverse).
+
+**Example:** For a typical FTheta model, both forward and backward polynomials contain 6 coefficients each (float32, [6,]).
+
+.. _opencv_pinhole_camera_model:
+
+**OpenCV Pinhole Camera Model**
+
+If ``camera_model_type = 'opencv-pinhole'`` the following intrinsic parameters
+will additionally be available in ``camera_model_parameters``:
+
+* ``principal_point`` - u and v coordinate of the principal point,
+  following the :ref:`image coordinate conventions
+  <image_coordinate_conventions>` (float32, [2,])
+* ``focal_length`` - focal lengths in u and v direction, resp., mapping
+  (distorted) normalized camera coordinates to image coordinates relative
+  to the principal point (float32, [2,])
+* ``radial_coeffs`` - radial distortion coefficients
+  ``[k1,k2,k3,k4,k5,k6]`` parameterizing the rational radial distortion
+  factor :math:`\frac{1 + k_1r^2 + k_2r^4 + k_3r^6}{1 + k_4r^2 + k_5r^4
+  + k_6r^6}` for squared norms :math:`r^2` of normalized camera
+  coordinates (float32, [6,])
+* ``tangential_coeffs`` - tangential distortion coefficients ``[p1,p2]``
+  parameterizing the tangential distortion components
+  :math:`\begin{bmatrix} 2p_1x'y' + p_2 \left(r^2 + 2{x'}^2 \right) \\
+  p_1 \left(r^2 + 2{y'}^2 \right) + 2p_2x'y' \end{bmatrix}` for
+  normalized camera coordinates :math:`\begin{bmatrix} x' \\ y'
+  \end{bmatrix}` (float32, [2,])
+* ``thin_prism_coeffs`` - thins prism distortion coefficients
+  ``[s1,s2,s3,s4]`` parameterizing the thin prism distortion components
+  :math:`\begin{bmatrix} s_1r^2 + s_2r^4 \\ s_3r^2 + s_4r^4
+  \end{bmatrix}` for squared norms :math:`r^2` of normalized camera
+  coordinates (float32, [4,])
+
+**Mathematical Model:**
+
+The OpenCV Pinhole model applies radial, tangential, and thin prism distortions:
+
+1. **Normalize**: Convert camera ray [x, y, z] to normalized coordinates:
+   
+   .. math::
+   
+      x' = \frac{x}{z}, \quad y' = \frac{y}{z}, \quad r^2 = {x'}^2 + {y'}^2
+
+2. **Radial Distortion**: Apply rational radial distortion factor:
+   
+   .. math::
+   
+      d_r = \frac{1 + k_1r^2 + k_2r^4 + k_3r^6}{1 + k_4r^2 + k_5r^4 + k_6r^6}
+
+3. **Tangential Distortion**:
+   
+   .. math::
+   
+      \begin{bmatrix} \Delta x_t \\ \Delta y_t \end{bmatrix} = 
+      \begin{bmatrix} 
+      2p_1x'y' + p_2(r^2 + 2{x'}^2) \\ 
+      p_1(r^2 + 2{y'}^2) + 2p_2x'y' 
+      \end{bmatrix}
+
+4. **Thin Prism Distortion**:
+   
+   .. math::
+   
+      \begin{bmatrix} \Delta x_p \\ \Delta y_p \end{bmatrix} = 
+      \begin{bmatrix} 
+      s_1r^2 + s_2r^4 \\ 
+      s_3r^2 + s_4r^4 
+      \end{bmatrix}
+
+5. **Project to Image**: Apply focal length and principal point:
+   
+   .. math::
+   
+      \begin{bmatrix} u \\ v \end{bmatrix} = 
+      \begin{bmatrix} f_u(x'd_r + \Delta x_t + \Delta x_p) + u_0 \\ 
+      f_v(y'd_r + \Delta y_t + \Delta y_p) + v_0 \end{bmatrix}
+
+**Example:** Typical parameter sizes: radial_coeffs [6,], tangential_coeffs [2,], thin_prism_coeffs [4,], all float32.
+
+.. _opencv_fisheye_camera_model:
+
+**OpenCV Fisheye Camera Model**
+
+If ``camera_model_type = 'opencv-fisheye'`` the following intrinsic parameters
+will additionally be available in ``camera_model_parameters``:
+
+* ``principal_point`` - u and v coordinate of the principal point,
+  following the :ref:`image coordinate conventions
+  <image_coordinate_conventions>` (float32, [2,])
+* ``focal_length`` - focal lengths in u and v direction, resp., mapping
+  (distorted) normalized camera coordinates to image coordinates relative
+  to the principal point (float32, [2,])
+* ``radial_coeffs`` - radial distortion coefficients representing
+  OpenCV-style ``[k1,k2,k3,k4]`` parameters of the
+  fisheye distortion polynomial :math:`\theta(1 + k_1\theta^2 +
+  k_2\theta^4 + k_3\theta^6 + k_4\theta^8)` for extrinsic camera ray
+  angles :math:`\theta` with the principal direction (float32, [4,])
+* ``max_angle`` - maximal extrinsic ray angle [rad] with the principal
+  direction (float32)
+
+**Mathematical Model:**
+
+The OpenCV Fisheye model uses a fisheye distortion polynomial:
+
+1. **Ray to Angle**: Convert camera ray direction [x, y, z] to angle θ and normalized direction:
+   
+   .. math::
+   
+      \theta = \arctan2(\sqrt{x^2 + y^2}, z)
+   
+   .. math::
+   
+      x_n = \frac{x}{\sqrt{x^2 + y^2}}, \quad y_n = \frac{y}{\sqrt{x^2 + y^2}}
+
+2. **Fisheye Distortion Polynomial**: Apply distortion to angle:
+   
+   .. math::
+   
+      \delta(\theta) = \theta(1 + k_1\theta^2 + k_2\theta^4 + k_3\theta^6 + k_4\theta^8)
+
+3. **Project to Image**: Scale by focal length and add principal point:
+   
+   .. math::
+   
+      \begin{bmatrix} u \\ v \end{bmatrix} = 
+      \begin{bmatrix} f_u \delta(\theta) x_n + u_0 \\ 
+      f_v \delta(\theta) y_n + v_0 \end{bmatrix}
+
+The inverse operation uses Newton-Raphson iteration to invert the ninth-degree polynomial. **Example:** The radial_coeffs parameter contains [k₁, k₂, k₃, k₄] (float32, [4,]).
+
+.. _external_distortion_models:
+
+External Distortion Models
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Camera models can optionally include external distortion sources that affect rays before they reach the camera lens (e.g., windshields). If present, the ``camera_model_parameters`` dictionary will contain:
+
+* ``external_distortion_parameters`` - parameters for the external distortion model (optional, may be None)
+
+When ``external_distortion_parameters`` is present, it will contain:
+
+* ``external_distortion_type`` - type of external distortion (str)
+
+.. _bivariate_windshield_model:
+
+**Bivariate Windshield Model**
+
+If ``external_distortion_type = 'bivariate-windshield'``, this models optical distortion caused by a vehicle's windshield. This model is only applicable when the camera's entire field of view projects through the windshield.
+
+**Mathematical Model:**
+
+The distortion operates on spherical angle representations of sensor rays with direction [x, y, z]:
+
+1. **Convert to Spherical Angles**:
+   
+   .. math::
+   
+      \phi = \arcsin\left(\frac{x}{\sqrt{x^2 + y^2 + z^2}}\right) \quad \text{(horizontal angle)}
+   
+   .. math::
+   
+      \theta = \arcsin\left(\frac{y}{\sqrt{x^2 + y^2 + z^2}}\right) \quad \text{(vertical angle)}
+
+2. **Apply Bivariate Polynomial Distortion**:
+   
+   Distortion is applied via separate polynomials for horizontal and vertical components:
+   
+   .. math::
+   
+      \phi' = P_h(\phi, \theta)
+   
+   .. math::
+   
+      \theta' = P_v(\phi, \theta)
+   
+   Where each polynomial has the bivariate form (example for order N=2):
+   
+   .. math::
+   
+      P(\phi, \theta) = c_0 + c_1\phi + c_2\phi^2 + (c_3 + c_4\phi)\theta + c_5\theta^2
+   
+   General form for order N:
+   
+   .. math::
+   
+      P(\phi, \theta) = \sum_{j=0}^{N} \left(\sum_{i=0}^{N-j} c_{i,j}\phi^i\right)\theta^j
+
+3. **Reconstruct Distorted Ray**:
+   
+   .. math::
+   
+      [x', y', z'] = \left[\sin(\phi'), \sin(\theta'), \sqrt{1 - \sin^2(\phi') - \sin^2(\theta')}\right]
+
+**Parameters:**
+
+The following parameters will be available in ``external_distortion_parameters``:
+
+* ``reference_poly`` - indicates which polynomial is the reference (str, one of [FORWARD, BACKWARD]). The reference polynomial is exact; the other is an approximate inverse computed during calibration.
+* ``horizontal_poly`` - coefficients for forward horizontal distortion polynomial P_h (float32, [(N+1)·(N+2)/2,])
+* ``vertical_poly`` - coefficients for forward vertical distortion polynomial P_v (float32, [(M+1)·(M+2)/2,])
+* ``horizontal_poly_inverse`` - coefficients for backward horizontal distortion (float32, [(N+1)·(N+2)/2,])
+* ``vertical_poly_inverse`` - coefficients for backward vertical distortion (float32, [(M+1)·(M+2)/2,])
+
+**Example:** For a 2nd-order bivariate polynomial (N=2), the coefficient arrays contain 6 elements: [c₀, c₁, c₂, c₃, c₄, c₅]. For a 3rd-order polynomial (N=3), they contain 10 elements. The number of coefficients for order N is given by: (N+1)·(N+2)/2
+
+**Direction:**
+
+- **Forward distortion** (distort_camera_rays): transforms rays from external (world) to internal (camera sensor)
+- **Backward distortion** (undistort_camera_rays): transforms rays from internal (camera sensor) to external (world)
+
+.. _lidar_model_parameterizations:
+
+Lidar Model Parameterizations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``lidar_model_parameters`` dictionary contains model-specific parameters for lidar sensors. Currently, the supported model type is ``row-offset-spinning``.
+
+.. _row_offset_spinning_lidar_model:
+
+**Row-Offset Structured Spinning Lidar Model**
+
+If ``lidar_model_type = 'row-offset-spinning'``, this models structured spinning lidar sensors with per-row azimuth offsets (compatible with sensors like Hesai P128).
+
+**Mathematical Model:**
+
+The Row-Offset Structured Spinning Lidar model parameterizes lidar returns using per-row elevation angles and per-column azimuth angles with row-specific offsets.
+
+**Notation:**
+
+- α (alpha): elevation angle in radians
+- β (beta): azimuth angle in radians
+- E: row_elevations_rad array - elevation angles per row
+- B: column_azimuths_rad array - base azimuth angles per column
+- Δ (Delta): row_azimuth_offsets_rad array - azimuth offsets per row
+- i: row index
+- j: column index
+
+1. **Element to Angles**: For element (i, j):
+   
+   .. math::
+   
+      \alpha = E[i]
+   
+   .. math::
+   
+      \beta = B[j] + \Delta[i]
+
+2. **Angles to Sensor Ray**: Convert spherical angles to 3D ray direction:
+   
+   .. math::
+   
+      x = \cos(\beta) \cdot \cos(\alpha)
+   
+   .. math::
+   
+      y = \sin(\beta) \cdot \cos(\alpha)
+   
+   .. math::
+   
+      z = \sin(\alpha)
+
+3. **Sensor Ray to Angles**: Convert 3D ray [x, y, z] to angles:
+   
+   .. math::
+   
+      \alpha = \arcsin(z)
+   
+   .. math::
+   
+      \beta = \arctan2(y, x)
+
+**Parameters:**
+
+The following parameters will be available in ``lidar_model_parameters``:
+
+* ``row_elevations_rad`` - elevation angle for each row (float32, [n_rows,])
+* ``column_azimuths_rad`` - base azimuth angle for each column (float32, [n_columns,])
+* ``row_azimuth_offsets_rad`` - azimuth offset for each row (float32, [n_rows,])
+* ``spinning_frequency_hz`` - rotation frequency in Hz (float32)
+* ``spinning_direction`` - rotation direction (str, one of ['cw', 'ccw'])
+* ``n_rows`` - number of vertical laser channels (int)
+* ``n_columns`` - number of azimuth divisions per revolution (int)
+
+**Example:** A Hesai P128 lidar would have n_rows=128 (for 128 laser channels), with row_elevations_rad containing 128 elevation angles and row_azimuth_offsets_rad containing 128 azimuth offsets.
 
 Masks Component
 ~~~~~~~~~~~~~~~
@@ -574,28 +630,12 @@ V4 sequences are loaded by specifying one or more component store paths:
    poses_readers = reader.open_component_readers(PosesComponent.Reader)
    camera_readers = reader.open_component_readers(CameraSensorComponent.Reader)
 
-Compatibility and Conversion
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-V3 data can be converted to V4 format using the `ncore_3to4` conversion
-utilities, which preserve all sensor data, poses, intrinsics, and annotations
-while reorganizing them into the component-based structure. The conversion
-supports selective sensor and time range extraction, component group assignment,
-and preservation of all metadata and calibrations.
 
 
 .. rubric:: Footnotes
 
-.. [#f1] NCore V3 data shards are represented by
-         `zarr <https://zarr.readthedocs.io/en/stable/>`_
-         groups within a custom ``.itar`` archive format that can be
-         loaded most easily using the ``ShardDataLoader`` type, which
-         also supports shard concatenation to reconstruct full source
-         sequences.
-.. [#f2] Curly brackets denote optional data.
-.. [#f3] Deprecated property, might be available as generic frame
-         data still
-.. [#f4] NCore V4 component stores are represented by
+.. [#f1] NCore V4 component stores are represented by
          `zarr <https://zarr.readthedocs.io/en/stable/>`_ groups within
          either a custom ``.zarr.itar`` archive format or plain directory
          stores. The ``SequenceComponentGroupsReader`` and

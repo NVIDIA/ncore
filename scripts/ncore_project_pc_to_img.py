@@ -28,8 +28,20 @@ from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 from ncore.impl.sensors.camera import CameraModel
 from ncore.impl.sensors.lidar import StructuredLidarModel
-from scripts.util import NPArrayParamType
-from scripts.visualization import plot_points_on_image
+
+
+try:
+    from scripts.util import NPArrayParamType
+    from scripts.visualization import plot_points_on_image
+except ImportError:
+    # if included externally as 'ncore_repo' use fully-evaluated path
+    try:
+        from ncore_repo.scripts.util import NPArrayParamType  # type: ignore
+        from ncore_repo.scripts.visualization import plot_points_on_image  # type: ignore
+    except ImportError:
+        # fall back to 'external'-prefixed 'ncore_repo' reference if required
+        from external.ncore_repo.scripts.util import NPArrayParamType  # type: ignore
+        from external.ncore_repo.scripts.visualization import plot_points_on_image  # type: ignore
 
 
 logging.basicConfig(level=logging.INFO)
