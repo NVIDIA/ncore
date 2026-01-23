@@ -7,7 +7,7 @@
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
-
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -18,7 +18,7 @@ from matplotlib import pyplot as plt
 from multimethod import multimethod
 from scipy.spatial.transform import Rotation as R
 
-from ncore.impl.data.v3.types import FrameLabel3
+from ncore.impl.data.types import BBox3
 
 
 def rgba(r):
@@ -141,7 +141,7 @@ class LabelVisualizer:
         dynamic_flag: Optional[np.ndarray],
         semantic_class: Optional[np.ndarray],
     ) -> None:
-        """Adds a single lidar point cloud to the visualizer (V3 data)"""
+        """Adds a single lidar point cloud to the visualizer"""
 
         pc = {
             "name": str(frame_id),
@@ -162,14 +162,34 @@ class LabelVisualizer:
 
         self.data.append(pc)
 
+    @dataclass
+    class BBox3Label:
+        """Description of a 3D frame-associated label"""
+
+        track_id: str  #: Unique identifier of the object's track this label is associated with
+        label_class: str  #: String-representation of the class associated with this label
+        bbox3: BBox3  #: Bounding-box coordinates of the object relative to the frame's end-of-frame coordinate system
+        timestamp_us: (
+            int  #: The timestamp associated with the centroid of the label (possibly an accurate in-frame time)
+        )
+        confidence: Optional[float]  #: If available, the confidence score of the label [0..1]
+
+        def __post_init__(self):
+            # Sanity checks
+            assert isinstance(self.track_id, str)
+            assert isinstance(self.label_class, str)
+            assert isinstance(self.bbox3, BBox3)
+            assert isinstance(self.timestamp_us, int)
+            assert isinstance(self.confidence, (type(None), float))
+
     @multimethod
-    def add_labels(self, frame_labels: list[FrameLabel3]) -> None:
-        """Registers frame-label bounding boxes (V3 data)"""
+    def add_labels(self, frame_labels: list[BBox3Label]) -> None:
+        """Registers frame-label bounding boxes to be visualized."""
         for frame_label in frame_labels:
             self._add_bbox(
                 bbox=frame_label.bbox3.to_array(),
                 label_class=frame_label.label_class,
-                identifier=frame_label.track_id,
+                identifier=f"{frame_label.track_id}_{frame_label.timestamp_us}",
                 confidence=frame_label.confidence if frame_label.confidence else 1.0,
             )
 

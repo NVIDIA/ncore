@@ -7,11 +7,13 @@
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
-"""Abstract compatibility layer for unified access to different NCore (V3/V4/future) sequence data formats.
+"""Abstract compatibility layer for unified access to different NCore sequence data formats.
 
 This module provides protocol-based interfaces and adapter implementations that enable
-unified access to both V3 (shard-based) and V4 (component-based) data formats through
-a common API.
+unified access to both different NCore data formats through a common API.
+
+For instance, while deprecated V3 is a monolithic shard-based format, V4 is a more
+general component-based format.
 
 Key Components:
     - SequenceLoaderProtocol: Unified interface for sequence-level data access
@@ -19,12 +21,10 @@ Key Components:
     - CameraSensorProtocol: Camera-specific extensions
     - RayBundleSensorProtocol: Ray bundle sensor interface (lidar/radar)
     - LidarSensorProtocol: Lidar-specific extensions
-    - SequenceLoaderV3: Adapter for V3 shard-based data
-    - SequenceLoaderV4: Adapter for V4 component-based data
 
-The compatibility layer handles differences between V3 and V4 formats including:
+The compatibility layer handles differences between different NCore data formats including:
     - Different storage mechanisms (shards vs. components)
-    - Motion compensation conventions (V3 stores compensated, V4 stores uncompensated)
+    - Motion compensation conventions (e.g., deprecated V3 stores compensated, V4 stores uncompensated)
     - Pose graph construction and transformation APIs
     - Frame indexing and timestamp access patterns
     - Metadata retrieval
@@ -34,7 +34,7 @@ Example:
     reader = SequenceComponentGroupsReader([Path("file.zarr.itar"), Path("some/folder.zarr")])
     loader = SequenceLoaderV4(reader)
 
-    # Load V3 data
+    # Load V3 data [deprecated]
     shard_loader = ShardDataLoader(["data_shard_*.zarr.itar"])
     loader = SequenceLoaderV3(shard_loader)
 
@@ -72,7 +72,7 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class SequenceLoaderProtocol(Protocol):
-    """SequenceLoaderProtocol provides unified access to a relevant subset of common NCore V3 and default V4 sequence data APIs"""
+    """SequenceLoaderProtocol provides unified access to a relevant subset of common NCore sequence data APIs"""
 
     @property
     def sequence_id(self) -> str:
@@ -141,7 +141,7 @@ class SequenceLoaderProtocol(Protocol):
 
 @runtime_checkable
 class SensorProtocol(Protocol):
-    """SensorProtocol provides unified access to a relevant subset of common NCore V3 and default V4 sensor data APIs"""
+    """SensorProtocol provides unified access to a relevant subset of common NCore sensor data APIs"""
 
     _pose_graph: PoseGraphInterpolator
 
@@ -350,7 +350,7 @@ class SensorProtocol(Protocol):
 
 @runtime_checkable
 class CameraSensorProtocol(SensorProtocol, Protocol):
-    """CameraSensorProtocol provides unified access to a relevant subset of common NCore V3 and default V4 camera sensor APIs"""
+    """CameraSensorProtocol provides unified access to a relevant subset of common NCore camera sensor APIs"""
 
     @property
     def model_parameters(self) -> ConcreteCameraModelParametersUnion:
@@ -389,7 +389,7 @@ class CameraSensorProtocol(SensorProtocol, Protocol):
 
 @runtime_checkable
 class RayBundleSensorProtocol(SensorProtocol, Protocol):
-    """RayBundleSensorProtocol provides unified access to a relevant subset of common NCore V3 and default V4 ray-bundle sensor APIs"""
+    """RayBundleSensorProtocol provides unified access to a relevant subset of common NCore ray-bundle sensor APIs"""
 
     def get_frame_ray_bundle_count(self, frame_index: int) -> int:
         """Returns the number of rays for a specific frame without decoding it.
@@ -484,11 +484,11 @@ class RayBundleSensorProtocol(SensorProtocol, Protocol):
 
 @runtime_checkable
 class LidarSensorProtocol(RayBundleSensorProtocol, Protocol):
-    """LidarSensorProtocol provides unified access to a relevant subset of common NCore V3 and default V4 lidar sensor APIs"""
+    """LidarSensorProtocol provides unified access to a relevant subset of common NCore lidar sensor APIs"""
 
     @property
     def model_parameters(self) -> Optional[ConcreteLidarModelParametersUnion]:
-        """Returns parameters specific to the lidar's intrinsic model (optional as not mandatory in V3)"""
+        """Returns parameters specific to the lidar's intrinsic model (optional as not mandatory)"""
         ...
 
     def get_frame_ray_bundle_model_element(self, frame_index: int) -> Optional[npt.NDArray[np.uint16]]:
@@ -516,6 +516,6 @@ class LidarSensorProtocol(RayBundleSensorProtocol, Protocol):
 
 @runtime_checkable
 class RadarSensorProtocol(RayBundleSensorProtocol, Protocol):
-    """RadarSensorProtocol provides unified access to a relevant subset of common NCore V3 and default V4 radar sensor APIs"""
+    """RadarSensorProtocol provides unified access to a relevant subset of common NCore radar sensor APIs"""
 
     ...

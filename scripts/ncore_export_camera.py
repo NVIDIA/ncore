@@ -19,8 +19,6 @@ import numpy as np
 import tqdm
 
 from ncore.impl.data.util import padded_index_string
-from ncore.impl.data.v3.compat import SequenceLoaderV3
-from ncore.impl.data.v3.shards import ShardDataLoader
 from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 
@@ -83,28 +81,6 @@ def cli(ctx, **kwargs):
     """Exports camera frames to image files, and optionally encodes frames to a video file"""
 
     ctx.obj = CLIBaseParams(**kwargs)
-
-
-@cli.command()
-@click.option(
-    "--shard-file-pattern", type=str, help="Data shard pattern to load (supports range expansion)", required=True
-)
-@click.pass_context
-def v3(
-    ctx,
-    shard_file_pattern: str,
-) -> None:
-    params: CLIBaseParams = ctx.obj
-
-    shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
-    loader = ShardDataLoader(shards)
-
-    run(
-        params,
-        SequenceLoaderV3(
-            loader,
-        ),
-    )
 
 
 @cli.command()
