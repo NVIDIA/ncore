@@ -8,7 +8,9 @@ py_library(
     srcs = [
         "__init__.py",
     ],
-    data = ["py.typed"],
+    # make sure mypy knows this is a typed package
+    data = [":py.typed"],
+    # used in various places also outside of the repo, so make it public
     visibility = ["//visibility:public"],
     deps = [
         requirement("click"),
