@@ -1,21 +1,13 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
+-r requirements_ncore.in
+
 # To run tests
 pytest
 parameterized
 
-# Public API dependencies
+# Public API restrictions
 numpy<2 # torch-1.x is build against numpy-1.x, but doesn't explicitly state this requirement
-dataclasses-json>=0.2.11 # deserialization fails with earlier versions
-pillow
-# zarr version restrictions:
-# - 2.17.0 contains crucial perf improvements ["Cache result of FSStore._fsspec_installed()" https://github.com/zarr-developers/zarr-python/pull/1581]
-# - we can't switch to zarr 3 yet unconditionally as it's not available for python3.8 anymore
-zarr>=2.17.0,<3.0.0
-cbor2
-scipy
-typing-extensions
-universal_pathlib
 
 --find-links https://download.pytorch.org/whl/torch_stable.html
 torch==1.13.0+cu116

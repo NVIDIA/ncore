@@ -1,6 +1,5 @@
 # Copyright (c) 2024 NVIDIA CORPORATION.  All rights reserved.
 
-load("@ncore_pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_library")
 
 py_library(
@@ -13,7 +12,7 @@ py_library(
     # used in various places also outside of the repo, so make it public
     visibility = ["//visibility:public"],
     deps = [
-        requirement("click"),
         "//scripts:pylib_util",
+        "@ncore_pip_deps//click",
     ],
 )

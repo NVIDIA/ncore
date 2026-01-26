@@ -41,7 +41,7 @@ py_wheel(
         "cbor2",
         "scipy",
         "torch",
-        "typing-extensions",
+        "typing_extensions",
         "universal_pathlib",
     ],
     version = "0.18.0",

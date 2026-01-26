@@ -43,7 +43,7 @@ cbor2==5.4.6 \
     --hash=sha256:e5094562dfe3e5583202b93ef7ca5082c2ba5571accb2c4412d27b7d0ba8a563 \
     --hash=sha256:e73ca40dd3c7210ff776acff9869ddc9ff67bae7c425b58e5715dcf55275163f \
     --hash=sha256:ff95b33e5482313a74648ca3620c9328e9f30ecfa034df040b828e476597d352
-    # via -r 3rdparty/python/requirements_3_8.in
+    # via -r 3rdparty/python/requirements_ncore.in
 click==8.1.8 \
     --hash=sha256:63c132bbbed01578a06712a2d1f497bb62d9c1c0d329b7903a866228027263b2 \
     --hash=sha256:ed53c9d8990d83c2a27deae68e4ee337473f6330c040a31d4225c9574d16096a
@@ -51,7 +51,7 @@ click==8.1.8 \
 dataclasses-json==0.5.14 \
     --hash=sha256:5ec6fed642adb1dbdb4182badb01e0861badfd8fda82e3b67f44b2d1e9d10d21 \
     --hash=sha256:d82896a94c992ffaf689cd1fafc180164e2abdd415b8f94a7f78586af5886236
-    # via -r 3rdparty/python/requirements_3_8.in
+    # via -r 3rdparty/python/requirements_ncore.in
 debugpy==1.8.17 \
     --hash=sha256:045290c010bcd2d82bc97aa2daf6837443cd52f6328592698809b4549babcee1 \
     --hash=sha256:1440fd514e1b815edd5861ca394786f90eb24960eb26d6f7200994333b1d79e3 \
@@ -164,6 +164,7 @@ numpy==1.19.5 \
     --hash=sha256:df609c82f18c5b9f6cb97271f03315ff0dbe481a2a02e56aeb1b1a985ce38e60
     # via
     #   -r 3rdparty/python/requirements_3_8.in
+    #   -r 3rdparty/python/requirements_ncore.in
     #   numcodecs
     #   opencv-python-headless
     #   scipy
@@ -244,7 +245,7 @@ pillow==10.0.0 \
     --hash=sha256:f31f9fdbfecb042d046f9d91270a0ba28368a723302786c0009ee9b9f1f60199 \
     --hash=sha256:f88a0b92277de8e3ca715a0d79d68dc82807457dae3ab8699c758f07c20b3c51 \
     --hash=sha256:faaf07ea35355b01a35cb442dd950d8f1bb5b040a7787791a535de13db15ed90
-    # via -r 3rdparty/python/requirements_3_8.in
+    # via -r 3rdparty/python/requirements_ncore.in
 pluggy==1.3.0 \
     --hash=sha256:cf61ae8f126ac6f7c451172cf30e3e43d3ca77615509771b3a984a0730651e12 \
     --hash=sha256:d89c696a773f8bd377d18e5ecda92b7a3793cbe66c87060a6fb58c7b6e1061f7
@@ -275,7 +276,7 @@ scipy==1.10.1 \
     --hash=sha256:d925fa1c81b772882aa55bcc10bf88324dadb66ff85d548c71515f6689c6dac5 \
     --hash=sha256:e7354fd7527a4b0377ce55f286805b34e8c54b91be865bac273f527e1b839019 \
     --hash=sha256:fae8a7b898c42dffe3f7361c40d5952b6bf32d10c4569098d276b4c547905ee1
-    # via -r 3rdparty/python/requirements_3_8.in
+    # via -r 3rdparty/python/requirements_ncore.in
 tomli==2.0.1 \
     --hash=sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc \
     --hash=sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f
@@ -289,12 +290,14 @@ torch==1.12.1+cu116 \
     --hash=sha256:bca5a77071d7eb901beb775648b125e6d9279f231d1f23e56530b5a189df8975 \
     --hash=sha256:dda312901220895087cc83d3665464a3dc171d04460c61c31af463efbfb54896 \
     --hash=sha256:fc9b4786ec54be67eaa8b0c7c9999e2f4ae2b89a1c18e41de1515a190440c691
-    # via -r 3rdparty/python/requirements_3_8.in
+    # via
+    #   -r 3rdparty/python/requirements_3_8.in
+    #   -r 3rdparty/python/requirements_ncore.in
 typing-extensions==4.7.1 \
     --hash=sha256:440d5dd3af93b060174bf433bccd69b0babc3b15b1a8dca43789fd7f61514b36 \
     --hash=sha256:b75ddc264f0ba5615db7ba217daeb99701ad295353c45f9e95963337ceeeffb2
     # via
-    #   -r 3rdparty/python/requirements_3_8.in
+    #   -r 3rdparty/python/requirements_ncore.in
     #   torch
     #   typing-inspect
 typing-inspect==0.9.0 \
@@ -304,8 +307,10 @@ typing-inspect==0.9.0 \
 universal-pathlib==0.2.6 \
     --hash=sha256:50817aaeaa9f4163cb1e76f5bdf84207fa05ce728b23fd779479b3462e5430ac \
     --hash=sha256:700dec2b58ef34b87998513de6d2ae153b22f083197dfafb8544744edabd1b18
-    # via -r 3rdparty/python/requirements_3_8.in
+    # via -r 3rdparty/python/requirements_ncore.in
 zarr==2.13.3 \
     --hash=sha256:883305e8ded972e25992269b0355436f11d7057b2943d278bf33cdcd2debfe2d \
     --hash=sha256:db24b090616c638f65e33a6bc5d956d642221182961515ccbc28b17fb0d0b48c
-    # via -r 3rdparty/python/requirements_3_8.in
+    # via
+    #   -r 3rdparty/python/requirements_3_8.in
+    #   -r 3rdparty/python/requirements_ncore.in

@@ -1,7 +1,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-load("@ncore_pip_deps//:requirements.bzl", "requirement")
 load("@rules_oci//oci:defs.bzl", "oci_load", "oci_push")
+load("@ncore_pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 load("//bazel/oci:py_layer.bzl", "py_oci_image")
 
@@ -15,9 +15,9 @@ py_library(
     # used in various places also outside of the repo, so make it public
     visibility = ["//visibility:public"],
     deps = [
-        requirement("numpy"),
         requirement("click"),
         requirement("debugpy"),
+        requirement("numpy"),
     ],
 )
 
@@ -27,25 +27,25 @@ py_binary(
     name = "ncore_export_ply",
     srcs = ["ncore_export_ply.py"],
     deps = [
-        requirement("point-cloud-utils"),
-        requirement("numpy"),
-        requirement("click"),
-        requirement("tqdm"),
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/common:pylib_util",
         "//ncore/impl/data:pylib_util",
         "//ncore/impl/data/v4:pylib_compat",
         "//ncore/impl/data/v4:pylib_components",
+        requirement("click"),
+        requirement("numpy"),
+        requirement("point_cloud_utils"),
+        requirement("tqdm"),
     ],
 )
 
 #################################################################
 
 NCORE_EXPORT_CAMERA_DEPS = [
-    requirement("click"),
-    requirement("tqdm"),
-    requirement("numpy"),
-    requirement("opencv-python-headless"),
+    "@ncore_pip_deps//click",
+    "@ncore_pip_deps//tqdm",
+    "@ncore_pip_deps//numpy",
+    "@ncore_pip_deps//opencv_python_headless",
     "//ncore/impl/data:pylib_util",
     "//ncore/impl/data/v4:pylib_compat",
     "//ncore/impl/data/v4:pylib_components",
@@ -102,13 +102,13 @@ py_library(
         "visualization.py",
     ],
     deps = [
-        requirement("numpy"),
-        requirement("scipy"),
-        requirement("matplotlib"),
-        requirement("open3d"),
-        requirement("tensorflow"),  # required by open3d.ml.tf
-        requirement("multimethod"),
         "//ncore/impl/data:pylib_types",
+        requirement("matplotlib"),
+        requirement("multimethod"),
+        requirement("numpy"),
+        requirement("open3d"),
+        requirement("scipy"),
+        requirement("tensorflow"),  # required by open3d.ml.tf
     ],
 )
 
@@ -118,15 +118,15 @@ py_binary(
     name = "ncore_visualize_labels",
     srcs = ["ncore_visualize_labels.py"],
     deps = [
-        requirement("click"),
-        requirement("tqdm"),
-        requirement("pandas"),
         ":pylib_visualization",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data/v4:pylib_compat",
         "//ncore/impl/data/v4:pylib_components",
         "//ncore/impl/data/v4:pylib_types",
         "//scripts:pylib_util",
+        requirement("click"),
+        requirement("pandas"),
+        requirement("tqdm"),
     ],
 )
 
@@ -136,11 +136,6 @@ py_binary(
     name = "ncore_project_pc_to_img",
     srcs = ["ncore_project_pc_to_img.py"],
     deps = [
-        requirement("click"),
-        requirement("tqdm"),
-        requirement("numpy"),
-        requirement("scipy"),
-        requirement("pyside6"),  # required to open Qt6 windows
         ":pylib_visualization",
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_types",
@@ -149,6 +144,11 @@ py_binary(
         "//ncore/impl/sensors:pylib_camera",
         "//ncore/impl/sensors:pylib_lidar",
         "//scripts:pylib_util",
+        requirement("click"),
+        requirement("numpy"),
+        requirement("pyside6"),  # required to open Qt6 windows
+        requirement("scipy"),
+        requirement("tqdm"),
     ],
 )
 
@@ -158,15 +158,15 @@ py_binary(
     name = "ncore_export_colored_pc",
     srcs = ["ncore_export_colored_pc.py"],
     deps = [
-        requirement("click"),
-        requirement("tqdm"),
-        requirement("numpy"),
-        requirement("point-cloud-utils"),
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data/v4:pylib_compat",
         "//ncore/impl/data/v4:pylib_components",
         "//ncore/impl/sensors:pylib_camera",
+        requirement("click"),
+        requirement("numpy"),
+        requirement("point_cloud_utils"),
+        requirement("tqdm"),
     ],
 )
 
@@ -177,8 +177,8 @@ py_binary(
     srcs = ["ncore_sequence_meta.py"],
     visibility = ["//visibility:public"],
     deps = [
-        requirement("click"),
         "//ncore/impl/data/v4:pylib_compat",
         "//ncore/impl/data/v4:pylib_components",
+        requirement("click"),
     ],
 )

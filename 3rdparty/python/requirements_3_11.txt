@@ -97,7 +97,7 @@ cbor2==5.6.5 \
     --hash=sha256:fa61a02995f3a996c03884cf1a0b5733f88cbfd7fa0e34944bf678d4227ee712 \
     --hash=sha256:fde21ac1cf29336a31615a2c469a9cb03cf0add3ae480672d4d38cda467d07fc \
     --hash=sha256:fe11c2eb518c882cfbeed456e7a552e544893c17db66fe5d3230dbeaca6b615c
-    # via -r 3rdparty/python/requirements_3_11.in
+    # via -r 3rdparty/python/requirements_ncore.in
 certifi==2025.1.31 \
     --hash=sha256:3d5da6925056f6f18f119200434a4780a94263f10d1c21d032a6f6b2baa20651 \
     --hash=sha256:ca78db4565a652026a4db2bcdf68f2fb589ea80d0be70e03929ed730746b84fe
@@ -289,7 +289,7 @@ dash-table==5.0.0 \
 dataclasses-json==0.6.7 \
     --hash=sha256:0dbf33f26c8d5305befd61b39d2b3414e8a407bedc2834dea9b8d642666fb40a \
     --hash=sha256:b6b3e528266ea45b9535223bc53ca645f5208833c29229e847b3f26a1cc55fc0
-    # via -r 3rdparty/python/requirements_3_11.in
+    # via -r 3rdparty/python/requirements_ncore.in
 debugpy==1.8.12 \
     --hash=sha256:086b32e233e89a2740c1615c2f775c34ae951508b28b308681dbbb87bba97d06 \
     --hash=sha256:22a11c493c70413a01ed03f01c3c3a2fc4478fc6ee186e340487b2edcd6f4180 \
@@ -970,6 +970,7 @@ numpy==1.26.4 \
     --hash=sha256:ffa75af20b44f8dba823498024771d5ac50620e6915abac414251bd971b4529f
     # via
     #   -r 3rdparty/python/requirements_3_11.in
+    #   -r 3rdparty/python/requirements_ncore.in
     #   contourpy
     #   h5py
     #   keras
@@ -1239,7 +1240,7 @@ pillow==11.1.0 \
     --hash=sha256:f86d3a7a9af5d826744fabf4afd15b9dfef44fe69a98541f666f66fbb8d3fef9 \
     --hash=sha256:fbd43429d0d7ed6533b25fc993861b8fd512c42d04514a0dd6337fb3ccf22761
     # via
-    #   -r 3rdparty/python/requirements_3_11.in
+    #   -r 3rdparty/python/requirements_ncore.in
     #   matplotlib
     #   open3d
 platformdirs==4.3.6 \
@@ -1740,7 +1741,7 @@ scipy==1.15.2 \
     --hash=sha256:fb530e4794fc8ea76a4a21ccb67dea33e5e0e60f07fc38a49e821e1eae3b71a0 \
     --hash=sha256:fe8a9eb875d430d81755472c5ba75e84acc980e4a8f6204d402849234d3017db
     # via
-    #   -r 3rdparty/python/requirements_3_11.in
+    #   -r 3rdparty/python/requirements_ncore.in
     #   point-cloud-utils
     #   scikit-learn
 setuptools==75.8.0 \
@@ -1886,7 +1887,9 @@ torch==1.13.0+cu116 \
     --hash=sha256:799421803c39e36c969fdb0811e58f4c646588b90a35fabb9896752811928ad9 \
     --hash=sha256:b49598ab06ce2a8d143553aff72616e5ea0fbe6fc8d7f2236c3aed9dd2ab7b24 \
     --hash=sha256:ea9b09fac51ef9a241d29176465dd149708ff61eb04a2fbc01217c7f813f81d2
-    # via -r 3rdparty/python/requirements_3_11.in
+    # via
+    #   -r 3rdparty/python/requirements_3_11.in
+    #   -r 3rdparty/python/requirements_ncore.in
 tornado==6.4.2 \
     --hash=sha256:072ce12ada169c5b00b7d92a99ba089447ccc993ea2143c9ede887e0937aa803 \
     --hash=sha256:1a017d239bd1bb0919f72af256a970624241f070496635784d9bf0db640d3fec \
@@ -1924,7 +1927,7 @@ typing-extensions==4.12.2 \
     --hash=sha256:04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d \
     --hash=sha256:1a7ead55c7e559dd4dee8856e3a88b41225abfe1ce8df57b7c13915fe121ffb8
     # via
-    #   -r 3rdparty/python/requirements_3_11.in
+    #   -r 3rdparty/python/requirements_ncore.in
     #   beautifulsoup4
     #   dash
     #   ipython
@@ -1944,7 +1947,7 @@ tzdata==2025.1 \
 universal-pathlib==0.3.6 \
     --hash=sha256:d8640454ff08305fc639f7980e8bad4a7d38e82f6389ff993fb0e7b2a4969de9 \
     --hash=sha256:ff10a86e5340ad986b6f04847bb64ba397dff7467450234ffa2ab5ff135641d8
-    # via -r 3rdparty/python/requirements_3_11.in
+    # via -r 3rdparty/python/requirements_ncore.in
 urllib3==2.3.0 \
     --hash=sha256:1cee9ad369867bfdbbb48b7dd50374c0967a0bb7710050facf0dd6911440e3df \
     --hash=sha256:f8c5449b3cf0861679ce7e0503c7b44b5ec981bec0d1d3795a07f1ba96f0204d
@@ -2061,7 +2064,7 @@ wrapt==1.17.2 \
 zarr==2.18.4 \
     --hash=sha256:2795e20aff91093ce7e4da36ab1a138aededbd8ab66bf01fd01512e61d31e5d1 \
     --hash=sha256:37790ededd0683ae1abe6ff90aa16c22543b3436810060f53d72c15e910c24bb
-    # via -r 3rdparty/python/requirements_3_11.in
+    # via -r 3rdparty/python/requirements_ncore.in
 zipp==3.21.0 \
     --hash=sha256:2c9958f6430a2040341a52eb608ed6dd93ef4392e02ffe219417c1b28b5dd1f4 \
     --hash=sha256:ac1bbe05fd2991f160ebce24ffbac5f6d11d83dc90891255885223d42b3cd931

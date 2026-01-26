@@ -38,11 +38,11 @@ pytest_test(
         "@test-data-v4//:dataset0",
     ],
     deps = [
-        requirement("numpy"),
         ":pylib_transformations",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data/v4:pylib_compat",
         "//ncore/impl/data/v4:pylib_components",
+        requirement("numpy"),
         "@rules_python//python/runfiles",
     ],
 )

@@ -14,8 +14,8 @@ py_library(
     deps = [
         ":pylib_util",
         "//ncore/impl/common:pylib_transformations",
+        requirement("dataclasses_json"),
         requirement("numpy"),
-        requirement("dataclasses-json"),
         requirement("pillow"),
     ],
 )
@@ -26,9 +26,9 @@ py_library(
         "stores.py",
     ],
     deps = [
-        requirement("zarr"),
-        requirement("universal_pathlib"),
         requirement("cbor2"),
+        requirement("universal_pathlib"),
+        requirement("zarr"),
     ],
 )
 
@@ -38,8 +38,8 @@ py_library(
         "util.py",
     ],
     deps = [
+        requirement("dataclasses_json"),
         requirement("numpy"),
-        requirement("dataclasses-json"),
         requirement("universal_pathlib"),
     ],
 )
@@ -53,10 +53,10 @@ py_library(
         ":pylib_types",
         ":pylib_util",
         "//ncore/impl/common:pylib_transformations",
-        requirement("universal_pathlib"),
         requirement("numpy"),
         requirement("pillow"),
-        requirement("typing-extensions"),
+        requirement("typing_extensions"),
+        requirement("universal_pathlib"),
     ],
 )
 
@@ -75,8 +75,8 @@ pytest_test(
     srcs = ["stores_test.py"],
     deps = [
         ":pylib_stores",
-        requirement("parameterized"),
         requirement("numpy"),
+        requirement("parameterized"),
         requirement("zarr"),
     ],
 )

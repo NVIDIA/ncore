@@ -23,11 +23,11 @@ py_library(
         "camera.py",
     ],
     deps = [
-        requirement("numpy"),
-        requirement("torch"),
         ":pylib_common",
         "//ncore/impl/common:pylib_util",
         "//ncore/impl/data:pylib_types",
+        requirement("numpy"),
+        requirement("torch"),
     ],
 )
 
@@ -37,13 +37,13 @@ pytest_test(
         "camera_test.py",
     ],
     deps = [
+        ":pylib_camera",
+        "//ncore/impl/data:pylib_types",
         requirement("numpy"),
-        requirement("opencv-python-headless"),
+        requirement("opencv_python_headless"),
         requirement("parameterized"),
         requirement("scipy"),
         requirement("torch"),
-        ":pylib_camera",
-        "//ncore/impl/data:pylib_types",
     ],
 )
 
@@ -78,7 +78,7 @@ pytest_test(
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/common:pylib_util",
         requirement("numpy"),
-        requirement("torch"),
         requirement("parameterized"),
+        requirement("torch"),
     ],
 )

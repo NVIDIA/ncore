@@ -15,7 +15,7 @@ py_library(
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data:pylib_util",
-        requirement("dataclasses-json"),
+        requirement("dataclasses_json"),
         requirement("numpy"),
     ],
 )
@@ -31,11 +31,11 @@ py_library(
         "//ncore/impl/common:pylib_util",
         "//ncore/impl/data:pylib_stores",
         "//ncore/impl/data:pylib_types",
-        requirement("zarr"),
+        requirement("dataclasses_json"),
         requirement("numpy"),
         requirement("pillow"),
-        requirement("dataclasses-json"),
-        requirement("universal-pathlib"),
+        requirement("universal_pathlib"),
+        requirement("zarr"),
     ],
 )
 
@@ -47,10 +47,10 @@ pytest_test(
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/common:pylib_util",
         requirement("numpy"),
-        requirement("scipy"),
         requirement("parameterized"),
         requirement("pillow"),
-        requirement("universal-pathlib"),
+        requirement("scipy"),
+        requirement("universal_pathlib"),
     ],
 )
 
@@ -60,15 +60,15 @@ py_library(
         "compat.py",
     ],
     deps = [
-        requirement("numpy"),
-        requirement("pillow"),
-        requirement("universal-pathlib"),
-        requirement("typing-extensions"),
         ":pylib_components",
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/common:pylib_util",
         "//ncore/impl/data:pylib_compat",
         "//ncore/impl/data:pylib_types",
+        requirement("numpy"),
+        requirement("pillow"),
+        requirement("typing_extensions"),
+        requirement("universal_pathlib"),
     ],
 )
 
