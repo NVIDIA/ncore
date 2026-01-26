@@ -27,8 +27,10 @@ bazel_dep(name = "rules_mypy", version = "0.40.0")
 bazel_dep(name = "rules_uv", version = "0.88.0")
 bazel_dep(name = "rules_shell", version = "0.5.0")
 bazel_dep(name = "rules_multirun", version = "0.13.0")
+bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "buildifier_prebuilt", version = "8.2.1")
 bazel_dep(name = "bazel_skylib", version = "1.7.1")
+bazel_dep(name = "protobuf", version = "29.1")
 
 ## rules_python
 bazel_dep(name = "rules_python", version = "1.2.0")
@@ -70,6 +72,15 @@ use_repo(multitool, "multitool")
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 # unit test data
+http_archive(
+    name = "waymo-open-dataset",
+    patch_strip = 2,
+    patches = ["3rdparty/waymo-open-dataset/cc-proto.patch"],
+    sha256 = "5e91fea02a0cdb1edb39d9ac27fbdb1e8d890986faab545497a95b54213b973d",
+    strip_prefix = "waymo-open-dataset-1.5.1/src",
+    urls = ["https://github.com/waymo-research/waymo-open-dataset/archive/refs/tags/v1.5.1.tar.gz"],
+)
+
 http_archive(
     name = "test-data-v4",
     sha256 = "c9f52f182994b5c4027f74f380b75f05bc64bdc15ccc2934558f373b44606ae9",

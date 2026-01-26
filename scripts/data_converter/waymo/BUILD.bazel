@@ -1,0 +1,48 @@
+# Copyright (c) 2024 NVIDIA CORPORATION.  All rights reserved.
+
+load("@ncore_pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+# Proxy for waymo-open dependencies to ignore type checks
+py_library(
+    name = "pylib_deps",
+    srcs = [
+        "deps.py",
+    ],
+    tags = ["no-mypy"],  # syntax errors in type annotations of tensorflow / absl-py
+    deps = [
+        requirement("tensorflow"),
+        "@waymo-open-dataset//waymo_open_dataset:dataset_proto_py_pb2",
+        "@waymo-open-dataset//waymo_open_dataset:label_proto_py_pb2",
+        "@waymo-open-dataset//waymo_open_dataset/protos:camera_segmentation_proto_py_pb2",
+    ],
+)
+
+py_library(
+    name = "pylib_utils",
+    srcs = [
+        "utils.py",
+    ],
+    deps = [
+        ":pylib_deps",
+        requirement("numpy"),
+        requirement("scipy"),
+    ],
+)
+
+py_binary(
+    name = "waymo",
+    srcs = [
+        "waymo.py",
+    ],
+    deps = [
+        ":pylib_deps",
+        ":pylib_utils",
+        "//scripts/data_converter:pylib_cli",
+        requirement("click"),
+        requirement("numpy"),
+        requirement("tqdm"),
+        requirement("universal_pathlib"),
+        "@ncore_repo//ncore:pylib",
+    ],
+)
