@@ -38,9 +38,6 @@ default:
     - echo "build --disk_cache=$CI_PROJECT_DIR/.ci-keep/cache" >> .bazelrc.user
     - echo "test  --disk_cache=$CI_PROJECT_DIR/.ci-keep/cache" >> .bazelrc.user
 
-    # Handle CI cache tag and remove / re-init cache if required
-    - scripts/ci/cache_tag.sh $CI_PROJECT_DIR/.ci-keep v1
-
     # Make use of local mypy cache 
     - mkdir -p $CI_PROJECT_DIR/.ci-keep/.mypy_cache
     - echo "build --sandbox_writable_path=$CI_PROJECT_DIR/.ci-keep/.mypy_cache" >> .bazelrc.user
