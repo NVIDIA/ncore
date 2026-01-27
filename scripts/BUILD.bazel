@@ -1,9 +1,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-load("@rules_oci//oci:defs.bzl", "oci_load", "oci_push")
 load("@ncore_pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library")
-load("//bazel/oci:py_layer.bzl", "py_oci_image")
 
 #################################################################
 
@@ -41,56 +39,17 @@ py_binary(
 
 #################################################################
 
-NCORE_EXPORT_CAMERA_DEPS = [
-    "@ncore_pip_deps//click",
-    "@ncore_pip_deps//tqdm",
-    "@ncore_pip_deps//numpy",
-    "@ncore_pip_deps//opencv_python_headless",
-    "//ncore/impl/data:pylib_util",
-    "//ncore/impl/data/v4:pylib_compat",
-    "//ncore/impl/data/v4:pylib_components",
-]
-
 py_binary(
     name = "ncore_export_camera",
     srcs = ["ncore_export_camera.py"],
-    deps = NCORE_EXPORT_CAMERA_DEPS,
-)
-
-# Image for 'ncore_export_camera'
-py_oci_image(
-    name = "ncore_export_camera_image",
-    base = "@ncore_dev_image",
-    binary = "ncore_export_camera",
-    entrypoint = ["/scripts/ncore_export_camera"],
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-)
-
-# Build the image and load it into a local runtime:
-# $ bazel run //scripts:load_ncore_export_camera_image
-# $ docker run -it --rm --gpus all nvcr.io/nv-maglev/dlav/ncore-export-camera:latest
-oci_load(
-    name = "load_ncore_export_camera_image",
-    image = ":ncore_export_camera_image",
-    repo_tags = ["nvcr.io/nv-maglev/dlav/ncore-export-camera:latest"],
-    tags = [
-        "manual",
-        "no-remote-cache",
-    ],
-)
-
-# Push image to 'latest' tag - use with *CAUTION* as referenced by default in workflows
-oci_push(
-    name = "push_ncore_export_camera_image",
-    image = ":ncore_export_camera_image",
-    remote_tags = ["latest"],
-    repository = "nvcr.io/nv-maglev/dlav/ncore-export-camera",
-    tags = [
-        "manual",
-        "no-remote-cache",
+    deps = [
+        "//ncore/impl/data:pylib_util",
+        "//ncore/impl/data/v4:pylib_compat",
+        "//ncore/impl/data/v4:pylib_components",
+        requirement("click"),
+        requirement("numpy"),
+        requirement("opencv_python_headless"),
+        requirement("tqdm"),
     ],
 )
 
