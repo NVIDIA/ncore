@@ -3,6 +3,9 @@
 load("@ncore_pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 
+# targets might be used in various places also outside of the repo, so make it public
+package(default_visibility = ["//visibility:public"])
+
 #################################################################
 
 py_library(
@@ -10,8 +13,6 @@ py_library(
     srcs = [
         "util.py",
     ],
-    # used in various places also outside of the repo, so make it public
-    visibility = ["//visibility:public"],
     deps = [
         requirement("click"),
         requirement("debugpy"),
