@@ -44,7 +44,7 @@ py_wheel(
         "torch",
         "universal_pathlib",
     ],
-    version = "0.17.6",
+    version = "0.17.7",
     deps = [
         ":ncore_pkg",
     ],

@@ -277,6 +277,11 @@ class NCore3To4:
                 xyz_e = lidar_sensor.get_frame_data(source_frame_idx, "xyz_e")
                 timestamp_us = lidar_sensor.get_frame_data(source_frame_idx, "timestamp_us")
                 intensity = lidar_sensor.get_frame_data(source_frame_idx, "intensity")
+                model_element = (
+                    lidar_sensor.get_frame_data(source_frame_idx, "model_element")
+                    if lidar_model_parameters is not None
+                    else None
+                )
 
                 # strict: filter out points outside of frame time bounds (as some V3 data may contain such points)
                 valid_time_mask = np.logical_and(
@@ -286,6 +291,8 @@ class NCore3To4:
                 xyz_e = xyz_e[valid_time_mask]
                 timestamp_us = timestamp_us[valid_time_mask]
                 intensity = intensity[valid_time_mask]
+                if model_element is not None:
+                    model_element = model_element[valid_time_mask]
 
                 # undo motion-compensation of V3 point clouds to non-motion-compensated "raw" V4 point cloud
                 xyz_m = motion_compensator.motion_decompensate_points(
@@ -309,11 +316,7 @@ class NCore3To4:
                     # per-point point timestamp in microseconds (uint64, [n])
                     timestamp_us=timestamp_us[valid_mask],
                     # per-point model element indices, if applicable (uint16, [n, 2])
-                    model_element=(
-                        lidar_sensor.get_frame_data(source_frame_idx, "model_element")[valid_mask]
-                        if lidar_model_parameters is not None
-                        else None
-                    ),
+                    model_element=(model_element[valid_mask] if model_element is not None else None),
                     # per-point distance (only single return supported in V3) [n, r] with r=1)
                     distance_m=distance_m[valid_mask][np.newaxis],
                     # per-point intensity normalized to [0.0, 1.0] range (float32, [n, r] with r=1)
