@@ -8,8 +8,15 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
-"""Package exposing methods related to NCore's basic data types"""
+"""Package exposing methods related to NCore's basic data types and abstract APIs"""
 
+from ncore.impl.data.compat import (
+    CameraSensorProtocol,
+    LidarSensorProtocol,
+    RadarSensorProtocol,
+    SensorProtocol,
+    SequenceLoaderProtocol,
+)
 from ncore.impl.data.types import (
     BBox3,
     BivariateWindshieldModelParameters,
@@ -45,4 +52,13 @@ __all__ = [
     "RowOffsetStructuredSpinningLidarModelParameters",
     "EncodedImageData",
     "EncodedImageHandle",
+    "ConcreteCameraModelParametersUnion",
+    "ConcreteExternalDistortionParametersUnion",
+    "ConcreteLidarModelParametersUnion",
+    # compat protocols
+    "SequenceLoaderProtocol",
+    "SensorProtocol",
+    "CameraSensorProtocol",
+    "LidarSensorProtocol",
+    "RadarSensorProtocol",
 ]
