@@ -43,7 +43,6 @@ import zarr.storage
 from numcodecs import Blosc
 from upath import UPath
 from zarr._storage.store import Store
-from zarr.attrs import Attributes
 
 from ncore.impl.common.common import HalfClosedInterval, MD5Hasher
 from ncore.impl.data import data, stores, types
@@ -1481,9 +1480,18 @@ class CuboidsComponent:
             self,
             cuboid_observations: List[CuboidTrackObservation],  # individual observation
         ) -> "Self":
-            self._group.create_group("cuboids").attrs.put(
-                {"cuboid_track_observations": [obs.to_dict() for obs in cuboid_observations]}
-            )
+            obs_dict_list = []
+            for obs in cuboid_observations:
+                # Check timestamp validity before serialization
+                assert obs.timestamp_us in self._sequence_timestamp_interval_us, (
+                    f"Cuboid track observation timestamp {obs.timestamp_us} not in the sequence time range"
+                )
+                assert obs.reference_frame_timestamp_us in self._sequence_timestamp_interval_us, (
+                    f"Cuboid track observation reference frame timestamp {obs.reference_frame_timestamp_us} not in the sequence time range"
+                )
+                obs_dict_list.append(obs.to_dict())
+
+            self._group.create_group("cuboids").attrs.put({"cuboid_track_observations": obs_dict_list})
 
             return self
 
