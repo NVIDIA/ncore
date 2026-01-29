@@ -8,6 +8,7 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
+import dataclasses
 import io
 import tempfile
 import unittest
@@ -420,23 +421,41 @@ class TestData4Reload(unittest.TestCase):
             ref_cuboids_generic_meta_data := {"track-set-meta-data": "some-value"},
         )
 
+        ref_observation = CuboidTrackObservation(
+            track_id="track-1",
+            class_id="car",
+            timestamp_us=int(0.3 * 1e6),
+            reference_frame_timestamp_us=int(0.5 * 1e6),
+            bbox3=BBox3(
+                centroid=(1.0, 2.0, 3.0),
+                dim=(4.0, 2.0, 1.5),
+                rot=(0.0, 0.0, 0.0),
+            ),
+            reference_frame_id=ref_lidar_id,
+            source=LabelSource.AUTOLABEL,
+            source_version="v0",
+        )
+
+        with self.assertRaises(AssertionError):
+            cuboids_writer.store_observations(
+                cuboid_observations=[
+                    dataclasses.replace(ref_observation, timestamp_us=ref_sequence_timestamp_interval_us.stop + 10)
+                ]
+            )
+
+        with self.assertRaises(AssertionError):
+            cuboids_writer.store_observations(
+                cuboid_observations=[
+                    dataclasses.replace(
+                        ref_observation, reference_frame_timestamp_us=ref_sequence_timestamp_interval_us.stop + 10
+                    )
+                ]
+            )
+
         cuboids_writer.store_observations(
             cuboid_observations=(
                 ref_cuboid_observations := [
-                    CuboidTrackObservation(
-                        track_id="track-1",
-                        class_id="car",
-                        timestamp_us=int(0.3 * 1e6),
-                        reference_frame_timestamp_us=int(0.5 * 1e6),
-                        bbox3=BBox3(
-                            centroid=(1.0, 2.0, 3.0),
-                            dim=(4.0, 2.0, 1.5),
-                            rot=(0.0, 0.0, 0.0),
-                        ),
-                        reference_frame_id=ref_lidar_id,
-                        source=LabelSource.AUTOLABEL,
-                        source_version="v0",
-                    ),
+                    ref_observation,
                     CuboidTrackObservation(
                         track_id="track-1",
                         class_id="car",
