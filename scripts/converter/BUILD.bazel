@@ -3,7 +3,7 @@
 load("@rules_python//python:defs.bzl", "py_library")
 
 py_library(
-    name = "pylib_data_converter",
+    name = "pylib_converter",
     srcs = [
         "__init__.py",
     ],
