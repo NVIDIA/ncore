@@ -13,34 +13,40 @@ from __future__ import annotations
 import logging
 
 from abc import ABC, abstractmethod
-from pathlib import Path
+from dataclasses import dataclass
 from typing import Optional
+
+from upath import UPath
 
 
 try:
     from scripts.util import breakpoint
 except ImportError:
     # if included externally as 'ncore_repo' use fully-evaluated path
-    from ncore_repo.scripts.util import breakpoint  # type: ignore
-except ImportError:
-    # fall back to 'external'-prefixed 'ncore_repo' reference if required
-    from external.ncore_repo.scripts.util import breakpoint  # type: ignore
+    try:
+        from ncore_repo.scripts.util import breakpoint  # type: ignore
+    except ImportError:
+        # fall back to 'external'-prefixed 'ncore_repo' reference if required
+        from external.ncore_repo.scripts.util import breakpoint  # type: ignore
 
 import click
 
 
-class Config(object):
-    """Simple dictionary holding all options as key/value pairs"""
+@dataclass(kw_only=True, slots=True, frozen=True)
+class ConfigBase:
+    """Parameters passed to non-command-based CLI part"""
 
-    def __init__(self, kwargs):
-        self.__dict__ = kwargs
-
-    def __iadd__(self, other):
-        """Extend with more key/value options"""
-        for key, value in other.items():
-            self.__dict__[key] = value
-
-        return self
+    root_dir: str
+    output_dir: str
+    verbose: bool
+    debug: bool
+    debug_port: int
+    no_cameras: bool
+    camera_ids: Optional[tuple[str, ...]]
+    no_lidars: bool
+    lidar_ids: Optional[tuple[str, ...]]
+    no_radars: bool
+    radar_ids: Optional[tuple[str, ...]]
 
 
 class DataConverter(ABC):
@@ -55,32 +61,38 @@ class DataConverter(ABC):
     Please also use the facilities of the 'data_writer' module, which simplifies adding new datasets.
     """
 
-    def __init__(self, config):
+    def __init__(self, config: ConfigBase) -> None:
         self.logger = logging.getLogger(__name__)
 
-        self.root_dir = Path(config.root_dir)
-        self.output_dir = Path(config.output_dir)
+        self.root_dir = UPath(config.root_dir)
+        self.output_dir = UPath(config.output_dir)
 
         # External sensor selection overwrites
         # Store `None`` for `_active_<sensor>_ids` in case all sensors should be used, as the
         # actual full list of sensor ids will be passed via `get_active_<sensor>_ids()`
         # at conversion time (as for some data-converters the set of sensors
         # is only available after dataset introspection)
-        self._active_camera_ids = list(config.camera_ids) if len(config.camera_ids) else None
+        self._active_camera_ids: list[str] | None = (
+            list(config.camera_ids) if config.camera_ids is not None and len(config.camera_ids) else None
+        )
         if config.no_cameras:
             self._active_camera_ids = []
 
-        self._active_lidar_ids = list(config.lidar_ids) if len(config.lidar_ids) else None
+        self._active_lidar_ids: list[str] | None = (
+            list(config.lidar_ids) if config.lidar_ids is not None and len(config.lidar_ids) else None
+        )
         if config.no_lidars:
             self._active_lidar_ids = []
 
-        self._active_radar_ids = list(config.radar_ids) if len(config.radar_ids) else None
+        self._active_radar_ids: list[str] | None = (
+            list(config.radar_ids) if config.radar_ids is not None and len(config.radar_ids) else None
+        )
         if config.no_radars:
             self._active_radar_ids = []
 
     @staticmethod
     def _get_active_sensor_ids(
-        sensor_type: str, active_sensor_ids: Optional[list[str]], all_sensor_ids: list[str]
+        sensor_type: str, active_sensor_ids: list[str] | None, all_sensor_ids: list[str]
     ) -> list[str]:
         """Performs generic sensor subselection and asserts active-sensors are a subset of all sensors"""
         if active_sensor_ids is None:
@@ -126,7 +138,7 @@ class DataConverter(ABC):
 
     @staticmethod
     @abstractmethod
-    def get_sequence_paths(config) -> list[Path]:
+    def get_sequence_paths(config) -> list[UPath]:
         """
         Return sequence pathnames to process
         """
@@ -141,7 +153,7 @@ class DataConverter(ABC):
         pass
 
     @abstractmethod
-    def convert_sequence(self, sequence_path: Path) -> None:
+    def convert_sequence(self, sequence_path: UPath) -> None:
         """
         Runs dataset-specific conversion for a sequence referenced by a directory/file path
         """
@@ -200,7 +212,7 @@ def cli(ctx, *_, **kwargs):
     # Create a config object and remember it as the context object. From
     # this point onwards other commands can refer to it by using the
     # @click.pass_context decorator.
-    ctx.obj = Config(kwargs)
+    ctx.obj = ConfigBase(**kwargs)
 
     # Initialize basic top-level logger configuration
     logging.basicConfig(

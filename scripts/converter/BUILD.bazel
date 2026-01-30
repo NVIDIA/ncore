@@ -14,5 +14,6 @@ py_library(
     deps = [
         "//scripts:pylib_util",
         "@ncore_pip_deps//click",
+        "@ncore_pip_deps//universal_pathlib",
     ],
 )
