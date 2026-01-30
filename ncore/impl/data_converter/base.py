@@ -11,57 +11,49 @@
 from __future__ import annotations
 
 import logging
+import sys
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 from upath import UPath
 
 
-try:
-    from scripts.util import breakpoint
-except ImportError:
-    # if included externally as 'ncore_repo' use fully-evaluated path
-    try:
-        from ncore_repo.scripts.util import breakpoint  # type: ignore
-    except ImportError:
-        # fall back to 'external'-prefixed 'ncore_repo' reference if required
-        from external.ncore_repo.scripts.util import breakpoint  # type: ignore
+@dataclass(**({"slots": True, "kw_only": True} if sys.version_info >= (3, 10) else {}))
+class BaseDataConverterConfig:
+    """Generic data converter parameters"""
 
-import click
+    ## IO
+    root_dir: str  # Path to the raw data sequences
+    output_dir: str  # Path where the converted data will be saved
 
+    ## Sensor selection
+    no_cameras: bool  # Disable exporting any camera sensor
+    camera_ids: Optional[Tuple[str, ...]]  # Cameras to be exported (multiple value option, all if not specified)
+    no_lidars: bool  # Disable exporting any lidar sensor
+    lidar_ids: Optional[Tuple[str, ...]]  # Lidars to be exported (multiple value option, all if not specified)
+    no_radars: bool  # Disable exporting any radar sensor
+    radar_ids: Optional[Tuple[str, ...]]  # Radars to be exported (multiple value option, all if not specified)
 
-@dataclass(kw_only=True, slots=True, frozen=True)
-class ConfigBase:
-    """Parameters passed to non-command-based CLI part"""
-
-    root_dir: str
-    output_dir: str
-    verbose: bool
+    ## Runtime
+    verbose: bool  # Enables debug logging outputs
     debug: bool
     debug_port: int
-    no_cameras: bool
-    camera_ids: Optional[tuple[str, ...]]
-    no_lidars: bool
-    lidar_ids: Optional[tuple[str, ...]]
-    no_radars: bool
-    radar_ids: Optional[tuple[str, ...]]
 
 
-class DataConverter(ABC):
+class BaseDataConverter(ABC):
     """
     Base preprocessing class used to preprocess AV datasets in a canonical representation as used in the Nvidia NCore project.
 
     For adding a new dataset, please inherit this class, implement the required functions, and register a new CLI command.
 
-    The output data should follow the conventions defined in
-    https://nrs.gitlab-master-pages.nvidia.com/ncore/notes/conventions.html
+    The output data should follow the conventions defined in the conventions documentation.
 
-    Please also use the facilities of the 'data_writer' module, which simplifies adding new datasets.
+    Please use the facilities of the data writer modules, which simplifies adding new datasets.
     """
 
-    def __init__(self, config: ConfigBase) -> None:
+    def __init__(self, config: BaseDataConverterConfig) -> None:
         self.logger = logging.getLogger(__name__)
 
         self.root_dir = UPath(config.root_dir)
@@ -118,7 +110,7 @@ class DataConverter(ABC):
         return self._get_active_sensor_ids("radar", self._active_radar_ids, all_radar_ids)
 
     @classmethod
-    def convert(cls, config) -> None:
+    def convert(cls, config: BaseDataConverterConfig) -> None:
         """
         Main entry-point to perform conversion of all sequences
         """
@@ -146,7 +138,7 @@ class DataConverter(ABC):
 
     @staticmethod
     @abstractmethod
-    def from_config(config) -> DataConverter:
+    def from_config(config) -> BaseDataConverter:
         """
         Return an instance of the data converter
         """
@@ -158,68 +150,3 @@ class DataConverter(ABC):
         Runs dataset-specific conversion for a sequence referenced by a directory/file path
         """
         pass
-
-
-@click.group()
-@click.option("--root-dir", type=str, help="Path to the raw data sequences", required=True)
-@click.option("--output-dir", type=str, help="Path where the converted data will be saved", required=True)
-@click.option("--verbose", is_flag=True, default=False, help="Enables debug logging outputs")
-@click.option("--debug", is_flag=True, default=False, help="Start a debugpy remote debugging sessions to listen on")
-@click.option(
-    "--debug-port", type=int, default=5678, help="The port on which debugpy will wait for a client to connect"
-)
-@click.option("--no-cameras", is_flag=True, default=False, help="Disable exporting any camera sensor")
-@click.option(
-    "--camera-id",
-    "camera_ids",
-    multiple=True,
-    type=str,
-    help="Cameras to be exported (multiple value option, all if not specified)",
-    default=None,
-)
-@click.option("--no-lidars", is_flag=True, default=False, help="Disable exporting any lidar sensor")
-@click.option(
-    "--lidar-id",
-    "lidar_ids",
-    multiple=True,
-    type=str,
-    help="Lidars to be exported (multiple value option, all if not specified)",
-    default=None,
-)
-@click.option("--no-radars", is_flag=True, default=False, help="Disable exporting any radar sensor")
-@click.option(
-    "--radar-id",
-    "radar_ids",
-    multiple=True,
-    type=str,
-    help="Radars to be exported (multiple value option, all if not specified)",
-    default=None,
-)
-@click.pass_context
-def cli(ctx, *_, **kwargs):
-    """Data Preprocessing Pipeline
-
-    Source data format is selected via subcommands, for which dedicated options can be specified.
-
-    Example invocation for 'NV maglev' data
-
-    \b
-    ./convert_raw_data.py
-      --root-dir <FOLDER WITH SOURCE DATASETS>
-      --output-dir <FOLDER DATA WILL BE PRODUCED>
-      <your-data-variant>
-    """
-    # Create a config object and remember it as the context object. From
-    # this point onwards other commands can refer to it by using the
-    # @click.pass_context decorator.
-    ctx.obj = ConfigBase(**kwargs)
-
-    # Initialize basic top-level logger configuration
-    logging.basicConfig(
-        level=logging.DEBUG if ctx.obj.verbose else logging.INFO,
-        format="<%(asctime)s|%(levelname)s|%(filename)s:%(lineno)d|%(name)s> %(message)s",
-    )
-
-    # If the debug flag is set, add a breakpoint and wait for remote debugger
-    if ctx.obj.debug:
-        breakpoint(port=ctx.obj.debug_port)

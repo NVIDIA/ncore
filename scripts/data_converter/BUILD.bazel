@@ -1,0 +1,21 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
+load("@ncore_pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_library")
+
+# targets might be used in various places also outside of the repo, so make it public
+package(default_visibility = ["//visibility:public"])
+
+#################################################################
+
+py_library(
+    name = "pylib_cli",
+    srcs = [
+        "cli.py",
+    ],
+    deps = [
+        "//ncore/impl/data_converter:pylib_base",
+        "//scripts:pylib_util",
+        requirement("click"),
+    ],
+)

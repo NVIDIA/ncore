@@ -11,6 +11,7 @@ py_library(
     deps = [
         "@ncore_repo//ncore/data:pylib",
         "@ncore_repo//ncore/data/v4:pylib",
+        "@ncore_repo//ncore/data_converter:pylib",
         "@ncore_repo//ncore/sensors:pylib",
     ],
 )
