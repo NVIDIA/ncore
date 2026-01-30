@@ -11,13 +11,6 @@ py_library(
     srcs = [
         "types.py",
     ],
-    deps = [
-        "//ncore/impl/common:pylib_transformations",
-        "//ncore/impl/data:pylib_types",
-        "//ncore/impl/data:pylib_util",
-        requirement("dataclasses_json"),
-        requirement("numpy"),
-    ],
 )
 
 py_library(

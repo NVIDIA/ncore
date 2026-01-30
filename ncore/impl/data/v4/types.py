@@ -9,23 +9,8 @@
 
 from __future__ import annotations
 
-import sys
-
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Dict, List, Literal, Optional
-
-import dataclasses_json
-import numpy as np
-
-from ncore.impl.common.transformations import PoseGraphInterpolator, transform_bbox
-from ncore.impl.data import types, util
-
-
-if sys.version_info >= (3, 11):
-    # Older python versions have issues with type-hints for nested types in
-    # combination with typing.get_type_hints() (used by, e.g., 'dataclasses_json')
-    # - alias these globally as a workaround
-    from typing import Self
 
 
 @dataclass
