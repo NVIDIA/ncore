@@ -15,6 +15,7 @@ py_binary(
         requirement("sphinx_rtd_theme"),
         "@ncore_repo//ncore/data:pylib",
         "@ncore_repo//ncore/data/v4:pylib",
+        "@ncore_repo//ncore/data_converter:pylib",
         "@ncore_repo//ncore/sensors:pylib",
     ],
 )
