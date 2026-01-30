@@ -3,13 +3,17 @@
 Visualization
 =============
 
-Data stored in NCore-specific dataformats can be visualized using different tools provided by the SDK
+Data stored in NCore-specific dataformats can be visualized using different
+tools provided by the project
 
 Rolling-Shutter Point-Cloud to Camera Projections
 -------------------------------------------------
 
-The tool ``//scripts:ncore_project_pc_to_img`` visualizes projections of point-clouds into camera images, applying sensor-specific rolling-shutter compensation.
-This verifies the extrinsics of the point-cloud sensor, the extrinsics of the cameras, the intrinsics of the cameras, as well as the trajectories of the rig.
+The tool ``//scripts:ncore_project_pc_to_img`` visualizes projections of
+point-clouds into camera images, applying sensor-specific rolling-shutter
+compensation. This verifies the extrinsics of the point-cloud sensor, the
+extrinsics of the cameras, the intrinsics of the cameras, as well as the
+trajectories of the rig.
 
 Example invocation::
 
@@ -17,7 +21,18 @@ Example invocation::
         -- \
         --sensor-id=lidar00 \
         --camera-id=camera01 \
-        [v3 --shard-file-pattern=<SHARD_FILE_PATTERN> / v4 --component-group=<SEQUENCE_META.json> OR --component-group=<COMPONENT_GROUP0> --component-group=<COMPONENT_GROUP1> ...]
+        v4 \
+        --component-group=<SEQUENCE_META.json>
+
+Or with multiple component groups::
+
+    bazel run //scripts:ncore_project_pc_to_img \
+        -- \
+        --sensor-id=lidar00 \
+        --camera-id=camera01 \
+        v4 \
+        --component-group=<COMPONENT_GROUP0> \
+        --component-group=<COMPONENT_GROUP1>
 
 
 .. figure:: proj0.png
@@ -35,15 +50,16 @@ Example invocation::
 
 Point-Cloud and Label Visualization
 -----------------------------------
-The tool ``//scripts:ncore_visualize_labels`` visualize 3D point-cloud properties (like timestamps / per-object dynamic flags) as well as label cuboid bounds,
-enabling label verification relative to the point-cloud sensor.
+The tool ``//scripts:ncore_visualize_labels`` visualize 3D point-cloud
+properties (like timestamps / per-object dynamic flags) as well as label cuboid
+bounds, enabling label verification relative to the point-cloud sensor.
 
 Example invocation::
 
     bazel run //scripts:ncore_visualize_labels \
         -- \
-        v3 \
-        --shard-file-pattern=<SHARD_FILE_PATTERN>
+        v4 \
+        --component-group=<SEQUENCE_META.json>
 
 .. figure:: pc0.png
    :figwidth: 50%
@@ -55,12 +71,15 @@ Example invocation::
    :figwidth: 50%
    :width: 80%
 
-   Color-coded per-point dynamic-object flags (red indicating dynamic points)
+   Color-coded per-point dynamic-object flags (optional, red indicating dynamic points)
 
 Frame-Exporting
 ---------------
-The tool ``//scripts:ncore_export_ply`` exports point-clouds into common ``.ply`` format, transforming points into different frames.
-Specifying ``--frame=world`` allows to visualize multiple frames in a common frame to verify the extrinsics of the point-cloud sensor, as well as the trajectories of the rig.
+The tool ``//scripts:ncore_export_ply`` exports point-clouds into common
+``.ply`` format, transforming points into different frames. Specifying
+``--frame=world`` allows to visualize multiple frames in a common frame to
+verify the extrinsics of the point-cloud sensor, as well as the trajectories of
+the rig.
 
 Example invocation::
 
@@ -69,7 +88,9 @@ Example invocation::
         --output-dir=<OUTPUT_FOLDER> \
         --sensor-id=lidar00 \
         --frame=world \
-        [v3 --shard-file-pattern=<SHARD_FILE_PATTERN> / v4 --component-group=<COMPONENT_GROUP0> --component-group=<COMPONENT_GROUP1> ...]
+        v4 \
+        --component-group=<COMPONENT_GROUP0> \
+        --component-group=<COMPONENT_GROUP1>
 
 .. figure:: pc.png
    :figwidth: 50%
@@ -79,12 +100,24 @@ Example invocation::
 
 ---------------
 
-Likewise, the tool ``//scripts:ncore_export_image`` allows exporting specific camera-frame ranges into image files for introspection.
+Likewise, the tool ``//scripts:ncore_export_image`` allows exporting specific
+camera-frame ranges into image files for introspection.
 
 Example invocation::
 
     bazel run //scripts:ncore_export_image \
         -- \
         --output-dir=<OUTPUT_FOLDER> \
-        --camera-id=camera00
-        [v3 --shard-file-pattern=<SHARD_FILE_PATTERN> / v4 --component-group=<SEQUENCE_META.json> OR --component-group=<COMPONENT_GROUP0> --component-group=<COMPONENT_GROUP1> ...]
+        --camera-id=camera00 \
+        v4 \
+        --component-group=<SEQUENCE_META.json>
+
+Or with multiple component groups::
+
+    bazel run //scripts:ncore_export_image \
+        -- \
+        --output-dir=<OUTPUT_FOLDER> \
+        --camera-id=camera00 \
+        v4 \
+        --component-group=<COMPONENT_GROUP0> \
+        --component-group=<COMPONENT_GROUP1>

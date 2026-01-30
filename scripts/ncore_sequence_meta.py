@@ -16,9 +16,8 @@ from typing import Optional, Tuple
 
 import click
 
-from ncore.impl.data.data3 import ShardDataLoader
-from ncore.impl.data.data4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
-from ncore.impl.data.data4.components import SequenceComponentGroupsReader
+from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
+from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 
 
 logger = logging.getLogger(__name__)
@@ -61,40 +60,6 @@ def cli(ctx, **kwargs) -> None:
     logging.basicConfig(
         level=logging.DEBUG if ctx.obj.debug else logging.INFO,
     )
-
-
-@cli.command()
-@click.option(
-    "--shard-file-pattern", type=str, help="Data shard pattern to load (supports range expansion)", required=True
-)
-@click.option(
-    "--shard-file-skip-suffix",
-    "shard_file_skip_suffixes",
-    multiple=True,
-    type=str,
-    help="Suffixes to skip when evaluating shard file pattern",
-    default=None,
-)
-@click.pass_context
-def v3(
-    ctx,
-    shard_file_pattern: str,
-    shard_file_skip_suffixes: Tuple[str],
-) -> None:
-    """Extract metadata from NCore V3 (shard-based) sequence data.
-
-    Args:
-        shard_file_pattern: Glob pattern for shard files (supports range expansion like shard_[0-10].zarr)
-        shard_file_skip_suffixes: File suffixes to exclude when matching the pattern
-    """
-    params: CLIBaseParams = ctx.obj
-
-    loader = ShardDataLoader(
-        ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern, skip_suffixes=shard_file_skip_suffixes),
-        open_consolidated=params.open_consolidated,
-    )
-
-    run(params, SequenceLoaderV3(loader))
 
 
 @cli.command()
@@ -163,7 +128,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
 
     Args:
         params: CLI parameters specifying output location and options
-        loader: Sequence loader (V3 or V4) providing unified data access
+        loader: Sequence loader providing unified data access
     """
 
     ## Collect sequence-wide information

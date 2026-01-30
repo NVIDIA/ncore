@@ -24,20 +24,15 @@ def register_repositories():
     )
 
     http_archive(
-        name = "poisson_recon",
-        sha256 = "7fa4176d913a632afcde38308f4e41bac67ffdc6c6e88f73f434c8083e3d780e",
-        # source-repo: https://github.com/mkazhdan/PoissonRecon, commit f1c71fe
-        urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/repo-PoissonRecon/f1c71fe/repo-PoissonRecon-f1c71fe.tar.gz"],
-        build_file = "//3rdparty/poisson_recon:poisson_recon.BUILD",
-        strip_prefix = "PoissonRecon",
-        patch_args = ["-p1"],
-        patches = ["//3rdparty/poisson_recon:poisson_recon.patch"],
-    )
-
-    http_archive(
         name = "test-data-v3-shards",
         sha256 = "cdb766ba178548f9307b1458bb408f4f92ba1557dd34bb30dac2a303749ab783",
         urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/test-data-v3-shards/0.7/test-data-v3-shards.tar.gz"],
+    )
+
+    http_archive(
+        name = "test-data-v4",
+        sha256 = "4be8c5e6409a772dac27389612f224d5c214f89d46a545bd87cd524212a7889f",
+        urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/test-data-v4/0.1/test-data-v4.tar.gz"],
     )
 
     http_archive(
@@ -46,17 +41,6 @@ def register_repositories():
         urls = [
             "https://github.com/cgrindel/bazel-starlib/releases/download/v0.21.0/bazel-starlib.v0.21.0.tar.gz",
         ],
-    )
-
-    http_archive(
-        name = "rules_oci",
-        patch_args = ["-p1"],
-        patches = [
-            "@ncore_repo//:3rdparty/oci/oci.patch",
-        ],
-        sha256 = "1bd16e455278d523f01326e0c3964cd64d7840a7e99cdd6e2617e59f698f3504",
-        strip_prefix = "rules_oci-2.2.0",
-        url = "https://github.com/bazel-contrib/rules_oci/releases/download/v2.2.0/rules_oci-v2.2.0.tar.gz",
     )
 
     http_archive(

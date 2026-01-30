@@ -20,17 +20,28 @@ import tqdm
 
 from scipy.spatial.transform import Rotation as R
 
-from ncore.impl.common.common import unpack_optional
 from ncore.impl.common.transformations import MotionCompensator, se3_inverse, transform_point_cloud
-from ncore.impl.common.visualization import plot_points_on_image
+from ncore.impl.common.util import unpack_optional
 from ncore.impl.data import types
-from ncore.impl.data.data3 import ShardDataLoader
-from ncore.impl.data.data4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
-from ncore.impl.data.data4.components import SequenceComponentGroupsReader
 from ncore.impl.data.util import padded_index_string
+from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
+from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 from ncore.impl.sensors.camera import CameraModel
 from ncore.impl.sensors.lidar import StructuredLidarModel
-from scripts.util import NPArrayParamType
+
+
+try:
+    from scripts.util import NPArrayParamType
+    from scripts.visualization import plot_points_on_image
+except ImportError:
+    # if included externally as 'ncore_repo' use fully-evaluated path
+    try:
+        from ncore_repo.scripts.util import NPArrayParamType  # type: ignore
+        from ncore_repo.scripts.visualization import plot_points_on_image  # type: ignore
+    except ImportError:
+        # fall back to 'external'-prefixed 'ncore_repo' reference if required
+        from external.ncore_repo.scripts.util import NPArrayParamType  # type: ignore
+        from external.ncore_repo.scripts.visualization import plot_points_on_image  # type: ignore
 
 
 logging.basicConfig(level=logging.INFO)
@@ -147,28 +158,6 @@ class CLIBaseParams:
 @click.pass_context
 def cli(ctx, **kwargs) -> None:
     ctx.obj = CLIBaseParams(**kwargs)
-
-
-@cli.command()
-@click.option(
-    "--shard-file-pattern", type=str, help="Data shard pattern to load (supports range expansion)", required=True
-)
-@click.pass_context
-def v3(
-    ctx,
-    shard_file_pattern: str,
-) -> None:
-    params: CLIBaseParams = ctx.obj
-
-    shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
-    loader = ShardDataLoader(shards, open_consolidated=params.open_consolidated)
-
-    run(
-        params,
-        SequenceLoaderV3(
-            loader,
-        ),
-    )
 
 
 @cli.command()

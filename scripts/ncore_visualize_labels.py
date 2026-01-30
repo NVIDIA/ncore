@@ -10,8 +10,8 @@
 """NCore label visualization tool.
 
 This command-line tool provides interactive 3D visualization of labeled data (cuboids/bounding boxes)
-overlaid on sensor point clouds for both V3 and V4 NCore data formats. It supports:
-    - Camera and lidar sensor visualization
+overlaid on sensor point clouds for NCore data formats. It supports:
+    - Lidar sensor visualization
     - 3D bounding box rendering with track IDs and class labels
     - Motion-compensated and non-motion-compensated point clouds
     - Frame-by-frame navigation
@@ -26,11 +26,20 @@ import click
 import pandas as pd
 import tqdm
 
-from ncore.impl.common.visualization import LabelVisualizer
-from ncore.impl.data.data3 import FrameLabel3, ShardDataLoader
-from ncore.impl.data.data4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
-from ncore.impl.data.data4.components import SequenceComponentGroupsReader
-from ncore.impl.data.data4.types import CuboidTrackObservation
+from ncore.impl.data.types import CuboidTrackObservation
+from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
+from ncore.impl.data.v4.components import SequenceComponentGroupsReader
+
+
+try:
+    from scripts.visualization import LabelVisualizer
+except ImportError:
+    # if included externally as 'ncore_repo' use fully-evaluated path
+    try:
+        from ncore_repo.scripts.visualization import LabelVisualizer  # type: ignore
+    except ImportError:
+        # fall back to 'external'-prefixed 'ncore_repo' reference if required
+        from external.ncore_repo.scripts.visualization import LabelVisualizer  # type: ignore
 
 
 @dataclass(kw_only=True, slots=True, frozen=True)
@@ -84,30 +93,8 @@ class CLIBaseParams:
 )
 @click.pass_context
 def cli(ctx, **kwargs) -> None:
-    """Visualize labels from NCore V3 (shard-based) sequence data."""
+    """Visualize labels from NCore sequence data."""
     ctx.obj = CLIBaseParams(**kwargs)
-
-
-@cli.command()
-@click.option(
-    "--shard-file-pattern", type=str, help="Data shard pattern to load (supports range expansion)", required=True
-)
-@click.pass_context
-def v3(
-    ctx,
-    shard_file_pattern: str,
-) -> None:
-    params: CLIBaseParams = ctx.obj
-
-    shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
-    loader = ShardDataLoader(shards)
-
-    run(
-        params,
-        SequenceLoaderV3(
-            loader,
-        ),
-    )
 
 
 @cli.command()
@@ -165,15 +152,15 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
 
     Args:
         params: CLI parameters specifying sensor, frame range, and visualization options
-        loader: Sequence loader (V3 or V4) providing unified data access
+        loader: Sequence loader providing unified data access
     """
     sensor = loader.get_lidar_sensor(params.sensor_id)
     pose_graph = loader.pose_graph
 
     def cuboid_track_observation_to_frame(
         frame_timestamp_end_us: int, cuboid_track_observation: CuboidTrackObservation
-    ) -> FrameLabel3:
-        """Converts an observation to a FrameLabel3 instance."""
+    ) -> LabelVisualizer.BBox3Label:
+        """Converts an observation to a BBox3Label instance."""
 
         # Transform observation from reference frame at observation time to sensor frame at frame end time
         cuboid_track_observation = cuboid_track_observation.transform(
@@ -182,16 +169,12 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
             pose_graph=pose_graph,
         )
 
-        return FrameLabel3(
-            label_id=f"{cuboid_track_observation.track_id}_{cuboid_track_observation.timestamp_us}",
+        return LabelVisualizer.BBox3Label(
             track_id=cuboid_track_observation.track_id,
             label_class=cuboid_track_observation.class_id,
             bbox3=cuboid_track_observation.bbox3,
-            global_speed=float("nan"),
             timestamp_us=cuboid_track_observation.timestamp_us,
             confidence=None,
-            source=cuboid_track_observation.source,
-            source_version=cuboid_track_observation.source_version,
         )
 
     # Load track observations and load into dataframe for easy querying
@@ -227,7 +210,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
 
         viz.add_pc(frame_index, xyz_m_end, intensity, timestamp_us, dynamic_flag, semantic_class)
 
-        # Query cuboid observations for this frame and convert to FrameLabel3
+        # Query cuboid observations for this frame and convert to BBox3Label
         frame_timestamps_us = sensor.frames_timestamps_us[frame_index]
         frame_cuboid_obs = cuboid_df.loc[
             (cuboid_df["timestamp_us"] >= frame_timestamps_us[0])

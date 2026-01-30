@@ -10,8 +10,8 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "@ncore_repo//ncore/data:pylib",
-        "@ncore_repo//ncore/data/v3:pylib",
         "@ncore_repo//ncore/data/v4:pylib",
+        "@ncore_repo//ncore/data_converter:pylib",
         "@ncore_repo//ncore/sensors:pylib",
     ],
 )
@@ -42,9 +42,10 @@ py_wheel(
         "cbor2",
         "scipy",
         "torch",
+        "typing_extensions",
         "universal_pathlib",
     ],
-    version = "0.17.7",
+    version = "0.18.0",
     deps = [
         ":ncore_pkg",
     ],

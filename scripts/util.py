@@ -21,8 +21,6 @@ import numpy as np
 if TYPE_CHECKING:
     import numpy.typing as npt  # type: ignore[import-not-found]
 
-from ncore.impl.data.data3 import PointCloudSensor
-
 
 class TupleType(click.ParamType):
     name = "tuple"
@@ -55,19 +53,6 @@ class NPArrayParamType(click.ParamType):
             return np.fromstring(value.replace("[", "").replace("]", ""), sep=",", dtype=self.dtype).reshape(self.dim)
         except ValueError:
             self.fail(f"{value!r} is not a valid numpy array", param, ctx)
-
-
-def get_dynamic_flag(sensor: PointCloudSensor, frame_index: int) -> Optional[np.ndarray]:
-    """Provides fall-back-based access to the deprecated 'dynamic_flag' point-cloud property"""
-
-    if sensor.has_frame_data(frame_index, "dynamic_flag"):
-        # Deprecated 'dynamic_flag' frame property
-        return sensor.get_frame_data(frame_index, "dynamic_flag")
-    elif sensor.has_frame_generic_data(frame_index, "dynamic_flag"):
-        # Generic 'dynamic_flag' frame property property fallback
-        return sensor.get_frame_generic_data(frame_index, "dynamic_flag")
-
-    return None
 
 
 DEBUGPY_EXCEPTION_STR: Final = "Address already in use"

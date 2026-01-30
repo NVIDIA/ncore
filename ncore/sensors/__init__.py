@@ -8,7 +8,7 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
-"""Package exposing methods related to NCORE's sensor types"""
+"""Package exposing methods related to NCore's sensor types"""
 
 from ncore.impl.sensors.camera import (
     BivariateWindshieldModel,

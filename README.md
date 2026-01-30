@@ -1,6 +1,6 @@
 <!-- Copyright (c) 2024 NVIDIA CORPORATION.  All rights reserved. -->
 
-# NCORE
+# NCore
 
 NOTE: This codebase is under active development and the APIs may thus still change. If you build upon this repository, consider forking it to prevent such issues.
 

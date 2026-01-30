@@ -1,0 +1,16 @@
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+
+load("@ncore_pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_library")
+
+package(default_visibility = ["//:code_package_group"])
+
+py_library(
+    name = "pylib_base",
+    srcs = [
+        "base.py",
+    ],
+    deps = [
+        requirement("universal_pathlib"),
+    ],
+)

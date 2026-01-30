@@ -21,18 +21,12 @@ build --incompatible_allow_tags_propagation
 # Check the ctime of input files of an action before uploading it to a remote cache (there may be cases where the Linux kernel delays writing of files, which could cause false positives)
 build --guard_against_concurrent_changes
 
-#? --config=low_memory            Low-memory builds (e.g., for memory-constrained CI machines)
-build:low_memory --@//bazel/flags:low_memory=True
-
 # Show outputs of failing tests by default
 test --test_output=errors
 
 # Mypy aspect registration + enable by default
 build --aspects //bazel/typing:aspects.bzl%mypy_aspect
 build --output_groups=+mypy
-
-# Require OAuth2 support in rules_oci for some docker image repositories
-common --repo_env=OCI_ENABLE_OAUTH2_SUPPORT=1
 
 # https://docs.bazel.build/versions/main/best-practices.html#using-the-bazelrc-file
 try-import %workspace%/.bazelrc.user

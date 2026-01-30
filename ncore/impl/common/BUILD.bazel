@@ -10,14 +10,11 @@ load(
 package(default_visibility = ["//:code_package_group"])
 
 py_library(
-    name = "pylib_common",
+    name = "pylib_util",
     srcs = [
-        "common.py",
+        "util.py",
     ],
     deps = [
-        requirement("numpy"),
-        requirement("scipy"),
-        requirement("pillow"),
         requirement("universal_pathlib"),
     ],
 )
@@ -28,27 +25,9 @@ py_library(
         "transformations.py",
     ],
     deps = [
-        ":pylib_common",
+        ":pylib_util",
         requirement("numpy"),
         requirement("scipy"),
-    ],
-)
-
-py_library(
-    name = "pylib_visualization",
-    srcs = [
-        "visualization.py",
-    ],
-    deps = [
-        requirement("numpy"),
-        requirement("scipy"),
-        requirement("tqdm"),
-        requirement("matplotlib"),
-        requirement("open3d"),
-        requirement("tensorflow"),  # required by open3d.ml.tf
-        requirement("multimethod"),
-        "//ncore/impl/data:pylib_data",
-        "//ncore/impl/data:pylib_data3",
     ],
 )
 
@@ -56,16 +35,14 @@ pytest_test(
     name = "test",
     srcs = glob(["*test.py"]),
     data = [
-        "@test-data-v3-shards//:test-shards",
+        "@test-data-v4//:dataset0",
     ],
     deps = [
-        requirement("numpy"),
-        requirement("scipy"),
-        requirement("parameterized"),
-        ":pylib_common",
         ":pylib_transformations",
-        "//ncore/impl/data:pylib_data3",
         "//ncore/impl/data:pylib_types",
+        "//ncore/impl/data/v4:pylib_compat",
+        "//ncore/impl/data/v4:pylib_components",
+        requirement("numpy"),
         "@rules_python//python/runfiles",
     ],
 )

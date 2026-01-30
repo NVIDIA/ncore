@@ -54,39 +54,17 @@ bazel_dep(name = "rules_multitool", version = "1.0.0")
 multitool = use_extension("@rules_multitool//multitool:extension.bzl", "multitool")
 use_repo(multitool, "multitool")
 
-## rules_oci
-bazel_dep(name = "rules_oci", version = "2.2.0")
-single_version_override(
-    module_name = "rules_oci",
-    patch_strip = 1,
-    patches = ["@@//:3rdparty/oci/oci.patch"],
-    version = "2.2.0",
-)
-
-oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
-oci.pull(
-    name = "ncore_dev_image",
-    digest = "sha256:a7ef63cd668559421ce7ceb70cc2d6c454c761cd4fa309f8e96db1be2968c69a",
-    image = "gitlab-master.nvidia.com:5005/nrs/ncore",
-)
-use_repo(oci, "ncore_dev_image")
-
 ## external / test data
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-
-http_archive(
-    name = "poisson_recon",
-    build_file = "//3rdparty/poisson_recon:poisson_recon.BUILD",
-    patch_args = ["-p1"],
-    patches = ["//3rdparty/poisson_recon:poisson_recon.patch"],
-    sha256 = "7fa4176d913a632afcde38308f4e41bac67ffdc6c6e88f73f434c8083e3d780e",
-    strip_prefix = "PoissonRecon",
-    # source-repo: https://github.com/mkazhdan/PoissonRecon, commit f1c71fe
-    urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/repo-PoissonRecon/f1c71fe/repo-PoissonRecon-f1c71fe.tar.gz"],
-)
 
 http_archive(
     name = "test-data-v3-shards",
     sha256 = "cdb766ba178548f9307b1458bb408f4f92ba1557dd34bb30dac2a303749ab783",
     urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/test-data-v3-shards/0.7/test-data-v3-shards.tar.gz"],
+)
+
+http_archive(
+    name = "test-data-v4",
+    sha256 = "4be8c5e6409a772dac27389612f224d5c214f89d46a545bd87cd524212a7889f",
+    urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/test-data-v4/0.1/test-data-v4.tar.gz"],
 )

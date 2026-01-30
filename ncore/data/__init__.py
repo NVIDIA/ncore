@@ -8,12 +8,24 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 
-"""Package exposing methods related to NCORE's data types"""
+"""Package exposing methods related to NCore's basic data types and abstract APIs"""
 
+from ncore.impl.data.compat import (
+    CameraSensorProtocol,
+    LidarSensorProtocol,
+    RadarSensorProtocol,
+    SensorProtocol,
+    SequenceLoaderProtocol,
+)
 from ncore.impl.data.types import (
     BBox3,
     BivariateWindshieldModelParameters,
-    CameraModelParameters,
+    ConcreteCameraModelParametersUnion,
+    ConcreteExternalDistortionParametersUnion,
+    ConcreteLidarModelParametersUnion,
+    CuboidTrackObservation,
+    EncodedImageData,
+    EncodedImageHandle,
     FrameTimepoint,
     FThetaCameraModelParameters,
     LabelSource,
@@ -23,22 +35,30 @@ from ncore.impl.data.types import (
     RowOffsetStructuredSpinningLidarModelParameters,
     ShutterType,
 )
-from ncore.impl.data.util import padded_index_string
 
 
 __all__ = [
-    # generic types
+    # regular data types
+    "LabelSource",
     "FrameTimepoint",
-    "CameraModelParameters",
     "ShutterType",
+    "CuboidTrackObservation",
+    "BBox3",
+    "ReferencePolynomial",
+    "BivariateWindshieldModelParameters",
     "FThetaCameraModelParameters",
     "OpenCVPinholeCameraModelParameters",
     "OpenCVFisheyeCameraModelParameters",
-    "ReferencePolynomial",
-    "BivariateWindshieldModelParameters",
     "RowOffsetStructuredSpinningLidarModelParameters",
-    "BBox3",
-    "LabelSource",
-    # util
-    "padded_index_string",
+    "EncodedImageData",
+    "EncodedImageHandle",
+    "ConcreteCameraModelParametersUnion",
+    "ConcreteExternalDistortionParametersUnion",
+    "ConcreteLidarModelParametersUnion",
+    # compat protocols
+    "SequenceLoaderProtocol",
+    "SensorProtocol",
+    "CameraSensorProtocol",
+    "LidarSensorProtocol",
+    "RadarSensorProtocol",
 ]

@@ -1,10 +1,11 @@
 .. Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-Welcome to the NCore-SDK Documentation!
+Welcome to the NCore Documentation!
 
-The NCore-SDK provides data representations, APIs, and tools to support data-driven neural reconstructions with a focus on AV data.
+NCore provides data representations, APIs, and tools to support data-driven
+neural reconstructions with a focus on robotics / AV data.
 
-The SDK is developed within the Nvidia Toronto AI Lab.
+The project is developed within the Nvidia SIL Lab.
 
 ================================
 
@@ -28,7 +29,6 @@ The SDK is developed within the Nvidia Toronto AI Lab.
    :caption: Tools / Applications
 
    tools/data_visualization
-   tools/data_conversion
 
 .. toctree::
    :maxdepth: 1
@@ -37,7 +37,6 @@ The SDK is developed within the Nvidia Toronto AI Lab.
 
    tutorial/data_loading
    tutorial/data_sanity_check
-   tutorial/lidar_model_estimation
 
 .. note:: 
    This project is under active development.

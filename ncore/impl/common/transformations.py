@@ -9,18 +9,169 @@
 
 from __future__ import annotations
 
+import sys
+
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 
+from scipy import interpolate, spatial
 from scipy.spatial.transform import Rotation as R
 
-from ncore.impl.common.common import PoseInterpolator, unpack_optional
+from ncore.impl.common.util import unpack_optional
 
 
 if TYPE_CHECKING:
     import numpy.typing as npt  # type: ignore[import-not-found]  # noqa: F401
+
+
+def time_bounds(timestamps_us: List[int], seek_sec: Optional[float], duration_sec: Optional[float]) -> tuple[int, int]:
+    """
+    Determine start and end timestamps given optional seek and duration times
+
+    Args:
+        timestamps_us : list of all available timestamps (in microseconds)
+        seek_sec: Optional: if non-None, the time (in seconds)  to skip starting from the first timestamp
+        duration_sec: Optional: if non-None, the total time (in seconds) between the start and end time bounds
+
+    Return:
+        start_timestamp_us: first valid timestamp in restricted bounds (in microseconds)
+        end_timestamp_us: last valid timestamp in restricted bounds (in microseconds)
+    """
+
+    start_timestamp_us = int(timestamps_us[0])
+    end_timestamp_us = int(timestamps_us[-1])
+
+    if seek_sec is not None:
+        assert seek_sec >= 0.0, "Require positive seek time"
+        start_timestamp_us += int(seek_sec * 1e6)
+
+    if duration_sec is not None:
+        assert duration_sec > 0.0, "Require positive duration time"
+        end_timestamp_us = start_timestamp_us + int(duration_sec * 1e6)
+
+    assert start_timestamp_us < end_timestamp_us, "Arguments lead to invalid time bounds"
+
+    return start_timestamp_us, end_timestamp_us
+
+
+@dataclass(**({"slots": True, "frozen": True} if sys.version_info >= (3, 10) else {"frozen": True}))
+class HalfClosedInterval:
+    """Represents a half closed interval [start, stop) of integers"""
+
+    start: int
+    stop: int
+
+    @staticmethod
+    def from_start_end(start: int, end: int) -> HalfClosedInterval:
+        """Creates a half-closed interval from start and end (inclusive)"""
+        return HalfClosedInterval(start, end + 1)
+
+    def __post_init__(self) -> None:
+        """Makes sure interval is well-defined"""
+        assert isinstance(self.start, int)
+        assert isinstance(self.stop, int)
+        assert self.start <= self.stop
+
+    def __contains__(self, item: Union[int, np.integer, HalfClosedInterval]) -> bool:
+        """Determines if an item / other interval is contained in the interval"""
+        if isinstance(item, (int, np.integer)):
+            return bool(self.start <= item and item < self.stop)
+        elif isinstance(item, HalfClosedInterval):
+            return (self.start <= item.start) and (item.stop <= self.stop)
+        else:
+            raise TypeError(f"Expected int, np.integer, or HalfClosedInterval, got {type(item).__name__}")
+
+    def __len__(self) -> int:
+        """Returns the number of elements in the interval"""
+        return self.stop - self.start
+
+    def intersection(self, other: HalfClosedInterval) -> Optional[HalfClosedInterval]:
+        """Computes the intersection of two half-closed interval"""
+        if other.start >= self.stop or other.stop <= self.start:
+            return None
+
+        return HalfClosedInterval(max(self.start, other.start), min(self.stop, other.stop))
+
+    def overlaps(self, other: HalfClosedInterval) -> bool:
+        """Checks if the interval has a non-zero overlap with an other closed interval"""
+        return self.intersection(other) is not None
+
+    def cover_range(self, sorted_samples: np.ndarray) -> range:
+        """Given a set of *sorted* samples (not validated), return the corresponding range for samples
+        that are within the interval"""
+        if (
+            not len(sorted_samples)
+            or len(self) == 0
+            or not self.intersection(
+                # generate closed integer interval [floor(sample[0]), ceil(samples[-1])+1] guaranteed to containing all samples[i]
+                HalfClosedInterval(int(np.floor(sorted_samples[0])), int(np.ceil(sorted_samples[-1])) + 1)
+            )
+        ):
+            # empty range for empty samples, empty interval, or missing intersection
+            return range(0)
+
+        # non-empty range case
+        cover_range_start = np.argmax(self.start <= sorted_samples).item()
+        cover_range_stop = (
+            np.argmin(sorted_samples < self.stop).item() if self.stop < sorted_samples[-1] else len(sorted_samples)
+        )  # full range of frames
+
+        return range(cover_range_start, cover_range_stop)
+
+
+class PoseInterpolator:
+    """
+    Interpolates the poses to the desired time stamps. The translation component is interpolated linearly,
+    while spherical linear interpolation (SLERP) is used for the rotations. https://en.wikipedia.org/wiki/Slerp
+
+    Args:
+        poses (np.array): poses at given timestamps in a se3 representation [n,4,4]
+        timestamps (np.array): timestamps of the known poses [n]
+        ts_target (np.array): timestamps for which the poses will be interpolated [m]
+    Out:
+        (np.array): interpolated poses in se3 representation [m,4,4]
+    """
+
+    @property
+    def poses(self) -> np.ndarray:
+        """Returns the original poses used for interpolation"""
+        return self._poses
+
+    @property
+    def timestamps(self) -> np.ndarray:
+        """Returns the timestamps corresponding to the original poses used for interpolation"""
+        return self._timestamps
+
+    def __init__(self, poses, timestamps):
+        self._poses = poses
+        self._timestamps = timestamps
+
+        self.slerp = spatial.transform.Slerp(timestamps, R.from_matrix(poses[:, :3, :3]))
+        self.f_t = interpolate.interp1d(timestamps, poses[:, 0:3, 3], axis=0)
+
+        self.last_row = np.array([0, 0, 0, 1], dtype=np.float32).reshape(1, 1, -1)
+
+    def in_range(self, ts) -> bool:
+        """Returns true if all provided timestamps (scalar or array-like) are within the interpolation range"""
+        return (
+            np.logical_and(self._timestamps[0] <= (ts_array := np.asarray(ts)), ts_array <= self._timestamps[-1])
+            .all()
+            .item()
+        )
+
+    def interpolate_to_timestamps(self, ts_target, dtype: npt.DTypeLike = np.float32) -> np.ndarray:
+        t_interp = self.f_t(ts_target).reshape(-1, 3, 1).astype(dtype)
+        R_interp = self.slerp(ts_target).as_matrix().reshape(-1, 3, 3).astype(dtype)
+
+        return np.concatenate(
+            (
+                np.concatenate([R_interp, t_interp], axis=-1),
+                np.tile(self.last_row.astype(dtype=dtype), (R_interp.shape[0], 1, 1)),
+            ),
+            axis=1,
+        )
 
 
 def so3_trans_2_se3(so3, trans):
@@ -53,115 +204,27 @@ def so3_trans_2_se3(so3, trans):
     return T
 
 
-def axis_angle_trans_2_se3(rot_axis, rot_angle, trans, degrees=True):
-    """Converts the axis/angle rotation and translation to a se3 transformation matrix
-    Args:
-        translation (np.array): translation vectors (x,y,z) [n,3]
-        axis (np.array): the rotation axes [n,3]
-        angle float/double: rotation angles either in degrees or radians [n,1]
-        degrees bool: True if angle is given in degrees else False
-
-    Out:
-        (np array): transformations in a se3 matrix representation [n,4,4]
-    """
-
-    return so3_trans_2_se3(axis_angle_2_so3(rot_axis, rot_angle, degrees), trans)
-
-
-def euler_trans_2_se3(euler_angles, trans, degrees=True, seq="xyz"):
-    """Create a 4x4 rigid transformation matrix given euler angles and translation.
+def se3_inverse(T: np.ndarray, unbatch: bool = True) -> np.ndarray:
+    """Computes the inverse of multiple rigid transformations
 
     Args:
-        euler_angles (np.array): euler angles [n,3]
-        trans (Sequence[float]): x, y, z translation.
-        seq string: sequence in which the euler angles are given
+        Ts (np.ndarray): se3 transformation matrices to invert [N, 4, 4] or [4, 4]
+        unbatch (bool): if the single matrix should be unbatched (first dimension removed) or not
 
     Returns:
-        np.ndarray: the constructed transformation matrix.
+        (np array): Inverse transformations [N, 4, 4] or [4, 4]
     """
 
-    return so3_trans_2_se3(euler_2_so3(euler_angles, degrees), trans)
+    # batch dimensions unconditionally
+    T = T.reshape((-1, 4, 4))
+    ret = np.stack([np.eye(4, dtype=T.dtype)] * len(T), axis=0)
+    ret[:, :3, :3] = (Rt := T[:, :3, :3].transpose(0, 2, 1))
+    ret[:, :3, 3:] = np.negative(Rt @ T[:, :3, 3:])
 
+    if unbatch:  # unbatch dimensions conditionally
+        ret = ret.squeeze()
 
-def axis_angle_2_so3(axis, angle, degrees=True):
-    """Converts the axis angle representation of the so3 rotation matrix
-    Args:
-        axis (np.array): the rotation axes [n,3]
-        angle float/double: rotation angles either in degrees or radians [n]
-        degrees bool: True if angle is given in degrees else False
-
-    Out:
-        (np array): rotations given so3 matrix representation [n,3,3]
-    """
-    # Treat angle (radians) below this as 0.
-    cutoff_angle = 1e-9 if not degrees else np.rad2deg(1e-9)
-    angle[angle < cutoff_angle] = 0.0
-
-    # Scale the axis to have the norm representing the angle
-    axis_angle = (angle / np.linalg.norm(axis, axis=1, keepdims=True)) * axis
-
-    return R.from_rotvec(axis_angle, degrees=degrees).as_matrix()
-
-
-def euler_2_so3(euler_angles, degrees=True, seq="xyz"):
-    """Converts the euler angles representation to the so3 rotation matrix
-    Args:
-        euler_angles (np.array): euler angles [n,3]
-        degrees bool: True if angle is given in degrees else False
-        seq string: sequence in which the euler angles are given
-
-    Out:
-        (np array): rotations given so3 matrix representation [n,3,3]
-    """
-
-    return R.from_euler(seq=seq, angles=euler_angles, degrees=degrees).as_matrix().astype(np.float32)
-
-
-def axis_angle_2_quaternion(axis, angle, degrees=True):
-    """Converts the axis angle representation of the rotation to a unit quaternion
-    Args:
-        axis (np.array): the rotation axis [n,3]
-        angle float/double: rotation angle either in degrees or radians [n,1]
-        degrees bool: True if angle is given in degrees else False
-
-    Out:
-        (np array): rotation given in unit quaternion [n,4]
-    """
-    return axis_angle_2_so3(axis, angle, degrees).as_quat()
-
-
-def so3_2_axis_angle(so3, degrees=True):
-    """Converts the so3 representation to axis_angle
-    Args:
-        so3 (np.array): the rotation matrices [n,3,3]
-        degrees bool: True if angle should be given in degrees
-
-    Out:
-        axis (np array): the rotation axis [n,3]
-        angle (np array): the rotation angles, either in degrees (if degrees=True) or radians [n,]
-    """
-    rot_vec = R.from_matrix(so3).as_rotvec(degrees=degrees)
-
-    angle = np.linalg.norm(rot_vec, axis=-1, keepdims=True)
-    axis = rot_vec / angle
-
-    return axis, angle
-
-
-def euclidean_2_spherical_coords(coords):
-    r = np.linalg.norm(coords, axis=-1, keepdims=True)
-    el = np.arctan(coords[:, 2] / np.linalg.norm(coords[:, :2], axis=-1)).reshape(-1, 1)
-    az = np.arctan2(coords[:, 1], coords[:, 0]).reshape(-1, 1)
-
-    return np.concatenate((r, az, el), axis=-1)
-
-
-def spherical_2_direction(spherical_coords):
-    dx = np.cos(spherical_coords[:, 2]) * np.cos(spherical_coords[:, 1])
-    dy = np.cos(spherical_coords[:, 2]) * np.sin(spherical_coords[:, 1])
-    dz = np.sin(spherical_coords[:, 2])
-
-    return np.concatenate((dx[:, None], dy[:, None], dz[:, None]), axis=-1)
+    return ret
 
 
 def transform_point_cloud(pc, T):
@@ -275,265 +338,6 @@ def is_within_3d_bboxes(pc: np.ndarray, bboxes: np.ndarray) -> np.ndarray:
     points_in_bboxes = np.prod(points_in_bboxes, axis=-1).astype(bool)
 
     return points_in_bboxes
-
-
-def se3_inverse(T: np.ndarray, unbatch: bool = True) -> np.ndarray:
-    """Computes the inverse of multiple rigid transformations
-
-    Args:
-        Ts (np.ndarray): se3 transformation matrices to invert [N, 4, 4] or [4, 4]
-        unbatch (bool): if the single matrix should be unbatched (first dimension removed) or not
-
-    Returns:
-        (np array): Inverse transformations [N, 4, 4] or [4, 4]
-    """
-
-    # batch dimensions unconditionally
-    T = T.reshape((-1, 4, 4))
-    ret = np.stack([np.eye(4, dtype=T.dtype)] * len(T), axis=0)
-    ret[:, :3, :3] = (Rt := T[:, :3, :3].transpose(0, 2, 1))
-    ret[:, :3, 3:] = np.negative(Rt @ T[:, :3, 3:])
-
-    if unbatch:  # unbatch dimensions conditionally
-        ret = ret.squeeze()
-
-    return ret
-
-
-def local_ENU_2_ECEF_orientation(theta, phi):
-    """Computes the rotation matrix between the world_pose and ECEF coordinate system
-    Args:
-        theta (np.array): theta coordinates in radians [n,1]
-        phi (np.array): phi coordinates in radians [n,1]
-    Out:
-        (np.array): rotation from world pose to ECEF in so3 representation [n,3,3]
-    """
-    z_dir = np.concatenate(
-        [(np.sin(theta) * np.cos(phi))[:, None], (np.sin(theta) * np.sin(phi))[:, None], (np.cos(theta))[:, None]],
-        axis=1,
-    )
-    z_dir = z_dir / np.linalg.norm(z_dir, axis=-1, keepdims=True)
-
-    y_dir = np.concatenate(
-        [-(np.cos(theta) * np.cos(phi))[:, None], -(np.cos(theta) * np.sin(phi))[:, None], (np.sin(theta))[:, None]],
-        axis=1,
-    )
-    y_dir = y_dir / np.linalg.norm(y_dir, axis=-1, keepdims=True)
-
-    x_dir = np.cross(y_dir, z_dir)
-
-    return np.concatenate([x_dir[:, :, None], y_dir[:, :, None], z_dir[:, :, None]], axis=-1)
-
-
-def lat_lng_alt_2_ECEF_elipsoidal(lat_lng_alt, a, b):
-    """Converts the GPS (lat,long, alt) coordinates to the ECEF ones based on the ellipsoidal earth model
-    Args:
-        lat_lng_alt (np.array): latitude, longitude and altitude coordinate (in degrees and meters) [n,3]
-        a (float/double): Semi-major axis of the ellipsoid
-        b (float/double): Semi-minor axis of the ellipsoid
-    Out:
-        (np.array): ECEF coordinates[n,3]
-    """
-
-    phi = np.deg2rad(lat_lng_alt[:, 0])
-    gamma = np.deg2rad(lat_lng_alt[:, 1])
-
-    cos_phi = np.cos(phi)
-    sin_phi = np.sin(phi)
-    cos_gamma = np.cos(gamma)
-    sin_gamma = np.sin(gamma)
-    e_square = (a * a - b * b) / (a * a)
-
-    N = a / np.sqrt(1 - e_square * sin_phi * sin_phi)
-
-    x = (N + lat_lng_alt[:, 2]) * cos_phi * cos_gamma
-    y = (N + lat_lng_alt[:, 2]) * cos_phi * sin_gamma
-    z = (N * (b * b) / (a * a) + lat_lng_alt[:, 2]) * sin_phi
-
-    return np.concatenate([x[:, None], y[:, None], z[:, None]], axis=1)
-
-
-def translation_2_lat_lng_alt_spherical(translation, earth_radius):
-    """Computes the translation in the ECEF to latitude, longitude, altitude based on the spherical earth model
-    Args:
-        translation (np.array): translation in the ECEF coordinate frame (in meters) [n,3]
-        earth_radius (float/double): earth radius
-    Out:
-        (np.array): latitude, longitude and altitude [n,3]
-    """
-    altitude = np.linalg.norm(translation, axis=-1) - earth_radius
-    latitude = np.rad2deg(90 - np.arccos(translation[:, 2] / np.linalg.norm(translation, axis=-1, keepdims=True)))
-    longitude = np.rad2deg(np.arctan2(translation[:, 1], translation[:, 0]))
-
-    return np.concatenate([latitude[:, None], longitude[:, None], altitude[:, None]], axis=1)
-
-
-def translation_2_lat_lng_alt_ellipsoidal(translation, a, f):
-    """Computes the translation in the ECEF to latitude, longitude, altitude based on the ellipsoidal earth model
-       Args:
-           translation (np.array): translation in the ECEF coordinate frame (in meters) [n,3]
-           a (float/double): Semi-major axis of the ellipsoid
-           f (float/double): flattening factor of the earth
-    radius
-       Out:
-           (np.array): latitude, longitude and altitude [n,3]
-    """
-
-    # Compute support parameters
-    f0 = (1 - f) * (1 - f)
-    f1 = 1 - f0
-    f2 = 1 / f0 - 1
-
-    z_div_1_f = translation[:, 2] / (1 - f)
-    x2y2 = np.square(translation[:, 0]) + np.square(translation[:, 1])
-
-    x2y2z2 = x2y2 + z_div_1_f * z_div_1_f
-    x2y2z2_pow_3_2 = x2y2z2 * np.sqrt(x2y2z2)
-
-    gamma = (
-        (x2y2z2_pow_3_2 + a * f2 * z_div_1_f * z_div_1_f)
-        / (x2y2z2_pow_3_2 - a * f1 * x2y2)
-        * translation[:, 2]
-        / np.sqrt(x2y2)
-    )
-
-    longitude = np.rad2deg(np.arctan2(translation[:, 1], translation[:, 0]))
-    latitude = np.rad2deg(np.arctan(gamma))
-    altitude = np.sqrt(1 + np.square(gamma)) * (np.sqrt(x2y2) - a / np.sqrt(1 + f0 * np.square(gamma)))
-
-    return np.concatenate([latitude[:, None], longitude[:, None], altitude[:, None]], axis=1)
-
-
-def lat_lng_alt_2_ecef(lat_lng_alt, orientation_axis, orientation_angle, earth_model="WGS84"):
-    """Computes the transformation from the world pose coordinate system to the earth centered earth fixed (ECEF) one
-    Args:
-        lat_lng_alt (np.array): latitude, longitude and altitude coordinate (in degrees and meters) [n,3]
-        orientation_axis (np.array): orientation in the local ENU coordinate system [n,3]
-        orientation_angle (np.array): orientation angle of the local ENU coordinate system in degrees [n,1]
-        earth_model (string): earth model used for conversion (spheric will be unaccurate when maps are large)
-    Out:
-        trans (np.array): transformation parameters from world pose to ECEF coordinate system in se3 form (n, 4, 4)
-    """
-    n = lat_lng_alt.shape[0]
-    trans = np.tile(np.eye(4).reshape(1, 4, 4), [n, 1, 1])
-
-    theta = np.deg2rad(90.0 - lat_lng_alt[:, 0])
-    phi = np.deg2rad(lat_lng_alt[:, 1])
-
-    R_enu_ecef = local_ENU_2_ECEF_orientation(theta, phi)
-
-    if earth_model == "WGS84":
-        a = 6378137.0
-        flattening = 1.0 / 298.257223563
-        b = a * (1.0 - flattening)
-        translation = lat_lng_alt_2_ECEF_elipsoidal(lat_lng_alt, a, b)
-
-    elif earth_model == "sphere":
-        earth_radius = 6378137.0  # Earth radius in meters
-        z_dir = np.concatenate(
-            [(np.sin(theta) * np.cos(phi))[:, None], (np.sin(theta) * np.sin(phi))[:, None], (np.cos(theta))[:, None]],
-            axis=1,
-        )
-
-        translation = (earth_radius + lat_lng_alt[:, -1])[:, None] * z_dir
-
-    else:
-        raise ValueError("Selected ellipsoid not implemented!")
-
-    world_pose_orientation = axis_angle_2_so3(orientation_axis, orientation_angle)
-
-    trans[:, :3, :3] = R_enu_ecef @ world_pose_orientation
-    trans[:, :3, 3] = translation
-
-    return trans
-
-
-def ecef_2_lat_lng_alt(trans, earth_model="WGS84"):
-    """Converts the transformation from the earth centered earth fixed (ECEF) coordinate frame to the world pose
-    Args:
-        trans (np.array): transformation parameters in ECEF [n,4,4]
-        earth_model (string): earth model used for conversion (spheric will be unaccurate when maps are large)
-    Out:
-        lat_lng_alt (np.array): latitude, longitude and altitude coordinate (in degrees and meters) [n,3]
-        orientation_axis (np.array): orientation in the local ENU coordinate system [n,3]
-        orientation_angle (np.array): orientation angle of the local ENU coordinate system in degrees [n,1]
-    """
-
-    translation = trans[:, :3, 3]
-    rotation = trans[:, :3, :3]
-
-    if earth_model == "WGS84":
-        a = 6378137.0
-        flattening = 1.0 / 298.257223563
-        lat_lng_alt = translation_2_lat_lng_alt_ellipsoidal(translation, a, flattening)
-
-    elif earth_model == "sphere":
-        earth_radius = 6378137.0  # Earth radius in meters
-        lat_lng_alt = translation_2_lat_lng_alt_spherical(translation, earth_radius)
-
-    else:
-        raise ValueError("Selected ellipsoid not implemented!")
-
-    # Compute the orientation axis and angle
-    theta = np.deg2rad((90.0 - lat_lng_alt[:, 0]))
-    phi = np.deg2rad(lat_lng_alt[:, 1])
-
-    R_ecef_enu = local_ENU_2_ECEF_orientation(theta, phi).transpose(0, 2, 1)
-
-    orientation = R_ecef_enu @ rotation
-    orientation_axis, orientation_angle = so3_2_axis_angle(orientation)
-
-    return lat_lng_alt, orientation_axis, orientation_angle
-
-
-def ecef_2_ENU(loc_ref_point: np.ndarray, earth_model: str = "WGS84"):
-    """
-    Compute the transformation matrix that transforms points from the ECEF to a local ENU coordinate frame
-    Args:
-        loc_ref_point: GPS coordinates of the local reference point of the map [1,3]
-        earth_model: earth model used for conversion (spheric will be unaccurate when maps are large)
-    Out:
-        T_ecef_enu: transformation matrix from ECEF to ENU [4,4]
-    """
-
-    # initialize the transformation to identity
-    T_ecef_enu = np.eye(4)
-
-    if earth_model == "WGS84":
-        a = 6378137.0
-        flattening = 1.0 / 298.257223563
-        b = a * (1.0 - flattening)
-        translation = lat_lng_alt_2_ECEF_elipsoidal(loc_ref_point, a, b).reshape(3, 1)
-
-    elif earth_model == "sphere":
-        earth_radius = 6378137.0  # Earth radius in meters
-        z_dir = np.concatenate(
-            [
-                (np.sin(loc_ref_point[1]) * np.cos(loc_ref_point[0]))[:, None],
-                (np.sin(loc_ref_point[1]) * np.sin(loc_ref_point[0]))[:, None],
-                (np.cos(loc_ref_point[0]))[:, None],
-            ],
-            axis=1,
-        )
-
-        translation = ((earth_radius + loc_ref_point[:, -1])[:, None] * z_dir).reshape(3, 1)
-
-    else:
-        raise ValueError("Selected ellipsoid not implemented!")
-
-    rad_lat = np.deg2rad(loc_ref_point[:, 0])
-    rad_lon = np.deg2rad(loc_ref_point[:, 1])
-    T_ecef_enu[:3, :3] = np.array(
-        [
-            [-np.sin(rad_lon), np.cos(rad_lon), 0],
-            [-np.sin(rad_lat) * np.cos(rad_lon), -np.sin(rad_lat) * np.sin(rad_lon), np.cos(rad_lat)],
-            [np.cos(rad_lat) * np.cos(rad_lon), np.cos(rad_lat) * np.sin(rad_lon), np.sin(rad_lat)],
-        ]
-    )
-
-    T_ecef_enu[:3, 3:4] = -T_ecef_enu[:3, :3] @ translation
-
-    return T_ecef_enu
 
 
 class MotionCompensator:

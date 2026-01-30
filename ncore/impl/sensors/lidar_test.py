@@ -6,6 +6,7 @@
 # and any modifications thereto.  Any use, reproduction, disclosure or
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
+
 import itertools
 import json
 import unittest
@@ -16,8 +17,8 @@ import numpy as np
 import parameterized
 import torch
 
-from ncore.impl.common.common import unpack_optional
 from ncore.impl.common.transformations import se3_inverse
+from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.types import RowOffsetStructuredSpinningLidarModelParameters
 from ncore.impl.sensors.common import to_torch
 from ncore.impl.sensors.lidar import RowOffsetStructuredSpinningLidarModel

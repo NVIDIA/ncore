@@ -21,10 +21,9 @@ import tqdm
 from point_cloud_utils import TriangleMesh
 
 from ncore.impl.common.transformations import transform_point_cloud
-from ncore.impl.data.data3 import ShardDataLoader
-from ncore.impl.data.data4.compat import SequenceLoaderProtocol, SequenceLoaderV3, SequenceLoaderV4
-from ncore.impl.data.data4.components import SequenceComponentGroupsReader
 from ncore.impl.data.util import padded_index_string
+from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
+from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 from ncore.impl.sensors.camera import CameraModel
 
 
@@ -121,33 +120,6 @@ def cli(ctx, **kwargs) -> None:
 
 @cli.command()
 @click.option(
-    "--shard-file-pattern", type=str, help="Data shard pattern to load (supports range expansion)", required=True
-)
-@click.pass_context
-def v3(
-    ctx,
-    shard_file_pattern: str,
-) -> None:
-    """Export colored PLY files from NCore V3 (shard-based) sequence data.
-
-    Args:
-        shard_file_pattern: Glob pattern for shard files (supports range expansion like shard_[0-10].zarr)
-    """
-    params: CLIBaseParams = ctx.obj
-
-    shards = ShardDataLoader.evaluate_shard_file_pattern(shard_file_pattern)
-    loader = ShardDataLoader(shards)
-
-    run(
-        params,
-        SequenceLoaderV3(
-            loader,
-        ),
-    )
-
-
-@cli.command()
-@click.option(
     "component_groups",
     "--component-group",
     multiple=True,
@@ -209,7 +181,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
 
     Args:
         params: CLI parameters specifying output location, sensors, and options
-        loader: Sequence loader (V3 or V4) providing unified data access
+        loader: Sequence loader providing unified data access
     """
 
     # Initialize the logger

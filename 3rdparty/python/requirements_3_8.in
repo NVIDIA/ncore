@@ -1,22 +1,19 @@
 # Copyright (c) 2023 NVIDIA CORPORATION.  All rights reserved.
 
+-r requirements_ncore.in
+
 # To run tests
 pytest
 parameterized
 
-# Public API dependencies (mimic restrictive NDAS dependencies using old numpy)
+# Public API dependencies (mimic restrictive dependencies using old numpy)
 numpy<1.20 # in particular, older versions don't ship numpy.typing type hints
-dataclasses-json>=0.2.11 # deserialization fails with earlier versions
-pillow
 zarr<=2.13.3 # more recent versions require numpy>=1.20
-cbor2
-scipy
-universal_pathlib
 
 --find-links https://download.pytorch.org/whl/torch_stable.html
 torch==1.12.1+cu116
 
 # secondary dependencies used in tests / scripts
-opencv-python
+opencv-python-headless
 debugpy
 click
