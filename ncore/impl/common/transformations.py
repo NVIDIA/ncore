@@ -145,12 +145,10 @@ class PoseInterpolator:
             timestamps: Corresponding timestamps for each pose [m]
         """
 
-        assert (
-            isinstance(poses, np.ndarray)
-            and poses.ndim == 3
-            and poses.shape[1:] == (4, 4)
-            and np.issubdtype(poses.dtype, np.floating)
-        ), "Invalid poses input"
+        poses = np.asarray(poses)
+        assert poses.ndim == 3 and poses.shape[1:] == (4, 4) and np.issubdtype(poses.dtype, np.floating), (
+            "Invalid poses input"
+        )
 
         timestamps = np.asarray(timestamps)
         assert timestamps.ndim == 1 and len(timestamps) > 1, "Invalid timestamps input"
