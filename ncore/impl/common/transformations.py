@@ -125,13 +125,6 @@ class PoseInterpolator:
     """
     Interpolates the poses to the desired time stamps. The translation component is interpolated linearly,
     while spherical linear interpolation (SLERP) is used for the rotations. https://en.wikipedia.org/wiki/Slerp
-
-    Args:
-        poses (np.array): poses at given timestamps in a se3 representation [n,4,4]
-        timestamps (np.array): timestamps of the known poses [n]
-        ts_target (np.array): timestamps for which the poses will be interpolated [m]
-    Out:
-        (np.array): interpolated poses in se3 representation [m,4,4]
     """
 
     @property
@@ -145,6 +138,23 @@ class PoseInterpolator:
         return self._timestamps
 
     def __init__(self, poses, timestamps):
+        """Initializes the PoseInterpolator
+
+        Args:
+            poses: Rigid transformations in SE3 representation [m, 4, 4]
+            timestamps: Corresponding timestamps for each pose [m]
+        """
+
+        assert (
+            isinstance(poses, np.ndarray)
+            and poses.ndim == 3
+            and poses.shape[1:] == (4, 4)
+            and np.issubdtype(poses.dtype, np.floating)
+        ), "Invalid poses input"
+
+        timestamps = np.asarray(timestamps)
+        assert timestamps.ndim == 1 and len(timestamps) > 1, "Invalid timestamps input"
+
         self._poses = poses
         self._timestamps = timestamps
 
@@ -162,6 +172,17 @@ class PoseInterpolator:
         )
 
     def interpolate_to_timestamps(self, ts_target, dtype: npt.DTypeLike = np.float32) -> np.ndarray:
+        """Interpolates poses to target timestamps.
+        Args:
+            ts_target: Target timestamps for which poses will be computed in the same time-domain as the original timestamps [m]
+            dtype: Data type for the output poses
+
+        Returns:
+            np.ndarray: Interpolated poses in SE3 representation [m, 4, 4]
+
+        Raises:
+            ValueError: If any timestamp is outside the interpolation range
+        """
         t_interp = self.f_t(ts_target).reshape(-1, 3, 1).astype(dtype)
         R_interp = self.slerp(ts_target).as_matrix().reshape(-1, 3, 3).astype(dtype)
 
@@ -172,6 +193,156 @@ class PoseInterpolator:
             ),
             axis=1,
         )
+
+    @staticmethod
+    def _extrapolate_poses(
+        ts_target: np.ndarray,
+        t_ref: np.int64,
+        pose_ref: np.ndarray,
+        pose_vel_start: np.ndarray,
+        pose_vel_end: np.ndarray,
+        dt_us: np.int64,
+        dtype: type[np.floating],
+    ) -> np.ndarray:
+        """Extrapolates poses from a reference pose using constant velocity.
+
+        Args:
+            ts_target: Target timestamps to extrapolate to [n; int64]
+            t_ref: Reference timestamp to extrapolate from [int64]
+            pose_ref: Reference pose to extrapolate from [4, 4]
+            pose_vel_start: First pose for velocity computation [4, 4]
+            pose_vel_end: Second pose for velocity computation [4, 4]
+            dt_us: Time delta between velocity poses [int64]
+            dtype: Floating point type for output poses (e.g., np.float32, np.float64)
+
+        Returns:
+            np.ndarray: Extrapolated poses [n, 4, 4]
+        """
+        # Use output dtype for intermediate computations
+        float_dtype = np.dtype(dtype)
+
+        # Linear velocity from pose translations
+        t_start, t_end = pose_vel_start[:3, 3], pose_vel_end[:3, 3]
+        linear_vel = (t_end - t_start) / float_dtype.type(dt_us)
+
+        # Angular velocity from rotations (using rotation vector representation)
+        R_start = R.from_matrix(pose_vel_start[:3, :3])
+        R_end = R.from_matrix(pose_vel_end[:3, :3])
+        R_delta = R_end * R_start.inv()
+        omega = R_delta.as_rotvec() / float_dtype.type(dt_us)
+
+        # Compute time deltas from reference
+        delta_t: np.ndarray = (ts_target - t_ref).astype(float_dtype)
+
+        # Extrapolate translation
+        t_ref_pos = pose_ref[:3, 3]
+        t_extrap = t_ref_pos + np.outer(delta_t, linear_vel)
+
+        # Extrapolate rotation: R_extrap = exp(omega * delta_t) @ R_ref
+        R_ref = R.from_matrix(pose_ref[:3, :3])
+        rotvecs = np.outer(delta_t, omega)
+        R_extrap = R.from_rotvec(rotvecs) * R_ref
+
+        # Build output poses
+        n = len(ts_target)
+        result = np.empty((n, 4, 4), dtype=float_dtype)
+        result[:, :3, :3] = R_extrap.as_matrix()
+        result[:, :3, 3] = t_extrap
+        result[:, 3, :3] = 0
+        result[:, 3, 3] = 1
+
+        return result
+
+    def extrapolate_to_timestamps(
+        self,
+        ts_target: np.ndarray,
+        max_extrapolation_time_us: int = 1_000_000,
+        dtype: "npt.DTypeLike" = np.float32,
+    ) -> np.ndarray:
+        """Extrapolates/interpolates poses to target timestamps, allowing extrapolation beyond the original range.
+
+        This requires the original timestamps to be in absolute microseconds (us / int type).
+
+        For timestamps within the original range, standard interpolation is used.
+        For timestamps outside the range, linear extrapolation is used for translation
+        and SLERP-based extrapolation (constant angular velocity) is used for rotation.
+
+        Args:
+            ts_target: Target timestamps for which poses will be computed [m; us]
+            max_extrapolation_time_us: Maximum allowed extrapolation time in microseconds (default: 1 second).
+                                       Raises ValueError if any timestamp exceeds this limit.
+            dtype: Data type for the output poses and the extrapolation computations
+
+        Returns:
+            np.ndarray: Extrapolated/interpolated poses in SE3 representation [m, 4, 4]
+
+        Raises:
+            ValueError: If any timestamp requires extrapolation beyond max_extrapolation_time_us
+        """
+
+        # For extrapolation, we restrict to integer timestamps only to be able to apply us-based max-extrapolation checks
+        if not np.issubdtype(self._timestamps.dtype, np.integer):
+            raise TypeError("Timestamps must be of integer type for extrapolation as assuming microseconds")
+
+        if not np.issubdtype(ts_target.dtype, np.integer):
+            raise TypeError("Target timestamps must be of integer type for extrapolation as assuming microseconds")
+
+        # Convert to signed int64 to handle arithmetic correctly (avoid unsigned overflow)
+        ts_target = np.asarray(ts_target, dtype=np.int64).ravel()
+        if len(ts_target) == 0:
+            return np.empty((0, 4, 4), dtype=dtype)
+
+        t_start = np.int64(self._timestamps[0])
+        t_end = np.int64(self._timestamps[-1])
+
+        # Identify timestamps requiring extrapolation
+        mask_before = ts_target < t_start
+        mask_after = ts_target > t_end
+        mask_within = ~mask_before & ~mask_after
+
+        # Check extrapolation limits (using signed arithmetic)
+        if mask_before.any():
+            max_before_delta = (t_start - ts_target[mask_before]).max()
+            if max_before_delta > max_extrapolation_time_us:
+                raise ValueError(
+                    f"Extrapolation before trajectory start exceeds limit: "
+                    f"{max_before_delta} us > {max_extrapolation_time_us} us"
+                )
+
+        if mask_after.any():
+            max_after_delta = (ts_target[mask_after] - t_end).max()
+            if max_after_delta > max_extrapolation_time_us:
+                raise ValueError(
+                    f"Extrapolation after trajectory end exceeds limit: "
+                    f"{max_after_delta} us > {max_extrapolation_time_us} us"
+                )
+
+        # Convert dtype to floating type for internal use
+        float_type: type[np.floating] = np.dtype(dtype).type  # type: ignore[assignment]
+
+        # Allocate output
+        result = np.empty((len(ts_target), 4, 4), dtype=float_type)
+        result[:, 3, :] = self.last_row.astype(float_type)
+
+        # Handle timestamps within range using standard interpolation
+        if mask_within.any():
+            result[mask_within] = self.interpolate_to_timestamps(ts_target[mask_within], dtype=float_type)
+
+        # Extrapolate before trajectory start (using velocity from first two poses)
+        if mask_before.any():
+            dt_us = np.int64(self._timestamps[1]) - np.int64(self._timestamps[0])
+            result[mask_before] = self._extrapolate_poses(
+                ts_target[mask_before], t_start, self._poses[0], self._poses[0], self._poses[1], dt_us, float_type
+            )
+
+        # Extrapolate after trajectory end (using velocity from last two poses)
+        if mask_after.any():
+            dt_us = np.int64(self._timestamps[-1]) - np.int64(self._timestamps[-2])
+            result[mask_after] = self._extrapolate_poses(
+                ts_target[mask_after], t_end, self._poses[-1], self._poses[-2], self._poses[-1], dt_us, float_type
+            )
+
+        return result
 
 
 def so3_trans_2_se3(so3, trans):
