@@ -640,6 +640,10 @@ class PosesComponent:
             timestamps_us: npt.NDArray[
                 np.uint64
             ],  #: All source-to-target transformation timestamps of the trajectory (uint64, [N,])
+            #: If 'True', require that the dynamic poses fully cover the sequence time range -
+            # setting this to 'False' can result in non-interpolatable poses outside the sequence time range in
+            # downstream applications and is not advisable unless necessary
+            require_sequence_time_coverage: bool = True,
         ) -> "Self":
             """Store a trajectory of dynamic poses (time-dependent rigid transformations) between two named coordinate frames.
 
@@ -656,9 +660,23 @@ class PosesComponent:
             assert len(poses) == len(timestamps_us)
 
             assert len(poses) > 1, "At least two poses required for a dynamic pose trajectory to support interpolation"
-            assert self._sequence_timestamp_interval_us in HalfClosedInterval(
-                timestamps_us[0].item(), timestamps_us[-1].item() + 1
+
+            assert np.all(np.diff(timestamps_us) > 0), "Timestamps must be strictly increasing"
+
+            assert (
+                timestamps_us[0].item() in self._sequence_timestamp_interval_us
+                and timestamps_us[-1].item() in self._sequence_timestamp_interval_us
             ), "Dynamic poses samples must be fully contained in the sequence time range"
+
+            if require_sequence_time_coverage:
+                assert timestamps_us[0] == self._sequence_timestamp_interval_us.start, (
+                    "Dynamic poses must cover the full sequence time range - "
+                    "the first timestamp is after the sequence start time"
+                )
+                assert timestamps_us[-1] == self._sequence_timestamp_interval_us.stop - 1, (
+                    "Dynamic poses must cover the full sequence time range - "
+                    "the last timestamp is before the sequence end time"
+                )
 
             key = (validate_frame_name(source_frame_id), validate_frame_name(target_frame_id))
             inv_key = key[::-1]

@@ -101,6 +101,15 @@ class TestData4Reload(unittest.TestCase):
                         [np.array([0, 0, 0, 1])],
                     ]
                 ),
+                np.block(
+                    [
+                        [
+                            R.from_euler("xyz", [0, 1.2, 2.3], degrees=True).as_matrix(),
+                            np.array([1.2, 2.5, 3.4]).reshape((3, 1)),
+                        ],
+                        [np.array([0, 0, 0, 1])],
+                    ]
+                ),
             ]
         )
         T_rig_world_timestamps_us = np.linspace(
@@ -108,6 +117,40 @@ class TestData4Reload(unittest.TestCase):
             ref_sequence_timestamp_interval_us.stop - 1,
             num=len(T_rig_worlds),
             dtype=np.uint64,
+        )
+
+        coverate_pose_writer = store_writer.register_component_writer(
+            PosesComponent.Writer,
+            "throwaway_poses_type",
+            group_name=None,  # use default component group
+        )
+        with self.assertRaises(AssertionError):
+            coverate_pose_writer.store_dynamic_pose(
+                source_frame_id="rig",
+                target_frame_id="world",
+                poses=T_rig_worlds[: len(T_rig_worlds) - 1],
+                timestamps_us=T_rig_world_timestamps_us[: len(T_rig_worlds) - 1],  # insufficient coverage
+            )
+        coverate_pose_writer.store_dynamic_pose(
+            source_frame_id="some",
+            target_frame_id="coordinate",
+            poses=T_rig_worlds[: len(T_rig_worlds) - 1],
+            timestamps_us=T_rig_world_timestamps_us[: len(T_rig_worlds) - 1],
+            require_sequence_time_coverage=False,
+        )
+        with self.assertRaises(AssertionError):
+            coverate_pose_writer.store_dynamic_pose(
+                source_frame_id="rig",
+                target_frame_id="world",
+                poses=T_rig_worlds[1:],
+                timestamps_us=T_rig_world_timestamps_us[1:],  # insufficient coverage
+            )
+        coverate_pose_writer.store_dynamic_pose(
+            source_frame_id="other",
+            target_frame_id="frame",
+            poses=T_rig_worlds[1:],
+            timestamps_us=T_rig_world_timestamps_us[1:],
+            require_sequence_time_coverage=False,
         )
 
         store_writer.register_component_writer(
@@ -488,7 +531,7 @@ class TestData4Reload(unittest.TestCase):
         # check rig pose / calibration data
         poses_readers = store_reader.open_component_readers(PosesComponent.Reader)
 
-        self.assertEqual(len(poses_readers), 1)
+        self.assertEqual(len(poses_readers), 2)
         poses_reader = poses_readers[ref_poses_id]
 
         self.assertEqual(poses_reader.instance_name, ref_poses_id)
