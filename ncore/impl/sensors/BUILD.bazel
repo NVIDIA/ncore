@@ -63,6 +63,7 @@ py_library(
 
 pytest_test(
     name = "pytest_lidar",
+    timeout = "long",
     srcs = [
         "lidar_test.py",
     ],
