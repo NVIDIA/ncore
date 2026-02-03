@@ -224,7 +224,7 @@ class TestCompatV4(unittest.TestCase):
         self.assertGreaterEqual(return_count, 1)
 
         # Test get_frame_ray_bundle_return_distance
-        distances = lidar.get_frame_ray_bundle_return_distance(frame_idx)
+        distances = lidar.get_frame_ray_bundle_return_distance_m(frame_idx)
         self.assertEqual(distances.shape[0], count)
 
         # Test get_frame_ray_bundle_return_intensity

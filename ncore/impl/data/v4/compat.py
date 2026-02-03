@@ -391,10 +391,10 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             )
 
         @override
-        def get_frame_ray_bundle_return_distance(
+        def get_frame_ray_bundle_return_distance_m(
             self, frame_index: int, return_index: int = 0
         ) -> npt.NDArray[np.float32]:
-            """Returns the per-ray measured distances for the ray bundle return for a specific frame"""
+            """Returns the per-ray measured metric distances for the ray bundle return for a specific frame"""
 
             # V4 stores non-motion-compensated point cloud in 'xyz_m' field, so we can use it's norm
             # as the measured distance
