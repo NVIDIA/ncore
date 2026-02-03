@@ -907,7 +907,7 @@ class MasksComponent:
 
             mask_dataset = cast(zarr.Array, cast(zarr.Group, self._group["cameras"][camera_id])[mask_name])
 
-            return PILImage.open(io.BytesIO(mask_dataset[()]), formats=[mask_dataset.attrs["format"]])
+            return PILImage.open(io.BytesIO(cast(np.bytes_, mask_dataset[()])), formats=[mask_dataset.attrs["format"]])
 
         def get_camera_mask_images(self, camera_id: str) -> Generator[Tuple[str, PILImage.Image]]:
             """Returns all constant named camera mask images"""
@@ -1036,7 +1036,7 @@ class BaseSensorComponentReader(ComponentReader):
         else:
             frame_id = timestamps_us
 
-        return self._group["frames"][str(frame_id)]
+        return cast(zarr.Group, self._group["frames"][str(frame_id)])
 
     @property
     def frames_timestamps_us(self) -> npt.NDArray[np.uint64]:
@@ -1053,7 +1053,7 @@ class BaseSensorComponentReader(ComponentReader):
     def get_frame_generic_data_names(self, timestamp_us: int) -> List[str]:
         """List of all generic frame-data names"""
 
-        return list(self._get_frame_group(timestamp_us)["generic_data"].keys())
+        return list(cast(zarr.Group, self._get_frame_group(timestamp_us)["generic_data"]).keys())
 
     def has_frame_generic_data(self, timestamp_us: int, name: str) -> bool:
         """Signals if named generic frame-data exists"""
@@ -1109,24 +1109,24 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
 
         # Store per-return data
         abscent_mask = None
-        for name, (ray_data_data, chunks) in return_data.items():
-            assert ray_data_data.shape[:2] == (n_returns, n_rays), (
+        for name, (return_data_data, chunks) in return_data.items():
+            assert return_data_data.shape[:2] == (n_returns, n_rays), (
                 f"{name} doesn't have required ray / return count {(n_returns, n_rays)}"
             )
 
             # TODO: extend with support for checks of multi-dimensional returns
             if abscent_mask is None:
                 # initialize absent mask from first return data
-                abscent_mask = np.isnan(ray_data_data)
+                abscent_mask = np.isnan(return_data_data)
             else:
                 # validate absent mask consistency
-                assert np.array_equal(abscent_mask, np.isnan(ray_data_data)), (
+                assert np.array_equal(abscent_mask, np.isnan(return_data_data)), (
                     f"Inconsistent NaN masks in return data {name}"
                 )
 
             ray_bundle_returns_group.create_dataset(
                 name,
-                data=ray_data_data,
+                data=return_data_data,
                 chunks=chunks,
                 # use compression that is fast to decode on modern hardware
                 compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
@@ -1140,7 +1140,7 @@ class BaseRayBundleSensorComponentReader(BaseSensorComponentReader):
     def _get_ray_bundle_group(self, timestamp_us: int) -> zarr.Group:
         """Returns the ray bundle group of a frame"""
 
-        return self._get_frame_group(timestamp_us)["ray_bundle"]
+        return cast(zarr.Group, self._get_frame_group(timestamp_us)["ray_bundle"])
 
     def get_frame_ray_bundle_count(self, timestamp_us: int) -> int:
         """Returns the number of rays and ray returns for a specific frame"""
@@ -1166,7 +1166,7 @@ class BaseRayBundleSensorComponentReader(BaseSensorComponentReader):
     def _get_ray_bundle_returns_group(self, timestamp_us: int) -> zarr.Group:
         """Returns the ray bundle returns group of a frame"""
 
-        return self._get_frame_group(timestamp_us)["ray_bundle_returns"]
+        return cast(zarr.Group, self._get_frame_group(timestamp_us)["ray_bundle_returns"])
 
     def get_frame_ray_bundle_return_count(self, timestamp_us: int) -> int:
         """Returns the number of ray returns for a specific frame"""
@@ -1176,7 +1176,7 @@ class BaseRayBundleSensorComponentReader(BaseSensorComponentReader):
     def get_frame_ray_bundle_return_data_names(self, timestamp_us: int) -> List[str]:
         """List of all ray bundle return data names for a frame"""
 
-        return list(self._get_ray_bundle_returns_group(timestamp_us).keys())
+        return list(cast(zarr.Group, self._get_ray_bundle_returns_group(timestamp_us)).keys())
 
     def has_frame_ray_bundle_return_data(self, timestamp_us: int, name: str) -> bool:
         """Signals if named ray bundle return data exists for a frame"""
@@ -1258,11 +1258,13 @@ class CameraSensorComponent:
 
             def get_data(self) -> types.EncodedImageData:
                 """Loads the referenced encoded image data to memory"""
-                return types.EncodedImageData(self._image_dataset[()], self._image_dataset.attrs["format"])
+                return types.EncodedImageData(
+                    cast(np.bytes_, self._image_dataset[()]), self._image_dataset.attrs["format"]
+                )
 
         def get_frame_handle(self, timestamp_us: int) -> EncodedImageDataHandle:
             """Returns the frame's encoded image data"""
-            return self.EncodedImageDataHandle(self._get_frame_group(timestamp_us)["image"])
+            return self.EncodedImageDataHandle(cast(zarr.Array, self._get_frame_group(timestamp_us)["image"]))
 
         def get_frame_data(self, timestamp_us: int) -> types.EncodedImageData:
             """Returns the frame's encoded image data"""
