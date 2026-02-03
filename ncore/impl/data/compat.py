@@ -447,6 +447,18 @@ class RayBundleSensorProtocol(SensorProtocol, Protocol):
         """
         ...
 
+    def get_frame_ray_bundle_return_valid_mask(self, frame_index: int, return_index: int = 0) -> npt.NDArray[np.bool_]:
+        """Returns the per-ray valid mask for the ray bundle returns of a specific frame.
+
+        Args:
+            frame_index: Index of the frame
+            return_index: Index of the ray bundle return to retrieve (for multi-return sensors)
+
+        Returns:
+            Array of per-ray return valid masks [N]
+        """
+        ...
+
     @dataclass
     class FramePointCloud:
         """Container for point cloud data with optional motion compensation.

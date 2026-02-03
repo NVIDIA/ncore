@@ -1083,13 +1083,12 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
         n_returns: int,
         # per-ray data components with N leading dimension along with chunk specifiers
         ray_data: Dict[str, Tuple[npt.NDArray[Any], Tuple[int, ...]]],
-        # per-return data components with (N, R) leading dimension along with chunk specifiers. Non-existing values are indicated via NaNs
+        # per-return data components with (R, N) leading dimension along with chunk specifiers. Non-existing values are indicated via NaNs
         return_data: Dict[str, Tuple[npt.NDArray[np.float32], Tuple[int, ...]]],
     ) -> None:
         ## Initialize ray bundle group
-        (ray_bundle_group := self._get_frame_group(frame_timestamps_us).create_group("ray_bundle")).attrs.put(
-            {"n_rays": n_rays}
-        )
+        frame_group = self._get_frame_group(frame_timestamps_us)
+        (ray_bundle_group := frame_group.create_group("ray_bundle")).attrs.put({"n_rays": n_rays})
 
         # Store per-ray data
         for name, (ray_data_data, chunks) in ray_data.items():
@@ -1103,9 +1102,7 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
             )
 
         ## Initialize ray bundle returns group
-        (
-            ray_bundle_returns_group := self._get_frame_group(frame_timestamps_us).create_group("ray_bundle_returns")
-        ).attrs.put({"n_returns": n_returns})
+        (ray_bundle_returns_group := frame_group.create_group("ray_bundle_returns")).attrs.put({"n_returns": n_returns})
 
         # Store per-return data
         abscent_mask = None
@@ -1115,6 +1112,7 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
             )
 
             # TODO: extend with support for checks of multi-dimensional returns
+            # - the current implementation only supports scalar return values per ray return
             if abscent_mask is None:
                 # initialize absent mask from first return data
                 abscent_mask = np.isnan(return_data_data)
@@ -1131,6 +1129,21 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
                 # use compression that is fast to decode on modern hardware
                 compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
             )
+
+        if abscent_mask is None:
+            # Initialize empty absent mask if no per-return data was provided
+            abscent_mask = np.full((n_returns, n_rays), fill_value=False, dtype=bool)
+
+        valid_mask_packed = np.packbits(~abscent_mask)
+
+        frame_group.create_dataset(
+            "ray_bundle_returns_valid_mask_packed",
+            data=valid_mask_packed,
+            # we are not accessing sub-ranges, so disable chunking
+            chunks=valid_mask_packed.shape,
+            # use compression that is fast to decode on modern hardware
+            compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
+        ).attrs.put({"n_returns": n_returns, "n_rays": n_rays})
 
 
 class BaseRayBundleSensorComponentReader(BaseSensorComponentReader):
@@ -1182,6 +1195,20 @@ class BaseRayBundleSensorComponentReader(BaseSensorComponentReader):
         """Signals if named ray bundle return data exists for a frame"""
 
         return name in self._get_ray_bundle_returns_group(timestamp_us)
+
+    def get_frame_ray_bundle_return_valid_mask(self, timestamp_us: int) -> npt.NDArray[np.bool_]:
+        """Returns the per-ray return valid mask for a frame"""
+
+        valid_mask_packed = self._get_frame_group(timestamp_us)["ray_bundle_returns_valid_mask_packed"]
+
+        attrs = valid_mask_packed.attrs
+        n_returns, n_rays = attrs["n_returns"], attrs["n_rays"]
+
+        return (
+            np.unpackbits(np.array(valid_mask_packed), count=n_returns * n_rays)
+            .astype(np.bool_)
+            .reshape((n_returns, n_rays))
+        )
 
     def get_frame_ray_bundle_return_data(
         self, timestamp_us: int, name: str, return_index: Optional[int]

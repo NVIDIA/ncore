@@ -404,6 +404,16 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
                 return_index=return_index,
             )
 
+        @override
+        def get_frame_ray_bundle_return_valid_mask(
+            self, frame_index: int, return_index: int = 0
+        ) -> npt.NDArray[np.bool_]:
+            """Returns the per-ray valid mask of the ray bundle returns for a specific frame"""
+
+            return self.ray_bundle_reader.get_frame_ray_bundle_return_valid_mask(
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(),
+            )[return_index]
+
     class LidarSensor(RayBundleSensor, LidarSensorProtocol):
         """Lidar sensor implementation for V4 data.
 

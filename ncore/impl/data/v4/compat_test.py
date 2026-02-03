@@ -223,9 +223,15 @@ class TestCompatV4(unittest.TestCase):
         return_count = lidar.get_frame_ray_bundle_return_count(frame_idx)
         self.assertGreaterEqual(return_count, 1)
 
-        # Test get_frame_ray_bundle_return_distance
-        distances = lidar.get_frame_ray_bundle_return_distance_m(frame_idx)
-        self.assertEqual(distances.shape[0], count)
+        # Test get_frame_ray_bundle_return_valid_mask
+        valid_masks = lidar.get_frame_ray_bundle_return_valid_mask(frame_idx)
+        self.assertEqual(valid_masks.shape, (count,))
+        self.assertTrue(valid_masks.dtype == np.bool_)
+        self.assertTrue(np.all(valid_masks))
+
+        # Test get_frame_ray_bundle_return_distance_m
+        distances_m = lidar.get_frame_ray_bundle_return_distance_m(frame_idx)
+        self.assertEqual(distances_m.shape[0], count)
 
         # Test get_frame_ray_bundle_return_intensity
         intensities = lidar.get_frame_ray_bundle_return_intensity(frame_idx)
