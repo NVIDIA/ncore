@@ -1105,22 +1105,35 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
         (ray_bundle_returns_group := frame_group.create_group("ray_bundle_returns")).attrs.put({"n_returns": n_returns})
 
         # Store per-return data
-        abscent_mask = None
+        absent_mask = None
         for name, (return_data_data, chunks) in return_data.items():
             assert return_data_data.shape[:2] == (n_returns, n_rays), (
                 f"{name} doesn't have required ray / return count {(n_returns, n_rays)}"
             )
 
-            # TODO: extend with support for checks of multi-dimensional returns
-            # - the current implementation only supports scalar return values per ray return
-            if abscent_mask is None:
+            # Determine local absent mask from NaN values,
+            # which needs to be consistent over all dimensions of a return
+            local_absent_mask = np.isnan(return_data_data)
+            if return_data_data.ndim > 2:
+                # reduce over all additional dimensions and check for consistency
+                d_axes = tuple(range(2, return_data_data.ndim))
+                all_nan = local_absent_mask.all(axis=d_axes)
+                any_nan = local_absent_mask.any(axis=d_axes)
+                assert np.array_equal(all_nan, any_nan), (
+                    f"Partial NaN detected at positions: {np.argwhere(all_nan != any_nan)[:5].tolist()} in higher-dimensional return data {name}"
+                )
+                local_absent_mask = all_nan
+
+            assert local_absent_mask.shape == (n_returns, n_rays), (
+                f"Invalid NaN mask shape {local_absent_mask.shape} for return data {name}"
+            )
+
+            if absent_mask is None:
                 # initialize absent mask from first return data
-                abscent_mask = np.isnan(return_data_data)
+                absent_mask = local_absent_mask
             else:
                 # validate absent mask consistency
-                assert np.array_equal(abscent_mask, np.isnan(return_data_data)), (
-                    f"Inconsistent NaN masks in return data {name}"
-                )
+                assert np.array_equal(absent_mask, local_absent_mask), f"Inconsistent NaN masks in return data {name}"
 
             ray_bundle_returns_group.create_dataset(
                 name,
@@ -1130,11 +1143,11 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
                 compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
             )
 
-        if abscent_mask is None:
+        if absent_mask is None:
             # Initialize empty absent mask if no per-return data was provided
-            abscent_mask = np.full((n_returns, n_rays), fill_value=False, dtype=bool)
+            absent_mask = np.full((n_returns, n_rays), fill_value=False, dtype=bool)
 
-        valid_mask_packed = np.packbits(~abscent_mask)
+        valid_mask_packed = np.packbits(~absent_mask)
 
         frame_group.create_dataset(
             "ray_bundle_returns_valid_mask_packed",
