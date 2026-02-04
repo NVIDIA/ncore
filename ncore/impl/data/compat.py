@@ -433,15 +433,29 @@ class RayBundleSensorProtocol(SensorProtocol, Protocol):
         """
         ...
 
-    def get_frame_ray_bundle_return_distance(self, frame_index: int, return_index: int = 0) -> npt.NDArray[np.float32]:
-        """Returns the per-ray measured distances for the ray bundle returns of a specific frame.
+    def get_frame_ray_bundle_return_distance_m(
+        self, frame_index: int, return_index: int = 0
+    ) -> npt.NDArray[np.float32]:
+        """Returns the per-ray measured metric distances for the ray bundle returns of a specific frame.
 
         Args:
             frame_index: Index of the frame
             return_index: Index of the ray bundle return to retrieve (for multi-return sensors)
 
         Returns:
-            Array of per-ray distances [N,]
+            Array of per-ray metric distances [N,]
+        """
+        ...
+
+    def get_frame_ray_bundle_return_valid_mask(self, frame_index: int, return_index: int = 0) -> npt.NDArray[np.bool_]:
+        """Returns the per-ray valid mask for the ray bundle returns of a specific frame.
+
+        Args:
+            frame_index: Index of the frame
+            return_index: Index of the ray bundle return to retrieve (for multi-return sensors)
+
+        Returns:
+            Array of per-ray return valid masks [N]
         """
         ...
 

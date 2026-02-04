@@ -258,7 +258,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
                         lidar_sensor.get_frame_ray_bundle_model_element(pc_frame_index),
                         msg=f"Lidar model elements not available for frame {pc_frame_index}",
                     ),
-                    lidar_sensor.get_frame_ray_bundle_return_distance(
+                    lidar_sensor.get_frame_ray_bundle_return_distance_m(
                         pc_frame_index, return_index=params.sensor_return_index
                     ),
                 )

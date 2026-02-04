@@ -391,10 +391,10 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             )
 
         @override
-        def get_frame_ray_bundle_return_distance(
+        def get_frame_ray_bundle_return_distance_m(
             self, frame_index: int, return_index: int = 0
         ) -> npt.NDArray[np.float32]:
-            """Returns the per-ray measured distances for the ray bundle return for a specific frame"""
+            """Returns the per-ray measured metric distances for the ray bundle return for a specific frame"""
 
             # V4 stores non-motion-compensated point cloud in 'xyz_m' field, so we can use it's norm
             # as the measured distance
@@ -403,6 +403,16 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
                 "distance_m",
                 return_index=return_index,
             )
+
+        @override
+        def get_frame_ray_bundle_return_valid_mask(
+            self, frame_index: int, return_index: int = 0
+        ) -> npt.NDArray[np.bool_]:
+            """Returns the per-ray valid mask of the ray bundle returns for a specific frame"""
+
+            return self.ray_bundle_reader.get_frame_ray_bundle_return_valid_mask(
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(),
+            )[return_index]
 
     class LidarSensor(RayBundleSensor, LidarSensorProtocol):
         """Lidar sensor implementation for V4 data.

@@ -396,13 +396,24 @@ class TestData4Reload(unittest.TestCase):
             ref_lidar_generic_metadata0 := {"some-more-meta-data": {"yes": None, "no": True}},
         )
 
+        ref_lidar_valid_mask0 = np.ones((1, 5), dtype=bool)
+
         ref_lidar_direction_1, lidar_distance_m1 = normalize_points(np.random.rand(8, 3).astype(np.float32) + 0.1)
 
-        abscent_mask = np.random.rand(8) > 0.3
+        abscent_mask = np.stack(
+            # first return all valid
+            (
+                np.zeros((8), dtype=bool),
+                # some of the second return consistently invalid
+                np.random.rand(8) > 0.25,
+            )
+        )
         ref_lidar_distance_m1 = np.stack((lidar_distance_m1, lidar_distance_m1 + 0.1))
-        ref_lidar_distance_m1[:, abscent_mask] = np.nan
+        ref_lidar_distance_m1[abscent_mask] = np.nan
         ref_lidar_intensity1 = np.random.rand(2, 8).astype(np.float32)
-        ref_lidar_intensity1[:, abscent_mask] = np.nan
+        ref_lidar_intensity1[abscent_mask] = np.nan
+
+        ref_lidar_valid_mask1 = ~abscent_mask
 
         lidar_writer.store_frame(
             ref_lidar_direction_1,
@@ -837,6 +848,18 @@ class TestData4Reload(unittest.TestCase):
                 lidar_reader.get_frame_ray_bundle_return_data(ref_lidar_timestamps_us1[1], "intensity", 1),
                 ref_lidar_intensity1[1],
                 equal_nan=True,
+            )
+        )
+
+        self.assertTrue(
+            np.array_equal(
+                lidar_reader.get_frame_ray_bundle_return_valid_mask(ref_lidar_timestamps_us0[1]), ref_lidar_valid_mask0
+            )
+        )
+
+        self.assertTrue(
+            np.array_equal(
+                lidar_reader.get_frame_ray_bundle_return_valid_mask(ref_lidar_timestamps_us1[1]), ref_lidar_valid_mask1
             )
         )
 

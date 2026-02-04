@@ -1083,13 +1083,12 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
         n_returns: int,
         # per-ray data components with N leading dimension along with chunk specifiers
         ray_data: Dict[str, Tuple[npt.NDArray[Any], Tuple[int, ...]]],
-        # per-return data components with (N, R) leading dimension along with chunk specifiers. Non-existing values are indicated via NaNs
+        # per-return data components with (R, N) leading dimension along with chunk specifiers. Non-existing values are indicated via NaNs
         return_data: Dict[str, Tuple[npt.NDArray[np.float32], Tuple[int, ...]]],
     ) -> None:
         ## Initialize ray bundle group
-        (ray_bundle_group := self._get_frame_group(frame_timestamps_us).create_group("ray_bundle")).attrs.put(
-            {"n_rays": n_rays}
-        )
+        frame_group = self._get_frame_group(frame_timestamps_us)
+        (ray_bundle_group := frame_group.create_group("ray_bundle")).attrs.put({"n_rays": n_rays})
 
         # Store per-ray data
         for name, (ray_data_data, chunks) in ray_data.items():
@@ -1103,26 +1102,38 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
             )
 
         ## Initialize ray bundle returns group
-        (
-            ray_bundle_returns_group := self._get_frame_group(frame_timestamps_us).create_group("ray_bundle_returns")
-        ).attrs.put({"n_returns": n_returns})
+        (ray_bundle_returns_group := frame_group.create_group("ray_bundle_returns")).attrs.put({"n_returns": n_returns})
 
         # Store per-return data
-        abscent_mask = None
+        absent_mask = None
         for name, (return_data_data, chunks) in return_data.items():
             assert return_data_data.shape[:2] == (n_returns, n_rays), (
                 f"{name} doesn't have required ray / return count {(n_returns, n_rays)}"
             )
 
-            # TODO: extend with support for checks of multi-dimensional returns
-            if abscent_mask is None:
+            # Determine local absent mask from NaN values,
+            # which needs to be consistent over all dimensions of a return
+            local_absent_mask = np.isnan(return_data_data)
+            if return_data_data.ndim > 2:
+                # reduce over all additional dimensions and check for consistency
+                d_axes = tuple(range(2, return_data_data.ndim))
+                all_nan = local_absent_mask.all(axis=d_axes)
+                any_nan = local_absent_mask.any(axis=d_axes)
+                assert np.array_equal(all_nan, any_nan), (
+                    f"Partial NaN detected at positions: {np.argwhere(all_nan != any_nan)[:5].tolist()} in higher-dimensional return data {name}"
+                )
+                local_absent_mask = all_nan
+
+            assert local_absent_mask.shape == (n_returns, n_rays), (
+                f"Invalid NaN mask shape {local_absent_mask.shape} for return data {name}"
+            )
+
+            if absent_mask is None:
                 # initialize absent mask from first return data
-                abscent_mask = np.isnan(return_data_data)
+                absent_mask = local_absent_mask
             else:
                 # validate absent mask consistency
-                assert np.array_equal(abscent_mask, np.isnan(return_data_data)), (
-                    f"Inconsistent NaN masks in return data {name}"
-                )
+                assert np.array_equal(absent_mask, local_absent_mask), f"Inconsistent NaN masks in return data {name}"
 
             ray_bundle_returns_group.create_dataset(
                 name,
@@ -1131,6 +1142,21 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
                 # use compression that is fast to decode on modern hardware
                 compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
             )
+
+        if absent_mask is None:
+            # Initialize empty absent mask if no per-return data was provided
+            absent_mask = np.full((n_returns, n_rays), fill_value=False, dtype=bool)
+
+        valid_mask_packed = np.packbits(~absent_mask)
+
+        frame_group.create_dataset(
+            "ray_bundle_returns_valid_mask_packed",
+            data=valid_mask_packed,
+            # we are not accessing sub-ranges, so disable chunking
+            chunks=valid_mask_packed.shape,
+            # use compression that is fast to decode on modern hardware
+            compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
+        ).attrs.put({"n_returns": n_returns, "n_rays": n_rays})
 
 
 class BaseRayBundleSensorComponentReader(BaseSensorComponentReader):
@@ -1182,6 +1208,20 @@ class BaseRayBundleSensorComponentReader(BaseSensorComponentReader):
         """Signals if named ray bundle return data exists for a frame"""
 
         return name in self._get_ray_bundle_returns_group(timestamp_us)
+
+    def get_frame_ray_bundle_return_valid_mask(self, timestamp_us: int) -> npt.NDArray[np.bool_]:
+        """Returns the per-ray return valid mask for a frame"""
+
+        valid_mask_packed = self._get_frame_group(timestamp_us)["ray_bundle_returns_valid_mask_packed"]
+
+        attrs = valid_mask_packed.attrs
+        n_returns, n_rays = attrs["n_returns"], attrs["n_rays"]
+
+        return (
+            np.unpackbits(np.array(valid_mask_packed), count=n_returns * n_rays)
+            .astype(np.bool_)
+            .reshape((n_returns, n_rays))
+        )
 
     def get_frame_ray_bundle_return_data(
         self, timestamp_us: int, name: str, return_index: Optional[int]
