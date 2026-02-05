@@ -23,13 +23,15 @@ if TYPE_CHECKING:
 
 
 class TupleType(click.ParamType):
+    """Click cmdl argument type for tuples"""
+
     name = "tuple"
 
     def __init__(self, n: int, separator: str = ":"):
         self.n = n
         self.separator = separator
 
-    def convert(self, value, param, ctx):
+    def convert(self, value: str, param, ctx) -> Tuple[str, ...]:
         try:
             parts = value.split(self.separator)
             if len(parts) != self.n:
@@ -39,16 +41,28 @@ class TupleType(click.ParamType):
             self.fail(f"Could not convert '{value}' to a tuple: {e}")
 
 
+class OptionalStrParamType(click.ParamType):
+    """Click cmdl argument type for optional strings"""
+
+    name = "OptionalStr"
+
+    def convert(self, value: Optional[str], param, ctx) -> Optional[str]:
+        if value is None or value.lower() == "none":
+            return None
+        return value
+
+
 class NPArrayParamType(click.ParamType):
+    """Click cmdl argument type for numpy arrays"""
+
     name = "NPArray"
-    """ Click cmdl argument type for numpy arrays """
 
     def __init__(self, dim: Tuple[int, ...] = (-1,), dtype: "npt.DTypeLike" = np.float32):
         super().__init__()
         self.dim = dim
         self.dtype = np.dtype(dtype)
 
-    def convert(self, value, param, ctx) -> np.ndarray:
+    def convert(self, value: str, param, ctx) -> np.ndarray:
         try:
             return np.fromstring(value.replace("[", "").replace("]", ""), sep=",", dtype=self.dtype).reshape(self.dim)
         except ValueError:

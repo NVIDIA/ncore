@@ -26,6 +26,8 @@ from ncore.impl.data.util import padded_index_string
 from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 
+from .util import OptionalStrParamType
+
 
 @dataclass(kw_only=True, slots=True, frozen=True)
 class CLIBaseParams:
@@ -109,11 +111,16 @@ def cli(ctx, **kwargs) -> None:
 )
 @click.option("--poses-component-group", type=str, help="Component group for 'poses'", default="default")
 @click.option("--intrinsics-component-group", type=str, help="Component group for 'intrinsics'", default="default")
-@click.option("--masks-component-group", type=str, help="Component group for 'masks'", default="default")
+@click.option(
+    "--masks-component-group",
+    type=OptionalStrParamType(),
+    help="Component group for 'masks' (use 'none' to disable)",
+    default="default",
+)
 @click.option(
     "--cuboids-component-group",
-    type=str,
-    help="Component group for 'cuboids'",
+    type=OptionalStrParamType(),
+    help="Component group for 'cuboids' (use 'none' to disable)",
     default="default",
 )
 @click.pass_context
@@ -122,8 +129,8 @@ def v4(
     component_groups: Tuple[str, ...],
     poses_component_group: str,
     intrinsics_component_group: str,
-    masks_component_group: str,
-    cuboids_component_group: str,
+    masks_component_group: Optional[str],
+    cuboids_component_group: Optional[str],
 ) -> None:
     """Export PLY files from NCore V4 (component-based) sequence data.
 

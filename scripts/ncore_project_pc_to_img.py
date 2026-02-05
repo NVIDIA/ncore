@@ -29,19 +29,8 @@ from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 from ncore.impl.sensors.camera import CameraModel
 from ncore.impl.sensors.lidar import StructuredLidarModel
 
-
-try:
-    from scripts.util import NPArrayParamType
-    from scripts.visualization import plot_points_on_image
-except ImportError:
-    # if included externally as 'ncore_repo' use fully-evaluated path
-    try:
-        from ncore_repo.scripts.util import NPArrayParamType  # type: ignore
-        from ncore_repo.scripts.visualization import plot_points_on_image  # type: ignore
-    except ImportError:
-        # fall back to 'external'-prefixed 'ncore_repo' reference if required
-        from external.ncore_repo.scripts.util import NPArrayParamType  # type: ignore
-        from external.ncore_repo.scripts.visualization import plot_points_on_image  # type: ignore
+from .util import NPArrayParamType, OptionalStrParamType
+from .visualization import plot_points_on_image
 
 
 logging.basicConfig(level=logging.INFO)
@@ -171,11 +160,16 @@ def cli(ctx, **kwargs) -> None:
 )
 @click.option("--poses-component-group", type=str, help="Component group for 'poses'", default="default")
 @click.option("--intrinsics-component-group", type=str, help="Component group for 'intrinsics'", default="default")
-@click.option("--masks-component-group", type=str, help="Component group for 'masks'", default="default")
+@click.option(
+    "--masks-component-group",
+    type=OptionalStrParamType(),
+    help="Component group for 'masks' (use 'none' to disable)",
+    default="default",
+)
 @click.option(
     "--cuboids-component-group",
-    type=str,
-    help="Component group for 'cuboids'",
+    type=OptionalStrParamType(),
+    help="Component group for 'cuboids' (use 'none' to disable)",
     default="default",
 )
 @click.pass_context
@@ -184,8 +178,8 @@ def v4(
     component_groups: Tuple[str, ...],
     poses_component_group: str,
     intrinsics_component_group: str,
-    masks_component_group: str,
-    cuboids_component_group: str,
+    masks_component_group: Optional[str],
+    cuboids_component_group: Optional[str],
 ) -> None:
     params: CLIBaseParams = ctx.obj
 
