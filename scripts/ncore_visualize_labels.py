@@ -18,6 +18,8 @@ overlaid on sensor point clouds for NCore data formats. It supports:
     - CSV export of label statistics
 """
 
+import dataclasses
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
@@ -29,6 +31,8 @@ import tqdm
 from ncore.impl.data.types import CuboidTrackObservation
 from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
+
+from .util import OptionalStrParamType
 
 
 try:
@@ -108,11 +112,16 @@ def cli(ctx, **kwargs) -> None:
 )
 @click.option("--poses-component-group", type=str, help="Component group for 'poses'", default="default")
 @click.option("--intrinsics-component-group", type=str, help="Component group for 'intrinsics'", default="default")
-@click.option("--masks-component-group", type=str, help="Component group for 'masks'", default="default")
+@click.option(
+    "--masks-component-group",
+    type=OptionalStrParamType(),
+    help="Component group for 'masks' (use 'none' to disable)",
+    default="default",
+)
 @click.option(
     "--cuboids-component-group",
-    type=str,
-    help="Component group for 'cuboids'",
+    type=OptionalStrParamType(),
+    help="Component group for 'cuboids' (use 'none' to disable)",
     default="default",
 )
 @click.pass_context
@@ -121,8 +130,8 @@ def v4(
     component_groups: Tuple[str, ...],
     poses_component_group: str,
     intrinsics_component_group: str,
-    masks_component_group: str,
-    cuboids_component_group: str,
+    masks_component_group: Optional[str],
+    cuboids_component_group: Optional[str],
 ) -> None:
     params: CLIBaseParams = ctx.obj
 
@@ -178,7 +187,10 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
         )
 
     # Load track observations and load into dataframe for easy querying
-    cuboid_df = pd.DataFrame.from_records([obs.to_dict() for obs in loader.get_cuboid_track_observations()])
+    cuboid_df = pd.DataFrame.from_records(
+        [obs.to_dict() for obs in loader.get_cuboid_track_observations()],
+        columns=[field.name for field in dataclasses.fields(CuboidTrackObservation)],
+    )
 
     for frame_index in tqdm.tqdm(
         sensor.get_frame_index_range(params.start_frame, params.stop_frame, params.step_frame)

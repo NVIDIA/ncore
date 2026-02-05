@@ -71,12 +71,12 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
         # Component group names to load
         poses_component_group_name: str = "default",
         intrinsics_component_group_name: str = "default",
-        masks_component_group_name: str = "default",
-        cuboids_component_group_name: str = "default",
+        masks_component_group_name: Optional[str] = "default",
+        cuboids_component_group_name: Optional[str] = "default",
     ):
         self._reader: SequenceComponentGroupsReader = reader
 
-        # open all default component readers
+        # open all mandatory component readers
         assert poses_component_group_name in (
             poses_readers := self._reader.open_component_readers(PosesComponent.Reader)
         ), f"PosesComponent group '{poses_component_group_name}' not found"
@@ -87,15 +87,20 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
         ), f"IntrinsicsComponent group '{intrinsics_component_group_name}' not found"
         self._intrinsics_reader: IntrinsicsComponent.Reader = intrinsics_readers[intrinsics_component_group_name]
 
-        assert masks_component_group_name in (
-            masks_readers := self._reader.open_component_readers(MasksComponent.Reader)
-        ), f"MasksComponent group '{masks_component_group_name}' not found"
-        self._masks_reader: MasksComponent.Reader = masks_readers[masks_component_group_name]
+        # open optional component readers if available
+        self._masks_reader: Optional[MasksComponent.Reader] = None
+        if masks_component_group_name is not None:
+            assert (masks_readers := self._reader.open_component_readers(MasksComponent.Reader)), (
+                f"MasksComponent group '{masks_component_group_name}' not found"
+            )
+            self._masks_reader = masks_readers[masks_component_group_name]
 
-        assert cuboids_component_group_name in (
-            cuboids_readers := self._reader.open_component_readers(CuboidsComponent.Reader)
-        ), f"CuboidsComponent group '{cuboids_component_group_name}' not found"
-        self._cuboids_reader: CuboidsComponent.Reader = cuboids_readers[cuboids_component_group_name]
+        self._cuboids_reader: Optional[CuboidsComponent.Reader] = None
+        if cuboids_component_group_name is not None:
+            assert (cuboids_readers := self._reader.open_component_readers(CuboidsComponent.Reader)), (
+                f"CuboidsComponent group '{cuboids_component_group_name}' not found"
+            )
+            self._cuboids_reader = cuboids_readers[cuboids_component_group_name]
 
         self._cameras_readers: Dict[str, CameraSensorComponent.Reader] = self._reader.open_component_readers(
             CameraSensorComponent.Reader
@@ -258,13 +263,13 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
         def __init__(
             self,
             reader: CameraSensorComponent.Reader,
-            mask_reader: MasksComponent.Reader,
+            mask_reader: Optional[MasksComponent.Reader],
             model_parameters: ConcreteCameraModelParametersUnion,
             pose_graph: PoseGraphInterpolator,
         ):
             super().__init__(reader, pose_graph)
 
-            self._mask_reader: MasksComponent.Reader = mask_reader
+            self._mask_reader: Optional[MasksComponent.Reader] = mask_reader
             self._model_parameters: ConcreteCameraModelParametersUnion = model_parameters
 
         @property
@@ -279,7 +284,12 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
 
         @override
         def get_mask_images(self) -> Dict[str, PILImage.Image]:
-            """Returns all named camera mask images"""
+            """Returns all available named camera mask images"""
+
+            # No mask reader available, return empty dict
+            if self._mask_reader is None:
+                return {}
+
             return dict(self._mask_reader.get_camera_mask_images(self.sensor_id))
 
         @override
@@ -511,5 +521,10 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
 
     @override
     def get_cuboid_track_observations(self) -> Generator[CuboidTrackObservation]:
-        """Returns all cuboid track observations in the sequence"""
+        """Returns all available cuboid track observations in the sequence"""
+
+        # No cuboids reader available, return empty generator
+        if self._cuboids_reader is None:
+            return
+
         yield from self._cuboids_reader.get_observations()

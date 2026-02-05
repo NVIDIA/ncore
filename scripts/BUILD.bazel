@@ -26,6 +26,7 @@ py_binary(
     name = "ncore_export_ply",
     srcs = ["ncore_export_ply.py"],
     deps = [
+        ":pylib_util",
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/common:pylib_util",
         "//ncore/impl/data:pylib_util",
@@ -44,6 +45,7 @@ py_binary(
     name = "ncore_export_camera",
     srcs = ["ncore_export_camera.py"],
     deps = [
+        ":pylib_util",
         "//ncore/impl/data:pylib_util",
         "//ncore/impl/data/v4:pylib_compat",
         "//ncore/impl/data/v4:pylib_components",
@@ -78,12 +80,12 @@ py_binary(
     name = "ncore_visualize_labels",
     srcs = ["ncore_visualize_labels.py"],
     deps = [
+        ":pylib_util",
         ":pylib_visualization",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data/v4:pylib_compat",
         "//ncore/impl/data/v4:pylib_components",
         "//ncore/impl/data/v4:pylib_types",
-        "//scripts:pylib_util",
         requirement("click"),
         requirement("pandas"),
         requirement("tqdm"),
@@ -96,6 +98,7 @@ py_binary(
     name = "ncore_project_pc_to_img",
     srcs = ["ncore_project_pc_to_img.py"],
     deps = [
+        ":pylib_util",
         ":pylib_visualization",
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_types",
@@ -103,7 +106,6 @@ py_binary(
         "//ncore/impl/data/v4:pylib_compat",
         "//ncore/impl/sensors:pylib_camera",
         "//ncore/impl/sensors:pylib_lidar",
-        "//scripts:pylib_util",
         requirement("click"),
         requirement("numpy"),
         requirement("pyside6"),  # required to open Qt6 windows
@@ -118,6 +120,7 @@ py_binary(
     name = "ncore_export_colored_pc",
     srcs = ["ncore_export_colored_pc.py"],
     deps = [
+        ":pylib_util",
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data/v4:pylib_compat",
@@ -137,6 +140,7 @@ py_binary(
     srcs = ["ncore_sequence_meta.py"],
     visibility = ["//visibility:public"],
     deps = [
+        ":pylib_util",
         "//ncore/impl/data/v4:pylib_compat",
         "//ncore/impl/data/v4:pylib_components",
         requirement("click"),

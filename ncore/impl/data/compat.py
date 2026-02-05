@@ -135,7 +135,7 @@ class SequenceLoaderProtocol(Protocol):
         ...
 
     def get_cuboid_track_observations(self) -> Generator[CuboidTrackObservation]:
-        """Returns all cuboid track observations in the sequence"""
+        """Returns all available cuboid track observations in the sequence"""
         ...
 
 
@@ -358,7 +358,7 @@ class CameraSensorProtocol(SensorProtocol, Protocol):
         ...
 
     def get_mask_images(self) -> Dict[str, PILImage.Image]:
-        """Returns all named camera mask images"""
+        """Returns all available named camera mask images"""
         ...
 
     # Image Frame Data

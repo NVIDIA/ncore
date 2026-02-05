@@ -45,7 +45,7 @@ py_wheel(
         "typing_extensions",
         "universal_pathlib",
     ],
-    version = "0.18.3",
+    version = "0.18.4",
     deps = [
         ":ncore_pkg",
     ],
