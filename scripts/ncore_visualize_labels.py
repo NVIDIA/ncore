@@ -18,6 +18,8 @@ overlaid on sensor point clouds for NCore data formats. It supports:
     - CSV export of label statistics
 """
 
+import dataclasses
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
@@ -178,7 +180,10 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
         )
 
     # Load track observations and load into dataframe for easy querying
-    cuboid_df = pd.DataFrame.from_records([obs.to_dict() for obs in loader.get_cuboid_track_observations()])
+    cuboid_df = pd.DataFrame.from_records(
+        [obs.to_dict() for obs in loader.get_cuboid_track_observations()],
+        columns=[field.name for field in dataclasses.fields(CuboidTrackObservation)],
+    )
 
     for frame_index in tqdm.tqdm(
         sensor.get_frame_index_range(params.start_frame, params.stop_frame, params.step_frame)
