@@ -22,25 +22,6 @@ if TYPE_CHECKING:
     import numpy.typing as npt  # type: ignore[import-not-found]
 
 
-class TupleType(click.ParamType):
-    """Click cmdl argument type for tuples"""
-
-    name = "tuple"
-
-    def __init__(self, n: int, separator: str = ":"):
-        self.n = n
-        self.separator = separator
-
-    def convert(self, value: str, param, ctx) -> Tuple[str, ...]:
-        try:
-            parts = value.split(self.separator)
-            if len(parts) != self.n:
-                raise ValueError(f"Expected {self.n} parts, got {len(parts)}")
-            return tuple(parts)
-        except Exception as e:
-            self.fail(f"Could not convert '{value}' to a tuple: {e}")
-
-
 class OptionalStrParamType(click.ParamType):
     """Click cmdl argument type for optional strings"""
 
