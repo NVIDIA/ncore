@@ -34,8 +34,13 @@ from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 from ncore.impl.sensors.camera import CameraModel
 from ncore.impl.sensors.lidar import StructuredLidarModel
 
-from .util import NPArrayParamType, OptionalStrParamType
-from .visualization import plot_points_on_image
+
+try:
+    from .util import NPArrayParamType, OptionalStrParamType
+    from .visualization import plot_points_on_image
+except ImportError:
+    from scripts.util import NPArrayParamType, OptionalStrParamType
+    from scripts.visualization import plot_points_on_image
 
 
 logging.basicConfig(level=logging.INFO)
