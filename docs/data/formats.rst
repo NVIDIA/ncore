@@ -540,21 +540,24 @@ Sensor components (cameras, lidars, radars) share a common frame-based structure
 
 *Lidar Sensor Frames*:
 
-Lidar and radar data structures separate ray geometry (ray_bundle) from multi-return properties
-(ray_bundle_returns) for flexible data organization. Non-existing values are indicated via NaNs.
+Lidar and radar data structures separate ray geometry (ray_bundle) from
+multi-return properties (ray_bundle_returns) for flexible data organization.
+Non-existing values are indicated via NaNs and need to be consistent accross all
+individual return signals to define a consistent [R,N] mask of valid returns.
 
 .. code-block:: text
 
    lidars/{lidar_id}/frames/{frame_name}/
    ├── ray_bundle/
-   │   ├── direction: [N,3] float32  (normalized ray directions)
-   │   ├── timestamp_us: [N] uint64  (timestamps of ray measurement time)
+   │   ├── direction: [N,3] float32     (per-ray normalized ray directions in sensor coordinates)
+   │   ├── timestamp_us: [N] uint64     (per-ray timestamps of ray measurement time in us)
+   │   ├── model_element: [N,2] uint16  (optional: model-element indices of each ray)
    │   └── {generic_data}/...
    │
-   └── [ray_bundle_returns]
-       ├── distance: [N,3] float32  (measured distances along rays)
-       ├── intensity: [N] float32
-       └── {generic_data}/...
+   └── [R ray_bundle_returns]
+       ├── distance_m: [N] float32      (per-return measured metric distances along rays)
+       ├── intensity: [N] float32       (per-return measured return intensity values [0,1])
+       └── {generic_data}/...           (may include additional return values, like elongation, reflectivity, etc.)
 
 *Radar Sensor Frames*:
 
@@ -562,12 +565,12 @@ Lidar and radar data structures separate ray geometry (ray_bundle) from multi-re
 
    radars/{radar_id}/frames/{frame_name}/
    ├── ray_bundle/
-   │   ├── direction: [N,3] float32  (normalized ray directions)
-   │   ├── timestamp_us: [N] uint64  (timestamps of ray measurement time)
+   │   ├── direction: [N,3] float32  (per-ray normalized ray directions in sensor coordinates)
+   │   ├── timestamp_us: [N] uint64  (per-ray timestamps of ray measurement time in us)
    │   └── {generic_data}/...  
    │
-   └── [ray_bundle_returns]
-       ├── distance: [N,3] float32  (measured distances along rays)
+   └── [R ray_bundle_returns]
+       ├── distance_m: [N] float32  (per-return measured metric distances along rays)
        └── {generic_data}/...       (may include radial velocities, RCS)
 
 Cuboids Component
@@ -579,15 +582,15 @@ Cuboids Component
 
    cuboids/
    └── {component_instance_name}/
-       └── observations: [N] object
+       └── observations: [N] (cuboid track observations)
 
 Each observation is a JSON-serializable object containing:
 
 * ``track_id`` - Unique track identifier (str)
 * ``class_id`` - Object class label (str)
-* ``timestamp_us`` - Observation timestamp (int)
+* ``timestamp_us`` - Observation timestamp in us (int)
 * ``reference_frame_id`` - Reference frame identifier (str)
-* ``reference_frame_timestamp_us`` - Reference frame timestamp (int)
+* ``reference_frame_timestamp_us`` - Reference frame timestamp in us (int)
 * ``bbox3`` - 3D bounding box in reference frame coordinates
 * ``source`` - Label source (e.g., AUTOLABEL, GT_SYNTHETIC)
 * ``source_version`` - Optional source version identifier (str)
