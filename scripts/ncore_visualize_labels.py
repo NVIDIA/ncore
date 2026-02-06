@@ -38,7 +38,11 @@ from ncore.impl.data.types import CuboidTrackObservation
 from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 
-from .util import OptionalStrParamType
+
+try:
+    from .util import OptionalStrParamType
+except ImportError:
+    from scripts.util import OptionalStrParamType
 
 
 try:
