@@ -1,4 +1,5 @@
-.. Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+.. SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION
+.. SPDX-License-Identifier: Apache-2.0
 
 Welcome to the NCore Documentation!
 
