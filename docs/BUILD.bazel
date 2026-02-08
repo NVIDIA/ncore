@@ -17,7 +17,9 @@ load("//bazel/sphinx:defs.bzl", "sphinx_html_gen", "sphinx_view")
 
 sphinx_html_gen(
     name = "ncore",
-    srcs = glob(["apis/**"]) + glob(["data/**"]) + glob(["tutorial/**"]) + glob(["tools/**"]) + glob(["_static/**"]) + glob(["_templates/**"]),
+    srcs = glob(["apis/**"]) + glob(["data/*.rst"]) + glob(["tools/*.rst"]) + glob(["_static/**"]) + glob(["_templates/**"]) + [
+        "@ncore_docs_data//:all_assets",
+    ],
     config = "conf.py",
     index = "index.rst",
 )
