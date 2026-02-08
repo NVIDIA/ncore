@@ -37,7 +37,12 @@ def _sphinx_html_impl(ctx):
     ]
 
     for f in ctx.files.srcs:
-        dest = paths.join(sandbox.path, f.short_path)
+        short_path = f.short_path
+
+        # Handle external repository paths (strip "../repo_name/" prefix)
+        if short_path.startswith("../"):
+            short_path = "/".join(short_path.split("/")[2:])
+        dest = paths.join(sandbox.path, short_path)
         shell_cmds.append("mkdir -p {}; cp {} {}".format(paths.dirname(dest), f.path, dest))
 
     ctx.actions.run_shell(
