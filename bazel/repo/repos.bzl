@@ -36,16 +36,21 @@ def register_repositories():
         url = "https://github.com/bazelbuild/rules_python/releases/download/1.0.0/rules_python-1.0.0.tar.gz",
     )
 
+    # NOTE: GitHub migration - URLs updated from GitLab Generic Package Registry to GitHub Packages
+    # GitLab (old): https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/test-data-v3-shards/0.7/test-data-v3-shards.tar.gz
+    # GitHub Packages requires authentication - configure ~/.netrc with GitHub credentials
     http_archive(
         name = "test-data-v3-shards",
         sha256 = "cdb766ba178548f9307b1458bb408f4f92ba1557dd34bb30dac2a303749ab783",
-        urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/test-data-v3-shards/0.7/test-data-v3-shards.tar.gz"],
+        urls = ["https://maven.pkg.github.com/NVIDIA/ncore/com/nvidia/ncore/test-data-v3-shards/0.7/test-data-v3-shards-0.7.tar.gz"],
     )
 
+    # NOTE: GitHub migration - URLs updated from GitLab Generic Package Registry to GitHub Packages
+    # GitLab (old): https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/test-data-v4/0.1/test-data-v4.tar.gz
     http_archive(
         name = "test-data-v4",
         sha256 = "4be8c5e6409a772dac27389612f224d5c214f89d46a545bd87cd524212a7889f",
-        urls = ["https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/generic/test-data-v4/0.1/test-data-v4.tar.gz"],
+        urls = ["https://maven.pkg.github.com/NVIDIA/ncore/com/nvidia/ncore/test-data-v4/0.1/test-data-v4-0.1.tar.gz"],
     )
 
     http_archive(

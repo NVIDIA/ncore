@@ -1,0 +1,150 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Unified CI workflow that handles:
+# - Build and test (all branches)
+# - Documentation deployment to GitHub Pages (main branch only)
+# - Python package publishing to Test PyPI (main branch only)
+#
+# Setup required:
+# 1. GitHub Pages: Settings -> Pages -> Source: GitHub Actions
+# 2. Test PyPI token: Settings -> Secrets -> TEST_PYPI_API_TOKEN
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+permissions:
+  contents: read
+  packages: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment to GitHub Pages
+concurrency:
+  group: "pages-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  # =============================================================================
+  # Build and Test - runs on all branches
+  # =============================================================================
+  build-and-test:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bazel environment
+        uses: ./.github/actions/setup-bazel
+        with:
+          install-pandoc: true
+          free-disk-space: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check code format
+        run: bazelisk run //:format.check
+
+      - name: Build all targets
+        run: bazelisk build -- //...
+
+      - name: Run all tests (skip GPU tests in CI)
+        run: bazelisk test --test_env=CI_NO_GPU=1 --test_output=errors -- //...
+
+  # =============================================================================
+  # Deploy Documentation - runs only on main branch after build-and-test succeeds
+  # =============================================================================
+  export-docs:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build-and-test
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bazel environment
+        uses: ./.github/actions/setup-bazel
+        with:
+          install-pandoc: true
+          free-disk-space: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build documentation
+        run: bazelisk build //docs:ncore
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'bazel-bin/docs/ncore_html/'
+
+  deploy-docs:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: export-docs
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # =============================================================================
+  # Publish to Test PyPI - runs only on main branch after build-and-test succeeds
+  # =============================================================================
+  publish-testpypi:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build-and-test
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bazel environment
+        uses: ./.github/actions/setup-bazel
+        with:
+          install-pandoc: false
+          free-disk-space: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to Test PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+        run: bazelisk run //ncore:ncore_wheel.publish -- --repository testpypi --verbose --skip-existing --non-interactive
+
+      - name: Print installation instructions
+        run: |
+          echo "========================================"
+          echo "Python package published to Test PyPI!"
+          echo ""
+          echo "To install from Test PyPI:"
+          echo "  pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ncore"
+          echo ""
+          echo "Note: --extra-index-url is required for dependencies (numpy, torch, etc.)"
+          echo ""
+          echo "View package: https://test.pypi.org/project/ncore/"
+          echo "========================================"

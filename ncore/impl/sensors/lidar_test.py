@@ -15,6 +15,7 @@
 
 import itertools
 import json
+import os
 import unittest
 
 from typing import Tuple
@@ -28,6 +29,28 @@ from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.types import RowOffsetStructuredSpinningLidarModelParameters
 from ncore.impl.sensors.common import to_torch
 from ncore.impl.sensors.lidar import RowOffsetStructuredSpinningLidarModel
+
+
+# =============================================================================
+# GPU Test Detection - GitHub Migration
+# =============================================================================
+# GitHub Actions runners do not have GPUs. Tests that require CUDA are skipped
+# when running in CI with CI_NO_GPU=1 environment variable set.
+#
+# This allows the same test suite to run on both:
+# - GitLab CI (with GPU runners) - all tests run
+# - GitHub Actions (CPU-only) - GPU tests skipped via CI_NO_GPU=1
+#
+# Local developers are expected to have a GPU available.
+# =============================================================================
+_SKIP_GPU_TESTS = os.getenv("CI_NO_GPU") == "1"
+
+
+def _get_test_devices() -> tuple:
+    """Return the devices to test based on CI_NO_GPU environment variable."""
+    if _SKIP_GPU_TESTS:
+        return (torch.device("cpu"),)
+    return (torch.device("cpu"), torch.device("cuda"))
 
 
 class TestRowOffsetStructuredSpinningLidarModelParameters(unittest.TestCase):
@@ -47,13 +70,11 @@ class TestRowOffsetStructuredSpinningLidarModelParameters(unittest.TestCase):
         self.assertEqual(model_parameters.to_dict(), self.model_parameters_ref)
 
 
+# NOTE: GitHub migration - Uses _get_test_devices() to skip GPU tests when CUDA unavailable
 @parameterized.parameterized_class(
     ("device", "dtype", "param_file_mapresfactor"),
     itertools.product(
-        (
-            torch.device("cpu"),
-            torch.device("cuda"),
-        ),
+        _get_test_devices(),
         (
             torch.float32,
             torch.float64,
@@ -109,7 +130,16 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
         self.assertEqual(self.model_parameters.to_json(), self.lidar_model.get_parameters().to_json())
 
         # flip flop device using nn.Module magic
-        self.lidar_model.to(device=torch.device(new_device_str := "cuda" if self.device == "cpu" else "cpu"))
+        # NOTE: GitHub migration - Skip device flip-flop to CUDA when GPU unavailable
+        if self.device.type == "cpu" and _SKIP_GPU_TESTS:
+            # When on CPU and no GPU available, we can't flip to CUDA
+            # Just verify CPU -> CPU works
+            self.lidar_model.to(device=torch.device("cpu"))
+            new_device_str = "cpu"
+        else:
+            new_device_str = "cuda" if self.device.type == "cpu" else "cpu"
+            self.lidar_model.to(device=torch.device(new_device_str))
+
         self.assertEqual(
             self.lidar_model.row_elevations_rad.device.type, new_device_str
         )  # make sure the new device is correct

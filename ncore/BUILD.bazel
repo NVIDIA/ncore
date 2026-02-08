@@ -43,8 +43,11 @@ py_wheel(
     name = "ncore_wheel",
     abi = "none",
     author = "NVIDIA Corporation",
+    description_file = "PYPI_README.md",
     distribution = "nvidia-ncore",
-    homepage = "https://gitlab-master.nvidia.com/nrs/ncore",
+    # NOTE: GitHub migration - homepage updated from GitLab to GitHub
+    # GitLab (old): https://gitlab-master.nvidia.com/nrs/ncore
+    homepage = "https://github.com/NVIDIA/ncore",
     license = "Apache-2.0",
     platform = "any",
     python_requires = ">=3.8",
