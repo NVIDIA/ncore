@@ -5,8 +5,6 @@ SPDX-License-Identifier: Apache-2.0
 
 # NCore
 
-NOTE: This codebase is under active development and the APIs may thus still change. If you build upon this repository, consider forking it to prevent such issues.
-
 # Installation
 
 ## Install system-packages
@@ -115,3 +113,10 @@ in `.bazelrc.user`.
 
 Without these options there will be no caching of intermediate incremental mypy results (bazel caching of final test states is not
 affected by this and still active before).
+
+# Third Party Dependencies
+
+This project will download and install additional third-party open source
+software as dependencies. Review the license terms of these open source projects
+before use. See [ATTRIBUTIONS.md](ATTRIBUTIONS.md) for a list of direct
+dependencies and their licenses.
