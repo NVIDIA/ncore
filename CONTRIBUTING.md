@@ -1,10 +1,10 @@
 # How to Contribute
 
-We'd love to receive your patches and contributions to  `NCore`. Please keep your PRs as draft until  ou're ready for review.
+We'd love to receive your patches and contributions to NCore. Please keep your PRs as draft until you're ready for review.
 
 ## Code Reviews
 
-All submissions, including submissions by project members, require review. We use GitHub pull requests for this purpose. Consult [GitHubHelp](https://help.github.com/articles/bout-pull-requests/) for more information on using pull requests.
+All submissions, including submissions by project members, require review. We use GitHub pull requests for this purpose. Consult [GitHub Help](https://help.github.com/articles/about-pull-requests/) for more information on using pull requests.
 
 ## Development Setup
 

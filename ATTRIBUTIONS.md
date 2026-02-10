@@ -10,7 +10,7 @@ SPDX-License-Identifier: Apache-2.0
 
 ## cbor2 - [MIT License](https://github.com/agronholm/cbor2/blob/master/LICENSE.txt)
 
-   ```
+   ```text
 The MIT License (MIT)
 
 Copyright (c) 2016 Alex Grönholm
@@ -35,7 +35,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## dataclasses-json - [MIT License](https://github.com/lidatong/dataclasses-json/blob/master/LICENSE)
 
-   ```
+   ```text
 MIT License
 
 Copyright (c) 2019 Charles Li and contributors
@@ -61,7 +61,7 @@ SOFTWARE.
 
 ## NumPy - [BSD 3-Clause License](https://github.com/numpy/numpy/blob/main/LICENSE.txt)
 
-   ```
+   ```text
 Copyright (c) 2005-2025, NumPy Developers.
 All rights reserved.
 
@@ -96,7 +96,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Pillow - [MIT-CMU License](https://github.com/python-pillow/Pillow/blob/main/LICENSE)
 
-   ```
+   ```text
 The Python Imaging Library (PIL) is
 
     Copyright © 1997-2011 by Secret Labs AB
@@ -131,7 +131,7 @@ PERFORMANCE OF THIS SOFTWARE.
 
 ## PyTorch - [BSD 3-Clause License](https://github.com/pytorch/pytorch/blob/main/LICENSE)
 
-   ```
+   ```text
 From PyTorch:
 
 Copyright (c) 2016-     Facebook, Inc            (Adam Paszke)
@@ -220,7 +220,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 ## SciPy - [BSD 3-Clause License](https://github.com/scipy/scipy/blob/main/LICENSE.txt)
 
-   ```
+   ```text
 Copyright (c) 2001-2002 Enthought, Inc. 2003, SciPy Developers.
 All rights reserved.
 
@@ -255,7 +255,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## universal-pathlib - [MIT License](https://github.com/fsspec/universal_pathlib/blob/main/LICENSE)
 
-   ```
+   ```text
 MIT License
 
 Copyright (c) 2022, Andrew Fulton
@@ -281,7 +281,7 @@ SOFTWARE.
 
 ## zarr - [MIT License](https://github.com/zarr-developers/zarr-python/blob/main/LICENSE.txt)
 
-   ```
+   ```text
 The MIT License (MIT)
 
 Copyright (c) 2015-2025 Zarr Developers <https://github.com/zarr-developers>
