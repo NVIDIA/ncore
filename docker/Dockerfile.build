@@ -1,7 +1,7 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-# BUILD: DOCKER_BUILDKIT=1 docker image build -t gitlab-master.nvidia.com:5005/nrs/ncore:dev -f docker/Dockerfile.build .
-# PUSH:  docker push gitlab-master.nvidia.com:5005/nrs/ncore:dev
+# BUILD: DOCKER_BUILDKIT=1 docker image build -t gitlab-master.nvidia.com:5005/nrs/ncore:dev-v1 -f docker/Dockerfile.build .
+# PUSH:  docker push gitlab-master.nvidia.com:5005/nrs/ncore:dev-v1
 
 FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
 
@@ -17,7 +17,7 @@ RUN \
     add-apt-repository -y ppa:ubuntu-toolchain-r/test && \
     apt-get -y update -qq --fix-missing && \
     apt-get -y install --no-install-recommends \
-        gcc g++ libgl1 clang git git-lfs wget xz-utils jq sudo pandoc jupyter-nbconvert python3-pip \
+        gcc g++ libgl1 clang git git-lfs wget xz-utils jq sudo pandoc python3-pip \
     && \
     rm -rf /var/lib/apt/lists/*
 
@@ -25,7 +25,7 @@ RUN \
    # Add python -> python3 symlink (required for bazel-build image entrypoints)
    ln -s /usr/bin/python3 /usr/bin/python
 
-ARG BAZELISK_VERSION=v1.19.0
+ARG BAZELISK_VERSION=v1.28.1
 RUN \
     # Install bazelisk
     wget https://github.com/bazelbuild/bazelisk/releases/download/$BAZELISK_VERSION/bazelisk-linux-amd64 -O /usr/local/bin/bazelisk && \
