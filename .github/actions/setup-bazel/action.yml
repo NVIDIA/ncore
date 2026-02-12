@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: 'Setup Bazel Environment'
+description: 'Common setup steps for Bazel-based workflows on Ubuntu runners'
+
+inputs:
+  install-pandoc:
+    description: 'Whether to install pandoc (required for docs build)'
+    required: false
+    default: 'false'
+  free-disk-space:
+    description: 'Whether to free up disk space (needed for large builds with PyTorch)'
+    required: false
+    default: 'false'
+  github-token:
+    description: 'GitHub token for package authentication'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    # Free up disk space - PyTorch CUDA wheels are ~2GB each
+    # Only needed for full builds, not for docs-only or wheel-only builds
+    - name: Free disk space
+      if: inputs.free-disk-space == 'true'
+      shell: bash
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /usr/share/swift "$AGENT_TOOLSDIRECTORY"
+        df -h /
+
+    # Setup GitHub Packages authentication for test data downloads
+    - name: Setup GitHub Packages auth
+      shell: bash
+      run: |
+        echo "machine maven.pkg.github.com" >> ~/.netrc
+        echo "  login ${{ github.actor }}" >> ~/.netrc
+        echo "  password ${{ inputs.github-token }}" >> ~/.netrc
+        chmod 600 ~/.netrc
+
+    # pandoc is required by nbsphinx to convert Jupyter notebooks
+    - name: Install pandoc
+      if: inputs.install-pandoc == 'true'
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y pandoc
+
+    # # Setup Bazel cache - using bazel-contrib/setup-bazel action for simplicity and reliability
+    # - name: Setup Bazel cache
+    #   uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77
+    #   with:
+    #     # Avoid downloading Bazel every time.
+    #     bazelisk-cache: true
+    #     # Store build cache per workflow.
+    #     disk-cache: ${{ github.workflow }}
+    #     # Share repository cache between workflows.
+    #     repository-cache: true
+    #     # Don't pollute cache from PRs
+    #     cache-save: ${{ github.event_name != 'pull_request' }}
+    #     # Additional bazelrc options
+    #     bazelrc: |
+          
+    #       # Skip GPU tests in CI
+    #       test --test_env=CI_NO_GPU=1
+
+    #       build --color=yes
+    #       build --show_timestamps

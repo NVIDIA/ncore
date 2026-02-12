@@ -15,6 +15,7 @@
 
 import dataclasses
 import itertools
+import os
 import unittest
 
 from typing import List, Tuple, Union, cast
@@ -25,6 +26,29 @@ import parameterized
 import scipy
 import scipy.linalg
 import torch
+
+
+# =============================================================================
+# GPU Test Detection - GitHub Migration
+# =============================================================================
+# GitHub Actions runners do not have GPUs. Tests that require CUDA are skipped
+# when running in CI with CI_NO_GPU=1 environment variable set.
+#
+# This allows the same test suite to run on both:
+# - GitLab CI (with GPU runners) - all tests run
+# - GitHub Actions (CPU-only) - GPU tests skipped via CI_NO_GPU=1
+#
+# Local developers are expected to have a GPU available.
+# =============================================================================
+_SKIP_GPU_TESTS = os.getenv("CI_NO_GPU") == "1"
+
+
+def _get_test_devices() -> tuple:
+    """Return the devices to test based on CI_NO_GPU environment variable."""
+    if _SKIP_GPU_TESTS:
+        return ("cpu",)
+    return ("cpu", "cuda")
+
 
 from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.types import (
@@ -197,12 +221,16 @@ class ReferenceFThetaCamera:
 
 
 class CudaCheck(unittest.TestCase):
+    @unittest.skipIf(_SKIP_GPU_TESTS, "GPU not available or disabled in CI (CI_NO_GPU=1)")
     def test_cuda_available(self):
         """
         Some camera tests explicitly check cuda-based computations
         (while internally falling back to CPU if cuda is not available).
 
-        This test asserts that a cuda device is actually available to torch
+        This test asserts that a cuda device is actually available to torch.
+
+        NOTE: GitHub migration - This test is skipped on GitHub Actions (CPU-only runners).
+        GitLab CI runners have GPUs and will run this test.
         """
 
         self.assertTrue(torch.cuda.is_available())
@@ -214,8 +242,9 @@ class CommonTestCase(unittest.TestCase):
         self.assertIsNone(np.testing.assert_array_almost_equal(a, b))
 
 
+# NOTE: GitHub migration - Uses _get_test_devices() to skip GPU tests when CUDA unavailable
 @parameterized.parameterized_class(
-    ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
 )
 class TestReferenceFThetaCamera(CommonTestCase):
     """Parameterized test cases validating both the reference implementation and the torch-based camera model"""
@@ -714,7 +743,7 @@ def ftheta_from_reference(
 
 
 @parameterized.parameterized_class(
-    ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
 )
 class TestPinholeCamera(CommonTestCase):
     device: str
@@ -866,7 +895,7 @@ class ReferenceSimplePinholeCamera:
 
 
 @parameterized.parameterized_class(
-    ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
 )
 class TestJacobian(CommonTestCase):
     device: str
@@ -1037,7 +1066,8 @@ class TestJacobian(CommonTestCase):
                         dtype=np.float32,
                     ),
                     max_angle=np.deg2rad(140 / 2),
-                )
+                ),
+                device=self.device,
             ),
         ]
 
@@ -1084,7 +1114,7 @@ class TestJacobian(CommonTestCase):
 
 
 @parameterized.parameterized_class(
-    ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
 )
 class TestFisheyeCamera(CommonTestCase):
     device: str
@@ -1330,7 +1360,7 @@ class CameraModelsBaseTestCase(CommonTestCase):
 
 
 @parameterized.parameterized_class(
-    ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
 )
 class TestParameterIO(CameraModelsBaseTestCase):
     device: str
@@ -1352,7 +1382,14 @@ class TestParameterIO(CameraModelsBaseTestCase):
                 self.assertEqual(cam_model_params.to_json(), cam_model.get_parameters().to_json())
 
                 # flip flop device using nn.Module magic
-                cam_model.to(device=torch.device(new_device_str := "cuda" if self.device == "cpu" else "cpu"))
+                if self.device == "cpu" and _SKIP_GPU_TESTS:
+                    # When on CPU and no GPU available, we can't flip to CUDA
+                    # Just verify CPU -> CPU works
+                    cam_model.to(device=torch.device("cpu"))
+                    new_device_str = "cpu"
+                else:
+                    new_device_str = "cuda" if self.device == "cpu" else "cpu"
+                    cam_model.to(device=torch.device(new_device_str))
                 self.assertEqual(
                     cam_model.resolution.device.type, new_device_str
                 )  # make sure the new device is correct
@@ -1362,7 +1399,7 @@ class TestParameterIO(CameraModelsBaseTestCase):
 
 
 @parameterized.parameterized_class(
-    ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
 )
 class TestTransformParameters(CameraModelsBaseTestCase):
     device: str
@@ -1467,7 +1504,7 @@ class TestTransformParameters(CameraModelsBaseTestCase):
 
 
 @parameterized.parameterized_class(
-    ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
 )
 class TestExternalDistortion(CommonTestCase):
     device: str
@@ -1491,7 +1528,7 @@ class TestExternalDistortion(CommonTestCase):
 
 
 @parameterized.parameterized_class(
-    ("device", "dtype"), itertools.product(("cpu", "cuda"), (torch.float32, torch.float64))
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
 )
 class TestBivariateWindshieldModel(CommonTestCase):
     device: str

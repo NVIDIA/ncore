@@ -13,6 +13,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# =============================================================================
+# NOTE: GitHub Migration - Parallel Operation Mode
+# =============================================================================
+# This GitLab CI configuration is kept active during the transition to GitHub Actions.
+# The equivalent GitHub Actions workflows are located in .github/workflows/
+#
+# GitLab CI Job -> GitHub Actions Workflow mapping:
+#   - build+test  -> .github/workflows/ci.yml
+#   - pages       -> .github/workflows/docs.yml
+#   - wheel       -> .github/workflows/publish.yml
+#
+# Key differences in GitHub Actions:
+#   - No sudo/permission handling needed (different runner model)
+#   - Uses GitHub Actions cache instead of Artifactory remote cache
+#   - GPU tests skipped via CI_NO_GPU=1 (CPU-only runners)
+#   - Docker builds automated via .github/workflows/docker-build.yml
+#
+# Migration documentation: See GITHUB_MIGRATION.md
+# Target repository: https://github.com/NVIDIA/ncore
+# =============================================================================
+
 variables:
   GIT_CLEAN_FLAGS: -ffdx -e .ci-keep
   FF_TIMESTAMPS: true # Enable timestamps in job logs
@@ -42,6 +63,10 @@ default:
     - echo "machine $PYPACKAGE_MACHINE" >> ~/.netrc
     - echo "  login $PYPACKAGE_LOGIN" >> ~/.netrc
     - echo "  password $PYPACKAGE_PASSWORD" >> ~/.netrc
+
+    - echo "machine $GH_MAVEN_MACHINE" >> ~/.netrc
+    - echo "  login $GH_MAVEN_LOGIN" >> ~/.netrc
+    - echo "  password $GH_MAVEN_PASSWORD" >> ~/.netrc
    
     # Enable remote-cache
     - echo "build --remote_cache=$REMOTE_CACHE_URL" >> .bazelrc.user

@@ -3,7 +3,9 @@ SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# NCore
+# NVIDIA NCore
+
+[![CI](https://github.com/NVIDIA/ncore/actions/workflows/ci.yml/badge.svg)](https://github.com/NVIDIA/ncore/actions/workflows/ci.yml)
 
 ## Contributing
 

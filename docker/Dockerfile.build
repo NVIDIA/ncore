@@ -1,7 +1,15 @@
 # Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
 
-# BUILD: DOCKER_BUILDKIT=1 docker image build -t gitlab-master.nvidia.com:5005/nrs/ncore:dev-v1 -f docker/Dockerfile.build .
-# PUSH:  docker push gitlab-master.nvidia.com:5005/nrs/ncore:dev-v1
+# NOTE: GitHub migration - Docker registry updated from GitLab to GitHub Container Registry
+# GitLab (old):
+#   BUILD: DOCKER_BUILDKIT=1 docker image build -t gitlab-master.nvidia.com:5005/nrs/ncore:dev-v1 -f docker/Dockerfile.build .
+#   PUSH:  docker push gitlab-master.nvidia.com:5005/nrs/ncore:dev-v1
+#
+# GitHub Container Registry (new):
+#   BUILD: DOCKER_BUILDKIT=1 docker image build -t ghcr.io/nv-tlabs/ncore:dev-v1 -f docker/Dockerfile.build .
+#   PUSH:  docker push ghcr.io/nv-tlabs/ncore:dev
+#
+# Automated builds are handled by .github/workflows/docker-build.yml
 
 FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
 
