@@ -6,17 +6,15 @@
 Wheel Installation
 ==================
 
-The NCore python APIs are provided as ``pip``-installable wheels maintained in the repositories `package registry <https://gitlab-master.nvidia.com/nrs/ncore/-/packages>`_.
+The NCore python APIs are provided as ``pip``-installable wheels maintained in PyPi at `package registry <https://test.pypi.org/manage/project/nvidia-ncore>`_.
 
-The wheels are called ``ncore`` and can be installed by specifying the project's index URL as follows::
+The wheels are called ``nvidia-ncore`` and can be installed by:
 
-  pip install ncore --extra-index-url https://gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple
+.. code-block:: bash
+
+   pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple nvidia-ncore
 
 For authentication, this requires a one-time setup of the gitlab personal 
-access token (see `link <https://gitlab-master.nvidia.com/nrs/ncore#setup-gitlab-personal-access-token-docker-credentials>`_ for details).
+access token (see `link <https://github.com/NVIDIA/ncore/blob/main/CONTRIBUTING.md#setup-gitlab-personal-access-token--docker-credentials>`_ for details).
 
-Alternatively, gitlab personal access tokens can be included in the index url via::
-
-    pip install ncore --extra-index-url https://__token__:<GITLAB_TOKEN>@gitlab-master.nvidia.com/api/v4/projects/61004/packages/pypi/simple
-
-Currently, ``ncore`` wheels support all python version starting from ``python3.8``.
+Currently, ``nvidia-ncore`` wheels support all python version starting from ``python3.8``.

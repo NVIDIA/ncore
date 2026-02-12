@@ -10,13 +10,11 @@ All submissions, including submissions by project members, require review. We us
 
 ### Install System Packages
 
-In addition to nvidia drivers / cuda runtime (>11.1), the following system packages should be installed to build the project:
+In addition to nvidia drivers / cuda runtime (>11.1), the following system packages should be installed to build all parts of the project:
 
 ```bash
-sudo apt-get install gcc g++ clang libgl1 xz-utils jupyter-nbconvert
+sudo apt-get install pandoc
 ```
-
-Alternatively, builds can be executed within the `gitlab-master.nvidia.com:5005/nrs/ncore_repos/ncore:dev` docker image, which has these packages pre-installed.
 
 Additionally, the following packages should be installed as dependencies for scripts:
 
@@ -26,30 +24,22 @@ sudo apt-get install qt6-base-dev libxcb-cursor0
 
 ### Setup GitLab Personal Access Token / Docker Credentials
 
-Create a gitlab-master personal access token with `api` scope at [link](https://gitlab-master.nvidia.com/-/profile/personal_access_tokens) and register the new token in `~/.netrc` file as
+Create a github personal access token with `read:packages` scope at [create-new-token](https://github.com/settings/tokens/new) and register the new token in `~/.netrc` file as
 
 ```netrc
-machine gitlab-master.nvidia.com
-login oauth2
-password <GITLAB_TOKEN>
+machine maven.pkg.github.com
+  login <GITHUB_USER>
+  password <GITHUB_TOKEN>
 ```
 
-by replacing `<GITLAB_TOKEN>` with the created token string.
-
-Additionally, the local docker daemon needs to be authenticated against gitlab's image registry via
-
-```bash
-docker login gitlab-master.nvidia.com:5005 -u oauth2
-```
-
-using the same token to access development and base images.
+by replacing `<GITHUB_USER>` with the user-name and `<GITHUB_TOKEN>` with the created token string.
 
 [one-time operation]
 
 ### Cloning the Repository
 
 ```bash
-git clone https://gitlab-master.nvidia.com/Toronto_DL_Lab/nrs/ncore.git
+git clone https://github.com/NVIDIA/ncore.git
 ```
 
 ### Install Bazel

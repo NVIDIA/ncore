@@ -45,8 +45,6 @@ py_wheel(
     author = "NVIDIA Corporation",
     description_file = "PYPI_README.md",
     distribution = "nvidia-ncore",
-    # NOTE: GitHub migration - homepage updated from GitLab to GitHub
-    # GitLab (old): https://gitlab-master.nvidia.com/nrs/ncore
     homepage = "https://github.com/NVIDIA/ncore",
     license = "Apache-2.0",
     platform = "any",
@@ -64,7 +62,7 @@ py_wheel(
         "universal_pathlib",
     ],
     summary = "A unified data format and library for AV / robotics",
-    version = "0.18.4",
+    version = "0.18.5",
     deps = [
         ":ncore_pkg",
     ],
