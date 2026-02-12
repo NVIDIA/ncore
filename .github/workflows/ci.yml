@@ -63,10 +63,10 @@ jobs:
         run: bazelisk run //:format.check
 
       - name: Build all targets
-        run: bazelisk build -- //...
+        run: bazelisk build //...
 
       - name: Run all tests (skip GPU tests in CI)
-        run: bazelisk test --test_env=CI_NO_GPU=1 --test_output=errors -- //...
+        run: bazelisk test --test_env=CI_NO_GPU=1 //...
 
   # =============================================================================
   # Deploy Documentation - runs only on main branch after build-and-test succeeds
@@ -142,9 +142,9 @@ jobs:
           echo "Python package published to Test PyPI!"
           echo ""
           echo "To install from Test PyPI:"
-          echo "  pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ncore"
+          echo "  pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple nvidia-ncore"
           echo ""
           echo "Note: --extra-index-url is required for dependencies (numpy, torch, etc.)"
           echo ""
-          echo "View package: https://test.pypi.org/project/ncore/"
+          echo "View package: https://test.pypi.org/project/nvidia-ncore"
           echo "========================================"
