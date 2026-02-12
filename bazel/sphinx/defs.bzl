@@ -28,6 +28,22 @@ def _sphinx_html_impl(ctx):
 
     root_dir = paths.dirname(paths.join(sandbox.path, ctx.file.config.short_path))
 
+    # Find the JUPYTER_DATA_DIR from nbconvert data files
+    # The data files are at: .../data/share/jupyter/nbconvert/templates/...
+    # We need to set JUPYTER_DATA_DIR to: .../data/share/jupyter
+    jupyter_data_dir = None
+    for f in ctx.files._nbconvert_data:
+        # Find a file path that contains the jupyter templates structure
+        if "/data/share/jupyter/nbconvert/templates/" in f.path:
+            # Extract the path up to and including 'jupyter'
+            idx = f.path.find("/data/share/jupyter/")
+            if idx != -1:
+                jupyter_data_dir = f.path[:idx + len("/data/share/jupyter")]
+                break
+
+    if not jupyter_data_dir:
+        fail("Could not find JUPYTER_DATA_DIR from nbconvert data files")
+
     # Sphinx expects the config and index files to be in the root directory with the canonical
     # names.  This possibly renames and relocates the config and index files in the sandbox.
     shell_cmds = [
@@ -63,9 +79,10 @@ def _sphinx_html_impl(ctx):
 
     ctx.actions.run(
         outputs = [output_dir],
-        inputs = [sandbox],
+        inputs = [sandbox] + ctx.files._nbconvert_data,
         executable = ctx.executable._sphinx_build,
         arguments = [args],
+        env = {"JUPYTER_DATA_DIR": jupyter_data_dir},
         mnemonic = "SphinxBuild",
         progress_message = "Building Sphinx HTML documentation for {}".format(ctx.label.name),
     )
@@ -103,6 +120,10 @@ sphinx_html_gen = rule(
             default = Label("//bazel/sphinx:sphinx_wrapper"),
             executable = True,
             cfg = "exec",
+        ),
+        "_nbconvert_data": attr.label(
+            doc = "nbconvert data files (templates).",
+            default = Label("@ncore_pip_deps//nbconvert:data"),
         ),
     },
 )

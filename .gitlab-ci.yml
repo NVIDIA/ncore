@@ -19,7 +19,7 @@ variables:
 
 default:
   image:
-    name: gitlab-master.nvidia.com:5005/nrs/ncore:dev
+    name: gitlab-master.nvidia.com:5005/nrs/ncore:dev-v1
   tags:
     - type/docker
     - os/linux
