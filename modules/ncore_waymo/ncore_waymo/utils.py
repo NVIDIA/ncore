@@ -22,7 +22,7 @@ import numpy as np
 
 from scipy.linalg import expm
 
-from scripts.data_converter.waymo.deps import dataset_pb2, tf
+from ncore_waymo.deps import dataset_pb2, tf
 
 
 ## Functions are adapted from the official waymo open github page

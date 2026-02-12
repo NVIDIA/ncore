@@ -63,13 +63,24 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check code format
-        run: bazelisk run //:format.check
+        run: bazelisk run format.check
 
-      - name: Build all targets
-        run: bazelisk build //...
+      - name: Build / test all targets
+        run: |
+          bazelisk build ...
+          bazelisk test --test_env=CI_NO_GPU=1 ...
 
-      - name: Run all tests (skip GPU tests in CI)
-        run: bazelisk test --test_env=CI_NO_GPU=1 //...
+      - name: Build / test all modules
+        run: |
+          for module in modules/*; do
+          if [ -f "${module}/MODULE" ] || [ -f "${module}/MODULE.bazel" ]; then
+            echo "Building and testing module: ${module}"
+            pushd "${module}"
+            bazelisk build ...
+            bazelisk test ...
+            popd
+          fi
+          done
 
   # =============================================================================
   # Deploy Documentation - runs only on main branch after build-and-test succeeds

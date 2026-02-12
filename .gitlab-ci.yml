@@ -91,9 +91,35 @@ build+test:
     # Check code format
     - bazelisk run //:format.check
 
-    # Build+test all remaining targets
+    # Build+test all root targets
     - bazelisk build ...
     - bazelisk test ...
+
+    # Build+test all modules
+    - |
+      for module in modules/*; do
+      if [ -f "${module}/MODULE" ] || [ -f "${module}/MODULE.bazel" ]; then
+        echo "Building and testing module: ${module}"
+
+        # Enable remote-cache
+        echo "build --remote_cache=$REMOTE_CACHE_URL" >> ${module}/.bazelrc.user
+        echo "test  --remote_cache=$REMOTE_CACHE_URL" >> ${module}/.bazelrc.user
+
+        # Setup persistent local disk-cache
+        echo "build --disk_cache=$CI_PROJECT_DIR/.ci-keep/cache/${module}" >> ${module}/.bazelrc.user
+        echo "test  --disk_cache=$CI_PROJECT_DIR/.ci-keep/cache/${module}" >> ${module}/.bazelrc.user
+
+        # Make use of local mypy cache 
+        mkdir -p $CI_PROJECT_DIR/.ci-keep/.mypy_cache/${module}
+        echo "build --sandbox_writable_path=$CI_PROJECT_DIR/.ci-keep/.mypy_cache/${module}" >> ${module}/.bazelrc.user
+        echo "build --action_env=MYPY_CACHE_DIR=$CI_PROJECT_DIR/.ci-keep/.mypy_cache/${module}" >> ${module}/.bazelrc.user
+
+        pushd "${module}"
+        bazelisk build ...
+        bazelisk test ...
+        popd
+      fi
+      done
   allow_failure: false
 
 pages:

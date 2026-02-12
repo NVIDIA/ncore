@@ -1,4 +1,21 @@
-# Copyright (c) 2024 NVIDIA CORPORATION.  All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Waymo Open Dataset to NCore V4 converter."""
+
+from __future__ import annotations
 
 import json
 import logging
@@ -44,22 +61,19 @@ from ncore.impl.data.v4.components import (
 from ncore.impl.data.v4.types import ComponentGroupAssignments
 from ncore.impl.data_converter.base import BaseDataConverter, BaseDataConverterConfig
 from ncore.impl.sensors.lidar import RowOffsetStructuredSpinningLidarModel
-from scripts.data_converter.cli import cli
-from scripts.data_converter.waymo.deps import (
-    camera_segmentation_pb2,
-    dataset_pb2,
-    label_pb2,
-    tf,
-)  # type: ignore
-from scripts.data_converter.waymo.utils import (
+from ncore_waymo.deps import camera_segmentation_pb2, dataset_pb2, label_pb2, tf
+from ncore_waymo.utils import (
     convert_range_image_to_point_cloud,
     extrapolate_pose_based_on_velocity,
     parse_range_image_and_segmentations,
 )
+from scripts.data_converter.cli import cli
 
 
 @dataclass(kw_only=True, slots=True)
 class WaymoConverter4Config(BaseDataConverterConfig):
+    """Configuration for Waymo to NCore V4 conversion."""
+
     store_type: Literal["itar", "directory"] = "itar"
     component_group_profile: Literal["default", "separate-sensors", "separate-all"] = "separate-sensors"
     store_sequence_meta: bool = True
@@ -67,9 +81,12 @@ class WaymoConverter4Config(BaseDataConverterConfig):
 
 class WaymoConverter4(BaseDataConverter):
     """
-    Dataset preprocessing class, which preprocess waymo-open dataset to a canonical data representation as used within the Nvidia NCore project.
-    Waymo-open data can be downloaded from https://waymo.com/intl/en_us/open/download/ in form of tfrecords files. Further details on the dataset are
-    available in the original publication https://arxiv.org/abs/1912.04838 or the githbub repository https://github.com/waymo-research/waymo-open-dataset
+    Dataset preprocessing class for converting Waymo Open Dataset to NCore V4 format.
+
+    Waymo-open data can be downloaded from https://waymo.com/intl/en_us/open/download/ in form of
+    tfrecords files. Further details on the dataset are available in the original publication
+    https://arxiv.org/abs/1912.04838 or the GitHub repository
+    https://github.com/waymo-research/waymo-open-dataset
     """
 
     CAMERA_MAP = {
@@ -110,9 +127,7 @@ class WaymoConverter4(BaseDataConverter):
         return WaymoConverter4(config)
 
     def convert_sequence(self, sequence_path: UPath) -> None:
-        """
-        Runs dataset-specific conversion for a sequence
-        """
+        """Runs dataset-specific conversion for a sequence."""
         self.logger.info(sequence_path)
 
         dataset = tf.data.TFRecordDataset(sequence_path, compression_type="")
@@ -211,6 +226,7 @@ class WaymoConverter4(BaseDataConverter):
             self.logger.info(f"Wrote sequence meta data {str(sequence_meta_path)}")
 
     def decode_poses(self, frames: list[dataset_pb2.Frame]) -> None:
+        """Decode and interpolate vehicle poses from frame data."""
         # Grab poses from images, as for images the pose/timestamps correspond to each other
         T_rig_worlds_array = []
         T_rig_world_timestamps_us_array: List[int] = []
@@ -227,7 +243,8 @@ class WaymoConverter4(BaseDataConverter):
                     int(image.pose_timestamp * 1e6)
                 )  # Convert the poses to microseconds (rounding decimal)
 
-                # Extrapolate pose points on the boundaries using velocity information to allow interpolation at full lidar / camera timestamps
+                # Extrapolate pose points on the boundaries using velocity information
+                # to allow interpolation at full lidar / camera timestamps
                 dts_us = []
                 if i == 0:
                     # extrapolate exactly to first lidar start-of-spin time
@@ -281,10 +298,7 @@ class WaymoConverter4(BaseDataConverter):
             self.logger.info(f"> processed {len(T_rig_worlds)} poses, using base pose:\n{self.T_world_world_global}")
 
     def store_poses(self) -> None:
-        """
-        Stores the processed egomotion poses into the poses component
-        """
-
+        """Stores the processed egomotion poses into the poses component."""
         # Store dynamic rig->world poses (float32 for relative poses)
         self.poses_writer.store_dynamic_pose(
             source_frame_id="rig",
@@ -329,7 +343,6 @@ class WaymoConverter4(BaseDataConverter):
         Converts the raw point cloud data into intrinsic 3D depth rays in space also compensating for the
         motion of the ego-car (lidar unwinding)
         """
-
         ## Collect calibrations
         calibrations = {c.name: c for c in frames[0].context.laser_calibrations}
 
@@ -481,7 +494,8 @@ class WaymoConverter4(BaseDataConverter):
 
                 del (range_image, range_image_second, range_image_top_pose)
 
-                # perform primary <-> secondary ray matching via linear indices (as every secondary ray has a parent primary ray)
+                # perform primary <-> secondary ray matching via linear indices
+                # (as every secondary ray has a parent primary ray)
                 range_image_width = azimuths_rad.size
                 linear_indices_primary = range_image_indices[:, 0] + range_image_indices[:, 1] * range_image_width
                 linear_indices_second = (
@@ -771,10 +785,10 @@ class WaymoConverter4(BaseDataConverter):
 
     def decode_cameras(self, frames: list[dataset_pb2.Frame]) -> None:
         """
-        Extracts the images and camera metadata for all cameras within a single frame. Camera metadata must hold
-        the information used to compensate for rolling shutter effect and to convert RGB images to 3D RGB rays in space
+        Extracts the images and camera metadata for all cameras within a single frame.
+        Camera metadata must hold the information used to compensate for rolling shutter
+        effect and to convert RGB images to 3D RGB rays in space.
         """
-
         calibrations = {c.name: c for c in frames[0].context.camera_calibrations}
 
         for camera_id, camera_ncore_id in self.CAMERA_MAP.items():
@@ -793,9 +807,9 @@ class WaymoConverter4(BaseDataConverter):
             )
 
             ## Fix camera frame convention from
-            # - waymo camera: principal axis along the +x axis, the y-axis points to the left, and the z-axis points up
+            # - waymo camera: principal axis along +x axis, y-axis points left, z-axis points up
             # to
-            # - NCore camera: principal axis along the +z axis, the x-axis points to the right, and the y-axis points down
+            # - NCore camera: principal axis along +z axis, x-axis points right, y-axis points down
             T_sensor_rig[:3, :3] = T_sensor_rig[:3, :3] @ np.array(
                 [[0, 0, 1], [-1, 0, 0], [0, -1, 0]], dtype=np.float32
             )
@@ -821,9 +835,6 @@ class WaymoConverter4(BaseDataConverter):
                 frame_start_timestamp_us = int((image.camera_trigger_time + image.shutter / 2) * 1e6)
                 frame_end_timestamp_us = int((image.camera_readout_done_time - image.shutter / 2) * 1e6)
 
-                # breakpoint()  # XXX check this below
-
-                # TODO: (extend the pose graph to collect all of these poses)
                 # Assert we can interpolate poses for these timestamps
                 self.pose_interpolator.interpolate_to_timestamps(
                     np.array([frame_start_timestamp_us, frame_end_timestamp_us])
@@ -843,12 +854,6 @@ class WaymoConverter4(BaseDataConverter):
                     and hasattr(camera_segmentation_label, "panoptic_label")
                 ):
                     # Store the original waymo png segmentation data
-
-                    # A uint16 png byte-encoded image, with the same resolution as the corresponding
-                    # camera image. Each pixel contains a panoptic segmentation label, which is
-                    # computed as:
-                    # semantic_class_id * panoptic_label_divisor + instance_id.
-                    # We set instance_id = 0 for pixels for which there is no instance_id.
                     generic_data["panoptic_label_png"] = np.frombuffer(
                         camera_segmentation_label.panoptic_label, dtype=np.uint8
                     )

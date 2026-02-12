@@ -13,18 +13,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//bazel/sphinx:defs.bzl", "sphinx_html_gen", "sphinx_view")
+load("@rules_uv//uv:pip.bzl", "pip_compile")
 
-sphinx_html_gen(
-    name = "ncore",
-    srcs = glob(["apis/**"]) + glob(["data/*.rst"]) + glob(["tools/*.rst"]) + glob(["conversions/**/*.rst"]) + glob(["_static/**"]) + glob(["_templates/**"]) + [
-        "@ncore_docs_data//:all_assets",
+PIP_COMPILE_ARGS = [
+    "--generate-hashes",
+    "--emit-index-url",
+    "--index-strategy",
+    "unsafe-best-match",
+]
+
+pip_compile(
+    name = "requirements_3_11",
+    size = "medium",
+    args = PIP_COMPILE_ARGS + [
+        "-c",
+        "../ncore+/3rdparty/python/requirements_3_11.txt",
     ],
-    config = "conf.py",
-    index = "index.rst",
-)
-
-sphinx_view(
-    name = "view_ncore",
-    generator = "ncore",
+    data = ["@ncore//3rdparty/python:requirements_3_11.txt"],
+    py3_runtime = "@python_3_11//:py3_runtime",
+    requirements_in = "requirements.in",
+    requirements_txt = "requirements_3_11.txt",
 )

@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@ncore_waymo_pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+# Proxy for TensorFlow/Waymo dependencies - excludes mypy checking due to type annotation issues
+py_library(
+    name = "pylib_deps",
+    srcs = ["deps.py"],
+    tags = ["no-mypy"],  # syntax errors in type annotations of tensorflow / absl-py
+    deps = [
+        requirement("tensorflow"),
+        "@waymo-open-dataset//waymo_open_dataset:dataset_proto_py_pb2",
+        "@waymo-open-dataset//waymo_open_dataset:label_proto_py_pb2",
+        "@waymo-open-dataset//waymo_open_dataset/protos:camera_segmentation_proto_py_pb2",
+    ],
+)
+
+# Utilities for parsing Waymo range images
+py_library(
+    name = "pylib_utils",
+    srcs = ["utils.py"],
+    deps = [
+        ":pylib_deps",
+        requirement("numpy"),
+        requirement("scipy"),
+    ],
+)
+
+# Standalone CLI binary for converting Waymo data to NCore V4
+py_binary(
+    name = "convert",
+    srcs = ["converter.py"],
+    main = "converter.py",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pylib_deps",
+        ":pylib_utils",
+        requirement("click"),
+        requirement("numpy"),
+        requirement("tqdm"),
+        requirement("universal_pathlib"),
+        "@ncore//ncore:pylib",
+        "@ncore//scripts/data_converter:pylib_cli",
+    ],
+)

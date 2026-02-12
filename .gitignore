@@ -6,7 +6,7 @@ _build/
 .ci-keep/
 
 # Bazel-specific ignores
-/bazel-*
+bazel-*
 .bazelrc.user
 
 *.swp
