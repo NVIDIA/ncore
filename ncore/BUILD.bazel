@@ -42,8 +42,10 @@ py_package(
 py_wheel(
     name = "ncore_wheel",
     abi = "none",
-    distribution = "ncore",
+    author = "NVIDIA Corporation",
+    distribution = "nvidia-ncore",
     homepage = "https://gitlab-master.nvidia.com/nrs/ncore",
+    license = "Apache-2.0",
     platform = "any",
     python_requires = ">=3.8",
     python_tag = "py3",
@@ -58,6 +60,7 @@ py_wheel(
         "typing_extensions",
         "universal_pathlib",
     ],
+    summary = "A unified data format and library for AV / robotics",
     version = "0.18.4",
     deps = [
         ":ncore_pkg",
