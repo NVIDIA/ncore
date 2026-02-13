@@ -95,7 +95,7 @@ class LabelVisualizer:
     # Get the color map for the NVIDIA labels
     COLOR_MAP_LABELS = cm.get_cmap("tab20")
 
-    # TODO: currently only works for NVIDIA classes
+    # Default label class mapping - customize as needed for your dataset
     LABELCLASS_STRING_TO_LABELCLASS_ID: dict[str, int] = {
         "unknown": 0,
         "automobile": 1,

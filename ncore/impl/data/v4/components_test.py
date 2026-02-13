@@ -1094,7 +1094,7 @@ class TestDataNewComponent(unittest.TestCase):
         # STEP 1: Create an initial dataset with just some static pose reference data
         # ============================================================================
 
-        print("\n=== Step 1: Creating initial dataset with pose data ===")
+        # Step 1: Create an initial dataset with just some static pose reference data
 
         initial_store_writer = SequenceComponentGroupsWriter(
             output_dir_path=UPath(tempdir.name),
@@ -1129,13 +1129,13 @@ class TestDataNewComponent(unittest.TestCase):
 
         # Finalize the initial dataset
         initial_store_paths = initial_store_writer.finalize()
-        print(f"Initial dataset created at: {tempdir.name}")
+        # Initial dataset created
 
         # ============================================================================
         # STEP 2: Define a custom component with reader and writer classes
         # ============================================================================
 
-        print("\n=== Step 2: Defining custom VelocityComponent ===")
+        # Step 2: Define a custom component with reader and writer classes
 
         # This is a simple example component that stores velocity data over time
         class VelocityComponent:
@@ -1212,7 +1212,7 @@ class TestDataNewComponent(unittest.TestCase):
         # STEP 3: Extend the existing dataset with the new custom component
         # ============================================================================
 
-        print("\n=== Step 3: Extending dataset with VelocityComponent ===")
+        # Step 3: Extend the existing dataset with the new custom component
 
         # First, open a reader to the initial dataset
         initial_reader = SequenceComponentGroupsReader(component_group_paths=initial_store_paths)
@@ -1269,13 +1269,13 @@ class TestDataNewComponent(unittest.TestCase):
 
         # Finalize the extended dataset - this adds new component paths
         extended_store_paths = initial_store_paths + extended_store_writer.finalize()
-        print(f"Extended dataset with velocity component at: {tempdir.name}")
+        # Extended dataset with velocity component created
 
         # ============================================================================
         # STEP 4: Verify we can reload the extended dataset correctly
         # ============================================================================
 
-        print("\n=== Step 4: Verifying extended dataset ===")
+        # Step 4: Verify we can reload the extended dataset correctly
 
         # Open a reader for the extended dataset
         extended_reader = SequenceComponentGroupsReader(component_group_paths=extended_store_paths)
@@ -1318,13 +1318,13 @@ class TestDataNewComponent(unittest.TestCase):
         np.testing.assert_array_almost_equal(loaded_velocities, ref_velocities)
         np.testing.assert_array_equal(loaded_timestamps, ref_velocity_timestamps)
 
-        print("✓ Extended dataset verified successfully!")
+        # Extended dataset verified successfully
 
         # ============================================================================
         # STEP 5 (Optional): Test component version compatibility
         # ============================================================================
 
-        print("\n=== Step 5: Testing component version compatibility ===")
+        # Step 5 (Optional): Test component version compatibility
 
         # Define a v2 writer with additional features (acceleration data)
         class VelocityComponentV2:
@@ -1432,7 +1432,7 @@ class TestDataNewComponent(unittest.TestCase):
         # This should return empty dict because v1 reader doesn't support v2
         v1_readers_for_v2 = v2_reader.open_component_readers(VelocityComponent.Reader)
         self.assertEqual(len(v1_readers_for_v2), 0, "v1 reader should not be able to read v2 components")
-        print("✓ v1 reader correctly skips v2 components (returns empty dict)")
+        # v1 reader correctly skips v2 components (returns empty dict)
 
         # But backward-compatible reader should work
         bc_readers = v2_reader.open_component_readers(VelocityComponentBackwardCompatibleReader)
@@ -1461,5 +1461,4 @@ class TestDataNewComponent(unittest.TestCase):
             bc_reader_v1.get_accelerations()
         self.assertIn("not available in v1", str(context.exception))
 
-        print("✓ Version compatibility tests passed!")
-        print("\n=== All tests completed successfully! ===")
+        # Version compatibility tests passed - all tests completed successfully
