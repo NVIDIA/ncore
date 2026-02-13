@@ -43,21 +43,6 @@ def register_repositories():
     )
 
     http_archive(
-        name = "cgrindel_bazel_starlib",
-        sha256 = "43e375213dabe0c3928e65412ea7ec16850db93285c8c6f8b0eaa41cacd0f882",
-        urls = [
-            "https://github.com/cgrindel/bazel-starlib/releases/download/v0.21.0/bazel-starlib.v0.21.0.tar.gz",
-        ],
-    )
-
-    http_archive(
-        name = "aspect_bazel_lib",
-        sha256 = "6d758a8f646ecee7a3e294fbe4386daafbe0e5966723009c290d493f227c390b",
-        strip_prefix = "bazel-lib-2.7.7",
-        url = "https://github.com/aspect-build/bazel-lib/releases/download/v2.7.7/bazel-lib-v2.7.7.tar.gz",
-    )
-
-    http_archive(
         name = "bazel_features",
         sha256 = "06f02b97b6badb3227df2141a4b4622272cdcd2951526f40a888ab5f43897f14",
         strip_prefix = "bazel_features-1.9.0",
