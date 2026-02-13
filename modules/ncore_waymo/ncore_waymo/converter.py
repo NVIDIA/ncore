@@ -231,6 +231,10 @@ class WaymoConverter4(BaseDataConverter):
         T_rig_worlds_array = []
         T_rig_world_timestamps_us_array: List[int] = []
 
+        # Buffers holding extrapolated poses to cover all frame start/end timestamps fully
+        T_rig_worlds_array_extrapolated = []
+        T_rig_world_timestamps_us_array_extrapolated = []
+
         for i, frame in enumerate(frames):
             for image in frame.images:
                 # Get the rig / SDC car pose
@@ -276,17 +280,22 @@ class WaymoConverter4(BaseDataConverter):
                     ).reshape(3, 1)
                     omega_world = np.matmul(T_rig_world[:3, :3], omega_vehicle)
 
-                    T_rig_worlds_array.append(
+                    T_rig_worlds_array_extrapolated.append(
                         extrapolate_pose_based_on_velocity(T_rig_world, velocity_global, omega_world, dt_us / 1e6)
                     )
-                    T_rig_world_timestamps_us_array.append(T_rig_world_timestamps_us_array[-1] + dt_us)
+                    T_rig_world_timestamps_us_array_extrapolated.append(T_rig_world_timestamps_us_array[-1] + dt_us)
 
-        # make unique + sort + stack all poses (common canonical format convention)
+        # concat + make unique + sort + stack all poses (common canonical format convention)
         T_rig_world_timestamps_us, unique_indices = np.unique(
-            np.array(T_rig_world_timestamps_us_array, dtype=np.uint64),
+            np.concatenate(
+                (
+                    np.array(T_rig_world_timestamps_us_array, dtype=np.uint64),
+                    np.array(T_rig_world_timestamps_us_array_extrapolated, dtype=np.uint64),
+                )
+            ),
             return_index=True,
         )
-        T_rig_worlds = np.stack(T_rig_worlds_array)[unique_indices]
+        T_rig_worlds = np.concatenate((T_rig_worlds_array, T_rig_worlds_array_extrapolated))[unique_indices]
 
         # Use identity base pose as waymo data is already shifted
         self.T_world_world_global = np.eye(4, dtype="float64")
