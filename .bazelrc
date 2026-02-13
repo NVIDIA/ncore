@@ -13,16 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Default compilation mode and compiler version
-build --compilation_mode=opt
-
-# Default CXX flags
-build --cxxopt="-Werror"
-
-# Link libstdc++ / libgcc statically
-build --action_env=BAZEL_LINKLIBS=-l%:libstdc++.a:-lm
-build --action_env=BAZEL_LINKOPTS=-static-libgcc
-
 # Enable local disk caching
 build --disk_cache=~/.cache/bazel/disk-cache/ncore
 build --remote_instance_name ncore
