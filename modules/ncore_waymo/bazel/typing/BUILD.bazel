@@ -13,18 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//bazel/sphinx:defs.bzl", "sphinx_html_gen", "sphinx_view")
+load("@ncore_waymo_pip_deps//:requirements.bzl", "requirement")
+load("@rules_mypy//mypy:mypy.bzl", "mypy_cli")
 
-sphinx_html_gen(
-    name = "ncore",
-    srcs = glob(["apis/**"]) + glob(["data/*.rst"]) + glob(["tools/*.rst"]) + glob(["conversions/**/*.rst"]) + glob(["_static/**"]) + glob(["_templates/**"]) + [
-        "@ncore_docs_data//:all_assets",
-    ],
-    config = "conf.py",
-    index = "index.rst",
-)
+exports_files([
+    "mypy.ini",
+])
 
-sphinx_view(
-    name = "view_ncore",
-    generator = "ncore",
+mypy_cli(
+    name = "mypy",
+    mypy_requirement = requirement("mypy"),
+    python_version = "3.11",
+    tags = ["no-mypy"],
 )

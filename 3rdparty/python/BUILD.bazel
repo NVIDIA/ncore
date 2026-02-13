@@ -16,6 +16,12 @@
 load("@rules_multirun//:defs.bzl", "multirun")
 load("@rules_uv//uv:pip.bzl", "pip_compile")
 
+# Export lock files for use as constraints by dependent modules (e.g., ncore_waymo)
+exports_files([
+    "requirements_3_11.txt",
+    "requirements_3_8.txt",
+])
+
 # Check that our compiled pip requirements are up-to-date
 PIP_COMPILE_ARGS = [
     "--generate-hashes",

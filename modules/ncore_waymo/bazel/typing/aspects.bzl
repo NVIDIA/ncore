@@ -13,18 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//bazel/sphinx:defs.bzl", "sphinx_html_gen", "sphinx_view")
+"""
+Mypy aspect for ncore_waymo that type-checks against @ncore dependencies.
 
-sphinx_html_gen(
-    name = "ncore",
-    srcs = glob(["apis/**"]) + glob(["data/*.rst"]) + glob(["tools/*.rst"]) + glob(["conversions/**/*.rst"]) + glob(["_static/**"]) + glob(["_templates/**"]) + [
-        "@ncore_docs_data//:all_assets",
-    ],
-    config = "conf.py",
-    index = "index.rst",
-)
+Uses the reusable mypy_with_first_party_deps factory from the parent ncore module
+to properly include ncore sources in MYPYPATH for type checking.
+"""
 
-sphinx_view(
-    name = "view_ncore",
-    generator = "ncore",
+load("@ncore//bazel/typing:aspects.bzl", "mypy_with_first_party_deps")
+
+mypy_aspect = mypy_with_first_party_deps(
+    mypy_cli = "//bazel/typing:mypy",
+    mypy_ini = "//bazel/typing:mypy.ini",
+    first_party_repos = ["ncore+"],
 )

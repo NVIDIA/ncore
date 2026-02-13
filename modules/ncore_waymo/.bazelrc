@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Default compilation mode
+build --compilation_mode=opt
+
+# Enable local disk caching
+build --disk_cache=~/.cache/bazel/disk-cache/ncore_waymo
+build --remote_instance_name ncore_waymo
+
+# Ensure user's PATH doesn't propagate into sandbox
+build --incompatible_strict_action_env
+
+# Propagate tags to action execution
+build --incompatible_allow_tags_propagation
+
+# Guard against concurrent file changes
+build --guard_against_concurrent_changes
+
+# Show outputs of failing tests
+test --test_output=errors
+
+# Mypy aspect registration + enable by default
+build --aspects //bazel/typing:aspects.bzl%mypy_aspect
+build --output_groups=+mypy
+
+# User overrides
+try-import %workspace%/.bazelrc.user

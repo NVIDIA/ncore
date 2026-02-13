@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+NCore Waymo Converter - Convert Waymo Open Dataset to NCore format.
+
+This module provides tooling for converting Waymo Open Dataset tfrecords to NCore V4 format.
+"""
+
+module(
+    name = "ncore_waymo",
+    repo_name = "ncore_waymo_repo",
+)
+
+# Core build dependencies
+bazel_dep(name = "rules_python", version = "1.2.0")
+bazel_dep(name = "rules_uv", version = "0.88.0")
+bazel_dep(name = "rules_mypy", version = "0.40.0")
+bazel_dep(name = "protobuf", version = "29.1")
+bazel_dep(name = "bazel_skylib", version = "1.7.1")
+bazel_dep(name = "rules_license", version = "1.0.0")
+
+# Reference to parent ncore module
+bazel_dep(name = "ncore", version = "0.0.0")
+local_path_override(
+    module_name = "ncore",
+    path = "../..",
+)
+
+## Python toolchain
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    is_default = True,
+    python_version = "3.11",
+)
+use_repo(python, "python_3_11", "python_versions")
+
+## Pip dependencies
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    experimental_index_url = "https://pypi.org/simple",
+    hub_name = "ncore_waymo_pip_deps",
+    python_version = "3.11",
+    requirements_lock = "//3rdparty/python:requirements_3_11.txt",
+)
+use_repo(pip, "ncore_waymo_pip_deps")
+
+## Waymo Open Dataset (http_archive for proto definitions)
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "waymo-open-dataset",
+    patch_strip = 2,
+    patches = ["//3rdparty/waymo-open-dataset:cc-proto.patch"],
+    sha256 = "5e91fea02a0cdb1edb39d9ac27fbdb1e8d890986faab545497a95b54213b973d",
+    strip_prefix = "waymo-open-dataset-1.5.1/src",
+    urls = ["https://github.com/waymo-research/waymo-open-dataset/archive/refs/tags/v1.5.1.tar.gz"],
+)

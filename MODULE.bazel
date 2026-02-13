@@ -79,6 +79,6 @@ http_archive(
 # documentation binary data
 http_archive(
     name = "ncore_docs_data",
-    sha256 = "32495526e9ef8a8892a24549c97fe1c5251c498dfc313f3ddb75385211ec4d55",
-    urls = ["https://maven.pkg.github.com/NVIDIA/ncore/com/nvidia/ncore/ncore-docs-data/0.2/ncore-docs-data-0.2.tar.gz"],
+    sha256 = "e79f4dbe5935c4fb1326da1f11226b8ffa2ffa124053b0cdd8b3bda859afb646",
+    urls = ["https://maven.pkg.github.com/NVIDIA/ncore/com/nvidia/ncore/ncore-docs-data/0.3/ncore-docs-data.tar.gz"],
 )

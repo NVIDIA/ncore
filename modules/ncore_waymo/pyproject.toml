@@ -13,18 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//bazel/sphinx:defs.bzl", "sphinx_html_gen", "sphinx_view")
+[tool.ruff]
+target-version = "py310"
+line-length = 120
 
-sphinx_html_gen(
-    name = "ncore",
-    srcs = glob(["apis/**"]) + glob(["data/*.rst"]) + glob(["tools/*.rst"]) + glob(["conversions/**/*.rst"]) + glob(["_static/**"]) + glob(["_templates/**"]) + [
-        "@ncore_docs_data//:all_assets",
-    ],
-    config = "conf.py",
-    index = "index.rst",
-)
-
-sphinx_view(
-    name = "view_ncore",
-    generator = "ncore",
-)
+[tool.ruff.lint.isort]
+known-first-party = ["ncore_waymo", "ncore", "scripts"]
+known-third-party = ["tensorflow", "waymo_open_dataset"]
+default-section = "third-party"
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+lines-between-types = 1
+lines-after-imports = 2

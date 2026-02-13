@@ -1,0 +1,37 @@
+diff --git i/src/waymo_open_dataset/BUILD w/src/waymo_open_dataset/BUILD
+index 1234567..abcdefg 100644
+--- i/src/waymo_open_dataset/BUILD
++++ w/src/waymo_open_dataset/BUILD
+@@ -1,19 +1,11 @@
+ # Waymo open dataset
+
+-load("@rules_license//rules:license.bzl", "license")
+ load("//waymo_open_dataset/protos:defs.bzl", "all_proto_library")
+-load("@rules_python//python:pip.bzl", "compile_pip_requirements")
+
+ package(
+-    default_applicable_licenses = ["//waymo_open_dataset:license"],
+     default_visibility = ["//visibility:public"],
+ )
+
+-license(
+-    name = "license",
+-    package_name = "waymo_open_dataset",
+-    license_kinds = ["@rules_license//licenses/generic:notice"],
+-)
+-
+ licenses(["notice"])
+
+ exports_files(["LICENSE"])
+diff --git i/src/waymo_open_dataset/protos/BUILD w/src/waymo_open_dataset/protos/BUILD
+index 1234568..abcdef0 100644
+--- i/src/waymo_open_dataset/protos/BUILD
++++ w/src/waymo_open_dataset/protos/BUILD
+@@ -2,7 +2,6 @@
+
+ load(":defs.bzl", "all_proto_library")
+
+-package(default_applicable_licenses = ["//waymo_open_dataset:license"])
+
+ all_proto_library(src = "breakdown.proto")
+
