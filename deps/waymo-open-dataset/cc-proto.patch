@@ -1,22 +1,43 @@
 diff --git i/src/waymo_open_dataset/protos/defs.bzl w/src/waymo_open_dataset/protos/defs.bzl
-index 2ddaf42..28f5dfc 100644
+index 2ddaf42..3fbf9ad 100644
 --- i/src/waymo_open_dataset/protos/defs.bzl
 +++ w/src/waymo_open_dataset/protos/defs.bzl
-@@ -1,11 +1,10 @@
- """Build rule to build cc and py protos."""
-
+@@ -1,11 +1,15 @@
+-"""Build rule to build cc and py protos."""
++"""Build rule to build py protos."""
+ 
 -load("@com_google_protobuf//:protobuf.bzl", "cc_proto_library", "py_proto_library")
-+load("@protobuf//:protobuf.bzl", "py_proto_library")
-
++load("@rules_proto//proto:defs.bzl", "proto_library")
++load("@rules_python//python:proto.bzl", _py_proto_library = "py_proto_library")
++
++# Re-define py_proto_library to avoid deprecation warning from rules_proto
++def py_proto_library(**kwargs):
++    _py_proto_library(deprecation = None, **kwargs)
+ 
  _SUFFIXES = {
      "proto": "_proto",
      "py": "_proto_py_pb2",
 -    "cc": "_cc_proto",
  }
-
+ 
  def _target_name(lang, base_name):
-@@ -31,4 +30,3 @@ def all_proto_library(src, deps = None):
+@@ -21,14 +24,15 @@ def _deps(lang, deps):
+     return [_target_name(lang, _get_basename(d)) for d in deps]
+ 
+ def all_proto_library(src, deps = None):
+-    """Adds build rulles to build python and c++ proto libraries.
++    """Adds build rules to build python proto libraries.
+ 
+     Args:
+       src: proto file.
+-      deps: optional list with proto dependensies.
++      deps: optional list with proto dependencies.
+     """
+     if deps == None:
          deps = []
      base_name = src[:-len(".proto")]
-     py_proto_library(name = _target_name("py", base_name), srcs = [src], deps = _deps("py", deps))
+-    py_proto_library(name = _target_name("py", base_name), srcs = [src], deps = _deps("py", deps))
 -    cc_proto_library(name = _target_name("cc", base_name), srcs = [src], deps = _deps("cc", deps))
++    proto_name = _target_name("proto", base_name)
++    proto_library(name = proto_name, srcs = [src], deps = _deps("proto", deps))
++    py_proto_library(name = _target_name("py", base_name), deps = [":" + proto_name])

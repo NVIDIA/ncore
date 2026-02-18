@@ -30,7 +30,7 @@ bazel_dep(name = "rules_multirun", version = "0.13.0")
 bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "buildifier_prebuilt", version = "8.2.1")
 bazel_dep(name = "bazel_skylib", version = "1.7.1")
-bazel_dep(name = "protobuf", version = "29.1")
+bazel_dep(name = "rules_proto", version = "7.1.0")
 bazel_dep(name = "platforms", version = "1.0.0")
 
 ## rules_python
@@ -88,7 +88,7 @@ http_archive(
 
 # Waymo Open Dataset (http_archive for proto definitions)
 http_archive(
-    name = "waymo-open-dataset",
+    name = "waymo_open_dataset",
     patch_strip = 2,
     patches = ["//deps/waymo-open-dataset:cc-proto.patch"],
     sha256 = "5e91fea02a0cdb1edb39d9ac27fbdb1e8d890986faab545497a95b54213b973d",

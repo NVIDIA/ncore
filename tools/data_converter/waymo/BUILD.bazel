@@ -23,9 +23,9 @@ py_library(
     tags = ["no-mypy"],  # syntax errors in type annotations of tensorflow / absl-py
     deps = [
         requirement("tensorflow"),
-        "@waymo-open-dataset//waymo_open_dataset:dataset_proto_py_pb2",
-        "@waymo-open-dataset//waymo_open_dataset:label_proto_py_pb2",
-        "@waymo-open-dataset//waymo_open_dataset/protos:camera_segmentation_proto_py_pb2",
+        "@waymo_open_dataset//waymo_open_dataset:dataset_proto_py_pb2",
+        "@waymo_open_dataset//waymo_open_dataset:label_proto_py_pb2",
+        "@waymo_open_dataset//waymo_open_dataset/protos:camera_segmentation_proto_py_pb2",
     ],
 )
 
