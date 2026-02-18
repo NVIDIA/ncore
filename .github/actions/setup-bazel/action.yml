@@ -69,6 +69,9 @@ runs:
           - MODULE.bazel
           - 3rdparty/python/requirements_3_8.txt
           - 3rdparty/python/requirements_3_11.txt
+        # Cache external dependencies 
+        # (particularly important for Python dependencies which can be large and slow to install)
+        external-cache: true
         # Don't pollute cache from PRs
         cache-save: ${{ github.event_name != 'pull_request' }}
         # Add custom bazelrc options: color / timestamps / no GPU for CI builds
