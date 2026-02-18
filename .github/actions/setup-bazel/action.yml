@@ -67,10 +67,12 @@ runs:
         # Share repository cache between workflows
         repository-cache: |
           - MODULE.bazel
-          - requirements_locked.txt
           - 3rdparty/python/requirements_3_8.txt
           - 3rdparty/python/requirements_3_11.txt
-          - modules/ncore_waymo/MODULE.bazel
-          - modules/ncore_waymo/3rdparty/python/requirements_3_11.txt
         # Don't pollute cache from PRs
         cache-save: ${{ github.event_name != 'pull_request' }}
+        # Add custom bazelrc options: color / timestamps / no GPU for CI builds
+        bazelrc: |
+            build --color=yes
+            build --show_timestamps
+            test --config=no-gpu
