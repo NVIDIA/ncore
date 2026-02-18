@@ -174,62 +174,79 @@ PRs are merged via **rebase only** (no merge commits).
 
 Before submitting your PR, ensure your branch is *rebased* on the latest `main` and is free of merge commits.
 
-## Signing Your Work
+## Commit Signatures
 
-- We require that all contributors "sign-off" on their commits. This certifies
-  that the contribution is your original work, or you have rights to submit it
-  under the same license, or a compatible license.
+We require that all commits are GPG-signed. This ensures commit authenticity and certifies your agreement with the Developer Certificate of Origin (DCO) below.
 
-  - Any contribution which contains commits that are not Signed-Off will not be
-    accepted.
+Any contribution which contains commits that are not signed will not be accepted.
 
-- To sign off on a commit you simply use the `--signoff` (or `-s`) option when
-  committing your changes:
+### Setting Up GPG Signing
 
-  ```bash
-  git commit -s -m "Add cool feature."
-  ```
+1. **Generate a GPG key** (if you don't have one):
+   See [GitHub: Generating a new GPG key](https://docs.github.com/en/authentication/managing-commit-signature-verification/generating-a-new-gpg-key)
 
-  This will append the following to your commit message:
+2. **Add your GPG key to your GitHub account**:
+   See [GitHub: Adding a GPG key to your account](https://docs.github.com/en/authentication/managing-commit-signature-verification/adding-a-gpg-key-to-your-github-account)
 
-  ```bash
-  Signed-off-by: Your Name <your@email.com>
-  ```
+3. **Configure Git to use your signing key**:
 
-- Full text of the DCO:
+   ```bash
+   # List your GPG keys to find your key ID
+   gpg --list-secret-keys --keyid-format=long
 
-  ```text
-    Developer Certificate of Origin
-    Version 1.1
+   # Configure Git with your key ID
+   git config --global user.signingkey <your-key-id>
 
-    Copyright (C) 2004, 2006 The Linux Foundation and its contributors.
-    1 Letterman Drive
-    Suite D4700
-    San Francisco, CA, 94129
+   # Enable automatic signing for all commits (recommended)
+   git config --global commit.gpgsign true
+   ```
 
-    Everyone is permitted to copy and distribute verbatim copies of this
-    license document, but changing it is not allowed.
-  ```
+### Signing Commits
 
-  ```text
-    Developer's Certificate of Origin 1.1
+If you haven't enabled automatic signing, use the `-S` flag:
 
-    By making a contribution to this project, I certify that:
+```bash
+git commit -S -m "feat: add cool feature"
+```
 
-    (a) The contribution was created in whole or in part by me and I have
-        the right to submit it under the open source license indicated in the file; or
+Your commits will show as "Verified" on GitHub once properly configured.
 
-    (b) The contribution is based upon previous work that, to the best of my knowledge,
-        is covered under an appropriate open source license and I have the right under
-        that license to submit that work with modifications, whether created in whole
-        or in part by me, under the same open source license (unless I am permitted
-        to submit under a different license), as indicated in the file; or
+### Developer Certificate of Origin
 
-    (c) The contribution was provided directly to me by some other person who
-        certified (a), (b) or (c) and I have not modified it.
+By signing your commits, you certify your agreement with the following:
 
-    (d) I understand and agree that this project and the contribution are public and
-        that a record of the contribution (including all personal information I submit
-        with it, including my sign-off) is maintained indefinitely and may be
-        redistributed consistent with this project or the open source license(s) involved.
-  ```
+```text
+Developer Certificate of Origin
+Version 1.1
+
+Copyright (C) 2004, 2006 The Linux Foundation and its contributors.
+1 Letterman Drive
+Suite D4700
+San Francisco, CA, 94129
+
+Everyone is permitted to copy and distribute verbatim copies of this
+license document, but changing it is not allowed.
+```
+
+```text
+Developer's Certificate of Origin 1.1
+
+By making a contribution to this project, I certify that:
+
+(a) The contribution was created in whole or in part by me and I have
+    the right to submit it under the open source license indicated in the file; or
+
+(b) The contribution is based upon previous work that, to the best of my knowledge,
+    is covered under an appropriate open source license and I have the right under
+    that license to submit that work with modifications, whether created in whole
+    or in part by me, under the same open source license (unless I am permitted
+    to submit under a different license), as indicated in the file; or
+
+(c) The contribution was provided directly to me by some other person who
+    certified (a), (b) or (c) and I have not modified it.
+
+(d) I understand and agree that this project and the contribution are public and
+    that a record of the contribution (including all personal information I submit
+    with it, including my signature) is maintained indefinitely and may be
+    redistributed consistent with this project or the open source license(s) involved.
+```
