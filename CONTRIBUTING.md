@@ -86,7 +86,7 @@ This project uses:
 
 Note a special case for Bazel: the commands above are used both for traditional formatting and for linter warnings. Bazel attempts to fix some of the linter warnings automatically as part of the `//:format` target, but others will be left untouched and need to be manually corrected by the user.
 
-### Type Checking
+### Static Type Checking
 
 All Python code is checked with `mypy`, which runs automatically as a Bazel aspect during builds.
 
@@ -142,7 +142,7 @@ With optional [breaking-change indicators](https://www.conventionalcommits.org/e
 - `ci`: Changes to CI configuration files and scripts
 - `chore`: Other changes that don't modify src or test files
 
-Commit messages are validated in CI using [cocogitto](https://github.com/cocogitto/cocogitto). PRs with non-compliant commits will fail the conventional commits check.
+Commit messages are validated in CI using [cocogitto](https://github.com/cocogitto/cocogitto). PRs with non-compliant commits or merge commits will fail the conventional commits check.
 
 ### Branch Naming
 
@@ -168,9 +168,11 @@ Where:
 
 ### Linear History
 
-This repository enforces a **linear commit history**. PRs are merged via **rebase only** (no merge commits).
+This repository enforces a **linear commit history** of commits with conventional commit messages.
 
-Before submitting your PR, ensure your branch is rebased on the latest `main`.
+PRs are merged via **rebase only** (no merge commits).
+
+Before submitting your PR, ensure your branch is *rebased* on the latest `main` and is free of merge commits.
 
 ## Signing Your Work
 
