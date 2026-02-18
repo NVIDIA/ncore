@@ -115,13 +115,62 @@ All source files must include SPDX license headers:
 # SPDX-License-Identifier: Apache-2.0
 ```
 
+### Commit Messages
+
+This project follows the [Conventional Commits](https://www.conventionalcommits.org/) specification. All commits must follow this format:
+
+```text
+<type>[optional (scope)]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+With optional [breaking-change indicators](https://www.conventionalcommits.org/en/v1.0.0/#commit-message-with--to-draw-attention-to-breaking-change).
+
+**Common types:**
+
+- `feat`: A new feature
+- `fix`: A bug fix
+- `docs`: Documentation only changes
+- `style`: Changes that do not affect the meaning of the code (formatting, etc.)
+- `refactor`: A code change that neither fixes a bug nor adds a feature
+- `perf`: A code change that improves performance
+- `test`: Adding missing tests or correcting existing tests
+- `build`: Changes that affect the build system or external dependencies
+- `ci`: Changes to CI configuration files and scripts
+- `chore`: Other changes that don't modify src or test files
+
+Commit messages are validated in CI using [cocogitto](https://github.com/cocogitto/cocogitto). PRs with non-compliant commits will fail the conventional commits check.
+
+### Branch Naming
+
+Branches must follow the naming pattern:
+
+```text
+<type>/<username>/<topic>
+```
+
+Where:
+
+- `<type>` is a conventional commit type (e.g., `feat`, `fix`, `docs`, `refactor`, `dev`)
+- `<username>` is your GitHub username or identifier
+- `<topic>` is a short, descriptive name for the change (use hyphens for spaces)
+
 ### Pull Requests
 
 - Keep PRs focused and concise; address a _single_ atomic concern per PR
 - Avoid committing commented-out code
-- Ensure the build passes with no warnings or errors
+- Ensure the CI passes with no warnings or errors
 - Ensure library versions are updated appropriately for changing public-facing APIs
 - Include full test coverage for new or updated functionality
+
+### Linear History
+
+This repository enforces a **linear commit history**. PRs are merged via **rebase only** (no merge commits).
+
+Before submitting your PR, ensure your branch is rebased on the latest `main`.
 
 ## Signing Your Work
 
