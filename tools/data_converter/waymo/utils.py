@@ -24,7 +24,7 @@ This module contains original NVIDIA code for:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -87,7 +87,7 @@ class _PointCloudReturn:
     """Result of converting a single range image return to a point cloud."""
 
     points: np.ndarray
-    segmentation: Optional[np.ndarray]
+    segmentation: np.ndarray | None
     timestamps: np.ndarray
     range_image_indices: np.ndarray
     inclinations: np.ndarray
@@ -98,7 +98,7 @@ def convert_range_images_to_point_clouds(
     frame: Any,
     laser_name: str,
     range_images: list[ParsedMatrix],
-    segmentation: Optional[ParsedMatrix],
+    segmentation: ParsedMatrix | None,
     range_image_top_pose: ParsedMatrix,
     start_end_timestamps: np.ndarray,
 ) -> list[_PointCloudReturn]:

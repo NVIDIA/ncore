@@ -21,7 +21,7 @@ import json
 import logging
 
 from dataclasses import asdict, dataclass
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
 import click
 import numpy as np
@@ -229,7 +229,7 @@ class WaymoConverter4(BaseDataConverter):
         """Decode and interpolate vehicle poses from frame data."""
         # Grab poses from images, as for images the pose/timestamps correspond to each other
         T_rig_worlds_array = []
-        T_rig_world_timestamps_us_array: List[int] = []
+        T_rig_world_timestamps_us_array: list[int] = []
 
         # Buffers holding extrapolated poses to cover all frame start/end timestamps fully
         T_rig_worlds_array_extrapolated = []
@@ -427,9 +427,9 @@ class WaymoConverter4(BaseDataConverter):
             )
 
             # Variables associated with intrinsics
-            lidar_model: Optional[RowOffsetStructuredSpinningLidarModel] = None
-            lidar_model_parameters: Optional[RowOffsetStructuredSpinningLidarModelParameters] = None
-            lidar_horizontal_fov: Optional[FOV] = None
+            lidar_model: RowOffsetStructuredSpinningLidarModel | None = None
+            lidar_model_parameters: RowOffsetStructuredSpinningLidarModelParameters | None = None
+            lidar_horizontal_fov: FOV | None = None
 
             # Create lidar sensor writer
             lidar_writer = self.store_writer.register_component_writer(
@@ -727,7 +727,7 @@ class WaymoConverter4(BaseDataConverter):
         self.logger.info(f"Stored {len(cuboid_track_observations)} cuboid observations")
 
     # Semantic classes labels for camera segmentation
-    CAMERA_LABEL_CLASS_ID_STRING_MAP: Dict[int, str] = {
+    CAMERA_LABEL_CLASS_ID_STRING_MAP: dict[int, str] = {
         camera_segmentation_pb2.CameraSegmentation.Type.TYPE_UNDEFINED: "UNDEFINED",
         # The Waymo vehicle.
         camera_segmentation_pb2.CameraSegmentation.Type.TYPE_EGO_VEHICLE: "EGO_VEHICLE",
@@ -845,8 +845,8 @@ class WaymoConverter4(BaseDataConverter):
                 )
 
                 # Parse panoptic segmentation, if available
-                generic_data: Dict[str, np.ndarray] = {}
-                generic_meta_data: Dict[str, JsonLike] = {}
+                generic_data: dict[str, np.ndarray] = {}
+                generic_meta_data: dict[str, JsonLike] = {}
 
                 if (
                     hasattr(image, "camera_segmentation_label")
