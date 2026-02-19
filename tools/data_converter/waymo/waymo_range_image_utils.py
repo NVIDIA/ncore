@@ -47,7 +47,7 @@ Key modifications from upstream:
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -78,8 +78,8 @@ def parse_range_image_and_segmentations(
     frame: Any,
     laser_name: int,
     ri_index: int = 0,
-    range_image_top_pose: Optional[ParsedMatrix] = None,
-) -> tuple[Optional[ParsedMatrix], Optional[ParsedMatrix], Optional[ParsedMatrix]]:
+    range_image_top_pose: ParsedMatrix | None = None,
+) -> tuple[ParsedMatrix | None, ParsedMatrix | None, ParsedMatrix | None]:
     """Parse range images and segmentations given a frame.
 
     Derived from waymo_open_dataset.utils.frame_utils.parse_range_image_and_camera_projection
@@ -101,8 +101,8 @@ def parse_range_image_and_segmentations(
        range_image_top_pose: parsed top-lidar per-pixel pose matrix.
     """
 
-    range_image: Optional[ParsedMatrix] = None
-    segmentation: Optional[ParsedMatrix] = None
+    range_image: ParsedMatrix | None = None
+    segmentation: ParsedMatrix | None = None
     need_top_pose = range_image_top_pose is None
 
     for laser in frame.lasers:
@@ -128,10 +128,10 @@ def extract_point_cloud_from_range_image(
     extrinsic: TfTensor,
     inclination: TfTensor,
     start_end_timestamps: np.ndarray,
-    pixel_pose: Optional[TfTensor] = None,
-    frame_pose: Optional[TfTensor] = None,
+    pixel_pose: TfTensor | None = None,
+    frame_pose: TfTensor | None = None,
     dtype: TfDType = tf.float32,
-    scope: Optional[str] = None,
+    scope: str | None = None,
 ) -> tuple[tuple[TfTensor, TfTensor], TfTensor, TfTensor]:
     """Extracts point cloud from range image.
 
@@ -183,7 +183,7 @@ def compute_range_image_polar(
     extrinsic: TfTensor,
     inclination: TfTensor,
     dtype: TfDType = tf.float32,
-    scope: Optional[str] = None,
+    scope: str | None = None,
 ) -> tuple[TfTensor, TfTensor]:
     """Computes range image polar coordinates.
 
@@ -232,10 +232,10 @@ def compute_range_image_cartesian(
     range_image_polar: TfTensor,
     extrinsic: TfTensor,
     start_end_timestamps: np.ndarray,
-    pixel_pose: Optional[TfTensor] = None,
-    frame_pose: Optional[TfTensor] = None,
+    pixel_pose: TfTensor | None = None,
+    frame_pose: TfTensor | None = None,
     dtype: TfDType = tf.float32,
-    scope: Optional[str] = None,
+    scope: str | None = None,
     return_local_coordinates: bool = False,
 ) -> tuple[tuple[TfTensor, TfTensor], TfTensor]:
     """Computes range image cartesian coordinates from polar ones.

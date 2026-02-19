@@ -20,10 +20,11 @@ protobuf repeated-field construction that dominates the cost of ParseFromString
 for large matrices (~1M+ elements).
 """
 
+from __future__ import annotations
+
 import zlib
 
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 
@@ -90,8 +91,8 @@ def parse_matrix_proto(raw_compressed: bytes, dtype: type) -> ParsedMatrix:
     buf = zlib.decompress(raw_compressed)
     pos = 0
     end = len(buf)
-    data_start: Optional[int] = None
-    data_end: Optional[int] = None
+    data_start: int | None = None
+    data_end: int | None = None
     dims: list[int] = []
     is_float = dtype == np.float32 or dtype == np.float64
 
