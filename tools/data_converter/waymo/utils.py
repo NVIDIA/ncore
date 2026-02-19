@@ -21,8 +21,10 @@ This module contains original NVIDIA code for:
     and azimuths
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 
@@ -93,12 +95,12 @@ class _PointCloudReturn:
 
 
 def convert_range_images_to_point_clouds(
-    frame,
+    frame: Any,
     laser_name: str,
     range_images: list[ParsedMatrix],
     segmentation: Optional[ParsedMatrix],
     range_image_top_pose: ParsedMatrix,
-    start_end_timestamps,
+    start_end_timestamps: np.ndarray,
 ) -> list[_PointCloudReturn]:
     """Convert one or more range image returns to point clouds in a single batched pass.
 

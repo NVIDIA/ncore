@@ -45,7 +45,9 @@ Key modifications from upstream:
     a single laser at a time, drops camera projections
 """
 
-from typing import Optional
+from __future__ import annotations
+
+from typing import Any, Optional
 
 import numpy as np
 
@@ -58,6 +60,12 @@ from tools.data_converter.waymo.deps import (
 from tools.data_converter.waymo.proto_utils import ParsedMatrix, parse_matrix_proto
 
 
+# TensorFlow tensor type alias — tf types are unavailable to mypy (follow_imports = silent),
+# so we use Any as a transparent stand-in.
+TfTensor = Any
+TfDType = Any
+
+
 # Re-export verbatim upstream functions used by other modules in this package.
 # These are NOT duplicated — they come directly from the Waymo Open Dataset.
 compute_inclination = waymo_range_image_utils.compute_inclination
@@ -66,7 +74,12 @@ get_transform = waymo_transform_utils.get_transform
 _combined_static_and_dynamic_shape = waymo_range_image_utils._combined_static_and_dynamic_shape
 
 
-def parse_range_image_and_segmentations(frame, laser_name, ri_index: int = 0, range_image_top_pose=None):
+def parse_range_image_and_segmentations(
+    frame: Any,
+    laser_name: int,
+    ri_index: int = 0,
+    range_image_top_pose: Optional[ParsedMatrix] = None,
+) -> tuple[Optional[ParsedMatrix], Optional[ParsedMatrix], Optional[ParsedMatrix]]:
     """Parse range images and segmentations given a frame.
 
     Derived from waymo_open_dataset.utils.frame_utils.parse_range_image_and_camera_projection
@@ -111,15 +124,15 @@ def parse_range_image_and_segmentations(frame, laser_name, ri_index: int = 0, ra
 
 
 def extract_point_cloud_from_range_image(
-    range_image,
-    extrinsic,
-    inclination,
-    start_end_timestamps,
-    pixel_pose=None,
-    frame_pose=None,
-    dtype=tf.float32,
-    scope=None,
-):
+    range_image: TfTensor,
+    extrinsic: TfTensor,
+    inclination: TfTensor,
+    start_end_timestamps: np.ndarray,
+    pixel_pose: Optional[TfTensor] = None,
+    frame_pose: Optional[TfTensor] = None,
+    dtype: TfDType = tf.float32,
+    scope: Optional[str] = None,
+) -> tuple[tuple[TfTensor, TfTensor], TfTensor, TfTensor]:
     """Extracts point cloud from range image.
 
     Derived from waymo_open_dataset.utils.range_image_utils.extract_point_cloud_from_range_image
@@ -165,7 +178,13 @@ def extract_point_cloud_from_range_image(
         return range_image_cartesian, timestamps, azimuths
 
 
-def compute_range_image_polar(range_image, extrinsic, inclination, dtype=tf.float32, scope=None):
+def compute_range_image_polar(
+    range_image: TfTensor,
+    extrinsic: TfTensor,
+    inclination: TfTensor,
+    dtype: TfDType = tf.float32,
+    scope: Optional[str] = None,
+) -> tuple[TfTensor, TfTensor]:
     """Computes range image polar coordinates.
 
     Derived from waymo_open_dataset.utils.range_image_utils.compute_range_image_polar
@@ -210,15 +229,15 @@ def compute_range_image_polar(range_image, extrinsic, inclination, dtype=tf.floa
 
 
 def compute_range_image_cartesian(
-    range_image_polar,
-    extrinsic,
-    start_end_timestamps,
-    pixel_pose=None,
-    frame_pose=None,
-    dtype=tf.float32,
-    scope=None,
-    return_local_coordinates=False,
-):
+    range_image_polar: TfTensor,
+    extrinsic: TfTensor,
+    start_end_timestamps: np.ndarray,
+    pixel_pose: Optional[TfTensor] = None,
+    frame_pose: Optional[TfTensor] = None,
+    dtype: TfDType = tf.float32,
+    scope: Optional[str] = None,
+    return_local_coordinates: bool = False,
+) -> tuple[tuple[TfTensor, TfTensor], TfTensor]:
     """Computes range image cartesian coordinates from polar ones.
 
     Derived from waymo_open_dataset.utils.range_image_utils.compute_range_image_cartesian
