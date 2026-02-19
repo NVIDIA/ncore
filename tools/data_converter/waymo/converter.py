@@ -66,8 +66,8 @@ from tools.data_converter.waymo.deps import camera_segmentation_pb2, dataset_pb2
 from tools.data_converter.waymo.utils import (
     convert_range_images_to_point_clouds,
     extrapolate_pose_based_on_velocity,
-    parse_range_image_and_segmentations,
 )
+from tools.data_converter.waymo.waymo_range_image_utils import parse_range_image_and_segmentations
 
 
 @dataclass(kw_only=True, slots=True)

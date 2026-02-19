@@ -33,6 +33,8 @@ import tensorflow.compat.v1 as tf
 
 from waymo_open_dataset import dataset_pb2, label_pb2
 from waymo_open_dataset.protos import camera_segmentation_pb2
+from waymo_open_dataset.utils import range_image_utils as waymo_range_image_utils
+from waymo_open_dataset.utils import transform_utils as waymo_transform_utils
 
 
 # Pop modified paths back to original

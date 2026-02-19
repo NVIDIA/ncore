@@ -26,15 +26,39 @@ py_library(
         "@waymo_open_dataset//waymo_open_dataset:dataset_proto_py_pb2",
         "@waymo_open_dataset//waymo_open_dataset:label_proto_py_pb2",
         "@waymo_open_dataset//waymo_open_dataset/protos:camera_segmentation_proto_py_pb2",
+        "@waymo_open_dataset//waymo_open_dataset/utils:range_image_utils",
+        "@waymo_open_dataset//waymo_open_dataset/utils:transform_utils",
     ],
 )
 
-# Utilities for parsing Waymo range images
+# Fast-path protobuf parser for Waymo MatrixFloat / MatrixInt32 protos (NVIDIA-original)
+py_library(
+    name = "pylib_proto_utils",
+    srcs = ["proto_utils.py"],
+    deps = [
+        requirement("numpy"),
+    ],
+)
+
+# Modified Waymo range image utilities (Waymo Apache-2.0 + NVIDIA modifications)
+py_library(
+    name = "pylib_waymo_range_image_utils",
+    srcs = ["waymo_range_image_utils.py"],
+    deps = [
+        ":pylib_deps",
+        ":pylib_proto_utils",
+        requirement("numpy"),
+    ],
+)
+
+# NCore-specific utilities: pose extrapolation, batched point cloud conversion (NVIDIA-original)
 py_library(
     name = "pylib_utils",
     srcs = ["utils.py"],
     deps = [
         ":pylib_deps",
+        ":pylib_proto_utils",
+        ":pylib_waymo_range_image_utils",
         requirement("numpy"),
         requirement("scipy"),
     ],
@@ -48,6 +72,7 @@ py_binary(
     deps = [
         ":pylib_deps",
         ":pylib_utils",
+        ":pylib_waymo_range_image_utils",
         requirement("click"),
         requirement("numpy"),
         requirement("tqdm"),

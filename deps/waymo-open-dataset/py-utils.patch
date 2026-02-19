@@ -1,0 +1,7 @@
+diff --git i/src/waymo_open_dataset/utils/BUILD w/src/waymo_open_dataset/utils/BUILD
+index 1234567..abcdefg 100644
+--- i/src/waymo_open_dataset/utils/BUILD
++++ w/src/waymo_open_dataset/utils/BUILD
+@@ -1 +1 @@
+-load("@wod_deps//:requirements.bzl", "requirement")
++load("@ncore_pip_deps//:requirements.bzl", "requirement")

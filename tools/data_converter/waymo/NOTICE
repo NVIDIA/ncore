@@ -9,9 +9,15 @@ This package includes software developed by
 
 Waymo Open Dataset (<https://github.com/waymo-research/waymo-open-dataset>)
 
-in `utils.py`.
+- `waymo_range_image_utils.py` contains functions modified from the Waymo Open
+  Dataset v1.5.1 sources (`range_image_utils.py`, `transform_utils.py`, and
+  `frame_utils.py`). Verbatim (unmodified) utility functions are imported
+  directly from the upstream `waymo_open_dataset` package at runtime rather
+  than being duplicated.
+- `proto_utils.py` and `utils.py` are original NVIDIA code and do **not**
+  contain Waymo-derived code.
 
-Original source licensed under the Apache License, Version 2.0.
+Original Waymo source licensed under the Apache License, Version 2.0.
 
 ## waymo-open-dataset - [Apache-2.0](https://github.com/waymo-research/waymo-open-dataset/blob/master/src/waymo_open_dataset/LICENSE)
 

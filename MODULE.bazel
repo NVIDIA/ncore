@@ -100,7 +100,10 @@ http_archive(
 http_archive(
     name = "waymo_open_dataset",
     patch_strip = 2,
-    patches = ["//deps/waymo-open-dataset:cc-proto.patch"],
+    patches = [
+        "//deps/waymo-open-dataset:cc-proto.patch",
+        "//deps/waymo-open-dataset:py-utils.patch",
+    ],
     sha256 = "5e91fea02a0cdb1edb39d9ac27fbdb1e8d890986faab545497a95b54213b973d",
     strip_prefix = "waymo-open-dataset-1.5.1/src",
     urls = ["https://github.com/waymo-research/waymo-open-dataset/archive/refs/tags/v1.5.1.tar.gz"],
