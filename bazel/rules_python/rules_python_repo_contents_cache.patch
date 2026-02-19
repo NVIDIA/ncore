@@ -1,0 +1,38 @@
+Add support for --repo_contents_cache (Bazel 8.3.0+)
+
+When repository rules declare themselves as reproducible via ctx.repo_metadata(),
+Bazel can cache and restore the entire repo directory contents, avoiding
+re-downloads and re-extractions on cold starts (e.g. ephemeral CI).
+
+See: https://github.com/bazel-contrib/rules_python/issues/3039
+Ref: https://github.com/bazel-contrib/bazel-gazelle/pull/2119
+
+--- a/python/private/python_repository.bzl
++++ b/python/private/python_repository.bzl
+@@ -260,6 +260,10 @@
+     if rctx.attr.url:
+         attrs["url"] = rctx.attr.url
+     else:
+         attrs["urls"] = urls
+ 
++    # Support --repo_contents_cache (Bazel 8.3.0+)
++    if hasattr(rctx, "repo_metadata"):
++        return rctx.repo_metadata(reproducible = True)
++
+     return attrs
+ 
+ python_repository = repository_rule(
+--- a/python/private/pypi/whl_library.bzl
++++ b/python/private/pypi/whl_library.bzl
+@@ -349,6 +349,11 @@
+     )
+     rctx.file("BUILD.bazel", build_file_contents)
+ 
++    # Support --repo_contents_cache (Bazel 8.3.0+)
++    # Only mark as reproducible when using Bazel downloader (urls + sha256)
++    if hasattr(rctx, "repo_metadata") and rctx.attr.urls and rctx.attr.sha256:
++        return rctx.repo_metadata(reproducible = True)
++
+     return
+ 
+ def _generate_entry_point_contents(
