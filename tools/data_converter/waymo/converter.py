@@ -461,7 +461,7 @@ class WaymoConverter4(BaseDataConverter):
                 timestamps_us = np.array([frame_start_timestamp_us, frame_end_timestamp_us], dtype=np.uint64)
 
                 # Extract the range image and corresponding poses for all rays
-                range_image, segmentation, range_image_top_pose = parse_range_image_and_segmentations(
+                range_image, segmentation_ri, range_image_top_pose = parse_range_image_and_segmentations(
                     frame, lidar_id, ri_index=0
                 )
 
@@ -473,9 +473,14 @@ class WaymoConverter4(BaseDataConverter):
                 pc_first, pc_second = convert_range_images_to_point_clouds(
                     frame,
                     lidar_id,
-                    [range_image, range_image_second],
-                    segmentation,
-                    range_image_top_pose,
+                    [
+                        unpack_optional(range_image, msg=f"Missing range image for laser {lidar_id}"),
+                        unpack_optional(
+                            range_image_second, msg=f"Missing second-return range image for laser {lidar_id}"
+                        ),
+                    ],
+                    segmentation_ri,
+                    unpack_optional(range_image_top_pose, msg=f"Missing top-lidar pose for laser {lidar_id}"),
                     timestamps_us,
                 )
                 points_world = pc_first.points
