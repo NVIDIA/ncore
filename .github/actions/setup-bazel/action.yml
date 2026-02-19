@@ -64,18 +64,21 @@ runs:
         bazelisk-cache: true
         # Store build cache per workflow
         disk-cache: ${{ github.workflow }}
-        # Share repository cache between workflows
+        # Share repository cache between workflows.
+        # The repo contents cache (--repo_contents_cache, enabled by default since Bazel 8.3.0)
+        # lives under the repository cache directory, so caching it here also persists
+        # cached repo contents (Python interpreters, pip wheels, etc.) across CI runs.
         repository-cache: |
           - MODULE.bazel
-          - 3rdparty/python/requirements_3_8.txt
-          - 3rdparty/python/requirements_3_11.txt
-        # Cache external dependencies 
-        # (particularly important for Python dependencies which can be large and slow to install)
-        external-cache: true
-        # Don't pollute cache from PRs
+          - deps/pip/requirements_3_8.txt
+          - deps/pip/requirements_3_11.txt
+        # Only save caches on push (not on PRs) to avoid cache pollution
         cache-save: ${{ github.event_name != 'pull_request' }}
+        # Bump to force-invalidate all CI caches (e.g. after changing cache structure)
+        cache-version: 2
         # Add custom bazelrc options: color / timestamps / no GPU for CI builds
         bazelrc: |
             build --color=yes
             build --show_timestamps
             test --config=no-gpu
+            common --repo_contents_cache=~/.cache/bazel-repo/contents

@@ -36,6 +36,16 @@ bazel_dep(name = "platforms", version = "1.0.0")
 ## rules_python
 bazel_dep(name = "rules_python", version = "1.2.0")
 
+# Patch rules_python to support --repo_contents_cache (Bazel 8.3.0+)
+# This allows Bazel to cache fetched repo contents across workspaces and clean builds,
+# significantly speeding up cold CI builds by avoiding re-downloads of Python interpreters and wheels.
+# See: https://github.com/bazel-contrib/rules_python/issues/3039
+single_version_override(
+    module_name = "rules_python",
+    patch_strip = 1,
+    patches = ["//bazel/rules_python:rules_python_repo_contents_cache.patch"],
+)
+
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(
     is_default = True,
