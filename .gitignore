@@ -5,6 +5,9 @@ _build/
 
 .ci-keep/
 
+# Override global gitignore for .github directory
+!.github/
+
 # Bazel-specific ignores
 bazel-*
 .bazelrc.user
