@@ -12,9 +12,10 @@ NCore provides data representations, APIs, and tools to support data-driven neur
 
 ## Key Features
 
-- **Data Specification** -- Standardized and extensible component-based data format for multi-sensor sequences
-- **Data Format / Storage APIs** -- Efficient reading and writing of data components
-- **Sensor Model APIs** -- Camera, lidar, and other sensor model implementations with accurate timestamp models
+- **Neural Reconstruction** - Designed for data-driven neural 3D reconstruction and simulation applications
+- **Data Format** - Canonical and extensible component-based data format optimized for efficient training
+- **Sensor Models** - GPU-accelerated Camera and LiDAR intrinsic models
+- **Converters** - Transform external datasets into a common representation
 
 ## Installation
 
