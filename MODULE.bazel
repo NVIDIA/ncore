@@ -104,7 +104,7 @@ http_archive(
         "//deps/waymo-open-dataset:cc-proto.patch",
         "//deps/waymo-open-dataset:py-utils.patch",
     ],
-    sha256 = "5e91fea02a0cdb1edb39d9ac27fbdb1e8d890986faab545497a95b54213b973d",
-    strip_prefix = "waymo-open-dataset-1.5.1/src",
-    urls = ["https://github.com/waymo-research/waymo-open-dataset/archive/refs/tags/v1.5.1.tar.gz"],
+    sha256 = "7b08fce2b94d45ed26590dcb7d552e2f7d5b3080ad5c59abf2b5a4207f7553d2",
+    strip_prefix = "waymo-open-dataset-1.6.1/src",
+    urls = ["https://github.com/waymo-research/waymo-open-dataset/archive/refs/tags/v1.6.1.tar.gz"],
 )

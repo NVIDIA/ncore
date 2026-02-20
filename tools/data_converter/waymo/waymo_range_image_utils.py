@@ -17,7 +17,7 @@
 # Modifications Copyright 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # This file contains functions derived from the Waymo Open Dataset
-# (https://github.com/waymo-research/waymo-open-dataset, tag v1.5.1).
+# (https://github.com/waymo-research/waymo-open-dataset, tag v1.6.1).
 # The original functions have been modified to support additional outputs
 # (timestamps, azimuths, ray origins) and use a fast protobuf parser.
 #

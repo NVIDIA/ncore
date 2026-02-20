@@ -10,7 +10,7 @@ This package includes software developed by
 Waymo Open Dataset (<https://github.com/waymo-research/waymo-open-dataset>)
 
 - `waymo_range_image_utils.py` contains functions modified from the Waymo Open
-  Dataset v1.5.1 sources (`range_image_utils.py`, `transform_utils.py`, and
+  Dataset v1.6.1 sources (`range_image_utils.py`, `transform_utils.py`, and
   `frame_utils.py`). Verbatim (unmodified) utility functions are imported
   directly from the upstream `waymo_open_dataset` package at runtime rather
   than being duplicated.
