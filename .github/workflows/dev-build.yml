@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# On-demand dev build workflow.
+#
+# Builds a wheel with a PEP 440 dev version derived from `git describe`
+# (e.g., 18.5.0.dev7 for 7 commits after tag v18.5.0) and optionally
+# publishes it to Test PyPI. No tags or commits are created.
+#
+# Prerequisites:
+#   - A bootstrap tag (e.g., v18.5.0) must exist for git describe to work.
+#   - The TEST_PYPI_API_TOKEN secret must be configured for publishing.
+
+name: Dev Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to Test PyPI'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  dev-build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute dev version from git describe
+        id: version
+        run: |
+          # git describe gives e.g. "v18.5.0-7-ga1b2c3d"
+          # Parse into: base version, commit count since tag, short SHA
+          DESC=$(git describe --tags --long --match 'v*')
+          echo "git describe: $DESC"
+
+          BASE=$(echo "$DESC" | sed 's/^v//; s/-[0-9]*-g.*//')
+          N=$(echo "$DESC" | sed 's/.*-\([0-9]*\)-g.*/\1/')
+          SHA=$(echo "$DESC" | sed 's/.*-g//')
+
+          # PEP 440 dev version (no local +g segment — PyPI rejects local versions)
+          DEV_VERSION="${BASE}.dev${N}"
+
+          echo "Base version: $BASE"
+          echo "Commits since tag: $N"
+          echo "Short SHA: $SHA"
+          echo "Dev version: $DEV_VERSION"
+          echo "version=$DEV_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Bazel environment
+        uses: ./.github/actions/setup-bazel
+        with:
+          install-pandoc: false
+          free-disk-space: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to Test PyPI
+        if: inputs.publish
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+        run: |
+          bazelisk run --stamp --embed_label=${{ steps.version.outputs.version }} \
+            //ncore:ncore_wheel.publish -- \
+            --repository testpypi --verbose --non-interactive
+
+      - name: Print installation instructions
+        if: inputs.publish
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "========================================"
+          echo "Dev build published to Test PyPI!"
+          echo ""
+          echo "Version: $VERSION"
+          echo ""
+          echo "To install:"
+          echo "  pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple nvidia-ncore==$VERSION"
+          echo ""
+          echo "View package: https://test.pypi.org/project/nvidia-ncore/$VERSION/"
+          echo "========================================"

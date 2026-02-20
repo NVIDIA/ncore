@@ -16,11 +16,12 @@
 # Unified CI workflow that handles:
 # - Build and test (all branches)
 # - Documentation deployment to GitHub Pages (main branch only)
-# - Python package publishing to Test PyPI (main branch only)
+# - Release tagging and publishing (when a release commit lands on main)
 #
 # Setup required:
 # 1. GitHub Pages: Settings -> Pages -> Source: GitHub Actions
 # 2. Test PyPI token: Settings -> Secrets -> TEST_PYPI_API_TOKEN
+# 3. (When going public) PyPI token: Settings -> Secrets -> PYPI_API_TOKEN
 
 name: CI
 
@@ -28,13 +29,11 @@ on:
   push:
     branches:
     - main
-    tags:
-    - '**'
   pull_request:
     branches: ['**']
 
 permissions:
-  contents: read
+  contents: write
   packages: read
   pages: write
   id-token: write
@@ -114,16 +113,45 @@ jobs:
         uses: actions/deploy-pages@v4
 
   # =============================================================================
-  # Publish to Test PyPI - runs only on main branch after build-and-test succeeds
+  # Tag and Publish - runs when a release commit lands on main
+  #
+  # Triggered by merging a release PR (commit message: "chore(version): vX.Y.Z").
+  # Creates a git tag, publishes the wheel, and creates a GitHub Release with
+  # the changelog for this version.
   # =============================================================================
-  publish-testpypi:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  tag-and-publish:
+    if: >
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.message, 'chore(version): v')
     needs: build-and-test
     runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from commit message
+        id: version
+        run: |
+          # Parse "chore(version): v18.6.0" → "18.6.0"
+          MESSAGE="${{ github.event.head_commit.message }}"
+          VERSION=$(echo "$MESSAGE" | sed -n 's/.*chore(version): v\([0-9][0-9.]*\).*/\1/p')
+          if [ -z "$VERSION" ]; then
+            echo "ERROR: Could not extract version from commit message: $MESSAGE"
+            exit 1
+          fi
+          echo "Extracted version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create git tag
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
+          echo "Created and pushed tag v${VERSION}"
 
       - name: Setup Bazel environment
         uses: ./.github/actions/setup-bazel
@@ -132,21 +160,43 @@ jobs:
           free-disk-space: false
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # NOTE: Currently publishing to Test PyPI. When going public:
+      # 1. Change TWINE_PASSWORD to use ${{ secrets.PYPI_API_TOKEN }}
+      # 2. Remove "--repository testpypi" from the publish command
+      # 3. Update docs/apis/install.rst to point to real PyPI
       - name: Publish to Test PyPI
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
-        run: bazelisk run //ncore:ncore_wheel.publish -- --repository testpypi --verbose --skip-existing --non-interactive
-
-      - name: Print installation instructions
         run: |
-          echo "========================================"
-          echo "Python package published to Test PyPI!"
-          echo ""
-          echo "To install from Test PyPI:"
-          echo "  pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple nvidia-ncore"
-          echo ""
-          echo "Note: --extra-index-url is required for dependencies (numpy, torch, etc.)"
-          echo ""
-          echo "View package: https://test.pypi.org/project/nvidia-ncore"
-          echo "========================================"
+          VERSION="${{ steps.version.outputs.version }}"
+          bazelisk run --stamp --embed_label="${VERSION}" \
+            //ncore:ncore_wheel.publish -- \
+            --repository testpypi --verbose --non-interactive
+
+      - name: Build wheel for release artifact
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          bazelisk build --stamp --embed_label="${VERSION}" //ncore:ncore_wheel_dist
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          # Extract the changelog section for this version from CHANGELOG.md
+          VERSION="${{ steps.version.outputs.version }}"
+          # Use awk to extract content between the version header and the next version header
+          awk "/^## ${VERSION//./\\.}/{found=1; next} /^## [0-9]/{if(found) exit} found" CHANGELOG.md > /tmp/release_notes.md
+          if [ ! -s /tmp/release_notes.md ]; then
+            echo "Release v${VERSION}" > /tmp/release_notes.md
+          fi
+          cat /tmp/release_notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
+            --notes-file /tmp/release_notes.md \
+            bazel-bin/ncore/ncore_wheel_dist/nvidia_ncore-${VERSION}-py3-none-any.whl
