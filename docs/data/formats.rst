@@ -14,7 +14,7 @@ sensor data, poses, calibrations, and annotations.
 Data Format
 -----------
 
-NCore current data format version is **V4 (Component-based Format)** - a modular format that
+The current data format of NCore version is **V4 (Component-based Format)** - a modular format that
 separates data into independent component stores. Each component (poses,
 intrinsics, sensors, labels, etc.) is stored as a separate zarr component that can
 be independently managed, versioned, and combined. This format enables:
