@@ -15,6 +15,7 @@
 
 # Docs dependencies
 sphinx
-sphinx-rtd-theme
+nvidia-sphinx-theme
+sphinx-copybutton
 nbsphinx
 nbconvert

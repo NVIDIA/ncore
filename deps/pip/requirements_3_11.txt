@@ -10,6 +10,10 @@ absl-py==2.1.0 \
     #   keras
     #   tensorboard
     #   tensorflow
+accessible-pygments==0.0.5 \
+    --hash=sha256:40918d3e6a2b619ad424cb91e556bd3bd8865443d9f22f1dcdf79e33c8046872 \
+    --hash=sha256:88ae3211e68a1d0b011504b2ffc1691feafce124b845bd072ab6f9f66f34d4b7
+    # via pydata-sphinx-theme
 addict==2.4.0 \
     --hash=sha256:249bb56bbfd3cdc2a004ea0ff4c2b6ddc84d53bc2194761636eb314d5cfa5dfc \
     --hash=sha256:b3b2210e0e067a281f5646c8c5db92e99b7231ea8b0eb5f74dbdf9e259d4e494
@@ -38,11 +42,15 @@ attrs==25.1.0 \
 babel==2.17.0 \
     --hash=sha256:0c54cffb19f690cdcc52a3b50bcbf71e07a808d1c80d549f2459b9d2cf0afb9d \
     --hash=sha256:4d0b53093fdfb4b21c92b5213dba5a1b23885afa8383709427046b21c366e5f2
-    # via sphinx
+    # via
+    #   pydata-sphinx-theme
+    #   sphinx
 beautifulsoup4==4.13.3 \
     --hash=sha256:1bd32405dacc920b42b83ba01644747ed77456a65760e285fbc47633ceddaf8b \
     --hash=sha256:99045d7d3f08f91f0d656bc9b7efbae189426cd913d830294a15eefa0ea4df16
-    # via nbconvert
+    # via
+    #   nbconvert
+    #   pydata-sphinx-theme
 bleach==6.2.0 \
     --hash=sha256:117d9c6097a7c3d22fd578fcd8d35ff1e125df6736f554da4e432fdd63f31e5e \
     --hash=sha256:123e894118b8a599fd80d3ec1a6d4cc7ce4e5882b1317a7e1ba69b56e95f991f
@@ -330,13 +338,13 @@ deprecated==1.2.18 \
     --hash=sha256:422b6f6d859da6f2ef57857761bfb392480502a64c3028ca9bbe86085d72115d \
     --hash=sha256:bd5011788200372a32418f888e326a09ff80d0214bd961147cfed01b5c018eec
     # via numcodecs
-docutils==0.17.1 \
-    --hash=sha256:686577d2e4c32380bb50cbb22f575ed742d58168cee37e99117a854bcd88f125 \
-    --hash=sha256:cf316c8370a737a022b72b56874f6602acf974a37a9fba42ec2876387549fc61
+docutils==0.22.4 \
+    --hash=sha256:4db53b1fde9abecbb74d91230d32ab626d94f6badfc575d6db9194a49df29968 \
+    --hash=sha256:d0013f540772d1420576855455d050a2180186c91c15779301ac2ccb3eeb68de
     # via
     #   nbsphinx
+    #   pydata-sphinx-theme
     #   sphinx
-    #   sphinx-rtd-theme
 executing==2.2.0 \
     --hash=sha256:11387150cad388d62750327a53d3339fad4888b39a6fe233c3afbb54ecffd3aa \
     --hash=sha256:5d108c028108fe2551d1a7b2e8b713341e2cb4fc0aa7dcf966fa4327a5226755
@@ -988,6 +996,9 @@ numpy==1.26.4 \
     #   tensorboard
     #   tensorflow
     #   zarr
+nvidia-sphinx-theme==0.0.9.post1 \
+    --hash=sha256:21ca60206dff2f380d7783d64bbaf71a5b9cacae53c7d0686f089c16b5a3d45a
+    # via -r deps/pip/requirements_docs.in
 open3d @ https://maven.pkg.github.com/NVIDIA/ncore/com/nvidia/ncore/open3d/0.19.0/open3d-0.19.0-cp311-cp311-manylinux_2_31_x86_64.whl \
     --hash=sha256:daab2f7c79285552e5efaca0212f1e76de7e3d9666867f3c9a5b531d2545c42b
     # via -r deps/pip/requirements_tools.in
@@ -1318,12 +1329,18 @@ pure-eval==0.2.3 \
     --hash=sha256:1db8e35b67b3d218d818ae653e27f06c3aa420901fa7b081ca98cbedc874e0d0 \
     --hash=sha256:5f4e983f40564c576c7c8635ae88db5956bb2229d7e9237d03b3c0b0190eaf42
     # via stack-data
+pydata-sphinx-theme==0.16.1 \
+    --hash=sha256:225331e8ac4b32682c18fcac5a57a6f717c4e632cea5dd0e247b55155faeccde \
+    --hash=sha256:a08b7f0b7f70387219dc659bff0893a7554d5eb39b59d3b8ef37b8401b7642d7
+    # via nvidia-sphinx-theme
 pygments==2.19.1 \
     --hash=sha256:61c16d2a8576dc0649d9f39e089b5f02bcd27fba10d8fb4dcc28173f7a45151f \
     --hash=sha256:9ea1544ad55cecf4b8242fab6dd35a93bbce657034b0611ee383099054ab6d8c
     # via
+    #   accessible-pygments
     #   ipython
     #   nbconvert
+    #   pydata-sphinx-theme
     #   rich
     #   sphinx
 pyparsing==3.2.1 \
@@ -1557,6 +1574,10 @@ rich==13.9.4 \
     --hash=sha256:439594978a49a09530cff7ebc4b5c7103ef57baf48d5ea3184f21d9a2befa098 \
     --hash=sha256:6049d5e6ec054bf2779ab3358186963bac2ea89175919d699e378b99738c2a90
     # via keras
+roman-numerals==4.1.0 \
+    --hash=sha256:1af8b147eb1405d5839e78aeb93131690495fe9da5c91856cb33ad55a7f1e5b2 \
+    --hash=sha256:647ba99caddc2cc1e55a51e4360689115551bf4476d90e8162cf8c345fe233c7
+    # via sphinx
 rpds-py==0.22.3 \
     --hash=sha256:009de23c9c9ee54bf11303a966edf4d9087cd43a6003672e6aa7def643d06518 \
     --hash=sha256:02fbb9c288ae08bcb34fb41d516d5eeb0455ac35b5512d03181d755d80810059 \
@@ -1782,16 +1803,18 @@ soupsieve==2.6 \
     --hash=sha256:e2e68417777af359ec65daac1057404a3c8a5455bb8abc36f1a9866ab1a51abb \
     --hash=sha256:e72c4ff06e4fb6e4b5a9f0f55fe6e81514581fca1515028625d0f299c602ccc9
     # via beautifulsoup4
-sphinx==5.3.0 \
-    --hash=sha256:060ca5c9f7ba57a08a1219e547b269fadf125ae25b06b9fa7f66768efb652d6d \
-    --hash=sha256:51026de0a9ff9fc13c05d74913ad66047e104f56a129ff73e174eb5c3ee794b5
+sphinx==9.0.4 \
+    --hash=sha256:594ef59d042972abbc581d8baa577404abe4e6c3b04ef61bd7fc2acbd51f3fa3 \
+    --hash=sha256:5bebc595a5e943ea248b99c13814c1c5e10b3ece718976824ffa7959ff95fffb
     # via
     #   -r deps/pip/requirements_docs.in
     #   nbsphinx
-    #   sphinx-rtd-theme
-sphinx-rtd-theme==1.0.0 \
-    --hash=sha256:4d35a56f4508cfee4c4fb604373ede6feae2a306731d533f409ef5c3496fdbd8 \
-    --hash=sha256:eec6d497e4c2195fa0e8b2016b337532b8a699a68bcb22a512870e16925c6a5c
+    #   nvidia-sphinx-theme
+    #   pydata-sphinx-theme
+    #   sphinx-copybutton
+sphinx-copybutton==0.5.2 \
+    --hash=sha256:4cf17c82fb9646d1bc9ca92ac280813a3b605d8c421225fd9913154103ee1fbd \
+    --hash=sha256:fb543fd386d917746c9a2c50360c7905b605726b9355cd26e9974857afeae06e
     # via -r deps/pip/requirements_docs.in
 sphinxcontrib-applehelp==2.0.0 \
     --hash=sha256:2f29ef331735ce958efa4734873f084941970894c6090408b079c61b2e1c06d1 \
@@ -1940,6 +1963,7 @@ typing-extensions==4.12.2 \
     #   ipython
     #   mypy
     #   optree
+    #   pydata-sphinx-theme
     #   tensorflow
     #   torch
     #   typing-inspect

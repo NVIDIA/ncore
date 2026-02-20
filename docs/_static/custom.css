@@ -3,6 +3,4 @@ SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All 
 SPDX-License-Identifier: Apache-2.0
 */
 
-.wy-nav-content {
-  max-width: 1200px !important;
-}
+/* Custom CSS overrides for NCore documentation */

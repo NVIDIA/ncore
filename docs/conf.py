@@ -19,12 +19,18 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
+import os
+
+
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "NCore"
-copyright = "2022, NVIDIA"
-author = "NVIDIA - Toronto AI Lab"
+copyright = "2026, NVIDIA Corporation & Affiliates"
+author = "NVIDIA"
+
+# Determine the Git version/tag from CI environment variables, fallback to 'main'.
+GITHUB_VERSION = os.environ.get("GITHUB_REF_NAME") or "main"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -35,8 +41,10 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.mathjax",
     "sphinx.ext.todo",
+    "sphinx.ext.githubpages",
     "nbsphinx",
     "IPython.sphinxext.ipython_console_highlighting",
+    "sphinx_copybutton",
 ]
 
 todo_include_todos = True
@@ -59,14 +67,42 @@ templates_path = ["_templates"]
 exclude_patterns = ["_build"]
 html_static_path = ["_static"]
 
-# The theme to use for HTML and HTML Help pages.  See the documentation for
-# a list of builtin themes.
-import sphinx_rtd_theme
+# -- Options for HTML output -------------------------------------------------
 
+html_theme = "nvidia_sphinx_theme"
+html_title = "NCore"
+html_show_sphinx = False
 
-html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
-html_theme = "sphinx_rtd_theme"
 html_theme_options = {
-    "collapse_navigation": False,
+    "secondary_sidebar_items": ["page-toc"],
+    "copyright_override": {"start": 2026},
+    "pygments_light_style": "tango",
+    "pygments_dark_style": "monokai",
+    "footer_links": {},
+    "github_url": "https://github.com/NVIDIA/ncore",
+    "icon_links": [
+        {
+            "name": "PyPI",
+            "url": "https://pypi.org/project/nvidia-ncore",
+            "icon": "fa-brands fa-python",
+            "type": "fontawesome",
+        },
+    ],
     "navigation_depth": -1,
+    "collapse_navigation": False,
 }
+
+html_context = {
+    "github_user": "NVIDIA",
+    "github_repo": "ncore",
+    "github_version": GITHUB_VERSION,
+    "doc_path": "docs",
+    "default_mode": "light",
+}
+
+html_css_files = ["custom.css"]
+
+# -- sphinx_copybutton -------------------------------------------------------
+
+copybutton_prompt_text = r">>> |\.\.\. |\$ "
+copybutton_prompt_is_regexp = True
