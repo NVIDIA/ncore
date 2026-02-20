@@ -6,7 +6,7 @@ Welcome to the NCore Documentation!
 NCore provides data representations, APIs, and tools to support data-driven
 neural reconstructions with a focus on robotics / AV data.
 
-The project is developed within the Nvidia SIL Lab.
+The project is developed within the `NVIDIA SIL Lab <https://research.nvidia.com/labs/sil/>`_.
 
 ================================
 
