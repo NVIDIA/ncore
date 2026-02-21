@@ -517,20 +517,22 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         relative_time_prev = relative_time[valid].clone()
         mean_relative_time_error = 0.5  # initialize the value to a expected value of random association [0,1]
 
+        # Pre-compute values that are constant across iterations
+        n_valid = int(valid.sum().item())
+        s_quat_expanded = world_sensor_s_quat.expand(n_valid, -1)
+        e_quat_expanded = world_sensor_e_quat.expand(n_valid, -1)
+        trans_start = T_world_sensor_start[:3, 3]  # [3]
+        trans_end = T_world_sensor_end[:3, 3]  # [3]
+
         for _ in range(max_iterations):
             relative_time = self.sensor_angles_relative_frame_times(sensor_angles_rs_prev)  # [n_valid]
 
             rot_rs = unitquat_to_rotmat(
-                unitquat_slerp(
-                    world_sensor_s_quat.repeat(relative_time.shape[0], 1),
-                    world_sensor_e_quat.repeat(relative_time.shape[0], 1),
-                    relative_time,
-                )
+                unitquat_slerp(s_quat_expanded, e_quat_expanded, relative_time)
             )  # [n_valid, 3, 3]
 
-            trans_rs = (1 - relative_time)[..., None] * T_world_sensor_start[:3, 3:4].transpose(0, 1).repeat(
-                relative_time.shape[0], 1
-            ) + relative_time[..., None] * T_world_sensor_end[:3, 3:4].transpose(0, 1).repeat(relative_time.shape[0], 1)
+            # Use broadcasting for translation interpolation
+            trans_rs = (1 - relative_time)[..., None] * trans_start + relative_time[..., None] * trans_end
 
             sensor_angles = self.sensor_rays_to_sensor_angles(
                 (torch.bmm(rot_rs, world_points[valid, :, None]) + trans_rs[..., None]).squeeze(-1), normalized=False
@@ -658,12 +660,17 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         # (columns are measured in increasing time order irrespective of spin-direction)
         t = elements[:, 1].to(self.dtype) / (self.n_columns - 1)
 
-        world_position_rs = (1 - t)[..., None] * T_sensor_world_start[:3, 3:4].transpose(0, 1).repeat(
-            t.shape[0], 1
-        ) + t[..., None] * T_sensor_world_end[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1)  # [n_elements, 3]
+        # Use broadcasting for translation interpolation
+        trans_start = T_sensor_world_start[:3, 3]  # [3]
+        trans_end = T_sensor_world_end[:3, 3]  # [3]
+        world_position_rs = (1 - t)[..., None] * trans_start + t[..., None] * trans_end  # [n_elements, 3]
 
         R_sensor_world_rs = unitquat_to_rotmat(
-            unitquat_slerp(R_sensor_world_s_quat.repeat(t.shape[0], 1), R_sensor_world_e_quat.repeat(t.shape[0], 1), t)
+            unitquat_slerp(
+                R_sensor_world_s_quat.expand(t.shape[0], -1),
+                R_sensor_world_e_quat.expand(t.shape[0], -1),
+                t,
+            )
         )  # [n_elements, 3, 3]
 
         world_ray_directions_rs = torch.bmm(R_sensor_world_rs, sensor_rays[:, :, None]).squeeze(-1)  # [n_elements, 3]
