@@ -141,14 +141,14 @@ def eval_poly_inverse_horner_newton(
     assert newton_iterations >= 0, "Newton-iteration number needs to be non-negative"
 
     # Buffers of intermediate results to allow differentiation
-    x_iter = [torch.zeros_like(x) for _ in range(newton_iterations + 1)]
-    x_iter[0] = x
+    # (only allocate entries as needed during iteration)
+    x_iter = [x]
 
     for i in range(newton_iterations):
         # Evaluate single Newton step
         dfdx = eval_poly_horner(poly_derivative_coefficients, x_iter[i])
         residuals = eval_poly_horner(poly_coefficients, x_iter[i]) - y
-        x_iter[i + 1] = x_iter[i] - residuals / dfdx
+        x_iter.append(x_iter[i] - residuals / dfdx)
 
     return x_iter[newton_iterations]
 
@@ -210,19 +210,25 @@ def unitquat_to_rotmat(quat: torch.Tensor) -> torch.Tensor:
     z = quat[..., 2]
     w = quat[..., 3]
 
+    # Pre-compute squared terms to avoid redundant computation (each was previously computed 3 times)
+    x2 = x * x
+    y2 = y * y
+    z2 = z * z
+    w2 = w * w
+
     R = torch.empty(quat.shape[:-1] + (3, 3), dtype=quat.dtype, device=quat.device)
 
-    R[..., 0, 0] = torch.pow(x, 2) - torch.pow(y, 2) - torch.pow(z, 2) + torch.pow(w, 2)
+    R[..., 0, 0] = x2 - y2 - z2 + w2
     R[..., 1, 0] = 2 * (x * y + z * w)
     R[..., 2, 0] = 2 * (x * z - y * w)
 
     R[..., 0, 1] = 2 * (x * y - z * w)
-    R[..., 1, 1] = -torch.pow(x, 2) + torch.pow(y, 2) - torch.pow(z, 2) + torch.pow(w, 2)
+    R[..., 1, 1] = -x2 + y2 - z2 + w2
     R[..., 2, 1] = 2 * (y * z + x * w)
 
     R[..., 0, 2] = 2 * (x * z + y * w)
     R[..., 1, 2] = 2 * (y * z - x * w)
-    R[..., 2, 2] = -torch.pow(x, 2) - torch.pow(y, 2) + torch.pow(z, 2) + torch.pow(w, 2)
+    R[..., 2, 2] = -x2 - y2 + z2 + w2
 
     return R
 

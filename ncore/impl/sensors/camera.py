@@ -656,16 +656,21 @@ class CameraModel(BaseModel, ABC):
         # For valid image points, compute the new timestamp and project again
         image_points_rs_prev = init_image_points[valid, :]
         mean_error_px = 1e12
+
+        # Pre-compute values that are constant across iterations
+        n_valid = int(valid.sum().item())
+        s_quat_expanded = world_sensor_s_quat.expand(n_valid, -1)
+        e_quat_expanded = world_sensor_e_quat.expand(n_valid, -1)
+        trans_start = T_world_sensor_start[:3, 3]  # [3]
+        trans_end = T_world_sensor_end[:3, 3]  # [3]
+
         for _ in range(max_iterations):
             t = self.image_points_relative_frame_times(image_points_rs_prev)
 
-            rot_rs = unitquat_to_rotmat(
-                unitquat_slerp(world_sensor_s_quat.repeat(t.shape[0], 1), world_sensor_e_quat.repeat(t.shape[0], 1), t)
-            )  # [n_valid, 3, 3]
+            rot_rs = unitquat_to_rotmat(unitquat_slerp(s_quat_expanded, e_quat_expanded, t))  # [n_valid, 3, 3]
 
-            trans_rs = (1 - t)[..., None] * T_world_sensor_start[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1) + t[
-                ..., None
-            ] * T_world_sensor_end[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1)
+            # Use broadcasting for translation interpolation
+            trans_rs = (1 - t)[..., None] * trans_start + t[..., None] * trans_end
 
             cam_rays_rs = (torch.bmm(rot_rs, world_points[valid, :, None]) + trans_rs[..., None]).squeeze(-1)
             image_points_rs = self.camera_rays_to_image_points(cam_rays_rs)
@@ -939,22 +944,20 @@ class CameraModel(BaseModel, ABC):
         else:
             camera_rays = self.image_points_to_camera_rays(image_points)
 
-        world_positions = T_sensor_world[:3, 3:4].transpose(0, 1).repeat(len(camera_rays), 1)  # [n_image_points, 3]
-
         R_sensor_world = T_sensor_world[:3, :3]  # [3, 3]
 
         world_ray_directions = torch.matmul(R_sensor_world, camera_rays[:, :, None]).squeeze(-1)  # [n_image_points, 3]
 
-        # Copy the values in the output variable
+        # Use broadcasting to expand translation()
         world_rays = torch.empty((len(camera_rays), 6), dtype=self.dtype, device=self.device)
-        world_rays[:, :3] = world_positions
+        world_rays[:, :3] = T_sensor_world[:3, 3]  # broadcasts [3] -> [n_image_points, 3]
         world_rays[:, 3:] = world_ray_directions
 
         return_var = self.WorldRaysReturn(world_rays=world_rays)
 
         if return_T_sensor_worlds:
-            # Repeat constant transformation for all rays
-            return_var.T_sensor_worlds = torch.repeat_interleave(T_sensor_world.unsqueeze(0), len(world_rays), dim=0)
+            # Expand constant transformation for all rays (uses views, avoids copying memory)
+            return_var.T_sensor_worlds = T_sensor_world.unsqueeze(0).expand(len(world_rays), -1, -1).contiguous()
 
         if return_timestamps:
             assert timestamp_us is not None
@@ -1066,12 +1069,17 @@ class CameraModel(BaseModel, ABC):
 
         t = self.image_points_relative_frame_times(image_points)
 
-        world_position_rs = (1 - t)[..., None] * T_sensor_world_start[:3, 3:4].transpose(0, 1).repeat(
-            t.shape[0], 1
-        ) + t[..., None] * T_sensor_world_end[:3, 3:4].transpose(0, 1).repeat(t.shape[0], 1)  # [n_image_points, 3]
+        # Use broadcasting instead of repeat() for translation interpolation
+        trans_start = T_sensor_world_start[:3, 3]  # [3]
+        trans_end = T_sensor_world_end[:3, 3]  # [3]
+        world_position_rs = (1 - t)[..., None] * trans_start + t[..., None] * trans_end  # [n_image_points, 3]
 
         R_sensor_world_rs = unitquat_to_rotmat(
-            unitquat_slerp(R_sensor_world_s_quat.repeat(t.shape[0], 1), R_sensor_world_e_quat.repeat(t.shape[0], 1), t)
+            unitquat_slerp(
+                R_sensor_world_s_quat.expand(t.shape[0], -1),
+                R_sensor_world_e_quat.expand(t.shape[0], -1),
+                t,
+            )
         )  # [n_image_points, 3, 3]
 
         world_ray_directions_rs = torch.bmm(R_sensor_world_rs, camera_rays[:, :, None]).squeeze(
