@@ -60,7 +60,7 @@ jobs:
         with:
           install-pandoc: true
           free-disk-space: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.NVIDIA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Check code format
         run: bazelisk run format.check
@@ -87,7 +87,7 @@ jobs:
         with:
           install-pandoc: true
           free-disk-space: false
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.NVIDIA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Build documentation
         run: bazelisk build //docs:ncore
@@ -130,7 +130,7 @@ jobs:
         with:
           install-pandoc: false
           free-disk-space: false
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.NVIDIA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Publish to Test PyPI
         env:
