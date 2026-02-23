@@ -13,18 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Import common dependencies
--r requirements_tests.in
--r requirements_ncore.in
--r requirements_docs.in
--r requirements_typing.in
--r requirements_tools.in
--r requirements_waymo.in
--r requirements_colmap.in
 
-# Public API restrictions for 3.11
-numpy<2 # torch-1.x is build against numpy-1.x, but doesn't explicitly state this requirement
+load("@rules_python//python:defs.bzl", "py_library")
+load("@ncore_pip_deps//:requirements.bzl", pip_requirement = "requirement")
 
---find-links https://download.pytorch.org/whl/torch_stable.html
-torch==1.13.0+cu116
 
+py_library(
+    name = "pycolmap",
+    srcs = [
+        "pycolmap/__init__.py",
+        "pycolmap/camera.py",
+        "pycolmap/database.py",
+        "pycolmap/image.py",
+        "pycolmap/rotation.py",
+        "pycolmap/scene_manager.py",
+    ],
+    imports = [".", "pycolmap"],
+    visibility = ["//visibility:public"],
+    deps = [
+        pip_requirement("numpy"),
+        pip_requirement("scipy"),
+    ],
+)

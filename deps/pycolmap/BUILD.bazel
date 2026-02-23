@@ -12,19 +12,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-# Import common dependencies
--r requirements_tests.in
--r requirements_ncore.in
--r requirements_docs.in
--r requirements_typing.in
--r requirements_tools.in
--r requirements_waymo.in
--r requirements_colmap.in
-
-# Public API restrictions for 3.11
-numpy<2 # torch-1.x is build against numpy-1.x, but doesn't explicitly state this requirement
-
---find-links https://download.pytorch.org/whl/torch_stable.html
-torch==1.13.0+cu116
-

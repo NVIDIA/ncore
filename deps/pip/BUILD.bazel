@@ -34,6 +34,7 @@ pip_compile(
     size = "medium",
     args = PIP_COMPILE_ARGS,
     data = [
+        ":requirements_colmap.in",
         ":requirements_docs.in",
         ":requirements_ncore.in",
         ":requirements_tests.in",
