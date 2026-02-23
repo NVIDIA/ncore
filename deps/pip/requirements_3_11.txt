@@ -207,6 +207,7 @@ click==8.1.8 \
     --hash=sha256:63c132bbbed01578a06712a2d1f497bb62d9c1c0d329b7903a866228027263b2 \
     --hash=sha256:ed53c9d8990d83c2a27deae68e4ee337473f6330c040a31d4225c9574d16096a
     # via
+    #   -r deps/pip/requirements_colmap.in
     #   -r deps/pip/requirements_tools.in
     #   -r deps/pip/requirements_waymo.in
     #   flask
@@ -978,6 +979,7 @@ numpy==1.26.4 \
     --hash=sha256:ffa75af20b44f8dba823498024771d5ac50620e6915abac414251bd971b4529f
     # via
     #   -r deps/pip/requirements_3_11.in
+    #   -r deps/pip/requirements_colmap.in
     #   -r deps/pip/requirements_ncore.in
     #   -r deps/pip/requirements_waymo.in
     #   contourpy
@@ -1765,6 +1767,7 @@ scipy==1.15.2 \
     --hash=sha256:fb530e4794fc8ea76a4a21ccb67dea33e5e0e60f07fc38a49e821e1eae3b71a0 \
     --hash=sha256:fe8a9eb875d430d81755472c5ba75e84acc980e4a8f6204d402849234d3017db
     # via
+    #   -r deps/pip/requirements_colmap.in
     #   -r deps/pip/requirements_ncore.in
     #   -r deps/pip/requirements_waymo.in
     #   point-cloud-utils
@@ -1936,6 +1939,7 @@ tqdm==4.67.1 \
     --hash=sha256:26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2 \
     --hash=sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2
     # via
+    #   -r deps/pip/requirements_colmap.in
     #   -r deps/pip/requirements_tools.in
     #   -r deps/pip/requirements_waymo.in
     #   open3d
@@ -1979,6 +1983,7 @@ universal-pathlib==0.3.6 \
     --hash=sha256:d8640454ff08305fc639f7980e8bad4a7d38e82f6389ff993fb0e7b2a4969de9 \
     --hash=sha256:ff10a86e5340ad986b6f04847bb64ba397dff7467450234ffa2ab5ff135641d8
     # via
+    #   -r deps/pip/requirements_colmap.in
     #   -r deps/pip/requirements_ncore.in
     #   -r deps/pip/requirements_waymo.in
 urllib3==2.3.0 \
