@@ -1,10 +1,6 @@
 # How to Contribute
 
-We'd love to receive your patches and contributions to NCore. Please keep your PRs as draft until you're ready for review.
-
-## Code Reviews
-
-All submissions, including submissions by project members, require review. We use GitHub pull requests for this purpose. Consult [GitHub Help](https://help.github.com/articles/about-pull-requests/) for more information on using pull requests.
+We'd love to receive your patches and contributions to NCore. These guidelines are intended to help you get your contribution accepted as quickly as possible.
 
 ## Development Setup
 
@@ -144,27 +140,19 @@ With optional [breaking-change indicators](https://www.conventionalcommits.org/e
 
 Commit messages are validated in CI using [cocogitto](https://github.com/cocogitto/cocogitto). PRs with non-compliant commits or merge commits will fail the conventional commits check.
 
-### Branch Naming
+## Code Reviews
 
-Branches must follow the naming pattern:
-
-```text
-<type>/<username>/<topic>
-```
-
-Where:
-
-- `<type>` is a conventional commit type (e.g., `feat`, `fix`, `docs`, `refactor`, `dev`)
-- `<username>` is your GitHub username or identifier
-- `<topic>` is a short, descriptive name for the change (use hyphens for spaces)
+All submissions, including submissions by project members, require review. We use GitHub pull requests from forks for this purpose. Consult [GitHub Help](https://help.github.com/articles/about-pull-requests/) for more information on using pull requests.
 
 ### Pull Requests
 
+- Keep PRs as draft until you're ready for review
 - Keep PRs focused and concise; address a _single_ atomic concern per PR
-- Avoid committing commented-out code
-- Ensure the CI passes with no warnings or errors
+- If applicable, reference relevant issues that the PR is closing
+- Ensure the CI passes with no warnings or errors, and that required approvals are obtained
 - Ensure library versions are updated appropriately for changing public-facing APIs
 - Include full test coverage for new or updated functionality
+- Avoid committing commented-out code
 
 ### Linear History
 
