@@ -13,7 +13,7 @@ NCore's documentation is sphinx-based. A HTML version of the documentation can b
 bazel build //docs:ncore
 ```
 
-, which will be outputted into the output folder `bazel-bin/docs/ncore_html`.
+The build results will be available in the output folder `bazel-bin/docs/ncore_html`.
 
 The HTML version can also be directly build and opened in a web-browser by running the
 
