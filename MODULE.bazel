@@ -109,12 +109,11 @@ http_archive(
     urls = ["https://github.com/waymo-research/waymo-open-dataset/archive/refs/tags/v1.6.1.tar.gz"],
 )
 
-new_git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
-
 # pycolmap-reader
-new_git_repository(
+http_archive(
     name = "pycolmap",
     build_file = "//deps/pycolmap:pycolmap.BUILD",
-    commit = "fe7a7c45df803b6c391777e349f0d8d65d39d777",
-    remote = "https://github.com/trueprice/pycolmap",
+    integrity = "sha256-cOv2KrC75S1ABt9zdcoLE+TP7lnM4o6QZM9RxN1TdPA=",
+    strip_prefix = "pycolmap-fe7a7c45df803b6c391777e349f0d8d65d39d777",
+    urls = ["https://github.com/trueprice/pycolmap/archive/fe7a7c45df803b6c391777e349f0d8d65d39d777.tar.gz"],
 )

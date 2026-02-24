@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 
 from dataclasses import asdict, dataclass
@@ -26,30 +27,32 @@ import tqdm
 
 from upath import UPath
 
-from ncore.impl.common.transformations import (
-    HalfClosedInterval,
-    PoseInterpolator,
-    se3_inverse,
-)
-from ncore.impl.data.types import JsonLike, OpenCVPinholeCameraModelParameters
-from ncore.impl.data.v4.components import (
+from ncore.data import OpenCVPinholeCameraModelParameters
+from ncore.data.v4 import (
     CameraSensorComponent,
     CuboidsComponent,
     IntrinsicsComponent,
     LidarSensorComponent,
     MasksComponent,
     PosesComponent,
+    SequenceComponentGroupsReader,
     SequenceComponentGroupsWriter,
 )
+from ncore.data_converter import BaseDataConverter, BaseDataConverterConfig
+from ncore.impl.common.transformations import (
+    HalfClosedInterval,
+    PoseInterpolator,
+    se3_inverse,
+)
+from ncore.impl.data.types import JsonLike
 from ncore.impl.data.v4.types import ComponentGroupAssignments
-from ncore.impl.data_converter.base import BaseDataConverter, BaseDataConverterConfig
 from tools.data_converter.cli import cli
 from tools.data_converter.colmap.scene_manager import ColmapSceneManager
 
 
 @dataclass(kw_only=True, slots=True)
 class ColmapConverter4Config(BaseDataConverterConfig):
-    """Configuration for Waymo to NCore V4 conversion."""
+    """Configuration for COLMAP to NCore V4 conversion."""
 
     store_type: Literal["itar", "directory"] = "itar"
     component_group_profile: Literal["default", "separate-sensors", "separate-all"] = "separate-sensors"
@@ -62,7 +65,7 @@ class ColmapConverter4Config(BaseDataConverterConfig):
 
 class ColmapDataConverter(BaseDataConverter):
     """
-    NVIDIA-specific data conversion to ncore-v3 (based on Maglev ncore-pp workflows data extraction)
+    NVIDIA-specific data conversion from COLMAP reconstructions to NCore V4 using the V4 components/writer APIs.
     """
 
     def __init__(self, config: ColmapConverter4Config):
@@ -74,6 +77,7 @@ class ColmapDataConverter(BaseDataConverter):
         self.component_group_profile: Literal["default", "separate-sensors", "separate-all"] = (
             config.component_group_profile
         )
+        self.store_sequence_meta: bool = config.store_sequence_meta
 
         # Downsampled images in folders images_2, images_4, etc will be included as additional cameras
         self.include_downsampled_images = config.include_downsampled_images
@@ -101,7 +105,7 @@ class ColmapDataConverter(BaseDataConverter):
         self.sequence_name = sequence_path.name
 
         bin_path = self.sequence_path / "sparse" / "0"
-        self.scene_manager = ColmapSceneManager(str(bin_path))
+        self.scene_manager = ColmapSceneManager(bin_path)
         try:
             T_rig_worlds, T_rig_world_timestamps_us = self.scene_manager.process(
                 parent_dir=self.sequence_path,
@@ -130,7 +134,7 @@ class ColmapDataConverter(BaseDataConverter):
             camera_ids=self.camera_ids,
             lidar_ids=self.lidar_ids,
             radar_ids=[],  # No radars for now
-            profile="default",
+            profile=self.component_group_profile,
         )
 
         # Create main store writer
@@ -148,10 +152,6 @@ class ColmapDataConverter(BaseDataConverter):
             PosesComponent.Writer,
             component_instance_name="default",
             group_name=self.component_groups.poses_component_group,
-            generic_meta_data={
-                "calibration_type": "waymo:calib",
-                "egomotion_type": "waymo:egomotion",
-            },
         )
 
         # Create intrinsics component
@@ -168,11 +168,12 @@ class ColmapDataConverter(BaseDataConverter):
             group_name=self.component_groups.masks_component_group,
         )
 
+        # Create cuboids component, explicitly store abscent observations
         self.store_writer.register_component_writer(
             CuboidsComponent.Writer,
             "default",
             self.component_groups.cuboid_track_observations_component_group,
-        )
+        ).store_observations([])
 
         ## Store poses
         self.store_poses(T_rig_worlds, T_rig_world_timestamps_us)
@@ -185,7 +186,17 @@ class ColmapDataConverter(BaseDataConverter):
         self.decode_cameras()
 
         # Store per-shard meta data / final success state / close file
-        self.store_writer.finalize()
+        ncore_4_paths = self.store_writer.finalize()
+
+        # Output sequence meta file if requested
+        if self.store_sequence_meta:
+            sequence_component_reader = SequenceComponentGroupsReader(ncore_4_paths)
+            sequence_meta_path = self.output_dir / self.sequence_name / f"{sequence_component_reader.sequence_id}.json"
+
+            with sequence_meta_path.open("w") as f:
+                json.dump(sequence_component_reader.get_sequence_meta().to_dict(), f, indent=2)
+
+            self.logger.info(f"Wrote sequence meta data {str(sequence_meta_path)}")
 
     def store_poses(self, T_rig_worlds, T_rig_world_timestamps_us):
         """Stores the processed egomotion poses into the poses component."""
@@ -204,7 +215,7 @@ class ColmapDataConverter(BaseDataConverter):
             pose=self.T_world_world_global.astype(np.float64),
         )
 
-    def decode_lidars(self, T_rig_world_0) -> None:
+    def decode_lidars(self, T_rig_world_0: np.ndarray) -> None:
         # Extrinsics for the point cloud. Our first pose is the first camera pose,
         # so we need to invert that to have the pointcloud in the correct frame.
         T_sensor_rig = se3_inverse(T_rig_world_0)
@@ -214,27 +225,28 @@ class ColmapDataConverter(BaseDataConverter):
             LidarSensorComponent.Writer,
             component_instance_name=lidar_ncore_id,
             group_name=self.component_groups.lidar_component_groups.get(lidar_ncore_id),
-            generic_meta_data={},
         )
 
         xyz = self.scene_manager.points3D.astype(np.float32)
         distance = np.linalg.norm(xyz, axis=1)  # N
         direction = xyz / distance[:, np.newaxis]
+        num_points = self.scene_manager.points3D.shape[0]
+        start_timestamp_us = np.uint64(self.start_time_sec * 1e6)
 
         # Serialize lidar frame
         lidar_writer.store_frame(
             # Non-motion-compensated per-ray 3D directions (float32, [N, 3])
             direction=direction,
             # Per-point timestamp in microseconds (uint64, [N])
-            timestamp_us=np.zeros((self.scene_manager.points3D.shape[0]), dtype=np.uint64),
+            timestamp_us=np.full((num_points,), start_timestamp_us, dtype=np.uint64),
             # Per-point model element indices (uint16, [N, 2])
             model_element=None,
             # Per-point distance (two returns, [2, N])
             distance_m=distance[np.newaxis, :],
             # Per-point intensity normalized to [0.0, 1.0] (float32, [2, N])
-            intensity=np.zeros((1, self.scene_manager.points3D.shape[0]), dtype=np.float32),
+            intensity=np.zeros((1, num_points), dtype=np.float32),
             # Frame start/end timestamps (uint64, [2])
-            frame_timestamps_us=np.array([0, 0], dtype=np.uint64),
+            frame_timestamps_us=np.array([start_timestamp_us, start_timestamp_us], dtype=np.uint64),
             generic_data={
                 "rgb": self.scene_manager.point3D_colors,  # uint8
             },
@@ -264,7 +276,6 @@ class ColmapDataConverter(BaseDataConverter):
                 CameraSensorComponent.Writer,
                 component_instance_name=camera_ncore_id,
                 group_name=self.component_groups.camera_component_groups.get(camera_ncore_id),
-                generic_meta_data={},
             )
 
             # Store intrinsics
@@ -329,7 +340,7 @@ class ColmapDataConverter(BaseDataConverter):
     type=click.Choice(["default", "separate-sensors", "separate-all"], case_sensitive=False),
     default="separate-sensors",
     show_default=True,
-    help=""""Output profile, one of:
+    help="""Output profile, one of:
         - "default": All components defaults or overrides
         - "separate-sensors": Each sensor gets its own group named "<sensor_id>", remaining components use overrides
         - "separate-all": Each component type gets its own group named after the component type, e.g. "poses", "intrinsics", respecting overwrites if provided""",

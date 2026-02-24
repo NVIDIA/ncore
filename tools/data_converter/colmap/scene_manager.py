@@ -15,10 +15,12 @@
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
+import PIL.Image as PILImage
 import pycolmap
 
-from PIL import Image
 from upath import UPath
 
 from ncore.impl.data.types import OpenCVPinholeCameraModelParameters, ShutterType
@@ -30,6 +32,11 @@ class ColmapSceneManager(pycolmap.SceneManager):
     Minor NCore-specific extension to the third_party Python COLMAP loader:
     https://github.com/trueprice/pycolmap
     """
+
+    def __init__(self, bin_path: UPath):
+        super().__init__(str(bin_path))
+
+        self.logger = logging.getLogger(__name__)
 
     def process(self, parent_dir: UPath, camera_prefix: str, start_time_sec: float, downsample: bool):
         """
@@ -69,7 +76,7 @@ class ColmapSceneManager(pycolmap.SceneManager):
             assert isinstance(camera, pycolmap.Camera)
 
             # Get distortion parameters.
-            assert camera.camera_type in [0, 1, 2, 3, 4]
+            assert camera.camera_type in [0, 1, 2, 3, 4, 5], f"Unsupported camera type: {camera.camera_type}"
             radial_coeffs = np.array([0, 0, 0, 0, 0, 0], dtype=np.float32)
             tangential_coeffs = np.array([0, 0], dtype=np.float32)
 
@@ -82,8 +89,7 @@ class ColmapSceneManager(pycolmap.SceneManager):
                 tangential_coeffs[0] = camera.p1
                 tangential_coeffs[1] = camera.p2
             if camera.camera_type == 5:
-                # TODO:
-                raise NotImplementedError
+                raise NotImplementedError("OpenCV fisheye camera model not supported yet in converter")
 
             # the names of images associated with this camera id
             camera_image_names = [name for i, name in enumerate(image_names) if camera_ids[i] == camera_id]
@@ -101,15 +107,17 @@ class ColmapSceneManager(pycolmap.SceneManager):
                 image_root = "images" if downsample_factor == 1 else "images_" + str(downsample_factor)
 
                 if not (parent_dir / image_root).exists():
-                    print(f"Skipping missing image directory: {image_root}")
+                    self.logger.warning(f"Skipping missing image directory: {image_root}")
                     continue
 
                 # This is kind of a hack, but sometimes COLMAP downsampled images have a resolution different from what
                 # is expected. Specifically 0.5 does not always round up.
                 if downsample_factor != 1:
-                    img = Image.open(parent_dir / image_root / camera_image_names[0])
+                    img = PILImage.open(parent_dir / image_root / camera_image_names[0])
                     if img.width != width or img.height != height:
-                        print(f"Unexpected resolution: {img.width} {img.height}. Expected {width} {height}")
+                        self.logger.warning(
+                            f"Unexpected resolution: {img.width} {img.height}. Expected {width} {height}"
+                        )
                         height = img.height
                         width = img.width
 

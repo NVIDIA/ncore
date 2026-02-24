@@ -16,8 +16,6 @@
 load("@ncore_pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary")
 
-package(default_visibility = ["//:code_package_group"])
-
 # Standalone CLI binary for converting Colmap data to NCore V4
 py_binary(
     name = "convert",
