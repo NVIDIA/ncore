@@ -7,7 +7,7 @@ Waymo-Open Dataset
 The NCore Waymo tool converts data from the Waymo-Open format (**.tfrecords**) into NCore V4 format.
 It serves as a reference implementation for creating data conversion flows to NCore.
 
-.. _data_conventions:
+.. _waymo_data_conventions:
 
 Conventions
 -----------
