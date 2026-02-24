@@ -134,7 +134,6 @@ class ColmapSceneManager(pycolmap.SceneManager):
                 self.camera_info[camera_name] = {
                     "camera_model": camera_model,
                     "image_names": camera_image_names,
-                    "T_rig_worlds": poses[camera_ids == camera_id, :, :],
                     "timestamps_us": timestamps_us[camera_ids == camera_id],
                     "image_root": image_root,
                 }

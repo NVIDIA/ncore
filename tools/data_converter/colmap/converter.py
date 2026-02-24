@@ -15,7 +15,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 
 from dataclasses import asdict, dataclass
@@ -58,7 +57,7 @@ class ColmapConverter4Config(BaseDataConverterConfig):
     start_time_sec: float = 0.0
     camera_prefix: str = "camera"
     include_downsampled_images: bool = True
-    use_3d_points: bool = True
+    include_3d_points: bool = True
 
 
 class ColmapDataConverter(BaseDataConverter):
@@ -78,12 +77,15 @@ class ColmapDataConverter(BaseDataConverter):
 
         # Downsampled images in folders images_2, images_4, etc will be included as additional cameras
         self.include_downsampled_images = config.include_downsampled_images
-        self.use_3d_points = config.use_3d_points
+        self.include_3d_points = config.include_3d_points
         self.logger = logging.getLogger(__name__)
 
     @staticmethod
     def get_sequence_paths(config) -> list[UPath]:
-        return [p for p in UPath(config.root_dir).iterdir() if p.is_dir()]
+        if str(config.root_dir).endswith("/"):
+            return [p for p in UPath(config.root_dir).iterdir() if p.is_dir()]
+        else:
+            return [UPath(config.root_dir)]
 
     @staticmethod
     def from_config(config) -> ColmapDataConverter:
@@ -112,7 +114,7 @@ class ColmapDataConverter(BaseDataConverter):
             return
 
         self.camera_ids = list(self.scene_manager.camera_info.keys())
-        self.lidar_ids = ["dummy_lidar"] if len(self.scene_manager.points3D) > 0 and self.use_3d_points else []
+        self.lidar_ids = ["dummy_lidar"] if len(self.scene_manager.points3D) > 0 and self.include_3d_points else []
         self.logger.info(f"Adding cameras: {self.camera_ids} and lidar: {self.lidar_ids}")
 
         self.pose_interpolator = PoseInterpolator(T_rig_worlds, T_rig_world_timestamps_us)
@@ -170,7 +172,7 @@ class ColmapDataConverter(BaseDataConverter):
             CuboidsComponent.Writer,
             "default",
             self.component_groups.cuboid_track_observations_component_group,
-        )  # .store_observations([])
+        )
 
         ## Store poses
         self.store_poses(T_rig_worlds, T_rig_world_timestamps_us)
@@ -183,17 +185,7 @@ class ColmapDataConverter(BaseDataConverter):
         self.decode_cameras()
 
         # Store per-shard meta data / final success state / close file
-        ncore_4_paths = self.store_writer.finalize()
-
-        # Output sequence meta file if requested
-        # if self.store_sequence_meta:
-        #     sequence_component_reader = SequenceComponentGroupsReader(ncore_4_paths)
-        #     sequence_meta_path = self.output_dir / self.sequence_name / f"{sequence_component_reader.sequence_id}.json"
-
-        #     with sequence_meta_path.open("w") as f:
-        #         json.dump(sequence_component_reader.get_sequence_meta().to_dict(), f, indent=2)
-
-        #     self.logger.info(f"Wrote sequence meta data {str(sequence_meta_path)}")
+        self.store_writer.finalize()
 
     def store_poses(self, T_rig_worlds, T_rig_world_timestamps_us):
         """Stores the processed egomotion poses into the poses component."""
@@ -213,9 +205,9 @@ class ColmapDataConverter(BaseDataConverter):
         )
 
     def decode_lidars(self, T_rig_world_0) -> None:
-        # Extrinsics
+        # Extrinsics for the point cloud. Our first pose is the first camera pose,
+        # so we need to invert that to have the pointcloud in the correct frame.
         T_sensor_rig = se3_inverse(T_rig_world_0)
-        # T_sensor_rig = np.identity(4, dtype=np.float32)
         lidar_ncore_id = self.lidar_ids[0]
 
         lidar_writer = self.store_writer.register_component_writer(
@@ -249,12 +241,6 @@ class ColmapDataConverter(BaseDataConverter):
             generic_meta_data={},
         )
 
-        # Store intrinsics
-        # self.intrinsics_writer.store_lidar_intrinsics(
-        #     lidar_id=lidar_ncore_id,
-        #     lidar_model_parameters=lidar_model_parameters,
-        # )
-
         # Store extrinsics (sensor->rig transform)
         self.poses_writer.store_static_pose(
             source_frame_id=lidar_ncore_id,
@@ -270,7 +256,6 @@ class ColmapDataConverter(BaseDataConverter):
             # camera ids are just numbers
             image_root: str = camera_info["image_root"]
             image_names: list[str] = camera_info["image_names"]
-            T_rig_worlds: np.ndarray = camera_info["T_rig_worlds"]
             timestamps_us: np.ndarray = camera_info["timestamps_us"]
             camera_model: OpenCVPinholeCameraModelParameters = camera_info["camera_model"]
 
@@ -279,12 +264,7 @@ class ColmapDataConverter(BaseDataConverter):
                 CameraSensorComponent.Writer,
                 component_instance_name=camera_ncore_id,
                 group_name=self.component_groups.camera_component_groups.get(camera_ncore_id),
-                generic_meta_data={
-                    # "label-class-string-id-map": {
-                    #     label_string: label_id
-                    #     for label_id, label_string in self.CAMERA_LABEL_CLASS_ID_STRING_MAP.items()
-                    # }
-                },
+                generic_meta_data={},
             )
 
             # Store intrinsics
@@ -319,25 +299,12 @@ class ColmapDataConverter(BaseDataConverter):
                     image_bytes = f.read()
 
                 # single pose and timestamp for global shutter
-                # frame_T_rig_worlds = np.array(
-                #     [T_rig_worlds[continuous_frame_index, :, :], T_rig_worlds[continuous_frame_index, :, :]]
-                # ).astype(np.float32)
                 frame_timestamps_us = np.array(
                     [timestamps_us[continuous_frame_index], timestamps_us[continuous_frame_index]]
                 ).astype(np.uint64)
 
                 generic_data: dict[str, np.ndarray] = {}
                 generic_meta_data: dict[str, JsonLike] = {}
-
-                if continuous_frame_index == 0:
-                    import io
-
-                    import PIL.Image as PILImage
-
-                    img = PILImage.open(io.BytesIO(image_bytes))
-                    self.logger.info(
-                        f"{camera_ncore_id} resolution: {np.asarray(img).shape} vs {camera_model.resolution}"
-                    )
 
                 camera_writer.store_frame(
                     image_binary_data=image_bytes,
@@ -389,10 +356,10 @@ class ColmapDataConverter(BaseDataConverter):
     help="Include downsampled images as additional cameras. Images should be in folders such as `images_2`, etc.",
 )
 @click.option(
-    "--use-3d-points",
+    "--include-3d-points",
     type=click.BOOL,
     default=True,
-    help="Use 3D Points as a lidar sensor",
+    help="Include 3D Points as a lidar sensor",
 )
 @click.pass_context
 def colmap_v4(ctx, *_, **kwargs):
