@@ -21,7 +21,6 @@ py_binary(
     name = "convert",
     srcs = [
         "converter.py",
-        "scene_manager.py",
     ],
     main = "converter.py",
     deps = [

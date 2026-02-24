@@ -18,16 +18,17 @@ from __future__ import annotations
 import json
 import logging
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Literal
 
 import click
 import numpy as np
+import PIL.Image as PILImage
+import pycolmap
 import tqdm
 
 from upath import UPath
 
-from ncore.data import OpenCVPinholeCameraModelParameters
 from ncore.data.v4 import (
     CameraSensorComponent,
     CuboidsComponent,
@@ -39,15 +40,10 @@ from ncore.data.v4 import (
     SequenceComponentGroupsWriter,
 )
 from ncore.data_converter import BaseDataConverter, BaseDataConverterConfig
-from ncore.impl.common.transformations import (
-    HalfClosedInterval,
-    PoseInterpolator,
-    se3_inverse,
-)
-from ncore.impl.data.types import JsonLike
+from ncore.impl.common.transformations import HalfClosedInterval
+from ncore.impl.data.types import JsonLike, OpenCVPinholeCameraModelParameters, ShutterType
 from ncore.impl.data.v4.types import ComponentGroupAssignments
 from tools.data_converter.cli import cli
-from tools.data_converter.colmap.scene_manager import ColmapSceneManager
 
 
 @dataclass(kw_only=True, slots=True)
@@ -61,6 +57,87 @@ class ColmapConverter4Config(BaseDataConverterConfig):
     camera_prefix: str = "camera"
     include_downsampled_images: bool = True
     include_3d_points: bool = True
+
+
+@dataclass(kw_only=True, slots=True)
+class ColmapCamera:
+    """Intermediate class that stores the colmap camera information for converting to NCore."""
+
+    camera_id: str
+    colmap_camera: pycolmap.Camera
+    image_path: UPath
+    downsample_factor: int = 1
+    image_names: list[str] = field(default_factory=list)
+    T_ref_camera_list: list[np.ndarray] = field(default_factory=list)
+    reference_frame: str = "world"
+
+    @property
+    def n_images(self) -> int:
+        return len(self.image_names)
+
+    @property
+    def timestamps_us(self, start_time_sec: float = 0.0) -> np.ndarray:
+        return (1e6 * (start_time_sec + np.linspace(0.0, self.n_images - 1, self.n_images))).astype(np.uint64)
+
+    @property
+    def T_camera_ref(self) -> np.ndarray:
+        T_ref_camera_mats = np.stack(self.T_ref_camera_list, axis=0)
+        # Convert extrinsics to camera-to-reference_frame.
+        # NOTE: colmap already assumes OpenCV convention
+        T_camera_ref = np.linalg.inv(T_ref_camera_mats)
+        return T_camera_ref[:, :4, :4].astype(np.float64)
+
+    @property
+    def camera_model(self) -> OpenCVPinholeCameraModelParameters:
+        camera = self.colmap_camera
+
+        # Get distortion parameters.
+        assert camera.camera_type in [0, 1, 2, 3, 4, 5], f"Unsupported camera type: {camera.camera_type}"
+        radial_coeffs = np.array([0, 0, 0, 0, 0, 0], dtype=np.float32)
+        tangential_coeffs = np.array([0, 0], dtype=np.float32)
+
+        # 0: SIMPLE_PINHOLE, 1: PINHOLE, 2: SIMPLE_RADIAL, 3: RADIAL, 4: OpenCV, 5: OpenCVFisheye
+        if camera.camera_type > 1:
+            radial_coeffs[0] = camera.k1
+        if camera.camera_type > 2:
+            radial_coeffs[1] = camera.k2
+        if camera.camera_type == 4:
+            tangential_coeffs[0] = camera.p1
+            tangential_coeffs[1] = camera.p2
+        if camera.camera_type == 5:
+            raise NotImplementedError("OpenCV fisheye camera model not supported yet in converter")
+
+        width = round(camera.width / self.downsample_factor)
+        height = round(camera.height / self.downsample_factor)
+
+        # This is kind of a hack, but sometimes COLMAP downsampled images have a resolution different from what
+        # is expected. Specifically 0.5 does not always round up. This might cause issues with the camera model.
+        if self.downsample_factor != 1:
+            with PILImage.open(str(self.image_path / self.image_names[0])) as img:
+                if img.width != width or img.height != height:
+                    logging.getLogger(__name__).warning(
+                        f"Unexpected resolution: {img.width} {img.height}. Expected {width} {height}"
+                    )
+                    height = img.height
+                    width = img.width
+
+        focal_length = np.array(
+            [camera.fx / self.downsample_factor, camera.fy / self.downsample_factor], dtype=np.float32
+        )
+        principal_point = np.array(
+            [camera.cx / self.downsample_factor, camera.cy / self.downsample_factor], dtype=np.float32
+        )
+
+        return OpenCVPinholeCameraModelParameters(
+            resolution=np.array([width, height], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            external_distortion_parameters=None,
+            principal_point=principal_point,
+            focal_length=focal_length,
+            radial_coeffs=radial_coeffs,
+            tangential_coeffs=tangential_coeffs,
+            thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32),
+        )
 
 
 class ColmapDataConverter(BaseDataConverter):
@@ -105,36 +182,35 @@ class ColmapDataConverter(BaseDataConverter):
         self.sequence_name = sequence_path.name
 
         bin_path = self.sequence_path / "sparse" / "0"
-        self.scene_manager = ColmapSceneManager(bin_path)
-        try:
-            T_rig_worlds, T_rig_world_timestamps_us = self.scene_manager.process(
-                parent_dir=self.sequence_path,
-                camera_prefix=self.camera_prefix,
-                start_time_sec=self.start_time_sec,
-                downsample=self.include_downsampled_images,
-            )
-        except IOError as e:
-            self.logger.error(f"Error loading data from {sequence_path}: {e}")
-            return
 
-        self.camera_ids = list(self.scene_manager.camera_info.keys())
-        self.lidar_ids = ["dummy_lidar"] if len(self.scene_manager.points3D) > 0 and self.include_3d_points else []
-        self.logger.info(f"Adding cameras: {self.camera_ids} and lidar: {self.lidar_ids}")
+        self.scene_manager = pycolmap.SceneManager(str(bin_path))
+        self.scene_manager.load_cameras()
+        self.scene_manager.load_images()
+        self.scene_manager.load_points3D()
 
-        self.pose_interpolator = PoseInterpolator(T_rig_worlds, T_rig_world_timestamps_us)
-        self.T_world_world_global = np.eye(4, dtype="float64")
-
-        # Create timestamp interval for sequence
-        sequence_timestamp_interval_us = HalfClosedInterval.from_start_end(
-            self.pose_interpolator.timestamps[0].item(),
-            self.pose_interpolator.timestamps[-1].item(),
+        self.cameras = self.populate_camera_data(
+            parent_dir=self.sequence_path,
+            camera_prefix=self.camera_prefix,
+            downsample=self.include_downsampled_images,
         )
 
+        camera_ids = list(self.cameras.keys())
+        lidar_id = "dummy_lidar" if len(self.scene_manager.points3D) > 0 and self.include_3d_points else None
+        self.logger.info(f"Adding cameras: {camera_ids} and lidar: {lidar_id}")
+
         self.component_groups = ComponentGroupAssignments.create(
-            camera_ids=self.camera_ids,
-            lidar_ids=self.lidar_ids,
+            camera_ids=camera_ids,
+            lidar_ids=[lidar_id] if lidar_id is not None else [],
             radar_ids=[],  # No radars for now
             profile=self.component_group_profile,
+        )
+
+        # Use this to calculate the time span
+        max_poses = np.max([camera.n_images for camera in self.cameras.values()])
+        # Calculate the full timespan of the sequence
+        sequence_timestamp_interval_us = HalfClosedInterval.from_start_end(
+            int(1e6 * self.start_time_sec),
+            int(1e6 * (self.start_time_sec + max_poses)),
         )
 
         # Create main store writer
@@ -152,6 +228,12 @@ class ColmapDataConverter(BaseDataConverter):
             PosesComponent.Writer,
             component_instance_name="default",
             group_name=self.component_groups.poses_component_group,
+        )
+        # Store static world->world_global pose (float64 for high precision)
+        self.poses_writer.store_static_pose(
+            source_frame_id="world",
+            target_frame_id="world_global",
+            pose=np.eye(4, dtype="float64"),
         )
 
         # Create intrinsics component
@@ -175,12 +257,9 @@ class ColmapDataConverter(BaseDataConverter):
             self.component_groups.cuboid_track_observations_component_group,
         ).store_observations([])
 
-        ## Store poses
-        self.store_poses(T_rig_worlds, T_rig_world_timestamps_us)
-
         ## Decode 3D Points as a single lidar frame
-        if self.lidar_ids:
-            self.decode_lidars(T_rig_worlds[0, :, :])
+        if lidar_id is not None:
+            self.decode_lidars(lidar_id)
 
         ## Decode and store camera frames
         self.decode_cameras()
@@ -198,39 +277,26 @@ class ColmapDataConverter(BaseDataConverter):
 
             self.logger.info(f"Wrote sequence meta data {str(sequence_meta_path)}")
 
-    def store_poses(self, T_rig_worlds, T_rig_world_timestamps_us):
-        """Stores the processed egomotion poses into the poses component."""
-        # Store dynamic rig->world poses (float32 for relative poses)
-        self.poses_writer.store_dynamic_pose(
-            source_frame_id="rig",
-            target_frame_id="world",
-            poses=T_rig_worlds.astype(np.float32),
-            timestamps_us=T_rig_world_timestamps_us,
-        )
-
-        # Store static world->world_global pose (float64 for high precision)
+    def decode_lidars(self, lidar_id) -> None:
         self.poses_writer.store_static_pose(
-            source_frame_id="world",
-            target_frame_id="world_global",
-            pose=self.T_world_world_global.astype(np.float64),
+            source_frame_id=lidar_id,
+            target_frame_id="world",
+            pose=np.eye(4, dtype=np.float64),
         )
-
-    def decode_lidars(self, T_rig_world_0: np.ndarray) -> None:
-        # Extrinsics for the point cloud. Our first pose is the first camera pose,
-        # so we need to invert that to have the pointcloud in the correct frame.
-        T_sensor_rig = se3_inverse(T_rig_world_0)
-        lidar_ncore_id = self.lidar_ids[0]
 
         lidar_writer = self.store_writer.register_component_writer(
             LidarSensorComponent.Writer,
-            component_instance_name=lidar_ncore_id,
-            group_name=self.component_groups.lidar_component_groups.get(lidar_ncore_id),
+            component_instance_name=lidar_id,
+            group_name=self.component_groups.lidar_component_groups.get(lidar_id),
         )
 
         xyz = self.scene_manager.points3D.astype(np.float32)
         distance = np.linalg.norm(xyz, axis=1)  # N
-        direction = xyz / distance[:, np.newaxis]
-        num_points = self.scene_manager.points3D.shape[0]
+        # Filter out points with zero (or near-zero) distance to avoid division by zero
+        valid_mask = distance > 1e-6
+        distance = distance[valid_mask]
+        direction = xyz[valid_mask] / distance[valid_mask, np.newaxis]
+        num_points = direction.shape[0]
         start_timestamp_us = np.uint64(self.start_time_sec * 1e6)
 
         # Serialize lidar frame
@@ -253,23 +319,66 @@ class ColmapDataConverter(BaseDataConverter):
             generic_meta_data={},
         )
 
-        # Store extrinsics (sensor->rig transform)
-        self.poses_writer.store_static_pose(
-            source_frame_id=lidar_ncore_id,
-            target_frame_id="rig",
-            pose=T_sensor_rig,
-        )
+    def populate_camera_data(self, parent_dir: UPath, camera_prefix: str, downsample: bool) -> dict[str, ColmapCamera]:
+        cameras: dict[str, ColmapCamera] = {}
+
+        # Extract extrinsic matrices in world-to-camera format.
+        imdata = self.scene_manager.images
+
+        for k in imdata:
+            img: pycolmap.Image = imdata[k]
+            rot = img.R()
+            trans = img.tvec.reshape(3, 1)
+            T_ref_camera = np.concatenate(
+                [np.concatenate([rot, trans], 1), np.array([0, 0, 0, 1]).reshape(1, 4)], axis=0
+            )
+            ncore_camera_id = camera_prefix + str(imdata[k].camera_id)
+
+            camera = self.scene_manager.cameras[imdata[k].camera_id]
+
+            if ncore_camera_id not in cameras:
+                cameras[ncore_camera_id] = ColmapCamera(
+                    camera_id=ncore_camera_id,
+                    colmap_camera=self.scene_manager.cameras[imdata[k].camera_id],
+                    image_path=parent_dir / "images",
+                )
+            cameras[ncore_camera_id].T_ref_camera_list.append(T_ref_camera)
+            cameras[ncore_camera_id].image_names.append(imdata[k].name)
+
+        if not downsample:
+            return cameras
+
+        # Add extra cameras if we are downsampling and data exists.
+        for camera_id, camera in self.scene_manager.cameras.items():
+            assert isinstance(camera, pycolmap.Camera)
+            for downsample_factor in [2, 4, 8]:
+                reference_camera_id = camera_prefix + str(camera_id)
+                ncore_camera_id = camera_prefix + str(camera_id) + "_" + str(downsample_factor)
+                image_root = "images_" + str(downsample_factor)
+                if not (parent_dir / image_root).exists():
+                    self.logger.warning(f"Skipping missing downsampled image directory: {image_root}")
+                    continue
+                image_names = cameras[reference_camera_id].image_names
+                cameras[ncore_camera_id] = ColmapCamera(
+                    camera_id=ncore_camera_id,
+                    colmap_camera=self.scene_manager.cameras[imdata[k].camera_id],
+                    image_path=parent_dir / image_root,
+                    reference_frame=reference_camera_id,
+                    T_ref_camera_list=[np.eye(4)] * len(image_names),
+                    image_names=image_names,
+                    downsample_factor=downsample_factor,
+                )
+        return cameras
 
     def decode_cameras(self) -> None:
-        # Extrinsics
-        T_sensor_rig = np.identity(4, dtype=np.float32)
-
-        for camera_ncore_id, camera_info in self.scene_manager.camera_info.items():
-            # camera ids are just numbers
-            image_root: str = camera_info["image_root"]
-            image_names: list[str] = camera_info["image_names"]
-            timestamps_us: np.ndarray = camera_info["timestamps_us"]
-            camera_model: OpenCVPinholeCameraModelParameters = camera_info["camera_model"]
+        for camera_ncore_id, colmap_camera in self.cameras.items():
+            self.poses_writer.store_dynamic_pose(
+                source_frame_id=camera_ncore_id,
+                target_frame_id=colmap_camera.reference_frame,
+                poses=colmap_camera.T_camera_ref,
+                timestamps_us=colmap_camera.timestamps_us,
+                require_sequence_time_coverage=False,  # Some cameras may have more poses than others
+            )
 
             # Create camera sensor writer
             camera_writer = self.store_writer.register_component_writer(
@@ -281,7 +390,7 @@ class ColmapDataConverter(BaseDataConverter):
             # Store intrinsics
             self.intrinsics_writer.store_camera_intrinsics(
                 camera_id=camera_ncore_id,
-                camera_model_parameters=camera_model,
+                camera_model_parameters=colmap_camera.camera_model,
             )
 
             # Store empty masks (as none available in dataset)
@@ -289,17 +398,11 @@ class ColmapDataConverter(BaseDataConverter):
                 camera_id=camera_ncore_id,
                 mask_images={},
             )
+            timestamps_us = colmap_camera.timestamps_us
 
-            # Store extrinsics (sensor->rig transform)
-            self.poses_writer.store_static_pose(
-                source_frame_id=camera_ncore_id,
-                target_frame_id="rig",
-                pose=T_sensor_rig,
-            )
-
-            for continuous_frame_index in tqdm.tqdm(range(len(image_names)), desc=f"Decoding {camera_ncore_id}"):
-                image_name = image_names[continuous_frame_index]
-                image_path = self.sequence_path / image_root / image_name
+            for continuous_frame_index in tqdm.tqdm(range(colmap_camera.n_images), desc=f"Decoding {camera_ncore_id}"):
+                image_name = colmap_camera.image_names[continuous_frame_index]
+                image_path = colmap_camera.image_path / image_name
 
                 if (file_extension := image_name.split(".")[-1].lower()) == "jpg":
                     # PIL in ncore uses jpeg instead of jpg
