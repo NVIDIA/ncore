@@ -4,7 +4,7 @@
 Waymo-Open Dataset
 ==================
 
-The NCore Waymo module converts data from the Waymo-Open format (**.tfrecords**) into NCore V4 format.
+The NCore Waymo tool converts data from the Waymo-Open format (**.tfrecords**) into NCore V4 format.
 It serves as a reference implementation for creating data conversion flows to NCore.
 
 .. _data_conventions:
@@ -163,9 +163,9 @@ Poses are stored as dynamic (time-varying) and static transforms:
         pose=self.T_world_world_global.astype(np.float64),
     )
 
-**Step 4: Decode and store LiDAR data**
+**Step 4: Decode and store lidar data**
 
-Each LiDAR sensor gets its own component writer:
+Each lidar sensor gets its own component writer:
 
 .. code-block:: python
 
@@ -175,7 +175,7 @@ Each LiDAR sensor gets its own component writer:
         group_name=self.component_groups.lidar_component_groups.get(lidar_ncore_id),
     )
 
-LiDAR frames use direction/distance format with multi-return support:
+Lidar frames use direction/distance format with multi-return support:
 
 .. code-block:: python
 
@@ -238,7 +238,7 @@ Each camera sensor gets its own component writer:
         generic_meta_data=generic_meta_data,
     )
 
-Camera intrinsics (using :class:`~ncore.data.OpenCVPinholeCameraModelParameters`), masks, and extrinsics:
+Camera intrinsics (using :class:`~ncore.data.OpenCVPinholeCameraModelParameters` with sensor-specific shutter directions), masks, and extrinsics:
 
 .. code-block:: python
 
@@ -282,8 +282,8 @@ The Waymo V4 conversion follows this pattern:
 1. Parse ``.tfrecord`` frames using TensorFlow and ``waymo_open_dataset``
 2. Initialize ``SequenceComponentGroupsWriter`` and register component writers
 3. Store poses via ``PosesComponent.Writer`` (dynamic + static transforms)
-4. Store LiDAR data via ``LidarSensorComponent.Writer`` (direction/distance format, multi-return)
-5. Store LiDAR intrinsics via ``IntrinsicsComponent.Writer``
+4. Store lidar data via ``LidarSensorComponent.Writer`` (direction/distance format, multi-return)
+5. Store lidar intrinsics via ``IntrinsicsComponent.Writer``
 6. Store 3D labels via ``CuboidsComponent.Writer``
 7. Store camera data via ``CameraSensorComponent.Writer``
 8. Store camera intrinsics via ``IntrinsicsComponent.Writer`` and masks via ``MasksComponent.Writer``
@@ -299,8 +299,8 @@ API Reference
 
 - :class:`~ncore.data.v4.SequenceComponentGroupsWriter` - Main writer for V4 sequences
 - :class:`~ncore.data.v4.PosesComponent` - Static and dynamic pose storage
-- :class:`~ncore.data.v4.IntrinsicsComponent` - Camera and LiDAR intrinsics
-- :class:`~ncore.data.v4.LidarSensorComponent` - LiDAR frame data
+- :class:`~ncore.data.v4.IntrinsicsComponent` - Camera and lidar intrinsics
+- :class:`~ncore.data.v4.LidarSensorComponent` - Lidar frame data
 - :class:`~ncore.data.v4.CameraSensorComponent` - Camera frame data
 - :class:`~ncore.data.v4.CuboidsComponent` - 3D cuboid track observations
 - :class:`~ncore.data.v4.MasksComponent` - Camera masks
@@ -313,4 +313,4 @@ API Reference
 **Sensor Models** (:mod:`ncore.data`):
 
 - :class:`~ncore.data.OpenCVPinholeCameraModelParameters` - Camera intrinsics model
-- :class:`~ncore.data.RowOffsetStructuredSpinningLidarModelParameters` - LiDAR intrinsics model
+- :class:`~ncore.data.RowOffsetStructuredSpinningLidarModelParameters` - Lidar intrinsics model
