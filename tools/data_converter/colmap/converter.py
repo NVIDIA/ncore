@@ -82,10 +82,11 @@ class ColmapCamera:
     @property
     def T_camera_ref(self) -> np.ndarray:
         T_ref_camera_mats = np.stack(self.T_ref_camera_list, axis=0)
+
         # Convert extrinsics to camera-to-reference_frame.
         # NOTE: colmap already assumes OpenCV convention
         T_camera_ref = np.linalg.inv(T_ref_camera_mats)
-        return T_camera_ref[:, :4, :4].astype(np.float64)
+        return T_camera_ref[:, :4, :4].astype(np.float32)
 
     @property
     def camera_model(self) -> OpenCVPinholeCameraModelParameters:
@@ -146,6 +147,8 @@ class ColmapDataConverter(BaseDataConverter):
     """
 
     def __init__(self, config: ColmapConverter4Config):
+        """Initializes the converter with the given configuration."""
+
         super().__init__(config)
 
         self.camera_prefix = config.camera_prefix
@@ -163,6 +166,10 @@ class ColmapDataConverter(BaseDataConverter):
 
     @staticmethod
     def get_sequence_paths(config) -> list[UPath]:
+        """Get sequence paths from config.
+
+        If root_dir is a directory, return all subdirectories as sequences. If root_dir is a single sequence, return it as the only sequence."""
+
         if str(config.root_dir).endswith("/"):
             return [p for p in UPath(config.root_dir).iterdir() if p.is_dir()]
         else:
@@ -170,12 +177,14 @@ class ColmapDataConverter(BaseDataConverter):
 
     @staticmethod
     def from_config(config) -> ColmapDataConverter:
+        """Create a ColmapDataConverter instance from a configuration object."""
         return ColmapDataConverter(config)
 
     def convert_sequence(self, sequence_path: UPath) -> None:
         """
         Runs the conversion of a single sequence
         """
+
         self.logger.info(f"Processing sequence: {sequence_path}")
 
         self.sequence_path = sequence_path
@@ -195,7 +204,7 @@ class ColmapDataConverter(BaseDataConverter):
         )
 
         camera_ids = list(self.cameras.keys())
-        lidar_id = "dummy_lidar" if len(self.scene_manager.points3D) > 0 and self.include_3d_points else None
+        lidar_id = "virtual_lidar" if len(self.scene_manager.points3D) > 0 and self.include_3d_points else None
         self.logger.info(f"Adding cameras: {camera_ids} and lidar: {lidar_id}")
 
         self.component_groups = ComponentGroupAssignments.create(
@@ -207,6 +216,7 @@ class ColmapDataConverter(BaseDataConverter):
 
         # Use this to calculate the time span
         max_poses = np.max([camera.n_images for camera in self.cameras.values()])
+
         # Calculate the full timespan of the sequence
         sequence_timestamp_interval_us = HalfClosedInterval.from_start_end(
             int(1e6 * self.start_time_sec),
@@ -229,7 +239,8 @@ class ColmapDataConverter(BaseDataConverter):
             component_instance_name="default",
             group_name=self.component_groups.poses_component_group,
         )
-        # Store static world->world_global pose (float64 for high precision)
+
+        # Store static world->world_global pose
         self.poses_writer.store_static_pose(
             source_frame_id="world",
             target_frame_id="world_global",
@@ -278,10 +289,12 @@ class ColmapDataConverter(BaseDataConverter):
             self.logger.info(f"Wrote sequence meta data {str(sequence_meta_path)}")
 
     def decode_lidars(self, lidar_id) -> None:
+        """Decodes COLMAP 3D points as a single lidar frame."""
+
         self.poses_writer.store_static_pose(
             source_frame_id=lidar_id,
             target_frame_id="world",
-            pose=np.eye(4, dtype=np.float64),
+            pose=np.eye(4, dtype=np.float32),
         )
 
         lidar_writer = self.store_writer.register_component_writer(
@@ -320,6 +333,10 @@ class ColmapDataConverter(BaseDataConverter):
         )
 
     def populate_camera_data(self, parent_dir: UPath, camera_prefix: str, downsample: bool) -> dict[str, ColmapCamera]:
+        """Populates the camera data from the COLMAP scene, including extrinsics and intrinsics
+
+        Returns a dictionary of ColmapCamera instances indexed by the NCore camera IDs."""
+
         cameras: dict[str, ColmapCamera] = {}
 
         # Extract extrinsic matrices in world-to-camera format.
@@ -368,9 +385,12 @@ class ColmapDataConverter(BaseDataConverter):
                     image_names=image_names,
                     downsample_factor=downsample_factor,
                 )
+
         return cameras
 
     def decode_cameras(self) -> None:
+        """Decodes camera frames, intrinsics, and masks from the COLMAP scene."""
+
         for camera_ncore_id, colmap_camera in self.cameras.items():
             self.poses_writer.store_dynamic_pose(
                 source_frame_id=camera_ncore_id,
