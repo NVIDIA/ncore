@@ -38,6 +38,7 @@ The project is developed within the `NVIDIA SIL Lab <https://research.nvidia.com
 
    conversions/waymo/waymo
    conversions/colmap/colmap
+   conversions/pai/pai
 
 .. toctree::
    :maxdepth: 1
