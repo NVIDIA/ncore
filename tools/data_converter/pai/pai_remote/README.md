@@ -1,9 +1,4 @@
-<!--
-SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-SPDX-License-Identifier: Apache-2.0
--->
-
-# pai-clip-dl
+# pai_remote
 
 Download and stream clip data from the [NVIDIA PhysicalAI-Autonomous-Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles) HuggingFace dataset.
 
@@ -26,55 +21,63 @@ export HF_TOKEN=hf_...
 
 ## CLI Usage
 
-All commands are run via `uv run` from the project directory:
+All commands follow the pattern:
+
+```bash
+bazel run //tools/data_converter/pai/pai_remote:pai-clip-dl -- <command> [options]
+```
 
 ### Download clips
 
 ```bash
 # Download all data for a single clip
-uv run pai-clip-dl download <clip_id> -o ./data
+bazel run //tools/data_converter/pai/pai_remote:pai-clip-dl -- download <clip_id> -o ./data
 
 # Download multiple clips at once (batches by chunk automatically)
-uv run pai-clip-dl download <clip_id_1> <clip_id_2> <clip_id_3> -o ./data
+bazel run //tools/data_converter/pai/pai_remote:pai-clip-dl -- download <clip_id_1> <clip_id_2> <clip_id_3> -o ./data
 
 # Download only specific features (labels + one camera)
-uv run pai-clip-dl download <clip_id> -f egomotion -f camera_front_wide_120fov -o ./data
+bazel run //tools/data_converter/pai/pai_remote:pai-clip-dl -- download <clip_id> -f egomotion -f camera_front_wide_120fov -o ./data
 
 # Skip metadata parquets
-uv run pai-clip-dl download <clip_id> --no-metadata -o ./data
+bazel run //tools/data_converter/pai/pai_remote:pai-clip-dl -- download <clip_id> --no-metadata -o ./data
 ```
 
 ### Clip info
 
 ```bash
 # Show chunk, split, and sensor presence for one or more clips
-uv run pai-clip-dl info <clip_id>
-uv run pai-clip-dl info <clip_id_1> <clip_id_2>
+bazel run //tools/data_converter/pai/pai_remote:pai-clip-dl -- info <clip_id>
+bazel run //tools/data_converter/pai/pai_remote:pai-clip-dl -- info <clip_id_1> <clip_id_2>
 ```
 
 ### List features
 
 ```bash
-uv run pai-clip-dl list-features
+bazel run //tools/data_converter/pai/pai_remote:pai-clip-dl -- list-features
 ```
 
 ### Stream (no full download)
 
 ```bash
 # List files available for a clip within a feature's zip
-uv run pai-clip-dl stream <clip_id> -f camera_front_wide_120fov
+bazel run //tools/data_converter/pai/pai_remote:pai-clip-dl -- stream <clip_id> -f camera_front_wide_120fov
 
 # Extract a single file from a remote zip to a local file
-uv run pai-clip-dl stream <clip_id> -f camera_front_wide_120fov --file timestamps.parquet -o out.parquet
+bazel run //tools/data_converter/pai/pai_remote:pai-clip-dl -- stream <clip_id> -f camera_front_wide_120fov --file timestamps.parquet -o out.parquet
 
 # Pipe binary content to stdout
-uv run pai-clip-dl stream <clip_id> -f camera_front_wide_120fov --file .mp4 > video.mp4
+bazel run //tools/data_converter/pai/pai_remote:pai-clip-dl -- stream <clip_id> -f camera_front_wide_120fov --file .mp4 > video.mp4
 ```
 
 ## Python API
 
 ```python
-from pai_clip_dl import Config, HFRemote, ClipIndex, ClipDownloader, StreamingZipAccess
+from tools.data_converter.pai.pai_remote.config import Config
+from tools.data_converter.pai.pai_remote.remote import HFRemote
+from tools.data_converter.pai.pai_remote.index import ClipIndex
+from tools.data_converter.pai.pai_remote.downloader import ClipDownloader
+from tools.data_converter.pai.pai_remote.streaming import StreamingZipAccess
 
 config = Config.from_env()  # reads HF_TOKEN from environment
 remote = HFRemote(config)
@@ -183,13 +186,12 @@ The [PhysicalAI-Autonomous-Vehicles](https://huggingface.co/datasets/nvidia/Phys
 | Environment variable  | Description | Default |
 |-----------------------|-------------|---------|
 | `HF_TOKEN`            | HuggingFace API token | (required) |
-| `PAI_CLIP_DL_CACHE`   | Local cache directory for index files | `~/.cache/pai-clip-dl` |
+| `pai_remote_CACHE`   | Local cache directory for index files | `~/.cache/pai-clip-dl` |
 
 ## Project structure
 
 ```
-pai_clip_dl/
-├── __init__.py       # Public API re-exports
+pai_remote/
 ├── config.py         # Config dataclass, constants, env var handling
 ├── remote.py         # HFRemote: authenticated HTTP, CDN URL resolution, downloads
 ├── index.py          # ClipIndex: clip_index.parquet, features.csv, sensor_presence

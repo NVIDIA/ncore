@@ -1,0 +1,40 @@
+# Copyright (c) 2025 NVIDIA CORPORATION.  All rights reserved.
+
+load("@ncore_pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("//bazel/pytest:defs.bzl", "pytest_test")
+
+package(default_visibility = ["//tools/data_converter/pai:__pkg__"])
+
+PAI_DL_DEPS = [
+    requirement("click"),
+    requirement("pandas"),
+    requirement("pyarrow"),
+    requirement("remotezip"),
+    requirement("requests"),
+    requirement("rich"),
+]
+
+py_library(
+    name = "pylib_pai_remote",
+    srcs = [
+        "config.py",
+        "downloader.py",
+        "index.py",
+        "remote.py",
+        "streaming.py",
+    ],
+    deps = PAI_DL_DEPS,
+)
+
+py_binary(
+    name = "pai-clip-dl",
+    srcs = [
+        "cli.py",
+    ],
+    main = "cli.py",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tools/data_converter/pai/pai_remote:pylib_pai_remote",
+    ] + PAI_DL_DEPS,
+)

@@ -31,6 +31,7 @@ py_binary(
     deps = [
         "//ncore:pylib",
         "//tools/data_converter:pylib_cli",
+        "//tools/data_converter/pai/pai_remote:pylib_pai_remote",
         requirement("click"),
         requirement("DracoPy"),
         requirement("imageio"),
@@ -42,7 +43,6 @@ py_binary(
         requirement("scipy"),
         requirement("tqdm"),
         requirement("universal-pathlib"),
-        "//tools/data_converter/pai/pai-clip-dl:pylib_pai_clip_dl",
     ],
 )
 

@@ -89,12 +89,8 @@ Prerequisites
 .. code-block:: bash
 
     # Download a single clip with pai-clip-dl (Bazel)
-    bazel run //tools/data_converter/pai/pai-clip-dl:pai-clip-dl -- \
+    bazel run //tools/data_converter/pai/pai_remote:pai-clip-dl -- \
         download <clip-id> -o /path/to/data
-
-    # Or using uv directly from the pai-clip-dl subdirectory
-    cd tools/data_converter/pai/pai-clip-dl
-    uv run pai-clip-dl download <clip-id> -o /path/to/data
 
 The downloaded clip directory has this layout::
 

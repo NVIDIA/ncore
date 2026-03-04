@@ -33,8 +33,9 @@ from typing import Any, Dict, Protocol, cast, runtime_checkable
 import pandas as pd
 import pyarrow.parquet as pq
 
-from pai_clip_dl import StreamingZipAccess
 from upath import UPath
+
+from tools.data_converter.pai.pai_remote.streaming import StreamingZipAccess
 
 
 logger = logging.getLogger(__name__)
@@ -182,7 +183,7 @@ class LocalClipDataProvider(ClipDataProvider):
 class StreamingClipDataProvider:
     """Stream clip data directly from HuggingFace without a prior download.
 
-    Uses ``pai_clip_dl`` library classes (:class:`HFRemote`,
+    Uses ``pai_remote`` library classes (:class:`HFRemote`,
     :class:`ClipIndex`, :class:`StreamingZipAccess`) for data access.
 
     Calibration parquet files (per-chunk) are downloaded in full and filtered
@@ -194,8 +195,8 @@ class StreamingClipDataProvider:
     def __init__(
         self,
         clip_id: str,
-        remote: Any,  # pai_clip_dl.HFRemote
-        index: Any,  # pai_clip_dl.ClipIndex
+        remote: Any,  # pai_remote.HFRemote
+        index: Any,  # pai_remote.ClipIndex
         temp_dir: Path,
         chunk_parquet_cache: Dict[str, pd.DataFrame] | None = None,
     ) -> None:
@@ -438,7 +439,7 @@ class StreamingClipDataProvider:
 def _filter_parquet_to_clip(df: pd.DataFrame, clip_id: str) -> pd.DataFrame:
     """Filter a DataFrame to rows belonging to *clip_id*.
 
-    Handles multiple index layouts (same logic as pai_clip_dl.downloader).
+    Handles multiple index layouts (same logic as pai_remote.downloader).
     """
     if isinstance(df.index, pd.MultiIndex):
         if "clip_id" in df.index.names:

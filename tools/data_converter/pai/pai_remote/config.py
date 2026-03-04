@@ -30,7 +30,7 @@ BASE_URL = "https://huggingface.co/datasets"
 
 
 def _default_cache_dir() -> Path:
-    return Path(os.environ.get("PAI_CLIP_DL_CACHE", Path.home() / ".cache" / "pai-clip-dl"))
+    return Path(os.environ.get("pai_remote_CACHE", Path.home() / ".cache" / "pai-clip-dl"))
 
 
 @dataclass

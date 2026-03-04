@@ -22,12 +22,11 @@ import io
 import json
 import logging
 
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
 import pandas as pd
 
-from pai_clip_dl.remote import HFRemote
+from tools.data_converter.pai.pai_remote.remote import HFRemote
 
 
 log = logging.getLogger(__name__)
@@ -95,7 +94,7 @@ class ClipIndex:
         df = self.clip_df
         if clip_id not in df.index:
             raise KeyError(f"clip_id {clip_id!r} not found in clip index")
-        return int(df.loc[clip_id, "chunk"])  # pyright: ignore[reportArgumentType]
+        return int(df.loc[clip_id, "chunk"])
 
     def get_split(self, clip_id: str) -> str:
         """Look up the split (train/val/test) for a clip_id."""

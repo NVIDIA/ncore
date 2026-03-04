@@ -44,7 +44,6 @@ import imageio
 import numpy as np
 import tqdm
 
-from pai_clip_dl import ClipIndex, Config, HFRemote
 from scipy.spatial.transform import Rotation as R
 from upath import UPath
 
@@ -74,6 +73,9 @@ from ncore.impl.data.types import (
 from ncore.impl.data.v4.types import ComponentGroupAssignments
 from tools.data_converter.cli import cli
 from tools.data_converter.pai.data_provider import ClipDataProvider, LocalClipDataProvider, StreamingClipDataProvider
+from tools.data_converter.pai.pai_remote.config import Config
+from tools.data_converter.pai.pai_remote.index import ClipIndex
+from tools.data_converter.pai.pai_remote.remote import HFRemote
 from tools.data_converter.pai.utils import (
     filter_ego_vehicle_points,
     parse_camera_intrinsics,

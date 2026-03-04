@@ -26,7 +26,7 @@ from typing import BinaryIO
 
 import requests
 
-from pai_clip_dl.config import Config
+from tools.data_converter.pai.pai_remote.config import Config
 
 
 log = logging.getLogger(__name__)

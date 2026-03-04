@@ -9,25 +9,24 @@ SPDX-License-Identifier: Apache-2.0
 
 - [Hugging Face](https://huggingface.co/) account with the PAI dataset license accepted
 - Hugging Face CLI authenticated (`huggingface-cli login`)
-- The `pai-clip-dl` tool (located in `pai-clip-dl/` subdirectory)
+- The `pai-clip-dl` tool (located in the `pai_remote/` subdirectory)
 
 ## 1. Download PAI clips with pai-clip-dl
 
 Use the `pai-clip-dl` tool to download per-clip data from Hugging Face. See
-`pai-clip-dl/README.md` for full documentation.
+`pai_remote/README.md` for full documentation.
+
+**With Bazel** (no install step needed):
 
 ```bash
-# Install the tool (one-time)
-cd pai-clip-dl && uv sync && cd ..
-
 # Download a single clip
-pai-clip-dl download <clip-id> -o /path/to/data
+bazel run //tools/data_converter/pai/pai_remote:pai-clip-dl -- download <clip-id> -o /path/to/data
 
 # Download multiple clips
-pai-clip-dl download <clip-id-1> <clip-id-2> -o /path/to/data
+bazel run //tools/data_converter/pai/pai_remote:pai-clip-dl -- download <clip-id-1> <clip-id-2> -o /path/to/data
 
 # Download only specific features
-pai-clip-dl download <clip-id> -o /path/to/data -f camera_front_wide_120fov -f egomotion
+bazel run //tools/data_converter/pai/pai_remote:pai-clip-dl -- download <clip-id> -o /path/to/data -f camera_front_wide_120fov -f egomotion
 ```
 
 This creates a per-clip directory structure under the output path:

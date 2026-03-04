@@ -29,8 +29,8 @@ from typing import BinaryIO
 
 import remotezip
 
-from pai_clip_dl.index import FeatureSpec
-from pai_clip_dl.remote import HFRemote
+from tools.data_converter.pai.pai_remote.index import FeatureSpec
+from tools.data_converter.pai.pai_remote.remote import HFRemote
 
 
 log = logging.getLogger(__name__)

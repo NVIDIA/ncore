@@ -27,11 +27,11 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from pai_clip_dl.config import Config
-from pai_clip_dl.downloader import ClipDownloader
-from pai_clip_dl.index import ClipIndex
-from pai_clip_dl.remote import HFRemote
-from pai_clip_dl.streaming import StreamingZipAccess
+from tools.data_converter.pai.pai_remote.config import Config
+from tools.data_converter.pai.pai_remote.downloader import ClipDownloader
+from tools.data_converter.pai.pai_remote.index import ClipIndex
+from tools.data_converter.pai.pai_remote.remote import HFRemote
+from tools.data_converter.pai.pai_remote.streaming import StreamingZipAccess
 
 
 console = Console()

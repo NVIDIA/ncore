@@ -24,14 +24,13 @@ import logging
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Sequence, cast
+from typing import Sequence
 
 import pandas as pd
 
 from rich.console import Console
 from rich.progress import (
     BarColumn,
-    DownloadColumn,
     MofNCompleteColumn,
     Progress,
     SpinnerColumn,
@@ -39,9 +38,9 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 
-from pai_clip_dl.index import ClipIndex, FeatureSpec
-from pai_clip_dl.remote import HFRemote
-from pai_clip_dl.streaming import StreamingZipAccess
+from tools.data_converter.pai.pai_remote.index import ClipIndex, FeatureSpec
+from tools.data_converter.pai.pai_remote.remote import HFRemote
+from tools.data_converter.pai.pai_remote.streaming import StreamingZipAccess
 
 
 log = logging.getLogger(__name__)
@@ -366,7 +365,7 @@ def _filter_parquet_to_clip(df: pd.DataFrame, clip_id: str) -> pd.DataFrame:
     if isinstance(df.index, pd.MultiIndex):
         if "clip_id" in df.index.names:
             try:
-                return cast(pd.DataFrame, df.xs(clip_id, level="clip_id", drop_level=False))
+                return df.xs(clip_id, level="clip_id", drop_level=False)
             except KeyError:
                 return df.iloc[0:0]  # empty with same schema
     elif df.index.name == "clip_id":
