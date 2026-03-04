@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@ncore_pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+#################################################################
+
+py_library(
+    name = "pylib_utils",
+    srcs = [
+        "utils.py",
+    ],
+    deps = [
+        requirement("numpy"),
+        requirement("scipy"),
+    ],
+)
+
+py_library(
+    name = "pylib_data_loader",
+    srcs = [
+        "data_loader.py",
+    ],
+    deps = [
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/data:pylib_compat",
+        "//ncore/impl/data:pylib_types",
+        requirement("numpy"),
+        requirement("pandas"),
+    ],
+)
+
+py_library(
+    name = "pylib_components",
+    srcs = [
+        "components/__init__.py",
+        "components/base.py",
+        "components/camera.py",
+        "components/cuboids.py",
+        "components/lidar.py",
+        "components/trajectory.py",
+    ],
+    deps = [
+        ":pylib_data_loader",
+        ":pylib_utils",
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/data:pylib_compat",
+        "//ncore/impl/data:pylib_types",
+        "//ncore/impl/sensors:pylib_camera",
+        requirement("matplotlib"),
+        requirement("numpy"),
+        requirement("opencv_python_headless"),
+        requirement("scipy"),
+        requirement("torch"),
+        requirement("viser"),
+    ],
+)
+
+#################################################################
+
+py_binary(
+    name = "ncore_vis",
+    srcs = [
+        "cli.py",
+        "renderer.py",
+        "server.py",
+    ],
+    main = "cli.py",
+    deps = [
+        ":pylib_components",
+        ":pylib_data_loader",
+        ":pylib_utils",
+        "//ncore/impl/data:pylib_compat",
+        "//ncore/impl/data/v4:pylib_compat",
+        "//ncore/impl/data/v4:pylib_components",
+        "//tools:pylib_cli",
+        "//tools:pylib_debug",
+        requirement("click"),
+        requirement("numpy"),
+        requirement("viser"),
+    ],
+)

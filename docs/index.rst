@@ -30,6 +30,7 @@ The project is developed within the `NVIDIA SIL Lab <https://research.nvidia.com
    :caption: Tools / Applications
 
    tools/data_vis
+   tools/ncore_vis
 
 .. toctree::
    :maxdepth: 1

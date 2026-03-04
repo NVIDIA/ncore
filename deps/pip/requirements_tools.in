@@ -15,10 +15,14 @@
 
 # Tools dependencies
 tqdm
+numpy
 pandas
+scipy
+torch
 matplotlib>=3.6.2
 pyside6
 opencv-python-headless
 point-cloud-utils>=0.30.2
 click
 debugpy
+viser

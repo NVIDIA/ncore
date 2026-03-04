@@ -69,6 +69,11 @@ class HalfClosedInterval:
     start: int
     stop: int
 
+    @property
+    def end(self) -> int:
+        """Returns the inclusive end of the interval (i.e. ``stop - 1``)."""
+        return self.stop - 1
+
     @staticmethod
     def from_start_end(start: int, end: int) -> HalfClosedInterval:
         """Creates a half-closed interval from start and end (inclusive)"""
