@@ -42,10 +42,10 @@ This creates a per-clip directory structure under the output path:
 
 There are two conversion modes:
 
-- **`pai4-clipdl`** -- converts clips previously downloaded to disk with `pai-clip-dl`.
-- **`pai4-stream`** -- streams clip data directly from HuggingFace without a prior download.
+- **`pai-v4`** -- converts clips previously downloaded to disk with `pai-clip-dl`.
+- **`pai-stream-v4`** -- streams clip data directly from HuggingFace without a prior download.
 
-### Local mode (`pai4-clipdl`)
+### Local mode (`pai-v4`)
 
 Point `--root-dir` at the directory containing the downloaded clip folders.
 
@@ -55,7 +55,7 @@ Point `--root-dir` at the directory containing the downloaded clip folders.
 bazel run //scripts:convert_raw_data -- \
     --root-dir=/path/to/data \
     --output-dir=/path/to/output \
-    pai4-clipdl \
+    pai-v4 \
     --clip-id <clip-id>
 ```
 
@@ -67,10 +67,10 @@ Omit `--clip-id` to convert every clip directory found under `--root-dir`:
 bazel run //scripts:convert_raw_data -- \
     --root-dir=/path/to/data \
     --output-dir=/path/to/output \
-    pai4-clipdl
+    pai-v4
 ```
 
-### Streaming mode (`pai4-stream`)
+### Streaming mode (`pai-stream-v4`)
 
 Converts clips directly from HuggingFace. No prior download required.
 
@@ -78,7 +78,7 @@ Converts clips directly from HuggingFace. No prior download required.
 bazel run //scripts:convert_raw_data -- \
     --root-dir=/tmp/unused \
     --output-dir=/path/to/output \
-    pai4-stream \
+    pai-stream-v4 \
     --clip-id <clip-id> \
     --hf-token <your-hf-token>
 ```

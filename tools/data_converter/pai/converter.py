@@ -165,8 +165,8 @@ class PaiConverter(BaseDataConverter):
     - Cuboid obstacle labels
 
     The converter uses a :class:`ClipDataProvider` abstraction for data access,
-    allowing the same conversion logic to work with local files (``pai4-clipdl``)
-    or streaming from HuggingFace (``pai4-stream``).
+    allowing the same conversion logic to work with local files (``pai-v4``)
+    or streaming from HuggingFace (``pai-stream-v4``).
     """
 
     # Camera sensor mapping
@@ -197,7 +197,7 @@ class PaiConverter(BaseDataConverter):
         self.store_sequence_meta = config.store_sequence_meta
 
         # Optional provider factory: callable(clip_id) -> ClipDataProvider.
-        # When set (e.g. by pai4-stream), the converter uses this instead of
+        # When set (e.g. by pai-stream-v4), the converter uses this instead of
         # constructing a LocalClipDataProvider from self.root_dir.
         self._make_provider = getattr(config, "make_provider", None)
 
@@ -205,8 +205,8 @@ class PaiConverter(BaseDataConverter):
     def get_sequence_paths(config) -> list[UPath]:
         """Return list of clips to process.
 
-        For local mode (``pai4-clipdl``): lists subdirectories under ``root_dir``.
-        For streaming mode (``pai4-stream``): returns the clip IDs from config directly.
+        For local mode (``pai-v4``): lists subdirectories under ``root_dir``.
+        For streaming mode (``pai-stream-v4``): returns the clip IDs from config directly.
         """
         # Streaming mode: clip IDs are provided directly via config
         if hasattr(config, "make_provider") and config.make_provider is not None:
@@ -754,7 +754,7 @@ class PaiConverter(BaseDataConverter):
 
 
 # ---------------------------------------------------------------------------
-# Shared PAI options (used by both pai4-clipdl and pai4-stream)
+# Shared PAI options (used by both pai-v4 and pai-stream-v4)
 # ---------------------------------------------------------------------------
 
 _pai_shared_options = [
@@ -863,7 +863,7 @@ def pai_stream_v4(ctx, *_, **kwargs):
 
     clip_ids = config.get("clip_id", ())
     if not clip_ids:
-        raise click.UsageError("--clip-id is required for pai4-stream")
+        raise click.UsageError("--clip-id is required for pai-stream-v4")
 
     # Lazy-import pai_clip_dl (only needed for streaming)
     from pai_clip_dl import ClipIndex, Config, HFRemote
@@ -874,7 +874,7 @@ def pai_stream_v4(ctx, *_, **kwargs):
 
     # Shared chunk parquet cache across clips
     chunk_parquet_cache: dict = {}
-    temp_root = tempfile.mkdtemp(prefix="pai4-stream-")
+    temp_root = tempfile.mkdtemp(prefix="pai-stream-v4-")
 
     def make_provider(clip_id: str) -> StreamingClipDataProvider:
         from pathlib import Path
