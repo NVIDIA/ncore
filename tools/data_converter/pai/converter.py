@@ -31,10 +31,12 @@ LIMITATIONS:
 
 import json
 import logging
+import tempfile
 
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from types import SimpleNamespace
-from typing import Dict, Literal
+from typing import Dict, Literal, cast
 
 import click
 import DracoPy
@@ -42,6 +44,9 @@ import imageio
 import numpy as np
 import tqdm
 
+
+# Needed for streaming
+from pai_clip_dl import ClipIndex, Config, HFRemote
 from scipy.spatial.transform import Rotation as R
 from upath import UPath
 
@@ -70,7 +75,7 @@ from ncore.impl.data.types import (
 )
 from ncore.impl.data.v4.types import ComponentGroupAssignments
 from tools.data_converter.cli import cli
-from tools.data_converter.pai.data_provider import ClipDataProvider, LocalClipDataProvider
+from tools.data_converter.pai.data_provider import ClipDataProvider, LocalClipDataProvider, StreamingClipDataProvider
 from tools.data_converter.pai.utils import (
     filter_ego_vehicle_points,
     parse_camera_intrinsics,
@@ -327,7 +332,7 @@ class PaiConverter(BaseDataConverter):
             rot=(0.0, 0.0, 0.0),
         )
         generic_meta_data: Dict[str, JsonLike] = {
-            "vehicle-bbox": ego_bbox.to_dict(),
+            "vehicle-bbox": cast(Dict[str, JsonLike], ego_bbox.to_dict()),
         }
         source_meta = self.provider.get_source_metadata()
         source_generic_meta_data: Dict[str, JsonLike] = {
@@ -466,15 +471,15 @@ class PaiConverter(BaseDataConverter):
 
         for row in tqdm.tqdm(obstacle_df.itertuples(), total=len(obstacle_df), desc="Processing cuboid labels"):
             bbox = BBox3(
-                centroid=tuple([row.center_x, row.center_y, row.center_z]),
-                dim=tuple([row.size_x, row.size_y, row.size_z]),
+                centroid=(cast(float, row.center_x), cast(float, row.center_y), cast(float, row.center_z)),
+                dim=(cast(float, row.size_x), cast(float, row.size_y), cast(float, row.size_z)),
                 rot=tuple(
                     R.from_quat(
                         (
-                            row.orientation_x,
-                            row.orientation_y,
-                            row.orientation_z,
-                            row.orientation_w,
+                            cast(float, row.orientation_x),
+                            cast(float, row.orientation_y),
+                            cast(float, row.orientation_z),
+                            cast(float, row.orientation_w),
                         )
                     )
                     .as_euler("xyz", degrees=False)
@@ -484,14 +489,14 @@ class PaiConverter(BaseDataConverter):
 
             cuboid_track_observations.append(
                 CuboidTrackObservation(
-                    track_id=row.track_id,
-                    class_id=row.label_class,
-                    timestamp_us=int(row.timestamp_us),
-                    reference_frame_id=row.reference_frame,
-                    reference_frame_timestamp_us=int(row.reference_frame_timestamp_us),
+                    track_id=str(row.track_id),
+                    class_id=str(row.label_class),
+                    timestamp_us=cast(int, row.timestamp_us),
+                    reference_frame_id=str(row.reference_frame),
+                    reference_frame_timestamp_us=cast(int, row.reference_frame_timestamp_us),
                     bbox3=bbox,
-                    source=LabelSource.AUTOLABEL if "autolabel" in row.source else LabelSource.EXTERNAL,
-                    source_version=row.source,
+                    source=LabelSource.AUTOLABEL if "autolabel" in str(row.source) else LabelSource.EXTERNAL,
+                    source_version=str(row.source),
                 )
             )
 
@@ -851,9 +856,6 @@ def pai_stream_v4(ctx, *_, **kwargs):
     Converts PAI clips directly from HuggingFace without prior download.
     --clip-id is required.  --root-dir is ignored (set to any placeholder).
     """
-    import tempfile
-
-    from tools.data_converter.pai.data_provider import StreamingClipDataProvider
 
     hf_token = kwargs.pop("hf_token")
     revision = kwargs.pop("revision")
@@ -865,9 +867,6 @@ def pai_stream_v4(ctx, *_, **kwargs):
     if not clip_ids:
         raise click.UsageError("--clip-id is required for pai-stream-v4")
 
-    # Lazy-import pai_clip_dl (only needed for streaming)
-    from pai_clip_dl import ClipIndex, Config, HFRemote
-
     pai_config = Config.from_env(token=hf_token, revision=revision)
     remote = HFRemote(pai_config)
     index = ClipIndex(remote)
@@ -878,8 +877,6 @@ def pai_stream_v4(ctx, *_, **kwargs):
     with tempfile.TemporaryDirectory(prefix="pai-stream-v4-") as temp_root:
 
         def make_provider(clip_id: str) -> StreamingClipDataProvider:
-            from pathlib import Path
-
             clip_temp = Path(temp_root) / clip_id
             return StreamingClipDataProvider(
                 clip_id=clip_id,

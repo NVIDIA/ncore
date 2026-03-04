@@ -26,14 +26,14 @@ from __future__ import annotations
 import io
 import json
 import logging
-import tempfile
 
 from pathlib import Path
-from typing import Any, Dict, Protocol, runtime_checkable
+from typing import Any, Dict, Protocol, cast, runtime_checkable
 
 import pandas as pd
 import pyarrow.parquet as pq
 
+from pai_clip_dl import StreamingZipAccess
 from upath import UPath
 
 
@@ -283,7 +283,6 @@ class StreamingClipDataProvider:
 
     def _get_zip_access(self, feature_name: str) -> Any:
         """Get or create a StreamingZipAccess for *feature_name*."""
-        from pai_clip_dl import StreamingZipAccess
 
         if feature_name not in self._zip_cache:
             feat = self._index.get_feature(feature_name)
@@ -436,7 +435,7 @@ def _filter_parquet_to_clip(df: pd.DataFrame, clip_id: str) -> pd.DataFrame:
     if isinstance(df.index, pd.MultiIndex):
         if "clip_id" in df.index.names:
             try:
-                return df.xs(clip_id, level="clip_id", drop_level=False)
+                return cast(pd.DataFrame, df.xs(clip_id, level="clip_id", drop_level=False))
             except KeyError:
                 return df.iloc[0:0]
     elif df.index.name == "clip_id":

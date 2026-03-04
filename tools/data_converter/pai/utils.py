@@ -18,7 +18,7 @@
 import io
 import json
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, cast
 
 import numpy as np
 import pandas as pd
@@ -206,7 +206,7 @@ def parse_egomotion_parquet(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
 
     # Handle potentially negative timestamps by shifting to make all positive
     # The offset is based on egomotion's minimum, which is the global time reference
-    timestamps_raw = df["timestamp"].values.astype(np.int64)
+    timestamps_raw = cast(np.ndarray, df["timestamp"].values.astype(np.int64))
 
     valid_timestamps = timestamps_raw >= 0
 

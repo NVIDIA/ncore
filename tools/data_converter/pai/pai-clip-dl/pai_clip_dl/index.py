@@ -95,7 +95,7 @@ class ClipIndex:
         df = self.clip_df
         if clip_id not in df.index:
             raise KeyError(f"clip_id {clip_id!r} not found in clip index")
-        return int(df.loc[clip_id, "chunk"])
+        return int(df.loc[clip_id, "chunk"])  # pyright: ignore[reportArgumentType]
 
     def get_split(self, clip_id: str) -> str:
         """Look up the split (train/val/test) for a clip_id."""
