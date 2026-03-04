@@ -239,3 +239,7 @@ def stream(
         else:
             # Write binary to stdout
             sys.stdout.buffer.write(data)
+
+
+if __name__ == "__main__":
+    main()

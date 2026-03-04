@@ -19,7 +19,6 @@ load("@rules_python//python:defs.bzl", "py_binary")
 # targets might be used in various places also outside of the repo, so make it public
 package(default_visibility = ["//visibility:public"])
 
-
 # Standalone CLI binary for converting local PAI data to NCore V4
 py_binary(
     name = "convert",
