@@ -874,23 +874,24 @@ def pai_stream_v4(ctx, *_, **kwargs):
 
     # Shared chunk parquet cache across clips
     chunk_parquet_cache: dict = {}
-    temp_root = tempfile.mkdtemp(prefix="pai-stream-v4-")
 
-    def make_provider(clip_id: str) -> StreamingClipDataProvider:
-        from pathlib import Path
+    with tempfile.TemporaryDirectory(prefix="pai-stream-v4-") as temp_root:
 
-        clip_temp = Path(temp_root) / clip_id
-        return StreamingClipDataProvider(
-            clip_id=clip_id,
-            remote=remote,
-            index=index,
-            temp_dir=clip_temp,
-            chunk_parquet_cache=chunk_parquet_cache,
-        )
+        def make_provider(clip_id: str) -> StreamingClipDataProvider:
+            from pathlib import Path
 
-    config["make_provider"] = make_provider
+            clip_temp = Path(temp_root) / clip_id
+            return StreamingClipDataProvider(
+                clip_id=clip_id,
+                remote=remote,
+                index=index,
+                temp_dir=clip_temp,
+                chunk_parquet_cache=chunk_parquet_cache,
+            )
 
-    PaiConverter.convert(SimpleNamespace(**config))
+        config["make_provider"] = make_provider
+
+        PaiConverter.convert(SimpleNamespace(**config))
 
 
 if __name__ == "__main__":
