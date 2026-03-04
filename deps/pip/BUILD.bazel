@@ -37,6 +37,7 @@ pip_compile(
         ":requirements_colmap.in",
         ":requirements_docs.in",
         ":requirements_ncore.in",
+        ":requirements_pai.in",
         ":requirements_tests.in",
         ":requirements_tools.in",
         ":requirements_typing.in",
