@@ -44,8 +44,6 @@ import imageio
 import numpy as np
 import tqdm
 
-
-# Needed for streaming
 from pai_clip_dl import ClipIndex, Config, HFRemote
 from scipy.spatial.transform import Rotation as R
 from upath import UPath
@@ -235,8 +233,6 @@ class PaiConverter(BaseDataConverter):
             if missing_ids:
                 logger.warning(f"Clip IDs not found under {data_root}: {missing_ids}")
             clip_ids = [c for c in clip_ids if c in requested_ids]
-        elif hasattr(config, "max_clips") and config.max_clips is not None:
-            clip_ids = clip_ids[: config.max_clips]
 
         return [UPath(clip_id) for clip_id in clip_ids]
 
@@ -333,6 +329,7 @@ class PaiConverter(BaseDataConverter):
         )
         generic_meta_data: Dict[str, JsonLike] = {
             "vehicle-bbox": cast(Dict[str, JsonLike], ego_bbox.to_dict()),
+            "platform_class": self.platform_class,
         }
         source_meta = self.provider.get_source_metadata()
         source_generic_meta_data: Dict[str, JsonLike] = {
@@ -412,38 +409,18 @@ class PaiConverter(BaseDataConverter):
 
             self.logger.info(f"Wrote sequence meta data {str(sequence_meta_path)}")
 
-        # Close streaming provider if applicable
-        if hasattr(self.provider, "close"):
-            self.provider.close()  # type: ignore[attr-defined]
+        # Close data streaming provider
+        self.provider.close()
 
     def _load_lidar_model_parameters(self) -> ConcreteLidarModelParametersUnion | None:
-        """Load lidar model parameters from lidar_intrinsics parquet or lidar data metadata."""
+        """Load lidar model parameters from lidar_intrinsics parquet."""
 
         if self.provider.has_file("lidar_intrinsics"):
-            try:
-                li_df = self.provider.load_parquet("lidar_intrinsics")
-                model_params_dict = json.loads(li_df["model_parameters"].iloc[0])
-                return RowOffsetStructuredSpinningLidarModelParameters.from_dict(model_params_dict)
-            except Exception as e:
-                self.logger.error(f"Failed to load lidar model parameters from lidar_intrinsics: {e}")
-                return None
+            li_df = self.provider.load_parquet("lidar_intrinsics")
+            model_params_dict = json.loads(li_df["model_parameters"].iloc[0])
+            return RowOffsetStructuredSpinningLidarModelParameters.from_dict(model_params_dict)
 
-        # Fallback: read from lidar parquet Arrow schema metadata
-        if not self.provider.has_file("lidar_top_360fov"):
-            self.logger.warning("No lidar file available for model parameter extraction")
-            return None
-        try:
-            schema = self.provider.load_parquet_schema("lidar_top_360fov")
-            metadata = schema.metadata or {}
-            lidar_model_json = metadata.get(b"lidar_model")
-            if lidar_model_json is None:
-                self.logger.warning("No lidar_model key in parquet metadata")
-                return None
-            lidar_model_dict = json.loads(lidar_model_json)
-            return RowOffsetStructuredSpinningLidarModelParameters.from_dict(lidar_model_dict["lidar_model_parameters"])
-        except Exception as e:
-            self.logger.error(f"Failed to load lidar model parameters from parquet metadata: {e}")
-            return None
+        return None
 
     def _load_cuboid_track_observations(self) -> list[CuboidTrackObservation]:
         """Load and parse cuboid obstacle labels into CuboidTrackObservation list.
@@ -457,11 +434,8 @@ class PaiConverter(BaseDataConverter):
             return []
 
         self.logger.info("Loading cuboid observations")
-        try:
-            obstacle_df = self.provider.load_parquet("obstacle")
-        except Exception as e:
-            self.logger.error(f"Error loading obstacle parquet: {e}")
-            return []
+
+        obstacle_df = self.provider.load_parquet("obstacle")
 
         ## Pre-filter data range based on sequence time bounds
         obstacle_df = obstacle_df[obstacle_df["timestamp_us"].ge(self.sequence_timestamp_interval_us.start)]
@@ -527,12 +501,11 @@ class PaiConverter(BaseDataConverter):
         )
 
         # Platform details
-        platform_class = self.provider.get_vehicle_class()
-        assert platform_class in [
+        self.platform_class = self.provider.get_platform_class()
+        assert self.platform_class in [
             "hyperion_8",
             "hyperion_8.1",
         ]
-        self.platform_class = platform_class
 
     def decode_lidars(self, active_lidar_id):
         logger = self.logger.getChild("decode_lidar")

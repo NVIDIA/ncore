@@ -87,7 +87,7 @@ class ClipDataProvider(Protocol):
         """Return sensor-presence flags for this clip (Series indexed by sensor name)."""
         ...
 
-    def get_vehicle_class(self) -> str:
+    def get_platform_class(self) -> str:
         """Return the platform class string (e.g. ``"hyperion_8"``)."""
         ...
 
@@ -102,13 +102,17 @@ class ClipDataProvider(Protocol):
         """
         ...
 
+    def close(self) -> None:
+        """Close any open resources."""
+        ...
+
 
 # ======================================================================
 # Local provider (pai-clip-dl output on disk)
 # ======================================================================
 
 
-class LocalClipDataProvider:
+class LocalClipDataProvider(ClipDataProvider):
     """Read clip data from a local pai-clip-dl output directory.
 
     Expects the directory layout produced by ``pai-clip-dl download``::
@@ -152,7 +156,7 @@ class LocalClipDataProvider:
         sensor_names = ext_df.index.get_level_values("sensor_name").unique()
         return pd.Series(True, index=sensor_names)
 
-    def get_vehicle_class(self) -> str:
+    def get_platform_class(self) -> str:
         dc_path = self._metadata_dir / "data_collection.parquet"
         df = pd.read_parquet(str(dc_path))
         return str(df.platform_class[self._clip_id])
@@ -164,6 +168,10 @@ class LocalClipDataProvider:
         # Fallback for older downloads that lack provenance.json
         logger.info("provenance.json not found, returning minimal source metadata")
         return {"clip_id": self._clip_id}
+
+    def close(self) -> None:
+        """Close any open resources."""
+        pass
 
 
 # ======================================================================
@@ -392,7 +400,7 @@ class StreamingClipDataProvider:
         sp = self._index.get_sensor_presence(self._clip_id)
         return pd.Series(sp)
 
-    def get_vehicle_class(self) -> str:
+    def get_platform_class(self) -> str:
         repo_path = "metadata/data_collection.parquet"
         cache_key = "__metadata__data_collection"
         if cache_key not in self._chunk_parquet_cache:
