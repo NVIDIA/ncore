@@ -23,6 +23,7 @@ import click
 import numpy as np
 import tqdm
 
+from matplotlib import pyplot as plt
 from scipy.spatial.transform import Rotation as R
 
 from ncore.impl.common.transformations import MotionCompensator, se3_inverse, transform_point_cloud
@@ -37,14 +38,65 @@ from ncore.impl.sensors.lidar import StructuredLidarModel
 
 try:
     from .cli import NPArrayParamType, OptionalStrParamType
-    from .vis import plot_points_on_image
 except ImportError:
     from tools.cli import NPArrayParamType, OptionalStrParamType
-    from tools.vis import plot_points_on_image
 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _rgba(r: float) -> list[float]:
+    """Generate an RGBA color from a range value using the jet colormap."""
+    c = list(plt.get_cmap("jet")((r % 50.0) / 50.0))
+    c[-1] = 0.5  # alpha
+    return c
+
+
+def _plot_points_on_image(
+    projected_points,
+    camera_image,
+    title: str = "",
+    point_size: float = 5.0,
+    show: bool = True,
+    save_path: Optional[str] = None,
+) -> None:
+    """Plot projected points on a camera image with range-based jet coloring.
+
+    Args:
+        projected_points: [N, 3] numpy array with [camera_x, camera_y, range].
+        camera_image: Decoded camera image array.
+        title: Optional title for the plot.
+        point_size: Scatter point size.
+        show: Whether to display the plot interactively.
+        save_path: If provided, save the figure to this path.
+    """
+    plt.clf()
+    plt.figure(figsize=(20, 12))
+    plt.imshow(camera_image)
+    plt.grid(visible=False)
+
+    xs = []
+    ys = []
+    colors = []
+    for point in projected_points:
+        xs.append(point[0])
+        ys.append(point[1])
+        colors.append(_rgba(point[2]))
+
+    if len(title):
+        plt.title(title)
+
+    plt.scatter(xs, ys, c=colors, s=point_size, edgecolors="none")
+    plt.axis("off")
+    plt.grid(visible=False)
+
+    if show:
+        plt.show()
+
+    if save_path:
+        plt.tight_layout()
+        plt.savefig(save_path)
 
 
 def se3_matrix(se3_delta: np.ndarray) -> np.ndarray:
@@ -347,7 +399,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
                     params.file_prefix + padded_index_string(frame_index) + params.file_suffix + ".png"
                 )
 
-        plot_points_on_image(
+        _plot_points_on_image(
             np.concatenate((image_point_coords[:, :2], dist_rs), axis=1),
             img_frame,
             msg if not params.encode_images else "",

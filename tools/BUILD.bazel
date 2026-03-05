@@ -80,48 +80,11 @@ py_binary(
 
 #################################################################
 
-py_library(
-    name = "pylib_vis",
-    srcs = [
-        "vis.py",
-    ],
-    deps = [
-        "//ncore/impl/data:pylib_types",
-        requirement("matplotlib"),
-        requirement("multimethod"),
-        requirement("numpy"),
-        requirement("open3d"),
-        requirement("scipy"),
-        requirement("tensorflow"),  # required by open3d.ml.tf
-    ],
-)
-
-#################################################################
-
-py_binary(
-    name = "ncore_visualize_labels",
-    srcs = ["ncore_visualize_labels.py"],
-    deps = [
-        ":pylib_cli",
-        ":pylib_vis",
-        "//ncore/impl/data:pylib_types",
-        "//ncore/impl/data/v4:pylib_compat",
-        "//ncore/impl/data/v4:pylib_components",
-        "//ncore/impl/data/v4:pylib_types",
-        requirement("click"),
-        requirement("pandas"),
-        requirement("tqdm"),
-    ],
-)
-
-#################################################################
-
 py_binary(
     name = "ncore_project_pc_to_img",
     srcs = ["ncore_project_pc_to_img.py"],
     deps = [
         ":pylib_cli",
-        ":pylib_vis",
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data:pylib_util",
@@ -129,6 +92,7 @@ py_binary(
         "//ncore/impl/sensors:pylib_camera",
         "//ncore/impl/sensors:pylib_lidar",
         requirement("click"),
+        requirement("matplotlib"),
         requirement("numpy"),
         requirement("pyside6"),  # required to open Qt6 windows
         requirement("scipy"),
