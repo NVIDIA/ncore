@@ -42,7 +42,7 @@ LiDAR data includes point clouds with multi-return support (primary and secondar
 For more information, see the `Waymo Open Dataset paper <https://openaccess.thecvf.com/content_CVPR_2020/papers/Sun_Scalability_in_Perception_for_Autonomous_Driving_Waymo_Open_Dataset_CVPR_2020_paper.pdf>`_.
 
 
-.. _data_conversions:
+.. _waymo_data_conversions:
 
 Conversion
 ----------
