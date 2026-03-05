@@ -21,9 +21,4 @@ pyside6
 opencv-python-headless
 point-cloud-utils>=0.30.2
 click
-multimethod
 debugpy
-
-# Custom open3d wheel build with tensorflow support hosted on GitHub Packages Maven registry
-open3d @ https://maven.pkg.github.com/NVIDIA/ncore/com/nvidia/ncore/open3d/0.19.0/open3d-0.19.0-cp311-cp311-manylinux_2_31_x86_64.whl --hash=sha256:daab2f7c79285552e5efaca0212f1e76de7e3d9666867f3c9a5b531d2545c42b
-tensorflow~=2.16.0 # required by open3d.ml.tf

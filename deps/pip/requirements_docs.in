@@ -14,8 +14,9 @@
 # limitations under the License.
 
 # Docs dependencies
-sphinx
-nvidia-sphinx-theme
-sphinx-copybutton
+ipython
 nbsphinx
-nbconvert
+pexpect
+sphinx
+nvidia_sphinx_theme
+sphinx_copybutton

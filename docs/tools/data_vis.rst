@@ -49,31 +49,6 @@ Or with multiple component groups::
    Point-to-camera projection on Waymo-Open data
 
 
-Point-Cloud and Label Visualization
------------------------------------
-The tool ``//tools:ncore_visualize_labels`` visualize 3D point-cloud
-properties (like timestamps / per-object dynamic flags) as well as label cuboid
-bounds, enabling label verification relative to the point-cloud sensor.
-
-Example invocation::
-
-    bazel run //tools:ncore_visualize_labels \
-        -- \
-        v4 \
-        --component-group=<SEQUENCE_META.json>
-
-.. figure:: pc0.png
-   :figwidth: 50%
-   :width: 80%
-
-   Color-coded per-point timestamps and 3D cuboid labels
-
-.. figure:: pc1.png
-   :figwidth: 50%
-   :width: 80%
-
-   Color-coded per-point dynamic-object flags (optional, red indicating dynamic points)
-
 Frame-Exporting
 ---------------
 The tool ``//tools:ncore_export_ply`` exports point-clouds into common
