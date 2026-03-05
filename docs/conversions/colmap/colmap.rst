@@ -39,7 +39,7 @@ Colmap datasets additionally may expose a single static point cloud of SfM
 points, which are optionally represented in NCore as a single frame of a virtual
 lidar.
 
-.. _data_conversions:
+.. _colmap_data_conversions:
 
 Conversion
 ----------
