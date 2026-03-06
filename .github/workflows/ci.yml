@@ -129,7 +129,7 @@ jobs:
         uses: ./.github/actions/setup-bazel
         with:
           install-pandoc: false
-          free-disk-space: false
+          free-disk-space: true
           github-token: ${{ secrets.NVIDIA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Publish to Test PyPI
