@@ -5,7 +5,6 @@ Waymo-Open Dataset
 ==================
 
 The NCore Waymo tool converts data from the Waymo-Open format (**.tfrecords**) into NCore V4 format.
-It serves as a reference implementation for creating data conversion flows to NCore.
 
 .. _waymo_data_conventions:
 
@@ -31,7 +30,7 @@ The Waymo camera frame convention is:
 
 **Note:** The converter transforms this to NCore's camera convention (principal axis +z, x-axis right, y-axis down).
 
-Each camera provides panoptic segmentation data with 29 semantic classes (see ``CAMERA_LABEL_CLASS_ID_STRING_MAP`` in the converter source).
+Each camera provides panoptic segmentation data with 29 semantic classes.
 
 LiDAR Sensors
 ^^^^^^^^^^^^^
@@ -47,250 +46,74 @@ For more information, see the `Waymo Open Dataset paper <https://openaccess.thec
 Conversion
 ----------
 
-Overview
-^^^^^^^^
+The converter uses NCore V4's component-based architecture. Each sequence is parsed from ``.tfrecord`` files
+and written to NCore format via :class:`~ncore.data.v4.SequenceComponentGroupsWriter` with specialized component writers
+for poses, intrinsics, lidar, cameras, masks, and 3D labels.
 
-The converter uses NCore V4's component-based architecture. Data is written through specialized component writers
-registered with a ``SequenceComponentGroupsWriter``:
+Usage
+^^^^^
 
-.. figure:: waymo_conversion_flow.png
+Run the converter with Bazel from the repository root:
 
-The conversion extracts three key data types from each Waymo sequence:
-    1. **Poses** - Rig-to-world transformations over time
-    2. **LiDAR data** - Point clouds with direction/distance format and multi-return support
-    3. **Camera data** - Images with intrinsics and optional segmentation
+.. code-block:: bash
 
-Configuration
-^^^^^^^^^^^^^
+    bazel run //tools/data_converter/waymo:convert -- \
+        --root-dir <PATH_TO_TFRECORDS> \
+        --output-dir <PATH_TO_OUTPUT> \
+        waymo-v4
 
-The converter is configured via ``WaymoConverter4Config``:
+**Base arguments** (required):
 
-.. code-block:: python
+.. list-table::
+   :widths: 30 70
+   :header-rows: 1
 
-    @dataclass
-    class WaymoConverter4Config(BaseDataConverterConfig):
-        store_type: Literal["itar", "directory"] = "itar"
-        component_group_profile: Literal["default", "separate-sensors", "separate-all"] = "separate-sensors"
-        store_sequence_meta: bool = True
+   * - Argument
+     - Description
+   * - ``--root-dir PATH``
+     - Path to the directory containing ``.tfrecord`` sequence files
+   * - ``--output-dir PATH``
+     - Path where converted NCore V4 sequences will be written
 
-- **store_type**: Output format - ``"itar"`` (indexed tar archive, default) or ``"directory"`` (plain zarr directory)
-- **component_group_profile**: How components are grouped in the output store
-- **store_sequence_meta**: Whether to generate a JSON metadata file for the sequence
+**Base arguments** (optional):
 
-Convert Sequence
-^^^^^^^^^^^^^^^^
+.. list-table::
+   :widths: 30 70
+   :header-rows: 1
 
-The ``convert_sequence`` method implements the core conversion logic:
+   * - Argument
+     - Description
+   * - ``--no-cameras``
+     - Disable exporting all camera sensors
+   * - ``--camera-id ID``
+     - Export only the specified camera (repeatable; defaults to all cameras)
+   * - ``--no-lidars``
+     - Disable exporting all lidar sensors
+   * - ``--lidar-id ID``
+     - Export only the specified lidar (repeatable; defaults to all lidars)
+   * - ``--verbose``
+     - Enable debug-level logging
 
-**Step 1: Parse frames and decode poses**
+**Subcommand arguments** (``waymo-v4``):
 
-.. code-block:: python
+.. list-table::
+   :widths: 30 15 55
+   :header-rows: 1
 
-    def convert_sequence(self, sequence_path: UPath) -> None:
-        dataset = tf.data.TFRecordDataset(sequence_path, compression_type="")
+   * - Argument
+     - Default
+     - Description
+   * - ``--store-type {itar,directory}``
+     - ``itar``
+     - Output store format. ``itar`` produces an indexed tar archive; ``directory`` writes plain zarr directories
+   * - ``--profile {default,separate-sensors,separate-all}``
+     - ``default``
+     - Component group layout. ``default`` groups all sensors together; ``separate-sensors`` gives each sensor its own group; ``separate-all`` splits every component type into its own group
+   * - ``--sequence-meta`` / ``--no-sequence-meta``
+     - enabled
+     - Whether to write a JSON metadata file alongside each converted sequence
 
-        frames: list[dataset_pb2.Frame] = []
-        sequence_name = ""
-        for data in dataset:
-            frame = dataset_pb2.Frame()
-            frame.ParseFromString(bytearray(data.numpy()))
-            if not frames:
-                sequence_name = frame.context.name
-            frames.append(frame)
-
-        # Decode poses first (needed for timestamp interval)
-        self.decode_poses(frames)
-
-**Step 2: Initialize the writer and register component writers**
-
-.. code-block:: python
-
-    # Create component group assignments
-    self.component_groups = ComponentGroupAssignments.create(
-        camera_ids=self.camera_ids,
-        lidar_ids=self.lidar_ids,
-        radar_ids=[],
-        profile=self.component_group_profile,
-    )
-
-    # Create main store writer
-    self.store_writer = SequenceComponentGroupsWriter(
-        output_dir_path=self.output_dir / sequence_name,
-        store_base_name=sequence_name,
-        sequence_id=sequence_name,
-        sequence_timestamp_interval_us=sequence_timestamp_interval_us,
-        store_type=self.store_type,
-        generic_meta_data={},
-    )
-
-    # Register component writers
-    self.poses_writer = self.store_writer.register_component_writer(
-        PosesComponent.Writer,
-        component_instance_name="default",
-        group_name=self.component_groups.poses_component_group,
-    )
-
-    self.intrinsics_writer = self.store_writer.register_component_writer(
-        IntrinsicsComponent.Writer,
-        component_instance_name="default",
-        group_name=self.component_groups.intrinsics_component_group,
-    )
-
-    self.masks_writer = self.store_writer.register_component_writer(
-        MasksComponent.Writer,
-        component_instance_name="default",
-        group_name=self.component_groups.masks_component_group,
-    )
-
-**Step 3: Store poses**
-
-Poses are stored as dynamic (time-varying) and static transforms:
-
-.. code-block:: python
-
-    # Store dynamic rig->world poses
-    self.poses_writer.store_dynamic_pose(
-        source_frame_id="rig",
-        target_frame_id="world",
-        poses=self.pose_interpolator.poses.astype(np.float32),
-        timestamps_us=self.pose_interpolator.timestamps,
-    )
-
-    # Store static world->world_global pose (high precision base transform)
-    self.poses_writer.store_static_pose(
-        source_frame_id="world",
-        target_frame_id="world_global",
-        pose=self.T_world_world_global.astype(np.float64),
-    )
-
-**Step 4: Decode and store lidar data**
-
-Each lidar sensor gets its own component writer:
-
-.. code-block:: python
-
-    lidar_writer = self.store_writer.register_component_writer(
-        LidarSensorComponent.Writer,
-        component_instance_name=lidar_ncore_id,
-        group_name=self.component_groups.lidar_component_groups.get(lidar_ncore_id),
-    )
-
-Lidar frames use direction/distance format with multi-return support:
-
-.. code-block:: python
-
-    lidar_writer.store_frame(
-        direction=direction,                    # [N, 3] ray directions (non-motion-compensated)
-        timestamp_us=point_timestamps_us,       # [N] per-point timestamps
-        model_element=model_element,            # [N, 2] indices into lidar model
-        distance_m=distance_m,                  # [2, N] distances (2 returns)
-        intensity=intensity,                    # [2, N] intensities (2 returns)
-        frame_timestamps_us=frame_timestamps_us,  # [2] start/end timestamps
-        generic_data={"elongation": elongation},
-        generic_meta_data={},
-    )
-
-Intrinsics and extrinsics are stored separately. The ``lidar_model_parameters`` uses :class:`~ncore.data.RowOffsetStructuredSpinningLidarModelParameters`:
-
-.. code-block:: python
-
-    # Store lidar intrinsics
-    self.intrinsics_writer.store_lidar_intrinsics(
-        lidar_id=lidar_ncore_id,
-        lidar_model_parameters=lidar_model_parameters,
-    )
-
-    # Store extrinsics as static pose
-    self.poses_writer.store_static_pose(
-        source_frame_id=lidar_ncore_id,
-        target_frame_id="rig",
-        pose=T_sensor_rig,
-    )
-
-3D labels are stored as cuboid track observations:
-
-.. code-block:: python
-
-    cuboids_writer = self.store_writer.register_component_writer(
-        CuboidsComponent.Writer,
-        "default",
-        self.component_groups.cuboid_track_observations_component_group,
-    )
-    cuboids_writer.store_observations(cuboid_track_observations)
-
-**Step 5: Decode and store camera data**
-
-Each camera sensor gets its own component writer:
-
-.. code-block:: python
-
-    camera_writer = self.store_writer.register_component_writer(
-        CameraSensorComponent.Writer,
-        component_instance_name=camera_ncore_id,
-        group_name=self.component_groups.camera_component_groups.get(camera_ncore_id),
-    )
-
-    camera_writer.store_frame(
-        image_binary_data=image.image,
-        image_format="jpeg",
-        frame_timestamps_us=np.array([frame_start_timestamp_us, frame_end_timestamp_us], dtype=np.uint64),
-        generic_data=generic_data,      # e.g., panoptic segmentation
-        generic_meta_data=generic_meta_data,
-    )
-
-Camera intrinsics (using :class:`~ncore.data.OpenCVPinholeCameraModelParameters` with sensor-specific shutter directions), masks, and extrinsics:
-
-.. code-block:: python
-
-    # Store camera intrinsics
-    self.intrinsics_writer.store_camera_intrinsics(
-        camera_id=camera_ncore_id,
-        camera_model_parameters=OpenCVPinholeCameraModelParameters(...),
-    )
-
-    # Store empty masks (none available in Waymo dataset)
-    self.masks_writer.store_camera_masks(
-        camera_id=camera_ncore_id,
-        mask_images={},
-    )
-
-    # Store extrinsics as static pose
-    self.poses_writer.store_static_pose(
-        source_frame_id=camera_ncore_id,
-        target_frame_id="rig",
-        pose=T_sensor_rig,
-    )
-
-**Step 6: Finalize and optionally generate sequence metadata**
-
-.. code-block:: python
-
-    ncore_4_paths = self.store_writer.finalize()
-
-    if self.store_sequence_meta:
-        sequence_component_reader = SequenceComponentGroupsReader(ncore_4_paths)
-        sequence_meta_path = self.output_dir / sequence_name / f"{sequence_component_reader.sequence_id}.json"
-
-        with sequence_meta_path.open("w") as f:
-            json.dump(sequence_component_reader.get_sequence_meta().to_dict(), f, indent=2)
-
-Summary
-^^^^^^^
-
-The Waymo V4 conversion follows this pattern:
-
-1. Parse ``.tfrecord`` frames using TensorFlow and ``waymo_open_dataset``
-2. Initialize ``SequenceComponentGroupsWriter`` and register component writers
-3. Store poses via ``PosesComponent.Writer`` (dynamic + static transforms)
-4. Store lidar data via ``LidarSensorComponent.Writer`` (direction/distance format, multi-return)
-5. Store lidar intrinsics via ``IntrinsicsComponent.Writer``
-6. Store 3D labels via ``CuboidsComponent.Writer``
-7. Store camera data via ``CameraSensorComponent.Writer``
-8. Store camera intrinsics via ``IntrinsicsComponent.Writer`` and masks via ``MasksComponent.Writer``
-9. Store all extrinsics as static poses
-10. Finalize writer and optionally generate sequence metadata JSON
-
-For the complete implementation, see ``ncore_waymo/converter.py``.
+For the complete implementation, see ``tools/data_converter/waymo/converter.py``.
 
 API Reference
 ^^^^^^^^^^^^^
