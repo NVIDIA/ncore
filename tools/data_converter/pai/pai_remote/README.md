@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # pai_remote
 
 Download and stream clip data from the [NVIDIA PhysicalAI-Autonomous-Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles) HuggingFace dataset.
@@ -158,7 +163,7 @@ with StreamingZipAccess.from_feature(remote, feature, chunk_id) as sza:
 
 ## Dataset overview
 
-The [PhysicalAI-Autonomous-Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles) dataset (branch `ncore_test`) contains 306,152 clips organized into ~3,146 chunks of ~100 clips each.
+The [PhysicalAI-Autonomous-Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles) dataset contains 306,152 clips organized into ~3,146 chunks of ~100 clips each.
 
 | Category        | Features | Format  | Typical size per chunk |
 |-----------------|----------|---------|------------------------|
@@ -186,7 +191,7 @@ The [PhysicalAI-Autonomous-Vehicles](https://huggingface.co/datasets/nvidia/Phys
 | Environment variable  | Description | Default |
 |-----------------------|-------------|---------|
 | `HF_TOKEN`            | HuggingFace API token | (required) |
-| `pai_remote_CACHE`   | Local cache directory for index files | `~/.cache/pai-clip-dl` |
+| `pai_remote_CACHE`    | Local cache directory for index files | `~/.cache/pai-clip-dl` |
 
 ## Project structure
 
