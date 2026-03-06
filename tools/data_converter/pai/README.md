@@ -8,10 +8,18 @@ SPDX-License-Identifier: Apache-2.0
 ## Prerequisites
 
 - [Hugging Face](https://huggingface.co/) account with the PAI dataset license accepted
-- Hugging Face CLI authenticated (`huggingface-cli login`)
-- The `pai-clip-dl` tool (located in the `pai_remote/` subdirectory)
+- A Hugging Face API token with read permissions on the dataset (see `pai_remote/README.md#authentication` for details)
 
-## 1. Download PAI clips with pai-clip-dl
+## Convert PAI data to NCore
+
+There are two conversion modes:
+
+- **`pai-v4`** -- converts clips previously downloaded to disk with `pai-clip-dl`.
+- **`pai-stream-v4`** -- streams clip data directly from HuggingFace without a prior download.
+
+### Local mode (`pai-v4`)
+
+#### Download PAI clips with pai-clip-dl
 
 Use the `pai-clip-dl` tool to download per-clip data from Hugging Face. See
 `pai_remote/README.md` for full documentation.
@@ -31,7 +39,7 @@ bazel run //tools/data_converter/pai/pai_remote:pai-clip-dl -- download <clip-id
 
 This creates a per-clip directory structure under the output path:
 
-```
+```text
 /path/to/data/
   <clip-id>/
     calibration/
@@ -41,15 +49,6 @@ This creates a per-clip directory structure under the output path:
     metadata/
     radar/
 ```
-
-## 2. Convert PAI data to NCore
-
-There are two conversion modes:
-
-- **`pai-v4`** -- converts clips previously downloaded to disk with `pai-clip-dl`.
-- **`pai-stream-v4`** -- streams clip data directly from HuggingFace without a prior download.
-
-### Local mode (`pai-v4`)
 
 Point `--root-dir` at the directory containing the downloaded clip folders.
 
@@ -107,10 +106,7 @@ Both subcommands support these options:
 - `--sequence-meta / --no-sequence-meta` -- generate sequence metadata JSON
 
 The output is an NCore v4 shard per clip at:
-```
+
+```text
 <output-dir>/pai_<clip-id>/pai_<clip-id>.ncore4.zarr.itar
 ```
-
-## Next steps
-
-The NCore v4 shard can be visualized (via the [`ncore`](https://github.com/NVIDIA/ncore) tools) or as input to a [NuRec (NRE) reconstruction](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nre/containers/nre?version=26.01.00).
