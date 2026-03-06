@@ -4,7 +4,8 @@
 Waymo-Open Dataset
 ==================
 
-The NCore Waymo tool converts data from the Waymo-Open format (**.tfrecords**) into NCore V4 format.
+The NCore Waymo tool converts data from the Waymo-Open format (**.tfrecords**)
+into NCore V4 format.
 
 .. _waymo_data_conventions:
 
@@ -21,14 +22,16 @@ Camera Sensors
     4. **Side Left Camera 50deg FOV (camera_side_left_50fov)**
     5. **Side Right Camera 50deg FOV (camera_side_right_50fov)**
 
-The camera intrinsics are compatible with the :class:`~ncore.data.OpenCVPinholeCameraModelParameters` model.
+The camera intrinsics are compatible with the
+:class:`~ncore.data.OpenCVPinholeCameraModelParameters` model.
 
 The Waymo camera frame convention is:
     - Principal axis along local camera's +x axis
     - Local y-axis points left
     - Local z-axis points up
 
-**Note:** The converter transforms this to NCore's camera convention (principal axis +z, x-axis right, y-axis down).
+**Note:** The converter transforms this to NCore's camera convention (principal
+axis +z, x-axis right, y-axis down).
 
 Each camera provides panoptic segmentation data with 29 semantic classes.
 
@@ -36,9 +39,12 @@ LiDAR Sensors
 ^^^^^^^^^^^^^
     1. **Top Lidar (lidar_top)**
 
-LiDAR data includes point clouds with multi-return support (primary and secondary returns) and 3D bounding box labels for 5 classes: unknown, vehicle, pedestrian, sign, cyclist.
+LiDAR data includes point clouds with multi-return support (primary and
+secondary returns) and 3D bounding box labels for 5 classes: unknown, vehicle,
+pedestrian, sign, cyclist.
 
-For more information, see the `Waymo Open Dataset paper <https://openaccess.thecvf.com/content_CVPR_2020/papers/Sun_Scalability_in_Perception_for_Autonomous_Driving_Waymo_Open_Dataset_CVPR_2020_paper.pdf>`_.
+For more information, see the `Waymo Open Dataset paper
+<https://openaccess.thecvf.com/content_CVPR_2020/papers/Sun_Scalability_in_Perception_for_Autonomous_Driving_Waymo_Open_Dataset_CVPR_2020_paper.pdf>`_.
 
 
 .. _waymo_data_conversions:
@@ -46,9 +52,10 @@ For more information, see the `Waymo Open Dataset paper <https://openaccess.thec
 Conversion
 ----------
 
-The converter uses NCore V4's component-based architecture. Each sequence is parsed from ``.tfrecord`` files
-and written to NCore format via :class:`~ncore.data.v4.SequenceComponentGroupsWriter` with specialized component writers
-for poses, intrinsics, lidar, cameras, masks, and 3D labels.
+The converter uses NCore V4's component-based architecture. Each sequence is
+parsed from ``.tfrecord`` files and written to NCore format via
+:class:`~ncore.data.v4.SequenceComponentGroupsWriter` with specialized component
+writers for poses, intrinsics, lidar, cameras, masks, and 3D labels.
 
 Usage
 ^^^^^
@@ -58,8 +65,7 @@ Run the converter with Bazel from the repository root:
 .. code-block:: bash
 
     bazel run //tools/data_converter/waymo:convert -- \
-        --root-dir <PATH_TO_TFRECORDS> \
-        --output-dir <PATH_TO_OUTPUT> \
+        --root-dir <PATH_TO_TFRECORDS> \ --output-dir <PATH_TO_OUTPUT> \
         waymo-v4
 
 **Base arguments** (required):
@@ -105,22 +111,27 @@ Run the converter with Bazel from the repository root:
      - Description
    * - ``--store-type {itar,directory}``
      - ``itar``
-     - Output store format. ``itar`` produces an indexed tar archive; ``directory`` writes plain zarr directories
+     - Output store format. ``itar`` produces an indexed tar archive;
+       ``directory`` writes plain zarr directories
    * - ``--profile {default,separate-sensors,separate-all}``
      - ``default``
-     - Component group layout. ``default`` groups all sensors together; ``separate-sensors`` gives each sensor its own group; ``separate-all`` splits every component type into its own group
+     - Component group layout. ``default`` groups all sensors together;
+       ``separate-sensors`` gives each sensor its own group; ``separate-all``
+       splits every component type into its own group
    * - ``--sequence-meta`` / ``--no-sequence-meta``
      - enabled
      - Whether to write a JSON metadata file alongside each converted sequence
 
-For the complete implementation, see ``tools/data_converter/waymo/converter.py``.
+For the complete implementation, see
+``tools/data_converter/waymo/converter.py``.
 
 API Reference
 ^^^^^^^^^^^^^
 
 **V4 Components** (:mod:`ncore.data.v4`):
 
-- :class:`~ncore.data.v4.SequenceComponentGroupsWriter` - Main writer for V4 sequences
+- :class:`~ncore.data.v4.SequenceComponentGroupsWriter` - Main writer for V4
+  sequences
 - :class:`~ncore.data.v4.PosesComponent` - Static and dynamic pose storage
 - :class:`~ncore.data.v4.IntrinsicsComponent` - Camera and lidar intrinsics
 - :class:`~ncore.data.v4.LidarSensorComponent` - Lidar frame data
@@ -130,10 +141,14 @@ API Reference
 
 **Data Converter** (:mod:`ncore.data_converter`):
 
-- :class:`~ncore.data_converter.BaseDataConverter` - Abstract base class for converters
-- :class:`~ncore.data_converter.BaseDataConverterConfig` - Base configuration dataclass
+- :class:`~ncore.data_converter.BaseDataConverter` - Abstract base class for
+  converters
+- :class:`~ncore.data_converter.BaseDataConverterConfig` - Base configuration
+  dataclass
 
 **Sensor Models** (:mod:`ncore.data`):
 
-- :class:`~ncore.data.OpenCVPinholeCameraModelParameters` - Camera intrinsics model
-- :class:`~ncore.data.RowOffsetStructuredSpinningLidarModelParameters` - Lidar intrinsics model
+- :class:`~ncore.data.OpenCVPinholeCameraModelParameters` - Camera intrinsics
+  model
+- :class:`~ncore.data.RowOffsetStructuredSpinningLidarModelParameters` - Lidar
+  intrinsics model

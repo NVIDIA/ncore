@@ -4,25 +4,27 @@
 Colmap Dataset
 ==============
 
-The NCore Colmap tool converts data from COLMAP reconstructions into NCore V4 format.
+The NCore Colmap tool converts data from COLMAP data representations into NCore
+V4 format.
 
 .. _colmap_data_conventions:
 
 Conventions
 -----------
 
-COLMAP's data format represents an arbitrary number of camera frames with associated
-poses, but without timestamp information. Because NCore is designed for applications with timestamped
-data, logical timestamps are assigned to images at a rate of 1 FPS starting from a configurable
-start time.
+COLMAP's data format represents an arbitrary number of camera frames with
+associated poses, but without timestamp information. Because NCore is designed
+for applications with timestamped data, logical timestamps are assigned to
+images at a rate of 1 FPS starting from a configurable start time.
 
 Camera Sensors
 ^^^^^^^^^^^^^^
 
-COLMAP cameras are identified by integer IDs. The converter maps them to NCore sensor IDs using a
-configurable prefix (default: ``"camera"``). Downsampled image directories (``images_2``, ``images_4``,
-``images_8``) are optionally included as additional camera sensor instances, each with their own
-individually scaled intrinsics.
+COLMAP cameras are identified by integer IDs. The converter maps them to NCore
+sensor IDs using a configurable prefix (default: ``camera``). Downsampled
+image directories (``images_2``, ``images_4``, ``images_8``) are optionally
+included as additional camera sensor instances, each with their own individually
+scaled intrinsics.
 
 Example sensor IDs:
 
@@ -31,8 +33,9 @@ Example sensor IDs:
 - **camera1_4** — 4× downsampled images from camera 1
 - **camera2** — full-resolution images from COLMAP camera 2
 
-Camera intrinsics are compatible with the :class:`~ncore.data.OpenCVPinholeCameraModelParameters`
-model. [#opencv_fisheye]_ COLMAP uses the same local camera convention as NCore:
+Camera intrinsics are compatible with the
+:class:`~ncore.data.OpenCVPinholeCameraModelParameters` model.
+[#opencv_fisheye]_ COLMAP uses the same local camera convention as NCore:
 
 - Principal axis along the camera's +z axis
 - x-axis points right, y-axis points down
@@ -40,22 +43,23 @@ model. [#opencv_fisheye]_ COLMAP uses the same local camera convention as NCore:
 LiDAR Sensors
 ^^^^^^^^^^^^^
 
-- **virtual_lidar** — single static frame from the COLMAP SfM point cloud (optional)
+- **virtual_lidar** — single static frame from the COLMAP SfM point cloud
+  (optional)
 
-If the COLMAP reconstruction contains 3D points, they are optionally exported as a single frame of
-a virtual LiDAR sensor at the world origin. Each point carries its reconstructed RGB color as
-generic per-point data. The virtual lidar has no intrinsics and its extrinsic is an identity pose
-(sensor frame = world frame).
+If the COLMAP reconstruction contains 3D points, they are optionally exported as
+a single frame of a virtual LiDAR sensor at the world origin. Each point carries
+its reconstructed RGB color as generic per-point data. The virtual lidar has no
+intrinsics and its extrinsic is an identity pose (sensor frame = world frame).
 
 .. _data_conversions:
 
 Conversion
 ----------
 
-The converter uses NCore V4's component-based architecture. Each COLMAP scene is parsed from a
-``sparse/0/`` binary directory and written to NCore format via
-:class:`~ncore.data.v4.SequenceComponentGroupsWriter` with specialized component writers for poses,
-intrinsics, cameras, and optionally a virtual lidar.
+The converter uses NCore V4's component-based architecture. Each COLMAP scene is
+parsed from a ``sparse/0/`` binary directory and written to NCore format via
+:class:`~ncore.data.v4.SequenceComponentGroupsWriter` with specialized component
+writers for poses, intrinsics, cameras, and optionally a virtual lidar.
 
 Usage
 ^^^^^
@@ -69,8 +73,8 @@ Run the converter with Bazel from the repository root:
         --output-dir <PATH_TO_OUTPUT> \
         colmap-v4
 
-If ``--root-dir`` points to a parent directory containing multiple scenes, each subdirectory is
-treated as a separate sequence.
+If ``--root-dir`` points to a parent directory containing multiple scenes, each
+subdirectory is treated as a separate sequence.
 
 **Base arguments** (required):
 
@@ -81,7 +85,8 @@ treated as a separate sequence.
    * - Argument
      - Description
    * - ``--root-dir PATH``
-     - Path to a single COLMAP scene directory or a parent directory containing multiple scenes
+     - Path to a single COLMAP scene directory or a parent directory containing
+       multiple scenes
    * - ``--output-dir PATH``
      - Path where converted NCore V4 sequences will be written
 
@@ -113,10 +118,13 @@ treated as a separate sequence.
      - Description
    * - ``--store-type {itar,directory}``
      - ``itar``
-     - Output store format. ``itar`` produces an indexed tar archive; ``directory`` writes plain zarr directories
+     - Output store format. ``itar`` produces an indexed tar archive;
+       ``directory`` writes plain zarr directories
    * - ``--profile {default,separate-sensors,separate-all}``
      - ``separate-sensors``
-     - Component group layout. ``default`` groups all sensors together; ``separate-sensors`` gives each sensor its own group; ``separate-all`` splits every component type into its own group
+     - Component group layout. ``default`` groups all sensors together;
+       ``separate-sensors`` gives each sensor its own group; ``separate-all``
+       splits every component type into its own group
    * - ``--sequence-meta`` / ``--no-sequence-meta``
      - enabled
      - Whether to write a JSON metadata file alongside each converted sequence
@@ -125,22 +133,27 @@ treated as a separate sequence.
      - Logical start time in seconds assigned to the first image frame
    * - ``--camera-prefix TEXT``
      - ``camera``
-     - Prefix prepended to COLMAP integer camera IDs to form NCore sensor IDs (e.g. ``camera1``)
+     - Prefix prepended to COLMAP integer camera IDs to form NCore sensor IDs
+       (e.g. ``camera1``)
    * - ``--include-downsampled-images BOOL``
      - ``True``
-     - Include downsampled image directories (``images_2``, ``images_4``, ``images_8``) as additional camera sensors
+     - Include downsampled image directories (``images_2``, ``images_4``,
+       ``images_8``) as additional camera sensors
    * - ``--include-3d-points BOOL``
      - ``True``
-     - Include the SfM point cloud as a single frame of a ``virtual_lidar`` sensor
+     - Include the SfM point cloud as a single frame of a ``virtual_lidar``
+       sensor
 
-For the complete implementation, see ``tools/data_converter/colmap/converter.py``.
+For the complete implementation, see
+``tools/data_converter/colmap/converter.py``.
 
 API Reference
 ^^^^^^^^^^^^^
 
 **V4 Components** (:mod:`ncore.data.v4`):
 
-- :class:`~ncore.data.v4.SequenceComponentGroupsWriter` - Main writer for V4 sequences
+- :class:`~ncore.data.v4.SequenceComponentGroupsWriter` - Main writer for V4
+  sequences
 - :class:`~ncore.data.v4.PosesComponent` - Static and dynamic pose storage
 - :class:`~ncore.data.v4.IntrinsicsComponent` - Camera and lidar intrinsics
 - :class:`~ncore.data.v4.LidarSensorComponent` - Lidar frame data
@@ -150,12 +163,15 @@ API Reference
 
 **Data Converter** (:mod:`ncore.data_converter`):
 
-- :class:`~ncore.data_converter.BaseDataConverter` - Abstract base class for converters
-- :class:`~ncore.data_converter.BaseDataConverterConfig` - Base configuration dataclass
+- :class:`~ncore.data_converter.BaseDataConverter` - Abstract base class for
+  converters
+- :class:`~ncore.data_converter.BaseDataConverterConfig` - Base configuration
+  dataclass
 
 **Sensor Models** (:mod:`ncore.data`):
 
-- :class:`~ncore.data.OpenCVPinholeCameraModelParameters` - Camera intrinsics model
+- :class:`~ncore.data.OpenCVPinholeCameraModelParameters` - Camera intrinsics
+  model
 
 .. rubric:: Footnotes
 
