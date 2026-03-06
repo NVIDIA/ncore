@@ -86,7 +86,7 @@ jobs:
         uses: ./.github/actions/setup-bazel
         with:
           install-pandoc: true
-          free-disk-space: false
+          free-disk-space: true
           github-token: ${{ secrets.NVIDIA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Build documentation
