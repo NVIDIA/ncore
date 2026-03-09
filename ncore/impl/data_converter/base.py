@@ -120,22 +120,22 @@ class BaseDataConverter(ABC):
 
         logger = logging.getLogger(__name__)
 
-        sequence_dirs = cls.get_sequence_paths(config)
+        sequence_ids = cls.get_sequence_ids(config)
 
-        logger.info(f"Start converting {sequence_dirs} ...")
+        logger.info(f"Start converting {sequence_ids} ...")
 
         # create new instance of converter for each task and execute synchronously
-        for sequence_dir in sequence_dirs:
+        for sequence_id in sequence_ids:
             converter = cls.from_config(config)
-            converter.convert_sequence(sequence_dir)
+            converter.convert_sequence(sequence_id)
 
-        logger.info(f"Finished converting {sequence_dirs} in {config.output_dir} ...")
+        logger.info(f"Finished converting {sequence_ids} in {config.output_dir} ...")
 
     @staticmethod
     @abstractmethod
-    def get_sequence_paths(config) -> list[UPath]:
+    def get_sequence_ids(config) -> list[str]:
         """
-        Return sequence pathnames to process
+        Return dataset-specific sequence IDs (e.g., path names) to process
         """
         pass
 
@@ -148,9 +148,9 @@ class BaseDataConverter(ABC):
         pass
 
     @abstractmethod
-    def convert_sequence(self, sequence_path: UPath) -> None:
+    def convert_sequence(self, sequence_id: str) -> None:
         """
-        Runs dataset-specific conversion for a sequence referenced by a directory/file path
+        Runs dataset-specific conversion for a sequence referenced by a sequence ID
         """
         pass
 

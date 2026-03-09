@@ -119,16 +119,19 @@ class WaymoConverter4(FileBasedDataConverter):
         self.logger = logging.getLogger(__name__)
 
     @staticmethod
-    def get_sequence_paths(config) -> list[UPath]:
-        return [p for p in sorted(UPath(config.root_dir).glob("*.tfrecord"))]
+    def get_sequence_ids(config) -> list[str]:
+        return [str(p) for p in sorted(UPath(config.root_dir).glob("*.tfrecord"))]
 
     @staticmethod
     def from_config(config: WaymoConverter4Config) -> WaymoConverter4:
         return WaymoConverter4(config)
 
-    def convert_sequence(self, sequence_path: UPath) -> None:
+    def convert_sequence(self, sequence_id: str) -> None:
         """Runs dataset-specific conversion for a sequence."""
-        self.logger.info(sequence_path)
+
+        sequence_path = UPath(sequence_id)
+
+        self.logger.info(sequence_id)
 
         dataset = tf.data.TFRecordDataset(sequence_path, compression_type="")
 

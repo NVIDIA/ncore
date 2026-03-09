@@ -165,25 +165,27 @@ class ColmapDataConverter(FileBasedDataConverter):
         self.logger = logging.getLogger(__name__)
 
     @staticmethod
-    def get_sequence_paths(config) -> list[UPath]:
+    def get_sequence_ids(config: ColmapConverter4Config) -> list[str]:
         """Get sequence paths from config.
 
         If root_dir is a directory, return all subdirectories as sequences. If root_dir is a single sequence, return it as the only sequence."""
 
         if str(config.root_dir).endswith("/"):
-            return [p for p in UPath(config.root_dir).iterdir() if p.is_dir()]
+            return [str(p) for p in UPath(config.root_dir).iterdir() if p.is_dir()]
         else:
-            return [UPath(config.root_dir)]
+            return [str(UPath(config.root_dir))]
 
     @staticmethod
     def from_config(config: ColmapConverter4Config) -> ColmapDataConverter:
         """Create a ColmapDataConverter instance from a configuration object."""
         return ColmapDataConverter(config)
 
-    def convert_sequence(self, sequence_path: UPath) -> None:
+    def convert_sequence(self, sequence_id: str) -> None:
         """
         Runs the conversion of a single sequence
         """
+
+        sequence_path = UPath(sequence_id)
 
         self.logger.info(f"Processing sequence: {sequence_path}")
 

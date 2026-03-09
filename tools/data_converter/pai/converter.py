@@ -654,7 +654,7 @@ class PaiConverter(_PaiConversionMixin, FileBasedDataConverter):
         self._init_pai_fields(config)
 
     @staticmethod
-    def get_sequence_paths(config) -> list[UPath]:
+    def get_sequence_ids(config) -> list[str]:
         """Discover clips by listing subdirectories under ``root_dir``."""
         data_root = UPath(config.root_dir)
         clip_ids = sorted(d.name for d in data_root.iterdir() if d.is_dir())
@@ -671,14 +671,14 @@ class PaiConverter(_PaiConversionMixin, FileBasedDataConverter):
                 logger.warning(f"Clip IDs not found under {data_root}: {missing_ids}")
             clip_ids = [c for c in clip_ids if c in requested_ids]
 
-        return [UPath(clip_id) for clip_id in clip_ids]
+        return clip_ids
 
     @staticmethod
     def from_config(config) -> PaiConverter:
         return PaiConverter(config)
 
-    def convert_sequence(self, sequence_path: UPath) -> None:
-        clip_id = str(sequence_path)
+    def convert_sequence(self, sequence_id: str) -> None:
+        clip_id = sequence_id
         clip_dir = self.root_dir / clip_id
         self.provider: ClipDataProvider = LocalClipDataProvider(clip_dir, clip_id)
         self._convert_clip(clip_id)
@@ -697,19 +697,19 @@ class PaiStreamConverter(_PaiConversionMixin, BaseDataConverter):
         self._make_provider = config.make_provider
 
     @staticmethod
-    def get_sequence_paths(config) -> list[UPath]:
+    def get_sequence_ids(config) -> list[str]:
         """Return clip IDs provided via ``--clip-id``."""
-        clip_ids = list(config.clip_id)
+        clip_ids: list[str] = list(config.clip_id)
         if not clip_ids:
             raise ValueError("--clip-id is required for streaming mode")
-        return [UPath(cid) for cid in clip_ids]
+        return clip_ids
 
     @staticmethod
     def from_config(config) -> PaiStreamConverter:
         return PaiStreamConverter(config)
 
-    def convert_sequence(self, sequence_path: UPath) -> None:
-        clip_id = str(sequence_path)
+    def convert_sequence(self, sequence_id: str) -> None:
+        clip_id = sequence_id
         self.provider: ClipDataProvider = self._make_provider(clip_id)
         self._convert_clip(clip_id)
 
