@@ -58,7 +58,12 @@ from ncore.data.v4 import (
     SequenceComponentGroupsReader,
     SequenceComponentGroupsWriter,
 )
-from ncore.data_converter import BaseDataConverter, BaseDataConverterConfig, FileBasedDataConverter
+from ncore.data_converter import (
+    BaseDataConverter,
+    BaseDataConverterConfig,
+    FileBasedDataConverter,
+    FileBasedDataConverterConfig,
+)
 from ncore.impl.common.transformations import HalfClosedInterval, se3_inverse, time_bounds
 from ncore.impl.data.types import (
     BBox3,
@@ -92,19 +97,36 @@ CONVERTER_VERSION = "1.0.0"
 
 
 @dataclass(kw_only=True, slots=True)
-class PaiConverter4Config(BaseDataConverterConfig):
-    """Shared Configuration for PAI to NCore V4 conversion."""
+class PaiLocalConverterConfig(FileBasedDataConverterConfig):
+    """Configuration for local PAI conversion (``pai-v4``).
 
-    root_dir: Optional[str] = None  # not used in streaming converter, but kept for CLI compatibility
+    Inherits :class:`FileBasedDataConverterConfig` so ``root_dir`` is required
+    and validated at construction time.
+    """
+
     seek_sec: float | None = None
     duration_sec: float | None = None
     clip_id: list[str] = field(default_factory=list)
     store_type: Literal["itar", "directory"] = "itar"
     component_group_profile: Literal["default", "separate-sensors", "separate-all"] = "separate-sensors"
     store_sequence_meta: bool = True
-    make_provider: Optional[Callable[[str], ClipDataProvider]] = (
-        None  # to be set by caller with appropriate provider factory
-    )
+
+
+@dataclass(kw_only=True, slots=True)
+class PaiStreamConverterConfig(BaseDataConverterConfig):
+    """Configuration for streaming PAI conversion (``pai-stream-v4``).
+
+    Does **not** require ``root_dir``.  The ``make_provider`` callable is used
+    to create a :class:`ClipDataProvider` for each clip at conversion time.
+    """
+
+    seek_sec: float | None = None
+    duration_sec: float | None = None
+    clip_id: list[str] = field(default_factory=list)
+    store_type: Literal["itar", "directory"] = "itar"
+    component_group_profile: Literal["default", "separate-sensors", "separate-all"] = "separate-sensors"
+    store_sequence_meta: bool = True
+    make_provider: Callable[[str], ClipDataProvider]  # factory: clip_id -> provider
 
 
 class _PaiConversionMixin:
@@ -649,7 +671,7 @@ class PaiConverter(_PaiConversionMixin, FileBasedDataConverter):
     containing clip subdirectories.
     """
 
-    def __init__(self, config) -> None:
+    def __init__(self, config: PaiLocalConverterConfig) -> None:
         super().__init__(config)
         self._init_pai_fields(config)
 
@@ -691,7 +713,7 @@ class PaiStreamConverter(_PaiConversionMixin, BaseDataConverter):
     Does **not** require ``--root-dir``.
     """
 
-    def __init__(self, config) -> None:
+    def __init__(self, config: PaiStreamConverterConfig) -> None:
         super().__init__(config)
         self._init_pai_fields(config)
         self._make_provider = config.make_provider
@@ -786,9 +808,7 @@ def pai_v4(ctx, *_, **kwargs):
     config = vars(ctx.obj)
     config.update(kwargs)
 
-    assert config["root_dir"] is not None, "--root-dir is required for pai-v4"
-
-    PaiConverter.convert(PaiConverter4Config(**config))
+    PaiConverter.convert(PaiLocalConverterConfig(**config))
 
 
 @cli.command("pai-stream-v4")
@@ -819,7 +839,7 @@ def pai_stream_v4(ctx, *_, **kwargs):
     revision = kwargs.pop("revision")
 
     config = vars(ctx.obj)
-    config.pop("root_dir", None)  # not used in streaming converter
+    config.pop("root_dir", None)  # not a field on PaiStreamConverterConfig
     config.update(kwargs)
 
     clip_ids = config.get("clip_id", ())
@@ -847,7 +867,7 @@ def pai_stream_v4(ctx, *_, **kwargs):
 
         config["make_provider"] = make_provider
 
-        PaiStreamConverter.convert(PaiConverter4Config(**config))
+        PaiStreamConverter.convert(PaiStreamConverterConfig(**config))
 
 
 if __name__ == "__main__":
