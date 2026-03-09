@@ -291,8 +291,8 @@ class LidarComponent(VisualizationComponent):
             return
         with self.client.atomic():
             # Remove existing scene node
-            if lidar_id in self._point_clouds:
-                self._point_clouds[lidar_id].remove()
+            if point_cloud := self._point_clouds.pop(lidar_id, None):
+                point_cloud.remove()
 
             frame = self._frame_sliders[lidar_id].value
             is_fused = self._is_fused[lidar_id]

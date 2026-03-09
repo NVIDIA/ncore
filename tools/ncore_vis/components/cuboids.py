@@ -95,12 +95,13 @@ class CuboidsComponent(VisualizationComponent):
         """Re-render cuboid bounding boxes at the current reference timestamp."""
         with self.client.atomic():
             # Remove existing scene nodes
-            for box in self._cuboid_boxes:
+            old_boxes, self._cuboid_boxes = self._cuboid_boxes, []
+            old_labels, self._cuboid_labels = self._cuboid_labels, []
+            
+            for box in old_boxes:
                 box.remove()
-            for label in self._cuboid_labels:
+            for label in old_labels:
                 label.remove()
-            self._cuboid_boxes = []
-            self._cuboid_labels = []
 
             if not self._enabled:
                 self.client.flush()

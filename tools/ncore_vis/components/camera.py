@@ -397,12 +397,12 @@ class CameraComponent(VisualizationComponent):
     def _update_camera(self, camera_id: str) -> None:
         """Re-render camera frustum, pose frame, and label for *camera_id*."""
         with self.client.atomic():
-            if camera_id in self._frusta:
-                self._frusta[camera_id].remove()
-            if camera_id in self._poses:
-                self._poses[camera_id].remove()
-            if camera_id in self._labels:
-                self._labels[camera_id].remove()
+            if frustum := self._frusta.pop(camera_id, None):
+                frustum.remove()
+            if pose := self._poses.pop(camera_id, None):
+                pose.remove()
+            if label := self._labels.pop(camera_id, None):
+                label.remove()
 
             frame = self._frame_sliders[camera_id].value
             visible = self._visible[camera_id]
