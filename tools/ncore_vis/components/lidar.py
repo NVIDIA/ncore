@@ -87,6 +87,8 @@ class LidarComponent(VisualizationComponent):
         self._motion_comp: Dict[str, bool] = {}
         self._range_cycle: Dict[str, float] = {}
         self._height_range: Dict[str, Tuple[float, float]] = {}
+        # Per-sensor generic_data fields that can drive point color.
+        self._metadata_color_fields: Dict[str, List[str]] = {}
 
         with tab_group.add_tab("Lidars"):
             enabled_checkbox = self.client.gui.add_checkbox(
@@ -103,6 +105,10 @@ class LidarComponent(VisualizationComponent):
                 sensor = self.data_loader.get_lidar_sensor(lidar_id)
                 frame_count = sensor.frames_count
                 max_frame = max(0, frame_count - 1)
+
+                metadata_fields = self._scan_metadata_color_fields(lidar_id)
+                self._metadata_color_fields[lidar_id] = metadata_fields
+                sensor_color_styles = _COLOR_STYLES + metadata_fields
 
                 self._color_style[lidar_id] = "Intensity \u03b3=1/2"
                 self._point_size[lidar_id] = 0.025
@@ -133,7 +139,7 @@ class LidarComponent(VisualizationComponent):
                     with self.client.gui.add_folder("Point Cloud Settings"):
                         color_dropdown = self.client.gui.add_dropdown(
                             "Color Style",
-                            options=_COLOR_STYLES,
+                            options=sensor_color_styles,
                             initial_value="Intensity \u03b3=1/2",
                         )
                         point_size = self.client.gui.add_slider(
@@ -217,6 +223,26 @@ class LidarComponent(VisualizationComponent):
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _scan_metadata_color_fields(self, lidar_id: str) -> List[str]:
+        """Return generic_data field names from frame 0 whose shape qualifies for coloring.
+
+        A field qualifies if it has exactly 1, 3, or 4 values per point.
+        """
+        qualifying: List[str] = []
+        try:
+            sensor = self.data_loader.get_lidar_sensor(lidar_id)
+            ts = sensor.frames_timestamps_us[0, 1].item()
+            n_points = sensor.get_frame_ray_bundle_count(0)
+            for name in sensor.get_frame_generic_data_names(ts):
+                data = np.asarray(sensor.get_frame_generic_data(ts, name))
+                if data.ndim == 1 and data.shape[0] == n_points:
+                    qualifying.append(name)
+                elif data.ndim == 2 and data.shape[0] == n_points and data.shape[1] in [1, 3, 4]:
+                    qualifying.append(name)
+        except Exception:
+            logger.debug("Could not scan metadata color fields for lidar '%s'", lidar_id)
+        return qualifying
 
     def _bind_lidar_callbacks(
         self,
@@ -332,10 +358,11 @@ class LidarComponent(VisualizationComponent):
     ) -> viser.PointCloudHandle:
         """Create a single viser point cloud node."""
         color_style = self._color_style[lidar_id]
+        is_metadata_style = color_style in self._metadata_color_fields.get(lidar_id, [])
 
         if is_fused:
             handle_name = f"/lidars/{lidar_id}/fused_point_cloud"
-            needs_per_frame = color_style in _PER_FRAME_COLOR_STYLES
+            needs_per_frame = color_style in _PER_FRAME_COLOR_STYLES or is_metadata_style
             if needs_per_frame:
                 points_world, colors = self._get_fused_point_cloud_with_colors(
                     lidar_id, fused_range[0], fused_range[1], fused_step
@@ -464,6 +491,8 @@ class LidarComponent(VisualizationComponent):
             return self._color_model_element(lidar_id, frame, n_points, column=0)
         if color_style == "Model Column":
             return self._color_model_element(lidar_id, frame, n_points, column=1)
+        if color_style in self._metadata_color_fields.get(lidar_id, []):
+            return self._color_metadata_field(lidar_id, frame, color_style, n_points)
 
         # Intensity-based modes
         return self._color_intensity(lidar_id, frame, color_style, n_points)
@@ -542,3 +571,38 @@ class LidarComponent(VisualizationComponent):
         normalized = indices / idx_max
         rgba = _TURBO_CMAP(normalized)
         return (rgba[:, :3] * 255.0).astype(np.uint8)
+
+    def _color_metadata_field(self, lidar_id: str, frame: int, field_name: str, n_points: int) -> np.ndarray:
+        """Color by a generic_data metadata field.
+
+        Single-channel fields are treated as intensity (grayscale).
+        Three-channel fields are treated as RGB.
+        Four-channel fields are treated as RGBA (alpha-premultiplied onto black).
+
+        Float data is assumed to be in [0, 1] and scaled to uint8.
+        Integer data is scaled linearly by its dtype maximum.
+        """
+        try:
+            sensor = self.data_loader.get_lidar_sensor(lidar_id)
+            ts = sensor.frames_timestamps_us[frame, 1].item()
+            data = np.asarray(sensor.get_frame_generic_data(ts, field_name))
+        except Exception:
+            return np.tile(_DEFAULT_POINT_COLOR, (n_points, 1))
+
+        # Convert to uint8
+        if data.dtype == np.uint8:
+            data_u8 = data
+        elif np.issubdtype(data.dtype, np.floating):
+            data_u8 = (np.clip(data, 0.0, 1.0) * 255.0).astype(np.uint8)
+        else:
+            data_u8 = (data.astype(np.float64) / np.iinfo(data.dtype).max * 255.0).astype(np.uint8)
+
+        if data_u8.ndim == 1 or (data_u8.ndim == 2 and data_u8.shape[1] == 1):
+            gray = data_u8.ravel()
+            return np.stack([gray, gray, gray], axis=1)
+        if data_u8.shape[1] == 3:
+            return data_u8
+        # 4-channel RGBA: premultiply RGB by normalised alpha onto black background
+        rgb = data_u8[:, :3].astype(np.float32)
+        alpha = data_u8[:, 3:4].astype(np.float32) / 255.0
+        return np.clip(rgb * alpha, 0, 255).astype(np.uint8)
