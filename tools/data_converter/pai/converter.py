@@ -29,14 +29,15 @@ LIMITATIONS:
   - Cameras are in MP4 format (frames extracted to JPEG)
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import tempfile
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
-from types import SimpleNamespace
-from typing import Dict, Literal, cast
+from typing import Callable, Dict, Literal, Optional, cast
 
 import click
 import DracoPy
@@ -57,7 +58,7 @@ from ncore.data.v4 import (
     SequenceComponentGroupsReader,
     SequenceComponentGroupsWriter,
 )
-from ncore.data_converter import BaseDataConverter, BaseDataConverterConfig
+from ncore.data_converter import BaseDataConverter, BaseDataConverterConfig, FileBasedDataConverter
 from ncore.impl.common.transformations import HalfClosedInterval, se3_inverse, time_bounds
 from ncore.impl.data.types import (
     BBox3,
@@ -94,85 +95,39 @@ CONVERTER_VERSION = "1.0.0"
 class PaiConverter4Config(BaseDataConverterConfig):
     """Shared Configuration for PAI to NCore V4 conversion."""
 
+    root_dir: Optional[str] = None  # not used in streaming converter, but kept for CLI compatibility
     seek_sec: float | None = None
     duration_sec: float | None = None
     clip_id: list[str] = field(default_factory=list)
     store_type: Literal["itar", "directory"] = "itar"
     component_group_profile: Literal["default", "separate-sensors", "separate-all"] = "separate-sensors"
     store_sequence_meta: bool = True
+    make_provider: Optional[Callable[[str], ClipDataProvider]] = (
+        None  # to be set by caller with appropriate provider factory
+    )
 
 
-pai_shared_options = [
-    click.option(
-        "--seek-sec",
-        default=None,
-        type=click.FloatRange(min=0.0, max_open=True),
-        help="Time to skip for the dataset conversion (in seconds)",
-    ),
-    click.option(
-        "--duration-sec",
-        default=None,
-        type=click.FloatRange(min=0.0, max_open=True),
-        help="Restrict total duration of the dataset conversion (in seconds)",
-    ),
-    click.option(
-        "--clip-id",
-        multiple=True,
-        type=str,
-        default=[],
-        help="Specific clip ID(s) to convert. If not specified, converts all clip directories found under root-dir.",
-    ),
-    click.option(
-        "--store-type",
-        type=click.Choice(["itar", "directory"], case_sensitive=False),
-        default="itar",
-        show_default=True,
-        help="Output store type",
-    ),
-    click.option(
-        "component_group_profile",
-        "--profile",
-        type=click.Choice(["default", "separate-sensors", "separate-all"], case_sensitive=False),
-        default="separate-sensors",
-        show_default=True,
-        help="""Output profile, one of:
-        - "default": All components defaults or overrides
-        - "separate-sensors": Each sensor gets its own group named "<sensor_id>", remaining components use overrides
-        - "separate-all": Each component type gets its own group named after the component type, e.g. "poses", "intrinsics", respecting overwrites if provided""",
-    ),
-    click.option(
-        "store_sequence_meta", "--sequence-meta/--no-sequence-meta", default=True, help="Generate sequence meta-data?"
-    ),
-]
+class _PaiConversionMixin:
+    """Shared conversion logic for PAI data converters.
 
+    This mixin contains all the sensor decoding, metadata loading, and data
+    writing logic shared between :class:`PaiConverter` (local file-based) and
+    :class:`PaiStreamConverter` (HuggingFace streaming).
 
-def apply_options(options):
-    """Decorator that applies a list of click options to a command."""
-
-    def decorator(func):
-        for option in reversed(options):
-            func = option(func)
-        return func
-
-    return decorator
-
-
-class PaiConverter(BaseDataConverter):
+    Subclasses must set ``self.provider`` (a :class:`ClipDataProvider`) before
+    the body of :meth:`_convert_clip` runs.
     """
-    Dataset preprocessing class for converting Physical AI data to NCore canonical format.
 
-    Handles:
-    - 7 cameras: camera_cross_left/right_120fov, camera_front_tele_30fov/wide_120fov,
-                 camera_rear_left/right_70fov, camera_rear_tele_30fov
-    - 1 lidar: lidar_top_360fov
-    - Egomotion trajectory
-    - Vehicle dimensions
-    - Cuboid obstacle labels
+    # -- Type stubs for attributes provided by concrete subclasses / base classes --
+    # These are not set here; they exist on the concrete classes via their
+    # BaseDataConverter (or FileBasedDataConverter) parent.
+    logger: logging.Logger
+    output_dir: UPath
+    provider: ClipDataProvider
 
-    The converter uses a :class:`ClipDataProvider` abstraction for data access,
-    allowing the same conversion logic to work with local files (``pai-v4``)
-    or streaming from HuggingFace (``pai-stream-v4``).
-    """
+    # Methods from BaseDataConverter that the mixin calls
+    get_active_camera_ids: Callable[..., list[str]]
+    get_active_lidar_ids: Callable[..., list[str]]
 
     # Camera sensor mapping
     CAMERA_SENSORS = [
@@ -190,9 +145,8 @@ class PaiConverter(BaseDataConverter):
         "lidar_top_360fov",
     ]
 
-    def __init__(self, config: PaiConverter4Config):
-        super().__init__(config)
-        self.logger = logging.getLogger(__name__)
+    def _init_pai_fields(self, config) -> None:
+        """Initialise PAI-specific fields from *config* (a namespace or dataclass)."""
         self.seek_sec: float | None = config.seek_sec
         self.duration_sec: float | None = config.duration_sec
         self.store_type: Literal["itar", "directory"] = config.store_type
@@ -201,65 +155,14 @@ class PaiConverter(BaseDataConverter):
         )
         self.store_sequence_meta = config.store_sequence_meta
 
-        # Optional provider factory: callable(clip_id) -> ClipDataProvider.
-        # When set (e.g. by pai-stream-v4), the converter uses this instead of
-        # constructing a LocalClipDataProvider from self.root_dir.
-        self._make_provider = getattr(config, "make_provider", None)
+    def _convert_clip(self, clip_id: str) -> None:
+        """Run the full conversion pipeline for a single clip.
 
-    @staticmethod
-    def get_sequence_paths(config) -> list[UPath]:
-        """Return list of clips to process.
-
-        For local mode (``pai-v4``): lists subdirectories under ``root_dir``.
-        For streaming mode (``pai-stream-v4``): returns the clip IDs from config directly.
+        ``self.provider`` must already be set to the appropriate
+        :class:`ClipDataProvider` before calling this method.
         """
-        # Streaming mode: clip IDs are provided directly via config
-        if hasattr(config, "make_provider") and config.make_provider is not None:
-            clip_ids = list(config.clip_id)
-            if not clip_ids:
-                raise ValueError("--clip-id is required for streaming mode")
-            return [UPath(cid) for cid in clip_ids]
-
-        # Local mode: discover clips by listing subdirectories
-        data_root = UPath(config.root_dir)
-        clip_ids = sorted(d.name for d in data_root.iterdir() if d.is_dir())
-
-        if not clip_ids:
-            raise FileNotFoundError(f"No clip directories found under {data_root}")
-
-        # Filter by specific clip IDs if provided
-        if hasattr(config, "clip_id") and config.clip_id:
-            requested_ids = set(config.clip_id)
-            found_ids = set(clip_ids)
-            missing_ids = requested_ids - found_ids
-            if missing_ids:
-                logger.warning(f"Clip IDs not found under {data_root}: {missing_ids}")
-            clip_ids = [c for c in clip_ids if c in requested_ids]
-
-        return [UPath(clip_id) for clip_id in clip_ids]
-
-    @staticmethod
-    def from_config(config) -> "PaiConverter":
-        """Return an instance of the data converter"""
-        return PaiConverter(config)
-
-    def convert_sequence(self, sequence_path: UPath) -> None:
-        """
-        Runs the conversion of a single clip (sequence in NCore terminology)
-        """
-
-        # Decode clip_id from the path (directory name)
-        clip_id = str(sequence_path)
         self.clip_id = clip_id
-
         self.logger.info(f"Converting clip {clip_id}")
-
-        # Create data provider for this clip
-        if self._make_provider is not None:
-            self.provider: ClipDataProvider = self._make_provider(clip_id)
-        else:
-            clip_dir = self.root_dir / clip_id
-            self.provider = LocalClipDataProvider(clip_dir, clip_id)
 
         # Load calibration and metadata
         try:
@@ -734,6 +637,84 @@ class PaiConverter(BaseDataConverter):
 
 
 # ---------------------------------------------------------------------------
+# Concrete converter classes
+# ---------------------------------------------------------------------------
+
+
+class PaiConverter(_PaiConversionMixin, FileBasedDataConverter):
+    """PAI data converter for local files (``pai-v4``).
+
+    Reads clip data from a local root directory previously downloaded with
+    the ``pai-clip-dl`` tool.  ``--root-dir`` must point to the directory
+    containing clip subdirectories.
+    """
+
+    def __init__(self, config) -> None:
+        super().__init__(config)
+        self._init_pai_fields(config)
+
+    @staticmethod
+    def get_sequence_paths(config) -> list[UPath]:
+        """Discover clips by listing subdirectories under ``root_dir``."""
+        data_root = UPath(config.root_dir)
+        clip_ids = sorted(d.name for d in data_root.iterdir() if d.is_dir())
+
+        if not clip_ids:
+            raise FileNotFoundError(f"No clip directories found under {data_root}")
+
+        # Filter by specific clip IDs if provided
+        if hasattr(config, "clip_id") and config.clip_id:
+            requested_ids = set(config.clip_id)
+            found_ids = set(clip_ids)
+            missing_ids = requested_ids - found_ids
+            if missing_ids:
+                logger.warning(f"Clip IDs not found under {data_root}: {missing_ids}")
+            clip_ids = [c for c in clip_ids if c in requested_ids]
+
+        return [UPath(clip_id) for clip_id in clip_ids]
+
+    @staticmethod
+    def from_config(config) -> PaiConverter:
+        return PaiConverter(config)
+
+    def convert_sequence(self, sequence_path: UPath) -> None:
+        clip_id = str(sequence_path)
+        clip_dir = self.root_dir / clip_id
+        self.provider: ClipDataProvider = LocalClipDataProvider(clip_dir, clip_id)
+        self._convert_clip(clip_id)
+
+
+class PaiStreamConverter(_PaiConversionMixin, BaseDataConverter):
+    """PAI data converter for HuggingFace streaming (``pai-stream-v4``).
+
+    Converts PAI clips directly from HuggingFace without prior download.
+    Does **not** require ``--root-dir``.
+    """
+
+    def __init__(self, config) -> None:
+        super().__init__(config)
+        self._init_pai_fields(config)
+        self._make_provider = config.make_provider
+
+    @staticmethod
+    def get_sequence_paths(config) -> list[UPath]:
+        """Return clip IDs provided via ``--clip-id``."""
+        clip_ids = list(config.clip_id)
+        if not clip_ids:
+            raise ValueError("--clip-id is required for streaming mode")
+        return [UPath(cid) for cid in clip_ids]
+
+    @staticmethod
+    def from_config(config) -> PaiStreamConverter:
+        return PaiStreamConverter(config)
+
+    def convert_sequence(self, sequence_path: UPath) -> None:
+        clip_id = str(sequence_path)
+        self.provider: ClipDataProvider = self._make_provider(clip_id)
+        self._convert_clip(clip_id)
+
+
+# ---------------------------------------------------------------------------
 # Shared PAI options (used by both pai-v4 and pai-stream-v4)
 # ---------------------------------------------------------------------------
 
@@ -799,13 +780,15 @@ def pai_v4(ctx, *_, **kwargs):
     """Physical AI data conversion (local pai-clip-dl output)
 
     Converts PAI clips previously downloaded with the pai-clip-dl tool.
-    --root-dir should point to the directory containing clip subdirectories.
+    --root-dir must point to the directory containing clip subdirectories.
     """
 
-    config = asdict(ctx.obj)
+    config = vars(ctx.obj)
     config.update(kwargs)
 
-    PaiConverter.convert(SimpleNamespace(**config))
+    assert config["root_dir"] is not None, "--root-dir is required for pai-v4"
+
+    PaiConverter.convert(PaiConverter4Config(**config))
 
 
 @cli.command("pai-stream-v4")
@@ -829,13 +812,14 @@ def pai_stream_v4(ctx, *_, **kwargs):
     """Physical AI data conversion (streaming from HuggingFace)
 
     Converts PAI clips directly from HuggingFace without prior download.
-    --clip-id is required.  --root-dir is ignored (set to any placeholder).
+    --clip-id is required.  --root-dir is not needed.
     """
 
     hf_token = kwargs.pop("hf_token")
     revision = kwargs.pop("revision")
 
-    config = asdict(ctx.obj)
+    config = vars(ctx.obj)
+    config.pop("root_dir", None)  # not used in streaming converter
     config.update(kwargs)
 
     clip_ids = config.get("clip_id", ())
@@ -863,7 +847,7 @@ def pai_stream_v4(ctx, *_, **kwargs):
 
         config["make_provider"] = make_provider
 
-        PaiConverter.convert(SimpleNamespace(**config))
+        PaiStreamConverter.convert(PaiConverter4Config(**config))
 
 
 if __name__ == "__main__":

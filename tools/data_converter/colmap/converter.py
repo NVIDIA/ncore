@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import logging
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Literal
 
 import click
@@ -39,7 +39,7 @@ from ncore.data.v4 import (
     SequenceComponentGroupsReader,
     SequenceComponentGroupsWriter,
 )
-from ncore.data_converter import BaseDataConverter, BaseDataConverterConfig
+from ncore.data_converter import FileBasedDataConverter, FileBasedDataConverterConfig
 from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.data.types import JsonLike, OpenCVPinholeCameraModelParameters, ShutterType
 from ncore.impl.data.v4.types import ComponentGroupAssignments
@@ -47,7 +47,7 @@ from tools.data_converter.cli import cli
 
 
 @dataclass(kw_only=True, slots=True)
-class ColmapConverter4Config(BaseDataConverterConfig):
+class ColmapConverter4Config(FileBasedDataConverterConfig):
     """Configuration for COLMAP to NCore V4 conversion."""
 
     store_type: Literal["itar", "directory"] = "itar"
@@ -141,7 +141,7 @@ class ColmapCamera:
         )
 
 
-class ColmapDataConverter(BaseDataConverter):
+class ColmapDataConverter(FileBasedDataConverter):
     """
     NVIDIA-specific data conversion from COLMAP reconstructions to NCore V4 using the V4 components/writer APIs.
     """
@@ -176,7 +176,7 @@ class ColmapDataConverter(BaseDataConverter):
             return [UPath(config.root_dir)]
 
     @staticmethod
-    def from_config(config) -> ColmapDataConverter:
+    def from_config(config: ColmapConverter4Config) -> ColmapDataConverter:
         """Create a ColmapDataConverter instance from a configuration object."""
         return ColmapDataConverter(config)
 
@@ -500,7 +500,7 @@ def colmap_v4(ctx, *_, **kwargs):
     """Colmap-specific data conversion (V4 format)"""
 
     # Extend base config with command-specific options
-    config = ColmapConverter4Config(**{**asdict(ctx.obj), **kwargs})
+    config = ColmapConverter4Config(**{**vars(ctx.obj), **kwargs})
 
     ColmapDataConverter.convert(config)
 

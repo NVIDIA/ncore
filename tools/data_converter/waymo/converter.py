@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import logging
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Literal
 
 import click
@@ -59,7 +59,7 @@ from ncore.impl.data.v4.components import (
     SequenceComponentGroupsWriter,
 )
 from ncore.impl.data.v4.types import ComponentGroupAssignments
-from ncore.impl.data_converter.base import BaseDataConverter, BaseDataConverterConfig
+from ncore.impl.data_converter.base import FileBasedDataConverter, FileBasedDataConverterConfig
 from ncore.impl.sensors.lidar import RowOffsetStructuredSpinningLidarModel
 from tools.data_converter.cli import cli
 from tools.data_converter.waymo.deps import camera_segmentation_pb2, dataset_pb2, label_pb2, tf
@@ -71,7 +71,7 @@ from tools.data_converter.waymo.waymo_range_image_utils import parse_range_image
 
 
 @dataclass(kw_only=True, slots=True)
-class WaymoConverter4Config(BaseDataConverterConfig):
+class WaymoConverter4Config(FileBasedDataConverterConfig):
     """Configuration for Waymo to NCore V4 conversion."""
 
     store_type: Literal["itar", "directory"] = "itar"
@@ -79,7 +79,7 @@ class WaymoConverter4Config(BaseDataConverterConfig):
     store_sequence_meta: bool = True
 
 
-class WaymoConverter4(BaseDataConverter):
+class WaymoConverter4(FileBasedDataConverter):
     """
     Dataset preprocessing class for converting Waymo Open Dataset to NCore V4 format.
 
@@ -123,7 +123,7 @@ class WaymoConverter4(BaseDataConverter):
         return [p for p in sorted(UPath(config.root_dir).glob("*.tfrecord"))]
 
     @staticmethod
-    def from_config(config) -> BaseDataConverter:
+    def from_config(config: WaymoConverter4Config) -> WaymoConverter4:
         return WaymoConverter4(config)
 
     def convert_sequence(self, sequence_path: UPath) -> None:
@@ -949,7 +949,7 @@ def waymo_v4(ctx, *_, **kwargs):
     """Waymo-specific data conversion (V4 format)"""
 
     # Extend base config with command-specific options
-    config = WaymoConverter4Config(**{**asdict(ctx.obj), **kwargs})
+    config = WaymoConverter4Config(**{**vars(ctx.obj), **kwargs})
 
     WaymoConverter4.convert(config)
 

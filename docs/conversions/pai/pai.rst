@@ -192,8 +192,9 @@ The output for each clip is written to::
    * - Argument
      - Description
    * - ``--root-dir PATH``
-     - Directory containing clip subdirectories (local mode). Ignored in
-       streaming mode
+     - Directory containing clip subdirectories. Required for file-based
+       converters (e.g. ``pai-v4``); not needed for streaming converters
+       (e.g. ``pai-stream-v4``)
    * - ``--output-dir PATH``
      - Path where converted NCore V4 sequences will be written
 
@@ -283,9 +284,13 @@ API Reference
 **Data Converter** (:mod:`ncore.data_converter`):
 
 - :class:`~ncore.data_converter.BaseDataConverter` - Abstract base class for
-  converters
+  all converters
 - :class:`~ncore.data_converter.BaseDataConverterConfig` - Base configuration
   dataclass
+- :class:`~ncore.data_converter.FileBasedDataConverter` - Abstract base class
+  for converters that read from a local root directory (``--root-dir``)
+- :class:`~ncore.data_converter.FileBasedDataConverterConfig` - Configuration
+  base for file-based converters (validates ``--root-dir``)
 
 **Sensor Models** (:mod:`ncore.data`):
 

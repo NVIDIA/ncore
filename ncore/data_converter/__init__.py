@@ -15,10 +15,17 @@
 
 """Package containing common and abstract functionality to implement NCore data-converters"""
 
-from ncore.impl.data_converter.base import BaseDataConverter, BaseDataConverterConfig
+from ncore.impl.data_converter.base import (
+    BaseDataConverter,
+    BaseDataConverterConfig,
+    FileBasedDataConverter,
+    FileBasedDataConverterConfig,
+)
 
 
 __all__ = [
     "BaseDataConverter",
     "BaseDataConverterConfig",
+    "FileBasedDataConverter",
+    "FileBasedDataConverterConfig",
 ]

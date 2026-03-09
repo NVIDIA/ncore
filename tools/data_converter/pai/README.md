@@ -143,12 +143,11 @@ bazel run //tools/data_converter/pai:convert -- \
 
 ### Streaming mode (`pai-stream-v4`)
 
-Convert clips directly from HuggingFace without a prior download. `--root-dir` is required by
-the base CLI but ignored in this mode. `--clip-id` is required.
+Convert clips directly from HuggingFace without a prior download. `--root-dir` is **not**
+required for this mode. `--clip-id` is required.
 
 ```bash
 bazel run //tools/data_converter/pai:convert -- \
-    --root-dir /tmp/unused \
     --output-dir /path/to/output \
     pai-stream-v4 \
     --clip-id <clip-id> \

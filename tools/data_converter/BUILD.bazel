@@ -27,7 +27,6 @@ py_library(
         "cli.py",
     ],
     deps = [
-        "//ncore/impl/data_converter:pylib_base",
         "//tools:pylib_debug",
         requirement("click"),
     ],

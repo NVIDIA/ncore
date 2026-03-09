@@ -15,9 +15,9 @@
 
 import logging
 
-import click
+from types import SimpleNamespace
 
-from ncore.impl.data_converter.base import BaseDataConverterConfig
+import click
 
 
 try:
@@ -32,7 +32,12 @@ except ImportError:
 
 
 @click.group()
-@click.option("--root-dir", type=str, help="Path to the raw data sequences", required=True)
+@click.option(
+    "--root-dir",
+    type=str,
+    default=None,
+    help="Path to the raw data sequences (required for file-based converters only)",
+)
 @click.option("--output-dir", type=str, help="Path where the converted data will be saved", required=True)
 @click.option("--verbose", is_flag=True, default=False, help="Enables debug logging outputs")
 @click.option("--debug", is_flag=True, default=False, help="Start a debugpy remote debugging sessions to listen on")
@@ -80,10 +85,11 @@ def cli(ctx, *_, **kwargs):
       --output-dir <FOLDER DATA WILL BE PRODUCED>
       <your-data-variant>
     """
-    # Create a config object and remember it as the context object. From
+
+    # Create a config dict-like object and remember it as the context object. From
     # this point onwards other commands can refer to it by using the
     # @click.pass_context decorator.
-    ctx.obj = BaseDataConverterConfig(**kwargs)
+    ctx.obj = SimpleNamespace(**kwargs)
 
     # Initialize basic top-level logger configuration
     logging.basicConfig(

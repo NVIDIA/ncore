@@ -30,7 +30,6 @@ class BaseDataConverterConfig:
     """Generic data converter parameters"""
 
     ## IO
-    root_dir: str  # Path to the raw data sequences
     output_dir: str  # Path where the converted data will be saved
 
     ## Sensor selection
@@ -61,7 +60,6 @@ class BaseDataConverter(ABC):
     def __init__(self, config: BaseDataConverterConfig) -> None:
         self.logger = logging.getLogger(__name__)
 
-        self.root_dir = UPath(config.root_dir)
         self.output_dir = UPath(config.output_dir)
 
         # External sensor selection overwrites
@@ -155,3 +153,35 @@ class BaseDataConverter(ABC):
         Runs dataset-specific conversion for a sequence referenced by a directory/file path
         """
         pass
+
+
+@dataclass(**({"slots": True, "kw_only": True} if sys.version_info >= (3, 10) else {}))
+class FileBasedDataConverterConfig(BaseDataConverterConfig):
+    """Config for converters that read from a local root directory.
+
+    Subclass this instead of :class:`BaseDataConverterConfig` when the
+    converter discovers its input sequences from ``--root-dir``.
+    """
+
+    ## IO
+    root_dir: str  # Path to the raw data sequences
+
+    def __post_init__(self) -> None:
+        if not self.root_dir:
+            raise ValueError(
+                "--root-dir is required for this converter but was not provided. "
+                "Please supply a path to the raw data sequences."
+            )
+
+
+class FileBasedDataConverter(BaseDataConverter):
+    """Base class for converters that read source data from a local root directory.
+
+    Subclass this instead of :class:`BaseDataConverter` when the converter needs
+    ``self.root_dir``.  Pair with :class:`FileBasedDataConverterConfig` (or a
+    subclass of it) to get early validation of ``root_dir``.
+    """
+
+    def __init__(self, config: FileBasedDataConverterConfig) -> None:
+        super().__init__(config)
+        self.root_dir = UPath(config.root_dir)
