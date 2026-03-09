@@ -22,7 +22,7 @@ import logging
 import threading
 import time
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Literal, Tuple, cast
 
 import numpy as np
 import viser
@@ -216,6 +216,20 @@ class NCoreVisRenderer:
             @loop_checkbox.on_update
             def _(_: viser.GuiEvent) -> None:
                 self._loop = loop_checkbox.value
+
+            # -- Up direction --
+            up_direction_dropdown = self.client.gui.add_dropdown(
+                label="Up Direction",
+                options=["+z", "-z", "+y", "-y", "+x", "-x"],
+                initial_value="+z",
+                hint="Global up direction for camera controls and lighting",
+            )
+
+            @up_direction_dropdown.on_update
+            def _(_: viser.GuiEvent) -> None:
+                self.client.scene.set_up_direction(
+                    cast(Literal["+x", "+y", "+z", "-x", "-y", "-z"], up_direction_dropdown.value)
+                )
 
             # -- Reference sensor change --
             @reference_dropdown.on_update
