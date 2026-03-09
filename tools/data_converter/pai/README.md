@@ -14,7 +14,7 @@ Convert clip data from the [NVIDIA PhysicalAI-Autonomous-Vehicles](https://huggi
 
   ```bash
   export HF_TOKEN=hf_...
-  # or pass --token hf_... / --hf-token hf_... to individual commands
+  # or pass --hf-token hf_... to individual commands
   ```
 
 ## Dataset Overview

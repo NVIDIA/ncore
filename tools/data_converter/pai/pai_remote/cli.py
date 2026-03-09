@@ -80,7 +80,7 @@ def main() -> None:
     help="Root output directory. Files are written to OUTPUT_DIR/CLIP_ID/.",
 )
 @click.option("--features", "-f", multiple=True, help="Feature names to download. Repeat for multiple. Default: all.")
-@click.option("--token", envvar="HF_TOKEN", help="HuggingFace API token.")
+@click.option("--hf-token", envvar="HF_TOKEN", help="HuggingFace API token.")
 @click.option("--revision", default="main", help="Git branch/revision of the dataset.")
 @click.option("--no-skip-missing", is_flag=True, default=False, help="Don't skip features where the sensor is absent.")
 @click.option("--no-metadata", is_flag=True, default=False, help="Skip downloading metadata parquets.")
@@ -89,7 +89,7 @@ def download(
     clip_ids: tuple[str, ...],
     output_dir: Path,
     features: tuple[str, ...],
-    token: str | None,
+    hf_token: str | None,
     revision: str,
     no_skip_missing: bool,
     no_metadata: bool,
@@ -101,7 +101,7 @@ def download(
     same chunk are batched so each remote zip is opened only once.
     """
     _setup_logging(verbose)
-    config, remote, index = _make_components(token, revision)
+    _, remote, index = _make_components(hf_token, revision)
 
     valid = _validate_clip_ids(index, list(clip_ids))
     if not valid:
@@ -120,13 +120,13 @@ def download(
 
 @main.command()
 @click.argument("clip_ids", nargs=-1, required=True)
-@click.option("--token", envvar="HF_TOKEN", help="HuggingFace API token.")
+@click.option("--hf-token", envvar="HF_TOKEN", help="HuggingFace API token.")
 @click.option("--revision", default="main", help="Git branch/revision of the dataset.")
 @click.option("--verbose", "-v", is_flag=True, default=False)
-def info(clip_ids: tuple[str, ...], token: str | None, revision: str, verbose: bool) -> None:
+def info(clip_ids: tuple[str, ...], hf_token: str | None, revision: str, verbose: bool) -> None:
     """Show information about one or more clips (chunk, split, sensors)."""
     _setup_logging(verbose)
-    config, remote, index = _make_components(token, revision)
+    _, _, index = _make_components(hf_token, revision)
 
     valid = _validate_clip_ids(index, list(clip_ids))
     if not valid:
@@ -155,13 +155,13 @@ def info(clip_ids: tuple[str, ...], token: str | None, revision: str, verbose: b
 
 
 @main.command("list-features")
-@click.option("--token", envvar="HF_TOKEN", help="HuggingFace API token.")
+@click.option("--hf-token", envvar="HF_TOKEN", help="HuggingFace API token.")
 @click.option("--revision", default="main", help="Git branch/revision of the dataset.")
 @click.option("--verbose", "-v", is_flag=True, default=False)
-def list_features(token: str | None, revision: str, verbose: bool) -> None:
+def list_features(hf_token: str | None, revision: str, verbose: bool) -> None:
     """List all available features in the dataset."""
     _setup_logging(verbose)
-    config, remote, index = _make_components(token, revision)
+    _, _, index = _make_components(hf_token, revision)
 
     table = Table(title="Available Features")
     table.add_column("Feature", style="cyan")
@@ -186,7 +186,7 @@ def list_features(token: str | None, revision: str, verbose: bool) -> None:
 @click.option(
     "--output", "-o", type=click.Path(path_type=Path), default=None, help="Save output to file instead of stdout."
 )
-@click.option("--token", envvar="HF_TOKEN", help="HuggingFace API token.")
+@click.option("--hf-token", envvar="HF_TOKEN", help="HuggingFace API token.")
 @click.option("--revision", default="main", help="Git branch/revision of the dataset.")
 @click.option("--verbose", "-v", is_flag=True, default=False)
 def stream(
@@ -194,7 +194,7 @@ def stream(
     feature: str,
     filename: str | None,
     output: Path | None,
-    token: str | None,
+    hf_token: str | None,
     revision: str,
     verbose: bool,
 ) -> None:
@@ -203,7 +203,7 @@ def stream(
     If --file is not given, lists the clip's files in the zip archive.
     """
     _setup_logging(verbose)
-    config, remote, index = _make_components(token, revision)
+    _, remote, index = _make_components(hf_token, revision)
 
     if not index.clip_exists(clip_id):
         console.print(f"[red]Error:[/red] clip_id {clip_id!r} not found in index.")
