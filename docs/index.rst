@@ -1,21 +1,27 @@
 .. SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 .. SPDX-License-Identifier: Apache-2.0
 
-Welcome to the NCore Documentation!
+NCore
+=====
 
-NCore provides data representations, APIs, and tools to support data-driven
-neural reconstructions with a focus on robotics / AV data.
+NCore provides a canonical data specification, APIs, and tools for multi-sensor
+recordings in robotics and autonomous vehicle applications. The format supports
+NV-specific AV data (``NVIDIA Hyperion 8/8.1`` and future variants), robotics
+platforms (``NVIDIA Carter``), as well as 3rd-party datasets like the
+`Waymo Open Dataset <https://waymo.com/open/>`_.
+
+NCore's latest :ref:`V4 component-based data format <v4-data-format>` enables
+modular, independently-managed generic data components with flexible composition
+and scalability.
 
 The project is developed within the `NVIDIA SIL Lab <https://research.nvidia.com/labs/sil/>`_.
-
-================================
 
 .. toctree::
    :maxdepth: 1
    :caption: Data Representation
 
-   data/overview
    data/conventions
+   data/sensor_models
    data/formats
 
 .. toctree::
@@ -26,20 +32,13 @@ The project is developed within the `NVIDIA SIL Lab <https://research.nvidia.com
    apis/ncore
 
 .. toctree::
-   :maxdepth: 1
-   :caption: Tools / Applications
+   :maxdepth: 2
+   :caption: Tools
 
    tools/data_vis
    tools/ncore_vis
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Data Conversions
-   :name: conversions
-
-   conversions/waymo/waymo
-   conversions/colmap/colmap
-   conversions/pai/pai
+   tools/ncore_sequence_meta
+   conversions/index
 
 .. toctree::
    :maxdepth: 1
@@ -48,14 +47,3 @@ The project is developed within the `NVIDIA SIL Lab <https://research.nvidia.com
 
    tutorial/data_loading
    tutorial/data_sanity_check
-
-
-
-================================
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`

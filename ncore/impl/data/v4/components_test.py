@@ -1141,7 +1141,7 @@ class TestDataNewComponent(unittest.TestCase):
         class VelocityComponent:
             """Custom component for storing velocity vectors over time"""
 
-            COMPONENT_NAME: str = "velocity"
+            COMPONENT_NAME: str = "com.myorg.velocity"
 
             class Writer(ComponentWriter):
                 """Writer for velocity data - version v1"""
@@ -1330,7 +1330,7 @@ class TestDataNewComponent(unittest.TestCase):
         class VelocityComponentV2:
             """Version 2 with acceleration data"""
 
-            COMPONENT_NAME: str = "velocity"
+            COMPONENT_NAME: str = "com.myorg.velocity"
 
             class Writer(ComponentWriter):
                 @staticmethod
@@ -1375,7 +1375,7 @@ class TestDataNewComponent(unittest.TestCase):
 
             @staticmethod
             def get_component_name() -> str:
-                return "velocity"
+                return "com.myorg.velocity"
 
             @staticmethod
             def supports_component_version(version: str) -> bool:

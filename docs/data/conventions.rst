@@ -4,12 +4,12 @@
 .. _data_conventions: 
 
 
-Conventions and Specification
-=============================
+Specification
+=============
 
-All data has to be stored following these NCore data specifications. If modules
-use a different convention internally, the conversion should be done within the
-module, and output data should be converted back to this convention.
+All data is stored following the NCore data specification. If modules use a
+different convention internally, the conversion should be done within the module,
+and output data should be converted back to this convention.
 
 
 Coordinate Systems and Transformations
@@ -18,7 +18,8 @@ There are several coordinate systems that are used in practice - NCore uses the
 following conventions.
 
 
-**Transformations between Coordinate Systems**
+Transformations between Coordinate Systems
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 All the transformations are stored in the form of 4x4 ``SE3`` matrices, where
 the top left 3x3 elements represent the rotation matrix ``R`` and the first
@@ -32,20 +33,47 @@ system ``b``. For example a point :math:`\mathbf{p}_a` in coordinate system
     \mathbf{p}_b = \mathbf{R}_a^b \mathbf{p}_a + \mathbf{t}_a^b
 
 
-**Pose Graph Representation**
+Pose Graph Representation
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
-NCore represents all transformations in a pose graph that can be evaluated at
-any valid target timestamp in the dataset. Each node in the pose graph
-represents a coordinate system, and each edge represents a transformation
-between two coordinate systems. Time-dependent transformations are represented
-as trajectories that can be interpolated to obtain smooth transformations. By
-convention, in NCore AV / robotics applications, `rig` is the name of a
-reference coordinate system fixed to the vehicle / robot, `world` represents a
-local coordinate system fixed to the data sequence, and sensor-associated
-coordinate system fixed to the recording device are named equal to the sensor
-IDs.
+NCore represents all spatial relationships in a **pose graph** -- a tree of
+named coordinate frames connected by rigid transformations. Nodes represent
+coordinate frames and edges represent SE3 transformations between them. The
+graph forms a tree (no cycles), enabling unambiguous traversal between any pair
+of frames by composing transformations along the unique connecting path. Edges
+can be traversed in either direction via SE3 inverse.
 
-**World / Global Coordinate Frame**
+Edges are either **static** or **dynamic**:
+
+* **Static edges** are time-invariant 4x4 SE3 matrices. These represent
+  relationships that do not change over time, such as sensor extrinsic
+  calibrations (e.g., ``T_camera_rig``) or the mapping between local and global
+  world frames (``T_world_world_global``).
+
+* **Dynamic edges** are time-dependent trajectories -- sequences of SE3 matrices
+  with associated timestamps. They can be interpolated to arbitrary timestamps
+  using SLERP for the rotation component and linear interpolation for
+  translation. The ego-vehicle trajectory (e.g., ``T_rig_world``) is a typical
+  dynamic edge.
+
+A typical pose graph for an AV recording has the following structure:
+
+.. figure:: pose_graph.svg
+   :width: 60%
+
+   Example pose graph for a vehicle with an articulated trailer. Dashed edges
+   are static (time-invariant) transforms; bold edges are dynamic
+   (time-dependent) trajectories.
+
+The well-known coordinate frames are:
+
+* ``rig`` -- the vehicle / robot body frame (see below)
+* ``world`` -- a sequence-local reference frame (see below)
+* ``world_global`` -- the earth-centered-earth-fixed (ECEF) global frame
+* Sensor frames -- named by their sensor ID (e.g., ``camera_front_wide_120fov``)
+
+World / Global Coordinate Frame
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. figure:: ecef.png
    :figwidth: 40%
@@ -61,7 +89,8 @@ to it. The conversion between the local `world` and `world_global` reference fra
 is known as ``T_world_world_global``.
 
 
-**Rig Coordinate Frame**
+Rig Coordinate Frame
+^^^^^^^^^^^^^^^^^^^^
 
 .. figure:: rig.png
    :figwidth: 40%
@@ -78,7 +107,8 @@ timestamps for each sensor frame (e.g., the start- and end-times of a
 rolling-shutter camera frame / spinning lidar frame).
 
 
-**Camera and Image Coordinate System**
+Camera and Image Coordinate System
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. figure:: camera.jpg
    :figwidth: 40%
@@ -103,50 +133,6 @@ image, i.e., both the u and v coordinates of the first pixel span the range
 Sensor Models
 -------------
 
-NCore supports multiple sensor models for representing camera / lidar intrinsics
-and distortion parameters. Each model provides different parameterizations
-suited for various camera types and use cases.
-
-**Camera Models**
-
-The following camera models are supported:
-
-* :ref:`FTheta Camera Model <ftheta_camera_model>` - NVIDIA's FTheta camera
-  model with polynomial distortion parameterization, suitable for both
-  perspective and wide field-of-view cameras
-* :ref:`OpenCV Pinhole Camera Model <opencv_pinhole_camera_model>` - Standard
-  pinhole camera model with rational radial, tangential, and thin prism
-  distortion coefficients
-* :ref:`OpenCV Fisheye Camera Model <opencv_fisheye_camera_model>` - OpenCV's
-  fisheye camera model with polynomial distortion for ultra-wide angle and
-  fisheye lenses
-
-For detailed mathematical specifications and parameter descriptions of each
-camera model, please refer to :ref:`camera_model_parameterizations`.
-
-**Lidar Models**
-
-NCore supports the following lidar models:
-
-* :ref:`Row-Offset Structured Spinning Lidar <row_offset_spinning_lidar_model>`
-  - Structured spinning lidar model with per-row azimuth offsets (compatible
-  with sensors like Hesai P128)
-
-For detailed mathematical specifications and parameter descriptions, please
-refer to :ref:`lidar_model_parameterizations`.
-
-**External Distortion Models**
-
-Camera sensors may include external distortion models to account for distortion
-sources outside the camera itself:
-
-* :ref:`Bivariate Windshield Model <bivariate_windshield_model>` - Models
-  optical distortion from vehicle windshields using bivariate polynomial
-  deflection in spherical coordinates
-
-Data Format Specifications
----------------------------
-
-For detailed information about how data is organized and stored in NCore's
-component-based format, including data hierarchies, metadata schemas, and
-loading patterns, please refer to :ref:`data_formats`.
+NCore supports multiple sensor models for camera and lidar intrinsics and
+distortion parameters. For the full list of supported models, mathematical
+specifications, and parameter descriptions, see :ref:`sensor_models`.

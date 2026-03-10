@@ -10,6 +10,10 @@ for NCore V4 sequence data, built on `viser <https://github.com/nerfstudio-proje
 Each connected browser client gets an independent set of GUI controls and 3D
 scene state, allowing multiple users to inspect the same sequence concurrently.
 
+.. image:: ncore_vis_demo.gif
+   :alt: Interactive 3D viewer demo showing camera frustums, lidar point clouds, and cuboid overlays
+   :align: center
+
 Usage
 -----
 
@@ -189,7 +193,8 @@ Each lidar sensor has its own folder with:
 - **Show Lidar**: per-lidar visibility toggle
 - **Point Cloud Settings** (subfolder):
 
-  - **Color style**: *Intensity*, *Intensity γ=1/2*, *Intensity γ=1/4*,
+  - **Point Size Radius (cm)**: rendered point size (default 25, range 0--50)
+  - **Color Style**: *Intensity*, *Intensity γ=1/2*, *Intensity γ=1/4*,
     *Range (jet)*, *Height (turbo)*, *Timestamp*, *Model Row*, *Model Column*
   - **Range Cycle (m)**: configurable cycle distance for the jet colormap
     (default 50 m)
@@ -246,7 +251,7 @@ The viewer uses a **component-based plugin architecture**:
    ├── server.py            # Viser server lifecycle, per-client management
    ├── renderer.py          # Per-client GUI and component orchestration
    ├── data_loader.py       # SequenceLoaderProtocol wrapper for visualization
-   ├── utils.py             # Shared math/color utilities
+   ├── utils.py             # Shared math/rotation utilities
    └── components/
        ├── __init__.py      # Component registry + built-in imports
        ├── base.py          # VisualizationComponent ABC + @register_component
