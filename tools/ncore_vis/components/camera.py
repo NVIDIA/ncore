@@ -114,6 +114,11 @@ class CameraComponent(VisualizationComponent):
         self._mask_name: str = ""
         self._mask_opacity: float = 0.3
 
+        # Camera model device and cached CameraModel instances (one per camera sensor)
+        self._device: str = "cuda" if torch.cuda.is_available() else "cpu"
+        self._camera_models: Dict[str, CameraModel] = {}
+        self._build_camera_models()
+
         # Cache camera aspect ratios and load static masks
         self._aspects: Dict[str, float] = {}
         self._masks: Dict[str, Dict[str, np.ndarray]] = {}
@@ -148,6 +153,21 @@ class CameraComponent(VisualizationComponent):
 
             # -- Shared overlay settings folder --
             with self.client.gui.add_folder("Overlay Settings", expand_by_default=False):
+                # -- Projection device --
+                _device_options = ["cuda", "cpu"] if torch.cuda.is_available() else ["cpu"]
+                device_dropdown = self.client.gui.add_dropdown(
+                    "Projection Device",
+                    options=_device_options,
+                    initial_value=self._device,
+                    hint="Torch device used for camera model projections",
+                )
+
+                @device_dropdown.on_update
+                def _(_: viser.GuiEvent) -> None:
+                    self._device = device_dropdown.value
+                    self._build_camera_models()
+                    self._refresh_all_cameras()
+
                 # -- Cuboid overlay --
                 overlay_cuboids_checkbox = self.client.gui.add_checkbox(
                     "Overlay Cuboids", initial_value=False, hint="Project 3D cuboid edges onto all cameras"
@@ -374,6 +394,17 @@ class CameraComponent(VisualizationComponent):
             self._mask_opacity = mask_opacity_slider.value
             self._refresh_all_cameras()
 
+    def _build_camera_models(self) -> None:
+        """Build (or rebuild) the per-camera :class:`CameraModel` cache using ``self._device``."""
+        self._camera_models = {
+            camera_id: CameraModel.from_parameters(
+                self.data_loader.get_camera_sensor(camera_id).model_parameters,
+                device=self._device,
+                dtype=torch.float32,
+            )
+            for camera_id in self.data_loader.camera_ids
+        }
+
     def _refresh_all_cameras(self) -> None:
         """Re-render all cameras in parallel (used when a shared overlay setting changes)."""
         if not self._enabled:
@@ -535,7 +566,7 @@ class CameraComponent(VisualizationComponent):
 
         cam = self.data_loader.get_camera_sensor(camera_id)
         lidar_sensor = self.data_loader.get_lidar_sensor(lidar_id)
-        camera_model = CameraModel.from_parameters(cam.model_parameters, device="cpu", dtype=torch.float32)
+        camera_model = self._camera_models[camera_id]
 
         # Find closest lidar frame to the camera frame (by center-of-frame timestamp)
         cam_interval = self.data_loader.get_sensor_frame_interval_us(camera_id, frame)
@@ -648,7 +679,7 @@ class CameraComponent(VisualizationComponent):
             Copy of the image with visible cuboid edges drawn.
         """
         cam = self.data_loader.get_camera_sensor(camera_id)
-        camera_model = CameraModel.from_parameters(cam.model_parameters, device="cpu", dtype=torch.float32)
+        camera_model = self._camera_models[camera_id]
 
         world_id = self.data_loader.world_frame_id
         T_world_sensor_start = cam.get_frames_T_source_sensor(world_id, frame, FrameTimepoint.START)

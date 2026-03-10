@@ -97,7 +97,7 @@ class CuboidsComponent(VisualizationComponent):
             # Remove existing scene nodes
             old_boxes, self._cuboid_boxes = self._cuboid_boxes, []
             old_labels, self._cuboid_labels = self._cuboid_labels, []
-            
+
             for box in old_boxes:
                 box.remove()
             for label in old_labels:
