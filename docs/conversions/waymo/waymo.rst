@@ -4,8 +4,9 @@
 Waymo-Open Dataset
 ==================
 
-The NCore Waymo tool converts data from the Waymo-Open format (**.tfrecords**)
-into NCore V4 format.
+The NCore Waymo tool converts data from the
+`Waymo-Open <https://waymo.com/open/>`_ format (**.tfrecords**) into NCore V4
+format.
 
 .. _waymo_data_conventions:
 
@@ -65,7 +66,8 @@ Run the converter with Bazel from the repository root:
 .. code-block:: bash
 
     bazel run //tools/data_converter/waymo:convert -- \
-        --root-dir <PATH_TO_TFRECORDS> \ --output-dir <PATH_TO_OUTPUT> \
+        --root-dir <PATH_TO_TFRECORDS> \
+        --output-dir <PATH_TO_OUTPUT> \
         waymo-v4
 
 **Base arguments** (required):

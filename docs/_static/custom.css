@@ -4,3 +4,12 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 /* Custom CSS overrides for NCore documentation */
+
+/* Prevent scrollbars on display math blocks */
+div.math {
+    overflow: visible !important;
+}
+
+div.math mjx-container {
+    overflow: visible !important;
+}

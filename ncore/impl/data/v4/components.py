@@ -518,6 +518,15 @@ class SequenceComponentGroupsReader:
 
 
 class ComponentWriter(ABC):
+    """Base class for V4 component writers.
+
+    Subclasses must implement :meth:`get_component_name` and
+    :meth:`get_component_version`, and may override :meth:`finalize` to flush
+    buffered data.  All timestamps stored by the writer must fall within the
+    sequence's ``sequence_timestamp_interval_us`` time range (available as
+    ``self._sequence_timestamp_interval_us``).
+    """
+
     @staticmethod
     @abstractmethod
     def get_component_name() -> str:
@@ -541,6 +550,15 @@ class ComponentWriter(ABC):
 
 
 class ComponentReader(ABC):
+    """Base class for V4 component readers.
+
+    Subclasses must implement :meth:`get_component_name` and
+    :meth:`supports_component_version`.  The underlying zarr group is
+    accessible as ``self._group``; component metadata is available via the
+    :attr:`instance_name`, :attr:`component_version`, and
+    :attr:`generic_meta_data` properties.
+    """
+
     @staticmethod
     @abstractmethod
     def get_component_name() -> str:
@@ -558,6 +576,7 @@ class ComponentReader(ABC):
 
     @property
     def instance_name(self) -> str:
+        """The user-defined name that distinguishes this component instance from others of the same type."""
         return self._instance_name
 
     @property

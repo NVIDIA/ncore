@@ -107,7 +107,7 @@ The ``pai-clip-dl`` tool manages downloads from the HuggingFace dataset:
 
     # Download one or more clips to a local directory
     bazel run \
-      //tools/data_converter/pai/pai_remote:pai-clip-dl
+      //tools/data_converter/pai/pai_remote:pai-clip-dl \
       -- \
       download <clip-id> [<clip-id> ...] \
       --output-dir /path/to/data
@@ -168,7 +168,9 @@ Usage
 .. code-block:: bash
 
     bazel run //tools/data_converter/pai:convert -- \
-        --root-dir <PATH_TO_CLIPS> \ --output-dir <PATH_TO_OUTPUT> \ pai-v4
+        --root-dir <PATH_TO_CLIPS> \
+        --output-dir <PATH_TO_OUTPUT> \
+        pai-v4
 
 **Streaming mode** — convert clips directly from HuggingFace without
 downloading:
@@ -176,7 +178,9 @@ downloading:
 .. code-block:: bash
 
     bazel run //tools/data_converter/pai:convert -- \
-        --output-dir <PATH_TO_OUTPUT> \ pai-stream-v4 \ --clip-id <clip-id> \
+        --output-dir <PATH_TO_OUTPUT> \
+        pai-stream-v4 \
+        --clip-id <clip-id> \
         --hf-token <your-hf-token>
 
 The output for each clip is written to::

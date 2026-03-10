@@ -76,14 +76,6 @@ def cli(ctx, *_, **kwargs):
     """Data Preprocessing Pipeline
 
     Source data format is selected via subcommands, for which dedicated options can be specified.
-
-    Example invocation for 'NV maglev' data
-
-    \b
-    ./convert_raw_data.py
-      --root-dir <FOLDER WITH SOURCE DATASETS>
-      --output-dir <FOLDER DATA WILL BE PRODUCED>
-      <your-data-variant>
     """
 
     # Create a config dict-like object and remember it as the context object. From
