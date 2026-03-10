@@ -291,6 +291,8 @@ class CameraComponent(VisualizationComponent):
             return
         center_us = interval_us.start + (interval_us.end - interval_us.start) // 2
         for camera_id in self.data_loader.camera_ids:
+            if not self._visible.get(camera_id, True):
+                continue
             sensor = self.data_loader.get_camera_sensor(camera_id)
             self._frame_sliders[camera_id].value = sensor.get_closest_frame_index(center_us, relative_frame_time=0.5)
 
@@ -311,7 +313,10 @@ class CameraComponent(VisualizationComponent):
 
         @show_checkbox.on_update
         def _(_: viser.GuiEvent, _cid: str = camera_id) -> None:
+            was_hidden = not self._visible.get(_cid, True)
             self._set_camera_visibility(_cid, show_checkbox.value)
+            if show_checkbox.value and was_hidden:
+                self._update_camera(_cid)
 
         @go_to_frame.on_click
         def _(_: viser.GuiEvent, _cid: str = camera_id) -> None:
@@ -409,7 +414,8 @@ class CameraComponent(VisualizationComponent):
         """Re-render all cameras in parallel (used when a shared overlay setting changes)."""
         if not self._enabled:
             return
-        futures = [self.renderer._executor.submit(self._update_camera, cid) for cid in self.data_loader.camera_ids]
+        visible_ids = [cid for cid in self.data_loader.camera_ids if self._visible.get(cid, True)]
+        futures = [self.renderer._executor.submit(self._update_camera, cid) for cid in visible_ids]
         for future in concurrent.futures.as_completed(futures):
             try:
                 future.result()
@@ -427,6 +433,8 @@ class CameraComponent(VisualizationComponent):
 
     def _update_camera(self, camera_id: str) -> None:
         """Re-render camera frustum, pose frame, and label for *camera_id*."""
+        if not self._visible.get(camera_id, True):
+            return
         with self.client.atomic():
             if frustum := self._frusta.pop(camera_id, None):
                 frustum.remove()

@@ -209,6 +209,8 @@ class LidarComponent(VisualizationComponent):
             return
         center_us = interval_us.start + (interval_us.end - interval_us.start) // 2
         for lidar_id in self.data_loader.lidar_ids:
+            if not self._show_pc.get(lidar_id, True):
+                continue
             sensor = self.data_loader.get_lidar_sensor(lidar_id)
             self._frame_sliders[lidar_id].value = sensor.get_closest_frame_index(center_us, relative_frame_time=0.5)
 
@@ -259,8 +261,11 @@ class LidarComponent(VisualizationComponent):
 
         @pc_checkbox.on_update
         def _(_: viser.GuiEvent, _lid: str = lidar_id) -> None:
+            was_hidden = not self._show_pc.get(_lid, True)
             self._show_pc[_lid] = pc_checkbox.value
-            if _lid in self._point_clouds:
+            if pc_checkbox.value and was_hidden:
+                self._update_lidar(_lid)
+            elif _lid in self._point_clouds:
                 self._point_clouds[_lid].visible = pc_checkbox.value
 
         @fused_checkbox.on_update
@@ -288,6 +293,8 @@ class LidarComponent(VisualizationComponent):
     def _update_lidar(self, lidar_id: str) -> None:
         """Re-render point cloud for *lidar_id* using current GUI state."""
         if not self._enabled:
+            return
+        if not self._show_pc.get(lidar_id, True):
             return
         with self.client.atomic():
             # Remove existing scene node
