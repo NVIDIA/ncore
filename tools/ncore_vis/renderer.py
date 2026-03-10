@@ -222,7 +222,7 @@ class NCoreVisRenderer:
                 label="Up Direction",
                 options=["+z", "-z", "+y", "-y", "+x", "-x"],
                 initial_value="+z",
-                hint="Global up direction for camera controls and lighting",
+                hint="Global up direction for camera controls",
             )
 
             @up_direction_dropdown.on_update
