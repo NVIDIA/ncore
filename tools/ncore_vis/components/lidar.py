@@ -76,13 +76,10 @@ class LidarComponent(VisualizationComponent):
     def __init__(self, client, data_loader, renderer):
         super().__init__(client, data_loader, renderer)
 
-        # Per-sensor generic_data fields that can drive point color.
-        self._metadata_color_fields: Dict[str, List[str]] = {}
-
-        # scan lidar data for metadata that can be used to colorize points
-        for lidar_id in self.data_loader.lidar_ids:
-            metadata_fields = self._scan_metadata_color_fields(lidar_id)
-            self._metadata_color_fields[lidar_id] = metadata_fields
+        # Scan for per-sensor generic_data fields that can drive point color.
+        self._metadata_color_fields: Dict[str, List[str]] = {
+            lidar_id: self._scan_metadata_color_fields(lidar_id) for lidar_id in self.data_loader.lidar_ids
+        }
 
     def create_gui(self, tab_group: viser.GuiTabGroupHandle) -> None:  # noqa: C901
         self._enabled: bool = True
@@ -235,18 +232,24 @@ class LidarComponent(VisualizationComponent):
         A field qualifies if it has exactly 1, 3, or 4 values per point.
         """
         sensor = self.data_loader.get_lidar_sensor(lidar_id)
-        ts = sensor.frames_timestamps_us[0, 1].item()
+
+        if sensor.frames_count == 0:
+            return []
+
         n_points = sensor.get_frame_ray_bundle_count(0)
+
         if n_points == 0:
             return []
 
         color_metadata_fields: List[str] = []
-        for name in sensor.get_frame_generic_data_names(ts):
-            data = np.asarray(sensor.get_frame_generic_data(ts, name))
+
+        for name in sensor.get_frame_generic_data_names(0):
+            data = np.asarray(sensor.get_frame_generic_data(0, name))
             if data.ndim == 1 and data.shape[0] == n_points:
                 color_metadata_fields.append(name)
             elif data.ndim == 2 and data.shape[0] == n_points and data.shape[1] in [1, 3, 4]:
                 color_metadata_fields.append(name)
+
         return color_metadata_fields
 
     def _bind_lidar_callbacks(
@@ -605,10 +608,12 @@ class LidarComponent(VisualizationComponent):
 
         # Convert non-floats to floats
         if not np.issubdtype(data.dtype, np.floating):
-            data = data.astype(np.float64)
+            data = data.astype(np.float32)
 
         # Normalize and convert to uint8
-        drange = data.max() - data.min()
+        min_val = data.min()
+        max_val = data.max()
+        drange = max_val - min_val
         if drange == 0.0:
             return np.tile(_DEFAULT_POINT_COLOR, (n_points, 1))
-        return ((data - data.min()) / drange * 255.0).astype(np.uint8)
+        return ((data - min_val) / drange * 255.0).astype(np.uint8)
