@@ -15,11 +15,31 @@
 
 import dataclasses
 import logging
+import os
 
 from pathlib import Path
 from typing import Optional, Tuple
 
 import click
+import matplotlib
+
+
+def _select_matplotlib_backend() -> None:
+    """Select the best available matplotlib backend.
+
+    Uses WebAgg for interactive display (opens plot in browser, no GUI toolkit required),
+    otherwise falls back to Agg (non-interactive, save-only).
+    """
+    if os.environ.get("MPLBACKEND"):
+        return  # respect explicit user override
+    if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+        matplotlib.use("WebAgg")
+    else:
+        matplotlib.use("Agg")
+
+
+_select_matplotlib_backend()
+
 import numpy as np
 import tqdm
 
@@ -53,6 +73,9 @@ def _rgba(r: float) -> list[float]:
     return c
 
 
+_fig = None
+
+
 def _plot_points_on_image(
     projected_points,
     camera_image,
@@ -71,8 +94,10 @@ def _plot_points_on_image(
         show: Whether to display the plot interactively.
         save_path: If provided, save the figure to this path.
     """
-    plt.clf()
-    plt.figure(figsize=(20, 12))
+    global _fig
+    if _fig is None:
+        _fig = plt.figure(figsize=(20, 12))
+    _fig.clf()
     plt.imshow(camera_image)
     plt.grid(visible=False)
 

@@ -12,12 +12,6 @@ In addition to nvidia drivers / cuda runtime (>11.1), the following system packa
 sudo apt-get install pandoc
 ```
 
-Additionally, the following packages should be installed as dependencies for tools:
-
-```bash
-sudo apt-get install qt6-base-dev libxcb-cursor0
-```
-
 ### Setup GitHub Personal Access Token / Docker Credentials
 
 Create a github personal access token with `read:packages` scope at [create-new-token](https://github.com/settings/tokens/new) and register the new token in `~/.netrc` file as

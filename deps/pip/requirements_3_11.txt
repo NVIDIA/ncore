@@ -1771,26 +1771,6 @@ pyparsing==3.2.1 \
     --hash=sha256:506ff4f4386c4cec0590ec19e6302d3aedb992fdc02c761e90416f158dacf8e1 \
     --hash=sha256:61980854fd66de3a90028d679a954d5f2623e83144b5afe5ee86f43d762e5f0a
     # via matplotlib
-pyside6==6.8.2.1 \
-    --hash=sha256:23d2a1a77b25459a049c4276b4e0bbfb375b73d3921061b1a16bcfa64e1fe517 \
-    --hash=sha256:3fcb551729f235475b2abe7d919027de54a65d850e744f60716f890202273720 \
-    --hash=sha256:92361e41727910e3560ea5ba494fabecc76cd20892c9fcb2ced07619081c4e65 \
-    --hash=sha256:bfefa80a93db06dc64c0e7beef0377c9b8ca51e007cfc34575defe065af893b6
-    # via -r deps/pip/requirements_tools.in
-pyside6-addons==6.8.2.1 \
-    --hash=sha256:5558816018042fecd0d782111ced529585a23ea9a010b518f8495764f578a01f \
-    --hash=sha256:c761cc45022aa79d8419e671e7fb34a4a3e5b3826f1e68fcb819bd6e3a387fbb \
-    --hash=sha256:d904179f16deeca4ba440b4ef78e8d54df2b994b46784ad9d53b741082f3b2a7 \
-    --hash=sha256:f3d85e676851ada8238bc76ebfacbee738fc0b35b3bc15c9765dd107b8ee6ec4
-    # via pyside6
-pyside6-essentials==6.8.2.1 \
-    --hash=sha256:18de224f09108998d194e60f2fb8a1e86367dd525dd8a6192598e80e6ada649e \
-    --hash=sha256:5ab31e5395a4724102edd6e8ff980fa3f7cde2aa79050763a1dcc30bb914195a \
-    --hash=sha256:7aed46f91d44399b4c713cf7387f5fb6f0114413fbcdbde493a528fb8e19f6ed \
-    --hash=sha256:ae5cc48f7e9a08e73e3ec2387ce245c8150e620b8d5a87548ebd4b8e3aeae49b
-    # via
-    #   pyside6
-    #   pyside6-addons
 pytest==8.3.4 \
     --hash=sha256:50e16d954148559c9a74109af1eaf0c945ba2d8f30f0a3d3335edde19788b6f6 \
     --hash=sha256:965370d062bce11e73868e0335abac31b4d3de0e82f4007408d242b4f8610761
@@ -2185,15 +2165,6 @@ shapely==2.1.2 \
     --hash=sha256:fe7b77dc63d707c09726b7908f575fc04ff1d1ad0f3fb92aec212396bc6cfe5e \
     --hash=sha256:fe9627c39c59e553c90f5bc3128252cb85dc3b3be8189710666d2f8bc3a5503e
     # via trimesh
-shiboken6==6.8.2.1 \
-    --hash=sha256:1b751d47b759762b7ca31bad278d52eca4105d3028880d93979261ebbfba810c \
-    --hash=sha256:8592401423acc693f51dbbfae5e7493cc3ed6738be79daaf90afa07f4da5bb25 \
-    --hash=sha256:c83e90056f13d0872cc4d2b7bf60b6d6e3b1b172f1f91910c0ba5b641af01758 \
-    --hash=sha256:d3dedeb3732ecfc920c9f97da769c0022a1c3bda99346a9eba56fbf093deaa75
-    # via
-    #   pyside6
-    #   pyside6-addons
-    #   pyside6-essentials
 six==1.17.0 \
     --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274 \
     --hash=sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81
@@ -2339,7 +2310,9 @@ tornado==6.4.2 \
     --hash=sha256:c36e62ce8f63409301537222faffcef7dfc5284f27eec227389f2ad11b09d946 \
     --hash=sha256:c82c46813ba483a385ab2a99caeaedf92585a1f90defb5693351fa7e4ea0bf73 \
     --hash=sha256:e828cce1123e9e44ae2a50a9de3055497ab1d0aeb440c5ac23064d9e44880da1
-    # via jupyter-client
+    # via
+    #   -r deps/pip/requirements_tools.in
+    #   jupyter-client
 tqdm==4.67.1 \
     --hash=sha256:26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2 \
     --hash=sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2

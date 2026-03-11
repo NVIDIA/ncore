@@ -94,8 +94,8 @@ py_binary(
         requirement("click"),
         requirement("matplotlib"),
         requirement("numpy"),
-        requirement("pyside6"),  # required to open Qt6 windows
         requirement("scipy"),
+        requirement("tornado"),  # required by matplotlib WebAgg backend for interactive display
         requirement("tqdm"),
     ],
 )
