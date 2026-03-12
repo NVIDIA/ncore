@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Cocogitto configuration for conventional commit-based versioning and changelog generation.
+#
+# Usage:
+#   cog --config .cog.toml check                  # Validate commit messages
+#   cog --config .cog.toml bump --auto --dry-run  # Preview next version
+#   cog --config .cog.toml changelog              # Generate changelog
+#
+# See https://docs.cocogitto.io/reference/config.html
+
+tag_prefix = "v"
+
+# "HEAD" allows usage from jj's detached HEAD mode
+branch_whitelist = ["main", "HEAD"]
+
+# Update the Python wheel version in the Bazel build file before the bump commit.
+pre_bump_hooks = [
+    """sed -i 's/version = "[0-9]*\\.[0-9]*\\.[0-9]*"/version = "{{version}}"/g' ncore/BUILD.bazel""",
+]
+
+# Remove the local tag created by cog bump; tagging is handled by GH releases / CI.
+post_bump_hooks = [
+    "git tag --delete {{version_tag}}",
+]
+
+[changelog]
+path = "CHANGELOG.md"
+template = "remote"
+remote = "github.com"
+owner = "NVIDIA"
+repository = "ncore"
+
+# Commit types included in the changelog (user-facing changes only).
+# Types not listed here use cocogitto defaults (omitted from changelog).
+[commit_types]
+feat = { changelog_title = "➕ Added", order = 1 }
+fix = { changelog_title = "🪲 Fixed", order = 2 }
+perf = { changelog_title = "⚡ Performance", order = 3 }
+refactor = { changelog_title = "🔄 Changed", order = 4 }
+docs = { changelog_title = "📚 Documentation", order = 5 }
+ci = { changelog_title = "⚙️ CI", order = 6 }
+build = { changelog_title = "🏗️ Build", order = 7 }
+style = { changelog_title = "🎨 Style", order = 8 }
+chore = { changelog_title = "🔧 Chore", order = 9 }
+test = { changelog_title = "🧪 Tests", order = 10 }

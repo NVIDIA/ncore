@@ -154,7 +154,21 @@ This repository enforces a **linear commit history** of commits with conventiona
 
 PRs are merged via **rebase only** (no merge commits).
 
-Before submitting your PR, ensure your branch is *rebased* on the latest `main` and is free of merge commits.
+Before submitting your PR, ensure your branch is _rebased_ on the latest `main` and is free of merge commits.
+
+## Releases & Versioning
+
+NCore uses [Semantic Versioning](https://semver.org/) with versions determined automatically from [Conventional Commits](https://www.conventionalcommits.org/) via [cocogitto](https://docs.cocogitto.io/).
+
+### Cocogitto Configuration
+
+Cocogitto is configured via `.cog.toml` in the repository root. All `cog` commands must reference this config:
+
+```bash
+cog --config .cog.toml check                   # Validate commit messages
+cog --config .cog.toml bump --auto --dry-run   # Preview next version
+cog --config .cog.toml changelog               # Generate changelog
+```
 
 ## Commit Signatures
 

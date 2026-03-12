@@ -10,6 +10,7 @@ All notable changes to the NCore project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - - -
+
 ## [v18.5.0](https://github.com/NVIDIA/ncore/releases/tag/v18.5.0) - 2026-02-17
 #### ➕ Added
 - Initial open-source release

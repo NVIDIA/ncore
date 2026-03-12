@@ -5,8 +5,9 @@ _build/
 
 .ci-keep/
 
-# Override global gitignore for .github directory
+# Override global gitignore for dotfiles that must be tracked
 !.github/
+!.cog.toml
 
 # Bazel-specific ignores
 bazel-*
