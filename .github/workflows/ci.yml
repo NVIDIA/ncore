@@ -114,9 +114,9 @@ jobs:
         uses: actions/deploy-pages@v4
 
   # =============================================================================
-  # Publish to Test PyPI - runs only on main branch after build-and-test succeeds
+  # Publish to PyPI - runs only on main branch after build-and-test succeeds
   # =============================================================================
-  publish-testpypi:
+  publish-pypi:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: build-and-test
     runs-on: ubuntu-22.04
@@ -132,21 +132,21 @@ jobs:
           free-disk-space: true
           github-token: ${{ secrets.NVIDIA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Publish to Test PyPI
+      - name: Publish to PyPI
         env:
           TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
-        run: bazelisk run //ncore:ncore_wheel.publish -- --repository testpypi --verbose --skip-existing --non-interactive
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: bazelisk run //ncore:ncore_wheel.publish -- --repository pypi --verbose --skip-existing --non-interactive
 
       - name: Print installation instructions
         run: |
           echo "========================================"
-          echo "Python package published to Test PyPI!"
+          echo "Python package published to PyPI!"
           echo ""
-          echo "To install from Test PyPI:"
-          echo "  pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple nvidia-ncore"
+          echo "To install from PyPI:"
+          echo "  pip install nvidia-ncore"
           echo ""
           echo "Note: --extra-index-url is required for dependencies (numpy, torch, etc.)"
           echo ""
-          echo "View package: https://test.pypi.org/project/nvidia-ncore"
+          echo "View package: https://pypi.org/project/nvidia-ncore"
           echo "========================================"
