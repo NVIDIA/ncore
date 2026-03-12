@@ -823,7 +823,7 @@ def pai_v4(ctx, *_, **kwargs):
 @click.option(
     "--revision",
     type=str,
-    default="main",
+    default="ncore",
     show_default=True,
     help="HuggingFace dataset revision (branch/tag).",
 )

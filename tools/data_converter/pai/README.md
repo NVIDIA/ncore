@@ -154,7 +154,7 @@ bazel run //tools/data_converter/pai:convert -- \
     --hf-token <your-hf-token>
 ```
 
-`--revision` selects the HuggingFace dataset branch/tag (default: `main`). Video data is
+`--revision` selects the HuggingFace dataset branch/tag (current default: `ncore`). Video data is
 temporarily written to disk and cleaned up after each clip.
 
 ### Shared conversion options
