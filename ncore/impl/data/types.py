@@ -636,7 +636,7 @@ class RowOffsetStructuredSpinningLidarModelParameters(
     )  # azimuth angle of each column, starting at first element of the spin [clockwise / counter-clockwise around z axis depending on sensors spin direction, relative to x axis] [(Ncolumns,) radians]
     row_azimuth_offsets_rad: np.ndarray = util.numpy_array_field(
         np.float32
-    )  # azimuth angle offsets for each row [around z axis, relative to x axis] [(Nrows,) radians]
+    )  # azimuth angle offsets for each row (optional, can be zero if no row offsets) [around z axis, relative to x axis] [(Nrows,) radians]
 
     def __post_init__(self):
         # Sanity checks

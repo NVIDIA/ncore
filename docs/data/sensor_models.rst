@@ -344,7 +344,7 @@ The Row-Offset Structured Spinning Lidar model parameterizes lidar returns using
 - β (beta): azimuth angle in radians
 - E: row_elevations_rad array - elevation angles per row
 - B: column_azimuths_rad array - base azimuth angles per column
-- Δ (Delta): row_azimuth_offsets_rad array - azimuth offsets per row
+- Δ (Delta): row_azimuth_offsets_rad array - azimuth offsets per row (optional, can be zero if no row offsets)
 - i: row index
 - j: column index
 
