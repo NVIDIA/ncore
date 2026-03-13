@@ -74,7 +74,7 @@ jobs:
   # Deploy Documentation - runs only on main branch after build-and-test succeeds
   # =============================================================================
   export-docs:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && github.repository == 'NVIDIA/ncore'
     needs: build-and-test
     runs-on: ubuntu-22.04
 
@@ -101,7 +101,7 @@ jobs:
           path: 'bazel-bin/docs/ncore_html/'
 
   deploy-docs:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && github.repository == 'NVIDIA/ncore'
     needs: export-docs
     runs-on: ubuntu-latest
     environment:
@@ -117,7 +117,7 @@ jobs:
   # Publish to PyPI - runs only on main branch after build-and-test succeeds
   # =============================================================================
   publish-pypi:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && github.repository == 'NVIDIA/ncore'
     needs: build-and-test
     runs-on: ubuntu-22.04
 
