@@ -8,8 +8,8 @@ Specification
 =============
 
 All data is stored following the NCore data specification. If modules use a
-different convention internally, the conversion should be done within the module,
-and output data should be converted back to this convention.
+different convention internally, the conversion should be done within the
+module, and output data should be converted back to this convention.
 
 
 Coordinate Systems and Transformations
@@ -21,16 +21,26 @@ following conventions.
 Transformations between Coordinate Systems
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-All the transformations are stored in the form of 4x4 ``SE3`` matrices, where
-the top left 3x3 elements represent the rotation matrix ``R`` and the first
-three rows of the last column denote the translation ``t`` in meters. They are
-stored using the convention ``T_a_b``, which denotes the transformation matrix
-that transforms the points from the coordinate system ``a`` to the coordinate
-system ``b``. For example a point :math:`\mathbf{p}_a` in coordinate system
-``a`` can be transformed to point :math:`\mathbf{p}_b` as
+All relative transformations are stored in the form of homogeneous 4x4
+:math:`SE(3)` matrices, where the top left 3x3 elements represent a rotation
+matrix :math:`\mathbf{R}` and the first three rows of the last column denote a
+translation :math:`\mathbf{t}` in the metric units of the sequence. They are
+denoted using the identifier ``T_a_b`` representing :math:`T_a^b`, which
+corresponds to the transformation matrix that maps the points from the
+coordinate system :math:`a` to the coordinate system :math:`b`.
+
+For instance, a point :math:`\mathbf{p}_a` in coordinate system :math:`a` can be
+transformed to point :math:`\mathbf{p}_b` as
 
 .. math::
-    \mathbf{p}_b = \mathbf{R}_a^b \mathbf{p}_a + \mathbf{t}_a^b
+    \mathbf{p}_b = \mathbf{R}_a^b \, \mathbf{p}_a + \mathbf{t}_a^b
+
+Transformations are chained together by matrix multiplication. For example,
+given the transformations :math:`T_a^b` and :math:`T_b^c`, the transformation
+from :math:`a` to :math:`c` is obtained as
+
+.. math::
+    T_a^c = T_b^c \, T_a^b
 
 
 Pose Graph Representation
@@ -38,23 +48,23 @@ Pose Graph Representation
 
 NCore represents all spatial relationships in a **pose graph** -- a tree of
 named coordinate frames connected by rigid transformations. Nodes represent
-coordinate frames and edges represent SE3 transformations between them. The
-graph forms a tree (no cycles), enabling unambiguous traversal between any pair
-of frames by composing transformations along the unique connecting path. Edges
-can be traversed in either direction via SE3 inverse.
+coordinate frames and edges represent :math:`SE(3)` transformations between
+them. The graph forms a tree (no cycles), enabling unambiguous traversal between
+any pair of frames by composing transformations along the unique connecting
+path. Edges can be traversed in either direction via :math:`SE(3)` inverse.
 
 Edges are either **static** or **dynamic**:
 
-* **Static edges** are time-invariant 4x4 SE3 matrices. These represent
-  relationships that do not change over time, such as sensor extrinsic
-  calibrations (e.g., ``T_camera_rig``) or the mapping between local and global
+* **Static edges** are time-invariant 4x4 :math:`SE(3)` matrices. These
+  represent relationships that do not change over time, such as sensor extrinsic
+  calibrations (e.g., ``T_camera_rig``), or the mapping between local and global
   world frames (``T_world_world_global``).
 
-* **Dynamic edges** are time-dependent trajectories -- sequences of SE3 matrices
-  with associated timestamps. They can be interpolated to arbitrary timestamps
-  using SLERP for the rotation component and linear interpolation for
-  translation. The ego-vehicle trajectory (e.g., ``T_rig_world``) is a typical
-  dynamic edge.
+* **Dynamic edges** are time-dependent trajectories -- sequences of
+  :math:`SE(3)` matrices with associated timestamps. They can be interpolated to
+  arbitrary timestamps using SLERP for the rotation component and linear
+  interpolation for translation. The ego-vehicle trajectory (e.g.,
+  ``T_rig_world``) is a typical dynamic edge.
 
 A typical pose graph for an AV recording has the following structure:
 
@@ -81,12 +91,12 @@ World / Global Coordinate Frame
 
 The position and orientation of the ego frame, as well as other objects in the
 scene, can be expressed in the earth-centered-earth-fixed (ECEF) `world_global`
-coordinate system in the form of high-precision SE3 matrices. To avoid very
-large local coordinates and numerical precision issues, NCore uses a local
+coordinate system in the form of high-precision :math:`SE(3)` matrices. To avoid
+very large local coordinates and numerical precision issues, NCore uses a local
 `world` coordinate system where one usually stores the first pose of the ego
 frame in the sequence to an identity matrix and express all other poses relative
-to it. The conversion between the local `world` and `world_global` reference frames
-is known as ``T_world_world_global``.
+to it. The conversion between the local `world` and `world_global` reference
+frames is known as ``T_world_world_global``.
 
 
 Rig Coordinate Frame
