@@ -136,7 +136,7 @@ subdirectory is treated as a separate sequence.
      - Prefix prepended to COLMAP integer camera IDs to form NCore sensor IDs
        (e.g. ``camera1``)
    * - ``--include-downsampled-images BOOL``
-     - ``True``
+     - ``False``
      - Include downsampled image directories (``images_2``, ``images_4``,
        ``images_8``) as additional camera sensors
    * - ``--include-3d-points BOOL``

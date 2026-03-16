@@ -55,7 +55,7 @@ class ColmapConverter4Config(FileBasedDataConverterConfig):
     store_sequence_meta: bool = True
     start_time_sec: float = 0.0
     camera_prefix: str = "camera"
-    include_downsampled_images: bool = True
+    include_downsampled_images: bool = False
     include_3d_points: bool = True
 
 
@@ -488,7 +488,7 @@ class ColmapDataConverter(FileBasedDataConverter):
 @click.option(
     "--include-downsampled-images",
     type=click.BOOL,
-    default=True,
+    default=False,
     help="Include downsampled images as additional cameras. Images should be in folders such as `images_2`, etc.",
 )
 @click.option(
