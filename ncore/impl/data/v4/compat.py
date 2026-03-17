@@ -107,6 +107,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
                 f"CuboidsComponent group '{cuboids_component_group_name}' not found"
             )
             self._cuboids_reader = cuboids_readers[cuboids_component_group_name]
+        self._cuboid_observations_cache: Optional[List[CuboidTrackObservation]] = None
 
         self._cameras_readers: Dict[str, CameraSensorComponent.Reader] = self._reader.open_component_readers(
             CameraSensorComponent.Reader
@@ -526,11 +527,25 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
         )
 
     @override
-    def get_cuboid_track_observations(self) -> Generator[CuboidTrackObservation]:
-        """Returns all available cuboid track observations in the sequence"""
+    def get_cuboid_track_observations(
+        self, timestamp_interval_us: Optional[HalfClosedInterval] = None
+    ) -> Generator[CuboidTrackObservation]:
+        """Returns all available cuboid track observations in the sequence.
+
+        Args:
+            timestamp_interval_us: If provided, only observations whose ``timestamp_us``
+                falls within this half-closed interval ``[start, stop)`` are returned.
+                When ``None`` (default), all observations are returned.
+        """
 
         # No cuboids reader available, return empty generator
         if self._cuboids_reader is None:
             return
 
-        yield from self._cuboids_reader.get_observations()
+        # Lazily cache all observations on first call to avoid re-reading from storage
+        if self._cuboid_observations_cache is None:
+            self._cuboid_observations_cache = list(self._cuboids_reader.get_observations())
+
+        for obs in self._cuboid_observations_cache:
+            if timestamp_interval_us is None or obs.timestamp_us in timestamp_interval_us:
+                yield obs

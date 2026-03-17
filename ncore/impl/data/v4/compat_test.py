@@ -19,6 +19,7 @@ import numpy as np
 
 from python.runfiles import Runfiles  # pyright: ignore[reportMissingImports] # ty:ignore[unresolved-import]
 
+from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import unpack_optional
 
 from .compat import SequenceLoaderV4
@@ -503,3 +504,57 @@ class TestCompatV4ReferenceValues(unittest.TestCase):
         self.assertEqual(third_obs.track_id, "718b491f98662e3f820a72966e5f6e1ed314aba4")
         self.assertEqual(third_obs.class_id, "automobile")
         self.assertEqual(third_obs.timestamp_us, 1648597318806465)
+
+    def test_cuboid_observations_timestamp_filtering(self):
+        """Test that timestamp_interval_us correctly filters cuboid track observations"""
+
+        # Get all observations to establish reference data
+        all_observations = list(self.loader.get_cuboid_track_observations())
+        self.assertEqual(len(all_observations), 148)
+
+        all_timestamps = sorted(obs.timestamp_us for obs in all_observations)
+        min_ts = all_timestamps[0]
+        max_ts = all_timestamps[-1]
+
+        # None (default) returns all observations
+        all_observations_none = list(self.loader.get_cuboid_track_observations(timestamp_interval_us=None))
+        self.assertEqual(len(all_observations_none), 148)
+
+        # Interval covering the full timestamp range returns all observations
+        full_interval = HalfClosedInterval.from_start_end(min_ts, max_ts)
+        full_observations = list(self.loader.get_cuboid_track_observations(timestamp_interval_us=full_interval))
+        self.assertEqual(len(full_observations), 148)
+
+        # Interval strictly between second and third observation timestamps (half-closed [start, stop))
+        # First observation has timestamp 1648597318800163, second 1648597318803918, third 1648597318806465
+        # Use an interval [second_ts, third_ts) which should include the second but exclude the third
+        second_ts = all_timestamps[1]
+        third_ts = all_timestamps[2]
+        narrow_interval = HalfClosedInterval(second_ts, third_ts)
+        narrow_observations = list(self.loader.get_cuboid_track_observations(timestamp_interval_us=narrow_interval))
+        # All returned observations must have timestamp_us in the interval
+        for obs in narrow_observations:
+            self.assertGreaterEqual(obs.timestamp_us, narrow_interval.start)
+            self.assertLess(obs.timestamp_us, narrow_interval.stop)
+        # Must include the second observation (start is inclusive)
+        self.assertTrue(any(obs.timestamp_us == second_ts for obs in narrow_observations))
+        # Must exclude the third observation (stop is exclusive)
+        self.assertFalse(any(obs.timestamp_us == third_ts for obs in narrow_observations))
+        # Must be fewer than all observations
+        self.assertLess(len(narrow_observations), 148)
+        self.assertGreater(len(narrow_observations), 0)
+
+        # Disjoint interval (far in the future) returns 0 observations
+        disjoint_interval = HalfClosedInterval(max_ts + 1000000, max_ts + 2000000)
+        disjoint_observations = list(self.loader.get_cuboid_track_observations(timestamp_interval_us=disjoint_interval))
+        self.assertEqual(len(disjoint_observations), 0)
+
+        # Interval that starts exactly at an observation's timestamp includes it (half-closed start)
+        start_boundary = HalfClosedInterval(min_ts, min_ts + 1)
+        start_observations = list(self.loader.get_cuboid_track_observations(timestamp_interval_us=start_boundary))
+        self.assertTrue(any(obs.timestamp_us == min_ts for obs in start_observations))
+
+        # Interval that stops exactly at an observation's timestamp excludes it (half-closed stop)
+        stop_boundary = HalfClosedInterval(min_ts - 1, min_ts)
+        stop_observations = list(self.loader.get_cuboid_track_observations(timestamp_interval_us=stop_boundary))
+        self.assertFalse(any(obs.timestamp_us == min_ts for obs in stop_observations))

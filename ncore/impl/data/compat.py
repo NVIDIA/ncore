@@ -140,8 +140,16 @@ class SequenceLoaderProtocol(Protocol):
         """Returns a radar sensor instance for a given sensor id"""
         ...
 
-    def get_cuboid_track_observations(self) -> Generator[CuboidTrackObservation]:
-        """Returns all available cuboid track observations in the sequence"""
+    def get_cuboid_track_observations(
+        self, timestamp_interval_us: Optional[HalfClosedInterval] = None
+    ) -> Generator[CuboidTrackObservation]:
+        """Returns all available cuboid track observations in the sequence.
+
+        Args:
+            timestamp_interval_us: If provided, only observations whose ``timestamp_us``
+                falls within this half-closed interval ``[start, stop)`` are returned.
+                When ``None`` (default), all observations are returned.
+        """
         ...
 
 
