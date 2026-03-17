@@ -87,6 +87,7 @@ pytest_test(
     deps = [
         ":pylib_compat",
         ":pylib_components",
+        "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/common:pylib_util",
         requirement("numpy"),
         "@rules_python//python/runfiles",
