@@ -10,6 +10,23 @@ All notable changes to the NCore project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - - -
+## [v18.7.0](https://github.com/NVIDIA/ncore/compare/84e13dfc7dc773eb065d0f5182641d32b20cdcbd..v18.7.0) - 2026-03-17
+
+### Highlights
+- Added timestamp interval filtering and caching to cuboid tracks compat API to accelerate local or repeated lookups (mostly intended to accelerate older non-OSS NCore data-format versions like V3)
+
+#### ➕ Added
+- add timestamp_interval_us filtering to get_cuboid_track_observations() - ([9832a44](https://github.com/NVIDIA/ncore/commit/9832a441d05f1da5ca37c99bf1e934cc25700496)) - Janick Martinez Esturo
+#### 🪲 Fixed
+- (**colmap**) Don't include downsampled images by default - ([27856f8](https://github.com/NVIDIA/ncore/commit/27856f89f3a65e99fe71af3090376cbf5b9b030f)) - Janick Martinez Esturo
+#### 📚 Documentation
+- (**conventions**) Refine specs of coordinate systems and transformations - ([84e13df](https://github.com/NVIDIA/ncore/commit/84e13dfc7dc773eb065d0f5182641d32b20cdcbd)) - Janick Martinez Esturo
+- (**lidar-model**) Document that per-row azimuth offsets are optional / can be zero if applicable - ([a76bccb](https://github.com/NVIDIA/ncore/commit/a76bccb8885ce233e8d60c19ba5c109a5380cec7)) - Janick Martinez Esturo
+#### ⚙️ CI
+- Prevent execution of non-build/test jobs in forks - ([007b0db](https://github.com/NVIDIA/ncore/commit/007b0dbf7fb19796fc8a620c68dc7ff845e19caa)) - Janick Martinez Esturo
+
+- - -
+
 ## [v18.6.0](https://github.com/NVIDIA/ncore/compare/c10047427a14c8bfeaee1960d1dd922b5ceaa011..v18.6.0) - 2026-03-12
 
 ### Highlights
