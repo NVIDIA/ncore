@@ -472,7 +472,7 @@ class CameraComponent(VisualizationComponent):
 
             if self._overlay_cuboids:
                 try:
-                    image = self._overlay_cuboids_on_image(camera_id, frame, image)
+                    image = self._overlay_cuboids_on_image(camera_id, image)
                 except Exception:
                     logger.debug("Cuboid overlay failed for %s frame %d", camera_id, frame, exc_info=True)
 
@@ -672,15 +672,17 @@ class CameraComponent(VisualizationComponent):
     # Cuboid overlay projection
     # ------------------------------------------------------------------
 
-    def _overlay_cuboids_on_image(self, camera_id: str, frame: int, image: np.ndarray) -> np.ndarray:
-        """Project 3D cuboid edges onto the camera image using rolling-shutter-aware projection.
+    def _overlay_cuboids_on_image(self, camera_id: str, image: np.ndarray) -> np.ndarray:
+        """Project 3D cuboid edges onto the camera image using per-cuboid observation timestamps.
 
-        Cuboid observations are queried at the scene's reference timestamp in world
-        coordinates and projected onto the camera image.
+        Cuboid observations are queried at their individual observation timestamps in world
+        coordinates.  For each cuboid, the camera pose is evaluated at the cuboid's
+        ``timestamp_us`` via the pose graph, and the cuboid corners are projected using
+        a static (non-rolling-shutter) camera model.  This ensures correct alignment even
+        when the cuboid observation time differs from the camera frame's exposure time.
 
         Args:
             camera_id: Camera sensor to project onto.
-            frame: Camera frame index.
             image: RGB image array (H, W, 3), uint8.
 
         Returns:
@@ -690,23 +692,18 @@ class CameraComponent(VisualizationComponent):
         camera_model = self._camera_models[camera_id]
 
         world_id = self.data_loader.world_frame_id
-        T_world_sensor_start = cam.get_frames_T_source_sensor(world_id, frame, FrameTimepoint.START)
-        T_world_sensor_end = cam.get_frames_T_source_sensor(world_id, frame, FrameTimepoint.END)
-        timestamp_start_us = cam.get_frame_timestamp_us(frame, FrameTimepoint.START)
-        timestamp_end_us = cam.get_frame_timestamp_us(frame, FrameTimepoint.END)
-
-        cuboid_source = self._cuboid_source
+        pose_graph = self.data_loader.pose_graph
 
         output_image = image.copy()
         image_height, image_width = output_image.shape[:2]
         image_rect = (0, 0, image_width, image_height)
 
-        # Query cuboid observations in world coordinates for the reference frame's time window.
-        interval_us = self.renderer.reference_frame_interval_us
-        observations = self.data_loader.get_cuboid_observations_in_world(interval_us, cuboid_source)
-
-        for obs in observations:
+        # Query cuboid observations in world coordinates, each at its own observation time.
+        for obs in self.data_loader.get_cuboid_observations_in_world(
+            self.renderer.reference_frame_interval_us, "observation-time", self._cuboid_source
+        ):
             bbox = obs.bbox3
+
             # Observations are in world coordinates — compute corners directly.
             dimensions = np.array(bbox.dim, dtype=np.float32)
             corners_local = _UNIT_CUBE_CORNERS * dimensions
@@ -714,12 +711,13 @@ class CameraComponent(VisualizationComponent):
             translation = np.array(bbox.centroid, dtype=np.float32)
             corners_world = (corners_local @ rotation.T + translation).astype(np.float32)
 
-            projection = camera_model.world_points_to_image_points_shutter_pose(
+            # Evaluate camera pose at the cuboid's observation time for correct alignment
+            T_world_sensor = pose_graph.evaluate_poses(
+                world_id, cam.sensor_id, np.array(obs.timestamp_us, dtype=np.uint64)
+            )
+            projection = camera_model.world_points_to_image_points_static_pose(
                 torch.from_numpy(corners_world),
-                T_world_sensor_start,
-                T_world_sensor_end,
-                start_timestamp_us=int(timestamp_start_us),
-                end_timestamp_us=int(timestamp_end_us),
+                T_world_sensor,
                 return_valid_indices=True,
                 return_all_projections=True,
             )

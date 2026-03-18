@@ -21,7 +21,7 @@ import dataclasses
 import functools
 import logging
 
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import numpy as np
 import pandas as pd
@@ -214,15 +214,16 @@ class DataLoader:
     def get_cuboid_observations_in_world(
         self,
         interval_us: HalfClosedInterval,
+        target_time: Literal["end-of-interval", "observation-time"],
         source_filter: Optional[str] = None,
     ) -> List[CuboidTrackObservation]:
         """Return cuboid observations within a time window, transformed to world coordinates.
 
         Selects all observations whose ``timestamp_us`` falls within *interval_us*,
-        then transforms each one into the world coordinate frame at the interval's
-        end timestamp (``interval_us.end``) via the pose graph.  The returned
-        observations have ``reference_frame_id == self.world_frame_id`` and their
-        ``bbox3`` expressed in world coordinates, ready for direct rendering.
+        then transforms each one into the world coordinate frame at the specified
+        target time via the pose graph.  The returned observations have
+        ``reference_frame_id == self.world_frame_id`` and their ``bbox3`` expressed
+        in world coordinates, ready for direct rendering.
 
         This method is sensor-agnostic: observations can originate from any reference
         frame in the pose graph (lidar, camera, rig, etc.) and will be correctly
@@ -232,6 +233,8 @@ class DataLoader:
             interval_us: Half-closed ``[start, stop)`` timestamp interval in
                 microseconds.  Typically obtained from
                 :meth:`get_sensor_frame_interval_us`.
+            target_time: Whether to evaluate the pose graph at the end of the interval
+                or at the observation's own timestamp.
             source_filter: If set, only return observations from this :class:`LabelSource` name.
 
         Returns:
@@ -252,13 +255,12 @@ class DataLoader:
 
         pose_graph = self.pose_graph
         world_frame_id = self._world_frame_id
-        end_timestamp_us = interval_us.end
         result: List[CuboidTrackObservation] = []
         for _, row in matched_rows.iterrows():
             obs = CuboidTrackObservation.from_dict(row.to_dict())
             obs = obs.transform(
                 target_frame_id=world_frame_id,
-                target_frame_timestamp_us=end_timestamp_us,
+                target_frame_timestamp_us=interval_us.end if target_time == "end-of-interval" else obs.timestamp_us,
                 pose_graph=pose_graph,
             )
             result.append(obs)

@@ -112,7 +112,9 @@ class CuboidsComponent(VisualizationComponent):
             visible = self._enabled
             show_labels = self._show_labels
 
-            observations = self.data_loader.get_cuboid_observations_in_world(interval_us, source_filter=source)
+            observations = self.data_loader.get_cuboid_observations_in_world(
+                interval_us, "end-of-interval", source_filter=source
+            )
 
             # Observations are already in world coordinates.
             for i, obs in enumerate(observations):
