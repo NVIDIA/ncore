@@ -30,7 +30,7 @@ import viser
 
 from scipy.spatial.transform import Rotation as RotLib
 
-from ncore.impl.common.transformations import HalfClosedInterval, se3_inverse, transform_point_cloud
+from ncore.impl.common.transformations import HalfClosedInterval, transform_point_cloud
 from ncore.impl.data.types import FrameTimepoint, LabelSource
 from ncore.impl.sensors.camera import CameraModel
 from tools.ncore_vis.components.base import VisualizationComponent, register_component
@@ -587,9 +587,9 @@ class CameraComponent(VisualizationComponent):
         T_lidar_world = lidar_sensor.get_frames_T_sensor_target(world_id, lidar_frame, FrameTimepoint.END)
         pc_world = transform_point_cloud(pc_sensor.xyz_m_end, T_lidar_world)
 
-        # Get camera world-to-sensor transforms (T_world_sensor = inverse of T_sensor_world)
-        T_world_camera_start = se3_inverse(cam.get_frames_T_sensor_target(world_id, frame, FrameTimepoint.START))
-        T_world_camera_end = se3_inverse(cam.get_frames_T_sensor_target(world_id, frame, FrameTimepoint.END))
+        # Get camera world-to-sensor transforms (T_world_camera)
+        T_world_camera_start = cam.get_frames_T_source_sensor(world_id, frame, FrameTimepoint.START)
+        T_world_camera_end = cam.get_frames_T_source_sensor(world_id, frame, FrameTimepoint.END)
 
         # Project world points to image coordinates
         mode = self._project_mode
