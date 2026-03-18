@@ -94,14 +94,14 @@ class NCoreVisRenderer:
                 self._class_colors[class_id] = (int(color[0]), int(color[1]), int(color[2]))
             return self._class_colors[class_id]
 
-    def update_all_sensor_frames(self, ref_frame: int) -> None:
+    def update_all_sensor_frames(self, ref_frame_idx: int) -> None:
         """Synchronize all sensor frame sliders to the reference sensor's *ref_frame*.
 
         Computes the reference frame interval from the reference sensor and
         triggers ``on_reference_frame_change`` on each component.
         """
         self.reference_frame_interval_us = self.data_loader.get_sensor_frame_interval_us(
-            self.reference_sensor, ref_frame
+            self.reference_sensor, ref_frame_idx
         )
         for component in self._components:
             component.on_reference_frame_change(self.reference_frame_interval_us)
@@ -159,7 +159,7 @@ class NCoreVisRenderer:
         self.reference_sensor = all_sensor_ids[0]
 
         # Determine initial frame range from first sensor
-        max_frame = self._get_sensor_max_frame(self.reference_sensor)
+        max_frame_idx = self._get_sensor_max_frame_idx(self.reference_sensor)
 
         # Set initial reference frame interval from frame 0.
         self.reference_frame_interval_us = self.data_loader.get_sensor_frame_interval_us(self.reference_sensor, 0)
@@ -169,7 +169,7 @@ class NCoreVisRenderer:
             self._ref_frame_slider = self.client.gui.add_slider(
                 "Reference Frame",
                 min=0,
-                max=max_frame,
+                max=max_frame_idx,
                 initial_value=0,
                 step=1,
                 hint="0-based frame index of the reference sensor",
@@ -235,14 +235,14 @@ class NCoreVisRenderer:
             @reference_dropdown.on_update
             def _on_ref_sensor_update(_: viser.GuiEvent) -> None:
                 self.reference_sensor = reference_dropdown.value
-                new_max = self._get_sensor_max_frame(reference_dropdown.value)
+                new_max_idx = self._get_sensor_max_frame_idx(reference_dropdown.value)
 
                 # Recreate the slider with the new range
                 self._ref_frame_slider.remove()
                 self._ref_frame_slider = self.client.gui.add_slider(
                     "Reference Frame",
                     min=0,
-                    max=new_max,
+                    max=new_max_idx,
                     initial_value=0,
                     step=1,
                     hint="0-based frame index of the reference sensor",
@@ -258,20 +258,20 @@ class NCoreVisRenderer:
     def _run_playback(self) -> None:
         """Advance the reference frame at the configured FPS until paused or stopped."""
         while self._playing:
-            max_frame = self._get_sensor_max_frame(self.reference_sensor)
-            current = self._ref_frame_slider.value
-            next_frame = current + 1
+            max_frame_idx = self._get_sensor_max_frame_idx(self.reference_sensor)
+            current_idx = self._ref_frame_slider.value
+            next_frame_idx = current_idx + 1
 
-            if next_frame > max_frame:
+            if next_frame_idx > max_frame_idx:
                 if self._loop:
-                    next_frame = 0
+                    next_frame_idx = 0
                 else:
                     self._playing = False
                     # Reset button to Play state — access via the GUI handle
                     break
 
-            self._ref_frame_slider.value = next_frame
-            self.update_all_sensor_frames(next_frame)
+            self._ref_frame_slider.value = next_frame_idx
+            self.update_all_sensor_frames(next_frame_idx)
             time.sleep(1.0 / max(1.0, self._playback_fps))
 
     # ------------------------------------------------------------------
@@ -282,7 +282,7 @@ class NCoreVisRenderer:
         """Handle reference frame slider value changes."""
         self.update_all_sensor_frames(self._ref_frame_slider.value)
 
-    def _get_sensor_max_frame(self, sensor_id: str) -> int:
+    def _get_sensor_max_frame_idx(self, sensor_id: str) -> int:
         """Get the maximum frame index for a sensor."""
         if sensor_id in self.data_loader.camera_ids:
             return max(0, self.data_loader.get_camera_sensor(sensor_id).frames_count - 1)

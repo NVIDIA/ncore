@@ -443,11 +443,13 @@ class CameraComponent(VisualizationComponent):
             if label := self._labels.pop(camera_id, None):
                 label.remove()
 
-            frame = self._frame_sliders[camera_id].value
+            frame_idx = self._frame_sliders[camera_id].value
             visible = self._visible[camera_id]
 
             cam = self.data_loader.get_camera_sensor(camera_id)
-            T_camera_world = cam.get_frames_T_sensor_target(self.data_loader.world_frame_id, frame, FrameTimepoint.END)
+            T_camera_world = cam.get_frames_T_sensor_target(
+                self.data_loader.world_frame_id, frame_idx, FrameTimepoint.END
+            )
             position, wxyz = se3_to_position_wxyz(T_camera_world)
 
             # Pose frame
@@ -462,25 +464,25 @@ class CameraComponent(VisualizationComponent):
             self._poses[camera_id] = pose_handle
 
             # Image (with optional overlays)
-            image = cam.get_frame_image_array(frame)
+            image = cam.get_frame_image_array(frame_idx)
 
             if self._project_lidar:
                 try:
-                    image = self._overlay_lidar_projection(camera_id, frame, image)
+                    image = self._overlay_lidar_projection(camera_id, frame_idx, image)
                 except Exception:
-                    logger.debug("Lidar projection overlay failed for %s frame %d", camera_id, frame, exc_info=True)
+                    logger.debug("Lidar projection overlay failed for %s frame %d", camera_id, frame_idx, exc_info=True)
 
             if self._overlay_cuboids:
                 try:
                     image = self._overlay_cuboids_on_image(camera_id, image)
                 except Exception:
-                    logger.debug("Cuboid overlay failed for %s frame %d", camera_id, frame, exc_info=True)
+                    logger.debug("Cuboid overlay failed for %s frame %d", camera_id, frame_idx, exc_info=True)
 
             if self._show_mask:
                 try:
                     image = self._overlay_mask(camera_id, image)
                 except Exception:
-                    logger.debug("Mask overlay failed for %s frame %d", camera_id, frame, exc_info=True)
+                    logger.debug("Mask overlay failed for %s frame %d", camera_id, frame_idx, exc_info=True)
 
             frustum_handle = self.client.scene.add_camera_frustum(
                 f"/cameras/{camera_id}/pose/frustum",
@@ -557,12 +559,12 @@ class CameraComponent(VisualizationComponent):
     # Lidar projection overlay
     # ------------------------------------------------------------------
 
-    def _overlay_lidar_projection(self, camera_id: str, frame: int, image: np.ndarray) -> np.ndarray:
+    def _overlay_lidar_projection(self, camera_id: str, frame_idx: int, image: np.ndarray) -> np.ndarray:
         """Project a lidar point cloud onto the camera image with range-based coloring.
 
         Args:
             camera_id: Camera sensor to project onto.
-            frame: Camera frame index.
+            frame_idx: Camera frame index.
             image: RGB image array (H, W, 3), uint8.
 
         Returns:
@@ -577,19 +579,21 @@ class CameraComponent(VisualizationComponent):
         camera_model = self._camera_models[camera_id]
 
         # Find closest lidar frame to the camera frame (by center-of-frame timestamp)
-        cam_interval = self.data_loader.get_sensor_frame_interval_us(camera_id, frame)
+        cam_interval = self.data_loader.get_sensor_frame_interval_us(camera_id, frame_idx)
         cam_center_us = cam_interval.start + (cam_interval.end - cam_interval.start) // 2
-        lidar_frame = lidar_sensor.get_closest_frame_index(cam_center_us, relative_frame_time=0.5)
+        lidar_frame_idx = lidar_sensor.get_closest_frame_index(cam_center_us, relative_frame_time=0.5)
 
         # Load point cloud and transform to world coordinates
-        pc_sensor = lidar_sensor.get_frame_point_cloud(lidar_frame, motion_compensation=True, with_start_points=False)
+        pc_sensor = lidar_sensor.get_frame_point_cloud(
+            lidar_frame_idx, motion_compensation=True, with_start_points=False
+        )
         world_id = self.data_loader.world_frame_id
-        T_lidar_world = lidar_sensor.get_frames_T_sensor_target(world_id, lidar_frame, FrameTimepoint.END)
+        T_lidar_world = lidar_sensor.get_frames_T_sensor_target(world_id, lidar_frame_idx, FrameTimepoint.END)
         pc_world = transform_point_cloud(pc_sensor.xyz_m_end, T_lidar_world)
 
         # Get camera world-to-sensor transforms (T_world_camera)
-        T_world_camera_start = cam.get_frames_T_source_sensor(world_id, frame, FrameTimepoint.START)
-        T_world_camera_end = cam.get_frames_T_source_sensor(world_id, frame, FrameTimepoint.END)
+        T_world_camera_start = cam.get_frames_T_source_sensor(world_id, frame_idx, FrameTimepoint.START)
+        T_world_camera_end = cam.get_frames_T_source_sensor(world_id, frame_idx, FrameTimepoint.END)
 
         # Project world points to image coordinates
         mode = self._project_mode

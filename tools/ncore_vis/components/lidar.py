@@ -335,7 +335,7 @@ class LidarComponent(VisualizationComponent):
             if point_cloud := self._point_clouds.pop(lidar_id, None):
                 point_cloud.remove()
 
-            frame = self._frame_sliders[lidar_id].value
+            frame_idx = self._frame_sliders[lidar_id].value
             is_fused = self._is_fused[lidar_id]
             fused_range = self._fused_range[lidar_id]
             fused_step = self._fused_frame_step[lidar_id]
@@ -344,7 +344,7 @@ class LidarComponent(VisualizationComponent):
 
             pc_handle = self._create_point_cloud(
                 lidar_id,
-                frame,
+                frame_idx,
                 is_fused,
                 fused_range,
                 fused_step,
@@ -357,7 +357,7 @@ class LidarComponent(VisualizationComponent):
     def _create_point_cloud(
         self,
         lidar_id: str,
-        frame: int,
+        frame_idx: int,
         is_fused: bool,
         fused_range: Tuple[int, int],
         fused_step: int,
@@ -379,12 +379,12 @@ class LidarComponent(VisualizationComponent):
                 points_world, points_sensor = self._get_fused_point_cloud(
                     lidar_id, fused_range[0], fused_range[1], fused_step
                 )
-                colors = self._colorize_points(lidar_id, frame, points_sensor, points_world)
+                colors = self._colorize_points(lidar_id, frame_idx, points_sensor, points_world)
         else:
             handle_name = f"/lidars/{lidar_id}/point_cloud"
-            points_sensor = self._get_point_cloud_sensor(lidar_id, frame)
-            points_world = self._transform_to_world(lidar_id, frame, points_sensor)
-            colors = self._colorize_points(lidar_id, frame, points_sensor, points_world)
+            points_sensor = self._get_point_cloud_sensor(lidar_id, frame_idx)
+            points_world = self._transform_to_world(lidar_id, frame_idx, points_sensor)
+            colors = self._colorize_points(lidar_id, frame_idx, points_sensor, points_world)
 
         return self.client.scene.add_point_cloud(
             handle_name,
@@ -399,24 +399,26 @@ class LidarComponent(VisualizationComponent):
     # Point cloud loading
     # ------------------------------------------------------------------
 
-    def _get_point_cloud_sensor(self, lidar_id: str, frame: int) -> np.ndarray:
+    def _get_point_cloud_sensor(self, lidar_id: str, frame_idx: int) -> np.ndarray:
         """Load a single-frame point cloud in sensor coordinates."""
         sensor = self.data_loader.get_lidar_sensor(lidar_id)
         motion_comp = self._motion_comp[lidar_id]
-        pc = sensor.get_frame_point_cloud(frame, motion_compensation=motion_comp, with_start_points=False)
+        pc = sensor.get_frame_point_cloud(frame_idx, motion_compensation=motion_comp, with_start_points=False)
         return pc.xyz_m_end
 
-    def _transform_to_world(self, lidar_id: str, frame: int, points_sensor: np.ndarray) -> np.ndarray:
+    def _transform_to_world(self, lidar_id: str, frame_idx: int, points_sensor: np.ndarray) -> np.ndarray:
         """Transform sensor-frame points to world coordinates."""
         sensor = self.data_loader.get_lidar_sensor(lidar_id)
-        T_sensor_world = sensor.get_frames_T_sensor_target(self.data_loader.world_frame_id, frame, FrameTimepoint.END)
+        T_sensor_world = sensor.get_frames_T_sensor_target(
+            self.data_loader.world_frame_id, frame_idx, FrameTimepoint.END
+        )
         return transform_point_cloud(points_sensor, T_sensor_world)
 
     def _get_fused_point_cloud(
         self,
         lidar_id: str,
-        start_frame: int,
-        end_frame: int,
+        start_frame_idx: int,
+        end_frame_idx: int,
         step: int,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Accumulate point clouds over a frame range (parallel frame loading).
@@ -424,14 +426,14 @@ class LidarComponent(VisualizationComponent):
         Returns:
             Tuple of (world-frame points, sensor-frame points).
         """
-        frames = list(range(start_frame, end_frame + 1, max(1, step)))
+        frame_idxs = list(range(start_frame_idx, end_frame_idx + 1, max(1, step)))
 
-        def _load(frame: int) -> Tuple[np.ndarray, np.ndarray]:
-            pts_sensor = self._get_point_cloud_sensor(lidar_id, frame)
-            pts_world = self._transform_to_world(lidar_id, frame, pts_sensor)
+        def _load(frame_idx: int) -> Tuple[np.ndarray, np.ndarray]:
+            pts_sensor = self._get_point_cloud_sensor(lidar_id, frame_idx)
+            pts_world = self._transform_to_world(lidar_id, frame_idx, pts_sensor)
             return pts_world, pts_sensor
 
-        results = list(self.renderer._executor.map(_load, frames))
+        results = list(self.renderer._executor.map(_load, frame_idxs))
         all_world = [r[0] for r in results]
         all_sensor = [r[1] for r in results]
         return np.concatenate(all_world), np.concatenate(all_sensor)
@@ -439,8 +441,8 @@ class LidarComponent(VisualizationComponent):
     def _get_fused_point_cloud_with_colors(
         self,
         lidar_id: str,
-        start_frame: int,
-        end_frame: int,
+        start_frame_idx: int,
+        end_frame_idx: int,
         step: int,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Accumulate point clouds with per-frame coloring over a frame range (parallel).
@@ -451,15 +453,15 @@ class LidarComponent(VisualizationComponent):
         Returns:
             Tuple of (world-frame points, colors).
         """
-        frames = list(range(start_frame, end_frame + 1, max(1, step)))
+        frame_idxs = list(range(start_frame_idx, end_frame_idx + 1, max(1, step)))
 
-        def _load_and_color(frame: int) -> Tuple[np.ndarray, np.ndarray]:
-            pts_sensor = self._get_point_cloud_sensor(lidar_id, frame)
-            pts_world = self._transform_to_world(lidar_id, frame, pts_sensor)
-            colors = self._colorize_points(lidar_id, frame, pts_sensor, pts_world)
+        def _load_and_color(frame_idx: int) -> Tuple[np.ndarray, np.ndarray]:
+            pts_sensor = self._get_point_cloud_sensor(lidar_id, frame_idx)
+            pts_world = self._transform_to_world(lidar_id, frame_idx, pts_sensor)
+            colors = self._colorize_points(lidar_id, frame_idx, pts_sensor, pts_world)
             return pts_world, colors
 
-        results = list(self.renderer._executor.map(_load_and_color, frames))
+        results = list(self.renderer._executor.map(_load_and_color, frame_idxs))
         all_world = [r[0] for r in results]
         all_colors = [r[1] for r in results]
         return np.concatenate(all_world), np.concatenate(all_colors)
@@ -471,7 +473,7 @@ class LidarComponent(VisualizationComponent):
     def _colorize_points(
         self,
         lidar_id: str,
-        frame: int,
+        frame_idx: int,
         points_sensor: np.ndarray,
         points_world: np.ndarray,
     ) -> np.ndarray:
@@ -479,7 +481,7 @@ class LidarComponent(VisualizationComponent):
 
         Args:
             lidar_id: Lidar sensor ID.
-            frame: Current frame index (used for per-frame data lookups).
+            frame_idx: Current frame index (used for per-frame data lookups).
             points_sensor: Point cloud in sensor coordinates ``[N, 3]``.
             points_world: Point cloud in world coordinates ``[N, 3]``.
 
@@ -494,22 +496,22 @@ class LidarComponent(VisualizationComponent):
         if color_style == "Height (turbo)":
             return self._color_height_turbo(points_world, lidar_id)
         if color_style == "Timestamp":
-            return self._color_timestamp(lidar_id, frame, n_points)
+            return self._color_timestamp(lidar_id, frame_idx, n_points)
         if color_style == "Model Row":
-            return self._color_model_element(lidar_id, frame, n_points, column=0)
+            return self._color_model_element(lidar_id, frame_idx, n_points, column=0)
         if color_style == "Model Column":
-            return self._color_model_element(lidar_id, frame, n_points, column=1)
+            return self._color_model_element(lidar_id, frame_idx, n_points, column=1)
         if color_style in self._metadata_color_fields.get(lidar_id, []):
-            return self._color_metadata_field(lidar_id, frame, color_style, n_points)
+            return self._color_metadata_field(lidar_id, frame_idx, color_style, n_points)
 
         # Intensity-based modes
-        return self._color_intensity(lidar_id, frame, color_style, n_points)
+        return self._color_intensity(lidar_id, frame_idx, color_style, n_points)
 
-    def _color_intensity(self, lidar_id: str, frame: int, style: str, n_points: int) -> np.ndarray:
+    def _color_intensity(self, lidar_id: str, frame_idx: int, style: str, n_points: int) -> np.ndarray:
         """Intensity-based coloring with optional gamma correction."""
         sensor = self.data_loader.get_lidar_sensor(lidar_id)
         try:
-            intensity = sensor.get_frame_ray_bundle_return_intensity(frame, return_index=0)
+            intensity = sensor.get_frame_ray_bundle_return_intensity(frame_idx, return_index=0)
         except Exception:
             return np.tile(_DEFAULT_POINT_COLOR, (n_points, 1))
 
@@ -540,11 +542,11 @@ class LidarComponent(VisualizationComponent):
         rgba = _TURBO_CMAP(normalized)  # [N, 4] float in [0, 1]
         return (rgba[:, :3] * 255.0).astype(np.uint8)
 
-    def _color_timestamp(self, lidar_id: str, frame: int, n_points: int) -> np.ndarray:
+    def _color_timestamp(self, lidar_id: str, frame_idx: int, n_points: int) -> np.ndarray:
         """Color by per-point timestamp within the frame using the turbo colormap."""
         sensor = self.data_loader.get_lidar_sensor(lidar_id)
         try:
-            timestamps = sensor.get_frame_ray_bundle_timestamp_us(frame)
+            timestamps = sensor.get_frame_ray_bundle_timestamp_us(frame_idx)
         except Exception:
             return np.tile(_DEFAULT_POINT_COLOR, (n_points, 1))
 
@@ -555,19 +557,19 @@ class LidarComponent(VisualizationComponent):
         rgba = _TURBO_CMAP(normalized)
         return (rgba[:, :3] * 255.0).astype(np.uint8)
 
-    def _color_model_element(self, lidar_id: str, frame: int, n_points: int, column: int) -> np.ndarray:
+    def _color_model_element(self, lidar_id: str, frame_idx: int, n_points: int, column: int) -> np.ndarray:
         """Color by model element index (row or column) using the turbo colormap.
 
         Args:
             lidar_id: Lidar sensor ID.
-            frame: Frame index.
+            frame_idx: Frame index.
             n_points: Number of points (for fallback).
             column: 0 for row index, 1 for column index.
         """
         sensor = self.data_loader.get_lidar_sensor(lidar_id)
         model_elements: Optional[np.ndarray] = None
         try:
-            model_elements = sensor.get_frame_ray_bundle_model_element(frame)
+            model_elements = sensor.get_frame_ray_bundle_model_element(frame_idx)
         except Exception:
             pass
 
@@ -580,7 +582,7 @@ class LidarComponent(VisualizationComponent):
         rgba = _TURBO_CMAP(normalized)
         return (rgba[:, :3] * 255.0).astype(np.uint8)
 
-    def _color_metadata_field(self, lidar_id: str, frame: int, field_name: str, n_points: int) -> np.ndarray:
+    def _color_metadata_field(self, lidar_id: str, frame_idx: int, field_name: str, n_points: int) -> np.ndarray:
         """Color by a generic_data metadata field.
 
         Single-channel fields are treated as intensity (grayscale).
@@ -591,7 +593,7 @@ class LidarComponent(VisualizationComponent):
         """
         try:
             sensor = self.data_loader.get_lidar_sensor(lidar_id)
-            ts = sensor.frames_timestamps_us[frame, 1].item()
+            ts = sensor.frames_timestamps_us[frame_idx, 1].item()
             data = np.asarray(sensor.get_frame_generic_data(ts, field_name))
         except KeyError:
             # No metadata of this type at this timestamp
