@@ -83,8 +83,10 @@ class CuboidTrack:
     # Interpolation
     # ------------------------------------------------------------------
 
-    def interpolate_at(self, timestamp_us: int) -> Optional[CuboidTrackObservation]:
-        """Return an interpolated observation at *timestamp_us*, or ``None`` if out of range.
+    def interpolate_at(
+        self, timestamp_us: int, *, max_clamp_us: Optional[int] = None
+    ) -> Optional[CuboidTrackObservation]:
+        """Return an interpolated observation at *timestamp_us*.
 
         The interpolated bbox pose (centroid + orientation) is computed by
         finding the two observations that bracket *timestamp_us* and blending
@@ -92,34 +94,37 @@ class CuboidTrack:
         (linear translation + SLERP rotation).  ``bbox3.dim`` (dimensions) are
         taken from the earlier bracketing observation and are **not** interpolated.
 
-        Out-of-range queries return ``None``:
+        Out-of-range behaviour depends on *max_clamp_us*:
 
-        * Before the first observation's timestamp → ``None``.
-        * After the last observation's timestamp → ``None``.
-
-        For a single-observation track, only a query exactly at that observation's
-        timestamp returns a result; all other times return ``None``.
+        * ``None`` (default): out-of-range queries return ``None``.
+        * An ``int`` value: queries up to *max_clamp_us* microseconds outside
+          the track's time range are clamped to the nearest boundary observation.
+          Queries further away return ``None``.
 
         Args:
             timestamp_us: Target timestamp in microseconds.
+            max_clamp_us: Maximum number of microseconds to clamp beyond the
+                track's first/last observation.  ``None`` disables clamping.
 
         Returns:
             A :class:`~ncore.impl.data.types.CuboidTrackObservation` whose
             ``timestamp_us`` equals *timestamp_us* and whose ``bbox3`` is
-            interpolated to that time, or ``None`` if *timestamp_us* is outside
-            the track's time range.
+            interpolated to that time, or ``None`` when *timestamp_us* is outside
+            the (optionally extended) time range.
         """
 
         obs = self.observations
 
-        # --- Out-of-range: return None ---
-        if timestamp_us < obs[0].timestamp_us or timestamp_us > obs[-1].timestamp_us:
-            return None
-
-        # --- Exact endpoint match, also handles single-observation tracks if matching ---
-        if timestamp_us == obs[0].timestamp_us:
+        # --- Out-of-range handling ---
+        if timestamp_us <= obs[0].timestamp_us:
+            if max_clamp_us is None or obs[0].timestamp_us - timestamp_us > max_clamp_us:
+                if timestamp_us < obs[0].timestamp_us:
+                    return None
             return replace(obs[0], timestamp_us=timestamp_us, reference_frame_timestamp_us=timestamp_us)
-        if timestamp_us == obs[-1].timestamp_us:
+        if timestamp_us >= obs[-1].timestamp_us:
+            if max_clamp_us is None or timestamp_us - obs[-1].timestamp_us > max_clamp_us:
+                if timestamp_us > obs[-1].timestamp_us:
+                    return None
             return replace(obs[-1], timestamp_us=timestamp_us, reference_frame_timestamp_us=timestamp_us)
 
         # --- Find bracketing pair via binary search ---

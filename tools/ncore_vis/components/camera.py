@@ -713,17 +713,22 @@ class CameraComponent(VisualizationComponent):
         timestamp_end_us = cam.get_frame_timestamp_us(frame_idx, FrameTimepoint.END)
         mid_timestamp_us = (timestamp_start_us + timestamp_end_us) // 2
 
+        # Use the reference-time range as the clamp boundary so tracks are
+        # currently selected remain visible at the scene boundary
+        ref_interval = self.renderer.reference_frame_interval_us
+        max_clamp_us = ref_interval.stop - ref_interval.start
+
         # Camera poses at start/end of frame for rolling-shutter-aware projection
         T_world_camera_start = cam.get_frames_T_source_sensor(world_id, frame_idx, FrameTimepoint.START)
         T_world_camera_end = cam.get_frames_T_source_sensor(world_id, frame_idx, FrameTimepoint.END)
 
-        # Iterate over all tracks; interpolate each to the mid-frame time
+        # Iterate over all tracks; interpolate each to the mid-frame time.
         for track in self.data_loader.get_cuboid_tracks():
             # Filter by label source
             if track.source.name != self._cuboid_source:
                 continue
 
-            if (obs := track.interpolate_at(mid_timestamp_us)) is None:
+            if (obs := track.interpolate_at(mid_timestamp_us, max_clamp_us=max_clamp_us)) is None:
                 continue
 
             # Transform the interpolated observation at mid-of-frame time to world coordinates at mid-frame time

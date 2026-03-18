@@ -51,8 +51,17 @@ class DataLoader:
         self._loader: SequenceLoaderProtocol = loader
         self._rig_frame_id: Optional[str] = rig_frame_id
         self._world_frame_id: str = world_frame_id
-        self._cuboid_df: Optional[pd.DataFrame] = None
-        self._cuboid_tracks: Optional[List[CuboidTrack]] = None
+
+        # Build cuboid DataFrame and tracks eagerly (thread-safe: done once at init)
+        observations = list(self._loader.get_cuboid_track_observations())
+        if observations:
+            self._cuboid_df: pd.DataFrame = pd.DataFrame.from_records(
+                [obs.to_dict() for obs in observations],
+                columns=[field.name for field in dataclasses.fields(CuboidTrackObservation)],
+            )
+        else:
+            self._cuboid_df = pd.DataFrame(columns=[field.name for field in dataclasses.fields(CuboidTrackObservation)])
+        self._cuboid_tracks: List[CuboidTrack] = CuboidTrack.from_observations(observations)
 
     # ------------------------------------------------------------------
     # Sensor access
@@ -198,21 +207,6 @@ class DataLoader:
         """Available label source names derived from the :class:`LabelSource` enum."""
         return [s.name for s in LabelSource]
 
-    def _ensure_cuboid_df(self) -> pd.DataFrame:
-        """Lazily load cuboid observations into a DataFrame for efficient querying."""
-        if self._cuboid_df is None:
-            observations = list(self._loader.get_cuboid_track_observations())
-            if observations:
-                self._cuboid_df = pd.DataFrame.from_records(
-                    [obs.to_dict() for obs in observations],
-                    columns=[field.name for field in dataclasses.fields(CuboidTrackObservation)],
-                )
-            else:
-                self._cuboid_df = pd.DataFrame(
-                    columns=[field.name for field in dataclasses.fields(CuboidTrackObservation)]
-                )
-        return self._cuboid_df
-
     def get_cuboid_observations_in_world(
         self,
         interval_us: HalfClosedInterval,
@@ -242,7 +236,7 @@ class DataLoader:
         Returns:
             List of :class:`CuboidTrackObservation` in world coordinates.
         """
-        cuboid_df = self._ensure_cuboid_df()
+        cuboid_df = self._cuboid_df
         if cuboid_df.empty:
             return []
 
@@ -269,12 +263,9 @@ class DataLoader:
         return result
 
     def get_cuboid_tracks(self) -> List[CuboidTrack]:
-        """Return all cuboid tracks for the sequence, lazily built and cached.
+        """Return all cuboid tracks for the sequence (built once at init time).
 
-        Tracks are constructed once from the full set of cuboid observations
-        (i.e. the entire sequence, not filtered by any time interval) and then
-        cached for the lifetime of this :class:`DataLoader`.  Each
-        :class:`~tools.ncore_vis.tracks.CuboidTrack` covers all labelled
+        Each :class:`~tools.ncore_vis.tracks.CuboidTrack` covers all labelled
         keyframes for one tracked object.
 
         Callers that need the interpolated cuboid pose at a specific timestamp
@@ -287,11 +278,4 @@ class DataLoader:
             unique ``track_id`` in the sequence.  Returns an empty list when
             no cuboid observations are available.
         """
-        if self._cuboid_tracks is None:
-            cuboid_df = self._ensure_cuboid_df()
-            if cuboid_df.empty:
-                self._cuboid_tracks = []
-            else:
-                all_obs = [CuboidTrackObservation.from_dict(row.to_dict()) for _, row in cuboid_df.iterrows()]
-                self._cuboid_tracks = CuboidTrack.from_observations(all_obs)
         return self._cuboid_tracks

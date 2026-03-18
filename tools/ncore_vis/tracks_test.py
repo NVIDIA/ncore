@@ -111,6 +111,30 @@ class TestCuboidTrackInterpolation(unittest.TestCase):
         result = track.interpolate_at(2_000_000)
         self.assertIsNone(result)
 
+    def test_interpolate_before_range_clamp_within_limit(self):
+        track = self._make_track()  # range [0, 1_000_000]
+        result = track.interpolate_at(-100_000, max_clamp_us=200_000)
+        self.assertIsNotNone(result)
+        np.testing.assert_allclose(result.bbox3.centroid, (0.0, 0.0, 0.0), atol=1e-5)
+        self.assertEqual(result.timestamp_us, -100_000)
+
+    def test_interpolate_before_range_clamp_exceeds_limit(self):
+        track = self._make_track()
+        result = track.interpolate_at(-500_000, max_clamp_us=200_000)
+        self.assertIsNone(result)
+
+    def test_interpolate_after_range_clamp_within_limit(self):
+        track = self._make_track()
+        result = track.interpolate_at(1_100_000, max_clamp_us=200_000)
+        self.assertIsNotNone(result)
+        np.testing.assert_allclose(result.bbox3.centroid, (10.0, 0.0, 0.0), atol=1e-5)
+        self.assertEqual(result.timestamp_us, 1_100_000)
+
+    def test_interpolate_after_range_clamp_exceeds_limit(self):
+        track = self._make_track()
+        result = track.interpolate_at(2_000_000, max_clamp_us=200_000)
+        self.assertIsNone(result)
+
     def test_single_observation_exact_match(self):
         obs = _make_obs("t1", 500_000, 3.0, 4.0, 5.0)
         track = CuboidTrack(observations=[obs])
@@ -127,6 +151,30 @@ class TestCuboidTrackInterpolation(unittest.TestCase):
         obs = _make_obs("t1", 500_000, 3.0, 4.0, 5.0)
         track = CuboidTrack(observations=[obs])
         self.assertIsNone(track.interpolate_at(1_000_000))
+
+    def test_single_observation_before_clamp_within_limit(self):
+        obs = _make_obs("t1", 500_000, 3.0, 4.0, 5.0)
+        track = CuboidTrack(observations=[obs])
+        result = track.interpolate_at(400_000, max_clamp_us=200_000)
+        self.assertIsNotNone(result)
+        np.testing.assert_allclose(result.bbox3.centroid, (3.0, 4.0, 5.0), atol=1e-5)
+
+    def test_single_observation_before_clamp_exceeds_limit(self):
+        obs = _make_obs("t1", 500_000, 3.0, 4.0, 5.0)
+        track = CuboidTrack(observations=[obs])
+        self.assertIsNone(track.interpolate_at(0, max_clamp_us=200_000))
+
+    def test_single_observation_after_clamp_within_limit(self):
+        obs = _make_obs("t1", 500_000, 3.0, 4.0, 5.0)
+        track = CuboidTrack(observations=[obs])
+        result = track.interpolate_at(600_000, max_clamp_us=200_000)
+        self.assertIsNotNone(result)
+        np.testing.assert_allclose(result.bbox3.centroid, (3.0, 4.0, 5.0), atol=1e-5)
+
+    def test_single_observation_after_clamp_exceeds_limit(self):
+        obs = _make_obs("t1", 500_000, 3.0, 4.0, 5.0)
+        track = CuboidTrack(observations=[obs])
+        self.assertIsNone(track.interpolate_at(1_000_000, max_clamp_us=200_000))
 
     def test_dimensions_unchanged(self):
         track = self._make_track()
