@@ -29,6 +29,7 @@ import pandas as pd
 from ncore.impl.common.transformations import HalfClosedInterval, PoseGraphInterpolator
 from ncore.impl.data.compat import CameraSensorProtocol, LidarSensorProtocol, SensorProtocol, SequenceLoaderProtocol
 from ncore.impl.data.types import CuboidTrackObservation, FrameTimepoint, LabelSource
+from tools.ncore_vis.tracks import CuboidTrack
 
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ class DataLoader:
         self._rig_frame_id: Optional[str] = rig_frame_id
         self._world_frame_id: str = world_frame_id
         self._cuboid_df: Optional[pd.DataFrame] = None
+        self._cuboid_tracks: Optional[List[CuboidTrack]] = None
 
     # ------------------------------------------------------------------
     # Sensor access
@@ -265,3 +267,31 @@ class DataLoader:
             )
             result.append(obs)
         return result
+
+    def get_cuboid_tracks(self) -> List[CuboidTrack]:
+        """Return all cuboid tracks for the sequence, lazily built and cached.
+
+        Tracks are constructed once from the full set of cuboid observations
+        (i.e. the entire sequence, not filtered by any time interval) and then
+        cached for the lifetime of this :class:`DataLoader`.  Each
+        :class:`~tools.ncore_vis.tracks.CuboidTrack` covers all labelled
+        keyframes for one tracked object.
+
+        Callers that need the interpolated cuboid pose at a specific timestamp
+        (e.g. a camera frame's mid-of-frame time) should call
+        :meth:`~tools.ncore_vis.tracks.CuboidTrack.interpolate_at` on each
+        returned track.
+
+        Returns:
+            List of :class:`~tools.ncore_vis.tracks.CuboidTrack`, one per
+            unique ``track_id`` in the sequence.  Returns an empty list when
+            no cuboid observations are available.
+        """
+        if self._cuboid_tracks is None:
+            cuboid_df = self._ensure_cuboid_df()
+            if cuboid_df.empty:
+                self._cuboid_tracks = []
+            else:
+                all_obs = [CuboidTrackObservation.from_dict(row.to_dict()) for _, row in cuboid_df.iterrows()]
+                self._cuboid_tracks = CuboidTrack.from_observations(all_obs)
+        return self._cuboid_tracks

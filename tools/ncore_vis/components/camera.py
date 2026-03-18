@@ -474,7 +474,7 @@ class CameraComponent(VisualizationComponent):
 
             if self._overlay_cuboids:
                 try:
-                    image = self._overlay_cuboids_on_image(camera_id, image)
+                    image = self._overlay_cuboids_on_image(camera_id, frame_idx, image)
                 except Exception:
                     logger.debug("Cuboid overlay failed for %s frame %d", camera_id, frame_idx, exc_info=True)
 
@@ -639,6 +639,7 @@ class CameraComponent(VisualizationComponent):
         T_world_camera_start: np.ndarray,
         T_world_camera_end: np.ndarray,
         mode: str,
+        return_all_projections: bool = False,
     ) -> CameraModel.WorldPointsToImagePointsReturn:
         """Project world points using the specified projection mode."""
         if mode == "rolling-shutter":
@@ -648,6 +649,7 @@ class CameraComponent(VisualizationComponent):
                 T_world_camera_end,
                 return_valid_indices=True,
                 return_T_world_sensors=True,
+                return_all_projections=return_all_projections,
             )
         if mode == "mean":
             return camera_model.world_points_to_image_points_mean_pose(
@@ -656,6 +658,7 @@ class CameraComponent(VisualizationComponent):
                 T_world_camera_end,
                 return_valid_indices=True,
                 return_T_world_sensors=True,
+                return_all_projections=return_all_projections,
             )
         if mode == "start":
             return camera_model.world_points_to_image_points_static_pose(
@@ -663,6 +666,7 @@ class CameraComponent(VisualizationComponent):
                 T_world_camera_start,
                 return_valid_indices=True,
                 return_T_world_sensors=True,
+                return_all_projections=return_all_projections,
             )
         # "end"
         return camera_model.world_points_to_image_points_static_pose(
@@ -670,23 +674,25 @@ class CameraComponent(VisualizationComponent):
             T_world_camera_end,
             return_valid_indices=True,
             return_T_world_sensors=True,
+            return_all_projections=return_all_projections,
         )
 
     # ------------------------------------------------------------------
     # Cuboid overlay projection
     # ------------------------------------------------------------------
 
-    def _overlay_cuboids_on_image(self, camera_id: str, image: np.ndarray) -> np.ndarray:
-        """Project 3D cuboid edges onto the camera image using per-cuboid observation timestamps.
+    def _overlay_cuboids_on_image(self, camera_id: str, frame_idx: int, image: np.ndarray) -> np.ndarray:
+        """Project 3D cuboid edges onto the camera image, interpolated to the mid-of-frame time.
 
-        Cuboid observations are queried at their individual observation timestamps in world
-        coordinates.  For each cuboid, the camera pose is evaluated at the cuboid's
-        ``timestamp_us`` via the pose graph, and the cuboid corners are projected using
-        a static (non-rolling-shutter) camera model.  This ensures correct alignment even
-        when the cuboid observation time differs from the camera frame's exposure time.
+        Each cuboid track is interpolated to the camera frame's mid-of-frame timestamp so
+        that the projected box position reflects the object's estimated location at the
+        moment the camera was actually exposing.  The interpolated observation is then
+        transformed to world coordinates and projected using the shared projection mode
+        (rolling-shutter / mean / start / end).
 
         Args:
             camera_id: Camera sensor to project onto.
+            frame_idx: Current frame index for this camera.
             image: RGB image array (H, W, 3), uint8.
 
         Returns:
@@ -702,40 +708,61 @@ class CameraComponent(VisualizationComponent):
         image_height, image_width = output_image.shape[:2]
         image_rect = (0, 0, image_width, image_height)
 
-        # Query cuboid observations in world coordinates, each at its own observation time.
-        for obs in self.data_loader.get_cuboid_observations_in_world(
-            self.renderer.reference_frame_interval_us, "observation-time", self._cuboid_source
-        ):
+        # Approximate the track / camera association with mid-frame interpolation
+        timestamp_start_us = cam.get_frame_timestamp_us(frame_idx, FrameTimepoint.START)
+        timestamp_end_us = cam.get_frame_timestamp_us(frame_idx, FrameTimepoint.END)
+        mid_timestamp_us = (timestamp_start_us + timestamp_end_us) // 2
+
+        # Camera poses at start/end of frame for rolling-shutter-aware projection
+        T_world_camera_start = cam.get_frames_T_source_sensor(world_id, frame_idx, FrameTimepoint.START)
+        T_world_camera_end = cam.get_frames_T_source_sensor(world_id, frame_idx, FrameTimepoint.END)
+
+        # Iterate over all tracks; interpolate each to the mid-frame time
+        for track in self.data_loader.get_cuboid_tracks():
+            # Filter by label source
+            if track.source.name != self._cuboid_source:
+                continue
+
+            if (obs := track.interpolate_at(mid_timestamp_us)) is None:
+                continue
+
+            # Transform the interpolated observation at mid-of-frame time to world coordinates at mid-frame time
+            obs = obs.transform(
+                target_frame_id=world_id,
+                target_frame_timestamp_us=mid_timestamp_us,
+                pose_graph=pose_graph,
+            )
             bbox = obs.bbox3
 
-            # Observations are in world coordinates — compute corners directly.
+            # Compute 8 corners in world coordinates
             dimensions = np.array(bbox.dim, dtype=np.float32)
             corners_local = _UNIT_CUBE_CORNERS * dimensions
             rotation = RotLib.from_euler("XYZ", bbox.rot).as_matrix().astype(np.float32)
             translation = np.array(bbox.centroid, dtype=np.float32)
             corners_world = (corners_local @ rotation.T + translation).astype(np.float32)
 
-            # Evaluate camera pose at the cuboid's observation time for correct alignment
-            T_world_sensor = pose_graph.evaluate_poses(
-                world_id, cam.sensor_id, np.array(obs.timestamp_us, dtype=np.uint64)
-            )
-            projection = camera_model.world_points_to_image_points_static_pose(
-                torch.from_numpy(corners_world),
-                T_world_sensor,
-                return_valid_indices=True,
+            # Project using the shared projection mode (rolling-shutter / mean / start / end)
+            projection = self._project_points(
+                camera_model,
+                corners_world,
+                T_world_camera_start,
+                T_world_camera_end,
+                self._project_mode,
                 return_all_projections=True,
             )
 
             if projection.valid_indices is None or projection.image_points.shape[0] == 0:
                 continue
 
-            projected_pts = projection.image_points.cpu().numpy().astype(np.float32)
+            projected_pts = projection.image_points.cpu().numpy()
             valid_mask = np.zeros(projected_pts.shape[0], dtype=bool)
-            valid_mask[projection.valid_indices.cpu().numpy().astype(np.int32)] = True
+            valid_mask[projection.valid_indices.cpu().numpy()] = True
 
             # Deterministic color per class
             line_color = self.renderer.get_class_color(obs.class_id)
 
+            # Draw the 12 edges of the cuboid if either corner is valid (visible);
+            # use OpenCV's clipLine to handle partially visible edges
             for corner_a, corner_b in _CUBOID_EDGES:
                 if not (valid_mask[corner_a] or valid_mask[corner_b]):
                     continue
