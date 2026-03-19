@@ -265,9 +265,8 @@ The output for each clip is written to::
      - HuggingFace API token. Reads from the ``HF_TOKEN`` environment variable
        if not provided
    * - ``--revision TEXT``
-     - ``ncore``
-     - HuggingFace dataset branch or tag to stream from. Note: the
-       ``pai-clip-dl`` download tool uses ``ncore`` as its current default revision
+     - ``main``
+     - HuggingFace dataset branch or tag to stream from.
 
 For the complete implementation, see ``tools/data_converter/pai/converter.py``.
 

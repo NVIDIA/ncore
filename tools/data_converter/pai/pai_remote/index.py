@@ -144,14 +144,14 @@ class ClipIndex:
         return seen
 
     # ------------------------------------------------------------------
-    # sensor_presence.parquet
+    # feature_presence.parquet
     # ------------------------------------------------------------------
 
     @property
     def sensor_presence_df(self) -> pd.DataFrame:
-        """Lazy-load metadata/sensor_presence.parquet."""
+        """Lazy-load metadata/feature_presence.parquet."""
         if self._sensor_presence_df is None:
-            path = self._remote.get_cached_or_download("metadata/sensor_presence.parquet")
+            path = self._remote.get_cached_or_download("metadata/feature_presence.parquet")
             self._sensor_presence_df = pd.read_parquet(path)
             log.info("Loaded sensor presence: %d clips", len(self._sensor_presence_df))
         return self._sensor_presence_df

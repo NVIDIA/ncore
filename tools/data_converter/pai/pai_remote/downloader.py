@@ -79,7 +79,7 @@ class ClipDownloader:
         │   └── ...
         └── metadata/
             ├── data_collection.parquet
-            └── sensor_presence.parquet
+            └── feature_presence.parquet
     """
 
     def __init__(self, remote: HFRemote, index: ClipIndex) -> None:
@@ -114,7 +114,7 @@ class ClipDownloader:
         features:
             If given, only download these feature names.  Otherwise all.
         skip_missing_sensors:
-            Check sensor_presence and skip features where the sensor is
+            Check feature_presence and skip features where the sensor is
             absent for a given clip.
         include_metadata:
             Also download and filter the global metadata parquets.
@@ -301,7 +301,7 @@ class ClipDownloader:
         output_dir: Path,
     ) -> None:
         """Download each global metadata parquet once, then filter per clip."""
-        for name in ("data_collection", "sensor_presence"):
+        for name in ("data_collection", "feature_presence"):
             repo_path = f"metadata/{name}.parquet"
             try:
                 raw = self.remote.download_bytes(repo_path)

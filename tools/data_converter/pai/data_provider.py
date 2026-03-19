@@ -147,12 +147,12 @@ class LocalClipDataProvider(ClipDataProvider):
         return key in self._files and self._files[key].exists()
 
     def get_sensor_presence(self) -> pd.Series:
-        sp_path = self._metadata_dir / "sensor_presence.parquet"
+        sp_path = self._metadata_dir / "feature_presence.parquet"
         if sp_path.exists():
             df = pd.read_parquet(str(sp_path))
             return df.loc[self._clip_id]  # type: ignore[return-value]
         # Fallback: infer from extrinsics
-        logger.info("sensor_presence.parquet not found, inferring from extrinsics")
+        logger.info("feature_presence.parquet not found, inferring from extrinsics")
         ext_df = self.load_parquet("sensor_extrinsics")
         sensor_names = ext_df.index.get_level_values("sensor_name").unique()
         return pd.Series(True, index=sensor_names)

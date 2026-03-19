@@ -98,7 +98,7 @@ def find_clip_files(clip_dir: UPath, clip_id: str) -> Dict[str, UPath]:
             lidar/
                 <clip_id>.lidar_top_360fov.parquet
             metadata/
-                sensor_presence.parquet
+                feature_presence.parquet
                 data_collection.parquet
 
     Args:
