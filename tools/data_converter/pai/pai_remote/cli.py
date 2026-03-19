@@ -27,7 +27,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from tools.data_converter.pai.pai_remote.config import Config
+from tools.data_converter.pai.pai_remote.config import DEFAULT_REVISION, Config
 from tools.data_converter.pai.pai_remote.downloader import ClipDownloader
 from tools.data_converter.pai.pai_remote.index import ClipIndex
 from tools.data_converter.pai.pai_remote.remote import HFRemote
@@ -81,7 +81,7 @@ def main() -> None:
 )
 @click.option("--features", "-f", multiple=True, help="Feature names to download. Repeat for multiple. Default: all.")
 @click.option("--hf-token", envvar="HF_TOKEN", help="HuggingFace API token.")
-@click.option("--revision", default="ncore", help="Git branch/revision of the dataset.")
+@click.option("--revision", default=DEFAULT_REVISION, show_default=True, help="Git branch/revision of the dataset.")
 @click.option("--no-skip-missing", is_flag=True, default=False, help="Don't skip features where the sensor is absent.")
 @click.option("--no-metadata", is_flag=True, default=False, help="Skip downloading metadata parquets.")
 @click.option("--verbose", "-v", is_flag=True, default=False)
@@ -121,7 +121,7 @@ def download(
 @main.command()
 @click.argument("clip_ids", nargs=-1, required=True)
 @click.option("--hf-token", envvar="HF_TOKEN", help="HuggingFace API token.")
-@click.option("--revision", default="ncore", help="Git branch/revision of the dataset.")
+@click.option("--revision", default=DEFAULT_REVISION, show_default=True, help="Git branch/revision of the dataset.")
 @click.option("--verbose", "-v", is_flag=True, default=False)
 def info(clip_ids: tuple[str, ...], hf_token: str | None, revision: str, verbose: bool) -> None:
     """Show information about one or more clips (chunk, split, sensors)."""
@@ -156,7 +156,7 @@ def info(clip_ids: tuple[str, ...], hf_token: str | None, revision: str, verbose
 
 @main.command("list-features")
 @click.option("--hf-token", envvar="HF_TOKEN", help="HuggingFace API token.")
-@click.option("--revision", default="ncore", help="Git branch/revision of the dataset.")
+@click.option("--revision", default=DEFAULT_REVISION, show_default=True, help="Git branch/revision of the dataset.")
 @click.option("--verbose", "-v", is_flag=True, default=False)
 def list_features(hf_token: str | None, revision: str, verbose: bool) -> None:
     """List all available features in the dataset."""
@@ -187,7 +187,7 @@ def list_features(hf_token: str | None, revision: str, verbose: bool) -> None:
     "--output", "-o", type=click.Path(path_type=Path), default=None, help="Save output to file instead of stdout."
 )
 @click.option("--hf-token", envvar="HF_TOKEN", help="HuggingFace API token.")
-@click.option("--revision", default="ncore", help="Git branch/revision of the dataset.")
+@click.option("--revision", default=DEFAULT_REVISION, show_default=True, help="Git branch/revision of the dataset.")
 @click.option("--verbose", "-v", is_flag=True, default=False)
 def stream(
     clip_id: str,

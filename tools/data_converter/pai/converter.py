@@ -79,7 +79,7 @@ from ncore.impl.data.types import (
 from ncore.impl.data.v4.types import ComponentGroupAssignments
 from tools.data_converter.cli import cli
 from tools.data_converter.pai.data_provider import ClipDataProvider, LocalClipDataProvider, StreamingClipDataProvider
-from tools.data_converter.pai.pai_remote.config import Config
+from tools.data_converter.pai.pai_remote.config import DEFAULT_REVISION, Config
 from tools.data_converter.pai.pai_remote.index import ClipIndex
 from tools.data_converter.pai.pai_remote.remote import HFRemote
 from tools.data_converter.pai.utils import (
@@ -823,7 +823,7 @@ def pai_v4(ctx, *_, **kwargs):
 @click.option(
     "--revision",
     type=str,
-    default="ncore",
+    default=DEFAULT_REVISION,
     show_default=True,
     help="HuggingFace dataset revision (branch/tag).",
 )

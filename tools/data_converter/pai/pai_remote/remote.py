@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import io
 import logging
+import shutil
 import time
 
 from pathlib import Path
@@ -134,16 +135,71 @@ class HFRemote:
     # Cached index files
     # ------------------------------------------------------------------
 
+    @property
+    def _cache_rev_dir(self) -> Path:
+        """Cache directory for the current revision."""
+        return self.config.cache_dir / self.config.revision
+
+    @property
+    def _commit_sha_file(self) -> Path:
+        """Path to the file storing the cached commit SHA."""
+        return self._cache_rev_dir / ".commit_sha"
+
+    def _resolve_remote_sha(self) -> str | None:
+        """Resolve the current commit SHA for this revision via a lightweight HEAD request.
+
+        The result is cached in ``self._commit_sha`` so at most one HEAD
+        request is made per session.
+        """
+        if self._commit_sha is not None:
+            return self._commit_sha
+        try:
+            resp = self._session.head(self._repo_url("features.csv"), allow_redirects=True, timeout=30)
+            resp.raise_for_status()
+            self._capture_commit_sha(resp)
+        except Exception:
+            log.warning("Failed to resolve remote commit SHA; will re-download cached files")
+        return self._commit_sha
+
+    def _is_cache_valid(self) -> bool:
+        """Check whether the local cache matches the remote commit SHA.
+
+        Returns ``True`` only when the stored SHA equals the remote SHA.
+        On any failure (missing file, network error) returns ``False`` so
+        that stale data is never served silently.
+        """
+        if not self._commit_sha_file.exists():
+            return False
+        cached_sha = self._commit_sha_file.read_text().strip()
+        remote_sha = self._resolve_remote_sha()
+        if remote_sha is None:
+            return False
+        if cached_sha != remote_sha:
+            log.info("Cache stale (cached=%s, remote=%s), invalidating", cached_sha[:12], remote_sha[:12])
+            shutil.rmtree(self._cache_rev_dir, ignore_errors=True)
+            self._cache_rev_dir.mkdir(parents=True, exist_ok=True)
+            return False
+        return True
+
+    def _save_commit_sha(self) -> None:
+        """Persist the resolved commit SHA alongside the cached files."""
+        if self._commit_sha is not None:
+            self._commit_sha_file.parent.mkdir(parents=True, exist_ok=True)
+            self._commit_sha_file.write_text(self._commit_sha)
+
     def get_cached_or_download(self, repo_path: str) -> Path:
         """Return a local cached copy of a repo file, downloading if needed.
 
         Files are cached under ``config.cache_dir / revision / repo_path``.
-        To force a refresh, delete the cached file.
+        On each session a single HEAD request verifies that the cached commit
+        SHA still matches the remote; if not the cache is invalidated and
+        files are re-downloaded.
         """
-        local = self.config.cache_dir / self.config.revision / repo_path
-        if local.exists():
+        local = self._cache_rev_dir / repo_path
+        if local.exists() and self._is_cache_valid():
             log.debug("Using cached %s", local)
             return local
         log.info("Downloading %s ...", repo_path)
         self.download_file(repo_path, local)
+        self._save_commit_sha()
         return local
