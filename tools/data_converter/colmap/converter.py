@@ -488,7 +488,7 @@ class ColmapDataConverter(FileBasedDataConverter):
 @click.option(
     "--include-downsampled-images/--no-include-downsampled-images",
     is_flag=True,
-    default=False,
+    default=True,
     help="Include downsampled images as additional cameras. Images should be in folders such as `images_2`, etc.",
 )
 @click.option(

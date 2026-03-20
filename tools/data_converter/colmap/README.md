@@ -69,8 +69,8 @@ bazel run //tools/data_converter/colmap -- \
     --root-dir /data/colmap/scenes \
     --output-dir /data/ncore/colmap \
     colmap-v4 \
-    --include-3d-points false \
-    --include-downsampled-images false
+    --no-include-3d-points \
+    --no-include-downsampled-images
 ```
 
 Convert to directory format (instead of itar):
