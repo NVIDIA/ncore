@@ -135,12 +135,12 @@ subdirectory is treated as a separate sequence.
      - ``camera``
      - Prefix prepended to COLMAP integer camera IDs to form NCore sensor IDs
        (e.g. ``camera1``)
-   * - ``--include-downsampled-images BOOL``
-     - ``False``
+   * - ``--include-downsampled-images`` / ``--no-include-downsampled-images``
+     - disabled
      - Include downsampled image directories (``images_2``, ``images_4``,
        ``images_8``) as additional camera sensors
-   * - ``--include-3d-points BOOL``
-     - ``True``
+   * - ``--include-3d-points`` / ``--no-include-3d-points``
+     - enabled
      - Include the SfM point cloud as a single frame of a ``virtual_lidar``
        sensor
 

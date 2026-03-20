@@ -486,14 +486,14 @@ class ColmapDataConverter(FileBasedDataConverter):
     help="Camera name prefix (for integer camera_ids). Default is 'camera'.",
 )
 @click.option(
-    "--include-downsampled-images",
-    type=click.BOOL,
+    "--include-downsampled-images/--no-include-downsampled-images",
+    is_flag=True,
     default=False,
     help="Include downsampled images as additional cameras. Images should be in folders such as `images_2`, etc.",
 )
 @click.option(
-    "--include-3d-points",
-    type=click.BOOL,
+    "--include-3d-points/--no-include-3d-points",
+    is_flag=True,
     default=True,
     help="Include 3D Points as a lidar sensor",
 )
