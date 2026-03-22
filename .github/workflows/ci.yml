@@ -61,6 +61,11 @@ jobs:
           install-pandoc: true
           free-disk-space: true
           github-token: ${{ secrets.NVIDIA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          bazel-remote-cache: ${{ secrets.BAZEL_REMOTE_CACHE }}
+          bazel-remote-cache-header: ${{ secrets.BAZEL_REMOTE_CACHE_HEADER }}
+          bazel-remote-cache-upload: ${{ github.event_name != 'pull_request' && 'true' || 'false' }}
+          bazel-bes-backend: ${{ secrets.BAZEL_BES_BACKEND }}
+          bazel-bes-results-url: ${{ secrets.BAZEL_BES_RESULTS_URL }}
 
       - name: Check code format
         run: bazelisk run format.check
@@ -88,6 +93,10 @@ jobs:
           install-pandoc: true
           free-disk-space: true
           github-token: ${{ secrets.NVIDIA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          bazel-remote-cache: ${{ secrets.BAZEL_REMOTE_CACHE }}
+          bazel-remote-cache-header: ${{ secrets.BAZEL_REMOTE_CACHE_HEADER }}
+          bazel-bes-backend: ${{ secrets.BAZEL_BES_BACKEND }}
+          bazel-bes-results-url: ${{ secrets.BAZEL_BES_RESULTS_URL }}
 
       - name: Build documentation
         run: bazelisk build //docs:ncore
@@ -131,6 +140,10 @@ jobs:
           install-pandoc: false
           free-disk-space: true
           github-token: ${{ secrets.NVIDIA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+          bazel-remote-cache: ${{ secrets.BAZEL_REMOTE_CACHE }}
+          bazel-remote-cache-header: ${{ secrets.BAZEL_REMOTE_CACHE_HEADER }}
+          bazel-bes-backend: ${{ secrets.BAZEL_BES_BACKEND }}
+          bazel-bes-results-url: ${{ secrets.BAZEL_BES_RESULTS_URL }}
 
       - name: Publish to PyPI
         env:
