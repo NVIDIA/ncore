@@ -186,6 +186,9 @@ class _PaiConversionMixin:
         self.clip_id = clip_id
         self.logger.info(f"Converting clip {clip_id}")
 
+        # Verify offline features are available (non-offline variants are currently not supported)
+        self.provider.check_offline_features()
+
         # Load calibration and metadata
         try:
             self.load_metadata()

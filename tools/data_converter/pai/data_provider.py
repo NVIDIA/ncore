@@ -40,6 +40,16 @@ from tools.data_converter.pai.pai_remote.streaming import StreamingZipAccess
 
 logger = logging.getLogger(__name__)
 
+# Features for which the ``.offline`` variant is required.
+# The non-offline (raw) variants of these features are currently not supported
+# for conversion, so we validate upfront that the offline versions are available.
+REQUIRED_OFFLINE_FEATURES: list[str] = [
+    "egomotion",
+    "sensor_extrinsics",
+    "camera_intrinsics",
+    "lidar_intrinsics",
+]
+
 
 # ======================================================================
 # Protocol
@@ -100,6 +110,16 @@ class ClipDataProvider(Protocol):
         ``download_timestamp``.  Missing keys indicate the information
         is not available (e.g. older local downloads without
         ``provenance.json``).
+        """
+        ...
+
+    def check_offline_features(self) -> None:
+        """Verify that required offline feature variants are available.
+
+        The non-offline (raw) variants of certain features are currently not supported
+        for conversion.  Implementations must check that the ``.offline``
+        variants listed in :data:`REQUIRED_OFFLINE_FEATURES` exist and raise
+        :class:`RuntimeError` with a descriptive message if any are missing.
         """
         ...
 
@@ -169,6 +189,27 @@ class LocalClipDataProvider(ClipDataProvider):
         # Fallback for older downloads that lack provenance.json
         logger.info("provenance.json not found, returning minimal source metadata")
         return {"clip_id": self._clip_id}
+
+    def check_offline_features(self) -> None:
+        calibration_dir = self._clip_dir / "calibration"
+        labels_dir = self._clip_dir / "labels"
+
+        # Map base feature name to its expected .offline.parquet path
+        offline_paths: dict[str, UPath] = {}
+        for name in REQUIRED_OFFLINE_FEATURES:
+            if name in ("sensor_extrinsics", "camera_intrinsics", "lidar_intrinsics"):
+                offline_paths[name] = calibration_dir / f"{name}.offline.parquet"
+            else:
+                # Label features use clip_id prefix
+                offline_paths[name] = labels_dir / f"{self._clip_id}.{name}.offline.parquet"
+
+        missing = [name for name, path in offline_paths.items() if not path.exists()]
+        if missing:
+            missing_offline = [f"{n}.offline" for n in missing]
+            raise RuntimeError(
+                f"Clip {self._clip_id} is missing required offline features: {missing_offline}. "
+                f"Only clips with offline-processed data are supported for conversion."
+            )
 
     def close(self) -> None:
         """Close any open resources."""
@@ -420,6 +461,26 @@ class StreamingClipDataProvider:
             "revision": self._remote.config.revision,
             "commit_sha": self._remote.commit_sha,
         }
+
+    def check_offline_features(self) -> None:
+        # First check the global feature manifest
+        missing = [name for name in REQUIRED_OFFLINE_FEATURES if f"{name}.offline" not in self._feature_names]
+        if missing:
+            missing_offline = [f"{n}.offline" for n in missing]
+            raise RuntimeError(
+                f"Clip {self._clip_id} is missing required offline features: {missing_offline}. "
+                f"Only clips with offline-processed data are supported for conversion."
+            )
+
+        # Then check per-clip presence in feature_presence.parquet
+        presence = self._index.get_sensor_presence(self._clip_id)
+        absent = [name for name in REQUIRED_OFFLINE_FEATURES if not presence.get(f"{name}.offline", True)]
+        if absent:
+            absent_offline = [f"{n}.offline" for n in absent]
+            raise RuntimeError(
+                f"Clip {self._clip_id} is missing required offline features: {absent_offline}. "
+                f"Only clips with offline-processed data are supported for conversion."
+            )
 
     def close(self) -> None:
         """Close any open streaming zip handles."""
