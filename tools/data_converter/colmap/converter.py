@@ -19,7 +19,7 @@ import json
 import logging
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, Optional
 
 import click
 import numpy as np
@@ -390,6 +390,39 @@ class ColmapDataConverter(FileBasedDataConverter):
 
         return cameras
 
+    def _find_mask_path(self, image_path: UPath, image_name: str) -> Optional[UPath]:
+        """Find a per-image mask file using two conventions.
+
+        Checks the following locations in priority order:
+
+        1. ``<image_dir>/<stem>_mask.png`` — co-located mask
+        2. ``<sequence_dir>/masks/<image_filename>`` — separate masks directory
+
+        Parameters
+        ----------
+        image_path : UPath
+            Full path to the image file.
+        image_name : str
+            Filename of the image (e.g. ``img_00.png``).
+
+        Returns
+        -------
+        Optional[UPath]
+            Path to the mask file if found, otherwise ``None``.
+        """
+        stem = image_path.stem
+        # Convention 1: <image_dir>/<stem>_mask.png
+        mask_path = image_path.parent / f"{stem}_mask.png"
+        if mask_path.exists():
+            return mask_path
+
+        # Convention 2: <sequence_dir>/masks/<image_filename>
+        mask_path = self.sequence_path / "masks" / image_name
+        if mask_path.exists():
+            return mask_path
+
+        return None
+
     def decode_cameras(self) -> None:
         """Decodes camera frames, intrinsics, and masks from the COLMAP scene."""
 
@@ -415,13 +448,14 @@ class ColmapDataConverter(FileBasedDataConverter):
                 camera_model_parameters=colmap_camera.camera_model,
             )
 
-            # Store empty masks (as none available in dataset)
+            # Store empty static masks (per-image masks are stored as per-frame generic data below)
             self.masks_writer.store_camera_masks(
                 camera_id=camera_ncore_id,
                 mask_images={},
             )
             timestamps_us = colmap_camera.timestamps_us
 
+            masks_found = 0
             for continuous_frame_index in tqdm.tqdm(range(colmap_camera.n_images), desc=f"Decoding {camera_ncore_id}"):
                 image_name = colmap_camera.image_names[continuous_frame_index]
                 image_path = colmap_camera.image_path / image_name
@@ -442,6 +476,13 @@ class ColmapDataConverter(FileBasedDataConverter):
                 generic_data: dict[str, np.ndarray] = {}
                 generic_meta_data: dict[str, JsonLike] = {}
 
+                # Check for a per-image mask file (grayscale, stored as generic frame data)
+                mask_path = self._find_mask_path(image_path, image_name)
+                if mask_path is not None:
+                    mask_array = np.array(PILImage.open(str(mask_path)).convert("L"), dtype=np.uint8)
+                    generic_data["mask"] = mask_array
+                    masks_found += 1
+
                 camera_writer.store_frame(
                     image_binary_data=image_bytes,
                     image_format=file_extension,
@@ -449,6 +490,9 @@ class ColmapDataConverter(FileBasedDataConverter):
                     generic_data=generic_data,
                     generic_meta_data=generic_meta_data,
                 )
+
+            if masks_found > 0:
+                self.logger.info(f"Found {masks_found}/{colmap_camera.n_images} per-image masks for {camera_ncore_id}")
 
 
 @cli.command()

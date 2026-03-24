@@ -40,6 +40,22 @@ Camera intrinsics are compatible with the
 - Principal axis along the camera's +z axis
 - x-axis points right, y-axis points down
 
+Per-Image Masks
+^^^^^^^^^^^^^^^
+
+The converter automatically detects per-image mask files and stores them as
+per-frame ``mask`` properties in the ``generic_data`` of each camera frame
+(grayscale ``uint8``, shape ``[H, W]``).
+
+Two mask-file conventions are supported, checked in priority order:
+
+1. **Co-located mask** — ``<image_dir>/<stem>_mask.png``
+   alongside the image file.
+2. **Separate masks directory** — ``<sequence_dir>/masks/<image_filename>``.
+
+If no mask file is found for a given image, the frame is stored without a
+``mask`` entry.  The number of masks found per camera is logged at INFO level.
+
 LiDAR Sensors
 ^^^^^^^^^^^^^
 

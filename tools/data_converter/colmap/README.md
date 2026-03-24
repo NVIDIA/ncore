@@ -18,6 +18,21 @@ design decisions to ease this conversion:
 - The pointcloud has been assigned to a single lidar frame at timestamp 0.
 - Downsampled images can be added as if they are separate cameras (with camera id suffixes `_2`, `_4`, and `_8`)
 
+## Per-Image Masks
+
+The converter automatically detects per-image mask files and stores them as
+per-frame `mask` properties in the `generic_data` of each camera frame
+(grayscale, `uint8`, shape `[H, W]`).
+
+Two mask-file conventions are supported, checked in priority order:
+
+1. **Co-located mask** — `<image_dir>/<stem>_mask.png`
+   alongside the image file.
+2. **Separate masks directory** — `<sequence_dir>/masks/<image_filename>`.
+
+If no mask file is found for a given image, the frame is stored without a
+`mask` entry.
+
 ## Prerequisites
 
 - NCore build requirements (see <CONTRIBUTING.md>)
