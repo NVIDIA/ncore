@@ -34,8 +34,11 @@ Example sensor IDs:
 - **camera2** — full-resolution images from COLMAP camera 2
 
 Camera intrinsics are compatible with the
-:class:`~ncore.data.OpenCVPinholeCameraModelParameters` model.
-[#opencv_fisheye]_ COLMAP uses the same local camera convention as NCore:
+:class:`~ncore.data.OpenCVPinholeCameraModelParameters` model for COLMAP camera
+types 0–4 (``SIMPLE_PINHOLE``, ``PINHOLE``, ``SIMPLE_RADIAL``, ``RADIAL``,
+``OPENCV``), and :class:`~ncore.data.OpenCVFisheyeCameraModelParameters` for
+COLMAP camera type 5 (``OPENCV_FISHEYE``). COLMAP uses the same local camera
+convention as NCore:
 
 - Principal axis along the camera's +z axis
 - x-axis points right, y-axis points down
@@ -47,11 +50,13 @@ The converter automatically detects per-image mask files and stores them as
 per-frame ``mask`` properties in the ``generic_data`` of each camera frame
 (grayscale ``uint8``, shape ``[H, W]``).
 
-Two mask-file conventions are supported, checked in priority order:
+Three mask-file conventions are supported, checked in priority order:
 
-1. **Co-located mask** — ``<image_dir>/<stem>_mask.png``
+1. **Explicit masks directory** — ``<sequence_dir>/<masks_dir>/<stem>.png``
+   when ``--masks-dir`` is configured.
+2. **Co-located mask** — ``<image_dir>/<stem>_mask.png``
    alongside the image file.
-2. **Separate masks directory** — ``<sequence_dir>/masks/<image_filename>``.
+3. **Separate masks directory** — ``<sequence_dir>/masks/<image_filename>``.
 
 If no mask file is found for a given image, the frame is stored without a
 ``mask`` entry.  The number of masks found per camera is logged at INFO level.
@@ -73,7 +78,7 @@ Conversion
 ----------
 
 The converter uses NCore V4's component-based architecture. Each COLMAP scene is
-parsed from a ``sparse/0/`` binary directory and written to NCore format via
+parsed from a COLMAP reconstruction directory (default: ``sparse/0/``) and written to NCore format via
 :class:`~ncore.data.v4.SequenceComponentGroupsWriter` with specialized component
 writers for poses, intrinsics, cameras, and optionally a virtual lidar.
 
@@ -159,6 +164,17 @@ subdirectory is treated as a separate sequence.
      - enabled
      - Include the SfM point cloud as a single frame of a ``virtual_lidar``
        sensor
+   * - ``--colmap-dir TEXT``
+     - ``sparse/0``
+     - Relative path to the COLMAP reconstruction directory within each
+       sequence
+   * - ``--images-dir TEXT``
+     - ``images``
+     - Relative path to the image directory within each sequence
+   * - ``--masks-dir TEXT``
+     - (auto-detect)
+     - Explicit masks directory relative to each sequence root. When set,
+       looks for ``<masks_dir>/<stem>.png``
 
 For the complete implementation, see
 ``tools/data_converter/colmap/converter.py``.
@@ -186,12 +202,45 @@ API Reference
 
 **Sensor Models** (:mod:`ncore.data`):
 
-- :class:`~ncore.data.OpenCVPinholeCameraModelParameters` - Camera intrinsics
-  model
+- :class:`~ncore.data.OpenCVPinholeCameraModelParameters` - Pinhole camera
+  intrinsics model
+- :class:`~ncore.data.OpenCVFisheyeCameraModelParameters` - Fisheye camera
+  intrinsics model
 
-.. rubric:: Footnotes
+ScanNet++ Conversion
+^^^^^^^^^^^^^^^^^^^^
 
-.. [#opencv_fisheye] Support for
-    :class:`~ncore.data.OpenCVFisheyeCameraModelParameters` could be added in
-    the future to additionally handle fisheye lens distortion models from
-    Colmap.
+The ``scannetpp-v4`` subcommand converts ScanNet++ DSLR scenes using the resized
+fisheye images (``dslr/resized_images/``) with the COLMAP ``OPENCV_FISHEYE``
+camera model. Train/test split metadata from ``train_test_lists.json`` is stored
+in the sequence-level ``generic_meta_data``.
+
+.. code-block:: bash
+
+    bazel run //tools/data_converter/colmap:convert -- \
+        --root-dir /path/to/scannetpp/scene_id \
+        --output-dir /path/to/output \
+        scannetpp-v4
+
+When ``--root-dir`` points to a parent directory containing multiple scenes,
+each subdirectory with a ``dslr/colmap/`` directory is treated as a separate
+scene.
+
+**Subcommand arguments** (``scannetpp-v4``):
+
+.. list-table::
+   :widths: 35 20 45
+   :header-rows: 1
+
+   * - Argument
+     - Default
+     - Description
+   * - ``--store-type {itar,directory}``
+     - ``itar``
+     - Output store format
+   * - ``--profile {default,separate-sensors,separate-all}``
+     - ``separate-sensors``
+     - Component group layout
+   * - ``--include-3d-points`` / ``--no-include-3d-points``
+     - enabled
+     - Include COLMAP SfM point cloud as virtual lidar

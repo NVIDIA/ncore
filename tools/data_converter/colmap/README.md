@@ -65,6 +65,9 @@ bazel run //tools/data_converter/colmap -- \
 | `--store-type` | Output store type (`itar` or `directory`) | `itar` |
 | `--profile` | Component group profile (`default`, `separate-sensors`, `separate-all`) | `separate-sensors` |
 | `--sequence-meta` / `--no-sequence-meta` | Generate sequence meta-data file | True |
+| `--colmap-dir` | Relative path to COLMAP reconstruction directory | `sparse/0` |
+| `--images-dir` | Relative path to images directory | `images` |
+| `--masks-dir` | Explicit masks directory (auto-detect if not set) | None |
 
 ### Examples
 
@@ -96,6 +99,45 @@ bazel run //tools/data_converter/colmap -- \
     --output-dir /data/ncore/colmap \
     --store-type directory \
     colmap-v4
+```
+
+### ScanNet++ Conversion
+
+The `scannetpp-v4` subcommand converts ScanNet++ DSLR scenes. It uses the
+resized fisheye images (`dslr/resized_images/`) with the COLMAP `OPENCV_FISHEYE`
+camera model and stores train/test split metadata from `train_test_lists.json`.
+
+Convert a single scene:
+
+```bash
+bazel run //tools/data_converter/colmap:convert -- \
+    --root-dir /path/to/scannetpp/scene_id \
+    --output-dir /path/to/output \
+    scannetpp-v4
+```
+
+Convert all scenes under a parent directory:
+
+```bash
+bazel run //tools/data_converter/colmap:convert -- \
+    --root-dir /path/to/scannetpp/ \
+    --output-dir /path/to/output \
+    scannetpp-v4
+```
+
+You can also convert ScanNet++ data manually via the generic `colmap-v4` subcommand
+with explicit path options:
+
+```bash
+bazel run //tools/data_converter/colmap:convert -- \
+    --root-dir /path/to/scannetpp/scene_id \
+    --output-dir /path/to/output \
+    colmap-v4 \
+    --colmap-dir dslr/colmap \
+    --images-dir dslr/resized_images \
+    --masks-dir dslr/resized_anon_masks \
+    --camera-prefix dslr \
+    --no-include-downsampled-images
 ```
 
 ## License
