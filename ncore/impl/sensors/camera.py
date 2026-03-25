@@ -1674,6 +1674,73 @@ class OpenCVFisheyeCameraModel(CameraModel):
     dforward_poly: torch.Tensor
     approx_backward_poly: torch.Tensor
 
+    @staticmethod
+    def compute_max_angle(
+        resolution: np.ndarray,
+        focal_length: np.ndarray,
+        principal_point: np.ndarray,
+        radial_coeffs: np.ndarray,
+    ) -> float:
+        """Estimate ``max_angle`` from the farthest image corner.
+
+        Computes the angle *theta* such that the OpenCV fisheye forward
+        distortion model
+
+        .. math::
+            r(\\theta) = \\theta\\,(1 + k_1\\theta^2 + k_2\\theta^4 + k_3\\theta^6 + k_4\\theta^8)
+
+        maps *theta* to the normalised pixel distance of the farthest image
+        corner.  Uses Newton-Raphson iteration to invert the forward
+        polynomial.
+
+        Parameters
+        ----------
+        resolution : np.ndarray
+            Image resolution ``[width, height]`` (uint64 or int, ``[2,]``).
+        focal_length : np.ndarray
+            Focal lengths ``[fu, fv]`` (float32, ``[2,]``).
+        principal_point : np.ndarray
+            Principal point ``[cu, cv]`` (float32, ``[2,]``).
+        radial_coeffs : np.ndarray
+            Fisheye radial distortion coefficients ``[k1, k2, k3, k4]``
+            (float32, ``[4,]``).
+
+        Returns
+        -------
+        float
+            Maximum angle in radians.
+        """
+        # Normalised distance from principal point to each image corner
+        corners = np.array(
+            [[0, 0], [resolution[0], 0], [0, resolution[1]], [resolution[0], resolution[1]]],
+            dtype=np.float64,
+        )
+        normalised = (corners - principal_point) / focal_length
+        max_r: float = np.max(np.linalg.norm(normalised, axis=1))
+
+        k = torch.from_numpy(radial_coeffs.astype(np.float64))
+
+        # Forward polynomial r(theta) = theta * (1 + k1*t^2 + k2*t^4 + k3*t^6 + k4*t^8)
+        #   Horner form on u = t^2:  r(t) = t * eval_poly_horner([1, k1, k2, k3, k4], u)
+        # Derivative r'(theta) = 1 + 3*k1*t^2 + 5*k2*t^4 + 7*k3*t^6 + 9*k4*t^8
+        #   Horner form on u = t^2:  r'(t) = eval_poly_horner([1, 3*k1, 5*k2, 7*k3, 9*k4], u)
+        fw = torch.tensor([1.0, k[0], k[1], k[2], k[3]], dtype=torch.float64)
+        dfw = torch.tensor([1.0, 3.0 * k[0], 5.0 * k[1], 7.0 * k[2], 9.0 * k[3]], dtype=torch.float64)
+
+        # Newton-Raphson: solve r(theta) - max_r = 0
+        theta = torch.tensor(max_r, dtype=torch.float64)
+        for _ in range(20):
+            t2 = theta * theta
+            r = theta * eval_poly_horner(fw, t2)
+            dr = eval_poly_horner(dfw, t2)
+            if abs(dr) < 1e-12:
+                break
+            theta = theta - (r - max_r) / dr
+            if abs(r - max_r) < 1e-10:
+                break
+
+        return theta.item()
+
     def __init__(
         self,
         camera_model_parameters: types.OpenCVFisheyeCameraModelParameters,
