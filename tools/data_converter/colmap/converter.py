@@ -40,7 +40,7 @@ from ncore.data.v4 import (
     SequenceComponentGroupsWriter,
 )
 from ncore.data_converter import FileBasedDataConverter, FileBasedDataConverterConfig
-from ncore.impl.common.transformations import HalfClosedInterval
+from ncore.impl.common.transformations import HalfClosedInterval, se3_inverse
 from ncore.impl.data.types import JsonLike, OpenCVPinholeCameraModelParameters, ShutterType
 from ncore.impl.data.v4.types import ComponentGroupAssignments
 from tools.data_converter.cli import cli
@@ -80,13 +80,13 @@ class ColmapCamera:
         return (1e6 * (start_time_sec + np.linspace(0.0, self.n_images - 1, self.n_images))).astype(np.uint64)
 
     @property
-    def T_camera_ref(self) -> np.ndarray:
-        T_ref_camera_mats = np.stack(self.T_ref_camera_list, axis=0)
+    def T_camera_refs(self) -> np.ndarray:
+        T_ref_cameras = np.stack(self.T_ref_camera_list, axis=0)
 
-        # Convert extrinsics to camera-to-reference_frame.
+        # Convert extrinsics to camera-to-reference frame.
         # NOTE: colmap already assumes OpenCV convention
-        T_camera_ref = np.linalg.inv(T_ref_camera_mats)
-        return T_camera_ref[:, :4, :4].astype(np.float32)
+        T_camera_refs = se3_inverse(T_ref_cameras)
+        return T_camera_refs[:, :4, :4].astype(np.float32)
 
     @property
     def camera_model(self) -> OpenCVPinholeCameraModelParameters:
@@ -429,7 +429,7 @@ class ColmapDataConverter(FileBasedDataConverter):
             self.poses_writer.store_dynamic_pose(
                 source_frame_id=camera_ncore_id,
                 target_frame_id=colmap_camera.reference_frame,
-                poses=colmap_camera.T_camera_ref,
+                poses=colmap_camera.T_camera_refs,
                 timestamps_us=colmap_camera.timestamps_us,
                 require_sequence_time_coverage=False,  # Some cameras may have more poses than others
             )
