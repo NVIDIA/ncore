@@ -24,7 +24,7 @@ from typing import Optional, Tuple, Union, cast
 import numpy as np
 import torch
 
-from ncore.impl.common.util import map_optional
+from ncore.impl.common.util import map_optional, unpack_optional
 from ncore.impl.data import types
 from ncore.impl.sensors.common import (
     BaseModel,
@@ -733,7 +733,7 @@ class CameraModel(BaseModel, ABC):
                 valid[torch.argwhere(valid).squeeze()] = image_points_rs.valid_flag
                 valid_indices = torch.argwhere(valid).squeeze(1)
             else:
-                valid_indices = return_var.valid_indices  # type: ignore
+                valid_indices = unpack_optional(return_var.valid_indices)
 
             return_var.image_points = init_image_points
             return_var.image_points[valid_indices] = image_points_rs.image_points[image_points_rs.valid_flag]
