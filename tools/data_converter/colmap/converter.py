@@ -194,10 +194,9 @@ class ColmapDataConverter(FileBasedDataConverter):
 
         bin_path = self.sequence_path / "sparse" / "0"
 
-        self.scene_manager = pycolmap.SceneManager(str(bin_path))
-        self.scene_manager.load_cameras()
-        self.scene_manager.load_images()
-        self.scene_manager.load_points3D()
+        image_path = self.sequence_path / self.images_dir
+        self.scene_manager = pycolmap.SceneManager(str(bin_path), image_path=str(image_path))
+        self.scene_manager.load()
 
         self.cameras = self.populate_camera_data(
             parent_dir=self.sequence_path,
