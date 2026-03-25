@@ -327,6 +327,7 @@ class ColmapDataConverter(FileBasedDataConverter):
             intensity=np.zeros((1, num_points), dtype=np.float32),
             # Frame start/end timestamps (uint64, [2])
             frame_timestamps_us=np.array([start_timestamp_us, start_timestamp_us], dtype=np.uint64),
+            # Store COLMAP SfM point colors as generic data (uint8, [N, 3])
             generic_data={
                 "rgb": self.scene_manager.point3D_colors,  # uint8
             },

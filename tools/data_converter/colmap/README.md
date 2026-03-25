@@ -15,7 +15,7 @@ Because Colmap data does not adhere to the usual AV data conventions, we have ma
 design decisions to ease this conversion:
 
 - Camera images have been assigned timestamps at 1FPS.
-- The pointcloud has been assigned to a single lidar frame at timestamp 0.
+- The pointcloud has been assigned to a single lidar frame at timestamp 0 - point colors are stored as generic `rgb` frame data.
 - Downsampled images can be added as if they are separate cameras (with camera id suffixes `_2`, `_4`, and `_8`)
 
 ## Per-Image Masks
