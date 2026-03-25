@@ -1708,5 +1708,99 @@ class TestBivariateWindshieldModel(CommonTestCase):
         torch.testing.assert_close(res_w, rays, rtol=1e-4, atol=1e-5)
 
 
+class TestOpenCVFisheyeMaxAngle(unittest.TestCase):
+    """Tests for OpenCVFisheyeCameraModel.compute_max_angle."""
+
+    # Shared camera intrinsics (real-world ScanNet++ DSLR values)
+    RESOLUTION = np.array([1752, 1168], dtype=np.uint64)
+    FOCAL_LENGTH = np.array([789.28, 789.46], dtype=np.float32)
+    PRINCIPAL_POINT = np.array([883.03, 581.78], dtype=np.float32)
+    RADIAL_COEFFS = np.array([-0.0542, 0.0301, -0.0229, 0.0064], dtype=np.float32)
+
+    def test_compute_max_angle_basic(self):
+        """compute_max_angle returns a plausible angle for typical fisheye intrinsics."""
+        angle = OpenCVFisheyeCameraModel.compute_max_angle(
+            self.RESOLUTION, self.FOCAL_LENGTH, self.PRINCIPAL_POINT, self.RADIAL_COEFFS
+        )
+        # Should be a reasonable fisheye half-FOV (roughly 60-100 degrees)
+        self.assertGreater(angle, np.deg2rad(60))
+        self.assertLess(angle, np.deg2rad(100))
+
+    def test_compute_max_angle_zero_distortion(self):
+        """With zero distortion the model is equidistant: r = f * theta, so theta = r/f."""
+        resolution = np.array([2000, 2000], dtype=np.uint64)
+        focal_length = np.array([1000.0, 1000.0], dtype=np.float32)
+        principal_point = np.array([1000.0, 1000.0], dtype=np.float32)  # centred
+        radial_coeffs = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+
+        angle = OpenCVFisheyeCameraModel.compute_max_angle(resolution, focal_length, principal_point, radial_coeffs)
+        # Farthest corner is at (0,0) or (2000,2000), distance = sqrt(1^2 + 1^2) = sqrt(2)
+        expected = np.sqrt(2.0)  # normalised distance = corner distance / f = 1000/1000 * sqrt(2)
+        self.assertAlmostEqual(angle, expected, places=5)
+
+    def test_compute_max_angle_forward_inverse_consistency(self):
+        """The computed angle, when passed through the forward polynomial, should give the max corner distance."""
+        angle = OpenCVFisheyeCameraModel.compute_max_angle(
+            self.RESOLUTION, self.FOCAL_LENGTH, self.PRINCIPAL_POINT, self.RADIAL_COEFFS
+        )
+
+        # Forward polynomial: r(theta) = theta * (1 + k1*t^2 + k2*t^4 + k3*t^6 + k4*t^8)
+        k1, k2, k3, k4 = self.RADIAL_COEFFS.astype(np.float64)
+        t2 = angle**2
+        r_forward = angle * (1.0 + k1 * t2 + k2 * t2**2 + k3 * t2**3 + k4 * t2**4)
+
+        # Max normalised corner distance
+        corners = np.array([[0, 0], [1752, 0], [0, 1168], [1752, 1168]], dtype=np.float64)
+        normalised = (corners - self.PRINCIPAL_POINT.astype(np.float64)) / self.FOCAL_LENGTH.astype(np.float64)
+        max_r = float(np.max(np.linalg.norm(normalised, axis=1)))
+
+        self.assertAlmostEqual(r_forward, max_r, places=6)
+
+    def test_explicit_max_angle_preserved(self):
+        """An explicitly provided max_angle is stored as-is on the parameters."""
+        explicit = 1.234
+        params = OpenCVFisheyeCameraModelParameters(
+            resolution=self.RESOLUTION.copy(),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=self.PRINCIPAL_POINT.copy(),
+            focal_length=self.FOCAL_LENGTH.copy(),
+            radial_coeffs=self.RADIAL_COEFFS.copy(),
+            external_distortion_parameters=None,
+            max_angle=explicit,
+        )
+        self.assertAlmostEqual(params.max_angle, explicit, places=6)
+
+    def test_json_round_trip(self):
+        """Serialise and deserialise with a computed max_angle; the value should survive the round-trip."""
+        max_angle = OpenCVFisheyeCameraModel.compute_max_angle(
+            self.RESOLUTION, self.FOCAL_LENGTH, self.PRINCIPAL_POINT, self.RADIAL_COEFFS
+        )
+        original = OpenCVFisheyeCameraModelParameters(
+            resolution=self.RESOLUTION.copy(),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=self.PRINCIPAL_POINT.copy(),
+            focal_length=self.FOCAL_LENGTH.copy(),
+            radial_coeffs=self.RADIAL_COEFFS.copy(),
+            external_distortion_parameters=None,
+            max_angle=max_angle,
+        )
+        json_dict = original.to_dict()
+        restored = OpenCVFisheyeCameraModelParameters.from_dict(json_dict)
+        self.assertAlmostEqual(restored.max_angle, max_angle, places=5)
+
+    def test_asymmetric_principal_point(self):
+        """max_angle picks the farthest corner, not the nearest."""
+        # Principal point near top-left corner -> farthest corner is bottom-right
+        angle_tl = OpenCVFisheyeCameraModel.compute_max_angle(
+            self.RESOLUTION, self.FOCAL_LENGTH, np.array([100.0, 100.0], dtype=np.float32), self.RADIAL_COEFFS
+        )
+        # Principal point near centre
+        angle_c = OpenCVFisheyeCameraModel.compute_max_angle(
+            self.RESOLUTION, self.FOCAL_LENGTH, np.array([876.0, 584.0], dtype=np.float32), self.RADIAL_COEFFS
+        )
+        # Off-centre principal point should give a larger max_angle
+        self.assertGreater(angle_tl, angle_c)
+
+
 if __name__ == "__main__":
     unittest.main()
