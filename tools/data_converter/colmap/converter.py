@@ -19,7 +19,7 @@ import json
 import logging
 
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import List, Literal, Optional, Union, cast
 
 import click
 import numpy as np
@@ -41,8 +41,14 @@ from ncore.data.v4 import (
 )
 from ncore.data_converter import FileBasedDataConverter, FileBasedDataConverterConfig
 from ncore.impl.common.transformations import HalfClosedInterval, se3_inverse
-from ncore.impl.data.types import JsonLike, OpenCVPinholeCameraModelParameters, ShutterType
+from ncore.impl.data.types import (
+    JsonLike,
+    OpenCVFisheyeCameraModelParameters,
+    OpenCVPinholeCameraModelParameters,
+    ShutterType,
+)
 from ncore.impl.data.v4.types import ComponentGroupAssignments
+from ncore.impl.sensors.camera import OpenCVFisheyeCameraModel
 from tools.data_converter.cli import cli
 
 
@@ -57,6 +63,10 @@ class ColmapConverter4Config(FileBasedDataConverterConfig):
     camera_prefix: str = "camera"
     include_downsampled_images: bool = False
     include_3d_points: bool = True
+    colmap_dir: str = "sparse/0"
+    images_dir: str = "images"
+    masks_dir: Optional[str] = None
+    generic_meta_data: dict[str, JsonLike] = field(default_factory=dict)
 
 
 @dataclass(kw_only=True, slots=True)
@@ -89,30 +99,15 @@ class ColmapCamera:
         return T_camera_refs[:, :4, :4].astype(np.float32)
 
     @property
-    def camera_model(self) -> OpenCVPinholeCameraModelParameters:
+    def camera_model(self) -> Union[OpenCVPinholeCameraModelParameters, OpenCVFisheyeCameraModelParameters]:
         camera = self.colmap_camera
 
-        # Get distortion parameters.
         assert camera.camera_type in [0, 1, 2, 3, 4, 5], f"Unsupported camera type: {camera.camera_type}"
-        radial_coeffs = np.array([0, 0, 0, 0, 0, 0], dtype=np.float32)
-        tangential_coeffs = np.array([0, 0], dtype=np.float32)
-
-        # 0: SIMPLE_PINHOLE, 1: PINHOLE, 2: SIMPLE_RADIAL, 3: RADIAL, 4: OpenCV, 5: OpenCVFisheye
-        if camera.camera_type > 1:
-            radial_coeffs[0] = camera.k1
-        if camera.camera_type > 2:
-            radial_coeffs[1] = camera.k2
-        if camera.camera_type == 4:
-            tangential_coeffs[0] = camera.p1
-            tangential_coeffs[1] = camera.p2
-        if camera.camera_type == 5:
-            raise NotImplementedError("OpenCV fisheye camera model not supported yet in converter")
 
         width = round(camera.width / self.downsample_factor)
         height = round(camera.height / self.downsample_factor)
 
-        # This is kind of a hack, but sometimes COLMAP downsampled images have a resolution different from what
-        # is expected. Specifically 0.5 does not always round up. This might cause issues with the camera model.
+        # Resolution check for downsampled images
         if self.downsample_factor != 1:
             with PILImage.open(str(self.image_path / self.image_names[0])) as img:
                 if img.width != width or img.height != height:
@@ -128,6 +123,35 @@ class ColmapCamera:
         principal_point = np.array(
             [camera.cx / self.downsample_factor, camera.cy / self.downsample_factor], dtype=np.float32
         )
+
+        # 5: OpenCVFisheye -> OpenCVFisheyeCameraModelParameters
+        if camera.camera_type == 5:
+            resolution = np.array([width, height], dtype=np.uint64)
+            radial_coeffs = np.array([camera.k1, camera.k2, camera.k3, camera.k4], dtype=np.float32)
+            max_angle = OpenCVFisheyeCameraModel.compute_max_angle(
+                resolution, focal_length, principal_point, radial_coeffs
+            )
+            return OpenCVFisheyeCameraModelParameters(
+                resolution=resolution,
+                shutter_type=ShutterType.GLOBAL,
+                external_distortion_parameters=None,
+                principal_point=principal_point,
+                focal_length=focal_length,
+                radial_coeffs=radial_coeffs,
+                max_angle=max_angle,
+            )
+
+        # 0: SIMPLE_PINHOLE, 1: PINHOLE, 2: SIMPLE_RADIAL, 3: RADIAL, 4: OpenCV
+        radial_coeffs = np.array([0, 0, 0, 0, 0, 0], dtype=np.float32)
+        tangential_coeffs = np.array([0, 0], dtype=np.float32)
+
+        if camera.camera_type > 1:
+            radial_coeffs[0] = camera.k1
+        if camera.camera_type > 2:
+            radial_coeffs[1] = camera.k2
+        if camera.camera_type == 4:
+            tangential_coeffs[0] = camera.p1
+            tangential_coeffs[1] = camera.p2
 
         return OpenCVPinholeCameraModelParameters(
             resolution=np.array([width, height], dtype=np.uint64),
@@ -162,6 +186,10 @@ class ColmapDataConverter(FileBasedDataConverter):
         # Downsampled images in folders images_2, images_4, etc will be included as additional cameras
         self.include_downsampled_images = config.include_downsampled_images
         self.include_3d_points = config.include_3d_points
+        self.colmap_dir = config.colmap_dir
+        self.images_dir = config.images_dir
+        self.masks_dir = config.masks_dir
+        self.generic_meta_data: dict[str, JsonLike] = config.generic_meta_data
         self.logger = logging.getLogger(__name__)
 
     @staticmethod
@@ -192,7 +220,7 @@ class ColmapDataConverter(FileBasedDataConverter):
         self.sequence_path = sequence_path
         self.sequence_name = sequence_path.name
 
-        bin_path = self.sequence_path / "sparse" / "0"
+        bin_path = self.sequence_path / self.colmap_dir
 
         image_path = self.sequence_path / self.images_dir
         self.scene_manager = pycolmap.SceneManager(str(bin_path), image_path=str(image_path))
@@ -202,6 +230,7 @@ class ColmapDataConverter(FileBasedDataConverter):
             parent_dir=self.sequence_path,
             camera_prefix=self.camera_prefix,
             downsample=self.include_downsampled_images,
+            images_dir=self.images_dir,
         )
 
         camera_ids = list(self.cameras.keys())
@@ -231,7 +260,7 @@ class ColmapDataConverter(FileBasedDataConverter):
             sequence_id=self.sequence_name,
             sequence_timestamp_interval_us=sequence_timestamp_interval_us,
             store_type=self.store_type,
-            generic_meta_data={},  # no generic sequence meta data
+            generic_meta_data=self.generic_meta_data,
         )
 
         # Create poses component
@@ -334,7 +363,9 @@ class ColmapDataConverter(FileBasedDataConverter):
             generic_meta_data={},
         )
 
-    def populate_camera_data(self, parent_dir: UPath, camera_prefix: str, downsample: bool) -> dict[str, ColmapCamera]:
+    def populate_camera_data(
+        self, parent_dir: UPath, camera_prefix: str, downsample: bool, images_dir: str = "images"
+    ) -> dict[str, ColmapCamera]:
         """Populates the camera data from the COLMAP scene, including extrinsics and intrinsics
 
         Returns a dictionary of ColmapCamera instances indexed by the NCore camera IDs."""
@@ -359,42 +390,42 @@ class ColmapDataConverter(FileBasedDataConverter):
                 cameras[ncore_camera_id] = ColmapCamera(
                     camera_id=ncore_camera_id,
                     colmap_camera=self.scene_manager.cameras[imdata[k].camera_id],
-                    image_path=parent_dir / "images",
+                    image_path=parent_dir / images_dir,
                 )
             cameras[ncore_camera_id].T_ref_camera_list.append(T_ref_camera)
             cameras[ncore_camera_id].image_names.append(imdata[k].name)
 
-        if not downsample:
-            return cameras
-
-        # Add extra cameras if we are downsampling and data exists.
-        for camera_id, camera in self.scene_manager.cameras.items():
-            assert isinstance(camera, pycolmap.Camera)
-            for downsample_factor in [2, 4, 8]:
-                reference_camera_id = camera_prefix + str(camera_id)
-                ncore_camera_id = camera_prefix + str(camera_id) + "_" + str(downsample_factor)
-                image_root = "images_" + str(downsample_factor)
-                if not (parent_dir / image_root).exists():
-                    self.logger.warning(f"Skipping missing downsampled image directory: {image_root}")
-                    continue
-                image_names = cameras[reference_camera_id].image_names
-                cameras[ncore_camera_id] = ColmapCamera(
-                    camera_id=ncore_camera_id,
-                    colmap_camera=self.scene_manager.cameras[imdata[k].camera_id],
-                    image_path=parent_dir / image_root,
-                    reference_frame=reference_camera_id,
-                    T_ref_camera_list=[np.eye(4)] * len(image_names),
-                    image_names=image_names,
-                    downsample_factor=downsample_factor,
-                )
+        if downsample:
+            # Add extra cameras if we are downsampling and data exists.
+            for camera_id, camera in self.scene_manager.cameras.items():
+                assert isinstance(camera, pycolmap.Camera)
+                for downsample_factor in [2, 4, 8]:
+                    reference_camera_id = camera_prefix + str(camera_id)
+                    ncore_camera_id = camera_prefix + str(camera_id) + "_" + str(downsample_factor)
+                    image_root = "images_" + str(downsample_factor)
+                    if not (parent_dir / image_root).exists():
+                        self.logger.warning(f"Skipping missing downsampled image directory: {image_root}")
+                        continue
+                    image_names = cameras[reference_camera_id].image_names
+                    cameras[ncore_camera_id] = ColmapCamera(
+                        camera_id=ncore_camera_id,
+                        colmap_camera=self.scene_manager.cameras[imdata[k].camera_id],
+                        image_path=parent_dir / image_root,
+                        reference_frame=reference_camera_id,
+                        T_ref_camera_list=[np.eye(4)] * len(image_names),
+                        image_names=image_names,
+                        downsample_factor=downsample_factor,
+                    )
 
         return cameras
 
     def _find_mask_path(self, image_path: UPath, image_name: str) -> Optional[UPath]:
-        """Find a per-image mask file using two conventions.
+        """Find a per-image mask file using multiple conventions.
 
         Checks the following locations in priority order:
 
+        0. ``<sequence_dir>/<masks_dir>/<stem>.png`` or ``<sequence_dir>/<masks_dir>/<image_filename>``
+           — explicit masks directory (from config)
         1. ``<image_dir>/<stem>_mask.png`` — co-located mask
         2. ``<sequence_dir>/masks/<image_filename>`` — separate masks directory
 
@@ -411,6 +442,16 @@ class ColmapDataConverter(FileBasedDataConverter):
             Path to the mask file if found, otherwise ``None``.
         """
         stem = image_path.stem
+
+        # Convention 0: explicit masks directory (from config)
+        if self.masks_dir is not None:
+            mask_path = self.sequence_path / self.masks_dir / f"{stem}.png"
+            if mask_path.exists():
+                return mask_path
+            mask_path = self.sequence_path / self.masks_dir / image_name
+            if mask_path.exists():
+                return mask_path
+
         # Convention 1: <image_dir>/<stem>_mask.png
         mask_path = image_path.parent / f"{stem}_mask.png"
         if mask_path.exists():
@@ -541,6 +582,26 @@ class ColmapDataConverter(FileBasedDataConverter):
     default=True,
     help="Include 3D Points as a lidar sensor",
 )
+@click.option(
+    "--colmap-dir",
+    type=str,
+    default="sparse/0",
+    show_default=True,
+    help="Path to the COLMAP sparse reconstruction directory (relative to sequence root).",
+)
+@click.option(
+    "--images-dir",
+    type=str,
+    default="images",
+    show_default=True,
+    help="Path to the images directory (relative to sequence root).",
+)
+@click.option(
+    "--masks-dir",
+    type=str,
+    default=None,
+    help="Path to the masks directory (relative to sequence root). If not set, masks are discovered via conventions.",
+)
 @click.pass_context
 def colmap_v4(ctx, *_, **kwargs):
     """Colmap-specific data conversion (V4 format)"""
@@ -549,6 +610,169 @@ def colmap_v4(ctx, *_, **kwargs):
     config = ColmapConverter4Config(**{**vars(ctx.obj), **kwargs})
 
     ColmapDataConverter.convert(config)
+
+
+# ---------------------------------------------------------------------------
+# ScanNet++ subcommand
+# ---------------------------------------------------------------------------
+
+
+def _discover_scannetpp_scenes(root_dir: UPath) -> list[UPath]:
+    """Discover ScanNet++ scenes under *root_dir*.
+
+    A valid scene is a subdirectory containing ``dslr/colmap/``.
+    """
+    scenes = []
+    for child in sorted(root_dir.iterdir()):
+        if child.is_dir() and (child / "dslr" / "colmap").is_dir():
+            scenes.append(child)
+    return scenes
+
+
+def _build_scannetpp_split_metadata(
+    scene_path: UPath,
+    image_names: list[str],
+    camera_id: str,
+    start_time_sec: float,
+) -> dict[str, JsonLike]:
+    """Build train/test split metadata from ScanNet++ ``train_test_lists.json``.
+
+    Returns a dict suitable for sequence-level ``generic_meta_data``.
+    """
+    train_test_path = scene_path / "dslr" / "train_test_lists.json"
+    if not train_test_path.exists():
+        logging.getLogger(__name__).warning(f"No train_test_lists.json found at {train_test_path}")
+        return {}
+
+    with train_test_path.open("r") as f:
+        train_test = json.load(f)
+
+    train_set = set(train_test.get("train", []))
+    test_set = set(train_test.get("test", []))
+
+    # Associate image file names with virtual frame timestamps
+    sorted_names = sorted(image_names)
+    name_to_ts = {name: int(1e6 * (start_time_sec + i)) for i, name in enumerate(sorted_names)}
+
+    train_filenames = [n for n in sorted_names if n in train_set]
+    test_filenames = [n for n in sorted_names if n in test_set]
+
+    camera_splits: dict[str, JsonLike] = {}
+    if train_filenames:
+        camera_splits["train"] = {
+            "frame_timestamps_us": [name_to_ts[n] for n in train_filenames],
+            "source_filenames": cast(List[JsonLike], train_filenames),
+        }
+    if test_filenames:
+        camera_splits["test"] = {
+            "frame_timestamps_us": [name_to_ts[n] for n in test_filenames],
+            "source_filenames": cast(List[JsonLike], test_filenames),
+        }
+
+    return {
+        "source_dataset": "scannetpp",
+        "scene_id": scene_path.name,
+        "splits": {camera_id: camera_splits} if camera_splits else {},
+    }
+
+
+@cli.command()
+@click.option(
+    "--store-type",
+    type=click.Choice(["itar", "directory"], case_sensitive=False),
+    default="itar",
+    show_default=True,
+    help="Output store type.",
+)
+@click.option(
+    "component_group_profile",
+    "--profile",
+    type=click.Choice(["default", "separate-sensors", "separate-all"], case_sensitive=False),
+    default="separate-sensors",
+    show_default=True,
+    help="Output component group profile.",
+)
+@click.option(
+    "--include-3d-points/--no-include-3d-points",
+    is_flag=True,
+    default=True,
+    help="Include COLMAP SfM point cloud as virtual lidar.",
+)
+@click.pass_context
+def scannetpp_v4(ctx, **kwargs):
+    """ScanNet++ dataset conversion (V4 format).
+
+    Converts ScanNet++ DSLR scenes to NCore V4 by configuring the COLMAP
+    converter for the ScanNet++ directory layout.  Uses the resized fisheye
+    images (``dslr/resized_images/``) with the COLMAP OPENCV_FISHEYE camera
+    model.
+
+    Expects ``--root-dir`` to point either to a single scene directory or
+    to a parent directory containing multiple scene subdirectories.
+    """
+
+    _logger = logging.getLogger(__name__)
+    base = ctx.obj
+    root_dir = UPath(base.root_dir)
+
+    # Discover scenes
+    scenes = _discover_scannetpp_scenes(root_dir)
+    if not scenes:
+        if (root_dir / "dslr" / "colmap").is_dir():
+            scenes = [root_dir]
+        else:
+            raise click.ClickException(f"No ScanNet++ scenes found in {root_dir}")
+
+    _logger.info(f"Found {len(scenes)} ScanNet++ scene(s)")
+
+    for scene_path in scenes:
+        scene_id = scene_path.name
+
+        # Check has_masks from train_test_lists.json
+        train_test_path = scene_path / "dslr" / "train_test_lists.json"
+        has_masks = False
+        if train_test_path.exists():
+            with train_test_path.open("r") as f:
+                has_masks = json.load(f).get("has_masks", False)
+
+        masks_dir: Optional[str] = "dslr/resized_anon_masks" if has_masks else None
+
+        # ScanNet++ DSLR has exactly 1 COLMAP camera -> NCore ID "dslr1"
+        camera_prefix = "dslr"
+        images_dir = "dslr/resized_images"
+        primary_image_dir = scene_path / images_dir
+        primary_image_names = sorted(f.name for f in primary_image_dir.iterdir() if f.is_file())
+
+        generic_meta_data = _build_scannetpp_split_metadata(
+            scene_path=scene_path,
+            image_names=primary_image_names,
+            camera_id=f"{camera_prefix}1",
+            start_time_sec=kwargs.get("start_time_sec", 0.0),
+        )
+
+        config = ColmapConverter4Config(
+            root_dir=str(scene_path),
+            output_dir=base.output_dir,
+            verbose=base.verbose,
+            debug=base.debug,
+            debug_port=base.debug_port,
+            no_cameras=base.no_cameras,
+            camera_ids=base.camera_ids,
+            no_lidars=base.no_lidars,
+            lidar_ids=base.lidar_ids,
+            no_radars=base.no_radars,
+            radar_ids=base.radar_ids,
+            colmap_dir="dslr/colmap",
+            images_dir=images_dir,
+            masks_dir=masks_dir,
+            camera_prefix=camera_prefix,
+            include_downsampled_images=False,
+            generic_meta_data=generic_meta_data,
+            **kwargs,
+        )
+
+        _logger.info(f"Converting scene: {scene_id}")
+        ColmapDataConverter.convert(config)
 
 
 if __name__ == "__main__":

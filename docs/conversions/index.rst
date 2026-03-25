@@ -5,7 +5,8 @@ Data Conversions
 ================
 
 NCore provides conversion tools for importing 3rd-party dataset formats into
-the NCore V4 component-based format.
+the NCore V4 component-based format. Supported formats include Waymo, COLMAP
+(including ScanNet++), and PAI.
 
 .. toctree::
    :maxdepth: 1

@@ -14,19 +14,34 @@
 # limitations under the License.
 
 load("@ncore_pip_deps//:requirements.bzl", "requirement")
-load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 
 # targets might be used in various places also outside of the repo, so make it public
 package(default_visibility = ["//visibility:public"])
 
+# Reusable library for the COLMAP converter (used by other converters, e.g. scannetpp)
+py_library(
+    name = "pylib",
+    srcs = ["converter.py"],
+    deps = [
+        "@pycolmap",
+        requirement("click"),
+        requirement("numpy"),
+        requirement("tqdm"),
+        requirement("universal_pathlib"),
+        requirement("pillow"),
+        "//ncore:pylib",
+        "//tools/data_converter:pylib_cli",
+    ],
+)
+
 # Standalone CLI binary for converting Colmap data to NCore V4
 py_binary(
     name = "convert",
-    srcs = [
-        "converter.py",
-    ],
+    srcs = ["converter.py"],
     main = "converter.py",
     deps = [
+        ":pylib",
         "@pycolmap",
         requirement("click"),
         requirement("numpy"),
