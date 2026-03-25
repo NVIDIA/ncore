@@ -109,11 +109,15 @@ http_archive(
     urls = ["https://github.com/waymo-research/waymo-open-dataset/archive/refs/tags/v1.6.1.tar.gz"],
 )
 
-# pycolmap-reader
+# pycolmap-reader (Python COLMAP model reader by trueprice)
+# The patch fixes Python 2 -> 3 incompatibility: map() returns an iterator in
+# Python 3, breaking text-format (.txt) loading.  See patch header for details.
 http_archive(
     name = "pycolmap",
     build_file = "//deps/pycolmap:pycolmap.BUILD",
     integrity = "sha256-cOv2KrC75S1ABt9zdcoLE+TP7lnM4o6QZM9RxN1TdPA=",
+    patch_strip = 1,
+    patches = ["//deps/pycolmap:fix-python3-map.patch"],
     strip_prefix = "pycolmap-fe7a7c45df803b6c391777e349f0d8d65d39d777",
     urls = ["https://github.com/trueprice/pycolmap/archive/fe7a7c45df803b6c391777e349f0d8d65d39d777.tar.gz"],
 )
