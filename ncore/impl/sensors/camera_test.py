@@ -27,27 +27,6 @@ import scipy
 import scipy.linalg
 import torch
 
-
-# =============================================================================
-# GPU Test Detection
-# =============================================================================
-# Tests that require CUDA can be skipped via the NCORE_NO_GPU_TESTS environment variable.
-# This is typically used in CI environments without GPU access.
-#
-# Usage:
-#   bazel test --config=no-gpu ...
-#
-# This allows the same test suite to run on both:
-# - Local execution / GPU CI runners - all tests run
-# - CPU-only CI runners - GPU tests skipped via NCORE_NO_GPU_TESTS
-# =============================================================================
-def _get_test_devices() -> Tuple[torch.device, ...]:
-    """Return the devices to test based on NCORE_NO_GPU_TESTS environment variable - will always contain CPU and conditionally GPU."""
-    if os.environ.get("NCORE_NO_GPU_TESTS", "0") in ("1", "true", "True", "TRUE"):
-        return (torch.device("cpu"),)
-    return (torch.device("cpu"), torch.device("cuda"))
-
-
 from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.types import (
     BivariateWindshieldModelParameters,
@@ -67,6 +46,26 @@ from ncore.impl.sensors.camera import (
     OpenCVPinholeCameraModel,
     to_torch,
 )
+
+
+# =============================================================================
+# GPU Test Detection
+# =============================================================================
+# Tests that require CUDA can be skipped via the NCORE_NO_GPU_TESTS environment variable.
+# This is typically used in CI environments without GPU access.
+#
+# Usage:
+#   bazel test --config=no-gpu ...
+#
+# This allows the same test suite to run on both:
+# - Local execution / GPU CI runners - all tests run
+# - CPU-only CI runners - GPU tests skipped via NCORE_NO_GPU_TESTS
+# =============================================================================
+def _get_test_devices() -> Tuple[torch.device, ...]:
+    """Return the devices to test based on NCORE_NO_GPU_TESTS environment variable - will always contain CPU and conditionally GPU."""
+    if os.environ.get("NCORE_NO_GPU_TESTS", "0") in ("1", "true", "True", "TRUE"):
+        return (torch.device("cpu"),)
+    return (torch.device("cpu"), torch.device("cuda"))
 
 
 ConcreteCameraModelUnion = Union[FThetaCameraModel, OpenCVPinholeCameraModel, OpenCVFisheyeCameraModel]
