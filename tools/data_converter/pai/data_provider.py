@@ -294,6 +294,10 @@ class StreamingClipDataProvider:
         if key in ("camera_intrinsics", "sensor_extrinsics", "vehicle_dimensions", "lidar_intrinsics"):
             return self._prefer_offline_feature(key), None
 
+        # Explicit non-offline (online) extrinsics (for radar calibration fallback)
+        if key == "sensor_extrinsics_online":
+            return "sensor_extrinsics", None
+
         # Label features
         if key == "egomotion":
             feat_name = self._prefer_offline_feature("egomotion")
@@ -324,6 +328,13 @@ class StreamingClipDataProvider:
             clip_files = feat.clip_filenames(self._clip_id)
             filename = next(iter(clip_files.values()))
             return "lidar_top_360fov", filename
+
+        # Radar sensors: key is the sensor name directly (e.g. "radar_front_center_srr_0")
+        if key.startswith("radar_"):
+            feat = self._index.get_feature(key)
+            clip_files = feat.clip_filenames(self._clip_id)
+            filename = next(iter(clip_files.values()))
+            return key, filename
 
         raise KeyError(f"Unknown data key: {key!r}")
 

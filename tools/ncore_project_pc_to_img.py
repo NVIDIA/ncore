@@ -23,6 +23,8 @@ from typing import Optional, Tuple
 import click
 import matplotlib
 
+from ncore.impl.data.compat import LidarSensorProtocol, RayBundleSensorProtocol
+
 
 def _select_matplotlib_backend() -> None:
     """Select the best available matplotlib backend.
@@ -288,7 +290,13 @@ def v4(
 
 
 def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
-    lidar_sensor = loader.get_lidar_sensor(params.sensor_id)
+    # Auto-detect sensor type from available sensor IDs
+    ray_sensor: RayBundleSensorProtocol
+    if params.sensor_id in loader.radar_ids:
+        ray_sensor = loader.get_radar_sensor(params.sensor_id)
+    else:
+        ray_sensor = loader.get_lidar_sensor(params.sensor_id)
+
     cam_sensor = loader.get_camera_sensor(params.camera_id)
 
     # Get the camera frame indices from the index range
@@ -310,12 +318,12 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
     cam_model = CameraModel.from_parameters(cam_model_params, device=params.device)
 
     # Initialize motion compensator, and the lidar model if requested
-    motion_compensator = MotionCompensator(lidar_sensor.pose_graph)
+    motion_compensator = MotionCompensator(ray_sensor.pose_graph)
     lidar_model: Optional[StructuredLidarModel] = None
-    if params.enable_lidar_model:
-        lidar_model = StructuredLidarModel.maybe_from_parameters(lidar_sensor.model_parameters, device=params.device)
+    if params.enable_lidar_model and isinstance(ray_sensor, LidarSensorProtocol):
+        lidar_model = StructuredLidarModel.maybe_from_parameters(ray_sensor.model_parameters, device=params.device)
 
-        assert lidar_model is not None, f"No structured lidar model available for lidar sensor {params.sensor_id}"
+        assert lidar_model is not None, f"No structured lidar model available for sensor {params.sensor_id}"
 
         msg += " | with structured lidar model"
 
@@ -323,7 +331,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
         # Get the camera timestamp and find the closes lidar frame (relative to center of camera frame timestamps)
         cam_timestamp_start_us = cam_sensor.get_frame_timestamp_us(frame_index, types.FrameTimepoint.START)
         cam_timestamp_end_us = cam_sensor.get_frame_timestamp_us(frame_index, types.FrameTimepoint.END)
-        pc_frame_index = lidar_sensor.get_closest_frame_index(
+        pc_frame_index = ray_sensor.get_closest_frame_index(
             cam_timestamp_start_us + (cam_timestamp_end_us - cam_timestamp_start_us) // 2,
             relative_frame_time=0.5,
         )
@@ -331,15 +339,15 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
         # Load the camera image and the point cloud
         img_frame = cam_sensor.get_frame_image_array(frame_index)
 
-        if lidar_model is not None:
+        if isinstance(ray_sensor, LidarSensorProtocol) and lidar_model is not None:
             ## Generate sensor points from model elements with length of the source data
             sensor_pc = (
                 lidar_model.elements_to_sensor_points(
                     unpack_optional(
-                        lidar_sensor.get_frame_ray_bundle_model_element(pc_frame_index),
+                        ray_sensor.get_frame_ray_bundle_model_element(pc_frame_index),
                         msg=f"Lidar model elements not available for frame {pc_frame_index}",
                     ),
-                    lidar_sensor.get_frame_ray_bundle_return_distance_m(
+                    ray_sensor.get_frame_ray_bundle_return_distance_m(
                         pc_frame_index, return_index=params.sensor_return_index
                     ),
                 )
@@ -351,14 +359,12 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
             pc = motion_compensator.motion_compensate_points(
                 sensor_id=params.sensor_id,
                 xyz_pointtime=sensor_pc,
-                timestamp_us=lidar_sensor.get_frame_ray_bundle_timestamp_us(pc_frame_index),
-                frame_start_timestamp_us=lidar_sensor.get_frame_timestamp_us(
-                    pc_frame_index, types.FrameTimepoint.START
-                ),
-                frame_end_timestamp_us=lidar_sensor.get_frame_timestamp_us(pc_frame_index, types.FrameTimepoint.END),
+                timestamp_us=ray_sensor.get_frame_ray_bundle_timestamp_us(pc_frame_index),
+                frame_start_timestamp_us=ray_sensor.get_frame_timestamp_us(pc_frame_index, types.FrameTimepoint.START),
+                frame_end_timestamp_us=ray_sensor.get_frame_timestamp_us(pc_frame_index, types.FrameTimepoint.END),
             ).xyz_e_sensorend
         else:
-            pc = lidar_sensor.get_frame_point_cloud(
+            pc = ray_sensor.get_frame_point_cloud(
                 pc_frame_index,
                 motion_compensation=True,
                 with_start_points=False,
@@ -367,7 +373,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
 
         # Transform the point cloud to the world coordinate frame
         pc = transform_point_cloud(
-            pc, lidar_sensor.get_frames_T_sensor_target("world", pc_frame_index, types.FrameTimepoint.END)
+            pc, ray_sensor.get_frames_T_sensor_target("world", pc_frame_index, types.FrameTimepoint.END)
         )
 
         T_world_camera_start = se3_inverse(
@@ -403,6 +409,9 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
                 world_point_projections = cam_model.world_points_to_image_points_static_pose(
                     pc, T_world_camera_end, return_valid_indices=True, return_T_world_sensors=True
                 )
+
+            case _:
+                raise ValueError(f"Unsupported pose option: {params.pose}")
 
         image_point_coords = world_point_projections.image_points.cpu().numpy()
         trans_matrices = world_point_projections.T_world_sensors.cpu().numpy()  # type: ignore

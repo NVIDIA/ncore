@@ -77,6 +77,7 @@ py_library(
         "components/camera.py",
         "components/cuboids.py",
         "components/lidar.py",
+        "components/radar.py",
         "components/trajectory.py",
     ],
     deps = [

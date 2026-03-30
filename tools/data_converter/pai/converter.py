@@ -22,6 +22,7 @@ FEATURES:
   - Egomotion poses from sensor data
   - 7 cameras (120° FOV front/cross, 70° FOV rear, 30° FOV tele)
   - 1 top lidar (360° FOV, DRACO compressed)
+  - Up to 19 radar sensors (spherical coordinates, per-detection Doppler/RCS/SNR)
   - Cuboid obstacle labels
 
 LIMITATIONS:
@@ -55,6 +56,7 @@ from ncore.data.v4 import (
     LidarSensorComponent,
     MasksComponent,
     PosesComponent,
+    RadarSensorComponent,
     SequenceComponentGroupsReader,
     SequenceComponentGroupsWriter,
 )
@@ -150,6 +152,7 @@ class _PaiConversionMixin:
     # Methods from BaseDataConverter that the mixin calls
     get_active_camera_ids: Callable[..., list[str]]
     get_active_lidar_ids: Callable[..., list[str]]
+    get_active_radar_ids: Callable[..., list[str]]
 
     # Camera sensor mapping
     CAMERA_SENSORS = [
@@ -200,6 +203,8 @@ class _PaiConversionMixin:
         all_lidar_ids = [s for s in self.sensor_extrinsics.keys() if "lidar" in s]
         active_camera_ids = self.get_active_camera_ids(all_camera_ids)
         active_lidar_ids = self.get_active_lidar_ids(all_lidar_ids)
+        all_radar_ids = [s for s in self.sensor_extrinsics.keys() if s.startswith("radar_")]
+        active_radar_ids = self.get_active_radar_ids(all_radar_ids)
 
         # Load egomotion (timestamps are shifted to be positive)
         ego_df = self.provider.load_parquet("egomotion")
@@ -239,7 +244,7 @@ class _PaiConversionMixin:
         self.component_groups = ComponentGroupAssignments.create(
             camera_ids=active_camera_ids,
             lidar_ids=active_lidar_ids,
-            radar_ids=[],
+            radar_ids=active_radar_ids,
             profile=self.component_group_profile,
         )
 
@@ -319,6 +324,7 @@ class _PaiConversionMixin:
         # Decode all sensors and store data in components
         self.decode_cameras(active_camera_ids)
         self.decode_lidars(active_lidar_ids)
+        self.decode_radars(active_radar_ids)
 
         # Create and store cuboids component
         self.store_writer.register_component_writer(
@@ -422,12 +428,28 @@ class _PaiConversionMixin:
         extrinsics_df = self.provider.load_parquet("sensor_extrinsics")
         self.sensor_extrinsics = parse_sensor_extrinsics(extrinsics_df, self.clip_id, self.sensor_presence)
 
+        # The .offline extrinsics may only contain cameras + lidar.  If radar
+        # sensors are present according to feature_presence but missing from the
+        # loaded extrinsics, fall back to the non-offline extrinsics for those.
+        radar_present = [s for s in self.sensor_presence.index if s.startswith("radar_") and self.sensor_presence[s]]
+        radar_missing = [s for s in radar_present if s not in self.sensor_extrinsics]
+        if radar_missing and self.provider.has_file("sensor_extrinsics_online"):
+            self.logger.info(
+                f"Loading online extrinsics for {len(radar_missing)} radar sensors missing from offline calibration"
+            )
+            online_extrinsics_df = self.provider.load_parquet("sensor_extrinsics_online")
+            online_extrinsics = parse_sensor_extrinsics(online_extrinsics_df, self.clip_id, self.sensor_presence)
+            for radar_id in radar_missing:
+                if radar_id in online_extrinsics:
+                    self.sensor_extrinsics[radar_id] = online_extrinsics[radar_id]
+
         dimensions_df = self.provider.load_parquet("vehicle_dimensions")
         self.vehicle_dimensions = parse_vehicle_dimensions(dimensions_df, self.clip_id)
 
         self.logger.info(
             f"Loaded metadata: {len(self.camera_intrinsics)} cameras, "
-            f"{len([k for k in self.sensor_extrinsics if 'lidar' in k])} lidars"
+            f"{len([k for k in self.sensor_extrinsics if 'lidar' in k])} lidars, "
+            f"{len([k for k in self.sensor_extrinsics if k.startswith('radar_')])} radars"
         )
 
         # Platform details
@@ -547,6 +569,131 @@ class _PaiConversionMixin:
                     frame_timestamps_us=timestamps_us,
                     generic_data={},
                     generic_meta_data={},
+                )
+
+    def decode_radars(self, active_radar_ids: list[str]) -> None:
+        logger = self.logger.getChild("decode_radars")
+
+        for radar_id in active_radar_ids:
+            logger.info(f"Decoding radar data from {radar_id}")
+            if not self.provider.has_file(radar_id):
+                logger.warning(f"Radar file not found for {radar_id}")
+                continue
+
+            # Load radar parquet
+            radar_df = self.provider.load_parquet(radar_id)
+
+            # Get sensor transform
+            T_sensor_rig = self.sensor_extrinsics[radar_id]
+
+            # Store extrinsics
+            self.poses_writer.store_static_pose(
+                source_frame_id=radar_id,
+                target_frame_id="rig",
+                pose=T_sensor_rig.astype(np.float32),
+            )
+
+            # Create radar writer
+            radar_writer = self.store_writer.register_component_writer(
+                RadarSensorComponent.Writer,
+                component_instance_name=radar_id,
+                group_name=self.component_groups.radar_component_groups.get(radar_id),
+            )
+
+            # Group detections by scan_index (stored as the DataFrame index)
+            for scan_index, scan_df in tqdm.tqdm(radar_df.groupby(level=0), desc=f"Radar {radar_id}"):
+                # Infer frame timestamps from per-detection timestamps
+                timestamp_us = cast(np.ndarray, scan_df["sensor_timestamp"].values.astype(np.int64))
+
+                frame_start_us = int(timestamp_us.min())
+                frame_end_us = int(timestamp_us.max())
+
+                # Skip scans with non-positive timestamps (before time origin)
+                if frame_end_us < 0:
+                    continue
+
+                # Skip frames outside sequence time interval
+                if frame_start_us < self.sequence_timestamp_interval_us.start:
+                    continue
+                if frame_end_us >= self.sequence_timestamp_interval_us.stop:
+                    break
+
+                # Filter out negative timestamps
+                valid = timestamp_us >= 0
+                if not valid.all():
+                    scan_df = scan_df[valid]
+                    timestamp_us = timestamp_us[valid]
+
+                # Convert spherical to unit direction vectors
+                azimuth = scan_df["azimuth"].values.astype(np.float64)
+                elevation = scan_df["elevation"].values.astype(np.float64)
+
+                cos_el = np.cos(elevation)
+                direction = np.stack(
+                    [
+                        cos_el * np.cos(azimuth),
+                        cos_el * np.sin(azimuth),
+                        np.sin(elevation),
+                    ],
+                    axis=-1,
+                ).astype(np.float32)
+
+                # Distance (metric, single return)
+                distance_m = cast(np.ndarray, scan_df["distance"].values.astype(np.float32))
+
+                # Filter out zero/negative distances
+                valid_mask = distance_m > 0
+                direction = direction[valid_mask]
+                timestamp_us = timestamp_us[valid_mask]
+                distance_m = distance_m[np.newaxis, valid_mask]  # [1, N]
+
+                # Frame timestamps
+                frame_timestamps_us = np.array([frame_start_us, frame_end_us], dtype=np.uint64)
+
+                # Generic data: per-detection radar signals
+                generic_data: dict[str, np.ndarray] = {}
+
+                if "radial_velocity" in scan_df.columns:
+                    # Units: m/s (meters per second), positive away from the sensor
+                    generic_data["radial_velocity_m_s"] = cast(
+                        np.ndarray, scan_df["radial_velocity"].values[valid_mask].astype(np.float32)
+                    )
+                if "rcs" in scan_df.columns:
+                    # Units: dBsm (decibels relative to square meter)
+                    generic_data["rcs_dBsm"] = cast(np.ndarray, scan_df["rcs"].values[valid_mask].astype(np.float32))
+                if "snr" in scan_df.columns:
+                    # Units: dB (decibels), higher ~ more reliable detection
+                    generic_data["snr_dB"] = cast(np.ndarray, scan_df["snr"].values[valid_mask].astype(np.float32))
+                if "exist_probb" in scan_df.columns:
+                    # Normalize uint8 (0-100) to float32 (0-1)
+                    generic_data["exist_probb"] = (
+                        cast(np.ndarray, scan_df["exist_probb"].values[valid_mask].astype(np.float32)) / 100.0
+                    )
+
+                # Generic metadata: scan-level scalars
+                generic_meta_data: dict[str, JsonLike] = {
+                    "scan_index": cast(int, scan_index),
+                }
+                for col, meta_key, conv in [
+                    ("doppler_ambiguity", "doppler_ambiguity", float),
+                    ("radar_model", "radar_model", int),
+                    ("num_returns", "num_returns", int),
+                ]:
+                    if col in scan_df.columns:
+                        val = scan_df[col].iloc[0]
+                        try:
+                            if not np.isnan(float(val)):
+                                generic_meta_data[meta_key] = conv(val)
+                        except (ValueError, TypeError):
+                            pass
+
+                radar_writer.store_frame(
+                    direction=direction,
+                    timestamp_us=timestamp_us.astype(np.uint64),
+                    distance_m=distance_m,
+                    frame_timestamps_us=frame_timestamps_us,
+                    generic_data=generic_data,
+                    generic_meta_data=generic_meta_data,
                 )
 
     def decode_cameras(self, active_camera_ids: list[str]):

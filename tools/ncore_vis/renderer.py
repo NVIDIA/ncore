@@ -153,7 +153,7 @@ class NCoreVisRenderer:
     def _create_sequence_tab(self, tab_group: viser.GuiTabGroupHandle) -> viser.GuiTabHandle:
         """Build the Sequence tab with reference sensor controls and playback."""
         # Prefer lidars as default reference sensor (better temporal coverage).
-        all_sensor_ids = self.data_loader.lidar_ids + self.data_loader.camera_ids
+        all_sensor_ids = self.data_loader.lidar_ids + self.data_loader.radar_ids + self.data_loader.camera_ids
         if not all_sensor_ids:
             all_sensor_ids = ["(none)"]
         self.reference_sensor = all_sensor_ids[0]
@@ -288,4 +288,6 @@ class NCoreVisRenderer:
             return max(0, self.data_loader.get_camera_sensor(sensor_id).frames_count - 1)
         if sensor_id in self.data_loader.lidar_ids:
             return max(0, self.data_loader.get_lidar_sensor(sensor_id).frames_count - 1)
+        if sensor_id in self.data_loader.radar_ids:
+            return max(0, self.data_loader.get_radar_sensor(sensor_id).frames_count - 1)
         return 0

@@ -97,6 +97,8 @@ def find_clip_files(clip_dir: UPath, clip_id: str) -> Dict[str, UPath]:
                 <clip_id>.<camera_name>.blurred_boxes.parquet
             lidar/
                 <clip_id>.lidar_top_360fov.parquet
+            radar/
+                <clip_id>.radar_*.parquet  (per-radar sensor, dynamically discovered)
             metadata/
                 feature_presence.parquet
                 data_collection.parquet
@@ -123,6 +125,11 @@ def find_clip_files(clip_dir: UPath, clip_id: str) -> Dict[str, UPath]:
         "sensor_extrinsics": _prefer_offline(calibration_dir / "sensor_extrinsics.parquet"),
         "vehicle_dimensions": _prefer_offline(calibration_dir / "vehicle_dimensions.parquet"),
     }
+
+    # Non-offline (online) extrinsics (radar calibration may only be in the online variant)
+    online_extrinsics_path = calibration_dir / "sensor_extrinsics.parquet"
+    if online_extrinsics_path.exists():
+        files["sensor_extrinsics_online"] = online_extrinsics_path
 
     # Obstacle labels
     obstacle_path = _prefer_offline(clip_dir / "labels" / f"{clip_id}.obstacle.parquet")
@@ -157,6 +164,14 @@ def find_clip_files(clip_dir: UPath, clip_id: str) -> Dict[str, UPath]:
     lidar_path = clip_dir / "lidar" / f"{clip_id}.lidar_top_360fov.parquet"
     if lidar_path.exists():
         files["lidar_top_360fov"] = lidar_path
+
+    # Radar files are flat in radar/ -- discover dynamically based on available files
+    radar_dir = clip_dir / "radar"
+    if radar_dir.exists():
+        for parquet_path in sorted(radar_dir.glob(f"{clip_id}.radar_*.parquet")):
+            # Extract sensor name: "{clip_id}.{sensor_name}.parquet" -> "{sensor_name}"
+            sensor_name = parquet_path.stem.removeprefix(f"{clip_id}.")
+            files[sensor_name] = parquet_path
 
     return files
 

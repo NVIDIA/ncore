@@ -30,6 +30,7 @@ from tools.ncore_vis.components import (
     camera,  # noqa: F401
     cuboids,  # noqa: F401
     lidar,  # noqa: F401
+    radar,  # noqa: F401
     trajectory,  # noqa: F401
 )
 from tools.ncore_vis.components.base import VisualizationComponent, get_registered_components, register_component

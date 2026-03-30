@@ -110,6 +110,8 @@ class CameraComponent(VisualizationComponent):
         self._project_mode: str = "rolling-shutter"
         self._project_point_size: int = 1
         self._project_range_cycle: float = 50.0
+        self._project_radar: bool = False
+        self._project_radar_id: str = "All"
         self._show_mask: bool = False
         self._mask_name: str = ""
         self._mask_opacity: float = 0.3
@@ -143,6 +145,8 @@ class CameraComponent(VisualizationComponent):
         lidar_ids = self.data_loader.lidar_ids
         if lidar_ids:
             self._project_lidar_id = lidar_ids[0]
+
+        radar_ids = self.data_loader.radar_ids
 
         for camera_id in self.data_loader.camera_ids:
             self._visible[camera_id] = True
@@ -217,6 +221,22 @@ class CameraComponent(VisualizationComponent):
                         proj_mode_dropdown=proj_mode_dropdown,
                         proj_point_size_slider=proj_point_size_slider,
                         proj_range_cycle_slider=proj_range_cycle_slider,
+                    )
+
+                # -- Radar projection --
+                if radar_ids:
+                    project_radar_checkbox = self.client.gui.add_checkbox(
+                        "Project Radar", initial_value=False, hint="Project radar points onto all cameras"
+                    )
+                    proj_radar_dropdown = self.client.gui.add_dropdown(
+                        "Radar Sensor",
+                        options=["All"] + radar_ids,
+                        initial_value="All",
+                        hint="Radar sensor to project (or 'All' for every radar)",
+                    )
+                    self._bind_radar_projection_settings(
+                        project_radar_checkbox=project_radar_checkbox,
+                        proj_radar_dropdown=proj_radar_dropdown,
                     )
 
                 # -- Mask overlay --
@@ -376,6 +396,23 @@ class CameraComponent(VisualizationComponent):
             self._project_range_cycle = proj_range_cycle_slider.value
             self._refresh_all_cameras()
 
+    def _bind_radar_projection_settings(
+        self,
+        project_radar_checkbox: viser.GuiInputHandle[bool],
+        proj_radar_dropdown: viser.GuiInputHandle[str],
+    ) -> None:
+        """Wire up radar projection shared-setting callbacks."""
+
+        @project_radar_checkbox.on_update
+        def _(_: viser.GuiEvent) -> None:
+            self._project_radar = project_radar_checkbox.value
+            self._refresh_all_cameras()
+
+        @proj_radar_dropdown.on_update
+        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+            self._project_radar_id = proj_radar_dropdown.value
+            self._refresh_all_cameras()
+
     def _bind_mask_settings(
         self,
         show_mask_checkbox: viser.GuiInputHandle[bool],
@@ -471,6 +508,12 @@ class CameraComponent(VisualizationComponent):
                     image = self._overlay_lidar_projection(camera_id, frame_idx, image)
                 except Exception:
                     logger.debug("Lidar projection overlay failed for %s frame %d", camera_id, frame_idx, exc_info=True)
+
+            if self._project_radar:
+                try:
+                    image = self._overlay_radar_projection(camera_id, frame_idx, image)
+                except Exception:
+                    logger.debug("Radar projection overlay failed for %s frame %d", camera_id, frame_idx, exc_info=True)
 
             if self._overlay_cuboids:
                 try:
@@ -631,6 +674,90 @@ class CameraComponent(VisualizationComponent):
             cv2.circle(output_image, (px, py), point_radius, color, thickness=-1, lineType=cv2.LINE_AA)
 
         return output_image
+
+    # ------------------------------------------------------------------
+    # Radar projection overlay
+    # ------------------------------------------------------------------
+
+    def _overlay_radar_projection(self, camera_id: str, frame_idx: int, image: np.ndarray) -> np.ndarray:
+        """Project radar point clouds onto the camera image with range-based coloring.
+
+        When ``self._project_radar_id`` is ``"All"``, every radar sensor is projected.
+
+        Args:
+            camera_id: Camera sensor to project onto.
+            frame_idx: Camera frame index.
+            image: RGB image array (H, W, 3), uint8.
+
+        Returns:
+            Copy of the image with projected radar points drawn.
+        """
+        if self._project_radar_id == "All":
+            radar_ids = self.data_loader.radar_ids
+        else:
+            radar_ids = [self._project_radar_id]
+
+        output_image = image.copy()
+        for radar_id in radar_ids:
+            output_image = self._project_single_radar(camera_id, frame_idx, radar_id, output_image)
+        return output_image
+
+    def _project_single_radar(self, camera_id: str, frame_idx: int, radar_id: str, image: np.ndarray) -> np.ndarray:
+        """Project a single radar sensor's point cloud onto *image* (mutates in-place)."""
+        cam = self.data_loader.get_camera_sensor(camera_id)
+        radar_sensor = self.data_loader.get_radar_sensor(radar_id)
+        camera_model = self._camera_models[camera_id]
+
+        # Find closest radar frame to the camera frame (by center-of-frame timestamp)
+        cam_interval = self.data_loader.get_sensor_frame_interval_us(camera_id, frame_idx)
+        cam_center_us = cam_interval.start + (cam_interval.end - cam_interval.start) // 2
+        radar_frame_idx = radar_sensor.get_closest_frame_index(cam_center_us, relative_frame_time=0.5)
+
+        # Load point cloud and transform to world coordinates
+        pc_sensor = radar_sensor.get_frame_point_cloud(
+            radar_frame_idx, motion_compensation=True, with_start_points=False
+        )
+        world_id = self.data_loader.world_frame_id
+        T_radar_world = radar_sensor.get_frames_T_sensor_target(world_id, radar_frame_idx, FrameTimepoint.END)
+        pc_world = transform_point_cloud(pc_sensor.xyz_m_end, T_radar_world)
+
+        # Get camera world-to-sensor transforms (T_world_camera)
+        T_world_camera_start = cam.get_frames_T_source_sensor(world_id, frame_idx, FrameTimepoint.START)
+        T_world_camera_end = cam.get_frames_T_source_sensor(world_id, frame_idx, FrameTimepoint.END)
+
+        # Project world points to image coordinates
+        mode = self._project_mode
+        projection = self._project_points(camera_model, pc_world, T_world_camera_start, T_world_camera_end, mode)
+
+        if projection.valid_indices is None or projection.image_points.shape[0] == 0:
+            return image
+
+        image_coords = projection.image_points.cpu().numpy()
+        valid_idx = projection.valid_indices.cpu().numpy()
+
+        # Compute per-point range (distance from camera origin in camera frame)
+        if projection.T_world_sensors is not None:
+            T_w2c = projection.T_world_sensors.cpu().numpy()
+            transformed = transform_point_cloud(pc_world[valid_idx, None, :], T_w2c).squeeze(1)
+            ranges = np.linalg.norm(transformed, axis=1)
+        else:
+            ranges = np.linalg.norm(pc_sensor.xyz_m_end[valid_idx], axis=1)
+
+        # Draw range-colored points (slightly larger than lidar to distinguish)
+        cycle = max(1.0, self._project_range_cycle)
+        point_radius = max(2, self._project_point_size + 1)
+
+        normalized = (ranges % cycle) / cycle
+        rgba = _JET_CMAP(normalized)
+        colors_bgr = (rgba[:, [2, 1, 0]] * 255.0).astype(np.uint8)
+
+        for i in range(image_coords.shape[0]):
+            px = int(round(image_coords[i, 0]))
+            py = int(round(image_coords[i, 1]))
+            color = (int(colors_bgr[i, 0]), int(colors_bgr[i, 1]), int(colors_bgr[i, 2]))
+            cv2.circle(image, (px, py), point_radius, color, thickness=-1, lineType=cv2.LINE_AA)
+
+        return image
 
     def _project_points(
         self,

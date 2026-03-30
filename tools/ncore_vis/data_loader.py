@@ -27,7 +27,13 @@ import numpy as np
 import pandas as pd
 
 from ncore.impl.common.transformations import HalfClosedInterval, PoseGraphInterpolator
-from ncore.impl.data.compat import CameraSensorProtocol, LidarSensorProtocol, SensorProtocol, SequenceLoaderProtocol
+from ncore.impl.data.compat import (
+    CameraSensorProtocol,
+    LidarSensorProtocol,
+    RadarSensorProtocol,
+    SensorProtocol,
+    SequenceLoaderProtocol,
+)
 from ncore.impl.data.types import CuboidTrackObservation, FrameTimepoint, LabelSource
 from tools.ncore_vis.tracks import CuboidTrack
 
@@ -102,15 +108,27 @@ class DataLoader:
         """Return a lidar sensor by ID (cached)."""
         return self._loader.get_lidar_sensor(lidar_id)
 
+    @property
+    def radar_ids(self) -> List[str]:
+        """All radar sensor IDs in the sequence."""
+        return self._loader.radar_ids
+
+    @functools.lru_cache(maxsize=None)
+    def get_radar_sensor(self, radar_id: str) -> RadarSensorProtocol:
+        """Return a radar sensor by ID (cached)."""
+        return self._loader.get_radar_sensor(radar_id)
+
     # ------------------------------------------------------------------
     # Cross-sensor frame synchronization
     # ------------------------------------------------------------------
 
     def _get_sensor(self, sensor_id: str) -> SensorProtocol:
-        """Return a sensor by ID, looking up cameras first then lidars."""
+        """Return a sensor by ID, looking up cameras first, then lidars, then radars."""
         if sensor_id in self.camera_ids:
             return self.get_camera_sensor(sensor_id)
-        return self.get_lidar_sensor(sensor_id)
+        if sensor_id in self.lidar_ids:
+            return self.get_lidar_sensor(sensor_id)
+        return self.get_radar_sensor(sensor_id)
 
     def get_sensor_frame_interval_us(self, sensor_id: str, frame_index: int) -> HalfClosedInterval:
         """Return the ``[start, stop)`` timestamp interval in microseconds for a sensor frame.
