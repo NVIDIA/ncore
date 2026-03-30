@@ -24,7 +24,12 @@ pillow
 # - we can't switch to zarr 3 yet unconditionally as it's not available for python3.8 anymore
 zarr>=2.12.0,<3.0.0
 
-cbor2
+# cbor2 version rationale:
+# - 5.9.0 fixes CWE-674 / CVE-2026-26209 (uncontrolled recursion DoS)
+# - 5.8.0 fixes CVE-2025-68131 (shared value info disclosure)
+# - 5.8.0+ dropped Python 3.8 support; last 3.8-compatible version is 5.7.0
+cbor2>=5.9.0; python_version>="3.9"
+cbor2; python_version<"3.9"
 scipy
 torch
 typing-extensions

@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cbor2
+cbor2>=5.9.0; python_version>="3.9"
+cbor2; python_version<"3.9"
 imageio>=2.35.0
 imageio-ffmpeg>=0.5.0
 DracoPy>=2.0.0
