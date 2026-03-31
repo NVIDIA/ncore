@@ -7,40 +7,43 @@
 Storage and Access
 ==================
 
-NCore V4 component stores (see :ref:`data_formats`) can be persisted in two
-storage formats and accessed from local or remote storage backends.
+NCore V4 components (see :ref:`data_formats`) can be persisted in two storage
+formats and accessed from local or remote storage backends. Each group of
+component is represented as a `zarr <https://zarr.readthedocs.io/en/stable/>`_
+group, which can be stored as a directory-based zarr stores or as single-file
+indexed tar archives.
 
 .. _itar_store_format:
 
 Indexed Tar Archive Format (``.itar``)
 --------------------------------------
 
-Each component group is a `zarr <https://zarr.readthedocs.io/en/stable/>`_
-group stored either as a directory-based ``.zarr`` store or as a single-file
-``.zarr.itar`` (indexed tar) archive. The itar format packages all zarr chunks
-as sequential tar members in a single file and appends a compressed index at
-the end, combining the streaming efficiency of tar with random-access
+NCore defines a custom ``.itar`` (indexed tar) container format specifically
+tailored to dataset and use-case characteristics in robotics and autonomous
+vehicle applications. The ``.itar`` format packages zarr chunks as sequential
+tar members in a single file and appends a compressed index at the end of a
+regular tar archive, combining the streaming efficiency of tar with random-access
 capability.
 
 .. figure:: itar.svg
    :width: 100%
 
-   Comparison of regular tar files (as used by
-   `WebDataset <https://github.com/webdataset/webdataset>`_, supporting fast
-   linear streaming but no random access) with the indexed tar format, which
-   appends a compressed index enabling O(1) key lookups and direct seeks to
-   any chunk.
+   Comparison of regular tar files with it's 512 byte blocks (as used by, e.g.,
+   `WebDataset <https://github.com/webdataset/webdataset>`_, supporting linear
+   streaming but no random access) with NCore's indexed tar format, which
+   appends a compressed index enabling O(1) key lookups and direct seeks to any
+   chunk.
 
-The itar store implements the zarr ``Store`` interface, so it can be used as a
-drop-in replacement for directory stores in all NCore APIs. Via
-`UPath <https://github.com/fsspec/universal_pathlib>`_,
-itar containers can also be accessed transparently from cloud storage backends
-(e.g., S3, GCS) without requiring a local copy.
+The ``.itar`` store implements the abstract zarr ``Store`` interface, so it can
+be used as a drop-in replacement for directory stores in all NCore APIs. Via
+`UPath <https://github.com/fsspec/universal_pathlib>`_, ``.itar`` containers can
+also be accessed transparently from cloud storage backends (e.g., S3, GCS)
+without requiring a local copy.
 
 **Tradeoffs:**
 
-* **itar** (single file) -- efficient for distribution, cloud storage, and
-  atomic transfers; supports both sequential streaming and random access via
+* ``.itar`` (container file) -- efficient for distribution, cloud storage,
+  and atomic transfers; supports both sequential streaming and random access via
   the appended index
 * **directory store** -- individual chunk files on disk; simpler for debugging
   and incremental updates
@@ -48,6 +51,90 @@ itar containers can also be accessed transparently from cloud storage backends
 Both formats are accessed through the same
 :class:`~ncore.data.v4.SequenceComponentGroupsReader` and
 :class:`~ncore.data.v4.SequenceComponentGroupsWriter` APIs.
+
+.. _itar_read_performance:
+
+Read Performance
+~~~~~~~~~~~~~~~~
+
+The chart below compares ``.itar`` read throughput against four alternative
+storage formats on a synthetic dataset of the same 1k JPEG images (2k and 4k
+resolutions, ~4.5 GB on local SSD) with associated per-image meta-data (poses,
+timestamps, etc.). Throughput is measured with init cost excluded (formats
+pre-opened); init cost is reported separately as time-to-first-read.
+
+.. figure:: read_performance.png
+   :width: 100%
+
+   Read throughput across five storage formats.  Full bar |eq| sequential;
+   inner bar |eq| random access.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 14 14 16 22
+
+   * - Format
+     - Seq (MB/s)
+     - Rand (MB/s)
+     - Seq latency
+     - Rand latency
+     - Time-to-first-read
+   * - ``.itar``
+     - **9847**
+     - **9492**
+     - **0.46 ms**
+     - **0.48 ms**
+     - **2.1 ms** (decompress index)
+   * - ``tarfile`` (pre-parsed)
+     - 8470
+     - 7402
+     - 0.54 ms
+     - 0.62 ms
+     - 82.6 ms (scan all file headers)
+   * - ``tarfile`` (linear scan)
+     - |mdash|
+     - 119
+     - |mdash|
+     - 38.2 ms
+     - per-access (no index)
+   * - `WebDataset <https://github.com/webdataset/webdataset>`_
+     - 1 557
+     - |mdash|
+     - 2.91 ms
+     - |mdash|
+     - 3.2 ms (pipeline build)
+   * - `Parquet <https://github.com/apache/parquet-format>`_
+     - 1552
+     - 1542
+     - 2.92 ms
+     - 2.98 ms
+     - 2 929 ms (materialise table)
+   * - `HDF5 <https://www.hdfgroup.org/solutions/hdf5/>`_
+     - 754
+     - 1027
+     - 6.01 ms
+     - 4.48 ms
+     - 1.0 ms (B-tree open)
+
+Even with ``tarfile``'s headers pre-parsed, ``.itar`` is 16% faster sequential and
+28% faster random.  The gap comes from ``tarfile``'s ``extractfile()`` wrapping
+data in three Python layers (``ExFileObject`` |rarr| ``_FileInFile`` |rarr|
+``BufferedReader``), while ``.itar`` does a single ``seek`` + ``read``.
+
+``.itar``'s time-to-first-read is 2.1 ms (decompressing a ~14 KB CBOR/LZMA
+trailer index) vs ``tarfile``'s 82.6 ms (sequential scan of all tar headers).
+The ``tarfile`` linear-scan scenario (119 MB/s) shows the 80 |times| penalty of
+random access without any index.
+
+.. note::
+
+   All reads are from OS page cache (local SSD).  On cold disk or network
+   I/O the differences narrow.
+
+.. |eq| unicode:: U+003D
+.. |mdash| unicode:: U+2014
+.. |times| unicode:: U+00D7
+.. |rarr| unicode:: U+2192
 
 Loading V4 Data
 ---------------

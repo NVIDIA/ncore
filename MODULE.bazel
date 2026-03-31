@@ -92,8 +92,8 @@ http_archive(
 # documentation binary data
 http_archive(
     name = "ncore_docs_data",
-    sha256 = "7dd07e216e2c63aa1e3048a02ed3cad777897245e050345c8f877e31d6fe35d2",
-    urls = ["https://maven.pkg.github.com/NVIDIA/ncore/com/nvidia/ncore/ncore-docs-data/0.4/ncore-docs-data.tar.gz"],
+    sha256 = "8ca36f8944d99a7612a46c163e3d200b51620abc689e4ab0e467439831cd3779",
+    urls = ["https://maven.pkg.github.com/NVIDIA/ncore/com/nvidia/ncore/ncore-docs-data/0.5/ncore-docs-data.tar.gz"],
 )
 
 # Waymo Open Dataset (http_archive for proto definitions)
