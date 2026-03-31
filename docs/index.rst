@@ -23,6 +23,7 @@ The project is developed within the `NVIDIA SIL Lab <https://research.nvidia.com
    data/conventions
    data/sensor_models
    data/formats
+   data/storage_and_access
 
 .. toctree::
    :maxdepth: 1

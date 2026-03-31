@@ -4,12 +4,12 @@
 .. _data_formats:
 
 
-Format
-======
+Data Formats
+============
 
 The current NCore data format is **V4 (Component-based Format)** -- a modular
 format that separates data into independent component stores. Each component
-(poses, intrinsics, sensors, labels, etc.) is stored as a separate zarr
+(poses, intrinsics, sensors, labels, etc.) is stored as a separate `zarr <https://zarr.readthedocs.io/en/stable/>`_
 component that can be independently managed, versioned, and combined. This
 format enables:
 
@@ -21,6 +21,10 @@ format enables:
 
 The format uses coordinate system conventions and transformations described
 in :ref:`data_conventions`.
+
+For details on how component stores are serialized to disk (``.zarr.itar``
+indexed tar archives vs. directory-based ``.zarr`` stores) and how to access
+them from local or cloud storage, see :ref:`storage_and_access`.
 
 .. _v4-data-format:
 
@@ -34,9 +38,9 @@ be independently managed, versioned, and combined to form virtual sequences.
 Component Architecture
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Each component group is a zarr store (either a ``.zarr.itar`` archive or a
-directory-based ``.zarr`` store) containing a specific number of data component
-instances. The NCore library provides the following default component types:
+Each component group is a zarr store containing a specific number of data
+component instances. The NCore library provides the following default component
+types:
 
 * :class:`~ncore.data.v4.PosesComponent` - Static and dynamic pose
   transformations between named coordinate frames
@@ -54,45 +58,6 @@ instances. The NCore library provides the following default component types:
 
 The component architecture is extensible, allowing custom component types to be
 defined for application-specific data.
-
-.. _itar_store_format:
-
-Indexed Tar Archive Format (``.itar``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Each component group is a `zarr <https://zarr.readthedocs.io/en/stable/>`_
-group stored either as a directory-based ``.zarr`` store or as a single-file
-``.zarr.itar`` (indexed tar) archive. The itar format packages all zarr chunks
-as sequential tar members in a single file and appends a compressed index at
-the end, combining the streaming efficiency of tar with random-access
-capability.
-
-.. figure:: itar.svg
-   :width: 100%
-
-   Comparison of regular tar files (as used by
-   `WebDataset <https://github.com/webdataset/webdataset>`_, supporting fast
-   linear streaming but no random access) with the indexed tar format, which
-   appends a compressed index enabling O(1) key lookups and direct seeks to
-   any chunk.
-
-The itar store implements the zarr ``Store`` interface, so it can be used as a
-drop-in replacement for directory stores in all NCore APIs. Via
-`UPath <https://github.com/fsspec/universal_pathlib>`_,
-itar containers can also be accessed transparently from cloud storage backends
-(e.g., S3, GCS) without requiring a local copy.
-
-**Tradeoffs:**
-
-* **itar** (single file) -- efficient for distribution, cloud storage, and
-  atomic transfers; supports both sequential streaming and random access via
-  the appended index
-* **directory store** -- individual chunk files on disk; simpler for debugging
-  and incremental updates
-
-Both formats are accessed through the same
-:class:`~ncore.data.v4.SequenceComponentGroupsReader` and
-:class:`~ncore.data.v4.SequenceComponentGroupsWriter` APIs.
 
 Component Group Structure
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -364,25 +329,3 @@ with new components by creating a writer via
 and finalizing the additional stores. For a complete working example (including
 component versioning and backward-compatible readers), see
 `TestDataNewComponent <https://github.com/NVIDIA/ncore/blob/main/ncore/impl/data/v4/components_test.py>`_.
-
-Loading V4 Data
-~~~~~~~~~~~~~~~
-
-V4 sequences are loaded by specifying one or more component store paths:
-
-.. code-block:: python
-
-   from ncore.data.v4 import SequenceComponentGroupsReader
-   from pathlib import Path
-   
-   # Load sequence from multiple component stores
-   reader = SequenceComponentGroupsReader([
-       Path("ncore4.zarr.itar"),           # default components
-       Path("ncore4-calibv2.zarr.itar"),   # alternative calibration
-   ])
-   
-   # Access specific components
-   poses_readers = reader.open_component_readers(PosesComponent.Reader)
-   camera_readers = reader.open_component_readers(CameraSensorComponent.Reader)
-
-
