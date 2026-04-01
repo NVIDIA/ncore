@@ -300,14 +300,7 @@ class WaymoConverter4(FileBasedDataConverter):
         )
         T_rig_worlds = np.concatenate((T_rig_worlds_array, T_rig_worlds_array_extrapolated))[unique_indices]
 
-        # Use identity base pose as waymo data is already shifted
-        self.T_world_world_global = np.eye(4, dtype="float64")
-
         self.pose_interpolator = PoseInterpolator(T_rig_worlds, T_rig_world_timestamps_us)
-
-        # Log base pose to share it more easily with downstream teams (it is serialized also explicitly)
-        with np.printoptions(floatmode="unique", linewidth=200):  # print in highest precision
-            self.logger.info(f"> processed {len(T_rig_worlds)} poses, using base pose:\n{self.T_world_world_global}")
 
     def store_poses(self) -> None:
         """Stores the processed egomotion poses into the poses component."""
@@ -317,13 +310,6 @@ class WaymoConverter4(FileBasedDataConverter):
             target_frame_id="world",
             poses=self.pose_interpolator.poses.astype(np.float32),
             timestamps_us=self.pose_interpolator.timestamps,
-        )
-
-        # Store static world->world_global pose (float64 for high precision)
-        self.poses_writer.store_static_pose(
-            source_frame_id="world",
-            target_frame_id="world_global",
-            pose=self.T_world_world_global.astype(np.float64),
         )
 
     # Label IDs to label type strings
