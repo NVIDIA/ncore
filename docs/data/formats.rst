@@ -110,8 +110,8 @@ The poses component stores both static (time-invariant) and dynamic
 
 For ego-vehicle trajectories, the rig-to-world transformation is typically
 stored as a dynamic pose under the key ``("rig", "world")``. Transformations
-from local world to global world frames (like ECEF) are represented by the
-``("world", "world_global")`` record.
+from local world to global world frames (like ECEF) are represented by a
+``("world", "world_global")`` record, if applicable.
 
 Static poses are used for sensor extrinsic calibrations. For example, a
 camera-to-rig transformation would be stored under the key

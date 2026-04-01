@@ -270,13 +270,6 @@ class ColmapDataConverter(FileBasedDataConverter):
             group_name=self.component_groups.poses_component_group,
         )
 
-        # Store static world->world_global pose
-        self.poses_writer.store_static_pose(
-            source_frame_id="world",
-            target_frame_id="world_global",
-            pose=np.eye(4, dtype="float64"),
-        )
-
         # Create intrinsics component
         self.intrinsics_writer = self.store_writer.register_component_writer(
             IntrinsicsComponent.Writer,
