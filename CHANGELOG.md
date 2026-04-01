@@ -10,6 +10,47 @@ All notable changes to the NCore project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - - -
+
+## [v18.8.0](https://github.com/NVIDIA/ncore/compare/9de4d6cd368ba00699c467cbd1fa13646e2d58e9..v18.8.0) - 2026-03-31
+
+### Highlights
+
+- Added `compute_max_angle` computation API for OpenCV fisheye camera model,
+  which can be used to determine the default valid field of view for projection
+  and visualization
+- Added support to convert Scannet++ datasets to NCore via colmap converter
+- Correctly interpolate cuboid tracks for camera overlays in `ncore_vis`
+- Fix PAI conversion to validate presence of required offline features and
+  update to default HuggingFace dataset revision 'main'
+- Extend itar documentation on performance and cloud storage access
+
+#### ➕ Added
+- (**colmap**) add OPENCV_FISHEYE support, configurable paths, and scannetpp-v4 subcommand - ([6c5beee](https://github.com/NVIDIA/ncore/commit/6c5beee8cd16f68d5e8e17fc47abd3b20c812ca9)) - Janick Martinez Esturo
+- (**colmap**) support per-image masks in colmap converter - ([7e05282](https://github.com/NVIDIA/ncore/commit/7e052820c345a0a247d7539c6ca5dab883cb37d0)) - Janick Martinez Esturo
+- (**colmap**) Include downsampled sensors by default - ([ca411b9](https://github.com/NVIDIA/ncore/commit/ca411b9d7b40b6e338ae0facf05cd393c676b2be)) - Janick Martinez Esturo
+- (**ncore_vis**) Interpolate cuboid tracks to camera mid-frame timestamp - ([afae717](https://github.com/NVIDIA/ncore/commit/afae7170f03b3611c7c963bfbf72cb58532cb883)) - Janick Martinez Esturo
+- (**opencv-fisheye**) compute_max_angle for OpenCVFisheyeCameraModel - ([ac30d7a](https://github.com/NVIDIA/ncore/commit/ac30d7a262158ef9ddf949452d7f6e19f65cc308)) - Janick Martinez Esturo
+#### 🪲 Fixed
+- (**PAI-conversion**) Validate presence of required offline features - ([397cbc6](https://github.com/NVIDIA/ncore/commit/397cbc627b11a14740e26c5a6d9599615c741bde)) - Janick Martinez Esturo
+- (**camera_test**) Fix ruff E402 import not at top of file - ([68650e1](https://github.com/NVIDIA/ncore/commit/68650e1fd41b4967605076146fae81d3ea36e222)) - Janick Martinez Esturo
+- (**colmap**) use se3_inverse and correct transformation names - ([0a26d69](https://github.com/NVIDIA/ncore/commit/0a26d692a8e412cfbfab4b8d6a5d7b71e2c20185)) - Janick Martinez Esturo
+- (**colmap**) pass image_path to pycolmap SceneManager to suppress warning - ([9b8935b](https://github.com/NVIDIA/ncore/commit/9b8935b71729197f01636f903683c1bed93aa7af)) - Janick Martinez Esturo
+- (**colmap**) Use flags for boolean options in converter - ([25730d9](https://github.com/NVIDIA/ncore/commit/25730d9f8b9de591ff3b93e959a98e46613bcacf)) - Janick Martinez Esturo
+- (**deps**) bump cbor2 >= 5.9.0 for Python 3.9+ to address CWE-674 / CVE-2026-26209 - ([ff30199](https://github.com/NVIDIA/ncore/commit/ff30199e01dc22b6448523e129dd7175403797a0)) - Janick Martinez Esturo
+- (**ncore_vis**) Fix cuboid overlay projection and eager track initialization - ([4c3d50f](https://github.com/NVIDIA/ncore/commit/4c3d50f961b86afc0e47ca21d4262a9cae113ce5)) - Janick Martinez Esturo
+- (**ncore_vis**) Use frame_idx consistently - ([f9a3a14](https://github.com/NVIDIA/ncore/commit/f9a3a14b26d4ae91ae635c533b0bbc03fae5a30a)) - Janick Martinez Esturo
+- (**ncore_vis**) Replace se3_inverse with get_frames_T_source_sensor in lidar projection - ([b953857](https://github.com/NVIDIA/ncore/commit/b953857e27fad5000c49bd0f5df2ad69a2e94107)) - Janick Martinez Esturo
+- (**ncore_vis**) Use per-cuboid observation timestamps for projection and rendering - ([9de4d6c](https://github.com/NVIDIA/ncore/commit/9de4d6cd368ba00699c467cbd1fa13646e2d58e9)) - Janick Martinez Esturo
+- (**pai**) Update to default HF revision 'main', update caching - ([f040823](https://github.com/NVIDIA/ncore/commit/f040823d6c84c78024c9adb840392449df3e90ab)) - Janick Martinez Esturo
+- (**pycolmap**) patch Python 3 map() compatibility in text format parsers - ([2d36b2a](https://github.com/NVIDIA/ncore/commit/2d36b2af70bd16c35be5c172482217acaefd851f)) - Janick Martinez Esturo
+- (**ty**) Fix type error in context manager exit method - ([d07839e](https://github.com/NVIDIA/ncore/commit/d07839e5d9ebcc37d9aa9a7cb0173b1301ff7229)) - Janick Martinez Esturo
+#### 📚 Documentation
+- (**colmap**) document storate of `rgb` point colors in generic lidar frame data - ([06f904e](https://github.com/NVIDIA/ncore/commit/06f904e7da43a2121bf4943006fb5da346a70131)) - Janick Martinez Esturo
+- add itar read performance benchmark to storage documentation - ([9c5d194](https://github.com/NVIDIA/ncore/commit/9c5d1947111ed900a5e8f51e4fc5f091d9c8289a)) - Janick Martinez Esturo
+- split formats.rst into data formats and storage/access pages, add cloud storage - ([42a4420](https://github.com/NVIDIA/ncore/commit/42a44203a7736af234f42d6efcaf484568b31063)) - Janick Martinez Esturo
+
+- - -
+
 ## [v18.7.0](https://github.com/NVIDIA/ncore/compare/84e13dfc7dc773eb065d0f5182641d32b20cdcbd..v18.7.0) - 2026-03-17
 
 ### Highlights
