@@ -51,10 +51,7 @@ python.toolchain(
     is_default = True,
     python_version = "3.11",
 )
-python.toolchain(
-    python_version = "3.8",
-)
-use_repo(python, "python_3_11", "python_3_8", "python_versions")
+use_repo(python, "python_3_11", "python_versions")
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
@@ -62,12 +59,6 @@ pip.parse(
     hub_name = "ncore_pip_deps",
     python_version = "3.11",
     requirements_lock = "//deps/pip:requirements_3_11.txt",
-)
-pip.parse(
-    experimental_index_url = "https://pypi.org/simple",  # download wheels via bazel downloader instead of pip
-    hub_name = "ncore_pip_deps",
-    python_version = "3.8",
-    requirements_lock = "//deps/pip:requirements_3_8.txt",
 )
 use_repo(pip, "ncore_pip_deps")
 

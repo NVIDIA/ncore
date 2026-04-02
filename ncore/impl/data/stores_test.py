@@ -20,7 +20,44 @@ import numpy as np
 import parameterized
 import zarr
 
-from .stores import IndexedTarStore, consolidate_compressed_metadata, open_compressed_consolidated
+from .stores import IndexedTarStore, open_store, lz4_codecs
+
+
+def create_array(group: zarr.Group, name: str, data: np.ndarray, attributes: dict | None = None) -> zarr.Array:
+    """Helper function to create an array in a group with given name and data."""
+    return group.create_array(name=name, data=data, attributes=attributes or {}, compressors=lz4_codecs())
+
+
+def copy_group(source: zarr.Group, target: zarr.Group) -> None:
+    """Helper function to recursively copy a zarr group to another group."""
+    new_group = target.create_group(source.basename, attributes=source.attrs.asdict())
+
+    for key in source.keys():
+        child = source[key]
+        if isinstance(child, zarr.Array):
+            create_array(new_group, key, child[()], child.attrs.asdict())
+        elif isinstance(child, zarr.Group):
+            copy_group(child, new_group)
+        else:
+            raise TypeError(f"Unsupported type for key {key}: {type(child)}")
+
+
+def copy_store(source_store: zarr.abc.store.Store, target_store: zarr.abc.store.Store) -> None:
+    """Helper function to copy a zarr store to another store.
+
+    zarr3 removed ``zarr.copy_store()``, so this is a group-level replacement.
+    """
+    source = zarr.open(store=source_store, mode="r")
+    target = zarr.create_group(store=target_store, zarr_format=3, attributes=source.attrs.asdict(), overwrite=True)
+
+    for key in source.keys():
+        child = source[key]
+        if isinstance(child, zarr.Array):
+            create_array(target, key, child[()], child.attrs.asdict())
+        elif isinstance(child, zarr.Group):
+            copy_group(child, target)
+        else:
+            raise TypeError(f"Unsupported type for key {key}: {type(child)}")
 
 
 class TestIndexedTarStore(unittest.TestCase):
@@ -28,18 +65,23 @@ class TestIndexedTarStore(unittest.TestCase):
 
     def setUp(self):
         # Fill a reference group with an in-memory store
-        self.g_ref = zarr.open(store=zarr.MemoryStore())
-        self.g_ref.create_dataset("foo", data=np.random.rand(3, 3, 3))
-        self.g_ref.attrs.update({"some": "thing"})
-        self.g_ref.require_group("subgroup").create_dataset("foo", data=np.random.rand(5, 5, 5))
+        self.g_ref: zarr.Group = zarr.open_group(
+            store=zarr.storage.MemoryStore(), mode="w", zarr_format=3, attributes={"some": "thing"}
+        )
+        create_array(self.g_ref, "foo", np.random.rand(3, 3, 3))
+        sub = self.g_ref.require_group("subgroup")
+        create_array(sub, "foo", np.random.rand(5, 5, 5), {"some": "other thing"})
 
-    def check_with_reference(self, group):
+    def check_with_reference(self, group: zarr.Group) -> None:
         """Verifies all values of a group against the reference"""
         self.assertIsNone(np.testing.assert_array_equal(self.g_ref["foo"][()], group["foo"][()]))
         self.assertIsNone(
             np.testing.assert_array_equal(self.g_ref["subgroup"]["foo"][()], group["subgroup"]["foo"][()])
         )
         self.assertDictEqual(self.g_ref.attrs.asdict(), group.attrs.asdict())
+        self.assertDictEqual(self.g_ref["foo"].attrs.asdict(), group["foo"].attrs.asdict())
+        self.assertDictEqual(self.g_ref["subgroup"].attrs.asdict(), group["subgroup"].attrs.asdict())
+        self.assertDictEqual(self.g_ref["subgroup"]["foo"].attrs.asdict(), group["subgroup"]["foo"].attrs.asdict())
 
     def test_reserialization(self):
         """Make sure storing / loading of regular zarr data to .itar files works correctly"""
@@ -47,7 +89,7 @@ class TestIndexedTarStore(unittest.TestCase):
         # re-serialize to .itar archive
         with tempfile.NamedTemporaryFile(suffix=".itar") as f:
             with IndexedTarStore(f.name, mode="w") as s_itar_out:  # closes file on exit
-                zarr.copy_store(self.g_ref.store, s_itar_out)
+                copy_store(self.g_ref.store, s_itar_out)
 
             # reload store from file
             store = IndexedTarStore(f.name)
@@ -60,20 +102,26 @@ class TestIndexedTarStore(unittest.TestCase):
             store.reload_resources()
             self.check_with_reference(g_reload)
 
-    def test_compressed_consolidated(self):
-        """Make sure compressed consolidated meta data is stored/loaded correctly"""
+    @parameterized.parameterized.expand(
+        [
+            False,
+            True,
+        ]
+    )
+    def test_consolidated(self, open_consolidated: bool):
+        """Make sure consolidated meta data is stored/loaded correctly"""
 
-        # serialize to .itar archive (will also serialize compressed-consolidated meta-data)
+        # serialize to .itar archive (will also serialize consolidated meta-data)
         with tempfile.NamedTemporaryFile(suffix=".itar") as f:
             with IndexedTarStore(f.name, mode="w") as s_itar_out:  # closes file on exit
-                zarr.copy_store(self.g_ref.store, s_itar_out)
+                copy_store(self.g_ref.store, s_itar_out)
 
-                # consolidate compress meta-data
-                consolidate_compressed_metadata(s_itar_out)
+                # consolidate meta-data (triggers the store's zarr.json -> zarr.cbor.xz intercept)
+                zarr.consolidate_metadata(s_itar_out)
 
-            # reload store from file with compressed consolidated meta-data
+            # reload store from file with consolidated meta-data
             store = IndexedTarStore(f.name)
-            g_reload = open_compressed_consolidated(store=store, mode="r")
+            g_reload = open_store(store=store, open_consolidated=open_consolidated, mode="r")
 
             # check all data was correctly serialized / deserialized
             self.check_with_reference(g_reload)
@@ -82,33 +130,6 @@ class TestIndexedTarStore(unittest.TestCase):
             store.reload_resources()
             self.check_with_reference(g_reload)
 
-    @parameterized.parameterized.expand(
-        [
-            (
-                "not-compressed_consolidate",
-                False,
-            ),
-            (
-                "compressed_consolidate",
-                True,
-            ),
-        ]
-    )
-    def test_empty(self, _, compressed_consolidate: bool):
-        """Verify edge case of serialization of empty store is possible without errors"""
-        with tempfile.NamedTemporaryFile(suffix=".itar") as f:
-            with IndexedTarStore(f.name, mode="w") as s_itar_out:  # closes file on exit
-                # Don't write any zarr data (still serializes empty tar / seek tables)
 
-                if compressed_consolidate:
-                    consolidate_compressed_metadata(s_itar_out)
-
-            with IndexedTarStore(f.name) as s_itar_in:
-                # Loading store should work without errors
-
-                # But loading a non-existing group should then fail
-                with self.assertRaises(zarr.errors.PathNotFoundError):
-                    if compressed_consolidate:
-                        open_compressed_consolidated(s_itar_in, mode="r")
-                    else:
-                        zarr.open(store=s_itar_in, mode="r")
+if __name__ == "__main__":
+    unittest.main()

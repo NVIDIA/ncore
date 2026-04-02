@@ -19,7 +19,6 @@ import concurrent.futures
 import io
 import json
 import logging
-import sys
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -32,6 +31,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Self,
     Tuple,
     Type,
     TypeVar,
@@ -45,9 +45,8 @@ import PIL.Image as PILImage
 import zarr
 import zarr.storage
 
-from numcodecs import Blosc
+from zarr.abc.store import Store
 from upath import UPath
-from zarr._storage.store import Store
 
 from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import MD5Hasher
@@ -56,12 +55,6 @@ from ncore.impl.data import stores, types
 
 if TYPE_CHECKING:
     import numpy.typing as npt  # type: ignore[import-not-found]
-
-if sys.version_info >= (3, 11):
-    # Older python versions have issues with type-hints for nested types in
-    # combination with typing.get_type_hints() (used by, e.g., 'dataclasses_json')
-    # - alias these globally as a workaround
-    from typing import Self
 
 VERSION = "v4"
 
@@ -193,18 +186,17 @@ class SequenceComponentGroupsWriter:
             store_path = self._output_dir_path / f"{self._store_base_name}.{store_name}.zarr.itar"
             store = stores.IndexedTarStore(store_path, mode="w")
         elif self._store_type == "directory":
-            # directory-based zarr stores <base-name>.<store_name>.zarr.zarr
+            # directory-based zarr stores <base-name>.<store_name>.zarr
             store_path = self._output_dir_path / f"{self._store_base_name}.{store_name}.zarr"
-            store = zarr.storage.DirectoryStore(store_path)
+            store = zarr.storage.LocalStore(store_path)
         else:
             raise ValueError(f"Unknown store type {self._store_type}")
 
-        # Create root group in store
-        root_group = zarr.group(store=store)
-
-        # Store dataset associated meta-data to root
-        root_group.attrs.put(
-            {
+        # Create root group in store with sequence metadata as attributes
+        root_group = zarr.create_group(
+            store=store,
+            zarr_format=3,
+            attributes={
                 "sequence_id": self._sequence_id,
                 "sequence_timestamp_interval_us": {
                     "start": self._sequence_timestamp_interval_us.start,
@@ -213,7 +205,7 @@ class SequenceComponentGroupsWriter:
                 "generic_meta_data": self._generic_meta_data,
                 "version": VERSION,
                 "component_group_name": component_group_name,
-            }
+            },
         )
 
         # Create store / base-group mapping
@@ -236,7 +228,10 @@ class SequenceComponentGroupsWriter:
         for root_group, store_path in self._stores_rootgroups.values():
             store = root_group.store
 
-            stores.consolidate_compressed_metadata(store)
+            # Consolidate metadata into the store.  For IndexedTarStore this
+            # triggers the store-level intercept that compresses the consolidated
+            # zarr.json into zarr.cbor.xz (CBOR + LZMA).
+            zarr.consolidate_metadata(store)
 
             # Finish writing all files
             store.close()
@@ -278,7 +273,7 @@ class SequenceComponentGroupsWriter:
         }
 
         # Store meta-data
-        component_group.attrs.put(meta_data)
+        component_group.attrs.update(meta_data)
 
         self._component_writers[component_id] = (
             component_writer := component_writer_type(component_group, self._sequence_timestamp_interval_us)
@@ -362,10 +357,10 @@ class SequenceComponentGroupsReader:
 
                     component_store = stores.IndexedTarStore(component_store_upath, mode="r")
                 else:
-                    component_store = zarr.storage.DirectoryStore(component_store_upath)
+                    component_store = zarr.storage.LocalStore(component_store_upath)
 
                 component_root = (
-                    stores.open_compressed_consolidated(store=component_store, mode="r")
+                    stores.open_store(store=component_store, open_consolidated=open_consolidated, mode="r")
                     if open_consolidated
                     else zarr.open(store=component_store, mode="r")
                 )
@@ -424,16 +419,9 @@ class SequenceComponentGroupsReader:
 
     def reload_resources(self) -> None:
         """Trigger a reload of each itar store - useful to re-initialize file objects in multi-process settings"""
-        component_store: Union[zarr.Group, stores.ConsolidatedCompressedMetadataStore]
-        for component_store, _ in self._component_stores.values():
-            # unwind one layer of possible consolidated metadata store
-            if isinstance(
-                compressed_consolidated_store := component_store.store, stores.ConsolidatedCompressedMetadataStore
-            ):
-                component_store = compressed_consolidated_store
-
-            if isinstance(store := component_store.store, stores.IndexedTarStore):
-                store.reload_resources()
+        for component_root, _ in self._component_stores.values():
+            if isinstance(component_root.store, stores.IndexedTarStore):
+                component_root.store.reload_resources()
 
     @property
     def sequence_id(self) -> str:
@@ -464,7 +452,7 @@ class SequenceComponentGroupsReader:
                 continue
 
             # instantiate a reader for each of the components
-            for component_instance_name, component_group in component_group.items():
+            for component_instance_name, component_group in component_group.groups():
                 assert component_instance_name not in ret, (
                     f"Component instance {component_instance_name} encountered multiple times"
                 )
@@ -484,10 +472,10 @@ class SequenceComponentGroupsReader:
         component_stores_info: List[SequenceMeta.ComponentStoreMeta] = []
         for component_root_group, component_store_path in self._component_stores.values():
             components: Dict[str, Dict[str, SequenceMeta.ComponentInstanceMeta]] = {}
-            for component_name, component in component_root_group.items():
+            for component_name, component in component_root_group.groups():
                 # collect component names and instances
                 component_instances: Dict[str, SequenceMeta.ComponentInstanceMeta] = {}
-                for component_instance_name, component_instance in component.items():
+                for component_instance_name, component_instance in component.groups():
                     component_instance_attrs = component_instance.attrs
                     component_instances[component_instance_name] = SequenceMeta.ComponentInstanceMeta(
                         version=component_instance_attrs["component_version"],
@@ -628,8 +616,8 @@ class PosesComponent:
         def finalize(self):
             """Actually store the json-encoded pose data"""
 
-            self._group.create_group("static_poses").attrs.put(self.data["static_poses"])
-            self._group.create_group("dynamic_poses").attrs.put(self.data["dynamic_poses"])
+            self._group.create_group("static_poses").attrs.update(self.data["static_poses"])
+            self._group.create_group("dynamic_poses").attrs.update(self.data["dynamic_poses"])
 
         def store_static_pose(
             self,
@@ -813,7 +801,7 @@ class IntrinsicsComponent:
 
             meta_data = types.encode_camera_model_parameters(camera_model_parameters)
 
-            self._cameras_group.create_group(camera_id).attrs.put(meta_data)
+            self._cameras_group.create_group(camera_id).attrs.update(meta_data)
 
             return self
 
@@ -828,7 +816,7 @@ class IntrinsicsComponent:
             # Prepare meta-data containing the serialization of the mandatory lidar model
             meta_data = types.encode_lidar_model_parameters(lidar_model_parameters)
 
-            self._lidars_group.create_group(lidar_id).attrs.put(meta_data)
+            self._lidars_group.create_group(lidar_id).attrs.update(meta_data)
 
             return self
 
@@ -892,7 +880,7 @@ class MasksComponent:
             """Store camera-associated masks"""
 
             # Store mask names
-            (camera_grp := self._cameras_group.create_group(camera_id)).attrs.put(
+            (camera_grp := self._cameras_group.create_group(camera_id)).attrs.update(
                 {"mask_names": list(mask_images.keys())}
             )
 
@@ -902,9 +890,10 @@ class MasksComponent:
                     FORMAT = "png"
                     mask_image.save(buffer, format=FORMAT, optimize=True)  # encodes as png
                     # store mask data (uncompressed, as already encoded)
-                    camera_grp.create_dataset(mask_name, data=np.asarray(buffer.getvalue()), compressor=None).attrs[
-                        "format"
-                    ] = FORMAT
+                    mask_arr = camera_grp.create_array(
+                        mask_name, data=np.asarray(buffer.getvalue()), compressors=()
+                    )
+                    mask_arr.attrs["format"] = FORMAT
 
             return self
 
@@ -971,7 +960,7 @@ class BaseSensorComponentWriter(ComponentWriter):
         )
 
         # Store as meta-data of frames group
-        self._frames_group.attrs.put({"frames_timestamps_us": frames_timestamps_us.tolist()})
+        self._frames_group.attrs.update({"frames_timestamps_us": frames_timestamps_us.tolist()})
 
     def _get_frame_group(
         self,
@@ -1017,15 +1006,15 @@ class BaseSensorComponentWriter(ComponentWriter):
         self._frames_timestamps_us[frame_timestamps_us[1].item()] = frame_timestamps_us[0].item()
 
         # Store additional generic frame data and meta-data (not dimension / dtype checked)
-        (frame_generic_data_group := frame_group.create_group("generic_data")).attrs.put(generic_meta_data)
+        (frame_generic_data_group := frame_group.create_group("generic_data")).attrs.update(generic_meta_data)
         for name, value in generic_data.items():
-            frame_generic_data_group.create_dataset(
+            frame_generic_data_group.create_array(
                 name,
                 data=value,
                 # we are not accessing sub-ranges, so disable chunking
                 chunks=value.shape,
                 # use compression that is fast to decode on modern hardware
-                compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
+                compressors=stores.lz4_codecs(),
             )
 
         return frame_group
@@ -1112,21 +1101,21 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
     ) -> None:
         ## Initialize ray bundle group
         frame_group = self._get_frame_group(frame_timestamps_us)
-        (ray_bundle_group := frame_group.create_group("ray_bundle")).attrs.put({"n_rays": n_rays})
+        (ray_bundle_group := frame_group.create_group("ray_bundle")).attrs.update({"n_rays": n_rays})
 
         # Store per-ray data
         for name, (ray_data_data, chunks) in ray_data.items():
             assert len(ray_data_data) == n_rays, f"{name} doesn't have required ray count"
-            ray_bundle_group.create_dataset(
+            ray_bundle_group.create_array(
                 name,
                 data=ray_data_data,
                 chunks=chunks,
                 # use compression that is fast to decode on modern hardware
-                compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
+                compressors=stores.lz4_codecs(),
             )
 
         ## Initialize ray bundle returns group
-        (ray_bundle_returns_group := frame_group.create_group("ray_bundle_returns")).attrs.put({"n_returns": n_returns})
+        (ray_bundle_returns_group := frame_group.create_group("ray_bundle_returns")).attrs.update({"n_returns": n_returns})
 
         # Store per-return data
         absent_mask = None
@@ -1159,12 +1148,12 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
                 # validate absent mask consistency
                 assert np.array_equal(absent_mask, local_absent_mask), f"Inconsistent NaN masks in return data {name}"
 
-            ray_bundle_returns_group.create_dataset(
+            ray_bundle_returns_group.create_array(
                 name,
                 data=return_data_data,
                 chunks=chunks,
                 # use compression that is fast to decode on modern hardware
-                compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
+                compressors=stores.lz4_codecs(),
             )
 
         if absent_mask is None:
@@ -1173,14 +1162,15 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
 
         valid_mask_packed = np.packbits(~absent_mask)
 
-        frame_group.create_dataset(
+        valid_mask_arr = frame_group.create_array(
             "ray_bundle_returns_valid_mask_packed",
             data=valid_mask_packed,
             # we are not accessing sub-ranges, so disable chunking
             chunks=valid_mask_packed.shape,
             # use compression that is fast to decode on modern hardware
-            compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
-        ).attrs.put({"n_returns": n_returns, "n_rays": n_rays})
+            compressors=stores.lz4_codecs(),
+        )
+        valid_mask_arr.attrs.update({"n_returns": n_returns, "n_rays": n_rays})
 
 
 class BaseRayBundleSensorComponentReader(BaseSensorComponentReader):
@@ -1295,9 +1285,10 @@ class CameraSensorComponent:
             frame_group = self._store_base_frame(frame_timestamps_us, generic_data, generic_meta_data)
 
             # Store image data (uncompressed, as already encoded)
-            frame_group.create_dataset("image", data=np.asarray(image_binary_data), compressor=None).attrs["format"] = (
-                image_format
+            image_arr = frame_group.create_array(
+                "image", data=np.asarray(image_binary_data), compressors=()
             )
+            image_arr.attrs["format"] = image_format
 
             return self
 
@@ -1574,7 +1565,7 @@ class CuboidsComponent:
                 )
                 obs_dict_list.append(obs.to_dict())
 
-            self._group.create_group("cuboids").attrs.put({"cuboid_track_observations": obs_dict_list})
+            self._group.create_group("cuboids").attrs.update({"cuboid_track_observations": obs_dict_list})
 
             return self
 

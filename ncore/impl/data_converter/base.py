@@ -16,7 +16,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -25,7 +24,7 @@ from typing import Optional, Tuple
 from upath import UPath
 
 
-@dataclass(**({"slots": True, "kw_only": True} if sys.version_info >= (3, 10) else {}))
+@dataclass(slots=True, kw_only=True)
 class BaseDataConverterConfig:
     """Generic data converter parameters"""
 
@@ -155,7 +154,7 @@ class BaseDataConverter(ABC):
         pass
 
 
-@dataclass(**({"slots": True, "kw_only": True} if sys.version_info >= (3, 10) else {}))
+@dataclass(slots=True, kw_only=True)
 class FileBasedDataConverterConfig(BaseDataConverterConfig):
     """Config for converters that read from a local root directory.
 

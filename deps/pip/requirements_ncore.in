@@ -18,18 +18,15 @@ numpy
 dataclasses_json>=0.2.12 # deserialization fails with earlier versions
 pillow
 
-# zarr version rationales:
-# - 2.17.0 contains crucial perf improvements ["Cache result of FSStore._fsspec_installed()" https://github.com/zarr-developers/zarr-python/pull/1581]
-# - 2.12.0 is the last version supporting python3.8 with old numpy versions, which we still want to support for now
-# - we can't switch to zarr 3 yet unconditionally as it's not available for python3.8 anymore
-zarr>=2.12.0,<3.0.0
+# zarr version rationale:
+# - 3.1.6 is the zarr3 release used for the zarr v2→v3 migration
+# - Python 3.8 support was dropped; zarr3 requires Python >=3.11
+zarr>=3.1.6
 
 # cbor2 version rationale:
 # - 5.9.0 fixes CWE-674 / CVE-2026-26209 (uncontrolled recursion DoS)
 # - 5.8.0 fixes CVE-2025-68131 (shared value info disclosure)
-# - 5.8.0+ dropped Python 3.8 support; last 3.8-compatible version is 5.7.0
-cbor2>=5.9.0; python_version>="3.9"
-cbor2; python_version<"3.9"
+cbor2>=5.9.0
 scipy
 torch
 typing-extensions

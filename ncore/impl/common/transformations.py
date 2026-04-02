@@ -15,8 +15,6 @@
 
 from __future__ import annotations
 
-import sys
-
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
@@ -62,7 +60,7 @@ def time_bounds(timestamps_us: List[int], seek_sec: Optional[float], duration_se
     return start_timestamp_us, end_timestamp_us
 
 
-@dataclass(**({"slots": True, "frozen": True} if sys.version_info >= (3, 10) else {"frozen": True}))
+@dataclass(slots=True, frozen=True)
 class HalfClosedInterval:
     """Represents a half closed interval [start, stop) of integers"""
 

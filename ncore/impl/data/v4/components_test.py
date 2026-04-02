@@ -1179,15 +1179,14 @@ class TestDataNewComponent(unittest.TestCase):
                         timestamps_array = np.array(self.timestamps, dtype=np.uint64)
 
                         # Store as zarr arrays
-                        self._group.create_dataset(
+                        # Note: zarr3 infers dtype from data; passing both is an error.
+                        self._group.create_array(
                             "velocities",
                             data=velocities_array,
-                            dtype=velocities_array.dtype,
                         )
-                        self._group.create_dataset(
+                        self._group.create_array(
                             "timestamps_us",
                             data=timestamps_array,
-                            dtype=np.uint64,
                         )
 
             class Reader(ComponentReader):
@@ -1365,9 +1364,9 @@ class TestDataNewComponent(unittest.TestCase):
                         accelerations_array = np.stack(self.accelerations)
                         timestamps_array = np.array(self.timestamps, dtype=np.uint64)
 
-                        self._group.create_dataset("velocities", data=velocities_array)
-                        self._group.create_dataset("accelerations", data=accelerations_array)  # NEW
-                        self._group.create_dataset("timestamps_us", data=timestamps_array)
+                        self._group.create_array("velocities", data=velocities_array)
+                        self._group.create_array("accelerations", data=accelerations_array)  # NEW
+                        self._group.create_array("timestamps_us", data=timestamps_array)
 
         # Create a backward-compatible reader that can read both v1 and v2
         class VelocityComponentBackwardCompatibleReader(ComponentReader):

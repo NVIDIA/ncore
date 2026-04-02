@@ -48,18 +48,16 @@ py_wheel(
     homepage = "https://github.com/NVIDIA/ncore",
     license = "Apache-2.0",
     platform = "any",
-    python_requires = ">=3.8",
+    python_requires = ">=3.11",
     python_tag = "py3",
     requires = [
         "numpy",
         # dataclasses_json version restriction rationale: deserialization fails with earlier versions
         "dataclasses_json>=0.2.12",
         "pillow",
-        # zarr version restrictions / suggestions rationale:
-        # - 2.17.0 contains crucial perf improvements ["Cache result of FSStore._fsspec_installed()" https://github.com/zarr-developers/zarr-python/pull/1581]
-        # - 2.12.0 is the last version supporting python3.8 with old numpy versions, which we still want to support for now
-        # - we can't switch to zarr 3 yet unconditionally as it's not available for python3.8 anymore
-        "zarr>=2.12.0,<3.0.0",
+        # zarr version rationale:
+        # - 3.1.6 is the zarr3 release used for the zarr v2→v3 migration
+        "zarr>=3.1.6",
         "cbor2",
         "scipy",
         "torch",
