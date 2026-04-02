@@ -17,13 +17,12 @@ from __future__ import annotations
 
 import dataclasses
 import io
-import sys
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from enum import IntEnum, auto, unique
 from functools import lru_cache
-from typing import TYPE_CHECKING, Dict, List, Literal, Mapping, Optional, Protocol, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Mapping, Optional, Protocol, Self, Tuple, Union
 
 import dataclasses_json
 import numpy as np
@@ -35,13 +34,6 @@ if TYPE_CHECKING:
 
 from ncore.impl.common.transformations import PoseGraphInterpolator, transform_bbox
 from ncore.impl.data import util
-
-
-if sys.version_info >= (3, 11):
-    # Older python versions have issues with type-hints for nested types in
-    # combination with typing.get_type_hints() (used by, e.g., 'dataclasses_json')
-    # - alias these globally as a workaround
-    from typing import Self
 
 
 ## JSON-like structures
@@ -131,9 +123,6 @@ class BivariateWindshieldModelParameters(dataclasses_json.DataClassJsonMixin):
 # Represents the collection of all concrete external distortion types
 ConcreteExternalDistortionParametersUnion = Union[BivariateWindshieldModelParameters]
 
-# Self type-var for camera model parameters consistent with PEP 673 but compatible with Python < 3.11
-CameraModelParametersSelf = TypeVar("CameraModelParametersSelf", bound="CameraModelParameters")
-
 
 @dataclass
 class CameraModelParameters(ABC):
@@ -150,11 +139,11 @@ class CameraModelParameters(ABC):
 
     @abstractmethod
     def transform(
-        self: CameraModelParametersSelf,
+        self,
         image_domain_scale: Union[float, Tuple[float, float]],
         image_domain_offset: Tuple[float, float] = (0.0, 0.0),
         new_resolution: Optional[Tuple[int, int]] = None,
-    ) -> CameraModelParametersSelf:
+    ) -> Self:
         """
         Applies a transformation to camera model parameter
 
@@ -345,12 +334,6 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
             linear_cde=linear_cde,
         )
 
-
-if sys.version_info <= (3, 9):
-    # Older python versions have issues with type-hints for nested types in
-    # combination with typing.get_type_hints() (used by, e.g., 'dataclasses_json')
-    # - alias these globally as a workaround
-    PolynomialType = FThetaCameraModelParameters.PolynomialType
 
 
 @dataclass

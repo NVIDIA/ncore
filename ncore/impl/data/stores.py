@@ -13,35 +13,63 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Zarr store implementations and utilities for ncore data storage.
+
+Backwards Compatibility with v2 .zarr.itar Files
+=================================================
+
+Files written by ncore versions prior to the zarr3 migration use zarr format v2
+with custom compressed consolidated metadata stored under the ``.zmetadata.cbor.xz``
+key (CBOR-encoded, LZMA-compressed).
+
+The :class:`IndexedTarStore` transparently handles reading these legacy files:
+
+- **Non-consolidated reads** (``zarr.open``): zarr3 auto-detects format v2 and reads
+  ``.zarray`` / ``.zgroup`` / ``.zattrs`` keys directly from the tar index.
+- **Consolidated reads** (``zarr.open_consolidated``): The store intercepts requests
+  for ``zarr.json`` and checks for compressed consolidated metadata:
+
+  1. ``zarr.cbor.xz`` (new v3 format) -- decompress CBOR+LZMA, return as JSON
+  2. ``.zmetadata.cbor.xz`` (old v2 format) -- decompress, return v2 metadata dict
+
+- :func:`open_store` provides a fallback chain: if consolidated read fails, falls back
+  to non-consolidated ``zarr.open()``.
+
+New files are written in zarr format v3 with native zarr3 consolidation,
+compressed via the same CBOR+LZMA scheme into ``zarr.cbor.xz``.
+"""
+
 from __future__ import annotations
 
 import io
+import json
 import logging
 import lzma
 import os
 import struct
 import tarfile
+import threading
 
+from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass, field
 from enum import IntEnum, auto, unique
 from pathlib import Path
-from threading import RLock
-from typing import IO, Any, Dict, Iterator, Literal, NamedTuple, Union
+from typing import IO, Any, Dict, Literal, NamedTuple, Union
 
 import cbor2
 import zarr
 
-from numcodecs import compat
+from zarr.abc.store import ByteRequest, OffsetByteRequest, RangeByteRequest, Store, SuffixByteRequest
+from zarr.core.buffer import Buffer, BufferPrototype
+
 from upath import UPath
-from zarr._storage.store import Store
-from zarr.util import json_loads
 
 
 _logger = logging.getLogger(__name__)
 
 
 class IndexedTarStore(Store):
-    """A zarr store over *indexed* tar files
+    """A zarr store over *indexed* tar files.
 
     Parameters
     ----------
@@ -57,13 +85,32 @@ class IndexedTarStore(Store):
     method is called on leaving the context, e.g.::
 
         >>> with IndexedTarStore('data/array.itar', mode='w') as store:
-        ...     z = zarr.zeros((10, 10), chunks=(5, 5), store=store)
-        ...     z[...] = 42
+        ...     z = zarr.open_group(store=store, mode='w', zarr_format=3)
+        ...     z.create_array('data', data=np.zeros((10, 10)))
         ...     # no need to call store.close()
 
+    Thread safety
+    -------------
+    A ``threading.RLock`` protects the shared tar file handle. This is needed because:
+
+    1. zarr3's async event loop runs store coroutines sequentially (no lock needed for
+       that alone), but ``reload_resources()`` may be called from user threads
+       concurrently with zarr reads, creating a race on the shared file handle.
+    2. If ``asyncio.to_thread`` is adopted in the future for non-blocking I/O,
+       concurrent thread access becomes real. The RLock handles this already.
     """
 
-    _erasable = False
+    supports_writes: bool = True
+    supports_deletes: bool = False
+    supports_partial_writes: bool = False
+    supports_listing: bool = True
+
+    itar_path: Path | UPath
+
+    _tar_file: tarfile.TarFile
+    _index: TarRecordIndex
+    _lock: threading.RLock
+    _deferred_zarr_json: Dict[str, bytes]
 
     @dataclass
     class TarRecord:
@@ -80,156 +127,455 @@ class IndexedTarStore(Store):
 
     def __init__(self, itar_path: Union[str, Path, UPath], mode: Literal["r", "w"] = "r"):
         if mode not in ["r", "w"]:
-            raise ValueError("TarRecordIndex: only r/w modes supported")
+            raise ValueError("IndexedTarStore: only r/w modes supported")
+
+        super().__init__(read_only=mode == "r")
 
         # store properties
-        self.mode = mode
-
-        # Current understanding is that tarfile module in stdlib is not thread-safe,
-        # and so locking is required for both read and write. However, this has not
-        # been investigated in detail, perhaps no lock is needed if mode='r'.
-        self.mutex = RLock()
-
-        # convert str / Path to absolute UPath uncondtionally
         itar_upath = UPath(itar_path)
         if itar_upath.protocol == "":
             # use UPath-internal `file://` protocol for local files
             itar_upath = UPath("file://" + str(itar_upath))
 
-        self.itar_upath = itar_upath.absolute()
+        self.itar_path = itar_upath.absolute()
+        self._mode = mode
 
-        # open file object and tar file (require file to be both writeable and readable when writing)
-        self.tar_file_object: IO[Any]
-        if self.mode == "r":
-            self.tar_file_object = self.itar_upath.open("rb")
+    def _sync_open(self) -> None:
+        """Eagerly open the tar file and load/initialize the index."""
+        if self._is_open:
+            raise ValueError("store is already open")
+
+        self._lock = threading.RLock()
+        self._deferred_zarr_json = {}
+
+        # Open file object and tar file (require file to be both writeable and readable when writing)
+        self._tar_file_object: IO[Any]
+        if self._mode == "r":
+            self._tar_file_object = self.itar_path.open("rb")
         else:
-            # universal_path for Python 3.8 (<=0.2.6) doesn't expose a
-            # write/read mode in it's static type-hints, although "wb+" is still accepted
-            # if the FS supports it, so ignore type-checker here
-            self.tar_file_object = self.itar_upath.open("wb+")  # type: ignore[call-overload]
+            self._tar_file_object = self.itar_path.open("wb+")  # type: ignore[call-overload]
 
-        self.tar_file = tarfile.TarFile(fileobj=self.tar_file_object, mode=self.mode)
+        self._tar_file = tarfile.TarFile(fileobj=self._tar_file_object, mode=self._mode)
 
         # init / load index table
-        if self.mode == "r":
-            self.index = self._load_tar_index(self.tar_file_object)
+        if self._mode == "r":
+            self._index = self._load_tar_index(self._tar_file_object)
         else:
-            self.index = self.TarRecordIndex()
+            self._index = self.TarRecordIndex()
 
-    def __delitem__(self, _: str):
-        raise NotImplementedError("Deleting items is not supported")
+        self._is_open = True
 
-    def __iter__(self) -> Iterator[str]:
-        with self.mutex:
-            return iter(self.index.records.keys())
+    async def _open(self) -> None:
+        self._sync_open()
 
-    def __len__(self) -> int:
-        with self.mutex:
-            return len(self.index.records)
+    def _ensure_open_sync(self) -> None:
+        """Lazily open the store on first I/O if not already open (sync version).
 
-    def __contains__(self, item: object) -> bool:
-        with self.mutex:
-            return item in self.index.records
+        This is used by sync internal methods (_get, _set) that may be called
+        before the async _open() has been awaited (e.g., from close() or reload_resources()).
+        """
+        if not self._is_open:
+            self._sync_open()
 
-    def __getitem__(self, item: str) -> bytes:
-        with self.mutex:
-            # Query index for file record
-            record = self.index.records[item]  # raises KeyError if not in archive
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, type(self)) and self.itar_path == other.itar_path
 
-            # Remember current tar file position
-            current_position = self.tar_file_object.tell()
+    # -------------------------------------------------------------------------
+    # Read operations
+    # -------------------------------------------------------------------------
 
-            # Read the value
-            self.tar_file_object.seek(record.offset_data)
-            value = self.tar_file_object.read(record.size)
+    @staticmethod
+    def _apply_byte_range_to_bytes(data: bytes, byte_range: ByteRequest) -> bytes:
+        """Apply a :class:`ByteRequest` to an in-memory ``bytes`` object."""
+        if isinstance(byte_range, RangeByteRequest):
+            return data[byte_range.start : byte_range.end]
+        elif isinstance(byte_range, OffsetByteRequest):
+            return data[byte_range.offset :]
+        elif isinstance(byte_range, SuffixByteRequest):
+            return data[-byte_range.suffix :] if byte_range.suffix > 0 else b""
+        else:
+            raise TypeError(f"Unexpected byte_range type, got {type(byte_range)}.")
 
-            # Return tar file to previous location
-            self.tar_file_object.seek(current_position)
+    def _get(
+        self,
+        key: str,
+        prototype: BufferPrototype,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        """Synchronous get implementation. Must be called under ``self._lock``.
 
-            return value
+        Checks the in-memory ``_deferred_zarr_json`` overlay first for buffered
+        ``zarr.json`` writes that have not yet been flushed to the tar archive
+        (see :meth:`_set` for details).
 
-    def __setitem__(self, item: str, value):
-        if self.mode != "w":
-            raise zarr.errors.ReadOnlyError
+        Then handles transparent decompression of consolidated metadata:
 
-        with self.mutex:
-            if item in self.index.records:
-                raise ValueError(f"{item} already exists, update is not supported")
+        - When ``key == "zarr.json"`` and a ``zarr.cbor.xz`` record exists, the
+          compressed consolidated metadata is decompressed (LZMA -> CBOR -> JSON)
+          and returned. This is the path for **new v3 itar files**.
+        - When ``key == "zarr.json"`` and a ``.zmetadata.cbor.xz`` record exists,
+          the **legacy v2 compressed consolidated metadata** is decompressed and
+          returned as-is (the v2 metadata dict). This enables backwards-compatible
+          reading of old v2 itar files via ``zarr.open_consolidated()``.
+        """
+        self._ensure_open_sync()
 
-            value_bytes: bytes = compat.ensure_bytes(value)
-            value_size: int = len(value_bytes)
+        # Check the deferred zarr.json overlay first (write-back buffer for
+        # child node metadata that zarr3 may rewrite multiple times).
+        if key in self._deferred_zarr_json:
+            value = self._deferred_zarr_json[key]
+            if byte_range is not None:
+                value = self._apply_byte_range_to_bytes(value, byte_range)
+            return prototype.buffer.from_bytes(value)
 
-            # Remember current tar file position, which is the start of the header
-            header_start_position = self.tar_file_object.tell()
+        try:
+            # Handle consolidated metadata intercept for zarr.json
+            consolidated_metadata = False
+            legacy_v2_consolidated = False
 
-            # Store value in tar-file (will pre-pend a potentially *multi*-block header depending on item path-lengths)
-            tarinfo = tarfile.TarInfo(item)
-            tarinfo.size = value_size
+            if key == "zarr.json":
+                if (record := self._index.records.get("zarr.cbor.xz")) is not None:
+                    # New v3 compressed consolidated metadata
+                    consolidated_metadata = True
+                    assert byte_range is None, "Byte range not supported for consolidated metadata"
+                elif (record := self._index.records.get(".zmetadata.cbor.xz")) is not None:
+                    # Legacy v2 compressed consolidated metadata -- backwards compat
+                    legacy_v2_consolidated = True
+                    assert byte_range is None, "Byte range not supported for consolidated metadata"
+                else:
+                    # Regular key lookup
+                    record = self._index.records[key]
+            else:
+                # Regular key lookup
+                record = self._index.records[key]
+        except KeyError:
+            return None
 
-            self.tar_file.addfile(tarinfo, fileobj=io.BytesIO(value_bytes))
+        fileobj = self._tar_file_object
 
-            # End position after writing both header and payload
-            end_position = self.tar_file_object.tell()
+        # Remember current tar file position
+        current_position = fileobj.tell()
 
-            # Determine the effective value's payload size as a multiple of blocksize
-            payload_size = value_size
-            if remainder := payload_size % tarfile.BLOCKSIZE:
-                payload_size += tarfile.BLOCKSIZE - remainder
+        # Read the value depending on the byte_range
+        if byte_range is None:
+            fileobj.seek(record.offset_data)
+            value = fileobj.read(record.size)
+        elif isinstance(byte_range, RangeByteRequest):
+            fileobj.seek(record.offset_data + byte_range.start)
+            value = fileobj.read(byte_range.end - byte_range.start)
+        elif isinstance(byte_range, OffsetByteRequest):
+            fileobj.seek(record.offset_data + byte_range.offset)
+            value = fileobj.read(record.size - byte_range.offset)
+        elif isinstance(byte_range, SuffixByteRequest):
+            fileobj.seek(max(0, record.offset_data + record.size - byte_range.suffix))
+            value = fileobj.read(byte_range.suffix)
+        else:
+            raise TypeError(f"Unexpected byte_range, got {byte_range}.")
 
-            # Determine the effective header-size (can be multiple blocks for long path names)
-            header_size = end_position - header_start_position - payload_size
+        if consolidated_metadata:
+            # Decompress new v3 compressed consolidated metadata (LZMA -> CBOR -> JSON)
+            meta = cbor2.loads(lzma.LZMADecompressor().decompress(value))
 
-            # Construct record from reconstructed size-information
-            record = self.TarRecord(
-                # Effective start of the data in the tar file (current tar file position + header-size)
-                header_start_position + header_size,
-                # Length of the data
-                value_size,
+            consolidated_format = meta.get("zarr_consolidated_format", None)
+            if consolidated_format != 1:
+                raise zarr.errors.MetadataError(
+                    "unsupported zarr consolidated metadata format: %s" % consolidated_format
+                )
+
+            # Return the inner metadata dict as JSON bytes (expected zarr.json format)
+            value = json.dumps(meta["metadata"]).encode("utf-8")
+
+        elif legacy_v2_consolidated:
+            # Decompress legacy v2 compressed consolidated metadata
+            # and return the raw metadata dict -- zarr.open_consolidated() will
+            # fail to parse this as v3 metadata, triggering the fallback in open_store()
+            meta = cbor2.loads(lzma.LZMADecompressor().decompress(value))
+
+            consolidated_format = meta.get("zarr_consolidated_format", None)
+            if consolidated_format != 1:
+                raise zarr.errors.MetadataError(
+                    "unsupported zarr consolidated metadata format: %s" % consolidated_format
+                )
+
+            # Return raw v2 metadata as JSON -- this won't parse as v3 consolidated
+            # metadata, but the fallback in open_store() handles this correctly
+            value = json.dumps(meta["metadata"]).encode("utf-8")
+
+        ret = prototype.buffer.from_bytes(value)
+
+        # Return tar file to previous location
+        fileobj.seek(current_position)
+
+        return ret
+
+    async def get(
+        self,
+        key: str,
+        prototype: BufferPrototype,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        assert isinstance(key, str)
+
+        with self._lock:
+            return self._get(key, prototype=prototype, byte_range=byte_range)
+
+    async def get_partial_values(
+        self,
+        prototype: BufferPrototype,
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
+    ) -> list[Buffer | None]:
+        out = []
+
+        with self._lock:
+            for key, byte_range in key_ranges:
+                out.append(self._get(key, prototype=prototype, byte_range=byte_range))
+
+        return out
+
+    async def exists(self, key: str) -> bool:
+        self._ensure_open_sync()
+        with self._lock:
+            return key in self._deferred_zarr_json or key in self._index.records
+
+    # -------------------------------------------------------------------------
+    # Write operations
+    # -------------------------------------------------------------------------
+
+    def _set(self, key: str, value: Buffer) -> None:
+        """Synchronous set implementation. Must be called under ``self._lock``.
+
+        Deferred-write strategy for ``zarr.json`` keys
+        -----------------------------------------------
+        **All** ``zarr.json`` writes (both first-write and subsequent overwrites)
+        are buffered in memory (``_deferred_zarr_json``) and only the final
+        version is materialized to the tar when the store is closed (see
+        :meth:`close` and :meth:`_flush_deferred`).
+
+        This guarantees **zero dead space** in the tar archive regardless of how
+        many times zarr3 rewrites a node's metadata during a session.  zarr3
+        writes a ``zarr.json`` once on ``create_group()`` / ``create_array()``
+        and then again every time ``group.attrs.update()`` is called -- deferring
+        the first write as well means neither version reaches the tar until
+        close, when only the final version is written.
+
+        The **root** ``zarr.json`` is also deferred.  During
+        :meth:`_flush_deferred`, it is intercepted and compressed as
+        ``zarr.cbor.xz`` (CBOR+LZMA) -- the consolidated-metadata format used
+        by ncore itar files.
+
+        All other (non ``zarr.json``) keys remain strictly write-once.
+        """
+        self._ensure_open_sync()
+
+        # --- zarr.json keys: always defer (first-write OR overwrite) ----------
+        if key == "zarr.json" or key.endswith("/zarr.json"):
+            _logger.debug(f"IndexedTarStore: deferring write of {key}")
+            self._deferred_zarr_json[key] = value.to_bytes()
+            return
+
+        # --- Non zarr.json keys: write-once -----------------------------------
+        key_exists = key in self._index.records or key in self._deferred_zarr_json
+        if key_exists:
+            raise ValueError(
+                f"{key} already exists and is not a zarr.json metadata key; "
+                f"overwriting non-metadata keys is not supported in itar format"
             )
 
-            self.index.records[item] = record
+        value_bytes: bytes = value.to_bytes()
+        self._write_to_tar(key, value_bytes)
 
-    def __enter__(self):
-        return self
+    async def set(self, key: str, value: Buffer) -> None:
+        self._check_writable()
+        self._ensure_open_sync()
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
+        assert isinstance(key, str)
 
-    def close(self):
-        """Needs to be called after finishing updating the store"""
-        with self.mutex:
-            # Closing the tar file appends two finishing blocks to the end of the file
-            # if in write mode, but doesn't close the internal file object yet
-            self.tar_file.close()
+        if not isinstance(value, Buffer):
+            raise TypeError(
+                f"IndexedTarStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
 
-            if self.mode == "w":
-                # Add index if writing
-                self._save_tar_index(self.tar_file_object, self.index)
+        with self._lock:
+            self._set(key, value)
 
-            self.tar_file_object.close()
+    async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, bytes]]) -> None:
+        raise NotImplementedError
 
-    def reload_resources(self):
+    async def delete(self, key: str) -> None:
+        # Only raise if the key actually exists -- allows zarr APIs to avoid overhead
+        self._check_writable()
+        if await self.exists(key):
+            raise NotImplementedError("Deleting items is not supported by IndexedTarStore")
+
+    # -------------------------------------------------------------------------
+    # Listing operations
+    # -------------------------------------------------------------------------
+
+    async def list(self) -> AsyncIterator[str]:
+        self._ensure_open_sync()
+        with self._lock:
+            # Yield keys from the tar index
+            for key in self._index.records.keys():
+                yield key
+            # Yield deferred zarr.json keys not yet in the tar index
+            for key in self._deferred_zarr_json:
+                if key not in self._index.records:
+                    yield key
+
+    async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
+        async for key in self.list():
+            if key.startswith(prefix):
+                yield key
+
+    async def list_dir(self, prefix: str) -> AsyncIterator[str]:
+        prefix = prefix.rstrip("/")
+
+        self._ensure_open_sync()
+        # Merge keys from tar index and deferred buffer
+        all_keys = set(self._index.records.keys()) | set(self._deferred_zarr_json.keys())
+        seen: set[str] = set()
+
+        if prefix == "":
+            for key in all_keys:
+                top = key.split("/")[0]
+                if top not in seen:
+                    seen.add(top)
+                    yield top
+        else:
+            for key in all_keys:
+                if key.startswith(prefix + "/") and key.strip("/") != prefix:
+                    k = key.removeprefix(prefix + "/").split("/")[0]
+                    if k not in seen:
+                        seen.add(k)
+                        yield k
+
+    # -------------------------------------------------------------------------
+    # Lifecycle
+    # -------------------------------------------------------------------------
+
+    def _flush_deferred(self) -> None:
+        """Write all deferred ``zarr.json`` entries to the tar archive.
+
+        Must be called under ``self._lock`` and BEFORE ``self._tar_file.close()``
+        (which finalizes the tar with two empty 512-byte blocks).
+
+        Because ALL ``zarr.json`` writes are deferred (both first-write and
+        overwrites), each key is written to the tar exactly **once** -- the
+        final version.  This guarantees zero dead space in the archive.
+
+        The root ``zarr.json`` receives special treatment: instead of writing
+        it as-is, its content is intercepted and compressed as ``zarr.cbor.xz``
+        (CBOR + LZMA) -- the consolidated-metadata format used by ncore itar
+        files.  The plain ``zarr.json`` key is NOT written to the tar for the
+        root; only ``zarr.cbor.xz`` is.
+        """
+        if not self._deferred_zarr_json:
+            return
+
+        # Handle root zarr.json consolidation intercept: compress as zarr.cbor.xz
+        root_zarr_json = self._deferred_zarr_json.pop("zarr.json", None)
+        if root_zarr_json is not None:
+            consolidated = {
+                "zarr_consolidated_format": 1,
+                "metadata": json.loads(root_zarr_json),
+            }
+
+            with io.BytesIO() as buffer:
+                with lzma.open(buffer, "wb") as lzma_file:
+                    cbor2.dump(consolidated, lzma_file)
+                compressed_bytes = buffer.getvalue()
+
+            # Write zarr.cbor.xz to the tar (not zarr.json)
+            self._write_to_tar("zarr.cbor.xz", compressed_bytes)
+
+        # Write remaining (non-root) zarr.json entries
+        for key, value_bytes in self._deferred_zarr_json.items():
+            self._write_to_tar(key, value_bytes)
+
+        _logger.debug(
+            "IndexedTarStore: flushed %d deferred zarr.json entries%s",
+            len(self._deferred_zarr_json) + (1 if root_zarr_json is not None else 0),
+            " (including root zarr.json → zarr.cbor.xz)" if root_zarr_json is not None else "",
+        )
+        self._deferred_zarr_json.clear()
+
+    def _write_to_tar(self, key: str, value_bytes: bytes) -> None:
+        """Append a single key/value pair to the tar archive and update the index.
+
+        Must be called under ``self._lock``.
+        """
+        value_size = len(value_bytes)
+
+        # Current position is the start of the new header
+        header_start = self._tar_file_object.tell()
+
+        tarinfo = tarfile.TarInfo(key)
+        tarinfo.size = value_size
+        self._tar_file.addfile(tarinfo, fileobj=io.BytesIO(value_bytes))
+
+        end_position = self._tar_file_object.tell()
+
+        # Compute effective payload size (rounded up to block boundary)
+        payload_size = value_size
+        if remainder := payload_size % tarfile.BLOCKSIZE:
+            payload_size += tarfile.BLOCKSIZE - remainder
+
+        header_size = end_position - header_start - payload_size
+
+        # Update the index to point to the newly written data
+        self._index.records[key] = self.TarRecord(
+            offset_data=header_start + header_size,
+            size=value_size,
+        )
+
+    def close(self) -> None:
+        """Needs to be called after finishing updating the store.
+
+        Flushes deferred ``zarr.json`` writes, saves the tar index (if
+        writing), closes the tar file and underlying file object, and marks the
+        store as closed via the zarr3 lifecycle.
+        """
+        if self._is_open:
+            with self._lock:
+                if self._mode == "w":
+                    # Flush deferred zarr.json overwrites BEFORE closing the
+                    # tar (which appends two finishing 512-byte blocks).
+                    self._flush_deferred()
+
+                # Closing the tar file appends two finishing blocks to the end of the file
+                # if in write mode, but doesn't close the internal file object yet
+                self._tar_file.close()
+
+                if self._mode == "w":
+                    # Add index if writing
+                    self._save_tar_index(self._tar_file_object, self._index)
+
+                self._tar_file_object.close()
+
+        super().close()
+
+    def reload_resources(self) -> None:
         """Reloads the tar file object *only* - useful to re-initialize the store in multi-process 'fork()' settings"""
-        with self.mutex:
-            # get current tar file path and seek positions, and close file object
-            current_position = self.tar_file_object.tell()
-            self.tar_file_object.close()
+        with self._lock:
+            # get current seek positions and close file object
+            current_position = self._tar_file_object.tell()
+            self._tar_file_object.close()
 
             # reload file object (require file to be both writeable and readable when writing)
-            if self.mode == "r":
-                self.tar_file_object = self.itar_upath.open("rb")
+            if self._mode == "r":
+                self._tar_file_object = self.itar_path.open("rb")
             else:
-                # universal_path for Python 3.8 (<=0.2.6) doesn't expose a
-                # write/read mode in it's static type-hints, although "wb+" is still accepted
-                # if the FS supports it, so ignore type-checker here
-                self.tar_file_object = self.itar_upath.open("wb+")  # type: ignore[call-overload]
+                self._tar_file_object = self.itar_path.open("wb+")  # type: ignore[call-overload]
 
-            self.tar_file.fileobj = self.tar_file_object
+            self._tar_file.fileobj = self._tar_file_object
 
             # seek to previous position
-            self.tar_file_object.seek(current_position)
+            self._tar_file_object.seek(current_position)
 
-    # Methods / constants for storing index header and payload
+    # -------------------------------------------------------------------------
+    # Index serialization
+    # -------------------------------------------------------------------------
+
     INDEX_HEADER_MAGIC = b"itar"
 
     # Index header binary format
@@ -291,10 +637,10 @@ class IndexedTarStore(Store):
         return cls.TarRecordIndex({item: cls.TarRecord(offset_datas[i], sizes[i]) for i, item in enumerate(items)})
 
     @classmethod
-    def _save_tar_index(cls, tar_file_object: IO[Any], index: TarRecordIndex):
+    def _save_tar_index(cls, tar_file_object: IO[Any], index: TarRecordIndex) -> None:
         """Saves a tar record index at the end of a tar file object (needs to be finalized / have two empty blocks appended already)"""
 
-        def fill_block():
+        def fill_block() -> None:
             # Fill up block with zeros
             _, remainder = divmod(tar_file_object.tell(), tarfile.BLOCKSIZE)
             if remainder > 0:
@@ -346,87 +692,64 @@ class IndexedTarStore(Store):
         fill_block()
 
 
-def consolidate_compressed_metadata(store: zarr.storage.BaseStore, metadata_key=".zmetadata.cbor.xz"):
-    """Consolidate all metadata for groups and arrays within the given store
-    into a single compressed cbor resource and put it under the given key.
+def open_store(
+    store: Store, open_consolidated: bool, mode: str = "r", **kwargs: Any
+) -> zarr.Group:
+    """Open a zarr group from a store, with optional consolidated metadata.
 
-    See Also
-    --------
-    zarr.consolidate_metadata
+    Implements a backwards-compatible interface that handles both new v3 itar files
+    and legacy v2 itar files:
+
+    1. If ``open_consolidated=True``, tries ``zarr.open_consolidated()`` first.
+       For v3 files, this succeeds because the store intercepts ``zarr.json`` and
+       decompresses ``zarr.cbor.xz``. For v2 files, this may fail because the
+       decompressed metadata is in v2 format.
+    2. On failure, falls back to ``zarr.open()`` which auto-detects format v2
+       and reads the individual metadata keys directly.
+    3. If ``open_consolidated=False``, uses ``zarr.open()`` directly.
+
+    Parameters
+    ----------
+    store : zarr.abc.store.Store
+        The store to open.
+    open_consolidated : bool
+        If True, attempt to use consolidated metadata for faster loading.
+    mode : str
+        Access mode ('r' or 'r+').
+    **kwargs
+        Additional keyword arguments passed to ``zarr.open()`` / ``zarr.open_consolidated()``.
+
+    Returns
+    -------
+    zarr.Group
+        The opened zarr group.
     """
-    store = zarr.storage.normalize_store_arg(store, mode="w")
-
-    version = store._store_version
-
-    if version == 2:
-
-        def is_zarr_key(key):
-            return key.endswith(".zarray") or key.endswith(".zgroup") or key.endswith(".zattrs")
-
-    else:
-        raise NotImplementedError("Only supporting V2 stores")
-
-    # Collect all meta-data
-    out = {
-        "zarr_consolidated_format": 1,
-        "metadata": {key: json_loads(store[key]) for key in store if is_zarr_key(key)},
-    }
-
-    with io.BytesIO() as metadata_buffer:
-        # Compress meta-data to in-memory buffer
-        with lzma.open(metadata_buffer, "wb") as lzma_file:
-            cbor2.dump(out, lzma_file)
-
-        store[metadata_key] = metadata_buffer.getvalue()
+    try:
+        if open_consolidated:
+            return zarr.open_consolidated(store=store, mode=mode, **kwargs)
+        else:
+            return zarr.open(store=store, mode=mode, **kwargs)
+    except Exception as e:
+        # Fall back to regular opening if consolidated read fails.
+        # This handles legacy v2 itar files whose compressed consolidated metadata
+        # cannot be parsed as v3 consolidated metadata.
+        _logger.warning(f"Failed to open consolidated store: {e}. Falling back to regular store opening.")
+        return zarr.open(store=store, mode=mode, **kwargs)
 
 
-class ConsolidatedCompressedMetadataStore(zarr.storage.ConsolidatedMetadataStore):
-    """A layer over other storage, where the metadata has been consolidated into a single compressed key."""
+def lz4_codecs() -> list:
+    """Default zarr3 compressors for LZ4 Blosc compression.
 
-    # Overwrite constructor to perform decompression of metadata
-    def __init__(self, store: zarr.storage.StoreLike, metadata_key=".zmetadata.cbor.xz"):
-        self.store = Store._ensure_store(store)
+    Produces compact, quickly-decodable chunks suitable for both local and remote
+    storage. Used as the default compressor pipeline for ncore data arrays.
 
-        # retrieve consolidated metadata
-        meta = cbor2.loads(lzma.LZMADecompressor().decompress(self.store[metadata_key]))
-
-        # check format of consolidated metadata
-        consolidated_format = meta.get("zarr_consolidated_format", None)
-        if consolidated_format != 1:
-            raise zarr.MetadataError("unsupported zarr consolidated metadata format: %s" % consolidated_format)
-
-        # decode metadata
-        self.meta_store: zarr.storage.Store = zarr.KVStore(meta["metadata"])
-
-
-def open_compressed_consolidated(
-    store: zarr.storage.StoreLike, metadata_key=".zmetadata.cbor.xz", mode="r+", **kwargs
-) -> zarr.hierarchy.Group:
-    """Open group using metadata previously consolidated and compressed into a single key.
-
-    See Also
-    --------
-    consolidate_compressed_metadata
-    zarr.open_consolidated
+    Returns
+    -------
+    list
+        A list containing a single ``BloscCodec`` configured for LZ4 compression
+        with bitshuffle, suitable for the ``compressors`` argument of
+        ``group.create_array()``.
     """
+    from zarr.codecs import BloscCodec
 
-    # normalize parameters
-    zarr_version = kwargs.get("zarr_version")
-    store = zarr.storage.normalize_store_arg(
-        store, storage_options=kwargs.get("storage_options"), mode=mode, zarr_version=zarr_version
-    )
-    if mode not in {"r", "r+"}:
-        raise ValueError("invalid mode, expected either 'r' or 'r+'; found {!r}".format(mode))
-
-    path = kwargs.pop("path", None)
-    if store._store_version == 2:
-        ConsolidatedStoreClass = ConsolidatedCompressedMetadataStore
-    else:
-        raise NotImplementedError("Only supporting V2 stores")
-
-    # setup metadata store
-    meta_store = ConsolidatedStoreClass(store, metadata_key=metadata_key)
-
-    # pass through
-    chunk_store = kwargs.pop("chunk_store", None) or store
-    return zarr.convenience.open(store=meta_store, chunk_store=chunk_store, mode=mode, path=path, **kwargs)
+    return [BloscCodec(cname="lz4", clevel=5, shuffle="bitshuffle")]
