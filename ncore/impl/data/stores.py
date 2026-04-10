@@ -40,6 +40,21 @@ from zarr.util import json_loads
 _logger = logging.getLogger(__name__)
 
 
+class _NullTarFile:
+    """Stub replacing tarfile.TarFile when no tar-level I/O is needed.
+
+    The stock TarFile(fileobj=fobj) reads tar headers from the beginning of
+    the file, which is wasted I/O since all reads go through
+    __getitem__ -> fobj.seek() + fobj.read() using the index offsets.
+    """
+
+    def __init__(self):
+        self.fileobj = None
+
+    def close(self):
+        pass
+
+
 class IndexedTarStore(Store):
     """A zarr store over *indexed* tar files
 
@@ -98,7 +113,7 @@ class IndexedTarStore(Store):
 
         self.itar_upath = itar_upath.absolute()
 
-        # open file object and tar file (require file to be both writeable and readable when writing)
+        # open file object (require file to be both writeable and readable when writing)
         self.tar_file_object: IO[Any]
         if self.mode == "r":
             self.tar_file_object = self.itar_upath.open("rb")
@@ -108,7 +123,9 @@ class IndexedTarStore(Store):
             # if the FS supports it, so ignore type-checker here
             self.tar_file_object = self.itar_upath.open("wb+")  # type: ignore[call-overload]
 
-        self.tar_file = tarfile.TarFile(fileobj=self.tar_file_object, mode=self.mode)
+        # Use a lightweight stub instead of tarfile.TarFile — the real TarFile
+        # is only created lazily on the first __setitem__ call (write mode).
+        self.tar_file: Union[tarfile.TarFile, _NullTarFile] = _NullTarFile()
 
         # init / load index table
         if self.mode == "r":
@@ -158,6 +175,10 @@ class IndexedTarStore(Store):
 
             value_bytes: bytes = compat.ensure_bytes(value)
             value_size: int = len(value_bytes)
+
+            # Lazily create TarFile on first write
+            if not isinstance(self.tar_file, tarfile.TarFile):
+                self.tar_file = tarfile.TarFile(fileobj=self.tar_file_object, mode="w")
 
             # Remember current tar file position, which is the start of the header
             header_start_position = self.tar_file_object.tell()
@@ -255,32 +276,61 @@ class IndexedTarStore(Store):
 
         CBOR_LZMA_XZ_V1 = auto()
 
+    # Maximum bytes read from the tail of the file in a single I/O call.
+    # Covers both the 20-byte header block and the compressed index payload.
+    _INDEX_TAIL_READ_SIZE = 1 << 20  # 1 MiB
+
     @classmethod
     def _load_tar_index(cls, tar_file_object: IO[Any]) -> TarRecordIndex:
-        """Loads a tar record index from the end of a tar file object"""
+        """Loads a tar record index from the end of a tar file object.
 
-        # Load header
+        Reads up to 1 MiB from the tail of the file in one ``fobj.read()``
+        call.  Extracts both the 20-byte header (in the last 512-byte block)
+        and the compressed index payload from that same buffer.  Only falls
+        back to a second read if the compressed index is larger than 1 MiB.
+        """
         original_file_position = tar_file_object.tell()
-        tar_file_object.seek(-tarfile.BLOCKSIZE, os.SEEK_END)
-        header_binary = tar_file_object.read(struct.calcsize(cls.INDEX_HEADER_FORMAT))
 
-        # Decode header
-        header = cls.IndexHeader._make(struct.unpack(cls.INDEX_HEADER_FORMAT, header_binary))
+        # Determine file size
+        tar_file_object.seek(0, os.SEEK_END)
+        file_size = tar_file_object.tell()
 
-        # Check magic bytes
+        # Read up to 1 MiB from the tail in one call
+        tail_size = min(file_size, cls._INDEX_TAIL_READ_SIZE)
+        tar_file_object.seek(file_size - tail_size)
+        tail_buffer = tar_file_object.read(tail_size)
+
+        # Extract the 20-byte header from the last 512-byte block
+        header_fmt_size = struct.calcsize(cls.INDEX_HEADER_FORMAT)
+        header_offset_in_buf = tail_size - tarfile.BLOCKSIZE
+        header = cls.IndexHeader._make(
+            struct.unpack(
+                cls.INDEX_HEADER_FORMAT,
+                tail_buffer[header_offset_in_buf : header_offset_in_buf + header_fmt_size],
+            )
+        )
+
         if header.magic != cls.INDEX_HEADER_MAGIC:
             raise ValueError("IndexedTarStore: invalid index header, can't load indexed tar file")
 
-        # Load index based on type
-        tar_file_object.seek(header.offset)
-        header_binary = tar_file_object.read(header.size)
+        # Try to extract the compressed index payload from the same buffer
+        buffer_start_in_file = file_size - tail_size
+        if header.offset >= buffer_start_in_file:
+            # Payload is fully within the buffer we already read
+            payload_start = header.offset - buffer_start_in_file
+            index_binary = tail_buffer[payload_start : payload_start + header.size]
+        else:
+            # Rare: compressed index > 1 MiB — fall back to a second read
+            tar_file_object.seek(header.offset)
+            index_binary = tar_file_object.read(header.size)
+
         tar_file_object.seek(original_file_position)
 
         if header.type == cls.IndexType.CBOR_LZMA_XZ_V1.value:
-            _logger.debug(f"IndexedTarStore: lzma-compressed (xz archive format) index load size={len(header_binary)}")
+            _logger.debug(f"IndexedTarStore: lzma-compressed (xz archive format) index load size={len(index_binary)}")
 
             # load table (SOA)
-            table = cbor2.loads(lzma.LZMADecompressor().decompress(header_binary))
+            table = cbor2.loads(lzma.LZMADecompressor().decompress(index_binary))
             items = table["items"]
             offset_datas = table["offset_datas"]
             sizes = table["sizes"]
