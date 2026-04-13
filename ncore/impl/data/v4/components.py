@@ -319,6 +319,7 @@ class SequenceComponentGroupsReader:
         self,
         component_group_paths: List[UPath] | List[Path],
         open_consolidated: bool = True,
+        itar_index_tail_read_size: int = 1 << 20,  # 1 MiB default
         max_threads: int | None = None,
     ):
         """Initialize a SequenceComponentReader for a virtual sequence represented by a list of components.
@@ -331,6 +332,10 @@ class SequenceComponentGroupsReader:
                                storage to prevent latencies introduced when accessing the data.
                                If the component data is available on fast *local* storage, disabling
                                this option can speed up initial load times.
+            itar_index_tail_read_size: When loading component groups from .itar files, the size of the tail buffer to read in a
+                               single I/O call to initialize the tar file index to minimize reads.
+                               Default 1 MiB size fits typical use cases, but may be increased if the compressed
+                               index size is expected to be larger or decreased if remote access chunk sizes are smaller.
             max_threads:       The maximum number of threads used to load the different components (if None,
                                use interpreter-default number of threads for a ThreadPoolExecutor)
         """
@@ -360,7 +365,9 @@ class SequenceComponentGroupsReader:
                             f"Unsupported file-based store format {component_store_upath}, expected .zarr.itar"
                         )
 
-                    component_store = stores.IndexedTarStore(component_store_upath, mode="r")
+                    component_store = stores.IndexedTarStore(
+                        component_store_upath, mode="r", index_tail_read_size=itar_index_tail_read_size
+                    )
                 else:
                     component_store = zarr.storage.DirectoryStore(component_store_upath)
 

@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import itertools
 import tempfile
 import unittest
 
@@ -21,6 +22,10 @@ import parameterized
 import zarr
 
 from .stores import IndexedTarStore, consolidate_compressed_metadata, open_compressed_consolidated
+
+
+COMPRESSED_CONSOLIDATED_VALUES = [False, True]
+INDEX_TAIL_READ_SIZES = [1 << 20, 512]  # 1 MiB (default) and 512 bytes (edge case of single tar block size)
 
 
 class TestIndexedTarStore(unittest.TestCase):
@@ -41,7 +46,12 @@ class TestIndexedTarStore(unittest.TestCase):
         )
         self.assertDictEqual(self.g_ref.attrs.asdict(), group.attrs.asdict())
 
-    def test_reserialization(self):
+    @parameterized.parameterized.expand(
+        itertools.product(
+            INDEX_TAIL_READ_SIZES,
+        )
+    )
+    def test_reserialization(self, index_tail_read_size: int):
         """Make sure storing / loading of regular zarr data to .itar files works correctly"""
 
         # re-serialize to .itar archive
@@ -50,7 +60,7 @@ class TestIndexedTarStore(unittest.TestCase):
                 zarr.copy_store(self.g_ref.store, s_itar_out)
 
             # reload store from file
-            store = IndexedTarStore(f.name)
+            store = IndexedTarStore(f.name, index_tail_read_size=index_tail_read_size)
             g_reload = zarr.open(store=store, mode="r")
 
             # check all data was correctly serialized / deserialized
@@ -60,7 +70,12 @@ class TestIndexedTarStore(unittest.TestCase):
             store.reload_resources()
             self.check_with_reference(g_reload)
 
-    def test_compressed_consolidated(self):
+    @parameterized.parameterized.expand(
+        itertools.product(
+            INDEX_TAIL_READ_SIZES,
+        )
+    )
+    def test_compressed_consolidated(self, index_tail_read_size: int):
         """Make sure compressed consolidated meta data is stored/loaded correctly"""
 
         # serialize to .itar archive (will also serialize compressed-consolidated meta-data)
@@ -72,7 +87,7 @@ class TestIndexedTarStore(unittest.TestCase):
                 consolidate_compressed_metadata(s_itar_out)
 
             # reload store from file with compressed consolidated meta-data
-            store = IndexedTarStore(f.name)
+            store = IndexedTarStore(f.name, index_tail_read_size=index_tail_read_size)
             g_reload = open_compressed_consolidated(store=store, mode="r")
 
             # check all data was correctly serialized / deserialized
@@ -83,18 +98,12 @@ class TestIndexedTarStore(unittest.TestCase):
             self.check_with_reference(g_reload)
 
     @parameterized.parameterized.expand(
-        [
-            (
-                "not-compressed_consolidate",
-                False,
-            ),
-            (
-                "compressed_consolidate",
-                True,
-            ),
-        ]
+        itertools.product(
+            COMPRESSED_CONSOLIDATED_VALUES,
+            INDEX_TAIL_READ_SIZES,
+        )
     )
-    def test_empty(self, _, compressed_consolidate: bool):
+    def test_empty(self, compressed_consolidate: bool, index_tail_read_size: int):
         """Verify edge case of serialization of empty store is possible without errors"""
         with tempfile.NamedTemporaryFile(suffix=".itar") as f:
             with IndexedTarStore(f.name, mode="w") as s_itar_out:  # closes file on exit
@@ -103,7 +112,7 @@ class TestIndexedTarStore(unittest.TestCase):
                 if compressed_consolidate:
                     consolidate_compressed_metadata(s_itar_out)
 
-            with IndexedTarStore(f.name) as s_itar_in:
+            with IndexedTarStore(f.name, index_tail_read_size=index_tail_read_size) as s_itar_in:
                 # Loading store should work without errors
 
                 # But loading a non-existing group should then fail

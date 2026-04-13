@@ -78,7 +78,14 @@ class IndexedTarStore(Store):
 
         records: Dict[str, IndexedTarStore.TarRecord] = field(default_factory=dict)
 
-    def __init__(self, itar_path: Union[str, Path, UPath], mode: Literal["r", "w"] = "r"):
+    def __init__(
+        self,
+        itar_path: Union[str, Path, UPath],
+        mode: Literal["r", "w"] = "r",
+        # Maximum bytes read from the tail of the file in a single I/O call to load the tar index.
+        # Covers both the small index header and (ideally) the compressed index payload.
+        index_tail_read_size: int = 1 << 20,  # 1 MiB by default
+    ):
         if mode not in ["r", "w"]:
             raise ValueError("TarRecordIndex: only r/w modes supported")
 
@@ -114,7 +121,7 @@ class IndexedTarStore(Store):
 
         # init / load index table
         if self.mode == "r":
-            self.index = self._load_tar_index(self.tar_file_object)
+            self.index = self._load_tar_index(self.tar_file_object, index_tail_read_size)
         else:
             self.index = self.TarRecordIndex()
 
@@ -236,7 +243,7 @@ class IndexedTarStore(Store):
     # Methods / constants for storing index header and payload
     INDEX_HEADER_MAGIC = b"itar"
 
-    # Index header binary format
+    # Index header binary format (20-bytes)
     #
     # <little-endian
     # IndexMagic  - 4s - 4xchar             - 4bytes
@@ -259,51 +266,52 @@ class IndexedTarStore(Store):
 
         CBOR_LZMA_XZ_V1 = auto()
 
-    # Maximum bytes read from the tail of the file in a single I/O call.
-    # Covers both the 20-byte header block and the compressed index payload.
-    _INDEX_TAIL_READ_SIZE = 1 << 20  # 1 MiB
-
     @classmethod
-    def _load_tar_index(cls, tar_file_object: IO[Any]) -> TarRecordIndex:
+    def _load_tar_index(cls, tar_file_object: IO[Any], index_tail_read_size: int) -> TarRecordIndex:
         """Loads a tar record index from the end of a tar file object.
 
-        Reads up to 1 MiB from the tail of the file in one ``fobj.read()``
-        call.  Extracts both the 20-byte header (in the last 512-byte block)
+        Reads up to index_tail_read_size from the tail of the file in one ``fobj.read()``
+        call.  Extracts both the index header (in the last 512-byte block)
         and the compressed index payload from that same buffer.  Only falls
-        back to a second read if the compressed index is larger than 1 MiB.
+        back to a second read if the compressed index is larger than the tail read size.
         """
+        assert index_tail_read_size >= tarfile.BLOCKSIZE, "Tail read size needs to be at least one tar block size"
+
         original_file_position = tar_file_object.tell()
 
         # Determine file size
         tar_file_object.seek(0, os.SEEK_END)
         file_size = tar_file_object.tell()
 
-        # Read up to 1 MiB from the tail in one call
-        tail_size = min(file_size, cls._INDEX_TAIL_READ_SIZE)
-        tar_file_object.seek(file_size - tail_size)
-        tail_buffer = tar_file_object.read(tail_size)
+        # Read up to index_tail_read_size from the tail in one read call
+        tail_buffer_size = min(file_size, index_tail_read_size)
+        tar_file_object.seek(file_size - tail_buffer_size)
+        tail_buffer = tar_file_object.read(tail_buffer_size)
 
-        # Extract the 20-byte header from the last 512-byte block
-        header_fmt_size = struct.calcsize(cls.INDEX_HEADER_FORMAT)
-        header_offset_in_buf = tail_size - tarfile.BLOCKSIZE
+        # Extract the header from the last 512-byte block
+        header_binary_size = struct.calcsize(cls.INDEX_HEADER_FORMAT)
+        assert header_binary_size <= index_tail_read_size, (
+            "Index header larger than tail read size, increase index_tail_read_size"
+        )
+        header_offset_in_tail_buffer = tail_buffer_size - tarfile.BLOCKSIZE
         header = cls.IndexHeader._make(
             struct.unpack(
                 cls.INDEX_HEADER_FORMAT,
-                tail_buffer[header_offset_in_buf : header_offset_in_buf + header_fmt_size],
+                tail_buffer[header_offset_in_tail_buffer : header_offset_in_tail_buffer + header_binary_size],
             )
         )
 
         if header.magic != cls.INDEX_HEADER_MAGIC:
             raise ValueError("IndexedTarStore: invalid index header, can't load indexed tar file")
 
-        # Try to extract the compressed index payload from the same buffer
-        buffer_start_in_file = file_size - tail_size
-        if header.offset >= buffer_start_in_file:
+        # Try to extract the compressed index payload from the tail buffer
+        index_start_in_file = file_size - tail_buffer_size
+        if header.offset >= index_start_in_file:
             # Payload is fully within the buffer we already read
-            payload_start = header.offset - buffer_start_in_file
-            index_binary = tail_buffer[payload_start : payload_start + header.size]
+            index_start_in_tail_buffer = header.offset - index_start_in_file
+            index_binary = tail_buffer[index_start_in_tail_buffer : index_start_in_tail_buffer + header.size]
         else:
-            # Rare: compressed index > 1 MiB — fall back to a second read
+            # Rare: compressed index > index_tail_read_size — fall back to a second read
             tar_file_object.seek(header.offset)
             index_binary = tar_file_object.read(header.size)
 
@@ -371,8 +379,7 @@ class IndexedTarStore(Store):
             index_offset,
             index_size,
         )
-        header_size = len(header_binary)
-        _logger.debug(f"IndexedTarStore: header store size={header_size}")
+        _logger.debug(f"IndexedTarStore: header store size={len(header_binary)}")
 
         # Append index header to tar file
         tar_file_object.write(header_binary)
