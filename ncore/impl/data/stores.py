@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum, auto, unique
 from pathlib import Path
 from threading import RLock
-from typing import IO, Any, Dict, Iterator, Literal, NamedTuple, Union
+from typing import IO, Any, Dict, Iterator, Literal, NamedTuple, Optional, Union, cast
 
 import cbor2
 import zarr
@@ -38,21 +38,6 @@ from zarr.util import json_loads
 
 
 _logger = logging.getLogger(__name__)
-
-
-class _NullTarFile:
-    """Stub replacing tarfile.TarFile when no tar-level I/O is needed.
-
-    The stock TarFile(fileobj=fobj) reads tar headers from the beginning of
-    the file, which is wasted I/O since all reads go through
-    __getitem__ -> fobj.seek() + fobj.read() using the index offsets.
-    """
-
-    def __init__(self):
-        self.fileobj = None
-
-    def close(self):
-        pass
 
 
 class IndexedTarStore(Store):
@@ -113,8 +98,10 @@ class IndexedTarStore(Store):
 
         self.itar_upath = itar_upath.absolute()
 
-        # open file object (require file to be both writeable and readable when writing)
+        # open file object (require file to be both writeable and readable when writing) and
+        # tar file (only required for write mode, read mode directly uses file object)
         self.tar_file_object: IO[Any]
+        self.tar_file: Optional[tarfile.TarFile] = None
         if self.mode == "r":
             self.tar_file_object = self.itar_upath.open("rb")
         else:
@@ -123,9 +110,7 @@ class IndexedTarStore(Store):
             # if the FS supports it, so ignore type-checker here
             self.tar_file_object = self.itar_upath.open("wb+")  # type: ignore[call-overload]
 
-        # Use a lightweight stub instead of tarfile.TarFile — the real TarFile
-        # is only created lazily on the first __setitem__ call (write mode).
-        self.tar_file: Union[tarfile.TarFile, _NullTarFile] = _NullTarFile()
+            self.tar_file = tarfile.TarFile(fileobj=self.tar_file_object, mode="w")
 
         # init / load index table
         if self.mode == "r":
@@ -176,10 +161,6 @@ class IndexedTarStore(Store):
             value_bytes: bytes = compat.ensure_bytes(value)
             value_size: int = len(value_bytes)
 
-            # Lazily create TarFile on first write
-            if not isinstance(self.tar_file, tarfile.TarFile):
-                self.tar_file = tarfile.TarFile(fileobj=self.tar_file_object, mode="w")
-
             # Remember current tar file position, which is the start of the header
             header_start_position = self.tar_file_object.tell()
 
@@ -187,7 +168,7 @@ class IndexedTarStore(Store):
             tarinfo = tarfile.TarInfo(item)
             tarinfo.size = value_size
 
-            self.tar_file.addfile(tarinfo, fileobj=io.BytesIO(value_bytes))
+            cast(tarfile.TarFile, self.tar_file).addfile(tarinfo, fileobj=io.BytesIO(value_bytes))
 
             # End position after writing both header and payload
             end_position = self.tar_file_object.tell()
@@ -219,11 +200,11 @@ class IndexedTarStore(Store):
     def close(self):
         """Needs to be called after finishing updating the store"""
         with self.mutex:
-            # Closing the tar file appends two finishing blocks to the end of the file
-            # if in write mode, but doesn't close the internal file object yet
-            self.tar_file.close()
-
             if self.mode == "w":
+                # Closing the tar file appends two finishing blocks to the end of the file
+                # if in write mode, but doesn't close the internal file object yet
+                cast(tarfile.TarFile, self.tar_file).close()
+
                 # Add index if writing
                 self._save_tar_index(self.tar_file_object, self.index)
 
@@ -245,7 +226,9 @@ class IndexedTarStore(Store):
                 # if the FS supports it, so ignore type-checker here
                 self.tar_file_object = self.itar_upath.open("wb+")  # type: ignore[call-overload]
 
-            self.tar_file.fileobj = self.tar_file_object
+            if self.mode == "w":
+                # assign the new file object to the tar file (only required for write mode)
+                cast(tarfile.TarFile, self.tar_file).fileobj = self.tar_file_object
 
             # seek to previous position
             self.tar_file_object.seek(current_position)
