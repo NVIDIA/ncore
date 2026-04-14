@@ -10,8 +10,31 @@ All notable changes to the NCore project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - - -
+## [v18.9.0](https://github.com/NVIDIA/ncore/compare/cf53a926c0410dae0ed50cbe8dcac96f1d696894..v18.9.0) - 2026-04-14
 
-## [v18.8.0](https://github.com/NVIDIA/ncore/compare/9de4d6cd368ba00699c467cbd1fa13646e2d58e9..v18.8.0) - 2026-03-31
+### Highlights
+
+- Add support for radar sensors in the PAI converter and visualization tools
+
+  ![radar-6x-half-short](https://github.com/user-attachments/assets/95a94c04-7934-4196-bc81-7cae0beaab24)
+
+- Add performance improvements when accessing cloud storage to the IndexedTarStore, improving initialization performance by 2x
+
+#### ➕ Added
+- Allow optional itar index_tail_read_size optional - ([a96915d](https://github.com/NVIDIA/ncore/commit/a96915d5467f61c9a4b84a749dd8b0e78afb1374)) - Janick Martinez Esturo
+- add radar sensor support to PAI converter and ncore_vis - ([e7b4a2e](https://github.com/NVIDIA/ncore/commit/e7b4a2e57c01f2b9ce221b4085ee6433239fd504)) - Janick Martinez Esturo
+#### 🪲 Fixed
+- (**converters**) remove superfluous identity world_global pose from waymo and colmap converters - ([cf53a92](https://github.com/NVIDIA/ncore/commit/cf53a926c0410dae0ed50cbe8dcac96f1d696894)) - Janick Martinez Esturo
+#### ⚡ Performance
+- (**stores**) optimize IndexedTarStore open with single-read index and lazy TarFile - ([e24a13e](https://github.com/NVIDIA/ncore/commit/e24a13e1eba24f5fa433240997c49bda2d05cc72)) - Emmanuel Attia
+#### 🔄 Changed
+- expose index tail read size parameter, add tests, refine logic - ([400bd40](https://github.com/NVIDIA/ncore/commit/400bd402109bf939f1352521c85908ceaa9e18b8)) - Janick Martinez Esturo
+- remove the _NullTarFile stub, only instantiate TarFile in write mode - ([87e9874](https://github.com/NVIDIA/ncore/commit/87e987437d5ca7c1e739cc90564774aae0116950)) - Janick Martinez Esturo
+
+- - -
+
+
+## [v18.8.0](https://github.com/NVIDIA/ncore/compare/9de4d6cd368ba00699c467cbd1fa13646e2d58e9..v18.8.0.1) - 2026-03-31
 
 ### Highlights
 
