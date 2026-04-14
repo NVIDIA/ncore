@@ -47,9 +47,18 @@ class IndexedTarStore(Store):
     ----------
     itar_path : string
         Location of the tar file (needs to end with '.itar').
-    mode : string, optional
+    mode : string, optional, default 'r'
         One of 'r' to read an existing file, or 'w' to truncate and write a new
         file.
+    index_tail_read_size : int or None, optional, default 1 << 20 (1 MiB)
+        Maximum bytes read from the tail of the file in a single I/O call to load the tar index.
+        Covers both the small index header and (ideally) the compressed index payload.
+        If not specified, perform separate reads for header and payload,
+        which is more robust for large indices, but requires two I/O calls.
+        Will be increased to at least one tar block size if specified smaller,
+        since the header is located in the last block.
+        Default 1 MiB size fits typical use cases, but may be increased if the compressed
+        index size is expected to be larger or decreased if remote access chunk sizes are smaller.
 
     After modifying a IndexedTarStore, the ``close()`` method must be called, otherwise
     essential data will not be written to the underlying files. The IndexedTarStore
@@ -82,9 +91,7 @@ class IndexedTarStore(Store):
         self,
         itar_path: Union[str, Path, UPath],
         mode: Literal["r", "w"] = "r",
-        # Maximum bytes read from the tail of the file in a single I/O call to load the tar index.
-        # Covers both the small index header and (ideally) the compressed index payload.
-        index_tail_read_size: int = 1 << 20,  # 1 MiB by default
+        index_tail_read_size: Optional[int] = 1 << 20,  # 1 MiB by default
     ):
         if mode not in ["r", "w"]:
             raise ValueError("TarRecordIndex: only r/w modes supported")
@@ -267,15 +274,11 @@ class IndexedTarStore(Store):
         CBOR_LZMA_XZ_V1 = auto()
 
     @classmethod
-    def _load_tar_index(cls, tar_file_object: IO[Any], index_tail_read_size: int) -> TarRecordIndex:
-        """Loads a tar record index from the end of a tar file object.
-
-        Reads up to index_tail_read_size from the tail of the file in one ``fobj.read()``
-        call.  Extracts both the index header (in the last 512-byte block)
-        and the compressed index payload from that same buffer.  Only falls
-        back to a second read if the compressed index is larger than the tail read size.
-        """
-        assert index_tail_read_size >= tarfile.BLOCKSIZE, "Tail read size needs to be at least one tar block size"
+    def _load_tar_index(cls, tar_file_object: IO[Any], index_tail_read_size: Optional[int]) -> TarRecordIndex:
+        """Loads a tar record index from the end of a tar file object."""
+        # Determine tail read size
+        if index_tail_read_size is None or index_tail_read_size < tarfile.BLOCKSIZE:
+            index_tail_read_size = tarfile.BLOCKSIZE  # explicit separate reads
 
         original_file_position = tar_file_object.tell()
 
@@ -288,11 +291,8 @@ class IndexedTarStore(Store):
         tar_file_object.seek(file_size - tail_buffer_size)
         tail_buffer = tar_file_object.read(tail_buffer_size)
 
-        # Extract the header from the last 512-byte block
+        # Extract the header from the last 512-byte block (it's guaranteed that the header fits into a single block)
         header_binary_size = struct.calcsize(cls.INDEX_HEADER_FORMAT)
-        assert header_binary_size <= index_tail_read_size, (
-            "Index header larger than tail read size, increase index_tail_read_size"
-        )
         header_offset_in_tail_buffer = tail_buffer_size - tarfile.BLOCKSIZE
         header = cls.IndexHeader._make(
             struct.unpack(

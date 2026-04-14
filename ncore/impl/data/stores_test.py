@@ -17,6 +17,8 @@ import itertools
 import tempfile
 import unittest
 
+from typing import Optional
+
 import numpy as np
 import parameterized
 import zarr
@@ -25,7 +27,14 @@ from .stores import IndexedTarStore, consolidate_compressed_metadata, open_compr
 
 
 COMPRESSED_CONSOLIDATED_VALUES = [False, True]
-INDEX_TAIL_READ_SIZES = [1 << 20, 512]  # 1 MiB (default) and 512 bytes (edge case of single tar block size)
+INDEX_TAIL_READ_SIZES = [
+    None,
+    1 << 10,
+    1 << 20,
+    1,
+    512,
+    513,
+]  # None (explicit separate reads), 0.5 MiB, 1 MiB (default), 1 byte / 512 / 513 bytes (edge cases resulting in separate reads)
 
 
 class TestIndexedTarStore(unittest.TestCase):
@@ -51,7 +60,7 @@ class TestIndexedTarStore(unittest.TestCase):
             INDEX_TAIL_READ_SIZES,
         )
     )
-    def test_reserialization(self, index_tail_read_size: int):
+    def test_reserialization(self, index_tail_read_size: Optional[int]):
         """Make sure storing / loading of regular zarr data to .itar files works correctly"""
 
         # re-serialize to .itar archive
@@ -75,7 +84,7 @@ class TestIndexedTarStore(unittest.TestCase):
             INDEX_TAIL_READ_SIZES,
         )
     )
-    def test_compressed_consolidated(self, index_tail_read_size: int):
+    def test_compressed_consolidated(self, index_tail_read_size: Optional[int]):
         """Make sure compressed consolidated meta data is stored/loaded correctly"""
 
         # serialize to .itar archive (will also serialize compressed-consolidated meta-data)
@@ -103,7 +112,7 @@ class TestIndexedTarStore(unittest.TestCase):
             INDEX_TAIL_READ_SIZES,
         )
     )
-    def test_empty(self, compressed_consolidate: bool, index_tail_read_size: int):
+    def test_empty(self, compressed_consolidate: bool, index_tail_read_size: Optional[int]):
         """Verify edge case of serialization of empty store is possible without errors"""
         with tempfile.NamedTemporaryFile(suffix=".itar") as f:
             with IndexedTarStore(f.name, mode="w") as s_itar_out:  # closes file on exit
