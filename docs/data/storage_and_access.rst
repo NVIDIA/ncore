@@ -54,8 +54,8 @@ Both formats are accessed through the same
 
 .. _itar_read_performance:
 
-Read Performance
-~~~~~~~~~~~~~~~~
+Read Performance (local)
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 The chart below compares ``.itar`` read throughput against four alternative
 storage formats on a synthetic dataset of the same 1k JPEG images (2k and 4k
@@ -63,7 +63,7 @@ resolutions, ~4.5 GB on local SSD) with associated per-image meta-data (poses,
 timestamps, etc.). Throughput is measured with init cost excluded (formats
 pre-opened); init cost is reported separately as time-to-first-read.
 
-.. figure:: read_performance.png
+.. figure:: read_performance_local.png
    :width: 100%
 
    Read throughput across five storage formats.  Full bar |eq| sequential;
@@ -259,8 +259,8 @@ pass additional keyword arguments through ``UPath``:
    store_path = UPath(
        "s3://my-bucket/sequences/seq01/ncore4.zarr.itar",
        profile="my-aws-profile",
-       default_block_size=50 * 1024 * 1024,   # 50 MB download chunks
-       default_cache_type="readahead",          # fsspec file-descriptor caching strategy
+       default_block_size=5 * 1024 * 1024,   # 5 MB download chunks
+       default_cache_type="blockcache",      # fsspec file-descriptor caching strategy
    )
 
    # Point to an S3-compatible endpoint (e.g. MinIO)
@@ -276,6 +276,77 @@ All keyword arguments accepted by the underlying
 (or the respective fsspec filesystem class for other protocols) can be
 forwarded this way.
 
+.. _s3_read_performance:
+
+Read Performance (S3)
+~~~~~~~~~~~~~~~~~~~~~
+
+The chart below compares streaming read throughput from S3 on the same
+synthetic dataset.  ``.itar`` reads individual samples via byte-range
+requests using the trailer index; other formats use their native streaming
+or ``fsspec``-based file-object capabilities.
+
+.. figure:: read_performance_s3.png
+   :width: 100%
+
+   S3 streaming throughput.  Full bar |eq| sequential;
+   inner bar |eq| random access.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 14 14 14 16 22
+
+   * - Format
+     - Seq (MB/s)
+     - Rand (MB/s)
+     - Seq latency
+     - Rand latency
+     - Time-to-first-read
+   * - ``.itar``
+     - **53**
+     - **16**
+     - **53 ms**
+     - **281 ms**
+     - **240 ms** (decompress index)
+   * - ``WebDataset`` (fsspec) :sup:`1`
+     - 28
+     - |mdash|
+     - 98 ms
+     - |mdash|
+     - 536 ms
+   * - ``Parquet`` (row-group)
+     - 17
+     - 2
+     - 167 ms
+     - 2 614 ms
+     - 8.7 s (read footer)
+   * - ``HDF5`` (fsspec)
+     - 2
+     - 4
+     - 1 303 ms
+     - 1 031 ms
+     - 304 ms
+   * - ``tarfile`` (pre-parsed)
+     - 1
+     - 1
+     - 2 564 ms
+     - 4 906 ms
+     - 119 s (scan all headers)
+
+``.itar``'s time-to-first-read over S3 is 240 ms |mdash| fast enough for
+interactive use.  In contrast, ``tarfile`` must scan all 2 000 tar headers
+over the network before any random access is possible (119 s).  ``Parquet``
+reads only the footer on open (8.7 s for this dataset) and then fetches
+individual row groups via byte-range requests.
+
+:sup:`1` ``WebDataset`` does not natively support ``s3://`` URLs.  Results
+use a custom ``fsspec``-based handler registered in ``gopen_schemes``.
+
+.. note::
+
+   Measured from cluster nodes to S3-compatible storage (SwiftStack).
+   ``s3fs`` with 5 MB ``blockcache``, single-threaded.
+
 Performance Recommendations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -289,10 +360,13 @@ Performance Recommendations
   This is especially important for remote stores where each metadata
   lookup would otherwise be a separate round-trip.
 
-* **Increase the block size** for high-bandwidth connections. The
-  ``default_block_size`` parameter on ``UPath`` controls how much data
-  is fetched per request. Larger values (e.g. 50--100 MB) reduce the
-  number of requests at the cost of higher per-request latency.
+* **Tune the block size and cache type** for your workload.  The
+  ``default_block_size`` and ``default_cache_type`` parameters on ``UPath``
+  control how much data is fetched per HTTP request and how it is cached
+  in memory.  For mixed sequential/random workloads, **5 MB** with
+  ``blockcache`` provides the best balance (~50 MB/s sequential,
+  ~16 MB/s random on ``.itar``).  Larger block sizes (16--64 MB) improve
+  sequential throughput at the cost of random access performance.
 
 * **Consider local caching** for repeated access to the same data. fsspec
   supports transparent caching via the ``simplecache`` or ``filecache``
