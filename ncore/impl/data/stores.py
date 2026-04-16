@@ -60,6 +60,11 @@ class IndexedTarStore(Store):
         Default 1 MiB size fits typical use cases, but may be increased if the compressed
         index size is expected to be larger or decreased if remote access chunk sizes are smaller.
 
+    Read mode retains the byte range loaded for the index (the tail read) as an in-memory
+    cache. Any store key whose payload lies entirely in that range is served from the cache
+    without an additional read, so overlapping zarr chunks near the end of the archive do
+    not repeat the same high-latency tail I/O.
+
     After modifying a IndexedTarStore, the ``close()`` method must be called, otherwise
     essential data will not be written to the underlying files. The IndexedTarStore
     class also supports the context manager protocol, which ensures the ``close()``
@@ -87,6 +92,17 @@ class IndexedTarStore(Store):
 
         records: Dict[str, IndexedTarStore.TarRecord] = field(default_factory=dict)
 
+    class TailBuffer(NamedTuple):
+        """Cached byte range from the tail of the archive file.
+
+        Retains the raw bytes of the single tail I/O read performed when the
+        index is loaded so that payloads falling entirely within that range can
+        be served from memory without an additional file read.
+        """
+
+        start: int  #: File byte offset where the tail read began
+        data: bytes  #: Raw bytes read from *start* to the end of the file
+
     def __init__(
         self,
         itar_path: Union[str, Path, UPath],
@@ -112,6 +128,8 @@ class IndexedTarStore(Store):
 
         self.itar_upath = itar_upath.absolute()
 
+        self._tail_buffer: Optional[IndexedTarStore.TailBuffer] = None
+
         # open file object (require file to be both writeable and readable when writing) and
         # tar file (only required for write mode, read mode directly uses file object)
         self.tar_file_object: IO[Any]
@@ -128,7 +146,7 @@ class IndexedTarStore(Store):
 
         # init / load index table
         if self.mode == "r":
-            self.index = self._load_tar_index(self.tar_file_object, index_tail_read_size)
+            self.index, self._tail_buffer = self._load_tar_index(self.tar_file_object, index_tail_read_size)
         else:
             self.index = self.TarRecordIndex()
 
@@ -151,6 +169,14 @@ class IndexedTarStore(Store):
         with self.mutex:
             # Query index for file record
             record = self.index.records[item]  # raises KeyError if not in archive
+
+            # Check if payload is contained in tail buffer
+            if (tail := self._tail_buffer) is not None:
+                tail_start = tail.start
+                tail_end = tail_start + len(tail.data)
+                offset_data = record.offset_data
+                if offset_data >= tail_start and offset_data + record.size <= tail_end:
+                    return tail.data[offset_data - tail_start : offset_data - tail_start + record.size]
 
             # Remember current tar file position
             current_position = self.tar_file_object.tell()
@@ -274,8 +300,15 @@ class IndexedTarStore(Store):
         CBOR_LZMA_XZ_V1 = auto()
 
     @classmethod
-    def _load_tar_index(cls, tar_file_object: IO[Any], index_tail_read_size: Optional[int]) -> TarRecordIndex:
-        """Loads a tar record index from the end of a tar file object."""
+    def _load_tar_index(
+        cls, tar_file_object: IO[Any], index_tail_read_size: Optional[int]
+    ) -> tuple[TarRecordIndex, TailBuffer]:
+        """Loads a tar record index from the end of a tar file object.
+
+        Returns the parsed index and a :class:`TailBuffer` representing the
+        single tail read used to locate the index.  Callers may reuse the
+        buffer to satisfy reads for payloads that fall entirely within that range.
+        """
         # Determine tail read size
         if index_tail_read_size is None or index_tail_read_size < tarfile.BLOCKSIZE:
             index_tail_read_size = tarfile.BLOCKSIZE  # explicit separate reads
@@ -329,7 +362,8 @@ class IndexedTarStore(Store):
             raise TypeError(f"IndexedTarStore: unsupported header type {header.type}")
 
         # Construct record index from loaded table
-        return cls.TarRecordIndex({item: cls.TarRecord(offset_datas[i], sizes[i]) for i, item in enumerate(items)})
+        index = cls.TarRecordIndex({item: cls.TarRecord(offset_datas[i], sizes[i]) for i, item in enumerate(items)})
+        return index, cls.TailBuffer(start=index_start_in_file, data=tail_buffer)
 
     @classmethod
     def _save_tar_index(cls, tar_file_object: IO[Any], index: TarRecordIndex):
