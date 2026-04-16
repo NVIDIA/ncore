@@ -17,7 +17,8 @@ import itertools
 import tempfile
 import unittest
 
-from typing import Optional
+from pathlib import Path
+from typing import IO, Any, Optional
 
 import numpy as np
 import parameterized
@@ -130,3 +131,54 @@ class TestIndexedTarStore(unittest.TestCase):
                         open_compressed_consolidated(s_itar_in, mode="r")
                     else:
                         zarr.open(store=s_itar_in, mode="r")
+
+    def test_index_tail_cache_avoids_extra_file_reads(self):
+        """Payloads fully covered by the index tail read must not trigger further ``read()`` calls."""
+
+        class _CountingReader(IO[Any]):
+            __slots__ = ("_f", "read_calls")
+
+            def __init__(self, f: IO[Any]):
+                self._f = f
+                self.read_calls = 0
+
+            def read(self, n=-1):
+                self.read_calls += 1
+                return self._f.read(n)
+
+            def seek(self, *args, **kwargs):
+                return self._f.seek(*args, **kwargs)
+
+            def tell(self):
+                return self._f.tell()
+
+            def close(self):
+                return self._f.close()
+
+            def __getattr__(self, name):
+                return getattr(self._f, name)
+
+        with tempfile.NamedTemporaryFile(suffix=".itar") as f:
+            g_ref = zarr.open(store=zarr.MemoryStore())
+            g_ref.create_dataset("x", data=np.array([1.0, 2.0]))
+            with IndexedTarStore(f.name, mode="w") as s_out:
+                zarr.copy_store(g_ref.store, s_out)
+
+            file_size = Path(f.name).stat().st_size
+            self.assertGreater(file_size, 0)
+            store = IndexedTarStore(f.name, index_tail_read_size=file_size)
+
+            # Wrap the file object to intercept read counts
+            inner = store.tar_file_object
+            counter = _CountingReader(inner)
+            store.tar_file_object = counter
+            self.assertEqual(counter.read_calls, 0)
+
+            # Read every key via the tail buffer and verify no extra file reads occurred
+            values = {key: store[key] for key in store}
+            self.assertEqual(counter.read_calls, 0)
+
+            # Verify actual data was served from the store
+            self.assertGreater(len(values), 0)
+            g_reload = zarr.open(store=store, mode="r")
+            self.assertIsNone(np.testing.assert_array_equal(g_ref["x"][()], g_reload["x"][()]))
