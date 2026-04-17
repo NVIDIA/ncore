@@ -67,6 +67,7 @@ def _sphinx_html_impl(ctx):
         mnemonic = "SphinxCollect",
         command = "; ".join(shell_cmds),
         progress_message = "Collecting Sphinx source documents for {}".format(ctx.label.name),
+        use_default_shell_env = True,
     )
 
     args = ctx.actions.args()
@@ -85,6 +86,7 @@ def _sphinx_html_impl(ctx):
         env = {"JUPYTER_DATA_DIR": jupyter_data_dir},
         mnemonic = "SphinxBuild",
         progress_message = "Building Sphinx HTML documentation for {}".format(ctx.label.name),
+        use_default_shell_env = True,
     )
 
     return [
