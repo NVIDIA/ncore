@@ -175,6 +175,11 @@ subdirectory is treated as a separate sequence.
      - (auto-detect)
      - Explicit masks directory relative to each sequence root. When set,
        looks for ``<masks_dir>/<stem>.png``
+   * - ``--world-global-mode {none,identity}``
+     - ``none``
+     - Controls whether a ``("world", "world_global")`` static pose is stored.
+       ``none`` omits it (default); ``identity`` stores an identity matrix
+       for downstream consumers that require it
 
 For the complete implementation, see
 ``tools/data_converter/colmap/converter.py``.

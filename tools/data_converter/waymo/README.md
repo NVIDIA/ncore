@@ -42,6 +42,7 @@ bazel run //tools/data_converter/waymo -- \
 | `--store-type` | Output store type (`itar` or `directory`) | `itar` |
 | `--profile` | Component group profile (`default`, `separate-sensors`, `separate-all`) | `separate-sensors` |
 | `--sequence-meta` / `--no-sequence-meta` | Generate sequence meta-data file | True |
+| `--world-global-mode` | Controls `("world", "world_global")` static pose storage: `none` (omit), `identity` (store identity matrix), `localized` (rebase poses relative to the first frame, matching, e.g., the PAI converter pattern) | `none` |
 
 ### Examples
 

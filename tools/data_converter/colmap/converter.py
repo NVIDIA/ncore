@@ -67,6 +67,7 @@ class ColmapConverter4Config(FileBasedDataConverterConfig):
     images_dir: str = "images"
     masks_dir: Optional[str] = None
     generic_meta_data: dict[str, JsonLike] = field(default_factory=dict)
+    world_global_mode: Literal["none", "identity"] = "none"
 
 
 @dataclass(kw_only=True, slots=True)
@@ -190,6 +191,7 @@ class ColmapDataConverter(FileBasedDataConverter):
         self.images_dir = config.images_dir
         self.masks_dir = config.masks_dir
         self.generic_meta_data: dict[str, JsonLike] = config.generic_meta_data
+        self.world_global_mode: Literal["none", "identity"] = config.world_global_mode
         self.logger = logging.getLogger(__name__)
 
     @staticmethod
@@ -297,6 +299,14 @@ class ColmapDataConverter(FileBasedDataConverter):
 
         ## Decode and store camera frames
         self.decode_cameras()
+
+        ## Store world->world_global static pose if requested
+        if self.world_global_mode == "identity":
+            self.poses_writer.store_static_pose(
+                source_frame_id="world",
+                target_frame_id="world_global",
+                pose=np.eye(4, dtype=np.float64),
+            )
 
         # Store per-shard meta data / final success state / close file
         ncore_4_paths = self.store_writer.finalize()
@@ -594,6 +604,15 @@ class ColmapDataConverter(FileBasedDataConverter):
     type=str,
     default=None,
     help="Path to the masks directory (relative to sequence root). If not set, masks are discovered via conventions.",
+)
+@click.option(
+    "--world-global-mode",
+    type=click.Choice(["none", "identity"], case_sensitive=False),
+    default="none",
+    show_default=True,
+    help="""Controls whether a ("world", "world_global") static pose is stored:
+        - "none": No world_global pose (default).
+        - "identity": Store an identity world_global pose for downstream consumers that require it.""",
 )
 @click.pass_context
 def colmap_v4(ctx, *_, **kwargs):

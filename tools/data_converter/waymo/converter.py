@@ -77,6 +77,7 @@ class WaymoConverter4Config(FileBasedDataConverterConfig):
     store_type: Literal["itar", "directory"] = "itar"
     component_group_profile: Literal["default", "separate-sensors", "separate-all"] = "separate-sensors"
     store_sequence_meta: bool = True
+    world_global_mode: Literal["none", "identity", "localized"] = "none"
 
 
 class WaymoConverter4(FileBasedDataConverter):
@@ -115,6 +116,7 @@ class WaymoConverter4(FileBasedDataConverter):
         )
         self.store_type: Literal["itar", "directory"] = config.store_type
         self.store_sequence_meta: bool = config.store_sequence_meta
+        self.world_global_mode: Literal["none", "identity", "localized"] = config.world_global_mode
 
         self.logger = logging.getLogger(__name__)
 
@@ -304,13 +306,39 @@ class WaymoConverter4(FileBasedDataConverter):
 
     def store_poses(self) -> None:
         """Stores the processed egomotion poses into the poses component."""
-        # Store dynamic rig->world poses (float32 for relative poses)
+        poses = self.pose_interpolator.poses  # (N, 4, 4) float64, in Waymo global coordinates
+        T_world_world_global = None
+
+        match self.world_global_mode:
+            case "none":
+                pass
+
+            case "identity":
+                T_world_world_global = np.eye(4, dtype=np.float64)
+
+            case "localized":
+                # Rebase poses relative to the first frame (matching, e.g., the PAI converter pattern).
+                # This avoids float32 precision loss for large global coordinate offsets and provides
+                # a meaningful world->world_global transform for downstream consumers.
+                T_world_world_global = poses[0].astype(np.float64).copy()
+                poses = se3_inverse(T_world_world_global)[None] @ poses
+
+            case _:
+                raise ValueError(f"Unknown world_global_mode: {self.world_global_mode!r}")
+
         self.poses_writer.store_dynamic_pose(
             source_frame_id="rig",
             target_frame_id="world",
-            poses=self.pose_interpolator.poses.astype(np.float32),
+            poses=poses.astype(np.float32),
             timestamps_us=self.pose_interpolator.timestamps,
         )
+
+        if T_world_world_global is not None:
+            self.poses_writer.store_static_pose(
+                source_frame_id="world",
+                target_frame_id="world_global",
+                pose=T_world_world_global,
+            )
 
     # Label IDs to label type strings
     LIDAR_LABEL_CLASS_ID_STRING_MAP = {
@@ -932,6 +960,17 @@ class WaymoConverter4(FileBasedDataConverter):
 )
 @click.option(
     "store_sequence_meta", "--sequence-meta/--no-sequence-meta", default=True, help="Generate sequence meta-data?"
+)
+@click.option(
+    "--world-global-mode",
+    type=click.Choice(["none", "identity", "localized"], case_sensitive=False),
+    default="none",
+    show_default=True,
+    help="""Controls whether a ("world", "world_global") static pose is stored:
+        - "none": No world_global pose (default). Poses remain in source coordinates.
+        - "identity": Store an identity world_global pose. Poses remain in source coordinates.
+        - "localized": Rebase poses relative to the first frame (matching, e.g., the PAI converter
+          pattern) and store the original first pose as world->world_global (float64).""",
 )
 @click.pass_context
 def waymo_v4(ctx, *_, **kwargs):

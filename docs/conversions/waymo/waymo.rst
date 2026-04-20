@@ -123,6 +123,13 @@ Run the converter with Bazel from the repository root:
    * - ``--sequence-meta`` / ``--no-sequence-meta``
      - enabled
      - Whether to write a JSON metadata file alongside each converted sequence
+   * - ``--world-global-mode {none,identity,localized}``
+     - ``none``
+     - Controls whether a ``("world", "world_global")`` static pose is stored.
+       ``none`` omits it (default); ``identity`` stores an identity matrix;
+       ``localized`` rebases poses relative to the first frame (matching,
+       e.g., the PAI converter pattern) and stores the original first pose
+       as ``world_global`` in float64
 
 For the complete implementation, see
 ``tools/data_converter/waymo/converter.py``.

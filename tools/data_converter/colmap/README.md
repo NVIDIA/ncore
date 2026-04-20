@@ -68,6 +68,7 @@ bazel run //tools/data_converter/colmap -- \
 | `--colmap-dir` | Relative path to COLMAP reconstruction directory | `sparse/0` |
 | `--images-dir` | Relative path to images directory | `images` |
 | `--masks-dir` | Explicit masks directory (auto-detect if not set) | None |
+| `--world-global-mode` | Controls `("world", "world_global")` static pose storage: `none` (omit), `identity` (store identity matrix) | `none` |
 
 ### Examples
 
