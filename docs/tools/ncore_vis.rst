@@ -255,10 +255,11 @@ The viewer uses a **component-based plugin architecture**:
    └── components/
        ├── __init__.py      # Component registry + built-in imports
        ├── base.py          # VisualizationComponent ABC + @register_component
-       ├── camera.py        # Camera frustums with cuboid/lidar/mask overlays
-       ├── lidar.py         # Point clouds with fusing, motion compensation
-       ├── cuboids.py       # 3D wireframe cuboid bounding boxes
-       └── trajectory.py    # Rig trajectory boxes + rig/world frame indicators
+        ├── camera.py        # Camera frustums with cuboid/lidar/mask overlays
+        ├── lidar.py         # Lidar point clouds with fusing, motion compensation
+        ├── point_clouds.py  # Native point cloud sources (SfM, dense reconstruction)
+        ├── cuboids.py       # 3D wireframe cuboid bounding boxes
+        └── trajectory.py    # Rig trajectory boxes + rig/world frame indicators
 
 The :class:`VisualizationComponent` base class defines the lifecycle:
 

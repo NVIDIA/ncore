@@ -96,6 +96,10 @@ class LidarComponent(VisualizationComponent):
         self._range_cycle: Dict[str, float] = {}
         self._height_range: Dict[str, Tuple[float, float]] = {}
 
+        # Don't create the tab if there are no lidar sensors.
+        if not self.data_loader.lidar_ids:
+            return
+
         with tab_group.add_tab("Lidars"):
             enabled_checkbox = self.client.gui.add_checkbox(
                 "Enabled", initial_value=True, hint="Enable lidar point cloud visualization"

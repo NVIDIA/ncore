@@ -13,17 +13,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import tempfile
 import unittest
+
+from typing import Tuple
 
 import numpy as np
 
 from python.runfiles import Runfiles  # pyright: ignore[reportMissingImports] # ty:ignore[unresolved-import]
+from scipy.spatial.transform import Rotation as R
+from upath import UPath
 
 from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import unpack_optional
+from ncore.impl.data.compat import RayBundleSensorPointCloudsSourceAdapter
+from ncore.impl.data.types import PointCloud, RowOffsetStructuredSpinningLidarModelParameters
 
 from .compat import SequenceLoaderV4
-from .components import SequenceComponentGroupsReader
+from .components import (
+    IntrinsicsComponent,
+    LidarSensorComponent,
+    PointCloudsComponent,
+    PosesComponent,
+    SequenceComponentGroupsReader,
+    SequenceComponentGroupsWriter,
+)
 
 
 _RUNFILES = Runfiles.Create()
@@ -558,3 +572,355 @@ class TestCompatV4ReferenceValues(unittest.TestCase):
         stop_boundary = HalfClosedInterval(min_ts - 1, min_ts)
         stop_observations = list(self.loader.get_cuboid_track_observations(timestamp_interval_us=stop_boundary))
         self.assertFalse(any(obs.timestamp_us == min_ts for obs in stop_observations))
+
+
+class TestPointCloudsSourceIntegration(unittest.TestCase):
+    """Integration tests for PointCloudsSourceProtocol via SequenceLoaderV4.
+
+    Writes a REAL V4 dataset (poses, intrinsics, lidar, point_clouds) using Writers,
+    finalizes, then loads through SequenceLoaderV4 and verifies the point-clouds
+    source protocol works correctly for both native and lidar-adapted sources.
+    """
+
+    # ── helpers ──────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _normalize_directions(vectors: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        norms = np.linalg.norm(vectors, axis=1)
+        return vectors / norms[:, np.newaxis], norms
+
+    # ── setUp ────────────────────────────────────────────────────────────────
+
+    def setUp(self):
+        np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
+        np.random.seed(42)
+
+        self._tempdir = tempfile.TemporaryDirectory()
+
+        ref_sequence_id = "pc-source-test"
+        ref_ts_interval = HalfClosedInterval(0, 1_000_001)
+
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(self._tempdir.name),
+            store_base_name=ref_sequence_id,
+            sequence_id=ref_sequence_id,
+            sequence_timestamp_interval_us=ref_ts_interval,
+            store_type="directory",
+            generic_meta_data={},
+        )
+
+        # ── Poses ────────────────────────────────────────────────────────
+        T_rig_worlds = np.stack(
+            [
+                np.block(
+                    [
+                        [
+                            R.from_euler("xyz", [0, a, 0], degrees=True).as_matrix(),
+                            np.array([a * 0.01, 0, 0]).reshape(3, 1),
+                        ],
+                        [np.array([0, 0, 0, 1])],
+                    ]
+                )
+                for a in [0.0, 0.5, 1.0]
+            ]
+        )
+        T_rig_world_timestamps_us = np.array([0, 500_000, 1_000_000], dtype=np.uint64)
+
+        T_lidar_rig = np.block(
+            [
+                [R.from_euler("xyz", [1, 2, 3], degrees=True).as_matrix(), np.array([0.5, 0.1, -0.2]).reshape(3, 1)],
+                [np.array([0, 0, 0, 1])],
+            ]
+        ).astype(np.float32)
+
+        poses_writer = store_writer.register_component_writer(
+            PosesComponent.Writer,
+            "default",
+            group_name=None,
+        )
+        poses_writer.store_dynamic_pose(
+            source_frame_id="rig",
+            target_frame_id="world",
+            poses=T_rig_worlds,
+            timestamps_us=T_rig_world_timestamps_us,
+        )
+        poses_writer.store_static_pose(
+            source_frame_id="test_lidar",
+            target_frame_id="rig",
+            pose=T_lidar_rig,
+        )
+
+        # ── Intrinsics ──────────────────────────────────────────────────
+        intrinsics_writer = store_writer.register_component_writer(
+            IntrinsicsComponent.Writer,
+            "default",
+            "intrinsics",
+        )
+        self.ref_lidar_intrinsics = RowOffsetStructuredSpinningLidarModelParameters(
+            spinning_frequency_hz=10.0,
+            spinning_direction="ccw",
+            n_rows=32,
+            n_columns=360,
+            row_elevations_rad=np.linspace(0.25, -0.43, 32, dtype=np.float32),
+            column_azimuths_rad=np.linspace(-3.14, 3.14, 360, dtype=np.float32),
+            row_azimuth_offsets_rad=np.zeros(32, dtype=np.float32),
+        )
+        intrinsics_writer.store_lidar_intrinsics("test_lidar", self.ref_lidar_intrinsics)
+
+        # ── Lidar frames ────────────────────────────────────────────────
+        lidar_writer = store_writer.register_component_writer(
+            LidarSensorComponent.Writer,
+            "test_lidar",
+            "lidars",
+        )
+
+        # Frame 0: 5 rays, 1 return, with model_element, generic_data={"rgb": (5,3)}
+        self.ref_lidar_dir0, lidar_dist0 = self._normalize_directions(np.random.rand(5, 3).astype(np.float32) + 0.1)
+        self.ref_lidar_ts0 = np.linspace(0, 500_000, num=5, dtype=np.uint64)
+        self.ref_lidar_model_element0 = np.arange(10, dtype=np.uint16).reshape(5, 2)
+        self.ref_lidar_distance_m0 = lidar_dist0[np.newaxis, :]
+        self.ref_lidar_intensity0 = np.random.rand(1, 5).astype(np.float32)
+        self.ref_lidar_rgb0 = np.random.randint(0, 256, size=(5, 3), dtype=np.uint8)
+        self.ref_lidar_frame_ts0 = np.array([0, 500_000], dtype=np.uint64)
+
+        lidar_writer.store_frame(
+            self.ref_lidar_dir0,
+            self.ref_lidar_ts0,
+            self.ref_lidar_model_element0,
+            self.ref_lidar_distance_m0,
+            self.ref_lidar_intensity0,
+            self.ref_lidar_frame_ts0,
+            generic_data={"rgb": self.ref_lidar_rgb0},
+            generic_meta_data={"frame": 0},
+        )
+
+        # Frame 1: 8 rays, 2 returns, no model_element, generic_data={"rgb": (8,3)}
+        self.ref_lidar_dir1, lidar_dist1 = self._normalize_directions(np.random.rand(8, 3).astype(np.float32) + 0.1)
+        self.ref_lidar_ts1 = np.linspace(500_001, 1_000_000, num=8, dtype=np.uint64)
+        self.ref_lidar_rgb1 = np.random.randint(0, 256, size=(8, 3), dtype=np.uint8)
+        self.ref_lidar_frame_ts1 = np.array([500_001, 1_000_000], dtype=np.uint64)
+
+        # Build 2-return distances and intensities with some NaN for return 1
+        absent_mask = np.zeros((2, 8), dtype=bool)
+        absent_mask[1, 3:6] = True  # three absent entries in second return
+
+        self.ref_lidar_distance_m1 = np.stack((lidar_dist1, lidar_dist1 + 0.1)).astype(np.float32)
+        self.ref_lidar_distance_m1[absent_mask] = np.nan
+
+        self.ref_lidar_intensity1 = np.random.rand(2, 8).astype(np.float32)
+        self.ref_lidar_intensity1[absent_mask] = np.nan
+
+        self.ref_lidar_valid_mask1 = ~absent_mask
+
+        lidar_writer.store_frame(
+            self.ref_lidar_dir1,
+            self.ref_lidar_ts1,
+            None,  # no model_element
+            self.ref_lidar_distance_m1,
+            self.ref_lidar_intensity1,
+            self.ref_lidar_frame_ts1,
+            generic_data={"rgb": self.ref_lidar_rgb1},
+            generic_meta_data={"frame": 1},
+        )
+
+        # ── PointCloudsComponent ("sfm_points") ────────────────────────
+        self.ref_pc_xyz = np.random.rand(10, 3).astype(np.float32)
+        self.ref_pc_rgb = np.random.randint(0, 256, size=(10, 3), dtype=np.uint8)
+        self.ref_pc_score = np.random.rand(2).astype(np.float32)
+
+        pc_writer = store_writer.register_component_writer(
+            PointCloudsComponent.Writer,
+            "sfm_points",
+            coordinate_unit=PointCloud.CoordinateUnit.METERS,
+            attribute_schemas={
+                "rgb": PointCloudsComponent.AttributeSchema(
+                    transform_type=PointCloud.AttributeTransformType.INVARIANT,
+                    dtype=np.dtype("uint8"),
+                    shape_suffix=(3,),
+                ),
+            },
+        )
+        pc_writer.store_pc(
+            xyz=self.ref_pc_xyz,
+            reference_frame_id="world",
+            reference_frame_timestamp_us=500_000,
+            attributes={"rgb": self.ref_pc_rgb},
+            generic_data={"score": self.ref_pc_score},
+            generic_meta_data={"source": "sfm"},
+        )
+
+        # ── Finalize & Load ─────────────────────────────────────────────
+        store_paths = store_writer.finalize()
+
+        reader = SequenceComponentGroupsReader(store_paths, open_consolidated=False)
+        self.loader = SequenceLoaderV4(
+            reader,
+            masks_component_group_name=None,
+            cuboids_component_group_name=None,
+        )
+
+    def tearDown(self):
+        self._tempdir.cleanup()
+
+    # ── Tests ────────────────────────────────────────────────────────────────
+
+    def test_point_clouds_ids(self):
+        """point_clouds_ids returns only native sources, not lidar/radar."""
+        ids = self.loader.point_clouds_ids
+        self.assertEqual(ids, ["sfm_points"])
+        self.assertNotIn("test_lidar", ids)
+
+    def test_native_point_clouds_source(self):
+        """Verify native source: xyz, attributes, reference frame, coordinate_unit, generic_data."""
+        src = self.loader.get_point_clouds_source("sfm_points")
+
+        self.assertEqual(src.point_clouds_source_id, "sfm_points")
+        self.assertEqual(src.pcs_count, 1)
+        np.testing.assert_array_equal(src.pc_timestamps_us, np.array([500_000], dtype=np.uint64))
+
+        pc = src.get_pc(0)
+        np.testing.assert_array_almost_equal(pc.xyz, self.ref_pc_xyz)
+        self.assertEqual(pc.reference_frame_id, "world")
+        self.assertEqual(pc.reference_frame_timestamp_us, 500_000)
+        self.assertEqual(pc.coordinate_unit, PointCloud.CoordinateUnit.METERS)
+
+        # Schema attribute "rgb" should be in attribute_names
+        self.assertIn("rgb", pc.attribute_names)
+        np.testing.assert_array_equal(pc.get_attribute("rgb"), self.ref_pc_rgb)
+
+        # generic_data "score" should NOT be in attribute_names but accessible via get_pc_generic_data
+        self.assertNotIn("score", pc.attribute_names)
+        self.assertTrue(src.has_pc_generic_data(0, "score"))
+        np.testing.assert_array_almost_equal(src.get_pc_generic_data(0, "score"), self.ref_pc_score)
+        self.assertEqual(sorted(src.get_pc_generic_data_names(0)), ["score"])
+        self.assertEqual(src.get_pc_generic_meta_data(0), {"source": "sfm"})
+
+    def test_lidar_adapted_source(self):
+        """Verify adapter: pcs_count matches frames_count, PointCloud has intensity/timestamp_us/valid_mask.
+        Sensor generic_data (rgb) NOT in PointCloud attributes but accessible via get_pc_generic_data.
+        """
+        src = self.loader.get_point_clouds_source("test_lidar")
+
+        self.assertEqual(src.point_clouds_source_id, "test_lidar")
+        self.assertEqual(src.pcs_count, 2)
+
+        # Check timestamps (end-of-frame)
+        np.testing.assert_array_equal(
+            src.pc_timestamps_us,
+            np.array([500_000, 1_000_000], dtype=np.uint64),
+        )
+
+        # Frame 0
+        pc0 = src.get_pc(0)
+        self.assertEqual(pc0.points_count, 5)
+        self.assertEqual(pc0.reference_frame_id, "test_lidar")
+        self.assertEqual(pc0.reference_frame_timestamp_us, 500_000)
+        self.assertEqual(pc0.coordinate_unit, PointCloud.CoordinateUnit.METERS)
+
+        # Attributes should include timestamp_us, valid_mask, intensity (lidar)
+        self.assertIn("timestamp_us", pc0.attribute_names)
+        self.assertIn("valid_mask", pc0.attribute_names)
+        self.assertIn("intensity", pc0.attribute_names)
+
+        np.testing.assert_array_equal(pc0.get_attribute("timestamp_us"), self.ref_lidar_ts0)
+        np.testing.assert_array_equal(
+            pc0.get_attribute("valid_mask"),
+            np.ones(5, dtype=bool),
+        )
+        np.testing.assert_array_almost_equal(
+            pc0.get_attribute("intensity"),
+            self.ref_lidar_intensity0[0],
+        )
+
+        # Sensor generic_data (rgb) is auto-promoted to a PointCloud attribute
+        # (default GenericDataPromotion matches "rgb" with shape (N, 3))
+        self.assertIn("rgb", pc0.attribute_names)
+        np.testing.assert_array_equal(pc0.get_attribute("rgb"), self.ref_lidar_rgb0)
+        self.assertEqual(pc0.get_attribute_transform_type("rgb"), PointCloud.AttributeTransformType.INVARIANT)
+
+        # Also still accessible via get_pc_generic_data (forwarded from sensor)
+        self.assertTrue(src.has_pc_generic_data(0, "rgb"))
+        np.testing.assert_array_equal(src.get_pc_generic_data(0, "rgb"), self.ref_lidar_rgb0)
+        self.assertEqual(src.get_pc_generic_data_names(0), ["rgb"])
+
+    def test_lidar_adapter_model_element(self):
+        """model_element present for frame 0, absent for frame 1."""
+        src = self.loader.get_point_clouds_source("test_lidar")
+
+        pc0 = src.get_pc(0)
+        self.assertIn("model_element", pc0.attribute_names)
+        np.testing.assert_array_equal(
+            pc0.get_attribute("model_element"),
+            self.ref_lidar_model_element0,
+        )
+
+        pc1 = src.get_pc(1)
+        self.assertNotIn("model_element", pc1.attribute_names)
+
+    def test_lidar_adapter_multi_return(self):
+        """Use return_index=0 vs return_index=1 for frame 1:
+        - Different xyz values (different distances)
+        - Different intensity values
+        - Different valid_mask (return 0 all valid, return 1 has some invalid)
+        """
+        src0 = self.loader.get_point_clouds_source("test_lidar", return_index=0)
+        src1 = self.loader.get_point_clouds_source("test_lidar", return_index=1)
+
+        pc0 = src0.get_pc(1)  # frame 1, return 0
+        pc1 = src1.get_pc(1)  # frame 1, return 1
+
+        # Different xyz (different distances lead to different point positions)
+        self.assertFalse(np.allclose(pc0.xyz, pc1.xyz))
+
+        # Different intensity values
+        intensity0 = pc0.get_attribute("intensity")
+        intensity1 = pc1.get_attribute("intensity")
+        # Note: where return 1 is absent, its intensity is NaN
+        valid_both = self.ref_lidar_valid_mask1[0] & self.ref_lidar_valid_mask1[1]
+        if np.any(valid_both):
+            # For valid entries, intensities may differ (random)
+            pass  # Just check they're different arrays
+        self.assertFalse(np.array_equal(intensity0, intensity1))
+
+        # Different valid_mask
+        mask0 = pc0.get_attribute("valid_mask")
+        mask1 = pc1.get_attribute("valid_mask")
+
+        # Return 0: all valid
+        np.testing.assert_array_equal(mask0, self.ref_lidar_valid_mask1[0])
+        self.assertTrue(np.all(mask0))
+
+        # Return 1: some invalid
+        np.testing.assert_array_equal(mask1, self.ref_lidar_valid_mask1[1])
+        self.assertFalse(np.all(mask1))
+
+    def test_lidar_adapter_generic_meta_data(self):
+        """Adapter forwards per-pc generic metadata from the sensor."""
+        src = self.loader.get_point_clouds_source("test_lidar")
+        self.assertEqual(src.get_pc_generic_meta_data(0), {"frame": 0})
+        self.assertEqual(src.get_pc_generic_meta_data(1), {"frame": 1})
+
+    def test_lidar_adapter_missing_generic_data(self):
+        """has_pc_generic_data returns False for non-existent names."""
+        src = self.loader.get_point_clouds_source("test_lidar")
+        self.assertFalse(src.has_pc_generic_data(0, "nonexistent"))
+
+    def test_unknown_id_raises_key_error(self):
+        """Requesting a non-existent source raises KeyError."""
+        with self.assertRaises(KeyError):
+            self.loader.get_point_clouds_source("nonexistent_source")
+
+    def test_pc_index_range(self):
+        """Strided access works for both native and adapted sources."""
+        # Native source: 1 pc
+        native_src = self.loader.get_point_clouds_source("sfm_points")
+        self.assertEqual(list(native_src.get_pc_index_range()), [0])
+        self.assertEqual(list(native_src.get_pc_index_range(0, 1)), [0])
+        self.assertEqual(list(native_src.get_pc_index_range(0, 0)), [])
+
+        # Adapted lidar source: 2 pcs (frames)
+        lidar_src = self.loader.get_point_clouds_source("test_lidar")
+        self.assertEqual(list(lidar_src.get_pc_index_range()), [0, 1])
+        self.assertEqual(list(lidar_src.get_pc_index_range(0, 2, 2)), [0])
+        self.assertEqual(list(lidar_src.get_pc_index_range(1, 2)), [1])
+        self.assertEqual(list(lidar_src.get_pc_index_range(step=1)), [0, 1])

@@ -16,7 +16,7 @@
 import re
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Generic, Iterable, List, Literal, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, Iterable, List, Literal, Optional, TypeVar, cast
 
 import dataclasses_json
 import numpy as np
@@ -94,6 +94,21 @@ def enum_field(enum_class, default=None):
         return enum_class.__members__[variant]
 
     return field(default=default, metadata=dataclasses_json.config(encoder=encoder, decoder=decoder))
+
+
+def dtype_field(default: Optional[np.dtype] = None):
+    """Provides encoder / decoder functionality for numpy dtype fields into field types compatible with dataclass-JSON.
+
+    Serializes as the dtype's string name (e.g., ``"float32"``, ``"uint8"``).
+    """
+
+    return field(
+        default=default,
+        metadata=dataclasses_json.config(
+            encoder=lambda d: str(d),
+            decoder=lambda s: np.dtype(s),
+        ),
+    )
 
 
 def evaluate_file_pattern(pattern: str, skip_suffixes: Iterable[str] = ()) -> List[str]:

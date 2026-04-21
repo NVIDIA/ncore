@@ -26,6 +26,7 @@ import tqdm
 from point_cloud_utils import TriangleMesh
 
 from ncore.impl.common.transformations import transform_point_cloud
+from ncore.impl.data.compat import PointCloudsSourceProtocol
 from ncore.impl.data.util import padded_index_string
 from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
@@ -44,34 +45,38 @@ class CLIBaseParams:
 
     Attributes:
         output_dir: Path to the output folder
-        lidar_id: ID of the lidar sensor to export colored PLY files for
+        source_id: ID of the point cloud source to export colored PLY files for
         lidar_return_index: Return index of the lidar ray bundle sensor
         camera_id: ID of the camera sensor to project points onto for coloring
-        start_frame: Optional starting frame index for export range
-        stop_frame: Optional ending frame index (exclusive) for export range
-        step_frame: Optional step size for downsampling frames
+        start_pc: Optional starting pc index for export range
+        stop_pc: Optional ending pc index (exclusive) for export range
+        step_pc: Optional step size for downsampling point clouds
         device: Device used for computation via torch ('cuda' or 'cpu')
         camera_pose: Per-pixel poses to use for projection
         point_cloud_space: Output space of the colored point cloud ('world' or 'sensor')
         output_filepattern: PLY output filename pattern ('frame-index' or 'timestamps-us')
+        use_source_rgb: Whether to use source RGB colors directly instead of camera projection
     """
 
     output_dir: str
-    lidar_id: str
+    source_id: str
     lidar_return_index: int
     camera_id: str
-    start_frame: Optional[int]
-    stop_frame: Optional[int]
-    step_frame: Optional[int]
+    start_pc: Optional[int]
+    stop_pc: Optional[int]
+    step_pc: Optional[int]
     device: str
     camera_pose: str
     point_cloud_space: str
     output_filepattern: str
+    use_source_rgb: bool
 
 
 @click.group()
 @click.option("--output-dir", type=str, help="Path to the output folder", required=True)
-@click.option("--lidar-id", type=str, help="Lidar sensor to export ply files for", default="lidar_gt_top_p128")
+@click.option(
+    "--source-id", type=str, help="Point cloud source to export colored PLY files for", default="lidar_gt_top_p128"
+)
 @click.option(
     "--lidar-return-index",
     type=int,
@@ -85,21 +90,21 @@ class CLIBaseParams:
     default="camera_front_wide_120fov",
 )
 @click.option(
-    "--start-frame",
+    "--start-pc",
     type=click.IntRange(min=0, max_open=True),
-    help="Initial point-cloud frame to be used",
+    help="Initial point-cloud index to be used",
     default=None,
 )
 @click.option(
-    "--stop-frame",
+    "--stop-pc",
     type=click.IntRange(min=0, max_open=True),
-    help="Past-the-end point-cloud frame to be exported",
+    help="Past-the-end point-cloud index to be exported",
     default=None,
 )
 @click.option(
-    "--step-frame",
+    "--step-pc",
     type=click.IntRange(min=1, max_open=True),
-    help="Step used to downsample the number of point-cloud frames",
+    help="Step used to downsample the number of point clouds",
     default=None,
 )
 @click.option(
@@ -122,6 +127,12 @@ class CLIBaseParams:
     type=click.Choice(["frame-index", "timestamps-us"]),
     help="PLY output filename pattern, either store by <frame-index>.ply or by <timestamp-us>.ply [end-of-frame timestamp]",
     default="frame-index",
+)
+@click.option(
+    "--use-source-rgb/--no-use-source-rgb",
+    is_flag=True,
+    default=False,
+    help="Use RGB colors from the source directly instead of camera projection (only for sources with rgb attribute)",
 )
 @click.pass_context
 def cli(ctx, **kwargs) -> None:
@@ -191,9 +202,11 @@ def v4(
 def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
     """Exports colored point cloud frames as PLY files.
 
-    Projects lidar point clouds onto camera images to obtain RGB colors for each point,
-    accounting for rolling shutter effects if requested. Saves each frame as a PLY file
-    containing both 3D positions and RGB colors.
+    Projects point clouds onto camera images to obtain RGB colors for each point,
+    accounting for rolling shutter effects if requested. If the source already has
+    RGB colors and --use-source-rgb is set, uses those directly instead of projecting.
+
+    Saves each frame as a PLY file containing both 3D positions and RGB colors.
 
     Args:
         params: CLI parameters specifying output location, sensors, and options
@@ -204,96 +217,139 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    pc_sensor = loader.get_lidar_sensor(params.lidar_id)
+    source_id = params.source_id
+    is_sensor_source = source_id in loader.lidar_ids or source_id in loader.radar_ids
+
+    source: PointCloudsSourceProtocol = loader.get_point_clouds_source(
+        source_id, return_index=params.lidar_return_index
+    )
     cam_sensor = loader.get_camera_sensor(params.camera_id)
 
-    # Initialize the camera model on requested device
-    cam_model = CameraModel.from_parameters(cam_sensor.model_parameters, device=params.device)
+    # Validate sensor-space request
+    if params.point_cloud_space == "sensor" and not is_sensor_source:
+        raise ValueError(
+            f"Source '{source_id}' is not a sensor source (lidar/radar). Use --point-cloud-space world instead."
+        )
+
+    # Check if we can use source RGB directly
+    use_source_rgb = params.use_source_rgb
+    if use_source_rgb:
+        if source.pcs_count > 0:
+            test_pc = source.get_pc(0)
+            if not test_pc.has_attribute("rgb"):
+                logger.warning("Source '%s' has no RGB; falling back to camera projection", source_id)
+                use_source_rgb = False
+        else:
+            logger.warning("Source has no point clouds, nothing to export.")
+            return
+
+    # Initialize the camera model on requested device (not needed if using source rgb)
+    cam_model = (
+        None if use_source_rgb else CameraModel.from_parameters(cam_sensor.model_parameters, device=params.device)
+    )
 
     output_path = Path(params.output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # Get the point cloud frame indices from the index range
-    pc_frame_indices = pc_sensor.get_frame_index_range(params.start_frame, params.stop_frame, params.step_frame)
+    # Get the point cloud indices from the index range
+    pc_indices = source.get_pc_index_range(params.start_pc, params.stop_pc, params.step_pc)
     logger.info(
-        f"Starting colored PLY export for '{params.lidar_id}' and '{params.camera_id}' into '{output_path}'. "
-        f"{len(pc_frame_indices)} frames will be processed."
+        f"Starting colored PLY export for '{source_id}' and '{params.camera_id}' into '{output_path}'. "
+        f"{len(pc_indices)} point clouds will be processed."
+        + (" Using source RGB colors directly." if use_source_rgb else "")
     )
 
-    for pc_frame_index in tqdm.tqdm(pc_frame_indices):
-        # Get the pc timestamp and find the closest camera frame
-        pc_timestamp_us = pc_sensor.get_frame_timestamp_us(pc_frame_index)
-        cam_frame_index = cam_sensor.get_closest_frame_index(pc_timestamp_us)
+    for pc_index in tqdm.tqdm(pc_indices):
+        point_cloud = source.get_pc(pc_index)
+        pc_timestamp_us = int(source.pc_timestamps_us[pc_index])
 
-        # Load the camera image and the point cloud
-        img_frame = cam_sensor.get_frame_image_array(cam_frame_index)
-        xyz_sensor = pc_sensor.get_frame_point_cloud(
-            pc_frame_index, motion_compensation=True, with_start_points=False, return_index=params.lidar_return_index
-        ).xyz_m_end
+        # Get xyz in source frame and world frame
+        xyz_source = point_cloud.xyz
+        world_pc = point_cloud.transform("world", pc_timestamp_us, loader.pose_graph)
+        xyz_world = world_pc.xyz
 
-        # Transform the point cloud to the world coordinate frame
-        xyz_world = transform_point_cloud(xyz_sensor, pc_sensor.get_frames_T_sensor_target("world", pc_frame_index))
+        if use_source_rgb:
+            rgb = point_cloud.get_attribute("rgb")
 
-        T_world_sensor_start, T_world_sensor_end = cam_sensor.get_frames_T_source_sensor(
-            "world", cam_frame_index, frame_timepoint=None
-        )
+            tm = TriangleMesh()
+            match params.point_cloud_space:
+                case "world":
+                    tm.vertex_data.positions = xyz_world
+                case "sensor":
+                    tm.vertex_data.positions = xyz_source
+            tm.vertex_data.colors = rgb
+        else:
+            assert cam_model is not None
 
-        logger.debug(f"Starting the projection with torch implementation on device={params.device}")
+            # Find the closest camera frame
+            cam_frame_index = cam_sensor.get_closest_frame_index(pc_timestamp_us)
 
-        match params.camera_pose:
-            case "rolling-shutter":
-                world_point_projections = cam_model.world_points_to_image_points_shutter_pose(
-                    xyz_world,
-                    T_world_sensor_start,
-                    T_world_sensor_end,
-                    return_valid_indices=True,
-                    return_T_world_sensors=True,
-                )
+            # Load the camera image
+            img_frame = cam_sensor.get_frame_image_array(cam_frame_index)
 
-            case "mean":
-                world_point_projections = cam_model.world_points_to_image_points_mean_pose(
-                    xyz_world,
-                    T_world_sensor_start,
-                    T_world_sensor_end,
-                    return_valid_indices=True,
-                    return_T_world_sensors=True,
-                )
+            T_world_sensor_start, T_world_sensor_end = cam_sensor.get_frames_T_source_sensor(
+                "world", cam_frame_index, frame_timepoint=None
+            )
 
-            case "start":
-                world_point_projections = cam_model.world_points_to_image_points_static_pose(
-                    xyz_world, T_world_sensor_start, return_valid_indices=True, return_T_world_sensors=True
-                )
+            logger.debug(f"Starting the projection with torch implementation on device={params.device}")
 
-            case "end":
-                world_point_projections = cam_model.world_points_to_image_points_static_pose(
-                    xyz_world, T_world_sensor_end, return_valid_indices=True, return_T_world_sensors=True
-                )
+            match params.camera_pose:
+                case "rolling-shutter":
+                    world_point_projections = cam_model.world_points_to_image_points_shutter_pose(
+                        xyz_world,
+                        T_world_sensor_start,
+                        T_world_sensor_end,
+                        return_valid_indices=True,
+                        return_T_world_sensors=True,
+                    )
 
-        assert world_point_projections.T_world_sensors is not None and world_point_projections.valid_indices is not None
+                case "mean":
+                    world_point_projections = cam_model.world_points_to_image_points_mean_pose(
+                        xyz_world,
+                        T_world_sensor_start,
+                        T_world_sensor_end,
+                        return_valid_indices=True,
+                        return_T_world_sensors=True,
+                    )
 
-        image_point_coords = world_point_projections.image_points.cpu().numpy()
-        valid_idx = world_point_projections.valid_indices.cpu().numpy()
+                case "start":
+                    world_point_projections = cam_model.world_points_to_image_points_static_pose(
+                        xyz_world, T_world_sensor_start, return_valid_indices=True, return_T_world_sensors=True
+                    )
 
-        point_colors = img_frame[
-            np.floor(image_point_coords[:, 1]).astype(int), np.floor(image_point_coords[:, 0]).astype(int)
-        ]
+                case "end":
+                    world_point_projections = cam_model.world_points_to_image_points_static_pose(
+                        xyz_world, T_world_sensor_end, return_valid_indices=True, return_T_world_sensors=True
+                    )
 
-        tm = TriangleMesh()
-        match params.point_cloud_space:
-            case "world":
-                tm.vertex_data.positions = xyz_world[valid_idx]
-            case "sensor":
-                tm.vertex_data.positions = xyz_sensor[valid_idx]
-        tm.vertex_data.colors = point_colors
+            assert (
+                world_point_projections.T_world_sensors is not None
+                and world_point_projections.valid_indices is not None
+            )
+
+            image_point_coords = world_point_projections.image_points.cpu().numpy()
+            valid_idx = world_point_projections.valid_indices.cpu().numpy()
+
+            point_colors = img_frame[
+                np.floor(image_point_coords[:, 1]).astype(int), np.floor(image_point_coords[:, 0]).astype(int)
+            ]
+
+            tm = TriangleMesh()
+            match params.point_cloud_space:
+                case "world":
+                    tm.vertex_data.positions = xyz_world[valid_idx]
+                case "sensor":
+                    tm.vertex_data.positions = xyz_source[valid_idx]
+            tm.vertex_data.colors = point_colors
 
         # Save the ply file
         match params.output_filepattern:
             case "frame-index":
-                tm.save(str(output_path / (padded_index_string(pc_frame_index) + ".ply")))
+                tm.save(str(output_path / (padded_index_string(pc_index) + ".ply")))
             case "timestamps-us":
                 tm.save(str(output_path / (str(pc_timestamp_us) + ".ply")))
 
-    logger.info(f"Exported {len(pc_frame_indices)} colored PLY files to {output_path}")
+    logger.info(f"Exported {len(pc_indices)} colored PLY files to {output_path}")
 
 
 if __name__ == "__main__":

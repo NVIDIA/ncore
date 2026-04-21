@@ -28,7 +28,9 @@ from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.compat import (
     CameraSensorProtocol,
     LidarSensorProtocol,
+    PointCloudsSourceProtocol,
     RadarSensorProtocol,
+    RayBundleSensorPointCloudsSourceAdapter,
     RayBundleSensorProtocol,
     SensorProtocol,
     SequenceLoaderProtocol,
@@ -39,6 +41,7 @@ from ncore.impl.data.types import (
     CuboidTrackObservation,
     FrameTimepoint,
     JsonLike,
+    PointCloud,
 )
 from ncore.impl.data.v4.components import (
     BaseRayBundleSensorComponentReader,
@@ -47,6 +50,7 @@ from ncore.impl.data.v4.components import (
     IntrinsicsComponent,
     LidarSensorComponent,
     MasksComponent,
+    PointCloudsComponent,
     PosesComponent,
     RadarSensorComponent,
     SequenceComponentGroupsReader,
@@ -117,6 +121,10 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
         )
         self._radars_readers: Dict[str, RadarSensorComponent.Reader] = self._reader.open_component_readers(
             RadarSensorComponent.Reader
+        )
+
+        self._point_clouds_readers: Dict[str, PointCloudsComponent.Reader] = self._reader.open_component_readers(
+            PointCloudsComponent.Reader
         )
 
         # init pose graph
@@ -525,6 +533,103 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             ),
             pose_graph=self._pose_graph,
         )
+
+    class PointCloudsSource(PointCloudsSourceProtocol):
+        """Native point-clouds source wrapping a :class:`PointCloudsComponent.Reader`.
+
+        Args:
+            reader: Component reader for the point-clouds data.
+        """
+
+        def __init__(self, reader: PointCloudsComponent.Reader) -> None:
+            self._reader = reader
+
+        @property
+        @override
+        def point_clouds_source_id(self) -> str:
+            return self._reader.instance_name
+
+        @property
+        @override
+        def pcs_count(self) -> int:
+            return self._reader.pcs_count
+
+        @property
+        @override
+        def pc_timestamps_us(self) -> npt.NDArray[np.uint64]:
+            return self._reader.pc_timestamps_us
+
+        @override
+        def get_pc(self, pc_index: int) -> PointCloud:
+            reader = self._reader
+
+            # Build lazy attributes from the declared schema
+            attributes: Dict[str, PointCloud.Attribute] = {}
+            for attr_name in reader.attribute_names:
+                schema = reader.get_attribute_schema(attr_name)
+
+                def _load_attr(
+                    r: PointCloudsComponent.Reader = reader,
+                    idx: int = pc_index,
+                    name: str = attr_name,
+                ) -> "npt.NDArray":
+                    return r.get_pc_attribute(idx, name)
+
+                attributes[attr_name] = PointCloud.Attribute(
+                    loader=_load_attr,
+                    transform_type=schema.transform_type,
+                )
+
+            return PointCloud(
+                _xyz=reader.get_pc_xyz(pc_index),
+                reference_frame_id=reader.get_pc_reference_frame_id(pc_index),
+                reference_frame_timestamp_us=reader.get_pc_reference_frame_timestamp_us(pc_index),
+                coordinate_unit=reader.coordinate_unit,
+                _attributes=attributes,
+            )
+
+        @override
+        def get_pc_generic_data_names(self, pc_index: int) -> List[str]:
+            return self._reader.get_pc_generic_data_names(pc_index)
+
+        @override
+        def has_pc_generic_data(self, pc_index: int, name: str) -> bool:
+            return self._reader.has_pc_generic_data(pc_index, name)
+
+        @override
+        def get_pc_generic_data(self, pc_index: int, name: str) -> npt.NDArray:
+            return self._reader.get_pc_generic_data(pc_index, name)
+
+        @override
+        def get_pc_generic_meta_data(self, pc_index: int) -> Dict[str, JsonLike]:
+            return self._reader.get_pc_generic_meta_data(pc_index)
+
+    @property
+    @override
+    def point_clouds_ids(self) -> List[str]:
+        return list(self._point_clouds_readers.keys())
+
+    @override
+    def get_point_clouds_source(self, source_id: str, *, return_index: int = 0) -> PointCloudsSourceProtocol:
+        # 1. Check native point-clouds sources first
+        if source_id in self._point_clouds_readers:
+            return self.PointCloudsSource(self._point_clouds_readers[source_id])
+
+        # 2. Check lidar sensors (adapted)
+        if source_id in self._lidars_readers:
+            return RayBundleSensorPointCloudsSourceAdapter(
+                sensor=self.get_lidar_sensor(source_id),
+                return_index=return_index,
+            )
+
+        # 3. Check radar sensors (adapted)
+        if source_id in self._radars_readers:
+            return RayBundleSensorPointCloudsSourceAdapter(
+                sensor=self.get_radar_sensor(source_id),
+                return_index=return_index,
+            )
+
+        raise KeyError(f"Point-clouds source '{source_id}' not found in native sources, lidars, or radars")
 
     @override
     def get_cuboid_track_observations(

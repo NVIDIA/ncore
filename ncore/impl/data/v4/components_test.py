@@ -18,7 +18,7 @@ import io
 import tempfile
 import unittest
 
-from typing import Tuple
+from typing import Dict, Literal, Tuple
 
 import numpy as np
 import PIL.Image as PILImage
@@ -33,8 +33,10 @@ from ncore.impl.data.types import (
     BBox3,
     BivariateWindshieldModelParameters,
     CuboidTrackObservation,
+    JsonLike,
     LabelSource,
     OpenCVFisheyeCameraModelParameters,
+    PointCloud,
     ReferencePolynomial,
     RowOffsetStructuredSpinningLidarModelParameters,
     ShutterType,
@@ -48,6 +50,7 @@ from .components import (
     IntrinsicsComponent,
     LidarSensorComponent,
     MasksComponent,
+    PointCloudsComponent,
     PosesComponent,
     RadarSensorComponent,
     SequenceComponentGroupsReader,
@@ -1462,3 +1465,349 @@ class TestDataNewComponent(unittest.TestCase):
         self.assertIn("not available in v1", str(context.exception))
 
         # Version compatibility tests passed - all tests completed successfully
+
+
+class TestPointCloudsComponent(unittest.TestCase):
+    """Round-trip tests for the PointCloudsComponent Writer/Reader."""
+
+    def setUp(self):
+        np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
+
+    def _make_writer_reader(
+        self, attribute_schemas={}, store_type: Literal["itar", "directory"] = "directory"
+    ) -> Tuple[
+        PointCloudsComponent.Writer, SequenceComponentGroupsWriter, tempfile.TemporaryDirectory, HalfClosedInterval
+    ]:
+        """Helper: create a SequenceComponentGroupsWriter, register a PointCloudsComponent.Writer,
+        and return (writer, tempdir, timestamp_interval) so the caller can store PCs."""
+        tmpdir = tempfile.TemporaryDirectory()
+        timestamp_interval = HalfClosedInterval(0, 10_000_001)
+
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(tmpdir.name),
+            store_base_name=(seq_id := "pc-test-seq"),
+            sequence_id=seq_id,
+            sequence_timestamp_interval_us=timestamp_interval,
+            store_type=store_type,
+            generic_meta_data={},
+        )
+
+        pc_writer = store_writer.register_component_writer(
+            PointCloudsComponent.Writer,
+            "test_pc",
+            coordinate_unit=PointCloud.CoordinateUnit.METERS,
+            attribute_schemas=attribute_schemas,
+        )
+        return pc_writer, store_writer, tmpdir, timestamp_interval
+
+    def _finalize_and_open_reader(self, store_writer: SequenceComponentGroupsWriter) -> PointCloudsComponent.Reader:
+        """Finalize the writer, open a reader, and return the PointCloudsComponent.Reader."""
+        store_paths = store_writer.finalize()
+        reader = SequenceComponentGroupsReader(component_group_paths=store_paths)
+        pc_readers = reader.open_component_readers(PointCloudsComponent.Reader)
+        self.assertIn("test_pc", pc_readers)
+        return pc_readers["test_pc"]
+
+    def test_single_pc_with_attributes(self):
+        """Write 1 PC with rgb (uint8, (N,3)) + normals (float32, (N,3)), read back, verify all fields."""
+        schemas = {
+            "rgb": PointCloudsComponent.AttributeSchema(
+                transform_type=PointCloud.AttributeTransformType.INVARIANT,
+                dtype=np.dtype("uint8"),
+                shape_suffix=(3,),
+            ),
+            "normal": PointCloudsComponent.AttributeSchema(
+                transform_type=PointCloud.AttributeTransformType.DIRECTION,
+                dtype=np.dtype("float32"),
+                shape_suffix=(3,),
+            ),
+        }
+        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas)
+
+        N = 100
+        xyz = np.random.rand(N, 3).astype(np.float32)
+        rgb = np.random.randint(0, 256, size=(N, 3), dtype=np.uint8)
+        normals = np.random.rand(N, 3).astype(np.float32)
+
+        pc_writer.store_pc(
+            xyz=xyz,
+            reference_frame_id="world",
+            reference_frame_timestamp_us=1_000_000,
+            attributes={"rgb": rgb, "normal": normals},
+        )
+
+        reader = self._finalize_and_open_reader(store_writer)
+
+        # Verify coordinate_unit
+        self.assertEqual(reader.coordinate_unit, PointCloud.CoordinateUnit.METERS)
+
+        # Verify counts
+        self.assertEqual(reader.pcs_count, 1)
+        np.testing.assert_array_equal(reader.pc_timestamps_us, np.array([1_000_000], dtype=np.uint64))
+
+        # Verify attribute schema
+        self.assertEqual(sorted(reader.attribute_names), ["normal", "rgb"])
+        rgb_schema = reader.get_attribute_schema("rgb")
+        self.assertEqual(rgb_schema.transform_type, PointCloud.AttributeTransformType.INVARIANT)
+        self.assertEqual(rgb_schema.dtype, np.dtype("uint8"))
+        self.assertEqual(rgb_schema.shape_suffix, (3,))
+
+        normals_schema = reader.get_attribute_schema("normal")
+        self.assertEqual(normals_schema.transform_type, PointCloud.AttributeTransformType.DIRECTION)
+        self.assertEqual(normals_schema.dtype, np.dtype("float32"))
+        self.assertEqual(normals_schema.shape_suffix, (3,))
+
+        # Verify PC data
+        np.testing.assert_array_almost_equal(reader.get_pc_xyz(0), xyz)
+        np.testing.assert_array_equal(reader.get_pc_attribute(0, "rgb"), rgb)
+        np.testing.assert_array_almost_equal(reader.get_pc_attribute(0, "normal"), normals)
+
+        # Verify reference frame
+        self.assertEqual(reader.get_pc_reference_frame_id(0), "world")
+        self.assertEqual(reader.get_pc_reference_frame_timestamp_us(0), 1_000_000)
+
+        tmpdir.cleanup()
+
+    def test_multiple_pcs_different_ref_frames(self):
+        """Write 2 PCs with different reference_frame_id, verify per-pc ref frames."""
+        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader()
+
+        xyz1 = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
+        xyz2 = np.array([[4.0, 5.0, 6.0], [7.0, 8.0, 9.0]], dtype=np.float32)
+
+        pc_writer.store_pc(
+            xyz=xyz1,
+            reference_frame_id="sensor_a",
+            reference_frame_timestamp_us=100_000,
+        )
+        pc_writer.store_pc(
+            xyz=xyz2,
+            reference_frame_id="sensor_b",
+            reference_frame_timestamp_us=200_000,
+        )
+
+        reader = self._finalize_and_open_reader(store_writer)
+
+        self.assertEqual(reader.pcs_count, 2)
+        np.testing.assert_array_equal(
+            reader.pc_timestamps_us,
+            np.array([100_000, 200_000], dtype=np.uint64),
+        )
+
+        # PC 0
+        np.testing.assert_array_almost_equal(reader.get_pc_xyz(0), xyz1)
+        self.assertEqual(reader.get_pc_reference_frame_id(0), "sensor_a")
+        self.assertEqual(reader.get_pc_reference_frame_timestamp_us(0), 100_000)
+
+        # PC 1
+        np.testing.assert_array_almost_equal(reader.get_pc_xyz(1), xyz2)
+        self.assertEqual(reader.get_pc_reference_frame_id(1), "sensor_b")
+        self.assertEqual(reader.get_pc_reference_frame_timestamp_us(1), 200_000)
+
+        tmpdir.cleanup()
+
+    def test_attribute_schema_json_roundtrip(self):
+        """AttributeSchema.to_dict() -> from_dict() preserves all fields."""
+        original = PointCloudsComponent.AttributeSchema(
+            transform_type=PointCloud.AttributeTransformType.DIRECTION,
+            dtype=np.dtype("float64"),
+            shape_suffix=(3,),
+        )
+        serialized = original.to_dict()
+
+        # Verify serialized form uses strings (enum names are UPPERCASE)
+        self.assertEqual(serialized["transform_type"], "DIRECTION")
+        self.assertEqual(serialized["dtype"], "float64")
+        self.assertEqual(serialized["shape_suffix"], [3])
+
+        deserialized = PointCloudsComponent.AttributeSchema.from_dict(serialized)
+        self.assertEqual(deserialized.transform_type, original.transform_type)
+        self.assertEqual(deserialized.dtype, original.dtype)
+        self.assertEqual(deserialized.shape_suffix, original.shape_suffix)
+
+        # Also test scalar (empty shape_suffix)
+        scalar_schema = PointCloudsComponent.AttributeSchema(
+            transform_type=PointCloud.AttributeTransformType.INVARIANT,
+            dtype=np.dtype("float32"),
+            shape_suffix=(),
+        )
+        rt = PointCloudsComponent.AttributeSchema.from_dict(scalar_schema.to_dict())
+        self.assertEqual(rt.shape_suffix, ())
+
+    def test_writer_rejects_undeclared_attribute(self):
+        """store_pc with attr not in schema -> AssertionError."""
+        schemas = {
+            "rgb": PointCloudsComponent.AttributeSchema(
+                transform_type=PointCloud.AttributeTransformType.INVARIANT,
+                dtype=np.dtype("uint8"),
+                shape_suffix=(3,),
+            ),
+        }
+        pc_writer, _, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas)
+
+        xyz = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
+        rgb = np.array([[128, 64, 32]], dtype=np.uint8)
+        extra = np.array([[0.1, 0.2, 0.3]], dtype=np.float32)
+
+        with self.assertRaises(AssertionError):
+            pc_writer.store_pc(
+                xyz=xyz,
+                reference_frame_id="world",
+                reference_frame_timestamp_us=1_000_000,
+                attributes={"rgb": rgb, "extra_attr": extra},
+            )
+
+        tmpdir.cleanup()
+
+    def test_writer_rejects_missing_schema_attribute(self):
+        """store_pc missing a schema attr -> AssertionError."""
+        schemas = {
+            "rgb": PointCloudsComponent.AttributeSchema(
+                transform_type=PointCloud.AttributeTransformType.INVARIANT,
+                dtype=np.dtype("uint8"),
+                shape_suffix=(3,),
+            ),
+            "normal": PointCloudsComponent.AttributeSchema(
+                transform_type=PointCloud.AttributeTransformType.DIRECTION,
+                dtype=np.dtype("float32"),
+                shape_suffix=(3,),
+            ),
+        }
+        pc_writer, _, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas)
+
+        xyz = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
+        rgb = np.array([[128, 64, 32]], dtype=np.uint8)
+
+        with self.assertRaises(AssertionError):
+            pc_writer.store_pc(
+                xyz=xyz,
+                reference_frame_id="world",
+                reference_frame_timestamp_us=1_000_000,
+                attributes={"rgb": rgb},  # missing "normal"
+            )
+
+        tmpdir.cleanup()
+
+    def test_writer_rejects_wrong_shape(self):
+        """store_pc with wrong-shaped array -> AssertionError."""
+        schemas = {
+            "rgb": PointCloudsComponent.AttributeSchema(
+                transform_type=PointCloud.AttributeTransformType.INVARIANT,
+                dtype=np.dtype("uint8"),
+                shape_suffix=(3,),
+            ),
+        }
+        pc_writer, _, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas)
+
+        N = 10
+        xyz = np.random.rand(N, 3).astype(np.float32)
+        # Wrong shape: (N, 4) instead of (N, 3)
+        rgb_wrong = np.random.randint(0, 256, size=(N, 4), dtype=np.uint8)
+
+        with self.assertRaises(AssertionError):
+            pc_writer.store_pc(
+                xyz=xyz,
+                reference_frame_id="world",
+                reference_frame_timestamp_us=1_000_000,
+                attributes={"rgb": rgb_wrong},
+            )
+
+        tmpdir.cleanup()
+
+    def test_writer_rejects_reference_frame_timestamp_out_of_range(self):
+        """store_pc with reference_frame_timestamp_us outside sequence range -> AssertionError."""
+        pc_writer, _, tmpdir, _ = self._make_writer_reader()
+
+        xyz = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
+        with self.assertRaises(AssertionError):
+            pc_writer.store_pc(
+                xyz=xyz,
+                reference_frame_id="world",
+                reference_frame_timestamp_us=99_000_000,  # far outside sequence range
+            )
+
+        tmpdir.cleanup()
+
+    def test_writer_rejects_wrong_xyz_dtype(self):
+        """store_pc with float64 xyz raises AssertionError (float32 required)."""
+        pc_writer, _, tmpdir, _ = self._make_writer_reader()
+
+        xyz_f64 = np.array([[1.0, 2.0, 3.0]], dtype=np.float64)
+        with self.assertRaises(AssertionError):
+            pc_writer.store_pc(
+                xyz=xyz_f64,
+                reference_frame_id="world",
+                reference_frame_timestamp_us=500_000,
+            )
+
+        tmpdir.cleanup()
+
+    def test_empty_writer_finalize(self):
+        """Finalizing a writer with zero store_pc calls produces a valid empty reader."""
+        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader()
+
+        # Finalize without any store_pc calls
+        reader = self._finalize_and_open_reader(store_writer)
+
+        self.assertEqual(reader.pcs_count, 0)
+        np.testing.assert_array_equal(reader.pc_timestamps_us, np.array([], dtype=np.uint64))
+        self.assertEqual(reader.attribute_names, [])
+
+        tmpdir.cleanup()
+
+    def test_no_attributes_no_generic_data(self):
+        """Write/read a PC with empty schema and no generic data."""
+        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader()
+
+        xyz = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
+        pc_writer.store_pc(
+            xyz=xyz,
+            reference_frame_id="ego",
+            reference_frame_timestamp_us=500_000,
+        )
+
+        reader = self._finalize_and_open_reader(store_writer)
+
+        self.assertEqual(reader.pcs_count, 1)
+        np.testing.assert_array_almost_equal(reader.get_pc_xyz(0), xyz)
+        self.assertEqual(reader.get_pc_reference_frame_id(0), "ego")
+        self.assertEqual(reader.get_pc_reference_frame_timestamp_us(0), 500_000)
+        self.assertEqual(reader.attribute_names, [])
+        self.assertEqual(reader.get_pc_generic_data_names(0), [])
+        self.assertEqual(reader.get_pc_generic_meta_data(0), {})
+
+        tmpdir.cleanup()
+
+    def test_generic_data_and_metadata(self):
+        """Verify generic_data arrays and generic_meta_data round-trip."""
+        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader()
+
+        xyz = np.array([[0.0, 0.0, 0.0]], dtype=np.float32)
+        gd_labels = np.array([42], dtype=np.int32)
+        gd_weights = np.array([0.95], dtype=np.float64)
+        gmd: Dict[str, JsonLike] = {"source": "lidar_top", "quality": 0.99, "tags": ["outdoor", "sunny"]}
+
+        pc_writer.store_pc(
+            xyz=xyz,
+            reference_frame_id="world",
+            reference_frame_timestamp_us=1_000_000,
+            generic_data={"labels": gd_labels, "weights": gd_weights},
+            generic_meta_data=gmd,
+        )
+
+        reader = self._finalize_and_open_reader(store_writer)
+
+        # generic_data
+        self.assertEqual(sorted(reader.get_pc_generic_data_names(0)), ["labels", "weights"])
+        self.assertTrue(reader.has_pc_generic_data(0, "labels"))
+        self.assertFalse(reader.has_pc_generic_data(0, "nonexistent"))
+        np.testing.assert_array_equal(reader.get_pc_generic_data(0, "labels"), gd_labels)
+        np.testing.assert_array_almost_equal(reader.get_pc_generic_data(0, "weights"), gd_weights)
+
+        # generic_meta_data
+        loaded_gmd = reader.get_pc_generic_meta_data(0)
+        self.assertEqual(loaded_gmd["source"], "lidar_top")
+        self.assertAlmostEqual(loaded_gmd["quality"], 0.99)
+        self.assertEqual(loaded_gmd["tags"], ["outdoor", "sunny"])
+
+        tmpdir.cleanup()

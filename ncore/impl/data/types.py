@@ -23,7 +23,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from enum import IntEnum, auto, unique
 from functools import lru_cache
-from typing import TYPE_CHECKING, Dict, List, Literal, Mapping, Optional, Protocol, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Callable, Dict, List, Literal, Mapping, Optional, Protocol, Tuple, TypeVar, Union
 
 import dataclasses_json
 import numpy as np
@@ -33,7 +33,7 @@ import PIL.Image as PILImage
 if TYPE_CHECKING:
     import numpy.typing as npt  # type: ignore[import-not-found]
 
-from ncore.impl.common.transformations import PoseGraphInterpolator, transform_bbox
+from ncore.impl.common.transformations import PoseGraphInterpolator, transform_bbox, transform_point_cloud
 from ncore.impl.data import util
 
 
@@ -870,6 +870,164 @@ class FrameTimepoint(IntEnum):
 
     START = 0  #: Requested timepoint is referencing the start time of the frame
     END = 1  #: Requested timepoint is referencing the end time of the frame
+
+
+@dataclass(**({"slots": True, "frozen": True} if sys.version_info >= (3, 10) else {"frozen": True}))
+class PointCloud:
+    """Immutable point cloud with lazy attribute loading and rigid-transform support.
+
+    All points share a single reference frame and timestamp (the snapshot timestamp).
+    Per-point timestamps, if available, are stored as a regular ``INVARIANT`` attribute.
+
+    The :meth:`transform` method returns a new :class:`PointCloud` with an accumulated
+    rigid transform stored in ``_T_raw_reference``.  The :attr:`xyz` property and
+    covariant attributes apply this transform lazily on access.
+    """
+
+    # -- nested types -----------------------------------------------------------
+
+    class AttributeTransformType(IntEnum):
+        """How an attribute behaves under a rigid transformation."""
+
+        INVARIANT = 0  #: Unchanged (rgb, intensity, confidence, label_id, timestamp_us)
+        DIRECTION = 1  #: Rotate only: R @ v (normals, flow directions)
+        POINT = 2  #: Full rigid: R @ p + t (secondary xyz positions)
+
+    class CoordinateUnit(IntEnum):
+        """Physical unit of the point coordinates."""
+
+        UNITLESS = 0  #: Arbitrary / unknown scale (e.g. SfM reconstruction)
+        METERS = 1  #: Metric (meters)
+
+    @dataclass(**({"slots": True, "frozen": True} if sys.version_info >= (3, 10) else {"frozen": True}))
+    class Attribute:
+        """A lazily-loaded point-cloud attribute together with its transform semantics."""
+
+        loader: Callable[[], "npt.NDArray"]
+        transform_type: PointCloud.AttributeTransformType
+
+    # -- fields ----------------------------------------------------------------
+
+    _xyz: "npt.NDArray[np.floating]"
+    reference_frame_id: str
+    reference_frame_timestamp_us: int
+    coordinate_unit: PointCloud.CoordinateUnit
+    _attributes: Dict[str, PointCloud.Attribute]
+    _T_raw_reference: "Optional[npt.NDArray[np.floating]]" = dataclasses.field(default=None)
+
+    # -- properties ------------------------------------------------------------
+
+    @property
+    def points_count(self) -> int:
+        """Number of points in the cloud."""
+        return int(self._xyz.shape[0])
+
+    @property
+    def xyz(self) -> "npt.NDArray":
+        """Points in the target reference frame (transform applied lazily)."""
+        if self._T_raw_reference is None:
+            return self._xyz
+        return transform_point_cloud(self._xyz, self._T_raw_reference)
+
+    @property
+    def attribute_names(self) -> List[str]:
+        """Names of all registered attributes."""
+        return list(self._attributes.keys())
+
+    # -- methods ---------------------------------------------------------------
+
+    def has_attribute(self, name: str) -> bool:
+        """Returns ``True`` if an attribute with the given *name* is registered."""
+        return name in self._attributes
+
+    def get_attribute(self, name: str) -> "npt.NDArray":
+        """Load and return an attribute, applying the accumulated transform if applicable.
+
+        Raises:
+            KeyError: if *name* does not refer to a known attribute.
+        """
+        if name not in self._attributes:
+            raise KeyError(f"Unknown attribute: {name}")
+
+        attr = self._attributes[name]
+        raw: "npt.NDArray" = attr.loader()
+
+        if self._T_raw_reference is None or attr.transform_type == self.AttributeTransformType.INVARIANT:
+            return raw
+
+        if attr.transform_type == self.AttributeTransformType.DIRECTION:
+            R = self._T_raw_reference[:3, :3]
+            return (R @ raw.T).T
+
+        # POINT
+        return transform_point_cloud(raw, self._T_raw_reference)
+
+    def get_attribute_transform_type(self, name: str) -> PointCloud.AttributeTransformType:
+        """Return the :class:`AttributeTransformType` for *name*.
+
+        Raises:
+            KeyError: if *name* does not refer to a known attribute.
+        """
+        if name not in self._attributes:
+            raise KeyError(f"Unknown attribute: {name}")
+        return self._attributes[name].transform_type
+
+    def transform(
+        self,
+        target_frame_id: str,
+        target_frame_timestamp_us: int,
+        pose_graph: PoseGraphInterpolator,
+        anchor_frame_id: str = "world",
+    ) -> "PointCloud":
+        """Transform this point cloud to a different reference frame.
+
+        Signature is aligned with :meth:`CuboidTrackObservation.transform`.
+
+        The transform is **not** applied eagerly -- it is stored and applied lazily
+        when :attr:`xyz` or :meth:`get_attribute` are accessed.
+
+        Args:
+            target_frame_id: ID of the target reference frame.
+            target_frame_timestamp_us: Timestamp of the target reference frame.
+            pose_graph: PoseGraphInterpolator to evaluate transformations.
+            anchor_frame_id: ID of the common anchor frame (default: ``"world"``).
+
+        Returns:
+            A new PointCloud with updated reference frame and an accumulated lazy transform.
+        """
+        if (
+            self.reference_frame_id == target_frame_id
+            and self.reference_frame_timestamp_us == target_frame_timestamp_us
+        ):
+            return self
+
+        # Compute transform from current reference frame to new target frame
+        T_currentref_anchor = pose_graph.evaluate_poses(
+            self.reference_frame_id,
+            anchor_frame_id,
+            np.array(self.reference_frame_timestamp_us, dtype=np.uint64),
+        )
+        T_anchor_target = pose_graph.evaluate_poses(
+            anchor_frame_id,
+            target_frame_id,
+            np.array(target_frame_timestamp_us, dtype=np.uint64),
+        )
+        T_currentref_target = T_anchor_target @ T_currentref_anchor
+
+        # Compose with existing accumulated transform: raw -> current_ref -> target
+        if self._T_raw_reference is not None:
+            T_raw_target = T_currentref_target @ self._T_raw_reference
+        else:
+            T_raw_target = T_currentref_target
+
+        return PointCloud(
+            _xyz=self._xyz,
+            reference_frame_id=target_frame_id,
+            reference_frame_timestamp_us=target_frame_timestamp_us,
+            coordinate_unit=self.coordinate_unit,
+            _attributes=self._attributes,
+            _T_raw_reference=T_raw_target,
+        )
 
 
 class EncodedImageData:

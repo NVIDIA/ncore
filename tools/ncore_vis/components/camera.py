@@ -77,8 +77,9 @@ _UNIT_CUBE_CORNERS: np.ndarray = np.array(
 # Projection mode choices for lidar overlay.
 _PROJECTION_MODES: List[str] = ["rolling-shutter", "mean", "start", "end"]
 
-# Pre-fetch jet colormap for lidar projection coloring.
+# Pre-fetch colormaps for projection coloring.
 _JET_CMAP: matplotlib.colors.Colormap = matplotlib.colormaps["jet"]
+_TURBO_CMAP: matplotlib.colors.Colormap = matplotlib.colormaps["turbo"]
 
 
 @register_component
@@ -112,6 +113,11 @@ class CameraComponent(VisualizationComponent):
         self._project_range_cycle: float = 50.0
         self._project_radar: bool = False
         self._project_radar_id: str = "All"
+        self._project_point_clouds: bool = False
+        self._project_point_clouds_id: str = ""
+        self._project_pc_point_size: int = 2
+        self._project_pc_color_mode: str = "RGB"  # "RGB", "Range (jet)", "Height (turbo)"
+        self._project_pc_range_cycle: float = 50.0
         self._show_mask: bool = False
         self._mask_name: str = ""
         self._mask_opacity: float = 0.3
@@ -147,6 +153,10 @@ class CameraComponent(VisualizationComponent):
             self._project_lidar_id = lidar_ids[0]
 
         radar_ids = self.data_loader.radar_ids
+
+        point_clouds_ids = self.data_loader.point_clouds_ids
+        if point_clouds_ids:
+            self._project_point_clouds_id = point_clouds_ids[0]
 
         for camera_id in self.data_loader.camera_ids:
             self._visible[camera_id] = True
@@ -237,6 +247,57 @@ class CameraComponent(VisualizationComponent):
                     self._bind_radar_projection_settings(
                         project_radar_checkbox=project_radar_checkbox,
                         proj_radar_dropdown=proj_radar_dropdown,
+                    )
+
+                # -- Point clouds projection --
+                if point_clouds_ids:
+                    project_pc_checkbox = self.client.gui.add_checkbox(
+                        "Project Point Clouds",
+                        initial_value=False,
+                        hint="Project native point clouds onto all cameras",
+                    )
+                    proj_pc_dropdown = self.client.gui.add_dropdown(
+                        "Point Clouds Source",
+                        options=point_clouds_ids,
+                        initial_value=self._project_point_clouds_id,
+                        hint="Point-clouds source to project onto camera images",
+                    )
+                    # Determine available color modes for the first source
+                    _pc_color_modes = ["Range (jet)", "Height (turbo)"]
+                    # Check if any source has RGB -- if so, add it as default
+                    for _pid in point_clouds_ids:
+                        _src = self.data_loader.get_point_clouds_source(_pid)
+                        if _src.pcs_count > 0 and _src.get_pc(0).has_attribute("rgb"):
+                            _pc_color_modes = ["RGB"] + _pc_color_modes
+                            break
+                    proj_pc_color_dropdown = self.client.gui.add_dropdown(
+                        "PC Color Mode",
+                        options=_pc_color_modes,
+                        initial_value=_pc_color_modes[0],
+                        hint="Coloring mode for projected point clouds",
+                    )
+                    proj_pc_point_size_slider = self.client.gui.add_slider(
+                        "PC Point Size",
+                        min=1,
+                        max=10,
+                        step=1,
+                        initial_value=self._project_pc_point_size,
+                        hint="Pixel radius of projected point cloud points",
+                    )
+                    proj_pc_range_cycle_slider = self.client.gui.add_slider(
+                        "PC Range Cycle (m)",
+                        min=5.0,
+                        max=200.0,
+                        step=1.0,
+                        initial_value=self._project_pc_range_cycle,
+                        hint="Range before jet colormap wraps (for range/height modes)",
+                    )
+                    self._bind_point_clouds_projection_settings(
+                        project_pc_checkbox=project_pc_checkbox,
+                        proj_pc_dropdown=proj_pc_dropdown,
+                        proj_pc_color_dropdown=proj_pc_color_dropdown,
+                        proj_pc_point_size_slider=proj_pc_point_size_slider,
+                        proj_pc_range_cycle_slider=proj_pc_range_cycle_slider,
                     )
 
                 # -- Mask overlay --
@@ -413,6 +474,41 @@ class CameraComponent(VisualizationComponent):
             self._project_radar_id = proj_radar_dropdown.value
             self._refresh_all_cameras()
 
+    def _bind_point_clouds_projection_settings(
+        self,
+        project_pc_checkbox: viser.GuiInputHandle[bool],
+        proj_pc_dropdown: viser.GuiInputHandle[str],
+        proj_pc_color_dropdown: viser.GuiInputHandle[str],
+        proj_pc_point_size_slider: viser.GuiInputHandle[int],
+        proj_pc_range_cycle_slider: viser.GuiInputHandle[float],
+    ) -> None:
+        """Wire up point-clouds projection shared-setting callbacks."""
+
+        @project_pc_checkbox.on_update
+        def _(_: viser.GuiEvent) -> None:
+            self._project_point_clouds = project_pc_checkbox.value
+            self._refresh_all_cameras()
+
+        @proj_pc_dropdown.on_update
+        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+            self._project_point_clouds_id = proj_pc_dropdown.value
+            self._refresh_all_cameras()
+
+        @proj_pc_color_dropdown.on_update
+        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+            self._project_pc_color_mode = proj_pc_color_dropdown.value
+            self._refresh_all_cameras()
+
+        @proj_pc_point_size_slider.on_update
+        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+            self._project_pc_point_size = proj_pc_point_size_slider.value
+            self._refresh_all_cameras()
+
+        @proj_pc_range_cycle_slider.on_update
+        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+            self._project_pc_range_cycle = proj_pc_range_cycle_slider.value
+            self._refresh_all_cameras()
+
     def _bind_mask_settings(
         self,
         show_mask_checkbox: viser.GuiInputHandle[bool],
@@ -514,6 +610,17 @@ class CameraComponent(VisualizationComponent):
                     image = self._overlay_radar_projection(camera_id, frame_idx, image)
                 except Exception:
                     logger.debug("Radar projection overlay failed for %s frame %d", camera_id, frame_idx, exc_info=True)
+
+            if self._project_point_clouds:
+                try:
+                    image = self._overlay_point_cloud_projection(camera_id, frame_idx, image)
+                except Exception:
+                    logger.debug(
+                        "Point cloud projection overlay failed for %s frame %d",
+                        camera_id,
+                        frame_idx,
+                        exc_info=True,
+                    )
 
             if self._overlay_cuboids:
                 try:
@@ -662,15 +769,15 @@ class CameraComponent(VisualizationComponent):
         cycle = max(1.0, self._project_range_cycle)
         point_radius = max(1, self._project_point_size)
 
-        # Compute colors for all points at once
+        # Compute colors for all points at once (image is RGB, no channel swap needed)
         normalized = (ranges % cycle) / cycle
         rgba = _JET_CMAP(normalized)  # [N, 4]
-        colors_bgr = (rgba[:, [2, 1, 0]] * 255.0).astype(np.uint8)
+        colors_rgb = (rgba[:, :3] * 255.0).astype(np.uint8)
 
         for i in range(image_coords.shape[0]):
             px = int(round(image_coords[i, 0]))
             py = int(round(image_coords[i, 1]))
-            color = (int(colors_bgr[i, 0]), int(colors_bgr[i, 1]), int(colors_bgr[i, 2]))
+            color = (int(colors_rgb[i, 0]), int(colors_rgb[i, 1]), int(colors_rgb[i, 2]))
             cv2.circle(output_image, (px, py), point_radius, color, thickness=-1, lineType=cv2.LINE_AA)
 
         return output_image
@@ -749,15 +856,124 @@ class CameraComponent(VisualizationComponent):
 
         normalized = (ranges % cycle) / cycle
         rgba = _JET_CMAP(normalized)
-        colors_bgr = (rgba[:, [2, 1, 0]] * 255.0).astype(np.uint8)
+        colors_rgb = (rgba[:, :3] * 255.0).astype(np.uint8)
 
         for i in range(image_coords.shape[0]):
             px = int(round(image_coords[i, 0]))
             py = int(round(image_coords[i, 1]))
-            color = (int(colors_bgr[i, 0]), int(colors_bgr[i, 1]), int(colors_bgr[i, 2]))
+            color = (int(colors_rgb[i, 0]), int(colors_rgb[i, 1]), int(colors_rgb[i, 2]))
             cv2.circle(image, (px, py), point_radius, color, thickness=-1, lineType=cv2.LINE_AA)
 
         return image
+
+    # ------------------------------------------------------------------
+    # Point cloud projection overlay
+    # ------------------------------------------------------------------
+
+    def _overlay_point_cloud_projection(self, camera_id: str, frame_idx: int, image: np.ndarray) -> np.ndarray:
+        """Project a native point-clouds source onto the camera image.
+
+        Uses the ``rgb`` attribute for per-point coloring when available, otherwise
+        falls back to range-based jet-colormap coloring (same as lidar projection).
+
+        Args:
+            camera_id: Camera sensor to project onto.
+            frame_idx: Camera frame index.
+            image: RGB image array (H, W, 3), uint8.
+
+        Returns:
+            Copy of the image with projected point cloud points drawn.
+        """
+        source_id = self._project_point_clouds_id
+        if not source_id:
+            return image
+
+        cam = self.data_loader.get_camera_sensor(camera_id)
+        source = self.data_loader.get_point_clouds_source(source_id)
+        camera_model = self._camera_models[camera_id]
+
+        if source.pcs_count == 0:
+            return image
+
+        # Find closest point cloud to the camera frame (by center-of-frame timestamp)
+        cam_interval = self.data_loader.get_sensor_frame_interval_us(camera_id, frame_idx)
+        cam_center_us = cam_interval.start + (cam_interval.end - cam_interval.start) // 2
+        pc_timestamps = source.pc_timestamps_us
+        pc_index = int(np.argmin(np.abs(pc_timestamps.astype(np.int64) - int(cam_center_us))))
+
+        pc = source.get_pc(pc_index)
+        if pc.points_count == 0:
+            return image
+
+        world_id = self.data_loader.world_frame_id
+
+        # Transform to world coordinates
+        pc_world_obj = pc.transform(
+            target_frame_id=world_id,
+            target_frame_timestamp_us=pc.reference_frame_timestamp_us,
+            pose_graph=self.data_loader.pose_graph,
+        )
+        pc_world = pc_world_obj.xyz
+
+        # Get camera world-to-sensor transforms (T_world_camera)
+        T_world_camera_start = cam.get_frames_T_source_sensor(world_id, frame_idx, FrameTimepoint.START)
+        T_world_camera_end = cam.get_frames_T_source_sensor(world_id, frame_idx, FrameTimepoint.END)
+
+        # Project world points to image coordinates
+        mode = self._project_mode
+        projection = self._project_points(camera_model, pc_world, T_world_camera_start, T_world_camera_end, mode)
+
+        if projection.valid_indices is None or projection.image_points.shape[0] == 0:
+            return image
+
+        image_coords = projection.image_points.cpu().numpy()
+        valid_idx = projection.valid_indices.cpu().numpy()
+
+        # Determine per-point colors based on the selected color mode
+        color_mode = self._project_pc_color_mode
+        cycle = max(1.0, self._project_pc_range_cycle)
+        valid_world = pc_world[valid_idx]
+
+        if color_mode == "RGB" and pc.has_attribute("rgb"):
+            rgb = pc.get_attribute("rgb")
+            if rgb.dtype != np.uint8:
+                if np.issubdtype(rgb.dtype, np.floating):
+                    rgb = (np.clip(rgb, 0.0, 1.0) * 255.0).astype(np.uint8)
+                else:
+                    rgb = rgb.astype(np.uint8)
+            if rgb.ndim == 2 and rgb.shape[1] >= 3:
+                rgb = rgb[:, :3]
+            colors_rgb = rgb[valid_idx]
+        elif color_mode == "Height (turbo)":
+            heights = valid_world[:, 2]  # z coordinate
+            h_min, h_max = heights.min(), heights.max()
+            span = max(h_max - h_min, 1e-6)
+            normalized = (heights - h_min) / span
+            rgba = _TURBO_CMAP(normalized)
+            colors_rgb = (rgba[:, :3] * 255.0).astype(np.uint8)
+        else:
+            # Range-based jet coloring (default / fallback)
+            if projection.T_world_sensors is not None:
+                T_w2c = projection.T_world_sensors.cpu().numpy()
+                transformed = transform_point_cloud(valid_world[:, None, :], T_w2c).squeeze(1)
+                ranges = np.linalg.norm(transformed, axis=1)
+            else:
+                ranges = np.linalg.norm(valid_world, axis=1)
+            normalized = (ranges % cycle) / cycle
+            rgba = _JET_CMAP(normalized)
+            colors_rgb = (rgba[:, :3] * 255.0).astype(np.uint8)
+
+        # Draw points on image (image is RGB, cv2.circle uses channel values as-is)
+        output_image = image.copy()
+        point_radius = max(1, self._project_pc_point_size)
+
+        for i in range(image_coords.shape[0]):
+            px = int(round(image_coords[i, 0]))
+            py = int(round(image_coords[i, 1]))
+            color = (int(colors_rgb[i, 0]), int(colors_rgb[i, 1]), int(colors_rgb[i, 2]))
+            cv2.circle(output_image, (px, py), point_radius, color, thickness=-1, lineType=cv2.LINE_AA)
+
+        return output_image
 
     def _project_points(
         self,
