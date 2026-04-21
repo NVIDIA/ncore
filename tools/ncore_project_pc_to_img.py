@@ -23,7 +23,7 @@ from typing import Optional, Tuple
 import click
 import matplotlib
 
-from ncore.impl.data.compat import LidarSensorProtocol, RayBundleSensorProtocol
+from ncore.impl.data.compat import LidarSensorProtocol, PointCloudsSourceProtocol, RayBundleSensorProtocol
 
 
 def _select_matplotlib_backend() -> None:
@@ -140,7 +140,7 @@ def se3_matrix(se3_delta: np.ndarray) -> np.ndarray:
 class CLIBaseParams:
     """Parameters passed to non-command-based CLI part"""
 
-    sensor_id: str
+    source_id: str
     sensor_extrinsic_delta: np.ndarray
     sensor_return_index: int
     camera_id: str
@@ -162,7 +162,7 @@ class CLIBaseParams:
 
 
 @click.group()
-@click.option("--sensor-id", type=str, help="Sensor whose point cloud will be projected", required=True)
+@click.option("--source-id", type=str, help="Point cloud source whose data will be projected", required=True)
 @click.option(
     "--sensor-extrinsic-delta",
     help="Optional: 6d [transl,rot-vec]-encoded extrinsic delta of ray bundle sensor",
@@ -234,8 +234,8 @@ class CLIBaseParams:
     help="Store image with timestamp filenames or frame-index filenames",
 )
 @click.pass_context
-def cli(ctx, **kwargs) -> None:
-    ctx.obj = CLIBaseParams(**kwargs)
+def cli(ctx, source_id, **kwargs) -> None:
+    ctx.obj = CLIBaseParams(source_id=source_id, **kwargs)
 
 
 @cli.command()
@@ -290,12 +290,22 @@ def v4(
 
 
 def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
-    # Auto-detect sensor type from available sensor IDs
-    ray_sensor: RayBundleSensorProtocol
-    if params.sensor_id in loader.radar_ids:
-        ray_sensor = loader.get_radar_sensor(params.sensor_id)
-    else:
-        ray_sensor = loader.get_lidar_sensor(params.sensor_id)
+    source_id = params.source_id
+
+    # Obtain a unified point-clouds source (native, lidar, or radar)
+    source: PointCloudsSourceProtocol = loader.get_point_clouds_source(
+        source_id, return_index=params.sensor_return_index
+    )
+
+    # For the structured-lidar-model code path we still need the raw lidar sensor
+    ray_sensor: Optional[RayBundleSensorProtocol] = None
+    is_lidar = source_id in loader.lidar_ids
+    is_ray_bundle = source_id in loader.lidar_ids or source_id in loader.radar_ids
+    if is_ray_bundle:
+        if is_lidar:
+            ray_sensor = loader.get_lidar_sensor(source_id)
+        else:
+            ray_sensor = loader.get_radar_sensor(source_id)
 
     cam_sensor = loader.get_camera_sensor(params.camera_id)
 
@@ -317,29 +327,29 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
 
     cam_model = CameraModel.from_parameters(cam_model_params, device=params.device)
 
-    # Initialize motion compensator, and the lidar model if requested
-    motion_compensator = MotionCompensator(ray_sensor.pose_graph)
+    # Initialize motion compensator and lidar model for the structured-lidar-model path
+    motion_compensator: Optional[MotionCompensator] = None
     lidar_model: Optional[StructuredLidarModel] = None
-    if params.enable_lidar_model and isinstance(ray_sensor, LidarSensorProtocol):
-        lidar_model = StructuredLidarModel.maybe_from_parameters(ray_sensor.model_parameters, device=params.device)
-
-        assert lidar_model is not None, f"No structured lidar model available for sensor {params.sensor_id}"
-
-        msg += " | with structured lidar model"
+    if ray_sensor is not None:
+        motion_compensator = MotionCompensator(ray_sensor.pose_graph)
+        if params.enable_lidar_model and isinstance(ray_sensor, LidarSensorProtocol):
+            lidar_model = StructuredLidarModel.maybe_from_parameters(ray_sensor.model_parameters, device=params.device)
+            assert lidar_model is not None, f"No structured lidar model available for sensor {source_id}"
+            msg += " | with structured lidar model"
 
     for frame_index in tqdm.tqdm(indices):
-        # Get the camera timestamp and find the closes lidar frame (relative to center of camera frame timestamps)
+        # Get the camera timestamp and find the closest point cloud
         cam_timestamp_start_us = cam_sensor.get_frame_timestamp_us(frame_index, types.FrameTimepoint.START)
         cam_timestamp_end_us = cam_sensor.get_frame_timestamp_us(frame_index, types.FrameTimepoint.END)
-        pc_frame_index = ray_sensor.get_closest_frame_index(
-            cam_timestamp_start_us + (cam_timestamp_end_us - cam_timestamp_start_us) // 2,
-            relative_frame_time=0.5,
-        )
+        cam_center_us = cam_timestamp_start_us + (cam_timestamp_end_us - cam_timestamp_start_us) // 2
 
-        # Load the camera image and the point cloud
+        # Load the camera image
         img_frame = cam_sensor.get_frame_image_array(frame_index)
 
-        if isinstance(ray_sensor, LidarSensorProtocol) and lidar_model is not None:
+        if ray_sensor is not None and isinstance(ray_sensor, LidarSensorProtocol) and lidar_model is not None:
+            # Structured lidar model path: use the original LidarSensorProtocol API
+            pc_frame_index = ray_sensor.get_closest_frame_index(cam_center_us, relative_frame_time=0.5)
+
             ## Generate sensor points from model elements with length of the source data
             sensor_pc = (
                 lidar_model.elements_to_sensor_points(
@@ -355,15 +365,26 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
                 .numpy()
             )
 
+            assert motion_compensator is not None
             ## Perform motion-compensation
-            pc = motion_compensator.motion_compensate_points(
-                sensor_id=params.sensor_id,
+            pc_xyz = motion_compensator.motion_compensate_points(
+                sensor_id=source_id,
                 xyz_pointtime=sensor_pc,
                 timestamp_us=ray_sensor.get_frame_ray_bundle_timestamp_us(pc_frame_index),
                 frame_start_timestamp_us=ray_sensor.get_frame_timestamp_us(pc_frame_index, types.FrameTimepoint.START),
                 frame_end_timestamp_us=ray_sensor.get_frame_timestamp_us(pc_frame_index, types.FrameTimepoint.END),
             ).xyz_e_sensorend
-        else:
+
+            # Transform the point cloud to the world coordinate frame
+            pc_xyz = transform_point_cloud(
+                pc_xyz,
+                ray_sensor.get_frames_T_sensor_target("world", pc_frame_index, types.FrameTimepoint.END),
+            )
+        elif ray_sensor is not None:
+            # Ray-bundle sensor (lidar/radar) without structured lidar model:
+            # use the sensor's own closest-frame logic for timestamp matching
+            pc_frame_index = ray_sensor.get_closest_frame_index(cam_center_us, relative_frame_time=0.5)
+
             pc = ray_sensor.get_frame_point_cloud(
                 pc_frame_index,
                 motion_compensation=True,
@@ -371,10 +392,21 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
                 return_index=params.sensor_return_index,
             ).xyz_m_end
 
-        # Transform the point cloud to the world coordinate frame
-        pc = transform_point_cloud(
-            pc, ray_sensor.get_frames_T_sensor_target("world", pc_frame_index, types.FrameTimepoint.END)
-        )
+            # Transform the point cloud to the world coordinate frame
+            pc_xyz = transform_point_cloud(
+                pc, ray_sensor.get_frames_T_sensor_target("world", pc_frame_index, types.FrameTimepoint.END)
+            )
+        else:
+            # Generic PointCloudsSourceProtocol path (native point cloud sources)
+            # Find the closest pc index by timestamp
+            pc_timestamps = source.pc_timestamps_us
+            diffs = np.abs(pc_timestamps.astype(np.int64) - np.int64(cam_center_us))
+            pc_index = int(np.argmin(diffs))
+
+            # Get the point cloud and transform to world frame
+            point_cloud = source.get_pc(pc_index)
+            world_pc = point_cloud.transform("world", int(cam_center_us), loader.pose_graph)
+            pc_xyz = world_pc.xyz
 
         T_world_camera_start = se3_inverse(
             cam_sensor.get_frames_T_sensor_target("world", frame_index, types.FrameTimepoint.START)
@@ -388,7 +420,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
         match params.pose:
             case "rolling-shutter":
                 world_point_projections = cam_model.world_points_to_image_points_shutter_pose(
-                    pc,
+                    pc_xyz,
                     T_world_camera_start,
                     T_world_camera_end,
                     return_valid_indices=True,
@@ -397,17 +429,21 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
 
             case "mean":
                 world_point_projections = cam_model.world_points_to_image_points_mean_pose(
-                    pc, T_world_camera_start, T_world_camera_end, return_valid_indices=True, return_T_world_sensors=True
+                    pc_xyz,
+                    T_world_camera_start,
+                    T_world_camera_end,
+                    return_valid_indices=True,
+                    return_T_world_sensors=True,
                 )
 
             case "start":
                 world_point_projections = cam_model.world_points_to_image_points_static_pose(
-                    pc, T_world_camera_start, return_valid_indices=True, return_T_world_sensors=True
+                    pc_xyz, T_world_camera_start, return_valid_indices=True, return_T_world_sensors=True
                 )
 
             case "end":
                 world_point_projections = cam_model.world_points_to_image_points_static_pose(
-                    pc, T_world_camera_end, return_valid_indices=True, return_T_world_sensors=True
+                    pc_xyz, T_world_camera_end, return_valid_indices=True, return_T_world_sensors=True
                 )
 
             case _:
@@ -416,7 +452,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
         image_point_coords = world_point_projections.image_points.cpu().numpy()
         trans_matrices = world_point_projections.T_world_sensors.cpu().numpy()  # type: ignore
         valid_idx = world_point_projections.valid_indices.cpu().numpy()  # type: ignore
-        transformed_points = transform_point_cloud(pc[valid_idx, None, :], trans_matrices).squeeze(1)
+        transformed_points = transform_point_cloud(pc_xyz[valid_idx, None, :], trans_matrices).squeeze(1)
         dist_rs = np.linalg.norm(transformed_points, axis=1, keepdims=True)
 
         save_path: Optional[Path] = None

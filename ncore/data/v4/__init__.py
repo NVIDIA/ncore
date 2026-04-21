@@ -24,6 +24,7 @@ from ncore.impl.data.v4.components import (
     IntrinsicsComponent,
     LidarSensorComponent,
     MasksComponent,
+    PointCloudsComponent,
     PosesComponent,
     RadarSensorComponent,
     SequenceComponentGroupsReader,
@@ -44,6 +45,7 @@ __all__ = [
     "LidarSensorComponent",
     "RadarSensorComponent",
     "CuboidsComponent",
+    "PointCloudsComponent",
     # compat APIs
     "SequenceLoaderV4",
 ]

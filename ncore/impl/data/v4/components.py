@@ -22,11 +22,12 @@ import logging
 import sys
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Generator,
     List,
@@ -46,12 +47,14 @@ import zarr
 import zarr.storage
 
 from numcodecs import Blosc
+from typing_extensions import Concatenate, ParamSpec
 from upath import UPath
 from zarr._storage.store import Store
 
 from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import MD5Hasher
-from ncore.impl.data import stores, types
+from ncore.impl.data import stores, types, util
+from ncore.impl.data.types import PointCloud
 
 
 if TYPE_CHECKING:
@@ -247,19 +250,29 @@ class SequenceComponentGroupsWriter:
 
     def register_component_writer(
         self,
-        component_writer_type: Type[CW],
+        component_writer_type: "Callable[Concatenate[zarr.Group, HalfClosedInterval, P], CW]",
         component_instance_name: str,
         group_name: Optional[str] = None,
-        # generic sensor meta-data (needs to be json-serializable)
         generic_meta_data: Dict[str, types.JsonLike] = {},
+        *args: "P.args",
+        **kwargs: "P.kwargs",
     ) -> CW:
-        """Instantiates a component writer instance for the given component type, component instance name, and group name.
-        Additionally stores associated generic meta data"""
+        """Instantiates a component writer for the given type and instance name.
+
+        The extra positional and keyword arguments are forwarded to the writer
+        constructor.  Because the first parameter is typed with
+        :data:`~typing.ParamSpec` + :data:`~typing.Concatenate`, type checkers
+        can infer the correct extra-argument signature from the concrete writer
+        class that is passed in."""
 
         assert len(component_instance_name) > 0, "Component instance name must not be empty"
 
+        # The signature uses Callable[Concatenate[...], CW] for type-safe kwargs
+        # inference, but we also need access to ComponentWriter static class attributes.
+        writer_cls = cast(Type[ComponentWriter], component_writer_type)
+
         # Create component name from component base name and component instance name
-        component_base_name = component_writer_type.get_component_name()
+        component_base_name = writer_cls.get_component_name()
         component_id = f"{component_base_name}:{component_instance_name}"
 
         assert component_id not in self._component_writers, f"Component writer for {component_id} already registered"
@@ -273,7 +286,7 @@ class SequenceComponentGroupsWriter:
         meta_data = {
             "component_name": component_base_name,
             "component_instance_name": component_instance_name,
-            "component_version": component_writer_type.get_component_version(),
+            "component_version": writer_cls.get_component_version(),
             "generic_meta_data": generic_meta_data,
         }
 
@@ -281,10 +294,12 @@ class SequenceComponentGroupsWriter:
         component_group.attrs.put(meta_data)
 
         self._component_writers[component_id] = (
-            component_writer := component_writer_type(component_group, self._sequence_timestamp_interval_us)
+            component_writer_instance := component_writer_type(
+                component_group, self._sequence_timestamp_interval_us, *args, **kwargs
+            )
         )
 
-        return component_writer
+        return component_writer_instance
 
 
 class SequenceComponentGroupsReader:
@@ -599,6 +614,7 @@ class ComponentReader(ABC):
 
 CW = TypeVar("CW", bound=ComponentWriter)
 CR = TypeVar("CR", bound=ComponentReader)
+P = ParamSpec("P")
 
 
 def validate_frame_name(name: str) -> str:
@@ -1603,3 +1619,230 @@ class CuboidsComponent:
 
             for obs in self._group["cuboids"].attrs["cuboid_track_observations"]:
                 yield types.CuboidTrackObservation.from_dict(obs)
+
+
+class PointCloudsComponent:
+    """Data component representing unstructured point clouds with optional typed attributes."""
+
+    COMPONENT_NAME: str = "point_clouds"
+
+    @dataclass(**({"slots": True, "frozen": True} if sys.version_info >= (3, 10) else {"frozen": True}))
+    class AttributeSchema(dataclasses_json.DataClassJsonMixin):
+        """Schema for a single per-point attribute (frozen / hashable).
+
+        Serialization uses :class:`~dataclasses_json.DataClassJsonMixin`:
+
+        * ``transform_type`` is stored as its uppercase enum name
+          (``"INVARIANT"``, ``"DIRECTION"``, ``"POINT"``).
+        * ``dtype`` is stored as a numpy dtype string (e.g. ``"float32"``).
+        * ``shape_suffix`` is stored as a JSON array of ints.
+        """
+
+        transform_type: PointCloud.AttributeTransformType = util.enum_field(PointCloud.AttributeTransformType)
+        dtype: np.dtype = util.dtype_field()
+        shape_suffix: Tuple[int, ...] = field(
+            default=(),
+            metadata=dataclasses_json.config(encoder=list, decoder=tuple),
+        )
+
+    # --------------------------------------------------------------------------
+    # Writer
+    # --------------------------------------------------------------------------
+
+    class Writer(ComponentWriter):
+        """Point-clouds component writer."""
+
+        @staticmethod
+        def get_component_name() -> str:
+            return PointCloudsComponent.COMPONENT_NAME
+
+        @staticmethod
+        def get_component_version() -> str:
+            return "v1"
+
+        def __init__(
+            self,
+            component_group: zarr.Group,
+            sequence_timestamp_interval_us: HalfClosedInterval,
+            coordinate_unit: PointCloud.CoordinateUnit,
+            attribute_schemas: Dict[str, PointCloudsComponent.AttributeSchema] = {},
+        ) -> None:
+            super().__init__(component_group, sequence_timestamp_interval_us)
+
+            self._coordinate_unit = coordinate_unit
+            self._attribute_schemas = attribute_schemas
+            self._pc_timestamps: List[int] = []
+
+            # Write source-level .zattrs
+            self._group.attrs.update(
+                {
+                    "coordinate_unit": coordinate_unit.name,
+                    "attribute_schemas": {name: s.to_dict() for name, s in self._attribute_schemas.items()},
+                }
+            )
+
+            # Pre-create the pcs group
+            self._pcs_group = self._group.require_group("pcs")
+
+        def store_pc(
+            self,
+            xyz: npt.NDArray[np.float32],
+            reference_frame_id: str,
+            reference_frame_timestamp_us: int,
+            attributes: Dict[str, npt.NDArray[Any]] = {},
+            generic_data: Dict[str, npt.NDArray[Any]] = {},
+            generic_meta_data: Dict[str, types.JsonLike] = {},
+        ) -> None:
+            """Store a single point cloud.
+
+            Attributes represent per-point data with a schema declared in the component-level ``attribute_schemas`` meta-data.
+            Generic data and meta-data allow storing additional per-point-cloud information without a predefined schema.
+
+            The ``reference_frame_timestamp_us`` is also collected into the
+            source-level ``pc_timestamps_us`` array written by :meth:`finalize`.
+            """
+            compressor = Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE)
+
+            # -- Validate xyz --
+            assert xyz.dtype == np.dtype("float32")
+            assert xyz.ndim == 2 and xyz.shape[1] == 3, f"xyz must be (N, 3), got {xyz.shape}"
+            N = xyz.shape[0]
+
+            # -- Validate timestamp --
+            assert reference_frame_timestamp_us in self._sequence_timestamp_interval_us, (
+                f"reference_frame_timestamp_us {reference_frame_timestamp_us} not in sequence time range"
+            )
+
+            # -- Validate attributes against schema --
+            assert (provided_keys := set(attributes.keys())) == (schema_keys := set(self._attribute_schemas.keys())), (
+                f"Attribute keys mismatch: expected {schema_keys}, got {provided_keys}"
+            )
+
+            for attr_name, attr_array in attributes.items():
+                schema = self._attribute_schemas[attr_name]
+                expected_shape = (N,) + schema.shape_suffix
+                assert attr_array.shape == expected_shape, (
+                    f"Attribute '{attr_name}' shape mismatch: expected {expected_shape}, got {attr_array.shape}"
+                )
+                assert np.dtype(attr_array.dtype) == schema.dtype, (
+                    f"Attribute '{attr_name}' dtype mismatch: expected {schema.dtype}, got {attr_array.dtype}"
+                )
+
+            # -- Create per-pc group --
+            pc_group = self._pcs_group.require_group(str(len(self._pc_timestamps)))
+
+            # Store per-pc metadata (timestamp lives in source-level pc_timestamps_us array)
+            pc_group.attrs.put(
+                {
+                    "reference_frame_id": reference_frame_id,
+                    "generic_meta_data": generic_meta_data,
+                }
+            )
+
+            # Store xyz
+            pc_group.create_dataset(
+                "xyz",
+                data=xyz,
+                chunks=xyz.shape,
+                compressor=compressor,
+            )
+
+            # Store schema-declared attributes
+            for attr_name, attr_array in attributes.items():
+                pc_group.create_dataset(
+                    attr_name,
+                    data=attr_array,
+                    chunks=attr_array.shape,
+                    compressor=compressor,
+                )
+
+            # Store generic data
+            gd_group = pc_group.require_group("generic_data")
+            for gd_name, gd_array in generic_data.items():
+                gd_group.create_dataset(
+                    gd_name,
+                    data=gd_array,
+                    chunks=gd_array.shape,
+                    compressor=compressor,
+                )
+
+            self._pc_timestamps.append(reference_frame_timestamp_us)
+
+        def finalize(self) -> None:
+            """Write pc_timestamps_us array (derived from per-pc reference_frame_timestamp_us values)."""
+            ts_array = np.array(self._pc_timestamps, dtype=np.uint64)
+            self._group.create_dataset(
+                "pc_timestamps_us",
+                data=ts_array,
+                chunks=(max(1, len(ts_array)),),
+                compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
+            )
+
+    # --------------------------------------------------------------------------
+    # Reader
+    # --------------------------------------------------------------------------
+
+    class Reader(ComponentReader):
+        """Point-clouds component reader."""
+
+        @staticmethod
+        def get_component_name() -> str:
+            return PointCloudsComponent.COMPONENT_NAME
+
+        @staticmethod
+        def supports_component_version(version: str) -> bool:
+            return version == "v1"
+
+        # -- properties --------------------------------------------------------
+
+        @property
+        def coordinate_unit(self) -> PointCloud.CoordinateUnit:
+            return PointCloud.CoordinateUnit[self._group.attrs["coordinate_unit"]]
+
+        @property
+        def pcs_count(self) -> int:
+            return len(self._group["pc_timestamps_us"])
+
+        @property
+        def pc_timestamps_us(self) -> "npt.NDArray[np.uint64]":
+            return np.array(self._group["pc_timestamps_us"][:])
+
+        @property
+        def attribute_names(self) -> List[str]:
+            return list(self._group.attrs["attribute_schemas"].keys())
+
+        # -- schema access -----------------------------------------------------
+
+        def get_attribute_schema(self, name: str) -> PointCloudsComponent.AttributeSchema:
+            schema_raw = self._group.attrs["attribute_schemas"]
+            assert name in schema_raw, f"Unknown attribute: {name}"
+            return PointCloudsComponent.AttributeSchema.from_dict(schema_raw[name])
+
+        # -- per-pc data access ------------------------------------------------
+
+        def _pc_group(self, pc_index: int) -> zarr.Group:
+            return cast(zarr.Group, self._group["pcs"][str(pc_index)])
+
+        def get_pc_xyz(self, pc_index: int) -> npt.NDArray[np.float32]:
+            return np.array(self._pc_group(pc_index)["xyz"][:])
+
+        def get_pc_attribute(self, pc_index: int, name: str) -> npt.NDArray[Any]:
+            return np.array(self._pc_group(pc_index)[name][:])
+
+        def get_pc_reference_frame_id(self, pc_index: int) -> str:
+            return str(self._pc_group(pc_index).attrs["reference_frame_id"])
+
+        def get_pc_reference_frame_timestamp_us(self, pc_index: int) -> int:
+            return int(self._group["pc_timestamps_us"][pc_index])
+
+        def get_pc_generic_data_names(self, pc_index: int) -> List[str]:
+            return list(cast(zarr.Group, self._pc_group(pc_index)["generic_data"]).keys())
+
+        def has_pc_generic_data(self, pc_index: int, name: str) -> bool:
+            return name in self._pc_group(pc_index)["generic_data"]
+
+        def get_pc_generic_data(self, pc_index: int, name: str) -> npt.NDArray[Any]:
+            return np.array(self._pc_group(pc_index)["generic_data"][name][:])
+
+        def get_pc_generic_meta_data(self, pc_index: int) -> Dict[str, types.JsonLike]:
+            return dict(self._pc_group(pc_index).attrs.get("generic_meta_data", {}))

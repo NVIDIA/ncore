@@ -55,6 +55,8 @@ types:
   detections
 * :class:`~ncore.data.v4.CuboidsComponent` - 3D cuboid track observations and
   annotations
+* :class:`~ncore.data.v4.PointCloudsComponent` - Pre-computed point clouds with
+  optional typed per-point attributes
 
 The component architecture is extensible, allowing custom component types to be
 defined for application-specific data.
@@ -258,6 +260,62 @@ Each observation is a JSON-serializable object containing:
 
 Observations can be transformed between reference frames using the pose
 graph and support motion compensation across different sensor frames.
+
+Point Clouds Component
+~~~~~~~~~~~~~~~~~~~~~~
+
+Pre-computed point clouds (e.g., SfM reconstructions, dense MVS outputs) are
+stored with optional typed per-point attributes.  Unlike sensor components, point
+clouds store XYZ coordinates directly -- no ray-bundle representation is used.
+
+.. code-block:: text
+
+   point_clouds/
+   └── {component_instance_name}/
+       ├── {attrs}
+       │   ├── coordinate_unit: str            ("METERS" | "UNITLESS")
+       │   └── attribute_schemas: {             per-attribute metadata (extensible)
+       │         "{name}": {
+       │           "transform_type": str,      ("INVARIANT" | "DIRECTION" | "POINT")
+       │           "dtype": str,               (e.g. "float32", "uint8")
+       │           "shape_suffix": [int, ...]  (per-point shape, e.g. [3] for (N,3))
+       │         }, ...
+       │       }
+       │
+       ├── pc_timestamps_us  [M] uint64        derived from per-pc reference frame timestamps
+       │
+       └── pcs/
+           └── {pc_index}/
+               ├── {attrs}
+               │   ├── reference_frame_id: str
+               │   └── generic_meta_data: {...}
+               │
+               ├── xyz            [N,3] float32
+               ├── {attr_name}    [N,...] dtype   (per attribute_schemas)
+               └── generic_data/
+                   └── {name}     arbitrary per-pc arrays
+
+Each point cloud snapshot ("pc") carries its own reference frame and timestamp.
+The ``reference_frame_id`` is stored per-pc in ``.zattrs``, while the
+``reference_frame_timestamp_us`` is materialized in the source-level
+``pc_timestamps_us`` array for efficient temporal lookups.  Coordinate transforms
+are supported via :meth:`~ncore.data.PointCloud.transform` (analogous to
+:meth:`~ncore.data.CuboidTrackObservation.transform`).
+
+The ``attribute_schemas`` declare typed per-point attributes with explicit
+transformation semantics:
+
+* ``INVARIANT`` -- unchanged by rigid transforms (e.g., RGB, intensity)
+* ``DIRECTION`` -- rotation only (e.g., surface normals)
+* ``POINT`` -- full rigid transform (e.g., secondary xyz positions)
+
+The ``coordinate_unit`` field indicates whether coordinates are metric
+(``"METERS"``) or at arbitrary scale (``"UNITLESS"``, e.g., SfM reconstructions).
+All enum values are serialized as their uppercase name strings.
+
+Lidar and radar point clouds can also be accessed through the unified
+:class:`~ncore.data.PointCloudsSourceProtocol` via the
+:class:`~ncore.data.RayBundleSensorPointCloudsSourceAdapter`.
 
 Component Groups
 ~~~~~~~~~~~~~~~~

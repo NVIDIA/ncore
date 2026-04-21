@@ -245,6 +245,7 @@ class _PaiConversionMixin:
             camera_ids=active_camera_ids,
             lidar_ids=active_lidar_ids,
             radar_ids=active_radar_ids,
+            point_clouds_ids=[],  # No native point cloud sources
             profile=self.component_group_profile,
         )
 

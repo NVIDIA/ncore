@@ -33,8 +33,8 @@ from ncore.data.v4 import (
     CameraSensorComponent,
     CuboidsComponent,
     IntrinsicsComponent,
-    LidarSensorComponent,
     MasksComponent,
+    PointCloudsComponent,
     PosesComponent,
     SequenceComponentGroupsReader,
     SequenceComponentGroupsWriter,
@@ -45,6 +45,7 @@ from ncore.impl.data.types import (
     JsonLike,
     OpenCVFisheyeCameraModelParameters,
     OpenCVPinholeCameraModelParameters,
+    PointCloud,
     ShutterType,
 )
 from ncore.impl.data.v4.types import ComponentGroupAssignments
@@ -236,13 +237,14 @@ class ColmapDataConverter(FileBasedDataConverter):
         )
 
         camera_ids = list(self.cameras.keys())
-        lidar_id = "virtual_lidar" if len(self.scene_manager.points3D) > 0 and self.include_3d_points else None
-        self.logger.info(f"Adding cameras: {camera_ids} and lidar: {lidar_id}")
+        point_clouds_id = "sfm_points" if len(self.scene_manager.points3D) > 0 and self.include_3d_points else None
+        self.logger.info(f"Adding cameras: {camera_ids} and point_clouds: {point_clouds_id}")
 
         self.component_groups = ComponentGroupAssignments.create(
             camera_ids=camera_ids,
-            lidar_ids=[lidar_id] if lidar_id is not None else [],
-            radar_ids=[],  # No radars for now
+            lidar_ids=[],
+            radar_ids=[],
+            point_clouds_ids=[point_clouds_id] if point_clouds_id else [],
             profile=self.component_group_profile,
         )
 
@@ -293,9 +295,9 @@ class ColmapDataConverter(FileBasedDataConverter):
             self.component_groups.cuboid_track_observations_component_group,
         ).store_observations([])
 
-        ## Decode 3D Points as a single lidar frame
-        if lidar_id is not None:
-            self.decode_lidars(lidar_id)
+        ## Decode 3D Points as a PointCloudsComponent
+        if point_clouds_id is not None:
+            self.decode_point_clouds(point_clouds_id)
 
         ## Decode and store camera frames
         self.decode_cameras()
@@ -321,49 +323,38 @@ class ColmapDataConverter(FileBasedDataConverter):
 
             self.logger.info(f"Wrote sequence meta data {str(sequence_meta_path)}")
 
-    def decode_lidars(self, lidar_id) -> None:
-        """Decodes COLMAP 3D points as a single lidar frame."""
+    def decode_point_clouds(self, point_clouds_id: str) -> None:
+        """Stores COLMAP SfM 3D points as a PointCloudsComponent."""
 
-        self.poses_writer.store_static_pose(
-            source_frame_id=lidar_id,
-            target_frame_id="world",
-            pose=np.eye(4, dtype=np.float32),
-        )
-
-        lidar_writer = self.store_writer.register_component_writer(
-            LidarSensorComponent.Writer,
-            component_instance_name=lidar_id,
-            group_name=self.component_groups.lidar_component_groups.get(lidar_id),
+        pc_writer = self.store_writer.register_component_writer(
+            PointCloudsComponent.Writer,
+            component_instance_name=point_clouds_id,
+            group_name=self.component_groups.point_clouds_component_groups.get(point_clouds_id),
+            coordinate_unit=PointCloud.CoordinateUnit.UNITLESS,
+            attribute_schemas={
+                "rgb": PointCloudsComponent.AttributeSchema(
+                    transform_type=PointCloud.AttributeTransformType.INVARIANT,
+                    dtype=np.dtype("uint8"),
+                    shape_suffix=(3,),
+                ),
+            },
         )
 
         xyz = self.scene_manager.points3D.astype(np.float32)
-        distance = np.linalg.norm(xyz, axis=1)  # N
-        # Filter out points with zero (or near-zero) distance to avoid division by zero
-        valid_mask = distance > 1e-6
-        distance = distance[valid_mask]
-        direction = xyz[valid_mask] / distance[valid_mask, np.newaxis]
-        num_points = direction.shape[0]
-        start_timestamp_us = np.uint64(self.start_time_sec * 1e6)
+        rgb = self.scene_manager.point3D_colors  # uint8 (N, 3)
 
-        # Serialize lidar frame
-        lidar_writer.store_frame(
-            # Non-motion-compensated per-ray 3D directions (float32, [N, 3])
-            direction=direction,
-            # Per-point timestamp in microseconds (uint64, [N])
-            timestamp_us=np.full((num_points,), start_timestamp_us, dtype=np.uint64),
-            # Per-point model element indices (uint16, [N, 2])
-            model_element=None,
-            # Per-point distance (two returns, [2, N])
-            distance_m=distance[np.newaxis, :],
-            # Per-point intensity normalized to [0.0, 1.0] (float32, [2, N])
-            intensity=np.zeros((1, num_points), dtype=np.float32),
-            # Frame start/end timestamps (uint64, [2])
-            frame_timestamps_us=np.array([start_timestamp_us, start_timestamp_us], dtype=np.uint64),
-            # Store COLMAP SfM point colors as generic data (uint8, [N, 3])
-            generic_data={
-                "rgb": self.scene_manager.point3D_colors,  # uint8
-            },
-            generic_meta_data={},
+        # Filter out points at the origin (zero distance)
+        valid_mask = np.linalg.norm(xyz, axis=1) > 1e-6
+        xyz = xyz[valid_mask]
+        rgb = rgb[valid_mask]
+
+        start_timestamp_us = int(self.start_time_sec * 1e6)
+
+        pc_writer.store_pc(
+            xyz=xyz,
+            reference_frame_id="world",
+            reference_frame_timestamp_us=start_timestamp_us,
+            attributes={"rgb": rgb},
         )
 
     def populate_camera_data(
@@ -583,7 +574,7 @@ class ColmapDataConverter(FileBasedDataConverter):
     "--include-3d-points/--no-include-3d-points",
     is_flag=True,
     default=True,
-    help="Include 3D Points as a lidar sensor",
+    help="Include 3D Points as a point cloud component",
 )
 @click.option(
     "--colmap-dir",
@@ -708,7 +699,7 @@ def _build_scannetpp_split_metadata(
     "--include-3d-points/--no-include-3d-points",
     is_flag=True,
     default=True,
-    help="Include COLMAP SfM point cloud as virtual lidar.",
+    help="Include COLMAP SfM point cloud as a point cloud component.",
 )
 @click.pass_context
 def scannetpp_v4(ctx, **kwargs):

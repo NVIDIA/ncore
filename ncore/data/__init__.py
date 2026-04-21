@@ -18,7 +18,9 @@
 from ncore.impl.data.compat import (
     CameraSensorProtocol,
     LidarSensorProtocol,
+    PointCloudsSourceProtocol,
     RadarSensorProtocol,
+    RayBundleSensorPointCloudsSourceAdapter,
     SensorProtocol,
     SequenceLoaderProtocol,
 )
@@ -36,6 +38,7 @@ from ncore.impl.data.types import (
     LabelSource,
     OpenCVFisheyeCameraModelParameters,
     OpenCVPinholeCameraModelParameters,
+    PointCloud,
     ReferencePolynomial,
     RowOffsetStructuredSpinningLidarModelParameters,
     ShutterType,
@@ -60,10 +63,13 @@ __all__ = [
     "ConcreteCameraModelParametersUnion",
     "ConcreteExternalDistortionParametersUnion",
     "ConcreteLidarModelParametersUnion",
+    "PointCloud",
     # compat protocols
     "SequenceLoaderProtocol",
     "SensorProtocol",
     "CameraSensorProtocol",
     "LidarSensorProtocol",
     "RadarSensorProtocol",
+    "PointCloudsSourceProtocol",
+    "RayBundleSensorPointCloudsSourceAdapter",
 ]

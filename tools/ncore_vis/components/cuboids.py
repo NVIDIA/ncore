@@ -47,6 +47,10 @@ class CuboidsComponent(VisualizationComponent):
 
         default_source = LabelSource.AUTOLABEL.name
 
+        # Don't create the tab if there are no cuboid observations.
+        if not self.data_loader.get_cuboid_tracks():
+            return
+
         with tab_group.add_tab("Cuboids"):
             cuboid_checkbox = self.client.gui.add_checkbox(
                 "Enabled", initial_value=True, hint="Enable cuboid bounding box visualization"

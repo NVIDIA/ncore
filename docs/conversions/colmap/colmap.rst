@@ -61,16 +61,20 @@ Three mask-file conventions are supported, checked in priority order:
 If no mask file is found for a given image, the frame is stored without a
 ``mask`` entry.  The number of masks found per camera is logged at INFO level.
 
-LiDAR Sensors
-^^^^^^^^^^^^^
+Point Clouds
+^^^^^^^^^^^^
 
-- **virtual_lidar** — single static frame from the COLMAP SfM point cloud
+- **sfm_points** — SfM 3D points from the COLMAP sparse reconstruction
   (optional)
 
-If the COLMAP reconstruction contains 3D points, they are optionally exported as
-a single frame of a virtual LiDAR sensor at the world origin. Each point carries
-its reconstructed RGB color as generic per-point data. The virtual lidar has no
-intrinsics and its extrinsic is an identity pose (sensor frame = world frame).
+If the COLMAP reconstruction contains 3D points (``points3D.bin``), they are
+optionally stored as a :class:`~ncore.data.v4.PointCloudsComponent` named
+``sfm_points`` in the world coordinate frame.  Each point carries its
+reconstructed RGB color as a typed per-point attribute.  The coordinate unit
+is ``unitless`` since COLMAP reconstructions have arbitrary scale.
+
+With the ``separate-sensors`` profile (default), the point clouds are stored
+in their own component group (``ncore4-sfm_points.zarr``).
 
 .. _data_conversions:
 
@@ -80,7 +84,7 @@ Conversion
 The converter uses NCore V4's component-based architecture. Each COLMAP scene is
 parsed from a COLMAP reconstruction directory (default: ``sparse/0/``) and written to NCore format via
 :class:`~ncore.data.v4.SequenceComponentGroupsWriter` with specialized component
-writers for poses, intrinsics, cameras, and optionally a virtual lidar.
+writers for poses, intrinsics, cameras, and optionally a point clouds component.
 
 Usage
 ^^^^^
@@ -124,7 +128,8 @@ subdirectory is treated as a separate sequence.
    * - ``--camera-id ID``
      - Export only the specified camera (repeatable; defaults to all cameras)
    * - ``--no-lidars``
-     - Disable exporting the virtual lidar sensor
+     - Disable exporting lidar sensors (not applicable to COLMAP — kept for
+       base converter compatibility)
    * - ``--verbose``
      - Enable debug-level logging
 
@@ -162,8 +167,8 @@ subdirectory is treated as a separate sequence.
        ``images_8``) as additional camera sensors
    * - ``--include-3d-points`` / ``--no-include-3d-points``
      - enabled
-     - Include the SfM point cloud as a single frame of a ``virtual_lidar``
-       sensor
+     - Include the SfM point cloud as a
+       :class:`~ncore.data.v4.PointCloudsComponent` (``sfm_points``)
    * - ``--colmap-dir TEXT``
      - ``sparse/0``
      - Relative path to the COLMAP reconstruction directory within each
@@ -193,7 +198,7 @@ API Reference
   sequences
 - :class:`~ncore.data.v4.PosesComponent` - Static and dynamic pose storage
 - :class:`~ncore.data.v4.IntrinsicsComponent` - Camera and lidar intrinsics
-- :class:`~ncore.data.v4.LidarSensorComponent` - Lidar frame data
+- :class:`~ncore.data.v4.PointCloudsComponent` - Pre-computed point clouds
 - :class:`~ncore.data.v4.CameraSensorComponent` - Camera frame data
 - :class:`~ncore.data.v4.CuboidsComponent` - 3D cuboid track observations
 - :class:`~ncore.data.v4.MasksComponent` - Camera masks
@@ -248,4 +253,4 @@ scene.
      - Component group layout
    * - ``--include-3d-points`` / ``--no-include-3d-points``
      - enabled
-     - Include COLMAP SfM point cloud as virtual lidar
+     - Include COLMAP SfM point cloud as ``sfm_points`` point clouds component

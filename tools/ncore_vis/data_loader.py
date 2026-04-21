@@ -30,6 +30,7 @@ from ncore.impl.common.transformations import HalfClosedInterval, PoseGraphInter
 from ncore.impl.data.compat import (
     CameraSensorProtocol,
     LidarSensorProtocol,
+    PointCloudsSourceProtocol,
     RadarSensorProtocol,
     SensorProtocol,
     SequenceLoaderProtocol,
@@ -57,6 +58,7 @@ class DataLoader:
         self._loader: SequenceLoaderProtocol = loader
         self._rig_frame_id: Optional[str] = rig_frame_id
         self._world_frame_id: str = world_frame_id
+        self._warned_pose_paths: set = set()
 
         # Build cuboid DataFrame and tracks eagerly (thread-safe: done once at init)
         observations = list(self._loader.get_cuboid_track_observations())
@@ -118,6 +120,16 @@ class DataLoader:
         """Return a radar sensor by ID (cached)."""
         return self._loader.get_radar_sensor(radar_id)
 
+    @property
+    def point_clouds_ids(self) -> List[str]:
+        """All native point-clouds source IDs in the sequence."""
+        return self._loader.point_clouds_ids
+
+    @functools.lru_cache(maxsize=None)
+    def get_point_clouds_source(self, source_id: str) -> PointCloudsSourceProtocol:
+        """Return a point-clouds source by ID (cached)."""
+        return self._loader.get_point_clouds_source(source_id)
+
     # ------------------------------------------------------------------
     # Cross-sensor frame synchronization
     # ------------------------------------------------------------------
@@ -166,11 +178,14 @@ class DataLoader:
         try:
             poses = self.pose_graph.evaluate_poses(self._rig_frame_id, self._world_frame_id, timestamps)
         except KeyError:
-            logger.warning(
-                "Pose graph does not contain '%s' -> '%s' path; trajectory unavailable.",
-                self._rig_frame_id,
-                self._world_frame_id,
-            )
+            key = (self._rig_frame_id, self._world_frame_id, "trajectory")
+            if key not in self._warned_pose_paths:
+                self._warned_pose_paths.add(key)
+                logger.warning(
+                    "Pose graph does not contain '%s' -> '%s' path; trajectory unavailable.",
+                    self._rig_frame_id,
+                    self._world_frame_id,
+                )
             return np.empty((0, 4, 4), dtype=np.float64)
 
         return poses
@@ -209,11 +224,14 @@ class DataLoader:
             )
             return poses[0]  # type: ignore[return-value]
         except KeyError:
-            logger.warning(
-                "Pose graph does not contain '%s' -> '%s' path; rig pose unavailable.",
-                self._rig_frame_id,
-                self._world_frame_id,
-            )
+            key = (self._rig_frame_id, self._world_frame_id, "rig_pose")
+            if key not in self._warned_pose_paths:
+                self._warned_pose_paths.add(key)
+                logger.warning(
+                    "Pose graph does not contain '%s' -> '%s' path; rig pose unavailable.",
+                    self._rig_frame_id,
+                    self._world_frame_id,
+                )
             return None
 
     # ------------------------------------------------------------------

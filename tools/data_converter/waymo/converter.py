@@ -170,6 +170,7 @@ class WaymoConverter4(FileBasedDataConverter):
             camera_ids=self.camera_ids,
             lidar_ids=self.lidar_ids,
             radar_ids=[],  # No radars for now
+            point_clouds_ids=[],  # No native point cloud sources
             profile=self.component_group_profile,
         )
 

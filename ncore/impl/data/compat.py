@@ -52,7 +52,7 @@ Example:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Protocol, Union
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Protocol, Tuple, Union, cast
 
 import numpy as np
 import PIL.Image as PILImage
@@ -68,6 +68,7 @@ from ncore.impl.data.types import (
     EncodedImageData,
     FrameTimepoint,
     JsonLike,
+    PointCloud,
 )
 from ncore.impl.data.util import closest_index_sorted
 
@@ -149,6 +150,19 @@ class SequenceLoaderProtocol(Protocol):
             timestamp_interval_us: If provided, only observations whose ``timestamp_us``
                 falls within this half-closed interval ``[start, stop)`` are returned.
                 When ``None`` (default), all observations are returned.
+        """
+        ...
+
+    @property
+    def point_clouds_ids(self) -> List[str]:
+        """All native point-clouds source IDs in the sequence"""
+        ...
+
+    def get_point_clouds_source(self, source_id: str, *, return_index: int = 0) -> PointCloudsSourceProtocol:
+        """Returns a point-clouds source for a given source id.
+
+        For native point-clouds sources, ``return_index`` is ignored.
+        For lidar/radar-adapted sources, ``return_index`` selects the ray-bundle return.
         """
         ...
 
@@ -547,3 +561,258 @@ class RadarSensorProtocol(RayBundleSensorProtocol, Protocol):
     """RadarSensorProtocol provides unified access to a relevant subset of common NCore radar sensor APIs"""
 
     ...
+
+
+@runtime_checkable
+class PointCloudsSourceProtocol(Protocol):
+    """Uniform access to point clouds from any source (native component, lidar, or radar).
+
+    A point-clouds source exposes an indexed sequence of :class:`PointCloud` snapshots,
+    each with its own reference frame and timestamp.  Per-pc generic data and metadata
+    are available alongside the typed :class:`PointCloud` attributes.
+    """
+
+    @property
+    def point_clouds_source_id(self) -> str:
+        """Unique identifier of this point-clouds source."""
+        ...
+
+    @property
+    def pcs_count(self) -> int:
+        """Total number of point-cloud snapshots in this source."""
+        ...
+
+    @property
+    def pc_timestamps_us(self) -> npt.NDArray[np.uint64]:
+        """Snapshot timestamps in microseconds, shape ``(pcs_count,)``."""
+        ...
+
+    def get_pc(self, pc_index: int) -> PointCloud:
+        """Return the point cloud at *pc_index* as an immutable :class:`PointCloud` instance.
+
+        Schema-declared attributes are available via :meth:`PointCloud.get_attribute`.
+        """
+        ...
+
+    def get_pc_generic_data_names(self, pc_index: int) -> List[str]:
+        """Return the names of all generic data arrays stored for the given point cloud."""
+        ...
+
+    def has_pc_generic_data(self, pc_index: int, name: str) -> bool:
+        """Check whether a named generic data array exists for the given point cloud."""
+        ...
+
+    def get_pc_generic_data(self, pc_index: int, name: str) -> npt.NDArray:
+        """Return a generic data array by name for the given point cloud.
+
+        Unlike :class:`PointCloud` attributes, generic data arrays are not necessarily
+        per-point and do not participate in coordinate-frame transforms.
+        """
+        ...
+
+    def get_pc_generic_meta_data(self, pc_index: int) -> Dict[str, JsonLike]:
+        """Return generic JSON metadata associated with the given point cloud."""
+        ...
+
+    def get_pc_index_range(
+        self,
+        start: Optional[int] = None,
+        stop: Optional[int] = None,
+        step: Optional[int] = None,
+    ) -> range:
+        """Return a range of pc indices following ``start:stop:step`` slice conventions.
+
+        Absent bounds default to the full ``[0, pcs_count)`` range.
+        """
+
+        return range(*slice(start, stop, step).indices(self.pcs_count))
+
+
+class RayBundleSensorPointCloudsSourceAdapter:
+    """Adapts a :class:`RayBundleSensorProtocol` (lidar or radar) into :class:`PointCloudsSourceProtocol`.
+
+    Each sensor *frame* maps to one point cloud.  Per-point sensor data (timestamps,
+    valid mask, and -- for lidar -- intensity and model element) are exposed as lazy
+    :class:`PointCloud.Attribute` instances.  Sensor-level ``generic_data`` is forwarded
+    through :meth:`get_pc_generic_data`.
+
+    Additionally, generic_data entries listed in ``promote_generic_data`` are
+    **auto-promoted** to :class:`PointCloud.Attribute` instances when their name
+    matches (case-insensitive).  By default, ``"rgb"`` with shape ``(N, 3)``
+    is promoted.  Shape validation happens lazily on first access.
+
+    Args:
+        sensor: The ray-bundle sensor to adapt.
+        return_index: Which ray-bundle return to use for multi-return sensors.
+        promote_generic_data: Generic-data entries to auto-promote to
+            :class:`PointCloud.Attribute`.  Defaults to :data:`DEFAULT_GENERIC_DATA_PROMOTIONS`.
+    """
+
+    @dataclass(frozen=True)
+    class GenericDataPromotion:
+        """Shape suffix and transform type for a promoted ``generic_data`` frame entry.
+
+        Used as the *value* in the ``promote_generic_data`` dict whose *keys*
+        are the normalised (lowercase) attribute names.  Shape validation
+        ``(N,) + shape_suffix`` happens lazily on first attribute access.
+        """
+
+        shape_suffix: Tuple[int, ...]
+        transform_type: PointCloud.AttributeTransformType = PointCloud.AttributeTransformType.INVARIANT
+
+    DEFAULT_GENERIC_DATA_PROMOTIONS: Dict[str, GenericDataPromotion] = {
+        "rgb": GenericDataPromotion(shape_suffix=(3,)),
+    }
+
+    def __init__(
+        self,
+        sensor: RayBundleSensorProtocol,
+        return_index: int = 0,
+        promote_generic_data: Dict[str, GenericDataPromotion] = DEFAULT_GENERIC_DATA_PROMOTIONS,
+    ) -> None:
+        self._sensor = sensor
+        self._return_index = return_index
+        # Normalise keys to lowercase for case-insensitive matching
+        self._promote_generic_data = {k.lower(): v for k, v in promote_generic_data.items()}
+
+    # -- PointCloudsSourceProtocol properties -----------------------------------
+
+    @property
+    def point_clouds_source_id(self) -> str:
+        return self._sensor.sensor_id
+
+    @property
+    def pcs_count(self) -> int:
+        return self._sensor.frames_count
+
+    @property
+    def pc_timestamps_us(self) -> "npt.NDArray[np.uint64]":
+        return self._sensor.frames_timestamps_us[:, FrameTimepoint.END.value]
+
+    # -- PointCloudsSourceProtocol methods --------------------------------------
+
+    def get_pc(self, pc_index: int) -> PointCloud:
+        sensor = self._sensor
+        return_index = self._return_index
+
+        # xyz from motion-compensated point cloud
+        frame_pc = sensor.get_frame_point_cloud(
+            pc_index,
+            motion_compensation=True,
+            with_start_points=False,
+            return_index=return_index,
+        )
+
+        # Build lazy attributes
+        attributes: Dict[str, PointCloud.Attribute] = {}
+
+        # timestamp_us -- per-ray timestamps (INVARIANT)
+        def _load_timestamp_us(s: RayBundleSensorProtocol = sensor, i: int = pc_index) -> "npt.NDArray":
+            return s.get_frame_ray_bundle_timestamp_us(i)
+
+        attributes["timestamp_us"] = PointCloud.Attribute(
+            loader=_load_timestamp_us,
+            transform_type=PointCloud.AttributeTransformType.INVARIANT,
+        )
+
+        # valid_mask -- per-ray valid mask for the selected return (INVARIANT)
+        def _load_valid_mask(
+            s: RayBundleSensorProtocol = sensor,
+            i: int = pc_index,
+            ri: int = return_index,
+        ) -> "npt.NDArray":
+            return s.get_frame_ray_bundle_return_valid_mask(i, ri)
+
+        attributes["valid_mask"] = PointCloud.Attribute(
+            loader=_load_valid_mask,
+            transform_type=PointCloud.AttributeTransformType.INVARIANT,
+        )
+
+        # Lidar-specific attributes (determined at runtime)
+        if isinstance(sensor, LidarSensorProtocol):
+            lidar = cast(LidarSensorProtocol, sensor)
+
+            # intensity -- per-ray intensity for the selected return (INVARIANT)
+            def _load_intensity(
+                s: LidarSensorProtocol = lidar,
+                i: int = pc_index,
+                ri: int = return_index,
+            ) -> "npt.NDArray":
+                return s.get_frame_ray_bundle_return_intensity(i, ri)
+
+            attributes["intensity"] = PointCloud.Attribute(
+                loader=_load_intensity,
+                transform_type=PointCloud.AttributeTransformType.INVARIANT,
+            )
+
+            # model_element -- per-ray model element, only if present (INVARIANT)
+            model_element = lidar.get_frame_ray_bundle_model_element(pc_index)
+            if model_element is not None:
+                captured_model_element: "npt.NDArray" = model_element
+
+                def _load_model_element(c: "npt.NDArray" = captured_model_element) -> "npt.NDArray":
+                    return c
+
+                attributes["model_element"] = PointCloud.Attribute(
+                    loader=_load_model_element,
+                    transform_type=PointCloud.AttributeTransformType.INVARIANT,
+                )
+
+        # Auto-promote matching generic_data entries to PointCloud attributes
+        N = frame_pc.xyz_m_end.shape[0]
+        for gd_name in sensor.get_frame_generic_data_names(pc_index):
+            gd_name_normalized = gd_name.lower()
+            promotion = self._promote_generic_data.get(gd_name_normalized)
+            if promotion is not None and gd_name_normalized not in attributes:
+                promo_suffix = promotion.shape_suffix
+                promo_tt = promotion.transform_type
+
+                def _load_promoted(
+                    s: RayBundleSensorProtocol = sensor,
+                    i: int = pc_index,
+                    n: str = gd_name,
+                    expected_n: int = N,
+                    suffix: Tuple[int, ...] = promo_suffix,
+                ) -> "npt.NDArray":
+                    arr = s.get_frame_generic_data(i, n)
+                    expected_shape = (expected_n,) + suffix
+                    assert arr.shape == expected_shape, (
+                        f"Promoted generic_data '{n}' shape {arr.shape} != expected {expected_shape}"
+                    )
+                    return arr
+
+                attributes[gd_name_normalized] = PointCloud.Attribute(
+                    loader=_load_promoted,
+                    transform_type=promo_tt,
+                )
+
+        # Reference frame: sensor coordinate frame at end-of-frame time
+        ref_frame_timestamp_us = int(sensor.frames_timestamps_us[pc_index, FrameTimepoint.END.value])
+
+        return PointCloud(
+            _xyz=frame_pc.xyz_m_end,
+            reference_frame_id=sensor.sensor_id,
+            reference_frame_timestamp_us=ref_frame_timestamp_us,
+            coordinate_unit=PointCloud.CoordinateUnit.METERS,
+            _attributes=attributes,
+        )
+
+    def get_pc_generic_data_names(self, pc_index: int) -> List[str]:
+        return self._sensor.get_frame_generic_data_names(pc_index)
+
+    def has_pc_generic_data(self, pc_index: int, name: str) -> bool:
+        return self._sensor.has_frame_generic_data(pc_index, name)
+
+    def get_pc_generic_data(self, pc_index: int, name: str) -> "npt.NDArray":
+        return self._sensor.get_frame_generic_data(pc_index, name)
+
+    def get_pc_generic_meta_data(self, pc_index: int) -> Dict[str, JsonLike]:
+        return self._sensor.get_frame_generic_meta_data(pc_index)
+
+    def get_pc_index_range(
+        self,
+        start: Optional[int] = None,
+        stop: Optional[int] = None,
+        step: Optional[int] = None,
+    ) -> range:
+        return range(*slice(start, stop, step).indices(self.pcs_count))

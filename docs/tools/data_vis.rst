@@ -20,7 +20,7 @@ Example invocation::
 
     bazel run //tools:ncore_project_pc_to_img \
         -- \
-        --sensor-id=lidar00 \
+        --source-id=lidar00 \
         --camera-id=camera01 \
         v4 \
         --component-group=<SEQUENCE_META.json>
@@ -29,11 +29,14 @@ Or with multiple component groups::
 
     bazel run //tools:ncore_project_pc_to_img \
         -- \
-        --sensor-id=lidar00 \
+        --source-id=lidar00 \
         --camera-id=camera01 \
         v4 \
         --component-group=<COMPONENT_GROUP0> \
         --component-group=<COMPONENT_GROUP1>
+
+The ``--source-id`` flag accepts any point cloud source: a native point cloud
+ID (e.g. ``sfm_points``), a lidar ID, or a radar ID.
 
 
 .. figure:: proj0.png
@@ -69,11 +72,14 @@ Example invocation::
     bazel run //tools:ncore_export_ply \
         -- \
         --output-dir=<OUTPUT_FOLDER> \
-        --sensor-id=lidar00 \
+        --source-id=lidar00 \
         --frame=world \
         v4 \
         --component-group=<COMPONENT_GROUP0> \
         --component-group=<COMPONENT_GROUP1>
+
+The ``--source-id`` flag accepts any point cloud source (native, lidar, or
+radar).
 
 .. figure:: pc.png
    :figwidth: 80%
@@ -85,17 +91,20 @@ Example invocation::
 Colored Point-Cloud Export
 --------------------------
 
-The tool ``//tools:ncore_export_colored_pc`` projects lidar point clouds onto a
+The tool ``//tools:ncore_export_colored_pc`` projects point clouds onto a
 camera image to obtain per-point RGB colors, then exports the result as ``.ply``
 files. This combines rolling-shutter-aware projection with PLY export to produce
 colored point clouds useful for visual inspection and downstream processing.
+
+If the point cloud source already has an RGB attribute (e.g. COLMAP SfM points),
+the ``--use-source-rgb`` flag skips camera projection and uses the native colors.
 
 Example invocation::
 
     bazel run //tools:ncore_export_colored_pc \
         -- \
         --output-dir=<OUTPUT_FOLDER> \
-        --lidar-id=lidar00 \
+        --source-id=lidar00 \
         --camera-id=camera01 \
         v4 \
         --component-group=<SEQUENCE_META.json>
@@ -110,9 +119,9 @@ Example invocation::
    * - ``--output-dir``
      - (required)
      - Directory for output PLY files
-   * - ``--lidar-id``
-     - ``lidar_gt_top_p128``
-     - Lidar sensor to export
+   * - ``--source-id``
+     - (first available)
+     - Point cloud source to export (native, lidar, or radar ID)
    * - ``--camera-id``
      - ``camera_front_wide_120fov``
      - Camera sensor used for coloring
@@ -131,15 +140,15 @@ Example invocation::
    * - ``--output-filepattern``
      - ``frame-index``
      - Filename pattern (``frame-index`` or ``timestamps-us``)
-   * - ``--start-frame``
+   * - ``--start-pc``
      - all
-     - First frame index to export
-   * - ``--stop-frame``
+     - First pc index to export
+   * - ``--stop-pc``
      - all
-     - Past-the-end frame index
-   * - ``--step-frame``
+     - Past-the-end pc index
+   * - ``--step-pc``
      - 1
-     - Frame step for downsampling
+     - Step for downsampling point clouds
 
 
 Camera Frame Export
