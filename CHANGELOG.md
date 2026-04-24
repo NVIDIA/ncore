@@ -10,6 +10,34 @@ All notable changes to the NCore project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - - -
+## [v19.0.0](https://github.com/NVIDIA/ncore/compare/34aabcc3e0d7d55aff7e9434d6b5e091549405fd..v19.0.0) - 2026-04-24
+
+### Highlights
+
+- Add new first class citizen V4 `PointCloudsComponent` for native point clouds and `PointCloudsSourceProtocol` for unified
+  point cloud (native / lidar / radar) access. Support transformation of per-point attributes in a consistent way
+  for invariant (no transformation) / direction-like (rotation only) and point-like (full transformation) attributes.
+
+  Mild breaking change only for data-converters having to provide the list of native point-clouds (similar to sensors)
+  in `ComponentGroupAssignments.create()` (using an empty list will be sufficient for most cases - this is just to not
+  deviate from the existing sensor conventions).
+
+- Add further `.itar` init performance improvements by re-using tail-buffer for lookup of compressed consolidated meta-data
+  (if possible)
+
+#### ➕ Added
+- (**build**) Set use_default_shell_env to True for Sphinx actions - ([f1d8741](https://github.com/NVIDIA/ncore/commit/f1d8741125db0bd7155292ecd1a1c44f03b94d5e)) - Janick Martinez Esturo
+- (**converters**) add --world-global-mode option for optional world_global pose storage - ([8408067](https://github.com/NVIDIA/ncore/commit/8408067db4e9cdff490a25648d4b760eeda29aa3)) - Janick Martinez Esturo
+- ![BREAKING](https://img.shields.io/badge/BREAKING-red) add PointCloudsComponent with PointCloud type, PointCloudsSourceProtocol, V4 storage, adapter, tools, and visualizer - ([8acc007](https://github.com/NVIDIA/ncore/commit/8acc007946d6bb95264ad971290516bd04b3160a)) - Janick Martinez Esturo
+#### 🪲 Fixed
+- (**docs**) update ncore_docs_data to v0.6 to fix missing camera.jpg image - ([34aabcc](https://github.com/NVIDIA/ncore/commit/34aabcc3e0d7d55aff7e9434d6b5e091549405fd)) - Janick Martinez Esturo
+#### ⚡ Performance
+- IndexedTarStore cache tail read to avoid duplicate I/O for in-range keys - ([6a989f2](https://github.com/NVIDIA/ncore/commit/6a989f277917d843ac037a9e2fdc016020bb7a32)) - Emmanuel Attia
+#### 📚 Documentation
+- add S3 read performance section with benchmark results - ([30483b2](https://github.com/NVIDIA/ncore/commit/30483b2f31053d829805e9561dba39e2aee04877)) - Janick Martinez Esturo
+
+- - -
+
 ## [v18.9.0](https://github.com/NVIDIA/ncore/compare/cf53a926c0410dae0ed50cbe8dcac96f1d696894..v18.9.0) - 2026-04-14
 
 ### Highlights
