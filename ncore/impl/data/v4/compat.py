@@ -713,11 +713,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
 
     @override
     def get_camera_label_ids_for_camera(self, camera_id: str) -> List[str]:
-        return [
-            inst_name
-            for inst_name, reader in self._camera_labels_readers.items()
-            if reader.camera_id == camera_id
-        ]
+        return [inst_name for inst_name, reader in self._camera_labels_readers.items() if reader.camera_id == camera_id]
 
     @override
     def get_camera_label_ids_for_type(self, label_type: Union[LabelType, str]) -> List[str]:
