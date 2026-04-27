@@ -1055,3 +1055,102 @@ class EncodedImageHandle(Protocol):
     """Protocol type to reference encoded image data (e.g., file-based, container-based, memory-based)"""
 
     def get_data(self) -> EncodedImageData: ...
+
+
+# ---------------------------------------------------------------------------
+#  Camera-label type system
+# ---------------------------------------------------------------------------
+
+
+@unique
+class LabelType(IntEnum):
+    """Enumerates different types of per-pixel camera labels."""
+
+    DEPTH = 0  #: Per-pixel depth (distance along camera Z-axis)
+    DISTANCE = 1  #: Per-pixel euclidean distance from camera origin
+    OPTICAL_FLOW_FORWARD = 2  #: Forward optical flow (pixels)
+    OPTICAL_FLOW_BACKWARD = 3  #: Backward optical flow (pixels)
+    SEGMENTATION_SEMANTIC = 4  #: Semantic segmentation class IDs
+    SEGMENTATION_INSTANCE = 5  #: Instance segmentation IDs
+    MASK_BACKGROUND = 6  #: Binary background mask
+    MASK_DYNAMIC_INSTANCE = 7  #: Binary mask of dynamic instances
+    NORMAL_CAMERA = 8  #: Per-pixel surface normals in camera frame
+    SCENE_FLOW_FORWARD = 9  #: Forward 3-D scene flow
+    SCENE_FLOW_BACKWARD = 10  #: Backward 3-D scene flow
+    UNKNOWN = -1  #: Unrecognised / fallback label type
+
+    @classmethod
+    def resolve(cls, name: str) -> LabelType:
+        """Return the member matching *name*, or :pyattr:`UNKNOWN` if unrecognised."""
+        try:
+            return cls.__members__[name]
+        except KeyError:
+            return cls.UNKNOWN
+
+
+@unique
+class LabelUnit(IntEnum):
+    """Physical unit associated with a label's numeric values."""
+
+    METERS = 0  #: Metric (meters)
+    PIXELS = 1  #: Pixel displacement
+    UNITLESS = 2  #: Dimensionless quantity (e.g. class IDs, masks)
+    UNKNOWN = -1  #: Unrecognised / fallback unit
+
+    @classmethod
+    def resolve(cls, name: str) -> LabelUnit:
+        """Return the member matching *name*, or :pyattr:`UNKNOWN` if unrecognised."""
+        try:
+            return cls.__members__[name]
+        except KeyError:
+            return cls.UNKNOWN
+
+
+@unique
+class LabelEncoding(IntEnum):
+    """Describes how the raw label data is stored on disk."""
+
+    RAW = 0  #: Stored as a raw numeric array
+    IMAGE_ENCODED = 1  #: Stored as an encoded image (e.g. PNG)
+    UNKNOWN = -1  #: Unrecognised / fallback encoding
+
+    @classmethod
+    def resolve(cls, name: str) -> LabelEncoding:
+        """Return the member matching *name*, or :pyattr:`UNKNOWN` if unrecognised."""
+        try:
+            return cls.__members__[name]
+        except KeyError:
+            return cls.UNKNOWN
+
+
+@dataclass(**({"slots": True, "frozen": True} if sys.version_info >= (3, 10) else {"frozen": True}))
+class QuantizationParams(dataclasses_json.DataClassJsonMixin):
+    """Parameters for de-quantizing stored integer data back to physical values.
+
+    The physical value is recovered as ``value = stored * scale + offset``.
+    """
+
+    quantized_dtype: np.dtype = util.dtype_field()  #: Numpy dtype of the quantized on-disk representation
+    scale: float = 1.0  #: Multiplicative scale factor
+    offset: float = 0.0  #: Additive offset
+
+
+@dataclass(**({"slots": True, "frozen": True} if sys.version_info >= (3, 10) else {"frozen": True}))
+class LabelSchema(dataclasses_json.DataClassJsonMixin):
+    """Schema describing the dtype, shape, encoding and unit of a single label layer."""
+
+    dtype: np.dtype = util.dtype_field()  #: Numpy dtype of the label data (after decoding / de-quantization)
+    shape_suffix: Tuple[int, ...] = dataclasses.field(
+        default=(),
+        metadata=dataclasses_json.config(encoder=list, decoder=tuple),
+    )  #: Extra dimensions appended to (H, W) — e.g. ``(2,)`` for optical flow, ``(3,)`` for normals
+    encoding: LabelEncoding = util.enum_field(LabelEncoding)  #: How the label data is stored on disk
+    encoded_format: Optional[str] = None  #: Image format string (e.g. ``"png"``) when ``encoding == IMAGE_ENCODED``
+    quantization: Optional[QuantizationParams] = None  #: Optional quantization parameters
+    unit: Optional[LabelUnit] = dataclasses.field(
+        default=None,
+        metadata=dataclasses_json.config(
+            encoder=lambda u: u.name if u is not None else None,
+            decoder=lambda s: LabelUnit.resolve(s) if s is not None else None,
+        ),
+    )  #: Physical unit of the label values
