@@ -245,6 +245,7 @@ class ColmapDataConverter(FileBasedDataConverter):
             lidar_ids=[],
             radar_ids=[],
             point_clouds_ids=[point_clouds_id] if point_clouds_id else [],
+            camera_labels_ids=[],  # No camera labels
             profile=self.component_group_profile,
         )
 
