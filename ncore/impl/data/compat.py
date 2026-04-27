@@ -68,6 +68,9 @@ from ncore.impl.data.types import (
     EncodedImageData,
     FrameTimepoint,
     JsonLike,
+    LabelEncoding,
+    LabelSchema,
+    LabelType,
     PointCloud,
 )
 from ncore.impl.data.util import closest_index_sorted
@@ -164,6 +167,27 @@ class SequenceLoaderProtocol(Protocol):
         For native point-clouds sources, ``return_index`` is ignored.
         For lidar/radar-adapted sources, ``return_index`` selects the ray-bundle return.
         """
+        ...
+
+    ## Camera labels
+    @property
+    def camera_label_ids(self) -> List[str]:
+        """List of all camera label instance IDs."""
+        ...
+
+    def get_camera_labels_source(self, camera_label_id: str) -> CameraLabelsProtocol:
+        """Get a camera labels source by instance ID."""
+        ...
+
+    def get_camera_label_ids_for_camera(self, camera_id: str) -> List[str]:
+        """List label instance IDs associated with a specific camera.
+
+        Filters by metadata ``camera_id``, not by instance name.
+        """
+        ...
+
+    def get_camera_label_ids_for_type(self, label_type: Union[LabelType, str]) -> List[str]:
+        """List label instance IDs for a specific label type across all cameras."""
         ...
 
 
@@ -816,3 +840,71 @@ class RayBundleSensorPointCloudsSourceAdapter:
         step: Optional[int] = None,
     ) -> range:
         return range(*slice(start, stop, step).indices(self.pcs_count))
+
+
+@runtime_checkable
+class CameraLabelsProtocol(Protocol):
+    """Protocol for accessing camera-associated image labels.
+
+    Each source provides labels of one type for one camera, with independently-managed timestamps.
+    """
+
+    @property
+    def camera_id(self) -> str:
+        """Camera ID this label instance is associated with."""
+        ...
+
+    @property
+    def label_type(self) -> LabelType:
+        """Resolved label type (:attr:`~LabelType.UNKNOWN` for unrecognised types)."""
+        ...
+
+    @property
+    def label_type_name(self) -> str:
+        """Raw label type name string (always available, even for unknown types)."""
+        ...
+
+    @property
+    def label_schema(self) -> LabelSchema:
+        """Schema describing the label data format."""
+        ...
+
+    @property
+    def labels_count(self) -> int:
+        """Number of stored labels."""
+        ...
+
+    @property
+    def timestamps_us(self) -> "npt.NDArray[np.uint64]":
+        """Timestamps of all stored labels, sorted ascending."""
+        ...
+
+    @property
+    def generic_meta_data(self) -> Dict[str, JsonLike]:
+        """Component-level metadata."""
+        ...
+
+    def get_label_handle(self, timestamp_us: int) -> Any:
+        """Return a lazy handle to the label data at the given timestamp."""
+        ...
+
+    def get_label_data(self, timestamp_us: int) -> "npt.NDArray[Any]":
+        """Return the decoded / dequantized label array."""
+        ...
+
+    def get_label_encoded_data(self, timestamp_us: int) -> Optional[bytes]:
+        """Return raw encoded bytes for IMAGE_ENCODED labels, None for RAW."""
+        ...
+
+    def get_label_generic_meta_data(self, timestamp_us: int) -> Dict[str, JsonLike]:
+        """Return per-label metadata at the given timestamp."""
+        ...
+
+    def get_closest_timestamp_us(self, query_timestamp_us: int) -> int:
+        """Find the closest available label timestamp to the query."""
+        idx = closest_index_sorted(self.timestamps_us, query_timestamp_us)
+        return int(self.timestamps_us[idx])
+
+    def has_label_at(self, timestamp_us: int) -> bool:
+        """Check if a label exists at the exact timestamp."""
+        ...
