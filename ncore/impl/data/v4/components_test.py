@@ -34,15 +34,21 @@ from ncore.impl.data.types import (
     BivariateWindshieldModelParameters,
     CuboidTrackObservation,
     JsonLike,
+    LabelEncoding,
+    LabelSchema,
     LabelSource,
+    LabelType,
+    LabelUnit,
     OpenCVFisheyeCameraModelParameters,
     PointCloud,
+    QuantizationParams,
     ReferencePolynomial,
     RowOffsetStructuredSpinningLidarModelParameters,
     ShutterType,
 )
 
 from .components import (
+    CameraLabelsComponent,
     CameraSensorComponent,
     ComponentReader,
     ComponentWriter,
@@ -1811,3 +1817,473 @@ class TestPointCloudsComponent(unittest.TestCase):
         self.assertEqual(loaded_gmd["tags"], ["outdoor", "sunny"])
 
         tmpdir.cleanup()
+
+
+class TestCameraLabelsComponent(unittest.TestCase):
+    """Round-trip tests for the CameraLabelsComponent Writer/Reader."""
+
+    def setUp(self):
+        np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
+
+    def _make_writer(
+        self,
+        camera_id: str,
+        label_type,
+        label_schema: LabelSchema,
+        instance_name=None,
+        generic_meta_data: Dict[str, JsonLike] = {},
+    ):
+        """Create SequenceComponentGroupsWriter, register CameraLabelsComponent.Writer,
+        and return (writer, store_writer, tmpdir)."""
+        tmpdir = tempfile.TemporaryDirectory()
+        timestamp_interval = HalfClosedInterval(0, 10_000_001)
+
+        label_type_name: str = label_type.name if isinstance(label_type, LabelType) else label_type
+        if instance_name is None:
+            instance_name = f"{label_type_name}@{camera_id}"
+
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(tmpdir.name),
+            store_base_name=(seq_id := "label-test-seq"),
+            sequence_id=seq_id,
+            sequence_timestamp_interval_us=timestamp_interval,
+            store_type="directory",
+            generic_meta_data={},
+        )
+
+        writer = store_writer.register_component_writer(
+            CameraLabelsComponent.Writer,
+            instance_name,
+            generic_meta_data=generic_meta_data,
+            camera_id=camera_id,
+            label_type=label_type,
+            label_schema=label_schema,
+        )
+        return writer, store_writer, tmpdir
+
+    def _finalize_and_open_readers(
+        self, store_writer: SequenceComponentGroupsWriter
+    ) -> Dict[str, CameraLabelsComponent.Reader]:
+        """Finalize the writer, open a reader, and return all CameraLabelsComponent.Readers keyed by instance name."""
+        store_paths = store_writer.finalize()
+        reader = SequenceComponentGroupsReader(component_group_paths=store_paths)
+        return reader.open_component_readers(CameraLabelsComponent.Reader)
+
+    # ------------------------------------------------------------------
+    # 1. test_raw_depth_roundtrip
+    # ------------------------------------------------------------------
+    def test_raw_depth_roundtrip(self):
+        """Write 2 RAW float32 depth labels at different timestamps, read back and verify."""
+        schema = LabelSchema(
+            dtype=np.dtype("float32"),
+            shape_suffix=(),
+            encoding=LabelEncoding.RAW,
+            unit=LabelUnit.METERS,
+        )
+        writer, store_writer, tmpdir = self._make_writer("front", LabelType.DEPTH, schema)
+
+        depth1 = np.random.rand(64, 80).astype(np.float32) * 100.0
+        depth2 = np.random.rand(64, 80).astype(np.float32) * 50.0
+
+        writer.store_label(data=depth1, timestamp_us=1_000_000)
+        writer.store_label(data=depth2, timestamp_us=2_000_000)
+
+        readers = self._finalize_and_open_readers(store_writer)
+        instance_name = "DEPTH@front"
+        self.assertIn(instance_name, readers)
+        reader = readers[instance_name]
+
+        # Verify properties
+        self.assertEqual(reader.camera_id, "front")
+        self.assertEqual(reader.label_type, LabelType.DEPTH)
+        self.assertEqual(reader.label_type_name, "DEPTH")
+        loaded_schema = reader.label_schema
+        self.assertEqual(loaded_schema.unit, LabelUnit.METERS)
+        self.assertEqual(loaded_schema.encoding, LabelEncoding.RAW)
+        self.assertEqual(loaded_schema.dtype, np.dtype("float32"))
+
+        # Verify counts and timestamps
+        self.assertEqual(reader.labels_count, 2)
+        np.testing.assert_array_equal(
+            reader.timestamps_us,
+            np.array([1_000_000, 2_000_000], dtype=np.uint64),
+        )
+
+        # Verify data
+        np.testing.assert_array_almost_equal(reader.get_label_data(1_000_000), depth1)
+        np.testing.assert_array_almost_equal(reader.get_label_data(2_000_000), depth2)
+
+        # RAW encoding should return None for get_label_encoded_data
+        self.assertIsNone(reader.get_label_encoded_data(1_000_000))
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 2. test_raw_optical_flow_roundtrip
+    # ------------------------------------------------------------------
+    def test_raw_optical_flow_roundtrip(self):
+        """Write RAW float32 optical flow with shape_suffix=(2,), verify shape and data."""
+        schema = LabelSchema(
+            dtype=np.dtype("float32"),
+            shape_suffix=(2,),
+            encoding=LabelEncoding.RAW,
+            unit=LabelUnit.PIXELS,
+        )
+        writer, store_writer, tmpdir = self._make_writer("front", LabelType.OPTICAL_FLOW_FORWARD, schema)
+
+        flow = np.random.rand(48, 64, 2).astype(np.float32) * 10.0
+        writer.store_label(data=flow, timestamp_us=500_000)
+
+        readers = self._finalize_and_open_readers(store_writer)
+        reader = readers["OPTICAL_FLOW_FORWARD@front"]
+
+        loaded = reader.get_label_data(500_000)
+        self.assertEqual(loaded.shape, (48, 64, 2))
+        np.testing.assert_array_almost_equal(loaded, flow)
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 3. test_image_encoded_segmentation_roundtrip
+    # ------------------------------------------------------------------
+    def test_image_encoded_segmentation_roundtrip(self):
+        """Create a uint8 mask, encode as PNG, store as IMAGE_ENCODED, verify round-trip."""
+        schema = LabelSchema(
+            dtype=np.dtype("uint8"),
+            encoding=LabelEncoding.IMAGE_ENCODED,
+            encoded_format="png",
+            unit=LabelUnit.UNITLESS,
+        )
+        writer, store_writer, tmpdir = self._make_writer("left", LabelType.SEGMENTATION_SEMANTIC, schema)
+
+        mask = np.random.randint(0, 10, size=(32, 48), dtype=np.uint8)
+        buf = io.BytesIO()
+        PILImage.fromarray(mask, mode="L").save(buf, format="PNG")
+        png_bytes = buf.getvalue()
+
+        writer.store_label(data=png_bytes, timestamp_us=1_000_000)
+
+        readers = self._finalize_and_open_readers(store_writer)
+        reader = readers["SEGMENTATION_SEMANTIC@left"]
+
+        # Verify decoded data matches original
+        decoded = reader.get_label_data(1_000_000)
+        np.testing.assert_array_equal(decoded, mask)
+
+        # Verify encoded data round-trips
+        encoded = reader.get_label_encoded_data(1_000_000)
+        self.assertIsNotNone(encoded)
+        self.assertEqual(encoded, png_bytes)
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 4. test_quantized_depth_roundtrip
+    # ------------------------------------------------------------------
+    def test_quantized_depth_roundtrip(self):
+        """Quantize float32 depth to uint16, store, verify dequantized read is close to original."""
+        quant = QuantizationParams(
+            quantized_dtype=np.dtype("uint16"),
+            scale=0.001,
+            offset=0.0,
+        )
+        schema = LabelSchema(
+            dtype=np.dtype("float32"),
+            shape_suffix=(),
+            encoding=LabelEncoding.RAW,
+            quantization=quant,
+            unit=LabelUnit.METERS,
+        )
+        writer, store_writer, tmpdir = self._make_writer("front", LabelType.DEPTH, schema)
+
+        # Original data in range [0, 65.535] so it fits uint16 after quantization
+        original = np.random.rand(32, 48).astype(np.float32) * 60.0
+
+        # Pre-quantize: stored = (value - offset) / scale
+        quantized = np.round(original / 0.001).astype(np.uint16)
+
+        writer.store_label(data=quantized, timestamp_us=1_000_000)
+
+        readers = self._finalize_and_open_readers(store_writer)
+        reader = readers["DEPTH@front"]
+
+        dequantized = reader.get_label_data(1_000_000)
+        np.testing.assert_array_almost_equal(dequantized, quantized.astype(np.float64) * 0.001, decimal=3)
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 5. test_multiple_label_types_per_camera
+    # ------------------------------------------------------------------
+    def test_multiple_label_types_per_camera(self):
+        """Register both depth and segmentation writers for the same camera, verify both readers exist."""
+        tmpdir = tempfile.TemporaryDirectory()
+        timestamp_interval = HalfClosedInterval(0, 10_000_001)
+
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(tmpdir.name),
+            store_base_name=(seq_id := "multi-label-seq"),
+            sequence_id=seq_id,
+            sequence_timestamp_interval_us=timestamp_interval,
+            store_type="directory",
+            generic_meta_data={},
+        )
+
+        depth_schema = LabelSchema(
+            dtype=np.dtype("float32"),
+            encoding=LabelEncoding.RAW,
+            unit=LabelUnit.METERS,
+        )
+        seg_schema = LabelSchema(
+            dtype=np.dtype("uint8"),
+            encoding=LabelEncoding.IMAGE_ENCODED,
+            encoded_format="png",
+            unit=LabelUnit.UNITLESS,
+        )
+
+        depth_writer = store_writer.register_component_writer(
+            CameraLabelsComponent.Writer,
+            "DEPTH@front",
+            camera_id="front",
+            label_type=LabelType.DEPTH,
+            label_schema=depth_schema,
+        )
+        seg_writer = store_writer.register_component_writer(
+            CameraLabelsComponent.Writer,
+            "SEGMENTATION_SEMANTIC@front",
+            camera_id="front",
+            label_type=LabelType.SEGMENTATION_SEMANTIC,
+            label_schema=seg_schema,
+        )
+
+        depth_writer.store_label(data=np.ones((16, 16), dtype=np.float32), timestamp_us=1_000_000)
+
+        mask = np.zeros((16, 16), dtype=np.uint8)
+        buf = io.BytesIO()
+        PILImage.fromarray(mask, mode="L").save(buf, format="PNG")
+        seg_writer.store_label(data=buf.getvalue(), timestamp_us=1_000_000)
+
+        readers = self._finalize_and_open_readers(store_writer)
+        self.assertIn("DEPTH@front", readers)
+        self.assertIn("SEGMENTATION_SEMANTIC@front", readers)
+        self.assertEqual(readers["DEPTH@front"].camera_id, "front")
+        self.assertEqual(readers["SEGMENTATION_SEMANTIC@front"].camera_id, "front")
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 6. test_sparse_label_coverage
+    # ------------------------------------------------------------------
+    def test_sparse_label_coverage(self):
+        """Store labels at only 2 out of many possible timestamps, verify timestamps_us is sorted."""
+        schema = LabelSchema(
+            dtype=np.dtype("float32"),
+            encoding=LabelEncoding.RAW,
+            unit=LabelUnit.METERS,
+        )
+        writer, store_writer, tmpdir = self._make_writer("front", LabelType.DEPTH, schema)
+
+        # Store in non-sorted order
+        writer.store_label(data=np.ones((8, 8), dtype=np.float32), timestamp_us=5_000_000)
+        writer.store_label(data=np.ones((8, 8), dtype=np.float32), timestamp_us=1_000_000)
+
+        readers = self._finalize_and_open_readers(store_writer)
+        reader = readers["DEPTH@front"]
+
+        self.assertEqual(reader.labels_count, 2)
+        ts = reader.timestamps_us
+        # Must be sorted
+        self.assertTrue(np.all(ts[:-1] <= ts[1:]))
+        np.testing.assert_array_equal(ts, np.array([1_000_000, 5_000_000], dtype=np.uint64))
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 7. test_forward_compat_unknown_label_type
+    # ------------------------------------------------------------------
+    def test_forward_compat_unknown_label_type(self):
+        """Use a custom string as label_type; reader should return LabelType.UNKNOWN but label_type_name returns raw."""
+        schema = LabelSchema(
+            dtype=np.dtype("float32"),
+            encoding=LabelEncoding.RAW,
+        )
+        writer, store_writer, tmpdir = self._make_writer(
+            "front",
+            "SOME_FUTURE_TYPE",
+            schema,
+            instance_name="SOME_FUTURE_TYPE@front",
+        )
+
+        writer.store_label(data=np.ones((8, 8), dtype=np.float32), timestamp_us=1_000_000)
+
+        readers = self._finalize_and_open_readers(store_writer)
+        reader = readers["SOME_FUTURE_TYPE@front"]
+
+        self.assertEqual(reader.label_type, LabelType.UNKNOWN)
+        self.assertEqual(reader.label_type_name, "SOME_FUTURE_TYPE")
+
+        # Data should still be readable
+        data = reader.get_label_data(1_000_000)
+        np.testing.assert_array_equal(data, np.ones((8, 8), dtype=np.float32))
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 8. test_reject_label_type_with_at_sign
+    # ------------------------------------------------------------------
+    def test_reject_label_type_with_at_sign(self):
+        """Passing a label_type containing '@' should raise AssertionError."""
+        schema = LabelSchema(
+            dtype=np.dtype("float32"),
+            encoding=LabelEncoding.RAW,
+        )
+        tmpdir = tempfile.TemporaryDirectory()
+        timestamp_interval = HalfClosedInterval(0, 10_000_001)
+
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(tmpdir.name),
+            store_base_name=(seq_id := "reject-at-seq"),
+            sequence_id=seq_id,
+            sequence_timestamp_interval_us=timestamp_interval,
+            store_type="directory",
+            generic_meta_data={},
+        )
+
+        with self.assertRaises(AssertionError):
+            store_writer.register_component_writer(
+                CameraLabelsComponent.Writer,
+                "BAD@TYPE@front",
+                camera_id="front",
+                label_type="BAD@TYPE",
+                label_schema=schema,
+            )
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 9. test_per_label_generic_meta_data
+    # ------------------------------------------------------------------
+    def test_per_label_generic_meta_data(self):
+        """Store labels with per-label and component-level generic metadata, verify round-trip."""
+        schema = LabelSchema(
+            dtype=np.dtype("float32"),
+            encoding=LabelEncoding.RAW,
+        )
+        component_meta = {"source": "ground_truth", "version": 2}
+        writer, store_writer, tmpdir = self._make_writer(
+            "front", LabelType.DEPTH, schema, generic_meta_data=component_meta
+        )
+
+        per_label_meta = {"quality": 0.95, "annotator": "auto"}
+        writer.store_label(
+            data=np.ones((8, 8), dtype=np.float32),
+            timestamp_us=1_000_000,
+            generic_meta_data=per_label_meta,
+        )
+
+        readers = self._finalize_and_open_readers(store_writer)
+        reader = readers["DEPTH@front"]
+
+        # Component-level generic_meta_data
+        self.assertEqual(reader.generic_meta_data["source"], "ground_truth")
+        self.assertEqual(reader.generic_meta_data["version"], 2)
+
+        # Per-label generic_meta_data
+        label_meta = reader.get_label_generic_meta_data(1_000_000)
+        self.assertAlmostEqual(label_meta["quality"], 0.95)
+        self.assertEqual(label_meta["annotator"], "auto")
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 10. test_label_handle_deferred_decoding
+    # ------------------------------------------------------------------
+    def test_label_handle_deferred_decoding(self):
+        """Get a LabelDataHandle, verify its label_schema, then call get_data() and get_encoded_data()."""
+        schema = LabelSchema(
+            dtype=np.dtype("float32"),
+            encoding=LabelEncoding.RAW,
+            unit=LabelUnit.METERS,
+        )
+        writer, store_writer, tmpdir = self._make_writer("front", LabelType.DEPTH, schema)
+
+        depth = np.random.rand(16, 16).astype(np.float32)
+        writer.store_label(data=depth, timestamp_us=1_000_000)
+
+        readers = self._finalize_and_open_readers(store_writer)
+        reader = readers["DEPTH@front"]
+
+        handle = reader.get_label_handle(1_000_000)
+        self.assertEqual(handle.label_schema.encoding, LabelEncoding.RAW)
+        self.assertEqual(handle.label_schema.dtype, np.dtype("float32"))
+        self.assertEqual(handle.label_schema.unit, LabelUnit.METERS)
+
+        np.testing.assert_array_almost_equal(handle.get_data(), depth)
+        self.assertIsNone(handle.get_encoded_data())
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 11. test_empty_writer_finalize
+    # ------------------------------------------------------------------
+    def test_empty_writer_finalize(self):
+        """Finalize with no labels stored; verify labels_count=0 and timestamps_us is empty."""
+        schema = LabelSchema(
+            dtype=np.dtype("float32"),
+            encoding=LabelEncoding.RAW,
+        )
+        writer, store_writer, tmpdir = self._make_writer("front", LabelType.DEPTH, schema)
+
+        readers = self._finalize_and_open_readers(store_writer)
+        reader = readers["DEPTH@front"]
+
+        self.assertEqual(reader.labels_count, 0)
+        np.testing.assert_array_equal(reader.timestamps_us, np.array([], dtype=np.uint64))
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 12. test_schema_json_roundtrip
+    # ------------------------------------------------------------------
+    def test_schema_json_roundtrip(self):
+        """Create a LabelSchema with all fields set, round-trip through to_dict()/from_dict()."""
+        quant = QuantizationParams(
+            quantized_dtype=np.dtype("uint16"),
+            scale=0.001,
+            offset=-5.0,
+        )
+        original = LabelSchema(
+            dtype=np.dtype("float32"),
+            shape_suffix=(2,),
+            encoding=LabelEncoding.RAW,
+            encoded_format="png",
+            quantization=quant,
+            unit=LabelUnit.METERS,
+        )
+
+        serialized = original.to_dict()
+        deserialized = LabelSchema.from_dict(serialized)
+
+        self.assertEqual(deserialized.dtype, original.dtype)
+        self.assertEqual(deserialized.shape_suffix, original.shape_suffix)
+        self.assertEqual(deserialized.encoding, original.encoding)
+        self.assertEqual(deserialized.encoded_format, original.encoded_format)
+        self.assertEqual(deserialized.unit, original.unit)
+
+        # Quantization
+        self.assertIsNotNone(deserialized.quantization)
+        self.assertEqual(deserialized.quantization.quantized_dtype, quant.quantized_dtype)
+        self.assertAlmostEqual(deserialized.quantization.scale, quant.scale)
+        self.assertAlmostEqual(deserialized.quantization.offset, quant.offset)
+
+        # Also test with None quantization and None unit
+        minimal = LabelSchema(
+            dtype=np.dtype("uint8"),
+            encoding=LabelEncoding.IMAGE_ENCODED,
+            encoded_format="png",
+        )
+        rt = LabelSchema.from_dict(minimal.to_dict())
+        self.assertEqual(rt.dtype, np.dtype("uint8"))
+        self.assertEqual(rt.encoding, LabelEncoding.IMAGE_ENCODED)
+        self.assertIsNone(rt.quantization)
+        self.assertIsNone(rt.unit)
