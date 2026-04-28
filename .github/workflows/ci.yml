@@ -28,10 +28,9 @@ on:
   push:
     branches:
     - main
+    - 'pull-request/[0-9]+'
     tags:
     - '**'
-  pull_request:
-    branches: ['**']
 
 permissions:
   contents: read
@@ -46,20 +45,24 @@ concurrency:
 
 jobs:
   # =============================================================================
-  # Build and Test - runs on all branches
+  # Build and Test - runs on all branches, includes GPU tests
   # =============================================================================
   build-and-test:
-    runs-on: ubuntu-22.04
+    runs-on: linux-amd64-gpu-rtxpro6000-latest-1
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Log GPU and driver info
+        run: nvidia-smi
+
       - name: Setup Bazel environment
         uses: ./.github/actions/setup-bazel
         with:
           install-pandoc: true
-          free-disk-space: true
+          free-disk-space: false
+          gpu-enabled: true
           github-token: ${{ secrets.NVIDIA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Check code format
@@ -76,7 +79,7 @@ jobs:
   export-docs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && github.repository == 'NVIDIA/ncore'
     needs: build-and-test
-    runs-on: ubuntu-22.04
+    runs-on: linux-amd64-cpu8
 
     steps:
       - name: Checkout code
@@ -103,7 +106,7 @@ jobs:
   deploy-docs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && github.repository == 'NVIDIA/ncore'
     needs: export-docs
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -119,7 +122,7 @@ jobs:
   publish-pypi:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && github.repository == 'NVIDIA/ncore'
     needs: build-and-test
-    runs-on: ubuntu-22.04
+    runs-on: linux-amd64-cpu8
 
     steps:
       - name: Checkout code

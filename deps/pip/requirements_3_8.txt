@@ -246,8 +246,8 @@ tomli==2.0.1 \
     --hash=sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc \
     --hash=sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f
     # via pytest
-torch==1.12.1+cu116 \
-    --hash=sha256:dda312901220895087cc83d3665464a3dc171d04460c61c31af463efbfb54896
+torch==1.12.1+cpu \
+    --hash=sha256:42b7d500629c9e99d875cb204a1a1f5b3f65f6743823b21de9b4cba5962300d8
     # via
     #   -r deps/pip/requirements_3_8.in
     #   -r deps/pip/requirements_ncore.in
