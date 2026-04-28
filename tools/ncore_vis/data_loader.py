@@ -28,6 +28,7 @@ import pandas as pd
 
 from ncore.impl.common.transformations import HalfClosedInterval, PoseGraphInterpolator
 from ncore.impl.data.compat import (
+    CameraLabelsProtocol,
     CameraSensorProtocol,
     LidarSensorProtocol,
     PointCloudsSourceProtocol,
@@ -35,7 +36,7 @@ from ncore.impl.data.compat import (
     SensorProtocol,
     SequenceLoaderProtocol,
 )
-from ncore.impl.data.types import CuboidTrackObservation, FrameTimepoint, LabelSource
+from ncore.impl.data.types import CuboidTrackObservation, FrameTimepoint, LabelCategory, LabelSource, LabelType
 from tools.ncore_vis.tracks import CuboidTrack
 
 
@@ -129,6 +130,29 @@ class DataLoader:
     def get_point_clouds_source(self, source_id: str) -> PointCloudsSourceProtocol:
         """Return a point-clouds source by ID (cached)."""
         return self._loader.get_point_clouds_source(source_id)
+
+    # ------------------------------------------------------------------
+    # Camera labels
+    # ------------------------------------------------------------------
+
+    @property
+    def camera_labels_ids(self) -> List[str]:
+        """All camera label instance IDs in the sequence."""
+        return self._loader.camera_labels_ids
+
+    @functools.lru_cache(maxsize=None)
+    def get_camera_labels(self, camera_labels_id: str) -> CameraLabelsProtocol:
+        """Return a camera labels source by instance ID (cached)."""
+        return self._loader.get_camera_labels(camera_labels_id)
+
+    def query_camera_labels(
+        self,
+        camera_id: str,
+        label_type: Optional[LabelType] = None,
+        label_category: Optional[LabelCategory] = None,
+    ) -> List[CameraLabelsProtocol]:
+        """Query camera label sources matching filters."""
+        return self._loader.query_camera_labels(camera_id, label_type, label_category)
 
     # ------------------------------------------------------------------
     # Cross-sensor frame synchronization
