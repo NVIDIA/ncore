@@ -40,15 +40,21 @@ from ncore.impl.common.transformations import (
 from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.types import (
     BBox3,
+    CameraLabelDescriptor,
     CuboidTrackObservation,
     JsonLike,
+    LabelCategory,
+    LabelEncoding,
+    LabelSchema,
     LabelSource,
+    LabelType,
     OpenCVPinholeCameraModelParameters,
     RowOffsetStructuredSpinningLidarModelParameters,
     ShutterType,
 )
 from ncore.impl.data.util import FOV, relative_angle
 from ncore.impl.data.v4.components import (
+    CameraLabelsComponent,
     CameraSensorComponent,
     CuboidsComponent,
     IntrinsicsComponent,
@@ -166,12 +172,15 @@ class WaymoConverter4(FileBasedDataConverter):
         self.lidar_ids = self.get_active_lidar_ids([lidar for lidar in self.LIDAR_MAP.values()])
         self.radar_ids = (self.get_active_radar_ids([]),)
 
+        # Generate camera labels IDs for cameras that may have panoptic segmentation
+        camera_labels_ids = [f"segmentation.panoptic@{cam_id}" for cam_id in self.camera_ids]
+
         self.component_groups = ComponentGroupAssignments.create(
             camera_ids=self.camera_ids,
             lidar_ids=self.lidar_ids,
             radar_ids=[],  # No radars for now
             point_clouds_ids=[],  # No native point cloud sources
-            camera_labels_ids=[],  # No camera labels
+            camera_labels_ids=camera_labels_ids,
             profile=self.component_group_profile,
         )
 
@@ -842,12 +851,33 @@ class WaymoConverter4(FileBasedDataConverter):
                 CameraSensorComponent.Writer,
                 component_instance_name=camera_ncore_id,
                 group_name=self.component_groups.camera_component_groups.get(camera_ncore_id),
+                generic_meta_data={},
+            )
+
+            # Register a panoptic segmentation label writer for this camera
+            panoptic_descriptor = CameraLabelDescriptor(
+                camera_id=camera_ncore_id,
+                label_type=LabelType(LabelCategory.SEGMENTATION, "panoptic"),
+                label_schema=LabelSchema(
+                    dtype=np.dtype("uint8"),
+                    shape_suffix=(),
+                    encoding=LabelEncoding.IMAGE_ENCODED,
+                    encoded_format="png",
+                ),
+            )
+            panoptic_writer = self.store_writer.register_component_writer(
+                CameraLabelsComponent.Writer,
+                component_instance_name=panoptic_descriptor.default_instance_name,
+                group_name=self.component_groups.camera_labels_component_groups.get(
+                    panoptic_descriptor.default_instance_name
+                ),
                 generic_meta_data={
                     "label-class-string-id-map": {
                         label_string: label_id
                         for label_id, label_string in self.CAMERA_LABEL_CLASS_ID_STRING_MAP.items()
-                    }
+                    },
                 },
+                descriptor=panoptic_descriptor,
             )
 
             for frame in tqdm.tqdm(frames, desc=f"Process {camera_ncore_id}"):
@@ -876,11 +906,11 @@ class WaymoConverter4(FileBasedDataConverter):
                     and (panoptic_label_divisor := camera_segmentation_label.panoptic_label_divisor) > 0
                     and hasattr(camera_segmentation_label, "panoptic_label")
                 ):
-                    # Store the original waymo png segmentation data
-                    generic_data["panoptic_label_png"] = np.frombuffer(
-                        camera_segmentation_label.panoptic_label, dtype=np.uint8
+                    panoptic_writer.store_label(
+                        data=bytes(camera_segmentation_label.panoptic_label),
+                        timestamp_us=frame_end_timestamp_us,
+                        generic_meta_data={"panoptic_label_divisor": panoptic_label_divisor},
                     )
-                    generic_meta_data["panoptic_label_divisor"] = panoptic_label_divisor
 
                 # Store the image and its metadata
                 camera_writer.store_frame(
