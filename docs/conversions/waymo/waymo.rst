@@ -70,6 +70,17 @@ Run the converter with Bazel from the repository root:
         --output-dir <PATH_TO_OUTPUT> \
         waymo-v4
 
+To convert only a time slice of each sequence, use ``--seek-sec`` and/or
+``--duration-sec``:
+
+.. code-block:: bash
+
+    # Convert 10 seconds starting 5 seconds into each sequence
+    bazel run //tools/data_converter/waymo:convert -- \
+        --root-dir <PATH_TO_TFRECORDS> \
+        --output-dir <PATH_TO_OUTPUT> \
+        waymo-v4 --seek-sec 5.0 --duration-sec 10.0
+
 **Base arguments** (required):
 
 .. list-table::
@@ -130,6 +141,17 @@ Run the converter with Bazel from the repository root:
        ``localized`` rebases poses relative to the first frame (matching,
        e.g., the PAI converter pattern) and stores the original first pose
        as ``world_global`` in float64
+   * - ``--seek-sec FLOAT``
+     - ``None``
+     - Time to skip from the start of the sequence (in seconds). When set,
+       frames before this offset are excluded from the output. The full pose
+       range is still used internally for motion compensation
+   * - ``--duration-sec FLOAT``
+     - ``None``
+     - Restrict total duration of the converted sequence (in seconds).
+       Measured from the (possibly seeked) start time. When both
+       ``--seek-sec`` and ``--duration-sec`` are given, only frames in the
+       window ``[seek, seek + duration]`` are converted
 
 For the complete implementation, see
 ``tools/data_converter/waymo/converter.py``.
