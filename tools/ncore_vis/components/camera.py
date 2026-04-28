@@ -81,6 +81,113 @@ _PROJECTION_MODES: List[str] = ["rolling-shutter", "mean", "start", "end"]
 _JET_CMAP: matplotlib.colors.Colormap = matplotlib.colormaps["jet"]
 _TURBO_CMAP: matplotlib.colors.Colormap = matplotlib.colormaps["turbo"]
 
+# 20-color palette for segmentation visualization.
+_SEGMENTATION_PALETTE: np.ndarray = np.array(
+    [
+        [0, 0, 0],
+        [128, 0, 0],
+        [0, 128, 0],
+        [128, 128, 0],
+        [0, 0, 128],
+        [128, 0, 128],
+        [0, 128, 128],
+        [128, 128, 128],
+        [64, 0, 0],
+        [192, 0, 0],
+        [64, 128, 0],
+        [192, 128, 0],
+        [64, 0, 128],
+        [192, 0, 128],
+        [64, 128, 128],
+        [192, 128, 128],
+        [0, 64, 0],
+        [128, 64, 0],
+        [0, 192, 0],
+        [128, 192, 0],
+    ],
+    dtype=np.uint8,
+)
+
+
+def _colorize_depth(data: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
+    """Colorize a depth map using a turbo colormap with percentile normalization."""
+    if data.ndim > 2:
+        data = data[:, :, 0]
+    valid = data[data > 0] if np.any(data > 0) else data.ravel()
+    vmin, vmax = float(np.percentile(valid, 2)), float(np.percentile(valid, 98))
+    if vmax <= vmin:
+        vmax = vmin + 1.0
+    normalized = np.clip((data - vmin) / (vmax - vmin), 0.0, 1.0)
+    rgba = _TURBO_CMAP(normalized)
+    colored: np.ndarray = (rgba[:, :, :3] * 255.0).astype(np.uint8)
+    if colored.shape[:2] != (target_h, target_w):
+        colored = cv2.resize(colored, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+    return colored
+
+
+def _colorize_segmentation(data: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
+    """Colorize a segmentation map using a fixed color palette."""
+    if data.ndim > 2:
+        data = data[:, :, 0]
+    indices = data.astype(np.int32) % len(_SEGMENTATION_PALETTE)
+    colored = _SEGMENTATION_PALETTE[indices]
+    if colored.shape[:2] != (target_h, target_w):
+        colored = cv2.resize(colored, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+    return colored
+
+
+def _colorize_mask(data: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
+    """Colorize a binary or multi-level mask as green on black."""
+    if data.ndim == 3 and data.shape[2] == 3:
+        # Already RGB (e.g. depth validity mask) -- display directly
+        colored = data.astype(np.uint8) if data.dtype != np.uint8 else data
+    elif data.ndim > 2:
+        data = data[:, :, 0]
+        colored = np.zeros((data.shape[0], data.shape[1], 3), dtype=np.uint8)
+        colored[data > 0] = [0, 255, 0]
+    else:
+        colored = np.zeros((data.shape[0], data.shape[1], 3), dtype=np.uint8)
+        colored[data > 0] = [0, 255, 0]
+    if colored.shape[:2] != (target_h, target_w):
+        colored = cv2.resize(colored, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+    return colored
+
+
+def _colorize_geometry(data: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
+    """Colorize geometry data (normals, ray directions) as RGB from [-1, 1] range."""
+    colored: np.ndarray
+    if data.ndim == 3 and data.shape[2] >= 3:
+        if data.dtype in (np.float32, np.float64, np.float16):
+            colored = np.clip((data[:, :, :3] + 1.0) * 127.5, 0, 255).astype(np.uint8)
+        else:
+            colored = data[:, :, :3].astype(np.uint8)
+    else:
+        return _colorize_generic(data, target_h, target_w)
+    if colored.shape[:2] != (target_h, target_w):
+        colored = cv2.resize(colored, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+    return colored
+
+
+def _colorize_generic(data: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
+    """Generic grayscale visualization for unknown label types."""
+    if data.ndim > 2:
+        data = data[:, :, 0]
+    if data.dtype in (np.float32, np.float64, np.float16):
+        valid = data[np.isfinite(data)]
+        if len(valid) > 0:
+            vmin, vmax = float(np.percentile(valid, 2)), float(np.percentile(valid, 98))
+        else:
+            vmin, vmax = 0.0, 1.0
+        if vmax <= vmin:
+            vmax = vmin + 1.0
+        gray = np.clip((data - vmin) / (vmax - vmin) * 255, 0, 255).astype(np.uint8)
+    else:
+        gray = data.astype(np.uint8)
+    colored = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+    if colored.shape[:2] != (target_h, target_w):
+        colored = cv2.resize(colored, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+    return colored
+
 
 @register_component
 class CameraComponent(VisualizationComponent):
@@ -325,6 +432,46 @@ class CameraComponent(VisualizationComponent):
                         mask_opacity_slider=mask_opacity_slider,
                     )
 
+                # -- Camera labels overlay --
+                camera_labels_ids = self.data_loader.camera_labels_ids
+                if camera_labels_ids:
+                    self._show_camera_labels: bool = False
+                    with self.client.gui.add_folder("Camera Labels"):
+                        show_camera_labels_checkbox = self.client.gui.add_checkbox(
+                            "Show", initial_value=False, hint="Overlay camera label visualization"
+                        )
+                        label_options = ["(none)"] + list(camera_labels_ids)
+                        camera_label_select = self.client.gui.add_dropdown(
+                            "Label Source",
+                            options=label_options,
+                            initial_value="(none)",
+                            hint="Camera label source to visualize",
+                        )
+                        camera_label_opacity = self.client.gui.add_slider(
+                            "Opacity",
+                            min=0.0,
+                            max=1.0,
+                            step=0.05,
+                            initial_value=0.5,
+                            hint="Blend opacity for overlay mode",
+                        )
+                        camera_label_replace = self.client.gui.add_checkbox(
+                            "Replace Image",
+                            initial_value=False,
+                            hint="Replace image with label visualization instead of blending",
+                        )
+                    self._camera_label_select = camera_label_select
+                    self._camera_label_opacity = camera_label_opacity
+                    self._camera_label_replace = camera_label_replace
+                    self._bind_camera_label_settings(
+                        show_camera_labels_checkbox=show_camera_labels_checkbox,
+                        camera_label_select=camera_label_select,
+                        camera_label_opacity=camera_label_opacity,
+                        camera_label_replace=camera_label_replace,
+                    )
+                else:
+                    self._show_camera_labels = False
+
             # -- Per-camera folders --
             for camera_id in self.data_loader.camera_ids:
                 cam = self.data_loader.get_camera_sensor(camera_id)
@@ -532,6 +679,32 @@ class CameraComponent(VisualizationComponent):
             self._mask_opacity = mask_opacity_slider.value
             self._refresh_all_cameras()
 
+    def _bind_camera_label_settings(
+        self,
+        show_camera_labels_checkbox: viser.GuiInputHandle[bool],
+        camera_label_select: viser.GuiInputHandle[str],
+        camera_label_opacity: viser.GuiInputHandle[float],
+        camera_label_replace: viser.GuiInputHandle[bool],
+    ) -> None:
+        """Wire up camera labels overlay shared-setting callbacks."""
+
+        @show_camera_labels_checkbox.on_update
+        def _(_: viser.GuiEvent) -> None:
+            self._show_camera_labels = show_camera_labels_checkbox.value
+            self._refresh_all_cameras()
+
+        @camera_label_select.on_update
+        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+            self._refresh_all_cameras()
+
+        @camera_label_opacity.on_update
+        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+            self._refresh_all_cameras()
+
+        @camera_label_replace.on_update
+        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+            self._refresh_all_cameras()
+
     def _build_camera_models(self) -> None:
         """Build (or rebuild) the per-camera :class:`CameraModel` cache using ``self._device``."""
         self._camera_models = {
@@ -634,6 +807,12 @@ class CameraComponent(VisualizationComponent):
                 except Exception:
                     logger.debug("Mask overlay failed for %s frame %d", camera_id, frame_idx, exc_info=True)
 
+            if self._show_camera_labels:
+                try:
+                    image = self._overlay_camera_labels(camera_id, frame_idx, image)
+                except Exception:
+                    logger.debug("Camera label overlay failed for %s frame %d", camera_id, frame_idx, exc_info=True)
+
             frustum_handle = self.client.scene.add_camera_frustum(
                 f"/cameras/{camera_id}/pose/frustum",
                 fov=_DEFAULT_CAMERA_FOV,
@@ -704,6 +883,66 @@ class CameraComponent(VisualizationComponent):
         ).astype(np.uint8)
 
         return output
+
+    # ------------------------------------------------------------------
+    # Camera labels overlay
+    # ------------------------------------------------------------------
+
+    def _overlay_camera_labels(self, camera_id: str, frame_idx: int, image: np.ndarray) -> np.ndarray:
+        """Overlay or replace the camera image with a camera label visualization.
+
+        Args:
+            camera_id: Camera sensor ID.
+            frame_idx: Camera frame index.
+            image: RGB image array (H, W, 3), uint8.
+
+        Returns:
+            Image with label visualization applied.
+        """
+        label_id = self._camera_label_select.value
+        if label_id == "(none)":
+            return image
+
+        source = self.data_loader.get_camera_labels(label_id)
+
+        # Only apply if this label belongs to this camera
+        if source.camera_id != camera_id:
+            return image
+
+        # Get camera frame timestamp
+        cam = self.data_loader.get_camera_sensor(camera_id)
+        frame_ts = cam.get_frame_timestamp_us(frame_idx, FrameTimepoint.END)
+
+        # Find closest label
+        if source.labels_count == 0:
+            return image
+        closest_ts = source.get_closest_timestamp_us(frame_ts)
+        label = source.get_label(closest_ts)
+        label_data = label.get_data()
+
+        # Render based on category
+        from ncore.impl.data.types import LabelCategory
+
+        category = source.label_type.category
+        h, w = image.shape[:2]
+
+        if category == LabelCategory.DEPTH:
+            vis = _colorize_depth(label_data, h, w)
+        elif category == LabelCategory.SEGMENTATION:
+            vis = _colorize_segmentation(label_data, h, w)
+        elif category == LabelCategory.MASK:
+            vis = _colorize_mask(label_data, h, w)
+        elif category == LabelCategory.GEOMETRY:
+            vis = _colorize_geometry(label_data, h, w)
+        else:
+            vis = _colorize_generic(label_data, h, w)
+
+        # Blend or replace
+        if self._camera_label_replace.value:
+            return vis
+        else:
+            alpha = self._camera_label_opacity.value
+            return (image.astype(np.float32) * (1 - alpha) + vis.astype(np.float32) * alpha).astype(np.uint8)
 
     # ------------------------------------------------------------------
     # Lidar projection overlay
