@@ -1872,31 +1872,25 @@ class CameraLabelsComponent:
             self,
             component_group: zarr.Group,
             sequence_timestamp_interval_us: HalfClosedInterval,
-            camera_id: str,
-            label_type: Union[types.LabelType, str],
-            label_schema: types.LabelSchema,
+            descriptor: types.CameraLabelDescriptor,
         ) -> None:
             super().__init__(component_group, sequence_timestamp_interval_us)
 
-            # Resolve label type to name string
-            label_type_name: str = label_type.name if isinstance(label_type, types.LabelType) else label_type
-            assert "@" not in label_type_name, f"label_type_name must not contain '@': {label_type_name}"
-            assert len(camera_id) > 0, "camera_id must not be empty"
-            if label_schema.encoding == types.LabelEncoding.IMAGE_ENCODED:
-                assert label_schema.encoded_format is not None, (
+            assert len(descriptor.camera_id) > 0, "camera_id must not be empty"
+            if descriptor.label_schema.encoding == types.LabelEncoding.IMAGE_ENCODED:
+                assert descriptor.label_schema.encoded_format is not None, (
                     "encoded_format is required when encoding is IMAGE_ENCODED"
                 )
 
-            self._camera_id = camera_id
-            self._label_type_name = label_type_name
-            self._label_schema = label_schema
+            self._descriptor = descriptor
+            self._label_schema = descriptor.label_schema
 
             # Write component-level .zattrs
             self._group.attrs.update(
                 {
-                    "camera_id": camera_id,
-                    "label_type": label_type_name,
-                    "label_schema": label_schema.to_dict(),
+                    "camera_id": descriptor.camera_id,
+                    "label_type": descriptor.label_type.to_dict(),
+                    "label_schema": descriptor.label_schema.to_dict(),
                 }
             )
 
@@ -1986,19 +1980,39 @@ class CameraLabelsComponent:
             )
 
     # --------------------------------------------------------------------------
-    # LabelDataHandle
+    # CameraLabelImpl
     # --------------------------------------------------------------------------
 
-    class LabelDataHandle:
-        """References label data without eagerly loading it."""
+    class CameraLabelImpl:
+        """References label data without eagerly loading it.
 
-        def __init__(self, label_group: zarr.Group, schema: types.LabelSchema) -> None:
+        Implements the :class:`CameraLabel` protocol, providing access to the label
+        data, schema, timestamp, and per-label metadata.
+        """
+
+        def __init__(
+            self,
+            label_group: zarr.Group,
+            schema: types.LabelSchema,
+            timestamp_us: int,
+            generic_meta_data: Dict[str, types.JsonLike],
+        ) -> None:
             self._label_group = label_group
             self._schema = schema
+            self._timestamp_us = timestamp_us
+            self._generic_meta_data = generic_meta_data
 
         @property
-        def label_schema(self) -> types.LabelSchema:
+        def schema(self) -> types.LabelSchema:
             return self._schema
+
+        @property
+        def timestamp_us(self) -> int:
+            return self._timestamp_us
+
+        @property
+        def generic_meta_data(self) -> Dict[str, types.JsonLike]:
+            return self._generic_meta_data
 
         def get_data(self) -> "npt.NDArray[Any]":
             """Load and return the label data as a numpy array.
@@ -2055,14 +2069,21 @@ class CameraLabelsComponent:
 
         @property
         def label_type(self) -> types.LabelType:
-            return types.LabelType.resolve(str(self._group.attrs["label_type"]))
+            raw = self._group.attrs["label_type"]
+            if isinstance(raw, dict):
+                # New tagged-union format: {"category": "DEPTH", "qualifier": "z", "unit": "METERS"}
+                cat_str = raw.get("category", "UNKNOWN")
+                category = types.LabelCategory.resolve(cat_str)
+                qualifier = raw.get("qualifier", "")
+                unit_str = raw.get("unit", None)
+                unit = types.LabelUnit.resolve(unit_str) if unit_str is not None else None
+                return types.LabelType(category, qualifier, unit)
+            else:
+                # Legacy: stored as a plain string – map to UNKNOWN category
+                return types.LabelType(types.LabelCategory.UNKNOWN, str(raw))
 
         @property
-        def label_type_name(self) -> str:
-            return str(self._group.attrs["label_type"])
-
-        @property
-        def label_schema(self) -> types.LabelSchema:
+        def schema(self) -> types.LabelSchema:
             return types.LabelSchema.from_dict(self._group.attrs["label_schema"])
 
         @property
@@ -2081,17 +2102,8 @@ class CameraLabelsComponent:
             )
             return cast(zarr.Group, self._group["labels"][str(timestamp_us)])
 
-        def get_label_handle(self, timestamp_us: int) -> CameraLabelsComponent.LabelDataHandle:
-            return CameraLabelsComponent.LabelDataHandle(self._label_group(timestamp_us), self.label_schema)
-
-        def get_label_data(self, timestamp_us: int) -> "npt.NDArray[Any]":
-            """Load and return the label data for the given timestamp."""
-            return self.get_label_handle(timestamp_us).get_data()
-
-        def get_label_encoded_data(self, timestamp_us: int) -> Optional[bytes]:
-            """Return raw encoded bytes for the given timestamp, or None for RAW labels."""
-            return self.get_label_handle(timestamp_us).get_encoded_data()
-
-        def get_label_generic_meta_data(self, timestamp_us: int) -> Dict[str, types.JsonLike]:
-            """Return per-label generic metadata for the given timestamp."""
-            return dict(self._label_group(timestamp_us).attrs.get("generic_meta_data", {}))
+        def get_label(self, timestamp_us: int) -> CameraLabelsComponent.CameraLabelImpl:
+            """Return a lazy handle to the label data at the given timestamp."""
+            label_group = self._label_group(timestamp_us)
+            generic_meta_data = dict(label_group.attrs.get("generic_meta_data", {}))
+            return CameraLabelsComponent.CameraLabelImpl(label_group, self.schema, timestamp_us, generic_meta_data)

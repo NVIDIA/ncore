@@ -68,6 +68,7 @@ from ncore.impl.data.types import (
     EncodedImageData,
     FrameTimepoint,
     JsonLike,
+    LabelCategory,
     LabelEncoding,
     LabelSchema,
     LabelType,
@@ -171,23 +172,31 @@ class SequenceLoaderProtocol(Protocol):
 
     ## Camera labels
     @property
-    def camera_label_ids(self) -> List[str]:
+    def camera_labels_ids(self) -> List[str]:
         """List of all camera label instance IDs."""
         ...
 
-    def get_camera_labels_source(self, camera_label_id: str) -> CameraLabelsProtocol:
+    def get_camera_labels(self, camera_label_id: str) -> CameraLabelsProtocol:
         """Get a camera labels source by instance ID."""
         ...
 
-    def get_camera_label_ids_for_camera(self, camera_id: str) -> List[str]:
-        """List label instance IDs associated with a specific camera.
+    def query_camera_labels(
+        self,
+        camera_id: str,
+        label_type: Optional[LabelType] = None,
+        label_category: Optional[LabelCategory] = None,
+    ) -> List[CameraLabelsProtocol]:
+        """Query camera label sources matching filters.
 
-        Filters by metadata ``camera_id``, not by instance name.
+        Parameters
+        ----------
+        camera_id
+            Camera ID to match.
+        label_type
+            If provided, only return sources with this exact label type.
+        label_category
+            If provided, only return sources whose label type category matches.
         """
-        ...
-
-    def get_camera_label_ids_for_type(self, label_type: Union[LabelType, str]) -> List[str]:
-        """List label instance IDs for a specific label type across all cameras."""
         ...
 
 
@@ -843,6 +852,34 @@ class RayBundleSensorPointCloudsSourceAdapter:
 
 
 @runtime_checkable
+class CameraLabel(Protocol):
+    """Protocol for a single camera label data point at a specific timestamp."""
+
+    @property
+    def schema(self) -> LabelSchema:
+        """Schema describing the label data format."""
+        ...
+
+    @property
+    def timestamp_us(self) -> int:
+        """Timestamp of this label in microseconds."""
+        ...
+
+    @property
+    def generic_meta_data(self) -> Dict[str, JsonLike]:
+        """Per-label metadata."""
+        ...
+
+    def get_data(self) -> "npt.NDArray[Any]":
+        """Load and return the label data as a numpy array."""
+        ...
+
+    def get_encoded_data(self) -> Optional[bytes]:
+        """Return raw encoded bytes for IMAGE_ENCODED labels, or None for RAW."""
+        ...
+
+
+@runtime_checkable
 class CameraLabelsProtocol(Protocol):
     """Protocol for accessing camera-associated image labels.
 
@@ -856,16 +893,11 @@ class CameraLabelsProtocol(Protocol):
 
     @property
     def label_type(self) -> LabelType:
-        """Resolved label type (:attr:`~LabelType.UNKNOWN` for unrecognised types)."""
+        """Resolved label type."""
         ...
 
     @property
-    def label_type_name(self) -> str:
-        """Raw label type name string (always available, even for unknown types)."""
-        ...
-
-    @property
-    def label_schema(self) -> LabelSchema:
+    def schema(self) -> LabelSchema:
         """Schema describing the label data format."""
         ...
 
@@ -884,20 +916,8 @@ class CameraLabelsProtocol(Protocol):
         """Component-level metadata."""
         ...
 
-    def get_label_handle(self, timestamp_us: int) -> Any:
+    def get_label(self, timestamp_us: int) -> CameraLabel:
         """Return a lazy handle to the label data at the given timestamp."""
-        ...
-
-    def get_label_data(self, timestamp_us: int) -> "npt.NDArray[Any]":
-        """Return the decoded / dequantized label array."""
-        ...
-
-    def get_label_encoded_data(self, timestamp_us: int) -> Optional[bytes]:
-        """Return raw encoded bytes for IMAGE_ENCODED labels, None for RAW."""
-        ...
-
-    def get_label_generic_meta_data(self, timestamp_us: int) -> Dict[str, JsonLike]:
-        """Return per-label metadata at the given timestamp."""
         ...
 
     def get_closest_timestamp_us(self, query_timestamp_us: int) -> int:

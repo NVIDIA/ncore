@@ -26,6 +26,7 @@ from upath import UPath
 from ncore.impl.common.transformations import HalfClosedInterval, MotionCompensator, PoseGraphInterpolator
 from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.compat import (
+    CameraLabel,
     CameraLabelsProtocol,
     CameraSensorProtocol,
     LidarSensorProtocol,
@@ -42,6 +43,7 @@ from ncore.impl.data.types import (
     CuboidTrackObservation,
     FrameTimepoint,
     JsonLike,
+    LabelCategory,
     LabelSchema,
     LabelType,
     PointCloud,
@@ -560,13 +562,8 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
 
         @property
         @override
-        def label_type_name(self) -> str:
-            return self._reader.label_type_name
-
-        @property
-        @override
-        def label_schema(self) -> LabelSchema:
-            return self._reader.label_schema
+        def schema(self) -> LabelSchema:
+            return self._reader.schema
 
         @property
         @override
@@ -584,20 +581,8 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             return self._reader.generic_meta_data
 
         @override
-        def get_label_handle(self, timestamp_us: int) -> Any:
-            return self._reader.get_label_handle(timestamp_us)
-
-        @override
-        def get_label_data(self, timestamp_us: int) -> npt.NDArray[Any]:
-            return self._reader.get_label_data(timestamp_us)
-
-        @override
-        def get_label_encoded_data(self, timestamp_us: int) -> Optional[bytes]:
-            return self._reader.get_label_encoded_data(timestamp_us)
-
-        @override
-        def get_label_generic_meta_data(self, timestamp_us: int) -> Dict[str, JsonLike]:
-            return self._reader.get_label_generic_meta_data(timestamp_us)
+        def get_label(self, timestamp_us: int) -> CameraLabel:
+            return self._reader.get_label(timestamp_us)
 
         @override
         def has_label_at(self, timestamp_us: int) -> bool:
@@ -702,27 +687,33 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
 
     @property
     @override
-    def camera_label_ids(self) -> List[str]:
+    def camera_labels_ids(self) -> List[str]:
         return list(self._camera_labels_readers.keys())
 
     @override
-    def get_camera_labels_source(self, camera_label_id: str) -> CameraLabelsProtocol:
+    def get_camera_labels(self, camera_label_id: str) -> CameraLabelsProtocol:
         if camera_label_id not in self._camera_labels_readers:
             raise KeyError(f"Camera labels source '{camera_label_id}' not found")
         return self.CameraLabelsSource(self._camera_labels_readers[camera_label_id])
 
     @override
-    def get_camera_label_ids_for_camera(self, camera_id: str) -> List[str]:
-        return [inst_name for inst_name, reader in self._camera_labels_readers.items() if reader.camera_id == camera_id]
-
-    @override
-    def get_camera_label_ids_for_type(self, label_type: Union[LabelType, str]) -> List[str]:
-        target_name = label_type.name if isinstance(label_type, LabelType) else label_type
-        return [
-            inst_name
-            for inst_name, reader in self._camera_labels_readers.items()
-            if reader.label_type_name == target_name
-        ]
+    def query_camera_labels(
+        self,
+        camera_id: str,
+        label_type: Optional[LabelType] = None,
+        label_category: Optional[LabelCategory] = None,
+    ) -> List[CameraLabelsProtocol]:
+        results: List[CameraLabelsProtocol] = []
+        for reader in self._camera_labels_readers.values():
+            if reader.camera_id != camera_id:
+                continue
+            reader_lt = reader.label_type
+            if label_type is not None and reader_lt != label_type:
+                continue
+            if label_category is not None and reader_lt.category != label_category:
+                continue
+            results.append(self.CameraLabelsSource(reader))
+        return results
 
     @override
     def get_cuboid_track_observations(
