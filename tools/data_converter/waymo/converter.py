@@ -34,6 +34,7 @@ from ncore.impl.common.transformations import (
     MotionCompensator,
     PoseInterpolator,
     se3_inverse,
+    time_bounds,
     transform_bbox,
     transform_point_cloud,
 )
@@ -84,6 +85,8 @@ class WaymoConverter4Config(FileBasedDataConverterConfig):
     component_group_profile: Literal["default", "separate-sensors", "separate-all"] = "separate-sensors"
     store_sequence_meta: bool = True
     world_global_mode: Literal["none", "identity", "localized"] = "none"
+    seek_sec: float | None = None
+    duration_sec: float | None = None
 
 
 class WaymoConverter4(FileBasedDataConverter):
@@ -123,6 +126,8 @@ class WaymoConverter4(FileBasedDataConverter):
         self.store_type: Literal["itar", "directory"] = config.store_type
         self.store_sequence_meta: bool = config.store_sequence_meta
         self.world_global_mode: Literal["none", "identity", "localized"] = config.world_global_mode
+        self.seek_sec: float | None = config.seek_sec
+        self.duration_sec: float | None = config.duration_sec
 
         self.logger = logging.getLogger(__name__)
 
@@ -156,15 +161,42 @@ class WaymoConverter4(FileBasedDataConverter):
             if frame.context.name != sequence_name:
                 raise ValueError("NOT ALL FRAMES BELONG TO THE SAME SEQUENCE. ABORTING THE CONVERSION!")
 
-        # Decode poses
+        # Decode poses (from all frames for full interpolation coverage)
         self.decode_poses(frames)
+
+        # Apply time restriction (filter frames while keeping full pose coverage)
+        if self.seek_sec is not None or self.duration_sec is not None:
+            frame_timestamps_us = [frame.timestamp_micros for frame in frames]
+            start_us, end_us = time_bounds(frame_timestamps_us, self.seek_sec, self.duration_sec)
+            frames = [f for f in frames if start_us <= f.timestamp_micros <= end_us]
+            if len(frames) < 2:
+                raise ValueError(
+                    f"Time restriction (seek={self.seek_sec}, duration={self.duration_sec}) "
+                    f"yields fewer than 2 frames. At least 2 frames are required."
+                )
+            self.logger.info(
+                f"Time restriction active: {len(frames)} frames in "
+                f"[{start_us}, {end_us}] us (seek={self.seek_sec}, duration={self.duration_sec})"
+            )
+
+        # Determine which poses to store: restrict to filtered frame range if time-restricted,
+        # otherwise use the full pose interpolator range (original behavior).
+        stored_pose_timestamps = self.pose_interpolator.timestamps
+        stored_poses = self.pose_interpolator.poses
+        if self.seek_sec is not None or self.duration_sec is not None:
+            mask = (stored_pose_timestamps >= frames[0].timestamp_micros) & (
+                stored_pose_timestamps <= frames[-1].timestamp_micros
+            )
+            stored_pose_timestamps = stored_pose_timestamps[mask]
+            stored_poses = stored_poses[mask]
 
         ## Initialize V4 SequenceComponentGroupsWriter and component writers.
 
-        # Create timestamp interval for sequence
+        # Create timestamp interval for sequence (derived from stored pose range for consistency
+        # with the assertion in PosesComponent.Writer.store_dynamic_pose)
         sequence_timestamp_interval_us = HalfClosedInterval.from_start_end(
-            self.pose_interpolator.timestamps[0].item(),
-            self.pose_interpolator.timestamps[-1].item(),
+            stored_pose_timestamps[0].item(),
+            stored_pose_timestamps[-1].item(),
         )
 
         # Create component group assignments
@@ -220,7 +252,7 @@ class WaymoConverter4(FileBasedDataConverter):
         )
 
         ## Store poses
-        self.store_poses()
+        self.store_poses(stored_poses, stored_pose_timestamps)
 
         ## Decode and store lidar frames
         self.decode_lidars(frames)
@@ -315,9 +347,13 @@ class WaymoConverter4(FileBasedDataConverter):
 
         self.pose_interpolator = PoseInterpolator(T_rig_worlds, T_rig_world_timestamps_us)
 
-    def store_poses(self) -> None:
-        """Stores the processed egomotion poses into the poses component."""
-        poses = self.pose_interpolator.poses  # (N, 4, 4) float64, in Waymo global coordinates
+    def store_poses(self, poses: np.ndarray, timestamps_us: np.ndarray) -> None:
+        """Stores the processed egomotion poses into the poses component.
+
+        Args:
+            poses: (N, 4, 4) float64 array of rig-to-world transforms to store.
+            timestamps_us: (N,) uint64 array of corresponding timestamps in microseconds.
+        """
         T_world_world_global = None
 
         match self.world_global_mode:
@@ -341,7 +377,7 @@ class WaymoConverter4(FileBasedDataConverter):
             source_frame_id="rig",
             target_frame_id="world",
             poses=poses.astype(np.float32),
-            timestamps_us=self.pose_interpolator.timestamps,
+            timestamps_us=timestamps_us,
         )
 
         if T_world_world_global is not None:
@@ -1003,6 +1039,18 @@ class WaymoConverter4(FileBasedDataConverter):
         - "identity": Store an identity world_global pose. Poses remain in source coordinates.
         - "localized": Rebase poses relative to the first frame (matching, e.g., the PAI converter
           pattern) and store the original first pose as world->world_global (float64).""",
+)
+@click.option(
+    "--seek-sec",
+    default=None,
+    type=click.FloatRange(min=0.0, max_open=True),
+    help="Time to skip from the start of the sequence (in seconds)",
+)
+@click.option(
+    "--duration-sec",
+    default=None,
+    type=click.FloatRange(min=0.0, max_open=True),
+    help="Restrict total duration of the converted sequence (in seconds)",
 )
 @click.pass_context
 def waymo_v4(ctx, *_, **kwargs):
