@@ -58,6 +58,7 @@ use_repo(python, "python_3_11", "python_3_8", "python_versions")
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
+    experimental_extra_index_urls = ["https://download.pytorch.org/whl/cu128"],  # PyTorch CUDA 12.8 wheels
     experimental_index_url = "https://pypi.org/simple",  # download wheels via bazel downloader instead of pip
     hub_name = "ncore_pip_deps",
     python_version = "3.11",
@@ -68,6 +69,16 @@ pip.parse(
     hub_name = "ncore_pip_deps",
     python_version = "3.8",
     requirements_lock = "//deps/pip:requirements_3_8.txt",
+)
+
+# Patch torch to preload CUDA dependencies from nvidia pip packages before loading
+# libtorch_global_deps.so. Required because Bazel's --incompatible_strict_action_env
+# strips LD_LIBRARY_PATH, preventing the dynamic linker from finding nvidia-* pip
+# package shared libraries at runtime.
+pip.override(
+    file = "torch-2.7.0+cu128-cp311-cp311-manylinux_2_28_x86_64.whl",
+    patch_strip = 1,
+    patches = ["//deps/torch:preload-cuda-deps.patch"],
 )
 use_repo(pip, "ncore_pip_deps")
 
