@@ -28,6 +28,22 @@ inputs:
   github-token:
     description: 'GitHub token for package authentication'
     required: true
+  bazel-remote-cache:
+    description: 'Remote cache gRPC/HTTP endpoint'
+    required: true
+  bazel-remote-cache-header:
+    description: 'Authentication header for remote cache (format: header-name=value)'
+    required: true
+  bazel-remote-cache-upload:
+    description: 'Whether to upload results to the remote cache (disable for PRs to prevent cache pollution)'
+    required: false
+    default: 'true'
+  bazel-bes-backend:
+    description: 'Build Event Service backend endpoint'
+    required: true
+  bazel-bes-results-url:
+    description: 'Build Event Service results URL'
+    required: true
 
 runs:
   using: 'composite'
@@ -62,8 +78,9 @@ runs:
       with:
         # Avoid downloading Bazel every time
         bazelisk-cache: true
-        # Store build cache per workflow
-        disk-cache: ${{ github.workflow }}
+        # Disk cache is not needed in CI, using remote cache.
+        # Local developer builds still use --disk_cache from .bazelrc.
+        disk-cache: false
         # Share repository cache between workflows.
         # The repo contents cache (--repo_contents_cache, enabled by default since Bazel 8.3.0)
         # lives under the repository cache directory, so caching it here also persists
@@ -75,10 +92,18 @@ runs:
         # Only save caches on push (not on PRs) to avoid cache pollution
         cache-save: ${{ github.event_name != 'pull_request' }}
         # Bump to force-invalidate all CI caches (e.g. after changing cache structure)
-        cache-version: 2
-        # Add custom bazelrc options: color / timestamps / no GPU for CI builds
+        cache-version: 3
+        # Add custom bazelrc options
         bazelrc: |
             build --color=yes
             build --show_timestamps
+            build --build_metadata=REPO_URL=https://github.com/NVIDIA/ncore.git
             test --config=no-gpu
             common --repo_contents_cache=~/.cache/bazel-repo/contents
+            common --remote_cache=${{ inputs.bazel-remote-cache }}
+            common --remote_cache_compression
+            common --remote_timeout=10m
+            common --remote_header=${{ inputs.bazel-remote-cache-header }}
+            build --remote_upload_local_results=${{ inputs.bazel-remote-cache-upload }}
+            build --bes_backend=${{ inputs.bazel-bes-backend }}
+            build --bes_results_url=${{ inputs.bazel-bes-results-url }}
