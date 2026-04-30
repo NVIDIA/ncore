@@ -159,9 +159,11 @@ class WaymoConverter4(FileBasedDataConverter):
         self.decode_poses(frames)
 
         # Apply optional time restriction
+        self.time_restricted = False  # flag to allow skipping frames in decoding phase
         stored_pose_timestamps = self.pose_interpolator.timestamps
         stored_poses = self.pose_interpolator.poses
         if self.seek_sec is not None or self.duration_sec is not None:
+            self.time_restricted = True
             # Filter frames while keeping full pose coverage
             frame_timestamps_us = [frame.timestamp_micros for frame in frames]
             start_us, end_us = time_bounds(frame_timestamps_us, self.seek_sec, self.duration_sec)
@@ -516,6 +518,12 @@ class WaymoConverter4(FileBasedDataConverter):
                     frame_end_timestamp_us = raw_frame_start_timestamps_us[i] + (
                         raw_frame_start_timestamps_us[i] - raw_frame_start_timestamps_us[i - 1]
                     )
+
+                if self.time_restricted and (
+                    HalfClosedInterval.from_start_end(frame_start_timestamp_us, frame_end_timestamp_us)
+                    not in self.store_writer.sequence_timestamp_interval_us
+                ):
+                    continue  # skip frames that are outside of the sequence timestamp interval (can happen due to time restriction logic)
 
                 timestamps_us = np.array([frame_start_timestamp_us, frame_end_timestamp_us], dtype=np.uint64)
 
@@ -897,6 +905,12 @@ class WaymoConverter4(FileBasedDataConverter):
                 ## Get frame timestamps
                 frame_start_timestamp_us = int((image.camera_trigger_time + image.shutter / 2) * 1e6)
                 frame_end_timestamp_us = int((image.camera_readout_done_time - image.shutter / 2) * 1e6)
+
+                if self.time_restricted and (
+                    HalfClosedInterval.from_start_end(frame_start_timestamp_us, frame_end_timestamp_us)
+                    not in self.store_writer.sequence_timestamp_interval_us
+                ):
+                    continue  # skip frames that are outside of the sequence timestamp interval (can happen due to time restriction logic)
 
                 # Assert we can interpolate poses for these timestamps
                 self.pose_interpolator.interpolate_to_timestamps(
