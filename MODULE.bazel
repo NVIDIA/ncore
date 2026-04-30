@@ -43,7 +43,10 @@ bazel_dep(name = "rules_python", version = "1.2.0")
 single_version_override(
     module_name = "rules_python",
     patch_strip = 1,
-    patches = ["//bazel/rules_python:rules_python_repo_contents_cache.patch"],
+    patches = [
+        "//bazel/rules_python:rules_python_repo_contents_cache.patch",
+        "//bazel/rules_python:rules_python_suppress_record_warning.patch",
+    ],
 )
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
