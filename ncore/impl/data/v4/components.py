@@ -1986,7 +1986,7 @@ class CameraLabelsComponent:
     class CameraLabelImpl:
         """References label data without eagerly loading it.
 
-        Implements the :class:`CameraLabel` protocol, providing access to the label
+        Implements the :class:`CameraLabelHandle` protocol, providing access to the label
         data, schema, timestamp, and per-label metadata.
         """
 

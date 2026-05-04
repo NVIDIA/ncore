@@ -851,8 +851,12 @@ class RayBundleSensorPointCloudsSourceAdapter:
 
 
 @runtime_checkable
-class CameraLabel(Protocol):
-    """Protocol for a single camera label data point at a specific timestamp."""
+class CameraLabelHandle(Protocol):
+    """Protocol for a single camera label at a specific timestamp.
+
+    Returned by :meth:`CameraLabelsProtocol.get_label` and provides deferred
+    access to the label data and metadata.
+    """
 
     @property
     def schema(self) -> LabelSchema:
@@ -915,7 +919,7 @@ class CameraLabelsProtocol(Protocol):
         """Component-level metadata."""
         ...
 
-    def get_label(self, timestamp_us: int) -> CameraLabel:
+    def get_label(self, timestamp_us: int) -> CameraLabelHandle:
         """Return a lazy handle to the label data at the given timestamp."""
         ...
 

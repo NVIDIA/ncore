@@ -26,7 +26,7 @@ from upath import UPath
 from ncore.impl.common.transformations import HalfClosedInterval, MotionCompensator, PoseGraphInterpolator
 from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.compat import (
-    CameraLabel,
+    CameraLabelHandle,
     CameraLabelsProtocol,
     CameraSensorProtocol,
     LidarSensorProtocol,
@@ -581,7 +581,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             return self._reader.generic_meta_data
 
         @override
-        def get_label(self, timestamp_us: int) -> CameraLabel:
+        def get_label(self, timestamp_us: int) -> CameraLabelHandle:
             return self._reader.get_label(timestamp_us)
 
         @override
