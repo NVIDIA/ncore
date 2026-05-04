@@ -32,6 +32,7 @@ from scipy.spatial.transform import Rotation as RotLib
 
 from ncore.impl.common.transformations import HalfClosedInterval, transform_point_cloud
 from ncore.impl.data.types import FrameTimepoint, LabelSource
+from ncore.impl.data.util import closest_index_sorted
 from ncore.impl.sensors.camera import CameraModel
 from tools.ncore_vis.components.base import VisualizationComponent, register_component
 from tools.ncore_vis.utils import se3_to_position_wxyz
@@ -916,7 +917,8 @@ class CameraComponent(VisualizationComponent):
         # Find closest label
         if source.labels_count == 0:
             return image
-        closest_ts = source.get_closest_timestamp_us(frame_ts)
+
+        closest_ts = source.label_timestamps_us[closest_index_sorted(source.label_timestamps_us, frame_ts)]
         label = source.get_label(closest_ts)
         label_data = label.get_data()
 

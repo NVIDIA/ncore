@@ -169,7 +169,6 @@ class SequenceLoaderProtocol(Protocol):
         """
         ...
 
-    ## Camera labels
     @property
     def camera_labels_ids(self) -> List[str]:
         """List of all camera label instance IDs."""
@@ -643,7 +642,7 @@ class PointCloudsSourceProtocol(Protocol):
         ...
 
     def get_pc_generic_meta_data(self, pc_index: int) -> Dict[str, JsonLike]:
-        """Return generic JSON metadata associated with the given point cloud."""
+        """Returns generic point cloud meta-data for a specific point-cloud."""
         ...
 
     def get_pc_index_range(
@@ -851,38 +850,10 @@ class RayBundleSensorPointCloudsSourceAdapter:
 
 
 @runtime_checkable
-class CameraLabel(Protocol):
-    """Protocol for a single camera label data point at a specific timestamp."""
-
-    @property
-    def schema(self) -> LabelSchema:
-        """Schema describing the label data format."""
-        ...
-
-    @property
-    def timestamp_us(self) -> int:
-        """Timestamp of this label in microseconds."""
-        ...
-
-    @property
-    def generic_meta_data(self) -> Dict[str, JsonLike]:
-        """Per-label metadata."""
-        ...
-
-    def get_data(self) -> "npt.NDArray[Any]":
-        """Load and return the label data as a numpy array."""
-        ...
-
-    def get_encoded_data(self) -> Optional[bytes]:
-        """Return raw encoded bytes for IMAGE_ENCODED labels, or None for RAW."""
-        ...
-
-
-@runtime_checkable
 class CameraLabelsProtocol(Protocol):
     """Protocol for accessing camera-associated image labels.
 
-    Each source provides labels of one type for one camera, with independently-managed timestamps.
+    Each instance provides labels of one type for one camera, with independently-managed timestamps.
     """
 
     @property
@@ -896,7 +867,7 @@ class CameraLabelsProtocol(Protocol):
         ...
 
     @property
-    def schema(self) -> LabelSchema:
+    def label_schema(self) -> LabelSchema:
         """Schema describing the label data format."""
         ...
 
@@ -906,24 +877,46 @@ class CameraLabelsProtocol(Protocol):
         ...
 
     @property
-    def timestamps_us(self) -> "npt.NDArray[np.uint64]":
+    def label_timestamps_us(self) -> npt.NDArray[np.uint64]:
         """Timestamps of all stored labels, sorted ascending."""
         ...
 
     @property
-    def generic_meta_data(self) -> Dict[str, JsonLike]:
-        """Component-level metadata."""
+    def labels_generic_meta_data(self) -> Dict[str, JsonLike]:
+        """Generic metadata associated with all labels."""
         ...
 
-    def get_label(self, timestamp_us: int) -> CameraLabel:
+    @runtime_checkable
+    class CameraLabelHandleProtocol(Protocol):
+        """Protocol for a single camera label at a specific timestamp.
+
+        Returned by :meth:`CameraLabelsProtocol.get_label` and provides deferred
+        access to the label data and metadata.
+        """
+
+        @property
+        def schema(self) -> LabelSchema:
+            """Schema describing the label data format."""
+            ...
+
+        @property
+        def timestamp_us(self) -> int:
+            """Timestamp of this label in microseconds."""
+            ...
+
+        @property
+        def generic_meta_data(self) -> Dict[str, JsonLike]:
+            """Per-label generic metadata."""
+            ...
+
+        def get_data(self) -> npt.NDArray[Any]:
+            """Load and return the label data as a numpy array."""
+            ...
+
+        def get_encoded_data(self) -> Optional[bytes]:
+            """Return raw encoded bytes for IMAGE_ENCODED labels, or None for RAW."""
+            ...
+
+    def get_label(self, timestamp_us: int) -> CameraLabelHandleProtocol:
         """Return a lazy handle to the label data at the given timestamp."""
-        ...
-
-    def get_closest_timestamp_us(self, query_timestamp_us: int) -> int:
-        """Find the closest available label timestamp to the query."""
-        idx = closest_index_sorted(self.timestamps_us, query_timestamp_us)
-        return int(self.timestamps_us[idx])
-
-    def has_label_at(self, timestamp_us: int) -> bool:
-        """Check if a label exists at the exact timestamp."""
         ...

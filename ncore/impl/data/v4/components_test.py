@@ -2244,16 +2244,15 @@ class TestCameraLabelsComponent(unittest.TestCase):
             generic_meta_data={},
         )
 
-        descriptor = CameraLabelDescriptor(
-            camera_id="",
-            label_type=LabelType.DEPTH_Z,
-            label_schema=schema,
-        )
         with self.assertRaises(AssertionError):
             store_writer.register_component_writer(
                 CameraLabelsComponent.Writer,
                 "depth.z@front",
-                descriptor=descriptor,
+                descriptor=CameraLabelDescriptor(
+                    camera_id="",
+                    label_type=LabelType.DEPTH_Z,
+                    label_schema=schema,
+                ),
             )
 
         tmpdir.cleanup()
@@ -2267,7 +2266,7 @@ class TestCameraLabelsComponent(unittest.TestCase):
             dtype=np.dtype("float32"),
             encoding=LabelEncoding.RAW,
         )
-        component_meta = {"source": "ground_truth", "version": 2}
+        component_meta: Dict[str, JsonLike] = {"source": "ground_truth", "version": 2}
         writer, store_writer, tmpdir = self._make_writer(
             "front", LabelType.DEPTH_Z, schema, generic_meta_data=component_meta
         )
@@ -2288,7 +2287,7 @@ class TestCameraLabelsComponent(unittest.TestCase):
 
         # Per-label generic_meta_data via get_label()
         label = reader.get_label(1_000_000)
-        self.assertAlmostEqual(label.generic_meta_data["quality"], 0.95)
+        self.assertAlmostEqual(cast(float, label.generic_meta_data["quality"]), 0.95)
         self.assertEqual(label.generic_meta_data["annotator"], "auto")
 
         tmpdir.cleanup()
@@ -2367,9 +2366,10 @@ class TestCameraLabelsComponent(unittest.TestCase):
 
         # Quantization
         self.assertIsNotNone(deserialized.quantization)
-        self.assertEqual(deserialized.quantization.quantized_dtype, quant.quantized_dtype)
-        self.assertAlmostEqual(deserialized.quantization.scale, quant.scale)
-        self.assertAlmostEqual(deserialized.quantization.offset, quant.offset)
+        quantization = unpack_optional(deserialized.quantization)
+        self.assertEqual(quantization.quantized_dtype, quant.quantized_dtype)
+        self.assertAlmostEqual(quantization.scale, quant.scale)
+        self.assertAlmostEqual(quantization.offset, quant.offset)
 
         # Also test with None quantization
         minimal = LabelSchema(

@@ -26,7 +26,6 @@ from upath import UPath
 from ncore.impl.common.transformations import HalfClosedInterval, MotionCompensator, PoseGraphInterpolator
 from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.compat import (
-    CameraLabel,
     CameraLabelsProtocol,
     CameraSensorProtocol,
     LidarSensorProtocol,
@@ -544,7 +543,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             pose_graph=self._pose_graph,
         )
 
-    class CameraLabelsSource(CameraLabelsProtocol):
+    class CameraLabels(CameraLabelsProtocol):
         """Wraps a :class:`CameraLabelsComponent.Reader` to implement :class:`CameraLabelsProtocol`."""
 
         def __init__(self, reader: CameraLabelsComponent.Reader) -> None:
@@ -562,7 +561,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
 
         @property
         @override
-        def schema(self) -> LabelSchema:
+        def label_schema(self) -> LabelSchema:
             return self._reader.schema
 
         @property
@@ -572,21 +571,17 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
 
         @property
         @override
-        def timestamps_us(self) -> npt.NDArray[np.uint64]:
+        def label_timestamps_us(self) -> npt.NDArray[np.uint64]:
             return self._reader.timestamps_us
 
         @property
         @override
-        def generic_meta_data(self) -> Dict[str, JsonLike]:
+        def labels_generic_meta_data(self) -> Dict[str, JsonLike]:
             return self._reader.generic_meta_data
 
         @override
-        def get_label(self, timestamp_us: int) -> CameraLabel:
+        def get_label(self, timestamp_us: int) -> CameraLabelsComponent.Reader.CameraLabelHandle:
             return self._reader.get_label(timestamp_us)
-
-        @override
-        def has_label_at(self, timestamp_us: int) -> bool:
-            return timestamp_us in self._reader._timestamp_to_index
 
     class PointCloudsSource(PointCloudsSourceProtocol):
         """Native point-clouds source wrapping a :class:`PointCloudsComponent.Reader`.
@@ -694,7 +689,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
     def get_camera_labels(self, camera_label_id: str) -> CameraLabelsProtocol:
         if camera_label_id not in self._camera_labels_readers:
             raise KeyError(f"Camera labels source '{camera_label_id}' not found")
-        return self.CameraLabelsSource(self._camera_labels_readers[camera_label_id])
+        return self.CameraLabels(self._camera_labels_readers[camera_label_id])
 
     @override
     def query_camera_labels(
@@ -712,7 +707,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
                 continue
             if label_category is not None and reader_lt.category != label_category:
                 continue
-            results.append(self.CameraLabelsSource(reader))
+            results.append(self.CameraLabels(reader))
         return results
 
     @override
