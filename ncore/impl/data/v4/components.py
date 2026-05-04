@@ -66,6 +66,8 @@ if sys.version_info >= (3, 11):
     # - alias these globally as a workaround
     from typing import Self
 
+_logger = logging.getLogger(__name__)
+
 VERSION = "v4"
 
 
@@ -370,7 +372,7 @@ class SequenceComponentGroupsReader:
                 # Make sure paths are absolute at this point
                 component_store_upath = component_store_upath.absolute()
 
-                logging.info(f"SequenceStoreReader: Loading component store {component_store_upath}")
+                _logger.info(f"SequenceStoreReader: Loading component store {component_store_upath}")
 
                 component_store: Store
                 if component_store_upath.is_file():
