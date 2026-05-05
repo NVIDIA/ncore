@@ -1907,7 +1907,9 @@ class CameraLabelsComponent:
             Parameters
             ----------
             data
-                For RAW encoding: a numpy array of shape ``(H, W)`` or ``(H, W, *shape_suffix)``.
+                For RAW encoding: a numpy array of shape ``(H, W)`` or ``(H, W, *shape_suffix)``
+                in the logical dtype (``schema.dtype``).  When quantization is configured, the
+                data is automatically quantized to the on-disk integer representation.
                 For IMAGE_ENCODED encoding: raw image bytes.
             timestamp_us
                 Timestamp in microseconds – must fall within the sequence interval.
@@ -1937,17 +1939,19 @@ class CameraLabelsComponent:
                 else:
                     assert data.ndim == 2, f"Scalar label must be 2-D (H, W), got ndim={data.ndim}"
 
-                # Validate dtype
-                expected_dtype = (
-                    self._descriptor.label_schema.quantization.quantized_dtype
-                    if self._descriptor.label_schema.quantization is not None
-                    else self._descriptor.label_schema.dtype
-                )
-                assert np.dtype(data.dtype) == expected_dtype, (
-                    f"dtype mismatch: expected {expected_dtype}, got {data.dtype}"
+                # Validate dtype — caller must pass data in the expected dtype
+                assert np.dtype(data.dtype) == self._descriptor.label_schema.dtype, (
+                    f"dtype mismatch: expected {self._descriptor.label_schema.dtype}, got {data.dtype}"
                 )
 
-                label_group.create_dataset("data", data=data, chunks=data.shape, compressor=compressor)
+                # Quantize if configured
+                stored = data
+                if (q := self._descriptor.label_schema.quantization) is not None:
+                    stored = np.round((data.astype(q.intermediate_dtype) - q.offset) / q.scale).astype(
+                        q.quantized_dtype
+                    )
+
+                label_group.create_dataset("data", data=stored, chunks=stored.shape, compressor=compressor)
 
             elif self._descriptor.label_schema.encoding == types.LabelEncoding.IMAGE_ENCODED:
                 assert isinstance(data, bytes), "IMAGE_ENCODED encoding requires bytes"
@@ -2079,7 +2083,7 @@ class CameraLabelsComponent:
                 if self._schema.encoding == types.LabelEncoding.RAW:
                     arr = np.array(self._label_group["data"][:])
                     if (q := self._schema.quantization) is not None:
-                        arr = (arr.astype(np.float64) * q.scale + q.offset).astype(self._schema.dtype)
+                        arr = (arr.astype(q.intermediate_dtype) * q.scale + q.offset).astype(self._schema.dtype)
                     return arr
 
                 elif self._schema.encoding == types.LabelEncoding.IMAGE_ENCODED:

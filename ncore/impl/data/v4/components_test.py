@@ -2052,7 +2052,7 @@ class TestCameraLabelsComponent(unittest.TestCase):
     # 4. test_quantized_depth_roundtrip
     # ------------------------------------------------------------------
     def test_quantized_depth_roundtrip(self):
-        """Quantize float32 depth to uint16, store, verify dequantized read is close to original."""
+        """Store float32 depth with quantization to uint16, verify dequantized read is close to original."""
         quant = QuantizationParams(
             quantized_dtype=np.dtype("uint16"),
             scale=0.001,
@@ -2069,18 +2069,104 @@ class TestCameraLabelsComponent(unittest.TestCase):
         # Original data in range [0, 65.535] so it fits uint16 after quantization
         original = np.random.rand(32, 48).astype(np.float32) * 60.0
 
-        # Pre-quantize: stored = (value - offset) / scale
-        quantized = np.round(original / 0.001).astype(np.uint16)
-
-        writer.store_label(data=quantized, timestamp_us=1_000_000)
+        writer.store_label(data=original, timestamp_us=1_000_000)
 
         readers = self._finalize_and_open_readers(store_writer)
         reader = readers["depth.z@front"]
 
         dequantized = reader.get_label(1_000_000).get_data()
-        np.testing.assert_array_almost_equal(dequantized, quantized.astype(np.float64) * 0.001, decimal=3)
+        # Expect quantization error of at most 0.5 * scale = 0.0005
+        np.testing.assert_allclose(dequantized, original, atol=0.5 * quant.scale, rtol=0)
 
         tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 4b. test_quantized_depth_with_offset
+    # ------------------------------------------------------------------
+    def test_quantized_depth_with_offset(self):
+        """Store float32 depth with non-zero offset quantization, verify roundtrip."""
+        quant = QuantizationParams(
+            quantized_dtype=np.dtype("int16"),
+            scale=0.01,
+            offset=-100.0,
+        )
+        schema = LabelSchema(
+            dtype=np.dtype("float32"),
+            shape_suffix=(),
+            encoding=LabelEncoding.RAW,
+            quantization=quant,
+        )
+        writer, store_writer, tmpdir = self._make_writer("front", LabelType.DEPTH_Z, schema)
+
+        # Data in range [-100, 227.67] maps to int16 range [0, 32767]
+        original = (np.random.rand(16, 24).astype(np.float32) * 300.0) - 100.0
+
+        writer.store_label(data=original, timestamp_us=1_000_000)
+
+        readers = self._finalize_and_open_readers(store_writer)
+        reader = readers["depth.z@front"]
+
+        dequantized = reader.get_label(1_000_000).get_data()
+        np.testing.assert_allclose(dequantized, original, atol=0.5 * quant.scale, rtol=0)
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 4c. test_quantized_float32_intermediate
+    # ------------------------------------------------------------------
+    def test_quantized_float32_intermediate(self):
+        """Verify quantization works with float32 intermediate for uint16 data."""
+        quant = QuantizationParams(
+            quantized_dtype=np.dtype("uint16"),
+            scale=0.001,
+            offset=0.0,
+            intermediate_dtype=np.dtype("float32"),
+        )
+        schema = LabelSchema(
+            dtype=np.dtype("float32"),
+            shape_suffix=(),
+            encoding=LabelEncoding.RAW,
+            quantization=quant,
+        )
+        writer, store_writer, tmpdir = self._make_writer("front", LabelType.DEPTH_Z, schema)
+
+        original = np.random.rand(16, 24).astype(np.float32) * 60.0
+
+        writer.store_label(data=original, timestamp_us=1_000_000)
+
+        readers = self._finalize_and_open_readers(store_writer)
+        reader = readers["depth.z@front"]
+
+        dequantized = reader.get_label(1_000_000).get_data()
+        # float32 intermediate introduces slightly more error than float64 due to
+        # limited mantissa precision in the division; allow 1 LSB tolerance
+        np.testing.assert_allclose(dequantized, original, atol=1.0 * quant.scale, rtol=0)
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 4d. test_quantization_params_rejects_float_dtype
+    # ------------------------------------------------------------------
+    def test_quantization_params_rejects_float_dtype(self):
+        """QuantizationParams must reject non-integer quantized_dtype."""
+        with self.assertRaises(AssertionError):
+            QuantizationParams(quantized_dtype=np.dtype("float32"), scale=1.0, offset=0.0)
+        with self.assertRaises(AssertionError):
+            QuantizationParams(quantized_dtype=np.dtype("float64"), scale=1.0, offset=0.0)
+
+    # ------------------------------------------------------------------
+    # 4e. test_quantization_params_rejects_non_float_intermediate
+    # ------------------------------------------------------------------
+    def test_quantization_params_rejects_non_float_intermediate(self):
+        """QuantizationParams must reject non-floating intermediate_dtype."""
+        with self.assertRaises(AssertionError):
+            QuantizationParams(
+                quantized_dtype=np.dtype("uint16"), scale=1.0, offset=0.0, intermediate_dtype=np.dtype("int32")
+            )
+        with self.assertRaises(AssertionError):
+            QuantizationParams(
+                quantized_dtype=np.dtype("uint16"), scale=1.0, offset=0.0, intermediate_dtype=np.dtype("uint8")
+            )
 
     # ------------------------------------------------------------------
     # 5. test_multiple_label_types_per_camera

@@ -1196,6 +1196,18 @@ class QuantizationParams(dataclasses_json.DataClassJsonMixin):
     quantized_dtype: np.dtype = util.dtype_field()  #: Numpy dtype of the quantized on-disk representation
     scale: float = 1.0  #: Multiplicative scale factor
     offset: float = 0.0  #: Additive offset
+    intermediate_dtype: np.dtype = dataclasses.field(
+        default=np.dtype("float64"),
+        metadata=dataclasses_json.config(exclude=lambda _: True),
+    )  #: Numpy dtype for intermediate arithmetic during (de-)quantization
+
+    def __post_init__(self):
+        assert np.issubdtype(self.quantized_dtype, np.integer), (
+            f"quantized_dtype must be an integer type, got {self.quantized_dtype}"
+        )
+        assert np.issubdtype(self.intermediate_dtype, np.floating), (
+            f"intermediate_dtype must be a floating type, got {self.intermediate_dtype}"
+        )
 
 
 @dataclass(**({"slots": True, "frozen": True} if sys.version_info >= (3, 10) else {"frozen": True}))
