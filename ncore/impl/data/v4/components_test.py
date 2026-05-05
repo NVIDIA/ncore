@@ -18,7 +18,7 @@ import io
 import tempfile
 import unittest
 
-from typing import Dict, Literal, Tuple
+from typing import Dict, Literal, Tuple, cast
 
 import numpy as np
 import PIL.Image as PILImage
@@ -87,7 +87,7 @@ class TestData4Reload(unittest.TestCase):
                 ref_sequence_timestamp_interval_us := HalfClosedInterval(int(0 * 1e6), int(1 * 1e6) + 1)
             ),
             store_type=store_type,
-            generic_meta_data=(ref_generic_sequence_meta_data := {"some": 1, "key": 1.2}),
+            generic_meta_data=cast(Dict[str, JsonLike], ref_generic_sequence_meta_data := {"some": 1, "key": 1.2}),
         )
 
         # Store pose / extrinsics
@@ -166,7 +166,7 @@ class TestData4Reload(unittest.TestCase):
             PosesComponent.Writer,
             ref_poses_id := "some_poses_type",
             group_name=None,  # use default component group
-            generic_meta_data=(ref_pose_generic_meta_data := {"some": "thing"}),
+            generic_meta_data=cast(Dict[str, JsonLike], ref_pose_generic_meta_data := {"some": "thing"}),
         ).store_dynamic_pose(
             source_frame_id="rig",
             target_frame_id="world",
@@ -364,7 +364,9 @@ class TestData4Reload(unittest.TestCase):
                 "png",
                 ref_camera_timestamps_us0 := np.array([0 * 1e6, 0.1 * 1e6], dtype=np.uint64),
                 ref_camera_generic_data0 := {"some-frame-data": np.random.rand(6, 2)},
-                ref_camera_generic_metadata0 := {"some-frame-meta-data": {"something": 1, "else": 2}},
+                ref_camera_generic_metadata0 := cast(
+                    Dict[str, JsonLike], {"some-frame-meta-data": {"something": 1, "else": 2}}
+                ),
             )
 
         with io.BytesIO() as buffer:
@@ -377,7 +379,9 @@ class TestData4Reload(unittest.TestCase):
                 "png",
                 ref_camera_timestamps_us1 := np.array([0.1 * 1e6, 0.2 * 1e6], dtype=np.uint64),
                 ref_camera_generic_data1 := {"some-frame-data": np.random.rand(6, 2)},
-                ref_camera_generic_metadata1 := {"some-more-frame-meta-data": {"even": True, "more": None}},
+                ref_camera_generic_metadata1 := cast(
+                    Dict[str, JsonLike], {"some-more-frame-meta-data": {"even": True, "more": None}}
+                ),
             )
 
         # Store lidar data
@@ -402,7 +406,9 @@ class TestData4Reload(unittest.TestCase):
             ref_lidar_intensity0 := np.random.rand(1, 5).astype(np.float32),
             ref_lidar_timestamps_us0 := np.array([0 * 1e6, 0.5 * 1e6], dtype=np.uint64),
             ref_lidar_generic_data0 := {"some-other-frame-data": np.random.rand(6, 2)},
-            ref_lidar_generic_metadata0 := {"some-more-meta-data": {"yes": None, "no": True}},
+            ref_lidar_generic_metadata0 := cast(
+                Dict[str, JsonLike], {"some-more-meta-data": {"yes": None, "no": True}}
+            ),
         )
 
         ref_lidar_valid_mask0 = np.ones((1, 5), dtype=bool)
@@ -432,7 +438,7 @@ class TestData4Reload(unittest.TestCase):
             ref_lidar_intensity1,
             ref_lidar_timestamps_us1 := np.array([0.5 * 1e6, 1 * 1e6], dtype=np.uint64),
             ref_lidar_generic_data1 := {"some-other-frame-data": np.random.rand(2, 2)},
-            ref_lidar_generic_metadata1 := {"even-more-meta-data": {"yesno": None}},
+            ref_lidar_generic_metadata1 := cast(Dict[str, JsonLike], {"even-more-meta-data": {"yesno": None}}),
         )
 
         # Store radar data
@@ -451,7 +457,9 @@ class TestData4Reload(unittest.TestCase):
             ref_radar_distance_m0 := radar_distance_m0[np.newaxis, :],
             ref_radar_timestamps_us0 := np.array([0.1 * 1e6, 0.1 * 1e6], dtype=np.uint64),
             ref_radar_generic_data0 := {"some-other-frame-data": np.random.rand(6, 2)},
-            ref_radar_generic_metadata0 := {"some-more-meta-data": {"funny": "yes", "no": True}},
+            ref_radar_generic_metadata0 := cast(
+                Dict[str, JsonLike], {"some-more-meta-data": {"funny": "yes", "no": True}}
+            ),
         )
 
         ref_radar_direction_m1, radar_distance_m1 = normalize_points(np.random.rand(8, 3).astype(np.float32) + 0.2)
@@ -462,7 +470,7 @@ class TestData4Reload(unittest.TestCase):
             ref_radar_distance_m1 := np.stack((radar_distance_m1, radar_distance_m1 + 0.2)),
             ref_radar_timestamps_us1 := np.array([0.2 * 1e6, 0.2 * 1e6], dtype=np.uint64),
             ref_radar_generic_data1 := {"some-radar-frame-data": np.random.rand(6, 2)},
-            ref_radar_generic_metadata1 := {"some-more-meta-data": {"funny": ":("}},
+            ref_radar_generic_metadata1 := cast(Dict[str, JsonLike], {"some-more-meta-data": {"funny": ":("}}),
         )
 
         ## Finalize writers up to here
@@ -481,7 +489,7 @@ class TestData4Reload(unittest.TestCase):
             CuboidsComponent.Writer,
             ref_cuboids_id := "default",
             "cuboids",
-            ref_cuboids_generic_meta_data := {"track-set-meta-data": "some-value"},
+            ref_cuboids_generic_meta_data := cast(Dict[str, JsonLike], {"track-set-meta-data": "some-value"}),
         )
 
         ref_observation = CuboidTrackObservation(
@@ -1807,7 +1815,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         # generic_meta_data
         loaded_gmd = reader.get_pc_generic_meta_data(0)
         self.assertEqual(loaded_gmd["source"], "lidar_top")
-        self.assertAlmostEqual(loaded_gmd["quality"], 0.99)
+        self.assertAlmostEqual(cast(float, loaded_gmd["quality"]), 0.99)
         self.assertEqual(loaded_gmd["tags"], ["outdoor", "sunny"])
 
         tmpdir.cleanup()
