@@ -1482,7 +1482,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
 
     def _make_writer_reader(
-        self, attribute_schemas={}, store_type: Literal["itar", "directory"] = "directory"
+        self, store_type: Literal["itar", "directory"], attribute_schemas={}
     ) -> Tuple[
         PointCloudsComponent.Writer, SequenceComponentGroupsWriter, tempfile.TemporaryDirectory, HalfClosedInterval
     ]:
@@ -1516,7 +1516,13 @@ class TestPointCloudsComponent(unittest.TestCase):
         self.assertIn("test_pc", pc_readers)
         return pc_readers["test_pc"]
 
-    def test_single_pc_with_attributes(self):
+    @parameterized.expand(
+        [
+            ("itar",),
+            ("directory",),
+        ]
+    )
+    def test_single_pc_with_attributes(self, store_type: Literal["itar", "directory"]):
         """Write 1 PC with rgb (uint8, (N,3)) + normals (float32, (N,3)), read back, verify all fields."""
         schemas = {
             "rgb": PointCloudsComponent.AttributeSchema(
@@ -1530,12 +1536,12 @@ class TestPointCloudsComponent(unittest.TestCase):
                 shape_suffix=(3,),
             ),
         }
-        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas)
+        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas, store_type=store_type)
 
         N = 100
-        xyz = np.random.rand(N, 3).astype(np.float32)
-        rgb = np.random.randint(0, 256, size=(N, 3), dtype=np.uint8)
-        normals = np.random.rand(N, 3).astype(np.float32)
+        xyz = np.random.rand(N, 3).astype(np.float32)  # type:ignore[attr-defined]
+        rgb = np.random.randint(0, 256, size=(N, 3), dtype=np.uint8)  # type:ignore[attr-defined]
+        normals = np.random.rand(N, 3).astype(np.float32)  # type:ignore[attr-defined]
 
         pc_writer.store_pc(
             xyz=xyz,
@@ -1576,9 +1582,15 @@ class TestPointCloudsComponent(unittest.TestCase):
 
         tmpdir.cleanup()
 
-    def test_multiple_pcs_different_ref_frames(self):
+    @parameterized.expand(
+        [
+            ("itar",),
+            ("directory",),
+        ]
+    )
+    def test_multiple_pcs_different_ref_frames(self, store_type: Literal["itar", "directory"]):
         """Write 2 PCs with different reference_frame_id, verify per-pc ref frames."""
-        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader()
+        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader(store_type=store_type)
 
         xyz1 = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
         xyz2 = np.array([[4.0, 5.0, 6.0], [7.0, 8.0, 9.0]], dtype=np.float32)
@@ -1642,7 +1654,13 @@ class TestPointCloudsComponent(unittest.TestCase):
         rt = PointCloudsComponent.AttributeSchema.from_dict(scalar_schema.to_dict())
         self.assertEqual(rt.shape_suffix, ())
 
-    def test_writer_rejects_undeclared_attribute(self):
+    @parameterized.expand(
+        [
+            ("itar",),
+            ("directory",),
+        ]
+    )
+    def test_writer_rejects_undeclared_attribute(self, store_type: Literal["itar", "directory"]):
         """store_pc with attr not in schema -> AssertionError."""
         schemas = {
             "rgb": PointCloudsComponent.AttributeSchema(
@@ -1651,7 +1669,7 @@ class TestPointCloudsComponent(unittest.TestCase):
                 shape_suffix=(3,),
             ),
         }
-        pc_writer, _, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas)
+        pc_writer, _, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas, store_type=store_type)
 
         xyz = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
         rgb = np.array([[128, 64, 32]], dtype=np.uint8)
@@ -1667,7 +1685,13 @@ class TestPointCloudsComponent(unittest.TestCase):
 
         tmpdir.cleanup()
 
-    def test_writer_rejects_missing_schema_attribute(self):
+    @parameterized.expand(
+        [
+            ("itar",),
+            ("directory",),
+        ]
+    )
+    def test_writer_rejects_missing_schema_attribute(self, store_type: Literal["itar", "directory"]):
         """store_pc missing a schema attr -> AssertionError."""
         schemas = {
             "rgb": PointCloudsComponent.AttributeSchema(
@@ -1681,7 +1705,7 @@ class TestPointCloudsComponent(unittest.TestCase):
                 shape_suffix=(3,),
             ),
         }
-        pc_writer, _, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas)
+        pc_writer, _, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas, store_type=store_type)
 
         xyz = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
         rgb = np.array([[128, 64, 32]], dtype=np.uint8)
@@ -1696,7 +1720,13 @@ class TestPointCloudsComponent(unittest.TestCase):
 
         tmpdir.cleanup()
 
-    def test_writer_rejects_wrong_shape(self):
+    @parameterized.expand(
+        [
+            ("itar",),
+            ("directory",),
+        ]
+    )
+    def test_writer_rejects_wrong_shape(self, store_type: Literal["itar", "directory"]):
         """store_pc with wrong-shaped array -> AssertionError."""
         schemas = {
             "rgb": PointCloudsComponent.AttributeSchema(
@@ -1705,12 +1735,12 @@ class TestPointCloudsComponent(unittest.TestCase):
                 shape_suffix=(3,),
             ),
         }
-        pc_writer, _, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas)
+        pc_writer, _, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas, store_type=store_type)
 
         N = 10
-        xyz = np.random.rand(N, 3).astype(np.float32)
+        xyz = np.random.rand(N, 3).astype(np.float32)  # type:ignore[attr-defined]
         # Wrong shape: (N, 4) instead of (N, 3)
-        rgb_wrong = np.random.randint(0, 256, size=(N, 4), dtype=np.uint8)
+        rgb_wrong = np.random.randint(0, 256, size=(N, 4), dtype=np.uint8)  # type:ignore[attr-defined]
 
         with self.assertRaises(AssertionError):
             pc_writer.store_pc(
@@ -1722,9 +1752,15 @@ class TestPointCloudsComponent(unittest.TestCase):
 
         tmpdir.cleanup()
 
-    def test_writer_rejects_reference_frame_timestamp_out_of_range(self):
+    @parameterized.expand(
+        [
+            ("itar",),
+            ("directory",),
+        ]
+    )
+    def test_writer_rejects_reference_frame_timestamp_out_of_range(self, store_type: Literal["itar", "directory"]):
         """store_pc with reference_frame_timestamp_us outside sequence range -> AssertionError."""
-        pc_writer, _, tmpdir, _ = self._make_writer_reader()
+        pc_writer, _, tmpdir, _ = self._make_writer_reader(store_type=store_type)
 
         xyz = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
         with self.assertRaises(AssertionError):
@@ -1736,23 +1772,35 @@ class TestPointCloudsComponent(unittest.TestCase):
 
         tmpdir.cleanup()
 
-    def test_writer_rejects_wrong_xyz_dtype(self):
+    @parameterized.expand(
+        [
+            ("itar",),
+            ("directory",),
+        ]
+    )
+    def test_writer_rejects_wrong_xyz_dtype(self, store_type: Literal["itar", "directory"]):
         """store_pc with float64 xyz raises AssertionError (float32 required)."""
-        pc_writer, _, tmpdir, _ = self._make_writer_reader()
+        pc_writer, _, tmpdir, _ = self._make_writer_reader(store_type=store_type)
 
         xyz_f64 = np.array([[1.0, 2.0, 3.0]], dtype=np.float64)
         with self.assertRaises(AssertionError):
             pc_writer.store_pc(
-                xyz=xyz_f64,
+                xyz=xyz_f64,  # type: ignore
                 reference_frame_id="world",
                 reference_frame_timestamp_us=500_000,
             )
 
         tmpdir.cleanup()
 
-    def test_empty_writer_finalize(self):
+    @parameterized.expand(
+        [
+            ("itar",),
+            ("directory",),
+        ]
+    )
+    def test_empty_writer_finalize(self, store_type: Literal["itar", "directory"]):
         """Finalizing a writer with zero store_pc calls produces a valid empty reader."""
-        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader()
+        _, store_writer, tmpdir, _ = self._make_writer_reader(store_type=store_type)
 
         # Finalize without any store_pc calls
         reader = self._finalize_and_open_reader(store_writer)
@@ -1763,9 +1811,15 @@ class TestPointCloudsComponent(unittest.TestCase):
 
         tmpdir.cleanup()
 
-    def test_no_attributes_no_generic_data(self):
+    @parameterized.expand(
+        [
+            ("itar",),
+            ("directory",),
+        ]
+    )
+    def test_no_attributes_no_generic_data(self, store_type: Literal["itar", "directory"]):
         """Write/read a PC with empty schema and no generic data."""
-        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader()
+        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader(store_type=store_type)
 
         xyz = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
         pc_writer.store_pc(
@@ -1786,9 +1840,15 @@ class TestPointCloudsComponent(unittest.TestCase):
 
         tmpdir.cleanup()
 
-    def test_generic_data_and_metadata(self):
+    @parameterized.expand(
+        [
+            ("itar",),
+            ("directory",),
+        ]
+    )
+    def test_generic_data_and_metadata(self, store_type: Literal["itar", "directory"]):
         """Verify generic_data arrays and generic_meta_data round-trip."""
-        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader()
+        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader(store_type=store_type)
 
         xyz = np.array([[0.0, 0.0, 0.0]], dtype=np.float32)
         gd_labels = np.array([42], dtype=np.int32)

@@ -1675,16 +1675,14 @@ class PointCloudsComponent:
             self._attribute_schemas = attribute_schemas
             self._pc_timestamps: List[int] = []
 
-            # Write source-level .zattrs
-            self._group.attrs.update(
+            # Pre-create the pcs group
+            self._pcs_group = self._group.require_group("pcs")
+            self._pcs_group.attrs.put(
                 {
                     "coordinate_unit": coordinate_unit.name,
                     "attribute_schemas": {name: s.to_dict() for name, s in self._attribute_schemas.items()},
                 }
             )
-
-            # Pre-create the pcs group
-            self._pcs_group = self._group.require_group("pcs")
 
         def store_pc(
             self,
@@ -1799,7 +1797,7 @@ class PointCloudsComponent:
 
         @property
         def coordinate_unit(self) -> PointCloud.CoordinateUnit:
-            return PointCloud.CoordinateUnit[self._group.attrs["coordinate_unit"]]
+            return PointCloud.CoordinateUnit[self._group["pcs"].attrs["coordinate_unit"]]
 
         @property
         def pcs_count(self) -> int:
@@ -1811,12 +1809,12 @@ class PointCloudsComponent:
 
         @property
         def attribute_names(self) -> List[str]:
-            return list(self._group.attrs["attribute_schemas"].keys())
+            return list(self._group["pcs"].attrs["attribute_schemas"].keys())
 
         # -- schema access -----------------------------------------------------
 
         def get_attribute_schema(self, name: str) -> PointCloudsComponent.AttributeSchema:
-            schema_raw = self._group.attrs["attribute_schemas"]
+            schema_raw = self._group["pcs"].attrs["attribute_schemas"]
             assert name in schema_raw, f"Unknown attribute: {name}"
             return PointCloudsComponent.AttributeSchema.from_dict(schema_raw[name])
 
