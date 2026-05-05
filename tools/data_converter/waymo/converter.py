@@ -222,6 +222,7 @@ class WaymoConverter4(FileBasedDataConverter):
                     encoding=LabelEncoding.IMAGE_ENCODED,
                     encoded_format="png",
                 ),
+                label_source=LabelSource.EXTERNAL,
             )
             for camera_id in self.camera_ids
         }

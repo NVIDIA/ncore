@@ -27,7 +27,7 @@ class ComponentGroupAssignments:
     lidar_component_groups: Dict[str, str]  # indexed by lidar_id
     radar_component_groups: Dict[str, str]  # indexed by radar_id
     point_clouds_component_groups: Dict[str, str]  # indexed by point_clouds_id
-    camera_labels_component_groups: Dict[str, str]  # indexed by instance_name (e.g. "DEPTH@cam0")
+    camera_labels_component_groups: Dict[str, str]  # indexed by camera_label_id
     poses_component_group: Optional[str]
     intrinsics_component_group: Optional[str]
     masks_component_group: Optional[str]
@@ -59,7 +59,7 @@ class ComponentGroupAssignments:
             lidar_ids: IDs of lidar sensors
             radar_ids: IDs of radar sensors
             point_clouds_ids: IDs of native point cloud sources
-            camera_labels_ids: IDs of camera label instances (e.g. "DEPTH@cam0")
+            camera_labels_ids: IDs of camera label instances
             profile: One of:
                 - "default": Use provided overrides or fall back to default groups
                 - "separate-sensors": Each sensor gets its own group named "<sensor_id>" unless overwritten, remaining components use default store

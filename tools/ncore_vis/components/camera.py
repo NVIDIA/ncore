@@ -31,7 +31,7 @@ import viser
 from scipy.spatial.transform import Rotation as RotLib
 
 from ncore.impl.common.transformations import HalfClosedInterval, transform_point_cloud
-from ncore.impl.data.types import FrameTimepoint, LabelSource
+from ncore.impl.data.types import FrameTimepoint, LabelCategory, LabelSource
 from ncore.impl.data.util import closest_index_sorted
 from ncore.impl.sensors.camera import CameraModel
 from tools.ncore_vis.components.base import VisualizationComponent, register_component
@@ -907,7 +907,7 @@ class CameraComponent(VisualizationComponent):
         source = self.data_loader.get_camera_labels(label_id)
 
         # Only apply if this label belongs to this camera
-        if source.camera_id != camera_id:
+        if source.label_descriptor.camera_id != camera_id:
             return image
 
         # Get camera frame timestamp
@@ -923,9 +923,7 @@ class CameraComponent(VisualizationComponent):
         label_data = label.get_data()
 
         # Render based on category
-        from ncore.impl.data.types import LabelCategory
-
-        category = source.label_type.category
+        category = source.label_descriptor.label_type.category
         h, w = image.shape[:2]
 
         if category == LabelCategory.DEPTH:

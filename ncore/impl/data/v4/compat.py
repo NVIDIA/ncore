@@ -37,13 +37,13 @@ from ncore.impl.data.compat import (
     SequenceLoaderProtocol,
 )
 from ncore.impl.data.types import (
+    CameraLabelDescriptor,
     ConcreteCameraModelParametersUnion,
     ConcreteLidarModelParametersUnion,
     CuboidTrackObservation,
     FrameTimepoint,
     JsonLike,
     LabelCategory,
-    LabelSchema,
     LabelType,
     PointCloud,
 )
@@ -551,18 +551,8 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
 
         @property
         @override
-        def camera_id(self) -> str:
-            return self._reader.camera_id
-
-        @property
-        @override
-        def label_type(self) -> LabelType:
-            return self._reader.label_type
-
-        @property
-        @override
-        def label_schema(self) -> LabelSchema:
-            return self._reader.schema
+        def label_descriptor(self) -> CameraLabelDescriptor:
+            return self._reader.label_descriptor
 
         @property
         @override
@@ -688,7 +678,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
     @override
     def get_camera_labels(self, camera_label_id: str) -> CameraLabelsProtocol:
         if camera_label_id not in self._camera_labels_readers:
-            raise KeyError(f"Camera labels source '{camera_label_id}' not found")
+            raise KeyError(f"Camera labels '{camera_label_id}' not found")
         return self.CameraLabels(self._camera_labels_readers[camera_label_id])
 
     @override
@@ -700,9 +690,9 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
     ) -> List[CameraLabelsProtocol]:
         results: List[CameraLabelsProtocol] = []
         for reader in self._camera_labels_readers.values():
-            if reader.camera_id != camera_id:
+            if reader.label_descriptor.camera_id != camera_id:
                 continue
-            reader_lt = reader.label_type
+            reader_lt = reader.label_descriptor.label_type
             if label_type is not None and reader_lt != label_type:
                 continue
             if label_category is not None and reader_lt.category != label_category:

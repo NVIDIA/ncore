@@ -62,6 +62,7 @@ from upath import UPath
 
 from ncore.impl.common.transformations import HalfClosedInterval, PoseGraphInterpolator
 from ncore.impl.data.types import (
+    CameraLabelDescriptor,
     ConcreteCameraModelParametersUnion,
     ConcreteLidarModelParametersUnion,
     CuboidTrackObservation,
@@ -69,7 +70,6 @@ from ncore.impl.data.types import (
     FrameTimepoint,
     JsonLike,
     LabelCategory,
-    LabelSchema,
     LabelType,
     PointCloud,
 )
@@ -857,18 +857,8 @@ class CameraLabelsProtocol(Protocol):
     """
 
     @property
-    def camera_id(self) -> str:
-        """Camera ID this label instance is associated with."""
-        ...
-
-    @property
-    def label_type(self) -> LabelType:
-        """Resolved label type."""
-        ...
-
-    @property
-    def label_schema(self) -> LabelSchema:
-        """Schema describing the label data format."""
+    def label_descriptor(self) -> CameraLabelDescriptor:
+        """Descriptor of this label instance."""
         ...
 
     @property
@@ -893,11 +883,6 @@ class CameraLabelsProtocol(Protocol):
         Returned by :meth:`CameraLabelsProtocol.get_label` and provides deferred
         access to the label data and metadata.
         """
-
-        @property
-        def schema(self) -> LabelSchema:
-            """Schema describing the label data format."""
-            ...
 
         @property
         def timestamp_us(self) -> int:
