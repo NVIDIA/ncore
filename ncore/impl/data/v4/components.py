@@ -1006,7 +1006,7 @@ class BaseSensorComponentWriter(ComponentWriter):
         """Returns the group of a frame, initializing it if required"""
 
         if isinstance(timestamps_us, np.ndarray):
-            frame_id = timestamps_us[1].item()  # end-of-frame timestamp is frame ID
+            frame_id = cast(np.ndarray, timestamps_us)[1].item()  # end-of-frame timestamp is frame ID
         else:
             frame_id = timestamps_us
 
@@ -1081,7 +1081,7 @@ class BaseSensorComponentReader(ComponentReader):
         """Returns the group of a frame"""
 
         if isinstance(timestamps_us, np.ndarray):
-            frame_id = timestamps_us[1].item()  # end-of-frame timestamp is frame ID
+            frame_id = cast(np.ndarray, timestamps_us)[1].item()  # end-of-frame timestamp is frame ID
         else:
             frame_id = timestamps_us
 
@@ -1251,7 +1251,7 @@ class BaseRayBundleSensorComponentReader(BaseSensorComponentReader):
     def get_frame_ray_bundle_return_data_names(self, timestamp_us: int) -> List[str]:
         """List of all ray bundle return data names for a frame"""
 
-        return list(cast(zarr.Group, self._get_ray_bundle_returns_group(timestamp_us)).keys())
+        return list(self._get_ray_bundle_returns_group(timestamp_us).keys())
 
     def has_frame_ray_bundle_return_data(self, timestamp_us: int, name: str) -> bool:
         """Signals if named ray bundle return data exists for a frame"""
