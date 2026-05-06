@@ -34,7 +34,11 @@ The Waymo camera frame convention is:
 **Note:** The converter transforms this to NCore's camera convention (principal
 axis +z, x-axis right, y-axis down).
 
-Each camera provides panoptic segmentation data with 29 semantic classes.
+Each camera provides panoptic segmentation data with 29 semantic classes,
+stored via :class:`~ncore.data.v4.CameraLabelsComponent` as ``IMAGE_ENCODED``
+PNG labels (label type: ``SEGMENTATION / "panoptic"``).  The per-label metadata
+includes ``panoptic_label_divisor`` for decoding semantic class and instance IDs
+from the combined panoptic map.
 
 LiDAR Sensors
 ^^^^^^^^^^^^^
@@ -56,7 +60,7 @@ Conversion
 The converter uses NCore V4's component-based architecture. Each sequence is
 parsed from ``.tfrecord`` files and written to NCore format via
 :class:`~ncore.data.v4.SequenceComponentGroupsWriter` with specialized component
-writers for poses, intrinsics, lidar, cameras, masks, and 3D labels.
+writers for poses, intrinsics, lidar, cameras, camera labels, masks, and 3D labels.
 
 Usage
 ^^^^^
@@ -167,6 +171,7 @@ API Reference
 - :class:`~ncore.data.v4.IntrinsicsComponent` - Camera and lidar intrinsics
 - :class:`~ncore.data.v4.LidarSensorComponent` - Lidar frame data
 - :class:`~ncore.data.v4.CameraSensorComponent` - Camera frame data
+- :class:`~ncore.data.v4.CameraLabelsComponent` - Per-camera image labels
 - :class:`~ncore.data.v4.CuboidsComponent` - 3D cuboid track observations
 - :class:`~ncore.data.v4.MasksComponent` - Camera masks
 
