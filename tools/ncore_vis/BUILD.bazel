@@ -87,6 +87,7 @@ py_library(
         "//ncore/impl/common:pylib_transformations",
         "//ncore/impl/data:pylib_compat",
         "//ncore/impl/data:pylib_types",
+        "//ncore/impl/data:pylib_util",
         "//ncore/impl/sensors:pylib_camera",
         requirement("matplotlib"),
         requirement("numpy"),

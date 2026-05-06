@@ -180,6 +180,42 @@ from all cameras in the sequence and shown in a shared dropdown.  The opacity
 of the tint is adjustable.  Masks are boolean images stored per-sensor and
 are not per-frame.
 
+Camera Labels Overlay
+^^^^^^^^^^^^^^^^^^^^^
+
+When a sequence contains :class:`~ncore.data.v4.CameraLabelsComponent` data,
+a **Camera Labels** overlay section appears in the Cameras tab.  This allows
+visualizing per-frame labels (depth maps, segmentation masks, surface normals,
+etc.) on camera images.
+
+Global controls:
+
+- **Show Labels**: master toggle to enable camera label visualization
+  (disabled by default)
+- **Matching**: timestamp matching strategy for sparse labels
+
+  - *Closest*: always picks the nearest available label timestamp (default)
+  - *Exact*: only shows a label if one exists at the camera frame's exact
+    timestamp; otherwise shows the RGB image
+
+- **Opacity**: blend factor between RGB image and label visualization
+  (0.0 = full RGB, 1.0 = full label)
+
+Per-camera controls:
+
+- **Label**: dropdown showing only labels associated with this camera,
+  populated from :meth:`~ncore.data.SequenceLoaderProtocol.query_camera_labels`.
+  Defaults to the first available label so that toggling "Show Labels" on
+  immediately renders something.
+
+Visualization adapts to the label category:
+
+- **DEPTH** -- TURBO colormap with percentile-based normalization
+- **SEGMENTATION** -- 20-color class palette
+- **MASK** -- green tint overlay (3-channel masks rendered as RGB)
+- **GEOMETRY** -- normal vectors mapped to RGB ([-1,1] → [0,255])
+- **Other categories** -- grayscale normalization
+
 Lidar Point Clouds
 ^^^^^^^^^^^^^^^^^^
 
