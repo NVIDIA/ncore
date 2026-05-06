@@ -54,10 +54,12 @@ class DataLoader:
         loader: SequenceLoaderProtocol,
         rig_frame_id: Optional[str] = "rig",
         world_frame_id: str = "world",
+        recenter_world: bool = True,
     ) -> None:
         self._loader: SequenceLoaderProtocol = loader
         self._rig_frame_id: Optional[str] = rig_frame_id
         self._world_frame_id: str = world_frame_id
+        self._recenter_world: bool = recenter_world
         self._warned_pose_paths: set = set()
 
         # Build cuboid DataFrame and tracks eagerly (thread-safe: done once at init)
@@ -99,6 +101,69 @@ class DataLoader:
     def world_frame_id(self) -> str:
         """Pose graph frame ID for the world/map reference."""
         return self._world_frame_id
+
+    # ------------------------------------------------------------------
+    # World recentering
+    # ------------------------------------------------------------------
+
+    @functools.cached_property
+    def world_origin_offset(self) -> np.ndarray:
+        """Translation offset subtracted from world coordinates to place the scene near the origin.
+
+        When ``recenter_world`` is enabled, returns the translation component of the
+        first rig-to-world pose (i.e. the rig position at t=0).  This ensures that all
+        rendered geometry is close to the coordinate origin, preventing floating-point
+        precision issues in the WebGL renderer.
+
+        Returns ``[0, 0, 0]`` when recentering is disabled or trajectory data is unavailable.
+        """
+        if not self._recenter_world:
+            return np.zeros(3, dtype=np.float64)
+
+        if self._rig_frame_id is None:
+            return np.zeros(3, dtype=np.float64)
+
+        interval = self._loader.sequence_timestamp_interval_us
+        try:
+            poses = self.pose_graph.evaluate_poses(
+                self._rig_frame_id, self._world_frame_id, np.array([interval.start], dtype=np.uint64)
+            )
+        except KeyError:
+            return np.zeros(3, dtype=np.float64)
+
+        offset = poses[0, :3, 3].astype(np.float64).copy()
+        logger.info("World origin offset (recenter): [%.2f, %.2f, %.2f]", offset[0], offset[1], offset[2])
+        return offset
+
+    def rebase_world_se3(self, T: np.ndarray) -> np.ndarray:
+        """Subtract :attr:`world_origin_offset` from the translation of SE3 matrix/matrices.
+
+        Args:
+            T: SE3 matrix of shape ``[4, 4]`` or batch ``[N, 4, 4]``.
+
+        Returns:
+            *T* with the translation column adjusted.
+        """
+        offset = self.world_origin_offset
+        if not offset.any():
+            return T
+        T[..., :3, 3] -= offset
+        return T
+
+    def rebase_world_points(self, points: np.ndarray) -> np.ndarray:
+        """Subtract :attr:`world_origin_offset` from XYZ point coordinates.
+
+        Args:
+            points: Array of shape ``[N, 3]`` or ``[N, 3+]``.
+
+        Returns:
+            *points* with XYZ columns adjusted.
+        """
+        offset = self.world_origin_offset
+        if not offset.any():
+            return points
+        points[:, :3] -= offset
+        return points
 
     @functools.lru_cache(maxsize=None)
     def get_camera_sensor(self, camera_id: str) -> CameraSensorProtocol:

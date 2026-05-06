@@ -273,6 +273,7 @@ class PointCloudsComponent(VisualizationComponent):
                 target_frame_timestamp_us=pc.reference_frame_timestamp_us,
                 pose_graph=self.data_loader.pose_graph,
             ).xyz
+            points_world = self.data_loader.rebase_world_points(points_world)
 
             colors = self._colorize_points(source_id, pc, points_world)
 

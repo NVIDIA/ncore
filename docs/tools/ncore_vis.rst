@@ -60,6 +60,9 @@ Global Options
    * - ``--world-frame-id``
      - ``world``
      - Pose graph frame ID for the world/map reference
+   * - ``--recenter-world/--no-recenter-world``
+     - on
+     - Whether to recenter the viewer world frame to the rig's initial pose
    * - ``--debug``
      - off
      - Start a debugpy remote debugging session

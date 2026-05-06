@@ -47,6 +47,7 @@ class CLIBaseParams:
     port: int
     rig_frame_id: str
     world_frame_id: str
+    recenter_world: bool
     debug: bool
     debug_port: int
 
@@ -56,6 +57,12 @@ class CLIBaseParams:
 @click.option("--port", type=int, default=8080, help="Server port")
 @click.option("--rig-frame-id", type=str, default="rig", help="Pose graph frame ID for the rig/vehicle body")
 @click.option("--world-frame-id", type=str, default="world", help="Pose graph frame ID for the world/map reference")
+@click.option(
+    "--recenter-world/--no-recenter-world",
+    default=True,
+    help="Recenter the scene near the origin by subtracting the first rig pose translation. "
+    "Prevents rendering artifacts caused by large world-frame offsets.",
+)
 @click.option("--debug", is_flag=True, default=False, help="Start a debugpy remote debugging session")
 @click.option("--debug-port", type=int, default=5678, help="Port on which debugpy will wait for a client to connect")
 @click.pass_context
@@ -133,6 +140,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
         port=params.port,
         rig_frame_id=params.rig_frame_id,
         world_frame_id=params.world_frame_id,
+        recenter_world=params.recenter_world,
     )
     server.start()
 

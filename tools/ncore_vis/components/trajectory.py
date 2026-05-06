@@ -109,6 +109,8 @@ class TrajectoryComponent(VisualizationComponent):
         if poses.shape[0] == 0:
             return
 
+        poses = self.data_loader.rebase_world_se3(poses)
+
         with self.client.atomic():
             for i in range(poses.shape[0]):
                 T = poses[i]
@@ -178,6 +180,7 @@ class TrajectoryComponent(VisualizationComponent):
                 self._rig_frame_handle.visible = False
             return
 
+        pose = self.data_loader.rebase_world_se3(pose)
         position, wxyz = se3_to_position_wxyz(pose)
 
         if self._rig_frame_handle is None:

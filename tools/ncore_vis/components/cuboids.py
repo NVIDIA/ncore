@@ -124,6 +124,7 @@ class CuboidsComponent(VisualizationComponent):
             for i, obs in enumerate(observations):
                 bbox = obs.bbox3
                 T_bbox_world = se3_from_centroid_euler(bbox.centroid, bbox.rot)
+                T_bbox_world = self.data_loader.rebase_world_se3(T_bbox_world)
                 position, wxyz = se3_to_position_wxyz(T_bbox_world)
                 color = self.renderer.get_class_color(obs.class_id)
 

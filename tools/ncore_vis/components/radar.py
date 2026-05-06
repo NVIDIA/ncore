@@ -414,7 +414,8 @@ class RadarComponent(VisualizationComponent):
         T_sensor_world = sensor.get_frames_T_sensor_target(
             self.data_loader.world_frame_id, frame_idx, FrameTimepoint.END
         )
-        return transform_point_cloud(points_sensor, T_sensor_world)
+        points_world = transform_point_cloud(points_sensor, T_sensor_world)
+        return self.data_loader.rebase_world_points(points_world)
 
     def _get_fused_point_cloud(
         self,

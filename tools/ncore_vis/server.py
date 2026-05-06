@@ -45,17 +45,22 @@ class NCoreVisServer:
         port: int,
         rig_frame_id: Optional[str] = "rig",
         world_frame_id: str = "world",
+        recenter_world: bool = True,
     ) -> None:
         self._loader: SequenceLoaderProtocol = loader
         self._host: str = host
         self._port: int = port
         self._rig_frame_id: Optional[str] = rig_frame_id
         self._world_frame_id: str = world_frame_id
+        self._recenter_world: bool = recenter_world
 
     def start(self) -> None:
         """Create the data loader, start the viser server, and block forever."""
         self._data_loader = DataLoader(
-            self._loader, rig_frame_id=self._rig_frame_id, world_frame_id=self._world_frame_id
+            self._loader,
+            rig_frame_id=self._rig_frame_id,
+            world_frame_id=self._world_frame_id,
+            recenter_world=self._recenter_world,
         )
         self._renderers: Dict[int, NCoreVisRenderer] = {}
 

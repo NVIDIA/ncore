@@ -583,6 +583,7 @@ class CameraComponent(VisualizationComponent):
             T_camera_world = cam.get_frames_T_sensor_target(
                 self.data_loader.world_frame_id, frame_idx, FrameTimepoint.END
             )
+            T_camera_world = self.data_loader.rebase_world_se3(T_camera_world)
             position, wxyz = se3_to_position_wxyz(T_camera_world)
 
             # Pose frame
