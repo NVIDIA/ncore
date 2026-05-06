@@ -57,6 +57,8 @@ types:
   annotations
 * :class:`~ncore.data.v4.PointCloudsComponent` - Pre-computed point clouds with
   optional typed per-point attributes
+* :class:`~ncore.data.v4.CameraLabelsComponent` - Per-camera image-aligned
+  labels (depth, flow, segmentation, masks, normals, features)
 
 The component architecture is extensible, allowing custom component types to be
 defined for application-specific data.
@@ -316,6 +318,88 @@ All enum values are serialized as their uppercase name strings.
 Lidar and radar point clouds can also be accessed through the unified
 :class:`~ncore.data.PointCloudsSourceProtocol` via the
 :class:`~ncore.data.RayBundleSensorPointCloudsSourceAdapter`.
+
+Camera Labels Component
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Per-camera image-aligned labels (depth maps, optical flow, segmentation, masks,
+surface normals, material properties, feature embeddings) are stored as
+independently-timestamped label instances.  Each instance stores labels of
+**one type** for **one camera**, enabling sparse coverage and multiple label
+sources per camera.
+
+.. code-block:: text
+
+   camera_labels/
+   └── {instance_name}/                         (e.g., "depth.z@front_50fov")
+       │
+       ├── timestamps_us  [N] uint64            (sorted label timestamps)
+       │
+       └── labels/
+            ├── {descriptor}                  
+            │     ├── camera_id: str                   (associated camera identifier)
+            │     ├── label_type: {                    (tagged-union type descriptor)
+            │     │     "category": str,               ("DEPTH", "FLOW", ...)
+            │     │     "qualifier": str,              ("z", "optical_forward", ...)
+            │     │     "unit": str | null             ("METERS", "PIXELS", ...)
+            │     │   }
+            │     ├── label_source: str                ("GT_ANNOTATION", "EXTERNAL", ...)
+            │     ├── label_schema: {                  (storage format descriptor)
+            │     │     "dtype": str,                  (e.g., "float32", "uint8")
+            │     │     "shape_suffix": [int, ...],    (trailing dims after [H, W])
+            │     │     "encoding": str,               ("RAW" | "IMAGE_ENCODED")
+            │     │     "encoded_format": str | null,  ("png", "jpeg", null)
+            │     │     "quantization": {...} | null   (optional dequant params)
+            │     │   }
+            │     └── generic_meta_data: {...}         (metadata common for all labels)
+            │
+            └── {timestamp_us}/                  (keyed by camera end-of-frame timestamp)
+                ├── data  [H, W, ...] or |Sx     (label array or encoded bytes)
+                └── {attrs}
+                    ├── generic_meta_data: {...} (per-label metadata)
+                    └── format: str              (IMAGE_ENCODED only)
+
+**Label Type System:**
+
+Labels use a *tagged-union* type consisting of a high-level
+:class:`~ncore.data.LabelCategory` enum and a free-form qualifier string.
+Well-known types are provided as constants (e.g., ``LabelType.DEPTH_Z_M``,
+``LabelType.SEGMENTATION_SEMANTIC``), while project-specific labels use custom
+qualifiers without any code changes.
+
+Supported categories:
+
+* ``DEPTH`` -- Per-pixel distance measures (``"z"``, ``"ray"``, ``"relative"``, ...)
+* ``FLOW`` -- Motion displacement fields (``"optical_forward"``, ``"scene_backward"``, ...)
+* ``SEGMENTATION`` -- Per-pixel classification (``"semantic"``, ``"instance"``, ``"logits"``)
+* ``MASK`` -- Binary or multi-level masks (``"background"``, ``"dynamic"``, ``"ego"``, ...)
+* ``GEOMETRY`` -- Per-pixel geometric vectors (``"normal_camera"``, ``"ray_direction"``, ...)
+* ``MATERIAL`` -- Surface material properties (``"albedo"``, ``"roughness"``, ...)
+* ``FEATURE`` -- Per-pixel feature embeddings (``"dinov2"``, ``"clip"``, ...)
+* ``OTHER`` -- Catch-all for uncategorised labels
+
+**Encoding:**
+
+* ``RAW`` -- Numpy array stored as a zarr dataset regular compression. Shape
+  is ``[H, W] + shape_suffix`` (e.g., ``[H, W, 2]`` for optical flow).
+  Transparent quantization of raw labels is supported optionally
+  (e.g., float32 depth quantized to uint16 with scale/offset).
+* ``IMAGE_ENCODED`` -- Pre-encoded image bytes (PNG, JPEG) stored as a 1-D
+  zarr uint8 dataset with no compression. Consumers can call ``get_encoded_data()`` for raw
+  bytes (GPU-based decoding) or ``get_data()`` for Pillow-decoded numpy arrays.
+
+**Instance naming convention:**
+
+Instance names are opaque identifiers.  The recommended convention is
+``category.qualifier@camera_id`` (e.g., ``depth.z@front_50fov``).  The
+component does *not* parse or validate instance names.
+
+**Compat layer access:**
+
+Labels are accessed through :class:`~ncore.data.CameraLabelsProtocol` via
+:meth:`~ncore.data.SequenceLoaderProtocol.get_camera_labels` (by ID) or
+:meth:`~ncore.data.SequenceLoaderProtocol.query_camera_labels` (by camera
+and optional type/category filter).
 
 Component Groups
 ~~~~~~~~~~~~~~~~

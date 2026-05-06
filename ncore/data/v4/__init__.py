@@ -17,6 +17,7 @@
 
 from ncore.impl.data.v4.compat import SequenceLoaderV4
 from ncore.impl.data.v4.components import (
+    CameraLabelsComponent,
     CameraSensorComponent,
     ComponentReader,
     ComponentWriter,
@@ -46,6 +47,7 @@ __all__ = [
     "RadarSensorComponent",
     "CuboidsComponent",
     "PointCloudsComponent",
+    "CameraLabelsComponent",
     # compat APIs
     "SequenceLoaderV4",
 ]
