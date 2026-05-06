@@ -26,11 +26,9 @@ from upath import UPath
 
 from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import unpack_optional
-from ncore.impl.data.compat import RayBundleSensorPointCloudsSourceAdapter
 from ncore.impl.data.types import PointCloud, RowOffsetStructuredSpinningLidarModelParameters
-
-from .compat import SequenceLoaderV4
-from .components import (
+from ncore.impl.data.v4.compat import SequenceLoaderV4
+from ncore.impl.data.v4.components import (
     IntrinsicsComponent,
     LidarSensorComponent,
     PointCloudsComponent,

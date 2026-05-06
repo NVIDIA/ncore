@@ -21,8 +21,7 @@ import numpy as np
 import numpy.testing as npt
 
 from ncore.impl.common.transformations import PoseGraphInterpolator
-
-from .types import PointCloud
+from ncore.impl.data.types import PointCloud
 
 
 class TestPointCloud(unittest.TestCase):

@@ -24,7 +24,7 @@ import numpy as np
 import parameterized
 import zarr
 
-from .stores import IndexedTarStore, consolidate_compressed_metadata, open_compressed_consolidated
+from ncore.impl.data.stores import IndexedTarStore, consolidate_compressed_metadata, open_compressed_consolidated
 
 
 COMPRESSED_CONSOLIDATED_VALUES = [False, True]

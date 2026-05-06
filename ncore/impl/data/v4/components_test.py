@@ -41,8 +41,7 @@ from ncore.impl.data.types import (
     RowOffsetStructuredSpinningLidarModelParameters,
     ShutterType,
 )
-
-from .components import (
+from ncore.impl.data.v4.components import (
     CameraSensorComponent,
     ComponentReader,
     ComponentWriter,
