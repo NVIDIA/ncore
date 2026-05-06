@@ -36,6 +36,7 @@ def pytest_test(name, srcs, python_versions = ["3.11", "3.8"], deps = [], args =
                 "--capture=no",
             ] + args + ["$(location :%s)" % x for x in srcs],
             srcs_version = "PY3",
+            legacy_create_init = 0,
             deps = deps + [
                 requirement("pytest"),
             ],

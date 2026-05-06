@@ -15,7 +15,7 @@
 
 import unittest
 
-from .util import closest_index_sorted
+from ncore.impl.data.util import closest_index_sorted
 
 
 class TestClosestIndexSorted(unittest.TestCase):
