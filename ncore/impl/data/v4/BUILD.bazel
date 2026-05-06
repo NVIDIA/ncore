@@ -95,6 +95,7 @@ pytest_test(
         requirement("numpy"),
         requirement("scipy"),
         requirement("universal_pathlib"),
+        requirement("parameterized"),
         "@rules_python//python/runfiles",
     ],
 )

@@ -23,7 +23,7 @@ from typing import Dict, Literal, Tuple, cast
 import numpy as np
 import PIL.Image as PILImage
 
-from parameterized import parameterized
+from parameterized import parameterized, parameterized_class
 from scipy.spatial.transform import Rotation as R
 from upath import UPath
 
@@ -57,8 +57,17 @@ from ncore.impl.data.v4.components import (
 )
 
 
+@parameterized_class(
+    ("store_type"),
+    [
+        ("itar",),
+        ("directory",),
+    ],
+)
 class TestData4Reload(unittest.TestCase):
     """Test to verify functionality of V4 data writer + loader"""
+
+    store_type: Literal["itar", "directory"]
 
     def setUp(self):
         # Make printed errors more representable numerically
@@ -66,13 +75,11 @@ class TestData4Reload(unittest.TestCase):
 
     @parameterized.expand(
         [
-            ("itar", False),
-            ("itar", True),
-            ("directory", False),
-            ("directory", True),
+            (False,),
+            (True,),
         ]
     )
-    def test_reload(self, store_type, open_consolidated):
+    def test_reload(self, open_consolidated: bool):
         """Test to make sure serialized data is faithfully reloaded"""
 
         tempdir = tempfile.TemporaryDirectory()
@@ -85,7 +92,7 @@ class TestData4Reload(unittest.TestCase):
             sequence_timestamp_interval_us=(
                 ref_sequence_timestamp_interval_us := HalfClosedInterval(int(0 * 1e6), int(1 * 1e6) + 1)
             ),
-            store_type=store_type,
+            store_type=self.store_type,
             generic_meta_data=cast(Dict[str, JsonLike], ref_generic_sequence_meta_data := {"some": 1, "key": 1.2}),
         )
 
@@ -333,14 +340,16 @@ class TestData4Reload(unittest.TestCase):
             MasksComponent.Writer,
             ref_masks_id := "default",
             "masks",
-            ref_masks_generic_meta_data := {"some-meta-data": np.random.rand(3, 2).tolist()},
+            ref_masks_generic_meta_data := {"some-meta-data": np.random.default_rng().random((3, 2)).tolist()},
         )
 
         masks_writer.store_camera_masks(
             ref_camera_id,
             {
                 (ref_camera_mask_name := "default"): (
-                    ref_camera_mask_image := PILImage.fromarray(np.random.rand(3840, 2160) > 0.5).resize((480, 270))
+                    ref_camera_mask_image := PILImage.fromarray(
+                        np.random.default_rng().random((3840, 2160)) > 0.5
+                    ).resize((480, 270))
                 )
             },
         )
@@ -350,11 +359,11 @@ class TestData4Reload(unittest.TestCase):
             CameraSensorComponent.Writer,
             ref_camera_id,
             "cameras",
-            ref_camera_generic_meta_data := {"some-meta-data": np.random.rand(3, 2).tolist()},
+            ref_camera_generic_meta_data := {"some-meta-data": np.random.default_rng().random((3, 2)).tolist()},
         )
 
         with io.BytesIO() as buffer:
-            PILImage.fromarray(np.random.randint(0, 255, (640, 480, 3), dtype=np.uint8)).save(
+            PILImage.fromarray(np.random.default_rng().integers(0, 256, (640, 480, 3), dtype=np.uint8)).save(
                 buffer, format="png", optimize=True, quality=91
             )
 
@@ -362,14 +371,14 @@ class TestData4Reload(unittest.TestCase):
                 ref_image_binary0 := buffer.getvalue(),
                 "png",
                 ref_camera_timestamps_us0 := np.array([0 * 1e6, 0.1 * 1e6], dtype=np.uint64),
-                ref_camera_generic_data0 := {"some-frame-data": np.random.rand(6, 2)},
+                ref_camera_generic_data0 := {"some-frame-data": np.random.default_rng().random((6, 2))},
                 ref_camera_generic_metadata0 := cast(
                     Dict[str, JsonLike], {"some-frame-meta-data": {"something": 1, "else": 2}}
                 ),
             )
 
         with io.BytesIO() as buffer:
-            PILImage.fromarray(np.random.randint(0, 255, (640, 480, 3), dtype=np.uint8)).save(
+            PILImage.fromarray(np.random.default_rng().integers(0, 256, (640, 480, 3), dtype=np.uint8)).save(
                 buffer, format="png", optimize=True, quality=91
             )
 
@@ -377,7 +386,7 @@ class TestData4Reload(unittest.TestCase):
                 ref_image_binary1 := buffer.getvalue(),
                 "png",
                 ref_camera_timestamps_us1 := np.array([0.1 * 1e6, 0.2 * 1e6], dtype=np.uint64),
-                ref_camera_generic_data1 := {"some-frame-data": np.random.rand(6, 2)},
+                ref_camera_generic_data1 := {"some-frame-data": np.random.default_rng().random((6, 2))},
                 ref_camera_generic_metadata1 := cast(
                     Dict[str, JsonLike], {"some-more-frame-meta-data": {"even": True, "more": None}}
                 ),
@@ -388,23 +397,25 @@ class TestData4Reload(unittest.TestCase):
             LidarSensorComponent.Writer,
             ref_lidar_id,
             "lidars",
-            ref_lidar_generic_meta_data := {"some-lidar-meta-data": np.random.rand(3, 2).tolist()},
+            ref_lidar_generic_meta_data := {"some-lidar-meta-data": np.random.default_rng().random((3, 2)).tolist()},
         )
 
         def normalize_points(vectors: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
             norms = np.linalg.norm(vectors, axis=1)
             return vectors / norms[:, np.newaxis], norms
 
-        ref_lidar_direction0, lidar_distance_m0 = normalize_points(np.random.rand(5, 3).astype(np.float32) + 0.1)
+        ref_lidar_direction0, lidar_distance_m0 = normalize_points(
+            np.random.default_rng().random((5, 3)).astype(np.float32) + 0.1
+        )
 
         lidar_writer.store_frame(
             ref_lidar_direction0,
             ref_lidar_timestamp_us0 := np.linspace(0 * 1e6, 0.5 * 1e6, num=5, dtype=np.uint64),
             ref_lidar_model_element0 := np.arange(5 * 2, dtype=np.uint16).reshape((5, 2)),
             ref_lidar_distance_m0 := lidar_distance_m0[np.newaxis, :],
-            ref_lidar_intensity0 := np.random.rand(1, 5).astype(np.float32),
+            ref_lidar_intensity0 := np.random.default_rng().random((1, 5)).astype(np.float32),
             ref_lidar_timestamps_us0 := np.array([0 * 1e6, 0.5 * 1e6], dtype=np.uint64),
-            ref_lidar_generic_data0 := {"some-other-frame-data": np.random.rand(6, 2)},
+            ref_lidar_generic_data0 := {"some-other-frame-data": np.random.default_rng().random((6, 2))},
             ref_lidar_generic_metadata0 := cast(
                 Dict[str, JsonLike], {"some-more-meta-data": {"yes": None, "no": True}}
             ),
@@ -412,19 +423,21 @@ class TestData4Reload(unittest.TestCase):
 
         ref_lidar_valid_mask0 = np.ones((1, 5), dtype=bool)
 
-        ref_lidar_direction_1, lidar_distance_m1 = normalize_points(np.random.rand(8, 3).astype(np.float32) + 0.1)
+        ref_lidar_direction_1, lidar_distance_m1 = normalize_points(
+            np.random.default_rng().random((8, 3)).astype(np.float32) + 0.1
+        )
 
         abscent_mask = np.stack(
             # first return all valid
             (
                 np.zeros((8), dtype=bool),
                 # some of the second return consistently invalid
-                np.random.rand(8) > 0.25,
+                np.random.default_rng().random((8)) > 0.25,
             )
         )
         ref_lidar_distance_m1 = np.stack((lidar_distance_m1, lidar_distance_m1 + 0.1))
         ref_lidar_distance_m1[abscent_mask] = np.nan
-        ref_lidar_intensity1 = np.random.rand(2, 8).astype(np.float32)
+        ref_lidar_intensity1 = np.random.default_rng().random((2, 8)).astype(np.float32)
         ref_lidar_intensity1[abscent_mask] = np.nan
 
         ref_lidar_valid_mask1 = ~abscent_mask
@@ -436,7 +449,7 @@ class TestData4Reload(unittest.TestCase):
             ref_lidar_distance_m1,
             ref_lidar_intensity1,
             ref_lidar_timestamps_us1 := np.array([0.5 * 1e6, 1 * 1e6], dtype=np.uint64),
-            ref_lidar_generic_data1 := {"some-other-frame-data": np.random.rand(2, 2)},
+            ref_lidar_generic_data1 := {"some-other-frame-data": np.random.default_rng().random((2, 2))},
             ref_lidar_generic_metadata1 := cast(Dict[str, JsonLike], {"even-more-meta-data": {"yesno": None}}),
         )
 
@@ -445,30 +458,34 @@ class TestData4Reload(unittest.TestCase):
             RadarSensorComponent.Writer,
             ref_radar_id,
             "special-radars",
-            ref_radar_generic_meta_data := {"some-radar-meta-data": np.random.rand(3, 2).tolist()},
+            ref_radar_generic_meta_data := {"some-radar-meta-data": np.random.default_rng().random((3, 2)).tolist()},
         )
 
-        ref_radar_direction_m0, radar_distance_m0 = normalize_points(np.random.rand(5, 3).astype(np.float32) + 0.2)
+        ref_radar_direction_m0, radar_distance_m0 = normalize_points(
+            np.random.default_rng().random((5, 3)).astype(np.float32) + 0.2
+        )
 
         radar_writer.store_frame(
             ref_radar_direction_m0,
             ref_radar_timestamp_us0 := np.array([0.1 * 1e6] * 5, dtype=np.uint64),
             ref_radar_distance_m0 := radar_distance_m0[np.newaxis, :],
             ref_radar_timestamps_us0 := np.array([0.1 * 1e6, 0.1 * 1e6], dtype=np.uint64),
-            ref_radar_generic_data0 := {"some-other-frame-data": np.random.rand(6, 2)},
+            ref_radar_generic_data0 := {"some-other-frame-data": np.random.default_rng().random((6, 2))},
             ref_radar_generic_metadata0 := cast(
                 Dict[str, JsonLike], {"some-more-meta-data": {"funny": "yes", "no": True}}
             ),
         )
 
-        ref_radar_direction_m1, radar_distance_m1 = normalize_points(np.random.rand(8, 3).astype(np.float32) + 0.2)
+        ref_radar_direction_m1, radar_distance_m1 = normalize_points(
+            np.random.default_rng().random((8, 3)).astype(np.float32) + 0.2
+        )
 
         radar_writer.store_frame(
             ref_radar_direction_m1,
             ref_radar_timestamp_us1 := np.array([0.2 * 1e6] * 8, dtype=np.uint64),
             ref_radar_distance_m1 := np.stack((radar_distance_m1, radar_distance_m1 + 0.2)),
             ref_radar_timestamps_us1 := np.array([0.2 * 1e6, 0.2 * 1e6], dtype=np.uint64),
-            ref_radar_generic_data1 := {"some-radar-frame-data": np.random.rand(6, 2)},
+            ref_radar_generic_data1 := {"some-radar-frame-data": np.random.default_rng().random((6, 2))},
             ref_radar_generic_metadata1 := cast(Dict[str, JsonLike], {"some-more-meta-data": {"funny": ":("}}),
         )
 
@@ -480,7 +497,7 @@ class TestData4Reload(unittest.TestCase):
             output_dir_path=store_writer._output_dir_path,
             store_base_name=store_writer._store_base_name,
             sequence_reader=SequenceComponentGroupsReader(store_paths, open_consolidated=open_consolidated),
-            store_type=store_type,
+            store_type=self.store_type,
         )
 
         # Store cuboids with the new writer
@@ -682,22 +699,18 @@ class TestData4Reload(unittest.TestCase):
             list(ref_camera_generic_data0.keys()),
         )
         for name in names:
-            self.assertIsNone(
-                np.testing.assert_array_equal(
-                    camera_reader.get_frame_generic_data(ref_camera_timestamps_us0[1], name),
-                    ref_camera_generic_data0[name],
-                )
+            np.testing.assert_array_equal(
+                camera_reader.get_frame_generic_data(ref_camera_timestamps_us0[1], name),
+                ref_camera_generic_data0[name],
             )
         self.assertEqual(
             names := camera_reader.get_frame_generic_data_names(ref_camera_timestamps_us1[1]),
             list(ref_camera_generic_data1.keys()),
         )
         for name in names:
-            self.assertIsNone(
-                np.testing.assert_array_equal(
-                    camera_reader.get_frame_generic_data(ref_camera_timestamps_us1[1], name),
-                    ref_camera_generic_data1[name],
-                )
+            np.testing.assert_array_equal(
+                camera_reader.get_frame_generic_data(ref_camera_timestamps_us1[1], name),
+                ref_camera_generic_data1[name],
             )
 
         self.assertEqual(
@@ -884,22 +897,18 @@ class TestData4Reload(unittest.TestCase):
             list(ref_lidar_generic_data0.keys()),
         )
         for name in names:
-            self.assertIsNone(
-                np.testing.assert_array_equal(
-                    lidar_reader.get_frame_generic_data(ref_lidar_timestamps_us0[1], name),
-                    ref_lidar_generic_data0[name],
-                )
+            np.testing.assert_array_equal(
+                lidar_reader.get_frame_generic_data(ref_lidar_timestamps_us0[1], name),
+                ref_lidar_generic_data0[name],
             )
         self.assertEqual(
             names := lidar_reader.get_frame_generic_data_names(ref_lidar_timestamps_us1[1]),
             list(ref_lidar_generic_data1.keys()),
         )
         for name in names:
-            self.assertIsNone(
-                np.testing.assert_array_equal(
-                    lidar_reader.get_frame_generic_data(ref_lidar_timestamps_us1[1], name),
-                    ref_lidar_generic_data1[name],
-                )
+            np.testing.assert_array_equal(
+                lidar_reader.get_frame_generic_data(ref_lidar_timestamps_us1[1], name),
+                ref_lidar_generic_data1[name],
             )
 
         self.assertEqual(
@@ -1031,22 +1040,18 @@ class TestData4Reload(unittest.TestCase):
             list(ref_radar_generic_data0.keys()),
         )
         for name in names:
-            self.assertIsNone(
-                np.testing.assert_array_equal(
-                    radar_reader.get_frame_generic_data(ref_radar_timestamps_us0[1], name),
-                    ref_radar_generic_data0[name],
-                )
+            np.testing.assert_array_equal(
+                radar_reader.get_frame_generic_data(ref_radar_timestamps_us0[1], name),
+                ref_radar_generic_data0[name],
             )
         self.assertEqual(
             names := radar_reader.get_frame_generic_data_names(ref_radar_timestamps_us1[1]),
             list(ref_radar_generic_data1.keys()),
         )
         for name in names:
-            self.assertIsNone(
-                np.testing.assert_array_equal(
-                    radar_reader.get_frame_generic_data(ref_radar_timestamps_us1[1], name),
-                    ref_radar_generic_data1[name],
-                )
+            np.testing.assert_array_equal(
+                radar_reader.get_frame_generic_data(ref_radar_timestamps_us1[1], name),
+                ref_radar_generic_data1[name],
             )
 
         self.assertEqual(
@@ -1067,6 +1072,13 @@ class TestData4Reload(unittest.TestCase):
         self.assertEqual(list(cuboid_reader.get_observations()), ref_cuboid_observations)
 
 
+@parameterized_class(
+    ("store_type"),
+    [
+        ("itar",),
+        ("directory",),
+    ],
+)
 class TestDataNewComponent(unittest.TestCase):
     """
     Test to demonstrate how to extend an existing dataset with a new custom component.
@@ -1077,16 +1089,12 @@ class TestDataNewComponent(unittest.TestCase):
     3. Handle component versioning correctly
     """
 
+    store_type: Literal["itar", "directory"]
+
     def setUp(self):
         np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
 
-    @parameterized.expand(
-        [
-            ("itar",),
-            ("directory",),
-        ]
-    )
-    def test_new_component_extension(self, store_type):
+    def test_new_component_extension(self):
         """
         Complete example of extending a dataset with a custom component.
 
@@ -1111,7 +1119,7 @@ class TestDataNewComponent(unittest.TestCase):
             store_base_name=(sequence_id := "test-sequence"),
             sequence_id=sequence_id,
             sequence_timestamp_interval_us=(timestamp_interval := HalfClosedInterval(int(0 * 1e6), int(10 * 1e6) + 1)),
-            store_type=store_type,
+            store_type=self.store_type,
             generic_meta_data={"dataset": "test", "version": 1.0},
         )
 
@@ -1240,7 +1248,7 @@ class TestDataNewComponent(unittest.TestCase):
             sequence_reader=initial_reader,
             output_dir_path=UPath(tempdir.name),  # Same directory as initial
             store_base_name=sequence_id + "-extension",
-            store_type=store_type,
+            store_type=self.store_type,
         )
 
         # Now add our custom velocity component to the extended dataset
@@ -1410,7 +1418,7 @@ class TestDataNewComponent(unittest.TestCase):
             store_base_name="test_v2",
             sequence_id="test_v2",
             sequence_timestamp_interval_us=timestamp_interval,
-            store_type=store_type,
+            store_type=self.store_type,
             generic_meta_data={"version": "v2_test"},
         )
 
@@ -1474,14 +1482,23 @@ class TestDataNewComponent(unittest.TestCase):
         # Version compatibility tests passed - all tests completed successfully
 
 
+@parameterized_class(
+    ("store_type"),
+    [
+        ("itar",),
+        ("directory",),
+    ],
+)
 class TestPointCloudsComponent(unittest.TestCase):
     """Round-trip tests for the PointCloudsComponent Writer/Reader."""
+
+    store_type: Literal["itar", "directory"]
 
     def setUp(self):
         np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
 
     def _make_writer_reader(
-        self, store_type: Literal["itar", "directory"], attribute_schemas={}
+        self, attribute_schemas={}
     ) -> Tuple[
         PointCloudsComponent.Writer, SequenceComponentGroupsWriter, tempfile.TemporaryDirectory, HalfClosedInterval
     ]:
@@ -1495,7 +1512,7 @@ class TestPointCloudsComponent(unittest.TestCase):
             store_base_name=(seq_id := "pc-test-seq"),
             sequence_id=seq_id,
             sequence_timestamp_interval_us=timestamp_interval,
-            store_type=store_type,
+            store_type=self.store_type,
             generic_meta_data={},
         )
 
@@ -1515,13 +1532,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         self.assertIn("test_pc", pc_readers)
         return pc_readers["test_pc"]
 
-    @parameterized.expand(
-        [
-            ("itar",),
-            ("directory",),
-        ]
-    )
-    def test_single_pc_with_attributes(self, store_type: Literal["itar", "directory"]):
+    def test_single_pc_with_attributes(self):
         """Write 1 PC with rgb (uint8, (N,3)) + normals (float32, (N,3)), read back, verify all fields."""
         schemas = {
             "rgb": PointCloudsComponent.AttributeSchema(
@@ -1535,12 +1546,12 @@ class TestPointCloudsComponent(unittest.TestCase):
                 shape_suffix=(3,),
             ),
         }
-        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas, store_type=store_type)
+        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas)
 
         N = 100
-        xyz = np.random.rand(N, 3).astype(np.float32)  # type:ignore[attr-defined]
-        rgb = np.random.randint(0, 256, size=(N, 3), dtype=np.uint8)  # type:ignore[attr-defined]
-        normals = np.random.rand(N, 3).astype(np.float32)  # type:ignore[attr-defined]
+        xyz = np.random.default_rng().random((N, 3)).astype(np.float32)
+        rgb = np.random.default_rng().integers(0, 256, size=(N, 3), dtype=np.uint8)
+        normals = np.random.default_rng().random((N, 3)).astype(np.float32)
 
         pc_writer.store_pc(
             xyz=xyz,
@@ -1581,15 +1592,9 @@ class TestPointCloudsComponent(unittest.TestCase):
 
         tmpdir.cleanup()
 
-    @parameterized.expand(
-        [
-            ("itar",),
-            ("directory",),
-        ]
-    )
-    def test_multiple_pcs_different_ref_frames(self, store_type: Literal["itar", "directory"]):
+    def test_multiple_pcs_different_ref_frames(self):
         """Write 2 PCs with different reference_frame_id, verify per-pc ref frames."""
-        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader(store_type=store_type)
+        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader()
 
         xyz1 = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
         xyz2 = np.array([[4.0, 5.0, 6.0], [7.0, 8.0, 9.0]], dtype=np.float32)
@@ -1653,13 +1658,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         rt = PointCloudsComponent.AttributeSchema.from_dict(scalar_schema.to_dict())
         self.assertEqual(rt.shape_suffix, ())
 
-    @parameterized.expand(
-        [
-            ("itar",),
-            ("directory",),
-        ]
-    )
-    def test_writer_rejects_undeclared_attribute(self, store_type: Literal["itar", "directory"]):
+    def test_writer_rejects_undeclared_attribute(self):
         """store_pc with attr not in schema -> AssertionError."""
         schemas = {
             "rgb": PointCloudsComponent.AttributeSchema(
@@ -1668,7 +1667,7 @@ class TestPointCloudsComponent(unittest.TestCase):
                 shape_suffix=(3,),
             ),
         }
-        pc_writer, _, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas, store_type=store_type)
+        pc_writer, _, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas)
 
         xyz = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
         rgb = np.array([[128, 64, 32]], dtype=np.uint8)
@@ -1684,13 +1683,7 @@ class TestPointCloudsComponent(unittest.TestCase):
 
         tmpdir.cleanup()
 
-    @parameterized.expand(
-        [
-            ("itar",),
-            ("directory",),
-        ]
-    )
-    def test_writer_rejects_missing_schema_attribute(self, store_type: Literal["itar", "directory"]):
+    def test_writer_rejects_missing_schema_attribute(self):
         """store_pc missing a schema attr -> AssertionError."""
         schemas = {
             "rgb": PointCloudsComponent.AttributeSchema(
@@ -1704,7 +1697,7 @@ class TestPointCloudsComponent(unittest.TestCase):
                 shape_suffix=(3,),
             ),
         }
-        pc_writer, _, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas, store_type=store_type)
+        pc_writer, _, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas)
 
         xyz = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
         rgb = np.array([[128, 64, 32]], dtype=np.uint8)
@@ -1719,13 +1712,7 @@ class TestPointCloudsComponent(unittest.TestCase):
 
         tmpdir.cleanup()
 
-    @parameterized.expand(
-        [
-            ("itar",),
-            ("directory",),
-        ]
-    )
-    def test_writer_rejects_wrong_shape(self, store_type: Literal["itar", "directory"]):
+    def test_writer_rejects_wrong_shape(self):
         """store_pc with wrong-shaped array -> AssertionError."""
         schemas = {
             "rgb": PointCloudsComponent.AttributeSchema(
@@ -1734,12 +1721,12 @@ class TestPointCloudsComponent(unittest.TestCase):
                 shape_suffix=(3,),
             ),
         }
-        pc_writer, _, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas, store_type=store_type)
+        pc_writer, _, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas)
 
         N = 10
-        xyz = np.random.rand(N, 3).astype(np.float32)  # type:ignore[attr-defined]
+        xyz = np.random.default_rng().random((N, 3), dtype=np.float32)
         # Wrong shape: (N, 4) instead of (N, 3)
-        rgb_wrong = np.random.randint(0, 256, size=(N, 4), dtype=np.uint8)  # type:ignore[attr-defined]
+        rgb_wrong = np.random.default_rng().integers(0, 256, size=(N, 4), dtype=np.uint8)
 
         with self.assertRaises(AssertionError):
             pc_writer.store_pc(
@@ -1751,15 +1738,9 @@ class TestPointCloudsComponent(unittest.TestCase):
 
         tmpdir.cleanup()
 
-    @parameterized.expand(
-        [
-            ("itar",),
-            ("directory",),
-        ]
-    )
-    def test_writer_rejects_reference_frame_timestamp_out_of_range(self, store_type: Literal["itar", "directory"]):
+    def test_writer_rejects_reference_frame_timestamp_out_of_range(self):
         """store_pc with reference_frame_timestamp_us outside sequence range -> AssertionError."""
-        pc_writer, _, tmpdir, _ = self._make_writer_reader(store_type=store_type)
+        pc_writer, _, tmpdir, _ = self._make_writer_reader()
 
         xyz = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
         with self.assertRaises(AssertionError):
@@ -1771,15 +1752,9 @@ class TestPointCloudsComponent(unittest.TestCase):
 
         tmpdir.cleanup()
 
-    @parameterized.expand(
-        [
-            ("itar",),
-            ("directory",),
-        ]
-    )
-    def test_writer_rejects_wrong_xyz_dtype(self, store_type: Literal["itar", "directory"]):
+    def test_writer_rejects_wrong_xyz_dtype(self):
         """store_pc with float64 xyz raises AssertionError (float32 required)."""
-        pc_writer, _, tmpdir, _ = self._make_writer_reader(store_type=store_type)
+        pc_writer, _, tmpdir, _ = self._make_writer_reader()
 
         xyz_f64 = np.array([[1.0, 2.0, 3.0]], dtype=np.float64)
         with self.assertRaises(AssertionError):
@@ -1791,15 +1766,9 @@ class TestPointCloudsComponent(unittest.TestCase):
 
         tmpdir.cleanup()
 
-    @parameterized.expand(
-        [
-            ("itar",),
-            ("directory",),
-        ]
-    )
-    def test_empty_writer_finalize(self, store_type: Literal["itar", "directory"]):
+    def test_empty_writer_finalize(self):
         """Finalizing a writer with zero store_pc calls produces a valid empty reader."""
-        _, store_writer, tmpdir, _ = self._make_writer_reader(store_type=store_type)
+        _, store_writer, tmpdir, _ = self._make_writer_reader()
 
         # Finalize without any store_pc calls
         reader = self._finalize_and_open_reader(store_writer)
@@ -1810,15 +1779,9 @@ class TestPointCloudsComponent(unittest.TestCase):
 
         tmpdir.cleanup()
 
-    @parameterized.expand(
-        [
-            ("itar",),
-            ("directory",),
-        ]
-    )
-    def test_no_attributes_no_generic_data(self, store_type: Literal["itar", "directory"]):
+    def test_no_attributes_no_generic_data(self):
         """Write/read a PC with empty schema and no generic data."""
-        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader(store_type=store_type)
+        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader()
 
         xyz = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
         pc_writer.store_pc(
@@ -1839,15 +1802,9 @@ class TestPointCloudsComponent(unittest.TestCase):
 
         tmpdir.cleanup()
 
-    @parameterized.expand(
-        [
-            ("itar",),
-            ("directory",),
-        ]
-    )
-    def test_generic_data_and_metadata(self, store_type: Literal["itar", "directory"]):
+    def test_generic_data_and_metadata(self):
         """Verify generic_data arrays and generic_meta_data round-trip."""
-        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader(store_type=store_type)
+        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader()
 
         xyz = np.array([[0.0, 0.0, 0.0]], dtype=np.float32)
         gd_labels = np.array([42], dtype=np.int32)
