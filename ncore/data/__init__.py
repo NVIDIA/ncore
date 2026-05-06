@@ -16,6 +16,7 @@
 """Package exposing methods related to NCore's basic data types and abstract APIs"""
 
 from ncore.impl.data.compat import (
+    CameraLabelsProtocol,
     CameraSensorProtocol,
     LidarSensorProtocol,
     PointCloudsSourceProtocol,
@@ -27,6 +28,7 @@ from ncore.impl.data.compat import (
 from ncore.impl.data.types import (
     BBox3,
     BivariateWindshieldModelParameters,
+    CameraLabelDescriptor,
     ConcreteCameraModelParametersUnion,
     ConcreteExternalDistortionParametersUnion,
     ConcreteLidarModelParametersUnion,
@@ -35,10 +37,16 @@ from ncore.impl.data.types import (
     EncodedImageHandle,
     FrameTimepoint,
     FThetaCameraModelParameters,
+    LabelCategory,
+    LabelEncoding,
+    LabelSchema,
     LabelSource,
+    LabelType,
+    LabelUnit,
     OpenCVFisheyeCameraModelParameters,
     OpenCVPinholeCameraModelParameters,
     PointCloud,
+    QuantizationParams,
     ReferencePolynomial,
     RowOffsetStructuredSpinningLidarModelParameters,
     ShutterType,
@@ -64,6 +72,13 @@ __all__ = [
     "ConcreteExternalDistortionParametersUnion",
     "ConcreteLidarModelParametersUnion",
     "PointCloud",
+    "LabelCategory",
+    "LabelUnit",
+    "LabelEncoding",
+    "LabelType",
+    "QuantizationParams",
+    "LabelSchema",
+    "CameraLabelDescriptor",
     # compat protocols
     "SequenceLoaderProtocol",
     "SensorProtocol",
@@ -72,4 +87,5 @@ __all__ = [
     "RadarSensorProtocol",
     "PointCloudsSourceProtocol",
     "RayBundleSensorPointCloudsSourceAdapter",
+    "CameraLabelsProtocol",
 ]

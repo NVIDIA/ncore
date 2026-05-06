@@ -1846,3 +1846,237 @@ class PointCloudsComponent:
 
         def get_pc_generic_meta_data(self, pc_index: int) -> Dict[str, types.JsonLike]:
             return dict(self._pc_group(pc_index).attrs.get("generic_meta_data", {}))
+
+
+class CameraLabelsComponent:
+    """Data component for storing per-camera image-aligned labels (depth, segmentation, flow, etc.)."""
+
+    COMPONENT_NAME: str = "camera_labels"
+
+    # --------------------------------------------------------------------------
+    # Writer
+    # --------------------------------------------------------------------------
+
+    class Writer(ComponentWriter):
+        """Camera-labels component writer."""
+
+        @staticmethod
+        def get_component_name() -> str:
+            return CameraLabelsComponent.COMPONENT_NAME
+
+        @staticmethod
+        def get_component_version() -> str:
+            return "v1"
+
+        def __init__(
+            self,
+            component_group: zarr.Group,
+            sequence_timestamp_interval_us: HalfClosedInterval,
+            descriptor: types.CameraLabelDescriptor,
+        ) -> None:
+            super().__init__(component_group, sequence_timestamp_interval_us)
+
+            self._descriptor = descriptor
+
+            # Initialize labels group and timestamps list
+            self._labels_group = self._group.require_group("labels")
+            self._labels_group.attrs.put(               {
+                    "descriptor": descriptor.to_dict(),
+                })
+            self._timestamps: List[int] = []
+
+        def store_label(
+            self,
+            data: "Union[npt.NDArray[Any], bytes]",
+            timestamp_us: int,
+            generic_meta_data: Dict[str, types.JsonLike] = {},
+        ) -> None:
+            """Store a single label frame.
+
+            Parameters
+            ----------
+            data
+                For RAW encoding: a numpy array of shape ``(H, W)`` or ``(H, W, *shape_suffix)``
+                in the logical dtype (``schema.dtype``).  When quantization is configured, the
+                data is automatically quantized to the on-disk integer representation.
+                For IMAGE_ENCODED encoding: raw image bytes.
+            timestamp_us
+                Timestamp in microseconds – must fall within the sequence interval.
+            generic_meta_data
+                Optional per-label metadata.
+            """
+            compressor = Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE)
+
+            # Sanity checks
+            assert timestamp_us in self._sequence_timestamp_interval_us, (
+                f"timestamp_us {timestamp_us} not in sequence time range"
+            )
+            assert timestamp_us not in self._timestamps, f"Duplicate timestamp_us: {timestamp_us}"
+
+            # Store label-associated data in a dedicated subgroup named by the timestamp
+            label_group = self._labels_group.require_group(str(timestamp_us))
+
+            if self._descriptor.label_schema.encoding == types.LabelEncoding.RAW:
+                assert isinstance(data, np.ndarray), "RAW encoding requires a numpy array"
+
+                # Validate shape: (H, W) for scalar, (H, W, *shape_suffix) for multi-channel
+                if self._descriptor.label_schema.shape_suffix:
+                    assert data.ndim == 2 + len(self._descriptor.label_schema.shape_suffix), (
+                        f"Expected ndim={2 + len(self._descriptor.label_schema.shape_suffix)}, got {data.ndim}"
+                    )
+                    assert data.shape[2:] == self._descriptor.label_schema.shape_suffix, (
+                        f"shape_suffix mismatch: expected {self._descriptor.label_schema.shape_suffix}, got {data.shape[2:]}"
+                    )
+                else:
+                    assert data.ndim == 2, f"Scalar label must be 2-D (H, W), got ndim={data.ndim}"
+
+                # Validate dtype — caller must pass data in the expected dtype
+                assert np.dtype(data.dtype) == self._descriptor.label_schema.dtype, (
+                    f"dtype mismatch: expected {self._descriptor.label_schema.dtype}, got {data.dtype}"
+                )
+
+                # Quantize if configured
+                stored = data
+                if (q := self._descriptor.label_schema.quantization) is not None:
+                    stored = np.round((data.astype(q.intermediate_dtype) - q.offset) / q.scale).astype(
+                        q.quantized_dtype
+                    )
+
+                label_group.create_dataset("data", data=stored, chunks=stored.shape, compressor=compressor)
+
+            elif self._descriptor.label_schema.encoding == types.LabelEncoding.IMAGE_ENCODED:
+                assert isinstance(data, bytes), "IMAGE_ENCODED encoding requires bytes"
+
+                label_group.create_dataset(
+                    "data",
+                    data=np.asarray(bytearray(data), dtype=np.uint8),
+                    compressor=None,
+                ).attrs["format"] = self._descriptor.label_schema.encoded_format
+
+            else:
+                raise ValueError(f"Unsupported label encoding: {self._descriptor.label_schema.encoding}")
+
+            label_group.attrs["generic_meta_data"] = generic_meta_data
+
+            self._timestamps.append(timestamp_us)
+
+        def finalize(self) -> None:
+            """Write sorted timestamps_us array."""
+            ts_array = np.array(sorted(self._timestamps), dtype=np.uint64)
+            self._group.create_dataset(
+                "timestamps_us",
+                data=ts_array,
+                chunks=(max(1, len(ts_array)),),
+                compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
+            )
+
+    # --------------------------------------------------------------------------
+    # Reader
+    # --------------------------------------------------------------------------
+
+    class Reader(ComponentReader):
+        """Camera-labels component reader."""
+
+        @staticmethod
+        def get_component_name() -> str:
+            return CameraLabelsComponent.COMPONENT_NAME
+
+        @staticmethod
+        def supports_component_version(version: str) -> bool:
+            return version == "v1"
+
+        def __init__(self, component_instance_name: str, component_group: zarr.Group) -> None:
+            super().__init__(component_instance_name, component_group)
+            self._timestamps_us: npt.NDArray[np.uint64] = np.array(self._group["timestamps_us"][:])
+            self._timestamp_to_index: Dict[int, int] = {int(ts): i for i, ts in enumerate(self._timestamps_us)}
+            self._descriptor = types.CameraLabelDescriptor.from_dict(self._group["labels"].attrs["descriptor"])
+
+        # -- properties --------------------------------------------------------
+
+        @property
+        def label_descriptor(self) -> types.CameraLabelDescriptor:
+            return self._descriptor
+
+        @property
+        def labels_count(self) -> int:
+            return len(self._timestamps_us)
+
+        @property
+        def timestamps_us(self) -> npt.NDArray[np.uint64]:
+            return self._timestamps_us
+
+        # -- per-label access --------------------------------------------------
+
+        def _label_group(self, timestamp_us: int) -> zarr.Group:
+            assert timestamp_us in self._timestamp_to_index, (
+                f"Unknown timestamp: {timestamp_us}. Available: {list(self._timestamp_to_index.keys())[:5]}..."
+            )
+            return cast(zarr.Group, self._group["labels"][str(timestamp_us)])
+
+        class CameraLabelHandle:
+            """References label data without eagerly loading it.
+
+            Implements the :class:`CameraLabelHandleProtocol` protocol, providing access to the label
+            data, schema, timestamp, and per-label metadata.
+            """
+
+            def __init__(
+                self,
+                label_group: zarr.Group,
+                descriptor: types.CameraLabelDescriptor,
+                timestamp_us: int,
+                generic_meta_data: Dict[str, types.JsonLike],
+            ) -> None:
+                self._label_group = label_group
+                self._descriptor = descriptor
+                self._timestamp_us = timestamp_us
+                self._generic_meta_data = generic_meta_data
+
+            @property
+            def descriptor(self) -> types.CameraLabelDescriptor:
+                return self._descriptor
+
+            @property
+            def timestamp_us(self) -> int:
+                return self._timestamp_us
+
+            @property
+            def generic_meta_data(self) -> Dict[str, types.JsonLike]:
+                return self._generic_meta_data
+
+            def get_data(self) -> npt.NDArray[Any]:
+                """Load and return the label data as a numpy array.
+
+                For RAW encoding, applies de-quantization if specified in the schema.
+                For IMAGE_ENCODED encoding, decodes the image bytes via PIL.
+                """
+                if self._descriptor.label_schema.encoding == types.LabelEncoding.RAW:
+                    arr = np.array(self._label_group["data"][:])
+
+                    # De-quantize if configured
+                    if (q := self._descriptor.label_schema.quantization) is not None:
+                        arr = (arr.astype(q.intermediate_dtype) * q.scale + q.offset).astype(
+                            self._descriptor.label_schema.dtype
+                        )
+                    return arr
+
+                elif self._descriptor.label_schema.encoding == types.LabelEncoding.IMAGE_ENCODED:
+                    raw_bytes = bytes(self._label_group["data"][:])
+                    image = PILImage.open(io.BytesIO(raw_bytes))
+                    return np.asarray(image)
+
+                else:
+                    raise ValueError(f"Unsupported label encoding: {self._descriptor.label_schema.encoding}")
+
+            def get_encoded_data(self) -> Optional[bytes]:
+                """Return the raw encoded bytes for IMAGE_ENCODED labels, or None for RAW."""
+                if self._descriptor.label_schema.encoding == types.LabelEncoding.IMAGE_ENCODED:
+                    return bytes(self._label_group["data"][:])
+                return None
+
+        def get_label(self, timestamp_us: int) -> CameraLabelHandle:
+            """Return a lazy handle to the label data at the given timestamp."""
+            label_group = self._label_group(timestamp_us)
+            return self.CameraLabelHandle(
+                label_group, self._descriptor, timestamp_us, label_group.attrs["generic_meta_data"]
+            )

@@ -62,12 +62,15 @@ from upath import UPath
 
 from ncore.impl.common.transformations import HalfClosedInterval, PoseGraphInterpolator
 from ncore.impl.data.types import (
+    CameraLabelDescriptor,
     ConcreteCameraModelParametersUnion,
     ConcreteLidarModelParametersUnion,
     CuboidTrackObservation,
     EncodedImageData,
     FrameTimepoint,
     JsonLike,
+    LabelCategory,
+    LabelType,
     PointCloud,
 )
 from ncore.impl.data.util import closest_index_sorted
@@ -163,6 +166,34 @@ class SequenceLoaderProtocol(Protocol):
 
         For native point-clouds sources, ``return_index`` is ignored.
         For lidar/radar-adapted sources, ``return_index`` selects the ray-bundle return.
+        """
+        ...
+
+    @property
+    def camera_labels_ids(self) -> List[str]:
+        """List of all camera label instance IDs."""
+        ...
+
+    def get_camera_labels(self, camera_label_id: str) -> CameraLabelsProtocol:
+        """Get a camera labels source by instance ID."""
+        ...
+
+    def query_camera_labels(
+        self,
+        camera_id: str,
+        label_type: Optional[LabelType] = None,
+        label_category: Optional[LabelCategory] = None,
+    ) -> List[CameraLabelsProtocol]:
+        """Query camera label sources matching filters.
+
+        Parameters
+        ----------
+        camera_id
+            Camera ID to match.
+        label_type
+            If provided, only return sources with this exact label type.
+        label_category
+            If provided, only return sources whose label type category matches.
         """
         ...
 
@@ -611,7 +642,7 @@ class PointCloudsSourceProtocol(Protocol):
         ...
 
     def get_pc_generic_meta_data(self, pc_index: int) -> Dict[str, JsonLike]:
-        """Return generic JSON metadata associated with the given point cloud."""
+        """Returns generic point cloud meta-data for a specific point-cloud."""
         ...
 
     def get_pc_index_range(
@@ -816,3 +847,61 @@ class RayBundleSensorPointCloudsSourceAdapter:
         step: Optional[int] = None,
     ) -> range:
         return range(*slice(start, stop, step).indices(self.pcs_count))
+
+
+@runtime_checkable
+class CameraLabelsProtocol(Protocol):
+    """Protocol for accessing camera-associated image labels.
+
+    Each instance provides labels of one type for one camera, with independently-managed timestamps.
+    """
+
+    @property
+    def label_descriptor(self) -> CameraLabelDescriptor:
+        """Descriptor of this label instance."""
+        ...
+
+    @property
+    def labels_count(self) -> int:
+        """Number of stored labels."""
+        ...
+
+    @property
+    def label_timestamps_us(self) -> npt.NDArray[np.uint64]:
+        """Timestamps of all stored labels, sorted ascending."""
+        ...
+
+    @property
+    def labels_generic_meta_data(self) -> Dict[str, JsonLike]:
+        """Generic metadata associated with all labels."""
+        ...
+
+    @runtime_checkable
+    class CameraLabelHandleProtocol(Protocol):
+        """Protocol for a single camera label at a specific timestamp.
+
+        Returned by :meth:`CameraLabelsProtocol.get_label` and provides deferred
+        access to the label data and metadata.
+        """
+
+        @property
+        def timestamp_us(self) -> int:
+            """Timestamp of this label in microseconds."""
+            ...
+
+        @property
+        def generic_meta_data(self) -> Dict[str, JsonLike]:
+            """Per-label generic metadata."""
+            ...
+
+        def get_data(self) -> npt.NDArray[Any]:
+            """Load and return the label data as a numpy array."""
+            ...
+
+        def get_encoded_data(self) -> Optional[bytes]:
+            """Return raw encoded bytes for IMAGE_ENCODED labels, or None for RAW."""
+            ...
+
+    def get_label(self, timestamp_us: int) -> CameraLabelHandleProtocol:
+        """Return a lazy handle to the label data at the given timestamp."""
+        ...

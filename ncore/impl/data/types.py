@@ -23,7 +23,20 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from enum import IntEnum, auto, unique
 from functools import lru_cache
-from typing import TYPE_CHECKING, Callable, Dict, List, Literal, Mapping, Optional, Protocol, Tuple, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    ClassVar,
+    Dict,
+    List,
+    Literal,
+    Mapping,
+    Optional,
+    Protocol,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 import dataclasses_json
 import numpy as np
@@ -771,6 +784,11 @@ class BBox3(dataclasses_json.DataClassJsonMixin):
         assert all(isinstance(i, float) for i in self.rot)
 
 
+# ---------------------------------------------------------------------------
+#  Label type system
+# ---------------------------------------------------------------------------
+
+
 @unique
 class LabelSource(IntEnum):
     """Enumerates different sources for labels (auto, manual, GT, synthetic etc.)"""
@@ -779,6 +797,186 @@ class LabelSource(IntEnum):
     EXTERNAL = auto()  #: Label originates from an unspecified external source, e.g., from third-party processes
     GT_SYNTHETIC = auto()  #: Label originates from a synthetic data simulation and is considered ground-truth
     GT_ANNOTATION = auto()  #: Label originates from manual annotation and is considered ground-truth
+    UNKNOWN = -1  #: Unrecognised / fallback source (reader-only)
+
+    @classmethod
+    def resolve(cls, name: str) -> LabelSource:
+        """Return the member matching *name*, or :py:attr:`UNKNOWN` if unrecognised."""
+        try:
+            return cls.__members__[name]
+        except KeyError:
+            return cls.UNKNOWN
+
+
+@unique
+class LabelCategory(IntEnum):
+    """High-level category of a label types."""
+
+    DEPTH = 0  #: Distance measures (z-axis, ray, relative)
+    FLOW = 1  #: Motion displacement fields (optical, scene)
+    SEGMENTATION = 2  #: Classification (semantic, instance, panoptic)
+    MASK = 3  #: Binary / multi-level masks
+    GEOMETRY = 4  #: Geometric vectors (normals, ray directions)
+    MATERIAL = 5  #: Material / surface properties (albedo, roughness)
+    FEATURE = 6  #: Feature embeddings (DINOv2, CLIP)
+    OTHER = 7  #: Catch-all for uncategorised labels
+    UNKNOWN = -1  #: Unrecognised / fallback category (reader-only)
+
+    @classmethod
+    def resolve(cls, name: str) -> LabelCategory:
+        """Return the member matching *name*, or :py:attr:`UNKNOWN` if unrecognised."""
+        try:
+            return cls.__members__[name]
+        except KeyError:
+            return cls.UNKNOWN
+
+
+@unique
+class LabelUnit(IntEnum):
+    """Physical unit associated with a label's numeric values."""
+
+    METERS = 0  #: Metric (meters)
+    PIXELS = 1  #: Pixel displacement
+    UNITLESS = 2  #: Dimensionless quantity (e.g. class IDs, masks)
+    UNKNOWN = -1  #: Unrecognised / fallback unit (reader-only)
+
+    @classmethod
+    def resolve(cls, name: str) -> LabelUnit:
+        """Return the member matching *name*, or :py:attr:`UNKNOWN` if unrecognised."""
+        try:
+            return cls.__members__[name]
+        except KeyError:
+            return cls.UNKNOWN
+
+
+@unique
+class LabelEncoding(IntEnum):
+    """Describes how the raw label data is stored on disk."""
+
+    RAW = 0  #: Stored as a raw numeric array
+    IMAGE_ENCODED = 1  #: Stored as an encoded image (e.g. PNG, JPEG)
+    UNKNOWN = -1  #: Unrecognised / fallback encoding (reader-only)
+
+    @classmethod
+    def resolve(cls, name: str) -> LabelEncoding:
+        """Return the member matching *name*, or :py:attr:`UNKNOWN` if unrecognised."""
+        try:
+            return cls.__members__[name]
+        except KeyError:
+            return cls.UNKNOWN
+
+
+@dataclass(**({"slots": True, "frozen": True} if sys.version_info >= (3, 10) else {"frozen": True}))
+class LabelType(dataclasses_json.DataClassJsonMixin):
+    """Describes the semantic kind of a label: category + qualifier + unit.
+
+    Well-known combinations are exposed as class-level constants (e.g. ``LabelType.DEPTH_Z``).
+    Project-specific labels use custom qualifiers with no code changes required.
+    """
+
+    category: LabelCategory = util.enum_field(LabelCategory)  #: High-level label family
+    qualifier: str = ""  #: Free-form variant identifier (e.g. "z", "optical_forward", "semantic")
+    unit: Optional[LabelUnit] = dataclasses.field(
+        default=None,
+        metadata=dataclasses_json.config(
+            encoder=lambda u: u.name if u is not None else None,
+            decoder=lambda s: LabelUnit.resolve(s) if s is not None else None,
+        ),
+    )  #: Physical unit of the label values
+
+    def __post_init__(self):
+        # Sanity checks
+        assert isinstance(self.category, LabelCategory)
+        assert isinstance(self.qualifier, str)
+        assert len(self.qualifier) > 0, (
+            "Qualifier should be a non-empty string to avoid confusion with default LabelType"
+        )
+        assert self.unit is None or isinstance(self.unit, LabelUnit)
+
+    # Well-known constants (assigned after class definition)
+    DEPTH_Z: ClassVar[LabelType]
+    DEPTH_RAY: ClassVar[LabelType]
+    DEPTH_RELATIVE: ClassVar[LabelType]
+    FLOW_OPTICAL_FORWARD: ClassVar[LabelType]
+    FLOW_OPTICAL_BACKWARD: ClassVar[LabelType]
+    FLOW_SCENE_FORWARD: ClassVar[LabelType]
+    FLOW_SCENE_BACKWARD: ClassVar[LabelType]
+    SEGMENTATION_SEMANTIC: ClassVar[LabelType]
+    SEGMENTATION_INSTANCE: ClassVar[LabelType]
+    MASK_BACKGROUND: ClassVar[LabelType]
+    MASK_DYNAMIC: ClassVar[LabelType]
+    GEOMETRY_NORMAL_CAMERA: ClassVar[LabelType]
+    GEOMETRY_NORMAL_WORLD: ClassVar[LabelType]
+    GEOMETRY_RAY_DIRECTION: ClassVar[LabelType]
+
+
+# Well-known LabelType constants (set after class definition)
+LabelType.DEPTH_Z = LabelType(LabelCategory.DEPTH, "z", LabelUnit.METERS)
+LabelType.DEPTH_RAY = LabelType(LabelCategory.DEPTH, "ray", LabelUnit.METERS)
+LabelType.DEPTH_RELATIVE = LabelType(LabelCategory.DEPTH, "relative", LabelUnit.UNITLESS)
+LabelType.FLOW_OPTICAL_FORWARD = LabelType(LabelCategory.FLOW, "optical_forward", LabelUnit.PIXELS)
+LabelType.FLOW_OPTICAL_BACKWARD = LabelType(LabelCategory.FLOW, "optical_backward", LabelUnit.PIXELS)
+LabelType.FLOW_SCENE_FORWARD = LabelType(LabelCategory.FLOW, "scene_forward", LabelUnit.METERS)
+LabelType.FLOW_SCENE_BACKWARD = LabelType(LabelCategory.FLOW, "scene_backward", LabelUnit.METERS)
+LabelType.SEGMENTATION_SEMANTIC = LabelType(LabelCategory.SEGMENTATION, "semantic")
+LabelType.SEGMENTATION_INSTANCE = LabelType(LabelCategory.SEGMENTATION, "instance")
+LabelType.MASK_BACKGROUND = LabelType(LabelCategory.MASK, "background")
+LabelType.MASK_DYNAMIC = LabelType(LabelCategory.MASK, "dynamic")
+LabelType.GEOMETRY_NORMAL_CAMERA = LabelType(LabelCategory.GEOMETRY, "normal_camera", LabelUnit.UNITLESS)
+LabelType.GEOMETRY_NORMAL_WORLD = LabelType(LabelCategory.GEOMETRY, "normal_world", LabelUnit.UNITLESS)
+LabelType.GEOMETRY_RAY_DIRECTION = LabelType(LabelCategory.GEOMETRY, "ray_direction")
+
+
+@dataclass(**({"slots": True, "frozen": True} if sys.version_info >= (3, 10) else {"frozen": True}))
+class QuantizationParams(dataclasses_json.DataClassJsonMixin):
+    """Parameters for de-quantizing stored integer data back to physical values.
+
+    The physical value is recovered as ``value = stored * scale + offset``.
+    """
+
+    quantized_dtype: np.dtype = util.dtype_field()  #: Numpy dtype of the quantized on-disk representation
+    scale: float = 1.0  #: Multiplicative scale factor
+    offset: float = 0.0  #: Additive offset
+    intermediate_dtype: np.dtype = dataclasses.field(
+        default=np.dtype("float64"),
+        metadata=dataclasses_json.config(exclude=lambda _: True),
+    )  #: Numpy dtype for intermediate arithmetic during (de-)quantization
+
+    def __post_init__(self):
+        assert np.issubdtype(self.quantized_dtype, np.integer), (
+            f"quantized_dtype must be an integer type, got {self.quantized_dtype}"
+        )
+        assert np.issubdtype(self.intermediate_dtype, np.floating), (
+            f"intermediate_dtype must be a floating type, got {self.intermediate_dtype}"
+        )
+
+
+@dataclass(**({"slots": True, "frozen": True} if sys.version_info >= (3, 10) else {"frozen": True}))
+class LabelSchema(dataclasses_json.DataClassJsonMixin):
+    """Schema describing the dtype, shape, encoding and quantization of a single label layer."""
+
+    dtype: np.dtype = util.dtype_field()  #: Numpy dtype of the label data (after decoding / de-quantization)
+    shape_suffix: Tuple[int, ...] = dataclasses.field(
+        default=(),
+        metadata=dataclasses_json.config(encoder=list, decoder=tuple),
+    )  #: Extra dimensions appended to (H, W)
+    encoding: LabelEncoding = util.enum_field(LabelEncoding)  #: How the label data is stored on disk
+    encoded_format: Optional[str] = (
+        None  #: Image format string (e.g. ``"png"``, ``"jpeg"``) when ``encoding == IMAGE_ENCODED``
+    )
+    quantization: Optional[QuantizationParams] = None  #: Optional quantization parameters
+
+    def __post_init__(self):
+        # Sanity checks
+        assert isinstance(self.dtype, np.dtype)
+        assert isinstance(self.shape_suffix, tuple) and all(isinstance(i, int) for i in self.shape_suffix)
+        assert isinstance(self.encoding, LabelEncoding)
+        if self.encoding == LabelEncoding.IMAGE_ENCODED:
+            assert self.encoded_format is not None, "encoded_format must be provided when encoding is IMAGE_ENCODED"
+        else:
+            assert self.encoded_format is None, "encoded_format should only be provided when encoding is IMAGE_ENCODED"
+        if self.quantization is not None:
+            assert isinstance(self.quantization, QuantizationParams)
 
 
 @dataclass
@@ -1056,3 +1254,30 @@ class EncodedImageHandle(Protocol):
     """Protocol type to reference encoded image data (e.g., file-based, container-based, memory-based)"""
 
     def get_data(self) -> EncodedImageData: ...
+
+
+@dataclass(**({"slots": True, "frozen": True} if sys.version_info >= (3, 10) else {"frozen": True}))
+class CameraLabelDescriptor(dataclasses_json.DataClassJsonMixin):
+    """Compound descriptor bundling the identity and schema of one camera label instance.
+
+    Passed directly to :class:`CameraLabelsComponent.Writer` to define what it stores.
+    The :attr:`default_instance_name` property provides a recommended naming convention.
+    """
+
+    camera_id: str
+    label_type: LabelType
+    label_schema: LabelSchema
+    label_source: LabelSource = util.enum_field(LabelSource)
+
+    @property
+    def default_instance_name(self) -> str:
+        """Recommended instance name: ``category.qualifier@camera_id``."""
+        cat = self.label_type.category.name.lower()
+        return f"{cat}.{self.label_type.qualifier}@{self.camera_id}"
+
+    def __post_init__(self):
+        # Sanity checks
+        assert isinstance(self.camera_id, str) and len(self.camera_id) > 0, "camera_id should be a non-empty string"
+        assert isinstance(self.label_type, LabelType)
+        assert isinstance(self.label_schema, LabelSchema)
+        assert isinstance(self.label_source, LabelSource)

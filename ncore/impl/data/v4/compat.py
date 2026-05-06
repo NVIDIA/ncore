@@ -26,6 +26,7 @@ from upath import UPath
 from ncore.impl.common.transformations import HalfClosedInterval, MotionCompensator, PoseGraphInterpolator
 from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.compat import (
+    CameraLabelsProtocol,
     CameraSensorProtocol,
     LidarSensorProtocol,
     PointCloudsSourceProtocol,
@@ -36,15 +37,19 @@ from ncore.impl.data.compat import (
     SequenceLoaderProtocol,
 )
 from ncore.impl.data.types import (
+    CameraLabelDescriptor,
     ConcreteCameraModelParametersUnion,
     ConcreteLidarModelParametersUnion,
     CuboidTrackObservation,
     FrameTimepoint,
     JsonLike,
+    LabelCategory,
+    LabelType,
     PointCloud,
 )
 from ncore.impl.data.v4.components import (
     BaseRayBundleSensorComponentReader,
+    CameraLabelsComponent,
     CameraSensorComponent,
     CuboidsComponent,
     IntrinsicsComponent,
@@ -125,6 +130,10 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
 
         self._point_clouds_readers: Dict[str, PointCloudsComponent.Reader] = self._reader.open_component_readers(
             PointCloudsComponent.Reader
+        )
+
+        self._camera_labels_readers: Dict[str, CameraLabelsComponent.Reader] = self._reader.open_component_readers(
+            CameraLabelsComponent.Reader
         )
 
         # init pose graph
@@ -534,6 +543,36 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             pose_graph=self._pose_graph,
         )
 
+    class CameraLabels(CameraLabelsProtocol):
+        """Wraps a :class:`CameraLabelsComponent.Reader` to implement :class:`CameraLabelsProtocol`."""
+
+        def __init__(self, reader: CameraLabelsComponent.Reader) -> None:
+            self._reader = reader
+
+        @property
+        @override
+        def label_descriptor(self) -> CameraLabelDescriptor:
+            return self._reader.label_descriptor
+
+        @property
+        @override
+        def labels_count(self) -> int:
+            return self._reader.labels_count
+
+        @property
+        @override
+        def label_timestamps_us(self) -> npt.NDArray[np.uint64]:
+            return self._reader.timestamps_us
+
+        @property
+        @override
+        def labels_generic_meta_data(self) -> Dict[str, JsonLike]:
+            return self._reader.generic_meta_data
+
+        @override
+        def get_label(self, timestamp_us: int) -> CameraLabelsComponent.Reader.CameraLabelHandle:
+            return self._reader.get_label(timestamp_us)
+
     class PointCloudsSource(PointCloudsSourceProtocol):
         """Native point-clouds source wrapping a :class:`PointCloudsComponent.Reader`.
 
@@ -630,6 +669,36 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             )
 
         raise KeyError(f"Point-clouds source '{source_id}' not found in native sources, lidars, or radars")
+
+    @property
+    @override
+    def camera_labels_ids(self) -> List[str]:
+        return list(self._camera_labels_readers.keys())
+
+    @override
+    def get_camera_labels(self, camera_label_id: str) -> CameraLabelsProtocol:
+        if camera_label_id not in self._camera_labels_readers:
+            raise KeyError(f"Camera labels '{camera_label_id}' not found")
+        return self.CameraLabels(self._camera_labels_readers[camera_label_id])
+
+    @override
+    def query_camera_labels(
+        self,
+        camera_id: str,
+        label_type: Optional[LabelType] = None,
+        label_category: Optional[LabelCategory] = None,
+    ) -> List[CameraLabelsProtocol]:
+        results: List[CameraLabelsProtocol] = []
+        for reader in self._camera_labels_readers.values():
+            if reader.label_descriptor.camera_id != camera_id:
+                continue
+            reader_lt = reader.label_descriptor.label_type
+            if label_type is not None and reader_lt != label_type:
+                continue
+            if label_category is not None and reader_lt.category != label_category:
+                continue
+            results.append(self.CameraLabels(reader))
+        return results
 
     @override
     def get_cuboid_track_observations(
