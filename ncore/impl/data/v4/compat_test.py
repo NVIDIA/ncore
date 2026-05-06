@@ -16,10 +16,11 @@
 import tempfile
 import unittest
 
-from typing import Tuple
+from typing import Literal, Tuple
 
 import numpy as np
 
+from parameterized import parameterized_class
 from python.runfiles import Runfiles  # pyright: ignore[reportMissingImports] # ty:ignore[unresolved-import]
 from scipy.spatial.transform import Rotation as R
 from upath import UPath
@@ -572,6 +573,13 @@ class TestCompatV4ReferenceValues(unittest.TestCase):
         self.assertFalse(any(obs.timestamp_us == min_ts for obs in stop_observations))
 
 
+@parameterized_class(
+    ("store_type"),
+    [
+        ("itar",),
+        ("directory",),
+    ],
+)
 class TestPointCloudsSourceIntegration(unittest.TestCase):
     """Integration tests for PointCloudsSourceProtocol via SequenceLoaderV4.
 
@@ -579,6 +587,8 @@ class TestPointCloudsSourceIntegration(unittest.TestCase):
     finalizes, then loads through SequenceLoaderV4 and verifies the point-clouds
     source protocol works correctly for both native and lidar-adapted sources.
     """
+
+    store_type: Literal["itar", "directory"]
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
@@ -603,7 +613,7 @@ class TestPointCloudsSourceIntegration(unittest.TestCase):
             store_base_name=ref_sequence_id,
             sequence_id=ref_sequence_id,
             sequence_timestamp_interval_us=ref_ts_interval,
-            store_type="directory",
+            store_type=self.store_type,
             generic_meta_data={},
         )
 
