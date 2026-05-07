@@ -17,7 +17,7 @@ branch_whitelist = ["main", "HEAD"]
 
 # Update the Python wheel version / embed_label in the bazel.rc file before the bump commit
 pre_bump_hooks = [
-    """sed -i 's/embed_label="[0-9]*\\.[0-9]*\\.[0-9]*"/embed_label="{{version}}"/g' .bazelrc""",
+    """sed -i 's/embed_label=[0-9]*\\.[0-9]*\\.[0-9]*/embed_label={{version}}/g' .bazelrc""",
 ]
 
 # Remove the local tag created by cog bump; tagging is handled by GH releases / CI
