@@ -69,7 +69,7 @@ py_wheel(
     summary = "A unified data format and library for AV / robotics",
     # Build / deploy wheels:
     # - bazel build //ncore:ncore_wheel.dist --stamp --embed_label=<VERSION>
-    # - bazel run //ncore:ncore_wheel.publish -- --stamp --embed_label=<VERSION> --repository pypi --verbose --skip-existing --non-interactive
+    # - bazel run //ncore:ncore_wheel.publish --stamp --embed_label=<VERSION> -- --repository pypi --verbose --skip-existing --non-interactive
     #
     # Version is set via --embed_label and requires calling targets with `--stamp`, default is set in .bazelrc
     version = "{BUILD_EMBED_LABEL}",

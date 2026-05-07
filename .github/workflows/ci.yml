@@ -139,7 +139,7 @@ jobs:
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: bazelisk run //ncore:ncore_wheel.publish -- --stamp --repository pypi --verbose --skip-existing --non-interactive
+        run: bazelisk run //ncore:ncore_wheel.publish --stamp -- --repository pypi --verbose --skip-existing --non-interactive
 
       - name: Print installation instructions
         run: |
