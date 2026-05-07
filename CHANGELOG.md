@@ -10,6 +10,52 @@ All notable changes to the NCore project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - - -
+## [v19.1.0](https://github.com/NVIDIA/ncore/compare/bb21e4a5ed5eb686be50ee29498eac84ce785574..v19.1.0) - 2026-05-07
+
+### Highlights
+
+- Add new first class citizen V4 `CameraLabelsComponent` for native camera labels and `CameraLabelsProtocol` for unified access.
+  
+  The new component is based on a generic tagged-union label type system, supports array and image-encoded labels, as well as optional quantization and compression for efficient storage.
+  
+  Migrate Waymo panoptic segmentation to CameraLabelsComponent and add support for visualization in `ncore_vis`.
+
+- Enable GPU-based unit tests in the CI using NVIDIA self-hosted runners with Blackwell GPU support, and upgrade PyTorch to 2.7+cu128 for Python 3.11 to ensure compatibility.
+
+- Fix an itar regression to serialize PointCloudsComponent metadata, and preload it in the reader to avoid redundant I/O and improve performance.
+
+- Update waymo converstion to support partial sequence conversions and refine visualizations in `ncore_vis`.
+
+#### ➕ Added
+- (**ncore_vis**) Add option to recenter world coordinates near the origin - ([9f20e3a](https://github.com/NVIDIA/ncore/commit/9f20e3af67b2d29b1ea8fc7a3025d2aafef75ecf)) - Janick Martinez Esturo
+- (**waymo**) add --seek-sec and --duration-sec CLI options for time-restricted conversion - ([b3e6695](https://github.com/NVIDIA/ncore/commit/b3e6695838fcd644cabdbdfc67afe3481f044a7a)) - Janick Martinez Esturo
+- add camera label overlay support to ncore_vis - ([7b7f228](https://github.com/NVIDIA/ncore/commit/7b7f228bbadda728f81008bfaf0cbde11aeab3be)) - Janick Martinez Esturo
+- migrate Waymo panoptic segmentation from generic_data to CameraLabelsComponent - ([177b9ec](https://github.com/NVIDIA/ncore/commit/177b9ec24d2ebae77f2571b50882942d422c551e)) - Janick Martinez Esturo
+- add CameraLabelsComponent with tagged-union type system, compat layer, and tests - ([8b8a607](https://github.com/NVIDIA/ncore/commit/8b8a6076147ca1ddab7c6f2f46c8d86104cda8c2)) - Janick Martinez Esturo
+- upgrade PyTorch to 2.7+cu128 for Python 3.11 with Blackwell GPU support - ([8f85584](https://github.com/NVIDIA/ncore/commit/8f855847c473edc52b5b218f5190f2f635f7e189)) - Janick Martinez Esturo
+#### 🪲 Fixed
+- (**ci**) move --stamp before -- so Bazel processes it - ([fb18a16](https://github.com/NVIDIA/ncore/commit/fb18a1610022bb8b3be31e0968774f02cebbb5f6)) - Janick Martinez Esturo
+- (**ty**) Fix ty-reported static type issues - ([b0f54f0](https://github.com/NVIDIA/ncore/commit/b0f54f02c1ca2c0575bd3b76d4e4ca9510ca8810)) - Janick Martinez Esturo
+- (**unit-tests**) consistently check all store types - ([77144a9](https://github.com/NVIDIA/ncore/commit/77144a9b2b4bca1c84703e48031a7f6f0aa65bbd)) - Janick Martinez Esturo
+- (**unit-tests**) Prevent relative imports in tests - ([e4de909](https://github.com/NVIDIA/ncore/commit/e4de909d1d0ca53b4f878abbc4b40a01484b3e47)) - Janick Martinez Esturo
+- (**waymo-converter**) skip frames that are outside of the sequence timestamp interval - ([f4b9d65](https://github.com/NVIDIA/ncore/commit/f4b9d65acd6a5dc575e90120bfa6150853b27ce6)) - Janick Martinez Esturo
+- Preload point cloud component metadata in reader - ([13bbf78](https://github.com/NVIDIA/ncore/commit/13bbf78c2df302fb1e767d2f4bfc3fdb786e6d59)) - Janick Martinez Esturo
+- Point cloud component meta data group - ([52fe0cd](https://github.com/NVIDIA/ncore/commit/52fe0cdfc36f5d94450ecdbbcb82be0cafa2adbc)) - Janick Martinez Esturo
+#### 🔄 Changed
+- (**v4-components**) use module-level logger - ([ae7e990](https://github.com/NVIDIA/ncore/commit/ae7e99008cfb4c68c596c727a2143753fa97680e)) - Emmanuel Attia
+#### 📚 Documentation
+- add project site link to README - ([041f003](https://github.com/NVIDIA/ncore/commit/041f00338abbea0a20075096032d7bc34af55789)) - Janick Martinez Esturo
+#### ⚙️ CI
+- switch CI to NVIDIA self-hosted runners - ([9372229](https://github.com/NVIDIA/ncore/commit/9372229269dfa0a6036c41636efb8efe99892308)) - Janick Martinez Esturo
+- add copy-pr-bot configuration for self-hosted runners - ([bb21e4a](https://github.com/NVIDIA/ncore/commit/bb21e4a5ed5eb686be50ee29498eac84ce785574)) - Janick Martinez Esturo
+#### 🏗️ Build
+- Specify wheel version via embed label - ([cc440a4](https://github.com/NVIDIA/ncore/commit/cc440a46fe45e2a543e42ff899bb0e1165dbae6d)) - Janick Martinez Esturo
+- Suppress rules_py warning on RECORD file changes - ([bcebfde](https://github.com/NVIDIA/ncore/commit/bcebfdeeeb041852301d4a4a413a052fe2444123)) - Janick Martinez Esturo
+#### 🧪 Tests
+- add V4 compat layer coverage for camera labels, radar sensor, and get_sequence_meta - ([d91fcc9](https://github.com/NVIDIA/ncore/commit/d91fcc9593b7fb53e00f2741c6edfbb63cfc1a75)) - Janick Martinez Esturo
+
+- - -
+
 ## [v19.0.0](https://github.com/NVIDIA/ncore/compare/34aabcc3e0d7d55aff7e9434d6b5e091549405fd..v19.0.0) - 2026-04-24
 
 ### Highlights
