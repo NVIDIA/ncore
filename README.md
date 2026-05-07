@@ -10,6 +10,8 @@ SPDX-License-Identifier: Apache-2.0
 
 NCore provides data representations, APIs, and tools to support data-driven neural reconstructions with a focus on robotics and autonomous vehicle data.
 
+**Project Site:** [research.nvidia.com/labs/sil/projects/ncore](https://research.nvidia.com/labs/sil/projects/ncore)
+
 ## Key Features
 
 - **Neural Reconstruction** - Designed for data-driven neural 3D reconstruction and simulation applications
