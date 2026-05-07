@@ -1793,30 +1793,41 @@ class PointCloudsComponent:
         def supports_component_version(version: str) -> bool:
             return version == "v1"
 
+        def __init__(self, component_instance_name: str, component_group: zarr.Group) -> None:
+            super().__init__(component_instance_name, component_group)
+
+            self._pc_timestamps_us: npt.NDArray[np.uint64] = np.array(self._group["pc_timestamps_us"][:])
+
+            pcs_attrs = self._group["pcs"].attrs
+            self._coordinate_unit = PointCloud.CoordinateUnit[pcs_attrs["coordinate_unit"]]
+            self._attribute_schemas: Dict[str, PointCloudsComponent.AttributeSchema] = {
+                name: PointCloudsComponent.AttributeSchema.from_dict(s)
+                for name, s in pcs_attrs["attribute_schemas"].items()
+            }
+
         # -- properties --------------------------------------------------------
 
         @property
         def coordinate_unit(self) -> PointCloud.CoordinateUnit:
-            return PointCloud.CoordinateUnit[self._group["pcs"].attrs["coordinate_unit"]]
+            return self._coordinate_unit
 
         @property
         def pcs_count(self) -> int:
-            return len(self._group["pc_timestamps_us"])
+            return len(self._pc_timestamps_us)
 
         @property
         def pc_timestamps_us(self) -> "npt.NDArray[np.uint64]":
-            return np.array(self._group["pc_timestamps_us"][:])
+            return self._pc_timestamps_us
 
         @property
         def attribute_names(self) -> List[str]:
-            return list(self._group["pcs"].attrs["attribute_schemas"].keys())
+            return list(self._attribute_schemas.keys())
 
         # -- schema access -----------------------------------------------------
 
         def get_attribute_schema(self, name: str) -> PointCloudsComponent.AttributeSchema:
-            schema_raw = self._group["pcs"].attrs["attribute_schemas"]
-            assert name in schema_raw, f"Unknown attribute: {name}"
-            return PointCloudsComponent.AttributeSchema.from_dict(schema_raw[name])
+            assert name in self._attribute_schemas, f"Unknown attribute: {name}"
+            return self._attribute_schemas[name]
 
         # -- per-pc data access ------------------------------------------------
 
