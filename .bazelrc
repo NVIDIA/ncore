@@ -32,6 +32,9 @@ test --test_output=errors
 # Config for running tests without GPU (e.g., CPU-only CI runners)
 test:no-gpu --test_env=NCORE_NO_GPU_TESTS=1
 
+# Wheel versioning
+build --embed_label=19.0.0
+
 # Mypy aspect registration + enable by default
 build --aspects //bazel/typing:aspects.bzl%mypy_aspect
 build --output_groups=+mypy
