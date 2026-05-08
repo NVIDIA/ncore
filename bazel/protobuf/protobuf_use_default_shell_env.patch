@@ -1,0 +1,10 @@
+--- a/editions/defaults.bzl
++++ b/editions/defaults.bzl
+@@ -70,6 +70,7 @@ def _embed_edition_defaults_impl(ctx):
+         fail("Unknown encoding %s" % ctx.attr.encoding)
+     ctx.actions.run_shell(
+         outputs = [ctx.outputs.output],
++        use_default_shell_env = True,
+         inputs = [ctx.file.defaults, ctx.file.template],
+         tools = [ctx.executable._escape],
+         command = """
