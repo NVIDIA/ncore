@@ -516,7 +516,7 @@ def _filter_parquet_to_clip(df: pd.DataFrame, clip_id: str) -> pd.DataFrame:
     if isinstance(df.index, pd.MultiIndex):
         if "clip_id" in df.index.names:
             try:
-                return cast(pd.DataFrame, df.xs(clip_id, level="clip_id", drop_level=False))
+                return df.xs(clip_id, level="clip_id", drop_level=False)
             except KeyError:
                 return df.iloc[0:0]
     elif df.index.name == "clip_id":

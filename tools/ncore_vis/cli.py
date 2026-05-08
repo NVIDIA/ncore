@@ -68,7 +68,7 @@ class CLIBaseParams:
 @click.pass_context
 def cli(ctx: click.Context, **kwargs: object) -> None:
     """Interactive 3D viewer for NCore sequence data."""
-    ctx.obj = CLIBaseParams(**kwargs)  # type: ignore[arg-type]
+    ctx.obj = CLIBaseParams(**kwargs)  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
 
 
 @cli.command()

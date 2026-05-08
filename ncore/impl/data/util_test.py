@@ -15,6 +15,8 @@
 
 import unittest
 
+import numpy as np
+
 from ncore.impl.data.util import closest_index_sorted
 
 
@@ -23,7 +25,7 @@ class TestClosestIndexSorted(unittest.TestCase):
 
     def test_empty(self):
         with self.assertRaises(ValueError):
-            closest_index_sorted([], 5)  # empty array -> raises exception
+            closest_index_sorted(np.array([], dtype=np.uint64), 5)  # empty array -> raises exception
 
     def test_regular(self):
         def check(sorted_array, value, expected_index: int):

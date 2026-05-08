@@ -21,7 +21,7 @@ from typing import List, Literal, Tuple, Union
 import numpy as np
 
 from parameterized import parameterized_class
-from python.runfiles import Runfiles  # pyright: ignore[reportMissingImports] # ty:ignore[unresolved-import]
+from python.runfiles import Runfiles
 from scipy.spatial.transform import Rotation as R
 from upath import UPath
 

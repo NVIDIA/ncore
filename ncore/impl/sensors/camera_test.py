@@ -65,7 +65,7 @@ def _get_test_devices() -> Tuple[torch.device, ...]:
     """Return the devices to test based on NCORE_NO_GPU_TESTS environment variable - will always contain CPU and conditionally GPU."""
     if os.environ.get("NCORE_NO_GPU_TESTS", "0") in ("1", "true", "True", "TRUE"):
         return (torch.device("cpu"),)
-    if torch.version.cuda is None:
+    if torch.version.cuda is None:  # ty: ignore[possibly-missing-submodule]
         # CPU-only torch build (e.g., Python 3.8 with torch+cpu)
         return (torch.device("cpu"),)
     return (torch.device("cpu"), torch.device("cuda"))
@@ -387,17 +387,19 @@ class TestReferenceFThetaCamera(CommonTestCase):
                 )
 
                 # test that the computed rays of both cameras agree
-                self.assertLessEqual(np.linalg.norm(ray3d_ref - np.array(ray3d.cpu())), MAX_DEVIATION_RAY)
+                self.assertLessEqual(np.linalg.norm(ray3d_ref - np.array(ray3d.cpu())).item(), MAX_DEVIATION_RAY)
 
                 with self.subTest(angle=np.degrees(np.arccos(ray3d_ref[0][2]))):
                     # Verify reference camera's result
                     actualPoint2d_ref = camera_ref.rays2imagePoints(ray3d_ref)
-                    self.assertLessEqual(np.linalg.norm(expectedPoint2d - actualPoint2d_ref), MAX_DEVIATION_IN_PIXEL)
+                    self.assertLessEqual(
+                        np.linalg.norm(expectedPoint2d - actualPoint2d_ref).item(), MAX_DEVIATION_IN_PIXEL
+                    )
 
                     # Verify torch-camera's result
                     image_points = camera_ftheta.camera_rays_to_image_points(ray3d)
                     self.assertLessEqual(
-                        np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())),
+                        np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())).item(),
                         MAX_DEVIATION_IN_PIXEL,
                     )
 
@@ -442,7 +444,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
                     # Verify torch-camera's result
                     image_points = camera_ftheta.camera_rays_to_image_points(ray3d)
                     self.assertLessEqual(
-                        np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())),
+                        np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())).item(),
                         MAX_DEVIATION_IN_PIXEL,
                     )
 
@@ -504,7 +506,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
                     # Verify torch-camera's result
                     image_points = camera_ftheta.camera_rays_to_image_points(ray3d)
                     self.assertLessEqual(
-                        np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())),
+                        np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())).item(),
                         MAX_DEVIATION_IN_PIXEL,
                     )
 
@@ -800,7 +802,7 @@ class TestPinholeCamera(CommonTestCase):
 
                 self.assertTrue(image_points.valid_flag)
                 self.assertLessEqual(
-                    np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())),
+                    np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())).item(),
                     MAX_DEVIATION_IN_IMAGE_COORDINATES,
                 )
 
@@ -1165,7 +1167,7 @@ class TestFisheyeCamera(CommonTestCase):
         )
 
         self.assertLessEqual(
-            np.linalg.norm(ray3d.cpu().numpy() - np.array([0, 0, 1])), self.MAX_DEVIATION_IN_RAY_COORDINATES
+            np.linalg.norm(ray3d.cpu().numpy() - np.array([0, 0, 1])).item(), self.MAX_DEVIATION_IN_RAY_COORDINATES
         )
 
     def test_opencv_reference(self):
@@ -1216,14 +1218,14 @@ class TestFisheyeCamera(CommonTestCase):
                     # avoid 'valid' prevision issues if points get re-projected right onto each side of the image boundary for p=[0,0]
                     self.assertTrue(image_points.valid_flag)
                 self.assertLessEqual(
-                    np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())),
+                    np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())).item(),
                     self.MAX_DEVIATION_IN_IMAGE_COORDINATES,
                 )
 
                 # 2. verify consistency with OpenCV reference (one-way is sufficient)
                 image_point_opencv = ray_to_image_point_opencv(ray3d.cpu().numpy(), self.cam_model_params)
                 self.assertLessEqual(
-                    np.linalg.norm(image_point_opencv - np.array(image_points.image_points.cpu())),
+                    np.linalg.norm(image_point_opencv - np.array(image_points.image_points.cpu())).item(),
                     self.MAX_DEVIATION_IN_IMAGE_COORDINATES,
                 )
 
@@ -1479,7 +1481,7 @@ class TestTransformParameters(CameraModelsBaseTestCase):
                                     np.linalg.norm(
                                         (image_points_transformed_ref := (IMAGE_POINTS * scale_factor - offset))
                                         - image_points_transformed.image_points.cpu().numpy()
-                                    ),
+                                    ).item(),
                                     self.MAX_DEVIATION_IN_IMAGE_COORDINATES,
                                 )
 
@@ -1498,7 +1500,7 @@ class TestTransformParameters(CameraModelsBaseTestCase):
                                 self.assertLessEqual(
                                     np.linalg.norm(
                                         IMAGE_POINTS - image_points_untransformed.image_points.cpu().numpy()
-                                    ),
+                                    ).item(),
                                     self.MAX_DEVIATION_IN_IMAGE_COORDINATES,
                                 )
 

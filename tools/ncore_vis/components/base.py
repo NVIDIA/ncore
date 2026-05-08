@@ -35,7 +35,11 @@ from ncore.impl.common.transformations import HalfClosedInterval
 
 if TYPE_CHECKING:
     from tools.ncore_vis.data_loader import DataLoader
-    from tools.ncore_vis.renderer import NCoreVisRenderer  # type: ignore[import-not-found]
+
+    # Circular import: renderer imports components, components need NCoreVisRenderer for type annotations
+    from tools.ncore_vis.renderer import (  # type: ignore[import-not-found]  # ty: ignore[unresolved-import]
+        NCoreVisRenderer,
+    )
 
 # ---------------------------------------------------------------------------
 # Component registry

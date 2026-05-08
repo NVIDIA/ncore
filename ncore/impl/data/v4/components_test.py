@@ -1767,7 +1767,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         xyz_f64 = np.array([[1.0, 2.0, 3.0]], dtype=np.float64)
         with self.assertRaises(AssertionError):
             pc_writer.store_pc(
-                xyz=xyz_f64,  # type: ignore
+                xyz=xyz_f64,
                 reference_frame_id="world",
                 reference_frame_timestamp_us=500_000,
             )

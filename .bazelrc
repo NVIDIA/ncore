@@ -35,9 +35,10 @@ test:no-gpu --test_env=NCORE_NO_GPU_TESTS=1
 # Wheel versioning
 build --embed_label=19.1.1
 
-# Mypy aspect registration + enable by default
-build --aspects //bazel/typing:aspects.bzl%mypy_aspect
-build --output_groups=+mypy
+# ty type checker aspect
+build --aspects //bazel/lint:linters.bzl%ty
+build --output_groups=+rules_lint_human
+build --@aspect_rules_lint//lint:fail_on_violation
 
 # https://docs.bazel.build/versions/main/best-practices.html#using-the-bazelrc-file
 try-import %workspace%/.bazelrc.user

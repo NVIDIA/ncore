@@ -44,9 +44,9 @@ class TestIndexedTarStore(unittest.TestCase):
     def setUp(self):
         # Fill a reference group with an in-memory store
         self.g_ref = zarr.open(store=zarr.MemoryStore())
-        self.g_ref.create_dataset("foo", data=np.random.rand(3, 3, 3))
+        self.g_ref.create_dataset("foo", data=np.random.default_rng().random((3, 3, 3)))
         self.g_ref.attrs.update({"some": "thing"})
-        self.g_ref.require_group("subgroup").create_dataset("foo", data=np.random.rand(5, 5, 5))
+        self.g_ref.require_group("subgroup").create_dataset("foo", data=np.random.default_rng().random((5, 5, 5)))
 
     def check_with_reference(self, group):
         """Verifies all values of a group against the reference"""

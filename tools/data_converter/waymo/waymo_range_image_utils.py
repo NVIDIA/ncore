@@ -60,7 +60,7 @@ from tools.data_converter.waymo.deps import (
 from tools.data_converter.waymo.proto_utils import ParsedMatrix, parse_matrix_proto
 
 
-# TensorFlow tensor type alias — tf types are unavailable to mypy (follow_imports = silent),
+# TensorFlow tensor type alias - tf types are unavailable to type-checkers,
 # so we use Any as a transparent stand-in.
 TfTensor = Any
 TfDType = Any

@@ -341,7 +341,7 @@ class ColmapDataConverter(FileBasedDataConverter):
             },
         )
 
-        xyz = self.scene_manager.points3D.astype(np.float32)
+        xyz = np.asarray(self.scene_manager.points3D).astype(np.float32)
         rgb = self.scene_manager.point3D_colors  # uint8 (N, 3)
 
         # Filter out points at the origin (zero distance)

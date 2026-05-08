@@ -586,7 +586,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
             return_var.valid_indices = torch.argwhere(valid).squeeze(1)
 
         if return_timestamps:
-            # MYPY is stupid and can't see that we are doing the same above already
+            # type checkers can't see that we are doing the same above already
             assert start_timestamp_us is not None
             assert end_timestamp_us is not None
             return_var.timestamps_us = (

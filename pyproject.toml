@@ -29,3 +29,9 @@ known-third-party = ["wandb"] # prevent local wandb folders to be treaded as dif
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 lines-between-types = 1
 lines-after-imports = 2
+
+[tool.ty.environment]
+python-version = "3.11"
+
+[tool.ty.terminal]
+error-on-warning = true

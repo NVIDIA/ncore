@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Callable, Dict, Literal, Optional, cast
 
 import click
-import DracoPy
+import DracoPy  # ty:ignore[unresolved-import]
 import imageio
 import numpy as np
 import tqdm
@@ -774,7 +774,7 @@ class _PaiConversionMixin:
             video_path = self.provider.get_video_path(camera_id)
             self.logger.info(f"Extracting {len(timestamps_df)} frames from {video_path.name}")
 
-            reader = imageio.get_reader(video_path, "ffmpeg")  # type: ignore
+            reader = imageio.get_reader(video_path, "ffmpeg")  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
 
             for frame_idx in tqdm.tqdm(range(len(timestamps_df)), desc=f"Camera {camera_id}"):
                 # Keep timestamp as int because as these might be negative
@@ -793,7 +793,7 @@ class _PaiConversionMixin:
                     break
 
                 # Encode image to JPEG bytes
-                jpeg_bytes = imageio.imwrite("<bytes>", image, format="jpeg", quality=93)  # type: ignore
+                jpeg_bytes = imageio.imwrite("<bytes>", image, format="jpeg", quality=93)  # type: ignore[call-overload]  # ty: ignore[no-matching-overload]
 
                 # Append blur box metadata, if available
                 generic_meta_data = {}

@@ -29,12 +29,12 @@ import sys
 sys_path = sys.path
 sys.path = [p for p in sys.path if "_protobuf_" not in p]
 
-import tensorflow.compat.v1 as tf
+import tensorflow.compat.v1 as tf  # ty:ignore[unresolved-import]
 
-from waymo_open_dataset import dataset_pb2, label_pb2
-from waymo_open_dataset.protos import camera_segmentation_pb2
-from waymo_open_dataset.utils import range_image_utils as waymo_range_image_utils
-from waymo_open_dataset.utils import transform_utils as waymo_transform_utils
+from waymo_open_dataset import dataset_pb2, label_pb2  # ty:ignore[unresolved-import]
+from waymo_open_dataset.protos import camera_segmentation_pb2  # ty:ignore[unresolved-import]
+from waymo_open_dataset.utils import range_image_utils as waymo_range_image_utils  # ty:ignore[unresolved-import]
+from waymo_open_dataset.utils import transform_utils as waymo_transform_utils  # ty:ignore[unresolved-import]
 
 
 # Pop modified paths back to original

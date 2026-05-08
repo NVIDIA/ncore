@@ -71,7 +71,9 @@ class DataLoader:
                 columns=[field.name for field in dataclasses.fields(CuboidTrackObservation)],
             )
         else:
-            self._cuboid_df = pd.DataFrame(columns=[field.name for field in dataclasses.fields(CuboidTrackObservation)])
+            self._cuboid_df = pd.DataFrame(
+                columns=pd.Index([field.name for field in dataclasses.fields(CuboidTrackObservation)])
+            )
         self._cuboid_tracks: List[CuboidTrack] = CuboidTrack.from_observations(observations)
 
     # ------------------------------------------------------------------

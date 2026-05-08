@@ -19,6 +19,7 @@ load("@rules_python//python:defs.bzl", "py_binary")
 py_binary(
     name = "sphinx_wrapper",
     srcs = ["sphinx_wrapper.py"],
+    tags = ["no-lint"],  # Documentation build tool - heavy transitive deps cause ty to check third-party code
     visibility = ["//docs:__subpackages__"],
     deps = [
         requirement("ipython"),

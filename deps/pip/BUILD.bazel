@@ -40,7 +40,6 @@ pip_compile(
         ":requirements_pai.in",
         ":requirements_tests.in",
         ":requirements_tools.in",
-        ":requirements_typing.in",
         ":requirements_waymo.in",
     ],
     py3_runtime = "@python_3_11//:py3_runtime",

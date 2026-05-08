@@ -13,16 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-[mypy]
-# make command line output easier to read
-pretty = True
+"""Linter aspect declarations for NCore.
 
-# do not produce errors for imported code
-# (only produce errors for the explicitly listed files)
-follow_imports = silent
+ty: Astral's fast Python type checker (https://docs.astral.sh/ty/)
+Registered as a build-time aspect in .bazelrc.
+"""
 
-# follow imports to discover type stubs
-follow_imports_for_stubs = True
+load("@aspect_rules_lint//lint:ty.bzl", "lint_ty_aspect")
 
-[mypy-DracoPy.*]
-ignore_missing_imports = True
+ty = lint_ty_aspect(
+    binary = "@aspect_rules_lint//lint:ty_bin",
+    config = Label("//:pyproject.toml"),
+)

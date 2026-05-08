@@ -15,9 +15,11 @@
 
 import unittest
 
+from pathlib import Path
+
 import numpy as np
 
-from python.runfiles import Runfiles  # pyright: ignore[reportMissingImports] # ty:ignore[unresolved-import]
+from python.runfiles import Runfiles
 from scipy.spatial.transform import Rotation as R
 
 from ncore.impl.common.transformations import (
@@ -27,43 +29,44 @@ from ncore.impl.common.transformations import (
     PoseInterpolator,
     is_within_3d_bboxes,
 )
+from ncore.impl.common.util import unpack_optional
 from ncore.impl.data import types
 from ncore.impl.data.v4.compat import SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 
 
-_RUNFILES = Runfiles.Create()
+_RUNFILES: Runfiles = unpack_optional(Runfiles.Create())
 
 
 class TestIsWithin3DBBox(unittest.TestCase):
     def setUp(self):
         # Set the random seed
-        np.random.seed(41)
+        rng = np.random.default_rng(41)
 
         # create some test point-cloud
-        self.pc = np.random.rand(100000, 3).astype(np.float32) * 3.0  # increase it to [0,3] range
+        self.pc = rng.random((100000, 3)).astype(np.float32) * 3.0  # increase it to [0,3] range
 
         # create some bounding boxes
-        center = np.random.rand(100, 3).astype(np.float32) * 3.0
-        dim = np.random.rand(100, 3).astype(np.float32)
-        rotation = np.random.rand(100, 3).astype(np.float32) * 2 * np.pi
+        center = rng.random((100, 3)).astype(np.float32) * 3.0
+        dim = rng.random((100, 3)).astype(np.float32)
+        rotation = rng.random((100, 3)).astype(np.float32) * 2 * np.pi
 
         self.bboxes = np.concatenate([center, dim, rotation], axis=-1).astype(np.float32)
 
         # Create an outlier point that's outside the bboxes (guaranteed) by minimum of xyz of the
         # point being larger than maximum possible dimensions for bboxes
-        self.outlier_point = np.random.uniform(1000, 2000, size=(1, 3)).astype(np.float32)
+        self.outlier_point = rng.uniform(1000, 2000, size=(1, 3)).astype(np.float32)
 
         # Create inliner points that are guaranteed to be inside the bounding boxes to test that
         # points inside the bounding boxes are classified correctly
-        self.inliner_points = center[np.random.choice(100, 10, replace=True)]
+        self.inliner_points = center[rng.choice(100, 10, replace=True)]
 
         # Making the dimensions larger than the upper limit of the inliner points to ensure that the
         # points are guaranteed to be inside the bounding box
         self.inliner_bboxes = np.concatenate(
             [
                 np.zeros((10, 3), dtype=np.float32),  # centers
-                np.random.rand(10, 3).astype(np.float32) * 1000.0,  # dims
+                np.full((10, 3), 10.0, dtype=np.float32),  # dims large enough to contain all inlier points
                 np.zeros((10, 3), dtype=np.float32),  # rotations
             ],
             axis=-1,
@@ -195,13 +198,14 @@ class TestMotionCompensator(unittest.TestCase):
         np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
 
         # Load a lidar sensor as a source for non-motion-compensated point cloud data
+        _test_data_path = unpack_optional(
+            _RUNFILES.Rlocation(
+                "test-data-v4/c9b05cf4-afb9-11ec-b3c2-00044bf65fcb@1648597318700123-1648599151600035.json"
+            )
+        )
         self.loader = SequenceLoaderV4(
             SequenceComponentGroupsReader(
-                [
-                    _RUNFILES.Rlocation(
-                        "test-data-v4/c9b05cf4-afb9-11ec-b3c2-00044bf65fcb@1648597318700123-1648599151600035.json"
-                    )
-                ],
+                [Path(_test_data_path)],
             )
         )
 

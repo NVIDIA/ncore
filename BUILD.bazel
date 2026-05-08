@@ -13,6 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Export config files needed by linter aspects
+exports_files(["pyproject.toml"])
+
 # Formatting target aliases for convenience
 alias(
     name = "format",

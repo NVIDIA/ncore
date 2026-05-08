@@ -35,7 +35,7 @@ def se3_to_position_wxyz(T: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """
     position = T[:3, 3].astype(np.float64)
     rotation = Rotation.from_matrix(T[:3, :3].astype(np.float64))
-    xyzw = rotation.as_quat()  # scipy convention: [x, y, z, w]
+    xyzw = rotation.as_quat(canonical=False)  # scipy convention: [x, y, z, w]
     wxyz = np.array([xyzw[3], xyzw[0], xyzw[1], xyzw[2]], dtype=np.float64)
     return position, wxyz
 

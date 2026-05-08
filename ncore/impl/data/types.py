@@ -67,9 +67,6 @@ JsonLike = Union[
     float,
     bool,
     None,
-    # special-cases shouldn't be needed, but required to make mypy happy
-    List[int],
-    List[str],
 ]
 
 

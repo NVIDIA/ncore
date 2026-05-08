@@ -48,7 +48,7 @@ def _get_test_devices() -> Tuple[torch.device, ...]:
     """Return the devices to test based on NCORE_NO_GPU_TESTS environment variable - will always contain CPU and conditionally GPU."""
     if os.environ.get("NCORE_NO_GPU_TESTS", "0") in ("1", "true", "True", "TRUE"):
         return (torch.device("cpu"),)
-    if torch.version.cuda is None:
+    if torch.version.cuda is None:  # ty: ignore[possibly-missing-submodule]
         # CPU-only torch build (e.g., Python 3.8 with torch+cpu)
         return (torch.device("cpu"),)
     return (torch.device("cpu"), torch.device("cuda"))
@@ -239,9 +239,9 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
             world_rays_precomputed_sensor_rays.world_rays.cpu().numpy(), world_rays.world_rays.cpu().numpy(), decimal=6
         )
 
-        np.random.seed(0)
+        rng = np.random.default_rng(0)
         distances = to_torch(
-            np.random.rand(world_rays.world_rays.shape[0], 1) * 100,
+            rng.random((world_rays.world_rays.shape[0], 1)) * 100,
             device=self.lidar_model.device,
             dtype=self.lidar_model.dtype,
         )

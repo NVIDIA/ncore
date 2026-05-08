@@ -86,19 +86,19 @@ class TestCuboidTrackInterpolation(unittest.TestCase):
     def test_interpolate_exact_start(self):
         track = self._make_track()
         result = track.interpolate_at(0)
-        self.assertIsNotNone(result)
+        assert result is not None
         np.testing.assert_allclose(result.bbox3.centroid, (0.0, 0.0, 0.0), atol=1e-5)
 
     def test_interpolate_exact_end(self):
         track = self._make_track()
         result = track.interpolate_at(1_000_000)
-        self.assertIsNotNone(result)
+        assert result is not None
         np.testing.assert_allclose(result.bbox3.centroid, (10.0, 0.0, 0.0), atol=1e-5)
 
     def test_interpolate_midpoint_centroid(self):
         track = self._make_track()
         result = track.interpolate_at(500_000)
-        self.assertIsNotNone(result)
+        assert result is not None
         np.testing.assert_allclose(result.bbox3.centroid, (5.0, 0.0, 0.0), atol=1e-5)
 
     def test_interpolate_before_range_returns_none(self):
@@ -114,7 +114,7 @@ class TestCuboidTrackInterpolation(unittest.TestCase):
     def test_interpolate_before_range_clamp_within_limit(self):
         track = self._make_track()  # range [0, 1_000_000]
         result = track.interpolate_at(-100_000, max_clamp_us=200_000)
-        self.assertIsNotNone(result)
+        assert result is not None
         np.testing.assert_allclose(result.bbox3.centroid, (0.0, 0.0, 0.0), atol=1e-5)
         self.assertEqual(result.timestamp_us, -100_000)
 
@@ -126,7 +126,7 @@ class TestCuboidTrackInterpolation(unittest.TestCase):
     def test_interpolate_after_range_clamp_within_limit(self):
         track = self._make_track()
         result = track.interpolate_at(1_100_000, max_clamp_us=200_000)
-        self.assertIsNotNone(result)
+        assert result is not None
         np.testing.assert_allclose(result.bbox3.centroid, (10.0, 0.0, 0.0), atol=1e-5)
         self.assertEqual(result.timestamp_us, 1_100_000)
 
@@ -139,7 +139,7 @@ class TestCuboidTrackInterpolation(unittest.TestCase):
         obs = _make_obs("t1", 500_000, 3.0, 4.0, 5.0)
         track = CuboidTrack(observations=[obs])
         result = track.interpolate_at(500_000)
-        self.assertIsNotNone(result)
+        assert result is not None
         np.testing.assert_allclose(result.bbox3.centroid, (3.0, 4.0, 5.0), atol=1e-5)
 
     def test_single_observation_before_returns_none(self):
@@ -156,7 +156,7 @@ class TestCuboidTrackInterpolation(unittest.TestCase):
         obs = _make_obs("t1", 500_000, 3.0, 4.0, 5.0)
         track = CuboidTrack(observations=[obs])
         result = track.interpolate_at(400_000, max_clamp_us=200_000)
-        self.assertIsNotNone(result)
+        assert result is not None
         np.testing.assert_allclose(result.bbox3.centroid, (3.0, 4.0, 5.0), atol=1e-5)
 
     def test_single_observation_before_clamp_exceeds_limit(self):
@@ -168,7 +168,7 @@ class TestCuboidTrackInterpolation(unittest.TestCase):
         obs = _make_obs("t1", 500_000, 3.0, 4.0, 5.0)
         track = CuboidTrack(observations=[obs])
         result = track.interpolate_at(600_000, max_clamp_us=200_000)
-        self.assertIsNotNone(result)
+        assert result is not None
         np.testing.assert_allclose(result.bbox3.centroid, (3.0, 4.0, 5.0), atol=1e-5)
 
     def test_single_observation_after_clamp_exceeds_limit(self):
@@ -179,13 +179,13 @@ class TestCuboidTrackInterpolation(unittest.TestCase):
     def test_dimensions_unchanged(self):
         track = self._make_track()
         result = track.interpolate_at(500_000)
-        self.assertIsNotNone(result)
+        assert result is not None
         self.assertEqual(result.bbox3.dim, (4.0, 2.0, 1.5))
 
     def test_result_timestamp_matches_query(self):
         track = self._make_track()
         result = track.interpolate_at(750_000)
-        self.assertIsNotNone(result)
+        assert result is not None
         self.assertEqual(result.timestamp_us, 750_000)
         self.assertEqual(result.reference_frame_timestamp_us, 750_000)
 
@@ -196,26 +196,26 @@ class TestCuboidTrackInterpolation(unittest.TestCase):
         obs1 = _make_obs("t1", 1_000_000, 0.0, yaw=math.pi / 2)
         track = CuboidTrack(observations=[obs0, obs1])
         result = track.interpolate_at(500_000)
-        self.assertIsNotNone(result)
+        assert result is not None
         # Mid-point yaw should be ~pi/4
         np.testing.assert_allclose(result.bbox3.rot[2], math.pi / 4, atol=1e-4)
 
     def test_interpolate_quarter_point(self):
         track = self._make_track()
         result = track.interpolate_at(250_000)
-        self.assertIsNotNone(result)
+        assert result is not None
         np.testing.assert_allclose(result.bbox3.centroid, (2.5, 0.0, 0.0), atol=1e-5)
 
     def test_result_reference_frame_id_preserved(self):
         track = self._make_track()
         result = track.interpolate_at(500_000)
-        self.assertIsNotNone(result)
+        assert result is not None
         self.assertEqual(result.reference_frame_id, "world")
 
     def test_result_class_id_preserved(self):
         track = self._make_track()
         result = track.interpolate_at(500_000)
-        self.assertIsNotNone(result)
+        assert result is not None
         self.assertEqual(result.class_id, "Vehicle")
 
 

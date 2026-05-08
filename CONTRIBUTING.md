@@ -78,23 +78,7 @@ Note a special case for Bazel: the commands above are used both for traditional 
 
 ### Static Type Checking
 
-All Python code is checked with `mypy`, which runs automatically as a Bazel aspect during builds.
-
-#### Speeding Up Local mypy Execution
-
-The repository makes use of `mypy` for static-code validation of the important components. These are executed as part of aspects associated with all python targets. In order to speed up _local_ execution of `mypy`, consider making use of a _persistent_ user-cache available to `mypy` (as due to the way bazel sandboxes are setup, `mypy` is not able to access an external cache folder for faster analysis).
-
-To enable separate local mypy caching, we are using a patched version which enables using local cache folders, which can be enabled by setting
-
-```bazel
-# Make use of local mypy cache
-build --sandbox_writable_path=<ABSOLUTE-PATH-TO>/.mypy_cache
-build --action_env=MYPY_CACHE_DIR=<ABSOLUTE-PATH-TO>/.mypy_cache
-```
-
-in `.bazelrc.user`.
-
-Without these options there will be no caching of intermediate incremental mypy results (bazel caching of final test states is not affected by this and still active before).
+All Python code is checked with `ty`, which runs automatically as a Bazel aspect during builds.
 
 ### License Headers
 
