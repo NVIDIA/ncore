@@ -92,27 +92,31 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
         self._reader: SequenceComponentGroupsReader = reader
 
         # open all mandatory component readers
-        assert poses_component_group_name in (
-            poses_readers := self._reader.open_component_readers(PosesComponent.Reader)
-        ), f"PosesComponent group '{poses_component_group_name}' not found"
+        poses_readers = self._reader.open_component_readers(PosesComponent.Reader)
+        assert poses_component_group_name in poses_readers, (
+            f"PosesComponent group '{poses_component_group_name}' not found"
+        )
         self._poses_reader: PosesComponent.Reader = poses_readers[poses_component_group_name]
 
-        assert intrinsics_component_group_name in (
-            intrinsics_readers := self._reader.open_component_readers(IntrinsicsComponent.Reader)
-        ), f"IntrinsicsComponent group '{intrinsics_component_group_name}' not found"
+        intrinsics_readers = self._reader.open_component_readers(IntrinsicsComponent.Reader)
+        assert intrinsics_component_group_name in intrinsics_readers, (
+            f"IntrinsicsComponent group '{intrinsics_component_group_name}' not found"
+        )
         self._intrinsics_reader: IntrinsicsComponent.Reader = intrinsics_readers[intrinsics_component_group_name]
 
         # open optional component readers if available
         self._masks_reader: Optional[MasksComponent.Reader] = None
         if masks_component_group_name is not None:
-            assert (masks_readers := self._reader.open_component_readers(MasksComponent.Reader)), (
+            masks_readers = self._reader.open_component_readers(MasksComponent.Reader)
+            assert masks_component_group_name in masks_readers, (
                 f"MasksComponent group '{masks_component_group_name}' not found"
             )
             self._masks_reader = masks_readers[masks_component_group_name]
 
         self._cuboids_reader: Optional[CuboidsComponent.Reader] = None
         if cuboids_component_group_name is not None:
-            assert (cuboids_readers := self._reader.open_component_readers(CuboidsComponent.Reader)), (
+            cuboids_readers = self._reader.open_component_readers(CuboidsComponent.Reader)
+            assert cuboids_component_group_name in cuboids_readers, (
                 f"CuboidsComponent group '{cuboids_component_group_name}' not found"
             )
             self._cuboids_reader = cuboids_readers[cuboids_component_group_name]
