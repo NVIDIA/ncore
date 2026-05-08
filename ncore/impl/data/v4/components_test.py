@@ -1079,6 +1079,220 @@ class TestData4Reload(unittest.TestCase):
 
         self.assertEqual(list(cuboid_reader.get_observations()), ref_cuboid_observations)
 
+    # ------------------------------------------------------------------
+    # Component-level generic_data tests
+    # ------------------------------------------------------------------
+
+    def test_component_generic_data_roundtrip(self) -> None:
+        """Write generic data arrays + additional metadata via set_generic_data(), then read them back and verify."""
+
+        tempdir = tempfile.TemporaryDirectory()
+
+        timestamp_interval = HalfClosedInterval(0, 10_000_001)
+
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(tempdir.name),
+            store_base_name=(seq_id := "generic-data-test"),
+            sequence_id=seq_id,
+            sequence_timestamp_interval_us=timestamp_interval,
+            store_type=self.store_type,
+            generic_meta_data={},
+        )
+
+        init_meta: Dict[str, JsonLike] = {"description": "poses with generic data"}
+        poses_writer = store_writer.register_component_writer(
+            PosesComponent.Writer,
+            "test_poses",
+            generic_meta_data=init_meta,
+        )
+
+        # Store a minimal static pose so the component is non-empty
+        poses_writer.store_static_pose(
+            source_frame_id="sensor",
+            target_frame_id="rig",
+            pose=np.eye(4, dtype=np.float32),
+        )
+
+        # Prepare generic data arrays
+        rng = np.random.default_rng(42)
+        ref_weights = rng.random((10,), dtype=np.float32)
+        ref_offsets = rng.integers(0, 100, size=(5, 3), dtype=np.int32)
+
+        ref_generic_meta: Dict[str, JsonLike] = {"source": "test", "version": 2}
+
+        poses_writer.set_generic_data(
+            data={"weights": ref_weights, "offsets": ref_offsets},
+            meta_data=ref_generic_meta,
+        )
+
+        # Finalize and read back
+        store_paths = store_writer.finalize()
+        store_reader = SequenceComponentGroupsReader(component_group_paths=store_paths)
+        poses_readers = store_reader.open_component_readers(PosesComponent.Reader)
+        poses_reader = poses_readers["test_poses"]
+
+        # Verify generic data arrays
+        self.assertTrue(poses_reader.has_generic_data("weights"))
+        self.assertTrue(poses_reader.has_generic_data("offsets"))
+        self.assertFalse(poses_reader.has_generic_data("nonexistent"))
+
+        self.assertSetEqual(set(poses_reader.get_generic_data_names()), {"weights", "offsets"})
+
+        np.testing.assert_array_almost_equal(poses_reader.get_generic_data("weights"), ref_weights)
+        np.testing.assert_array_equal(poses_reader.get_generic_data("offsets"), ref_offsets)
+
+        # Verify merged metadata (init_meta + ref_generic_meta)
+        expected_meta = {**init_meta, **ref_generic_meta}
+        self.assertEqual(poses_reader.generic_meta_data, expected_meta)
+
+        tempdir.cleanup()
+
+    def test_component_generic_data_backwards_compat(self) -> None:
+        """Write without calling set_generic_data() (old behavior), verify readers handle missing generic_data/ gracefully."""
+
+        tempdir = tempfile.TemporaryDirectory()
+
+        timestamp_interval = HalfClosedInterval(0, 10_000_001)
+
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(tempdir.name),
+            store_base_name=(seq_id := "generic-data-compat-test"),
+            sequence_id=seq_id,
+            sequence_timestamp_interval_us=timestamp_interval,
+            store_type=self.store_type,
+            generic_meta_data={},
+        )
+
+        init_meta: Dict[str, JsonLike] = {"old_key": "old_value"}
+        poses_writer = store_writer.register_component_writer(
+            PosesComponent.Writer,
+            "test_poses",
+            generic_meta_data=init_meta,
+        )
+
+        # Store a minimal static pose, but do NOT call set_generic_data
+        poses_writer.store_static_pose(
+            source_frame_id="sensor",
+            target_frame_id="rig",
+            pose=np.eye(4, dtype=np.float32),
+        )
+
+        # Finalize and read back
+        store_paths = store_writer.finalize()
+        store_reader = SequenceComponentGroupsReader(component_group_paths=store_paths)
+        poses_readers = store_reader.open_component_readers(PosesComponent.Reader)
+        poses_reader = poses_readers["test_poses"]
+
+        # Readers should handle missing generic_data gracefully
+        self.assertFalse(poses_reader.has_generic_data("anything"))
+        self.assertEqual(poses_reader.get_generic_data_names(), [])
+
+        # generic_meta_data should still contain only the init-time metadata
+        self.assertEqual(poses_reader.generic_meta_data, init_meta)
+
+        tempdir.cleanup()
+
+    def test_component_generic_data_meta_overwrite(self) -> None:
+        """Verify that meta_data passed to set_generic_data() overwrites init-time generic_meta_data keys."""
+
+        tempdir = tempfile.TemporaryDirectory()
+
+        timestamp_interval = HalfClosedInterval(0, 10_000_001)
+
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(tempdir.name),
+            store_base_name=(seq_id := "generic-data-overwrite-test"),
+            sequence_id=seq_id,
+            sequence_timestamp_interval_us=timestamp_interval,
+            store_type=self.store_type,
+            generic_meta_data={},
+        )
+
+        # Init-time metadata has a key "version" that we will overwrite
+        init_meta: Dict[str, JsonLike] = {"version": 1, "author": "original"}
+        poses_writer = store_writer.register_component_writer(
+            PosesComponent.Writer,
+            "test_poses",
+            generic_meta_data=init_meta,
+        )
+
+        poses_writer.store_static_pose(
+            source_frame_id="sensor",
+            target_frame_id="rig",
+            pose=np.eye(4, dtype=np.float32),
+        )
+
+        # Overwrite "version" and add a new key
+        overwrite_meta: Dict[str, JsonLike] = {"version": 99, "extra": "new_value"}
+        poses_writer.set_generic_data(
+            data={"dummy": np.array([1.0, 2.0, 3.0], dtype=np.float32)},
+            meta_data=overwrite_meta,
+        )
+
+        # Finalize and read back
+        store_paths = store_writer.finalize()
+        store_reader = SequenceComponentGroupsReader(component_group_paths=store_paths)
+        poses_readers = store_reader.open_component_readers(PosesComponent.Reader)
+        poses_reader = poses_readers["test_poses"]
+
+        # "version" should be overwritten to 99, "author" preserved, "extra" added
+        expected_meta: Dict[str, JsonLike] = {"version": 99, "author": "original", "extra": "new_value"}
+        self.assertEqual(poses_reader.generic_meta_data, expected_meta)
+
+        tempdir.cleanup()
+
+    def test_component_generic_data_meta_only(self) -> None:
+        """Verify set_generic_data() can be used with empty data dict (meta-only addition)."""
+
+        tempdir = tempfile.TemporaryDirectory()
+
+        timestamp_interval = HalfClosedInterval(0, 10_000_001)
+
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(tempdir.name),
+            store_base_name=(seq_id := "generic-data-meta-only-test"),
+            sequence_id=seq_id,
+            sequence_timestamp_interval_us=timestamp_interval,
+            store_type=self.store_type,
+            generic_meta_data={},
+        )
+
+        init_meta: Dict[str, JsonLike] = {"base": "info"}
+        poses_writer = store_writer.register_component_writer(
+            PosesComponent.Writer,
+            "test_poses",
+            generic_meta_data=init_meta,
+        )
+
+        poses_writer.store_static_pose(
+            source_frame_id="sensor",
+            target_frame_id="rig",
+            pose=np.eye(4, dtype=np.float32),
+        )
+
+        # Call set_generic_data with empty data dict but meta_data provided
+        meta_only: Dict[str, JsonLike] = {"added_key": "added_value"}
+        poses_writer.set_generic_data(
+            data={},
+            meta_data=meta_only,
+        )
+
+        # Finalize and read back
+        store_paths = store_writer.finalize()
+        store_reader = SequenceComponentGroupsReader(component_group_paths=store_paths)
+        poses_readers = store_reader.open_component_readers(PosesComponent.Reader)
+        poses_reader = poses_readers["test_poses"]
+
+        # No generic data arrays should be present
+        self.assertEqual(poses_reader.get_generic_data_names(), [])
+        self.assertFalse(poses_reader.has_generic_data("anything"))
+
+        # Metadata should be merged: init_meta + meta_only
+        expected_meta: Dict[str, JsonLike] = {"base": "info", "added_key": "added_value"}
+        self.assertEqual(poses_reader.generic_meta_data, expected_meta)
+
+        tempdir.cleanup()
+
 
 @parameterized_class(
     ("store_type"),

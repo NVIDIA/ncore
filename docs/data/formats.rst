@@ -89,6 +89,38 @@ Each component group has the following root-level structure:
             │
             └── {component_specific_data}...
 
+Component-Level Generic Data
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Components may optionally include a ``generic_data/`` subgroup containing
+named numpy arrays. This allows converters to attach auxiliary data to any
+component without defining a custom component type. For example, a converter
+might attach raw GPS/IMU measurements to the poses component:
+
+.. code-block:: text
+
+   {component_type}/
+   └── {component_instance_name}/
+       ├── {component_meta_data}
+       │   └── generic_meta_data: {...}  (includes keys added via set_generic_data)
+       │
+       ├── {component_specific_data}...
+       │
+       └── generic_data/           (optional, only if generic data was set)
+           ├── {dataset_name}      [shape] dtype  (lz4-compressed zarr dataset)
+           └── ...
+
+Writers use :meth:`~ncore.impl.data.v4.components.ComponentWriter.set_generic_data`
+to provide generic data arrays and optional additional metadata before finalization.
+Metadata keys passed via ``set_generic_data(meta_data={...})`` **replace** keys with
+the same name from the initial ``register_component_writer(generic_meta_data={...})``
+call.
+
+Readers access generic data via
+:meth:`~ncore.impl.data.v4.components.ComponentReader.has_generic_data`,
+:meth:`~ncore.impl.data.v4.components.ComponentReader.get_generic_data_names`, and
+:meth:`~ncore.impl.data.v4.components.ComponentReader.get_generic_data`.
+
 Poses Component
 ~~~~~~~~~~~~~~~
 

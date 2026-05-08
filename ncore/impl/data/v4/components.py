@@ -228,13 +228,32 @@ class SequenceComponentGroupsWriter:
 
     # To be called after all data was written
     def finalize(self) -> List[UPath]:
-        """Validates all writers and closes all stores after consolidating their meta data.
+        """Finalize all writers, store their generic data and meta data, and close all stores after consolidating their meta data.
 
         Returns a list of the store paths
         """
         # Finalize all writers
         for component_writer in self._component_writers.values():
             component_writer.finalize()
+
+        # Write deferred component metadata and generic data of all writers
+        for component_writer in self._component_writers.values():
+            # Merge generic_meta_data with regular component's meta data
+            (cw_group := component_writer._group).attrs.put(
+                {**component_writer._component_meta_data, "generic_meta_data": component_writer._generic_meta_data}
+            )
+
+            # Write generic data arrays if any
+            if component_writer._generic_data:
+                compressor = Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE)
+                gd_group = cw_group.require_group("generic_data")
+                for name, array in component_writer._generic_data.items():
+                    gd_group.create_dataset(
+                        name,
+                        data=array,
+                        chunks=array.shape,
+                        compressor=compressor,
+                    )
 
         # Make sure the stores are consolidated and closed
         ret = []
@@ -284,22 +303,22 @@ class SequenceComponentGroupsWriter:
             self.get_base_group(group_name).require_group(component_base_name).require_group(component_instance_name)
         )
 
-        # Prepare meta-data
-        meta_data = {
-            "component_name": component_base_name,
-            "component_instance_name": component_instance_name,
-            "component_version": writer_cls.get_component_version(),
-            "generic_meta_data": generic_meta_data,
-        }
-
-        # Store meta-data
-        component_group.attrs.put(meta_data)
-
+        # Initialize writer instance
         self._component_writers[component_id] = (
             component_writer_instance := component_writer_type(
                 component_group, self._sequence_timestamp_interval_us, *args, **kwargs
             )
         )
+
+        # Prepare component meta-data and initial meta data
+        component_meta_data: Dict[str, types.JsonLike] = {
+            "component_name": component_base_name,
+            "component_instance_name": component_instance_name,
+            "component_version": writer_cls.get_component_version(),
+        }
+
+        component_writer_instance._component_meta_data = component_meta_data
+        component_writer_instance._generic_meta_data = generic_meta_data
 
         return component_writer_instance
 
@@ -565,11 +584,46 @@ class ComponentWriter(ABC):
 
     def __init__(self, component_group: zarr.Group, sequence_timestamp_interval_us: HalfClosedInterval) -> None:
         """Initializes a component writer targeting the given component group and sequence time interval"""
+
         self._group = component_group
         self._sequence_timestamp_interval_us = sequence_timestamp_interval_us
 
+        # Initialized by the SequenceComponentGroupsWriter.register_component_writer()
+        self._component_meta_data: Dict[str, types.JsonLike] = {}
+        self._generic_data: Dict[str, np.ndarray] = {}
+        self._generic_meta_data: Dict[str, types.JsonLike] = {}
+
+    def set_generic_data(
+        self,
+        data: Dict[str, np.ndarray],
+        meta_data: Optional[Dict[str, types.JsonLike]] = None,
+    ) -> None:
+        """Attach named generic data arrays (and optional metadata) to this component.
+
+        Parameters
+        ----------
+        data : Dict[str, np.ndarray]
+            Named numpy arrays to store under the component's ``generic_data/`` group (overwrites
+            existing arrays with the same name, if any).
+        meta_data : Optional[Dict[str, types.JsonLike]]
+            Keys provided here **replace** any init-time / previous ``generic_meta_data``
+            keys set during component registration or earlier method calls.
+        """
+
+        # Merge generic data: new data overwrites existing data with the same name
+        self._generic_data.update(data)
+
+        if meta_data is not None:
+            # Merge generic_meta_data: init-time / set_generic_data meta overwrites
+            self._generic_meta_data.update(meta_data)
+
     def finalize(self) -> None:
-        """Overwrite to perform final operations after all user-data was written"""
+        """Overwrite to perform final operations after all user-data was written.
+
+        Called by :meth:`SequenceComponentGroupsWriter.finalize` before
+        component metadata is persisted.  Override to flush buffered data
+        (e.g., create zarr datasets/groups).
+        """
         pass
 
 
@@ -598,6 +652,10 @@ class ComponentReader(ABC):
         self._instance_name = component_instance_name
         self._group = component_group
 
+        # Preload component meta-data and generic data group (if existing)
+        self._component_meta_data: Dict = dict(self._group.attrs)
+        self._generic_data_group: Optional[zarr.Group] = self._group.get("generic_data")
+
     @property
     def instance_name(self) -> str:
         """The user-defined name that distinguishes this component instance from others of the same type."""
@@ -606,12 +664,31 @@ class ComponentReader(ABC):
     @property
     def component_version(self) -> str:
         """Returns the component version of the loaded component"""
-        return self._group.attrs["component_version"]
+        return self._component_meta_data["component_version"]
 
     @property
     def generic_meta_data(self) -> Dict[str, types.JsonLike]:
         """Returns the generic meta data of the loaded component"""
-        return self._group.attrs["generic_meta_data"]
+        return self._component_meta_data["generic_meta_data"]
+
+    def has_generic_data(self, name: str) -> bool:
+        """Returns True if a named generic data array exists on this component"""
+        return name in self._generic_data_group if self._generic_data_group is not None else False
+
+    def get_generic_data_names(self) -> List[str]:
+        """Returns the list of all generic data array names on this component"""
+        return list(self._generic_data_group.keys()) if self._generic_data_group is not None else []
+
+    def get_generic_data(self, name: str) -> np.ndarray:
+        """Returns a named generic data array from this component.
+
+        Raises KeyError if the name does not exist.
+        """
+        if self._generic_data_group is None:
+            raise KeyError("Component has no generic_data")
+        if (generic_data := self._generic_data_group.get(name)) is not None:
+            return np.array(generic_data)
+        raise KeyError(f"Generic data '{name}' not found. Available: {self.get_generic_data_names()}")
 
 
 CW = TypeVar("CW", bound=ComponentWriter)
