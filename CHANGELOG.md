@@ -10,6 +10,15 @@ All notable changes to the NCore project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - - -
+## [v19.1.1](https://github.com/NVIDIA/ncore/compare/5a278ff4d250f0ee6c1a2a81bdeb7c40367c2f90..v19.1.1) - 2026-05-08
+
+This is a bugfix release to allow using the V4 compat APIs in `PYTHONOPTIMIZE=1` settings.
+
+#### 🪲 Fixed
+- (**data**) extract walrus-operator assignments from assert statements - ([5a278ff](https://github.com/NVIDIA/ncore/commit/5a278ff4d250f0ee6c1a2a81bdeb7c40367c2f90)) - Janick Martinez Esturo
+
+- - -
+
 ## [v19.1.0](https://github.com/NVIDIA/ncore/compare/bb21e4a5ed5eb686be50ee29498eac84ce785574..v19.1.0) - 2026-05-07
 
 ### Highlights

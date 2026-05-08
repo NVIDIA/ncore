@@ -33,7 +33,7 @@ test --test_output=errors
 test:no-gpu --test_env=NCORE_NO_GPU_TESTS=1
 
 # Wheel versioning
-build --embed_label=19.1.0
+build --embed_label=19.1.1
 
 # Mypy aspect registration + enable by default
 build --aspects //bazel/typing:aspects.bzl%mypy_aspect
