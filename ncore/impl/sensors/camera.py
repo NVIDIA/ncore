@@ -261,10 +261,16 @@ class CameraModel(BaseModel, ABC):
             ),
         )
 
-        assert self.resolution.shape == (2,)
-        assert self.resolution.dtype == torch.int32
-        assert self.shutter_type in types.ShutterType, f"Unsupported shutter type {self.shutter_type}"
-        assert self.external_distortion is None or isinstance(self.external_distortion, ExternalDistortionModel)
+        if self.resolution.shape != (2,):
+            raise ValueError(f"resolution must have shape (2,), got {self.resolution.shape}")
+        if self.resolution.dtype != torch.int32:
+            raise TypeError(f"resolution must have dtype torch.int32, got {self.resolution.dtype}")
+        if self.shutter_type not in types.ShutterType:
+            raise ValueError(f"Unsupported shutter type {self.shutter_type}")
+        if self.external_distortion is not None and not isinstance(self.external_distortion, ExternalDistortionModel):
+            raise TypeError(
+                f"external_distortion must be None or an ExternalDistortionModel, got {type(self.external_distortion)}"
+            )
 
     @abstractmethod
     def _image_points_to_camera_rays_impl(self, image_points: torch.Tensor) -> torch.Tensor:
@@ -291,7 +297,8 @@ class CameraModel(BaseModel, ABC):
         image_points = to_torch(image_points, device=self.device)
 
         # Make sure users don't accidentally pass pixel coordinates (integer indices)
-        assert image_points.is_floating_point(), "[CameraModel]: image_points must be floating point values"
+        if not image_points.is_floating_point():
+            raise TypeError("[CameraModel]: image_points must be floating point values")
 
         image_points = image_points.to(self.dtype)
 
@@ -444,11 +451,14 @@ class CameraModel(BaseModel, ABC):
         """Projects world points to corresponding pixel indices using *rolling-shutter compensation* of sensor motion"""
 
         if return_timestamps:
-            assert start_timestamp_us is not None
-            assert end_timestamp_us is not None
-            assert end_timestamp_us >= start_timestamp_us, (
-                "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
-            )
+            if start_timestamp_us is None:
+                raise ValueError("[CameraModel]: start_timestamp_us must not be None when return_timestamps=True")
+            if end_timestamp_us is None:
+                raise ValueError("[CameraModel]: end_timestamp_us must not be None when return_timestamps=True")
+            if end_timestamp_us < start_timestamp_us:
+                raise ValueError(
+                    "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+                )
 
         tmp = self.world_points_to_image_points_shutter_pose(
             world_points,
@@ -485,7 +495,8 @@ class CameraModel(BaseModel, ABC):
         """Projects world points to corresponding pixel indices using a *fixed* sensor pose (not compensating for potential sensor-motion)."""
 
         if return_timestamps:
-            assert timestamp_us is not None
+            if timestamp_us is None:
+                raise ValueError("[CameraModel]: timestamp_us must not be None when return_timestamps=True")
 
         tmp = self.world_points_to_image_points_static_pose(
             world_points,
@@ -521,11 +532,14 @@ class CameraModel(BaseModel, ABC):
         """
 
         if return_timestamps:
-            assert start_timestamp_us is not None
-            assert end_timestamp_us is not None
-            assert end_timestamp_us >= start_timestamp_us, (
-                "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
-            )
+            if start_timestamp_us is None:
+                raise ValueError("[CameraModel]: start_timestamp_us must not be None when return_timestamps=True")
+            if end_timestamp_us is None:
+                raise ValueError("[CameraModel]: end_timestamp_us must not be None when return_timestamps=True")
+            if end_timestamp_us < start_timestamp_us:
+                raise ValueError(
+                    "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+                )
 
             timestamp_us = (end_timestamp_us + start_timestamp_us) // 2
 
@@ -568,22 +582,34 @@ class CameraModel(BaseModel, ABC):
         T_world_sensor_start = to_torch(T_world_sensor_start, device=self.device, dtype=self.dtype)
         T_world_sensor_end = to_torch(T_world_sensor_end, device=self.device, dtype=self.dtype)
 
-        assert T_world_sensor_start.shape == (4, 4)
-        assert T_world_sensor_end.shape == (4, 4)
-        assert len(world_points.shape) == 2
-        assert world_points.shape[1] == 3
-        assert world_points.dtype == self.dtype
-        assert T_world_sensor_start.dtype == self.dtype
-        assert T_world_sensor_end.dtype == self.dtype
-        assert isinstance(max_iterations, int)
-        assert max_iterations > 0
+        if T_world_sensor_start.shape != (4, 4):
+            raise ValueError(f"T_world_sensor_start must have shape (4, 4), got {T_world_sensor_start.shape}")
+        if T_world_sensor_end.shape != (4, 4):
+            raise ValueError(f"T_world_sensor_end must have shape (4, 4), got {T_world_sensor_end.shape}")
+        if len(world_points.shape) != 2:
+            raise ValueError(f"world_points must be 2-dimensional, got {len(world_points.shape)} dimensions")
+        if world_points.shape[1] != 3:
+            raise ValueError(f"world_points must have 3 columns, got {world_points.shape[1]}")
+        if world_points.dtype != self.dtype:
+            raise TypeError(f"world_points must have dtype {self.dtype}, got {world_points.dtype}")
+        if T_world_sensor_start.dtype != self.dtype:
+            raise TypeError(f"T_world_sensor_start must have dtype {self.dtype}, got {T_world_sensor_start.dtype}")
+        if T_world_sensor_end.dtype != self.dtype:
+            raise TypeError(f"T_world_sensor_end must have dtype {self.dtype}, got {T_world_sensor_end.dtype}")
+        if not isinstance(max_iterations, int):
+            raise TypeError(f"max_iterations must be an int, got {type(max_iterations)}")
+        if max_iterations <= 0:
+            raise ValueError(f"max_iterations must be positive, got {max_iterations}")
 
         if return_timestamps:
-            assert start_timestamp_us is not None
-            assert end_timestamp_us is not None
-            assert end_timestamp_us >= start_timestamp_us, (
-                "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
-            )
+            if start_timestamp_us is None:
+                raise ValueError("[CameraModel]: start_timestamp_us must not be None when return_timestamps=True")
+            if end_timestamp_us is None:
+                raise ValueError("[CameraModel]: end_timestamp_us must not be None when return_timestamps=True")
+            if end_timestamp_us < start_timestamp_us:
+                raise ValueError(
+                    "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+                )
 
             # Make sure timestamps have correct type (might be, e.g., np.uint64, which torch doesn't like)
             start_timestamp_us = int(start_timestamp_us)
@@ -756,14 +782,20 @@ class CameraModel(BaseModel, ABC):
         world_points = to_torch(world_points, device=self.device, dtype=self.dtype)
         T_world_sensor = to_torch(T_world_sensor, device=self.device, dtype=self.dtype)
 
-        assert T_world_sensor.shape == (4, 4)
-        assert len(world_points.shape) == 2
-        assert world_points.shape[1] == 3
-        assert world_points.dtype == self.dtype
-        assert T_world_sensor.dtype == self.dtype
+        if T_world_sensor.shape != (4, 4):
+            raise ValueError(f"T_world_sensor must have shape (4, 4), got {T_world_sensor.shape}")
+        if len(world_points.shape) != 2:
+            raise ValueError(f"world_points must be 2-dimensional, got {len(world_points.shape)} dimensions")
+        if world_points.shape[1] != 3:
+            raise ValueError(f"world_points must have 3 columns, got {world_points.shape[1]}")
+        if world_points.dtype != self.dtype:
+            raise TypeError(f"world_points must have dtype {self.dtype}, got {world_points.dtype}")
+        if T_world_sensor.dtype != self.dtype:
+            raise TypeError(f"T_world_sensor must have dtype {self.dtype}, got {T_world_sensor.dtype}")
 
         if return_timestamps:
-            assert timestamp_us is not None
+            if timestamp_us is None:
+                raise ValueError("[CameraModel]: timestamp_us must not be None when return_timestamps=True")
 
         R_world_sensor = T_world_sensor[:3, :3]  # [3, 3]
         t_world_sensor = T_world_sensor[:3, 3]  # [3, 1]
@@ -814,11 +846,14 @@ class CameraModel(BaseModel, ABC):
         """
 
         if return_timestamps:
-            assert start_timestamp_us is not None
-            assert end_timestamp_us is not None
-            assert end_timestamp_us >= start_timestamp_us, (
-                "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
-            )
+            if start_timestamp_us is None:
+                raise ValueError("[CameraModel]: start_timestamp_us must not be None when return_timestamps=True")
+            if end_timestamp_us is None:
+                raise ValueError("[CameraModel]: end_timestamp_us must not be None when return_timestamps=True")
+            if end_timestamp_us < start_timestamp_us:
+                raise ValueError(
+                    "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+                )
 
             timestamp_us = (end_timestamp_us + start_timestamp_us) // 2
 
@@ -891,11 +926,14 @@ class CameraModel(BaseModel, ABC):
         return_timestamps: bool = False,
     ) -> CameraModel.WorldRaysReturn:
         if return_timestamps:
-            assert start_timestamp_us is not None
-            assert end_timestamp_us is not None
-            assert end_timestamp_us >= start_timestamp_us, (
-                "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
-            )
+            if start_timestamp_us is None:
+                raise ValueError("[CameraModel]: start_timestamp_us must not be None when return_timestamps=True")
+            if end_timestamp_us is None:
+                raise ValueError("[CameraModel]: end_timestamp_us must not be None when return_timestamps=True")
+            if end_timestamp_us < start_timestamp_us:
+                raise ValueError(
+                    "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+                )
 
         return self.image_points_to_world_rays_mean_pose(
             self.pixels_to_image_points(pixel_idxs),
@@ -927,11 +965,16 @@ class CameraModel(BaseModel, ABC):
         image_points = to_torch(image_points, device=self.device, dtype=self.dtype)
         T_sensor_world = to_torch(T_sensor_world, device=self.device, dtype=self.dtype)
 
-        assert T_sensor_world.shape == (4, 4)
-        assert len(image_points.shape) == 2
-        assert image_points.shape[1] == 2
-        assert image_points.dtype == self.dtype
-        assert T_sensor_world.dtype == self.dtype
+        if T_sensor_world.shape != (4, 4):
+            raise ValueError(f"T_sensor_world must have shape (4, 4), got {T_sensor_world.shape}")
+        if len(image_points.shape) != 2:
+            raise ValueError(f"image_points must be 2-dimensional, got {len(image_points.shape)} dimensions")
+        if image_points.shape[1] != 2:
+            raise ValueError(f"image_points must have 2 columns, got {image_points.shape[1]}")
+        if image_points.dtype != self.dtype:
+            raise TypeError(f"image_points must have dtype {self.dtype}, got {image_points.dtype}")
+        if T_sensor_world.dtype != self.dtype:
+            raise TypeError(f"T_sensor_world must have dtype {self.dtype}, got {T_sensor_world.dtype}")
 
         # Unproject the image points to camera rays
         if camera_rays is not None:
@@ -960,7 +1003,8 @@ class CameraModel(BaseModel, ABC):
             return_var.T_sensor_worlds = T_sensor_world.unsqueeze(0).expand(len(world_rays), -1, -1).contiguous()
 
         if return_timestamps:
-            assert timestamp_us is not None
+            if timestamp_us is None:
+                raise ValueError("[CameraModel]: timestamp_us must not be None when return_timestamps=True")
             # Repeat constant timestamp for all rays
             return_var.timestamps_us = torch.tile(
                 torch.tensor(timestamp_us, device=self.device), dims=(len(world_rays),)
@@ -987,11 +1031,14 @@ class CameraModel(BaseModel, ABC):
         For each image point returns 3d world rays [point, direction], represented by 3d start of ray points and 3d ray directions in the world frame
         """
         if return_timestamps:
-            assert start_timestamp_us is not None
-            assert end_timestamp_us is not None
-            assert end_timestamp_us >= start_timestamp_us, (
-                "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
-            )
+            if start_timestamp_us is None:
+                raise ValueError("[CameraModel]: start_timestamp_us must not be None when return_timestamps=True")
+            if end_timestamp_us is None:
+                raise ValueError("[CameraModel]: end_timestamp_us must not be None when return_timestamps=True")
+            if end_timestamp_us < start_timestamp_us:
+                raise ValueError(
+                    "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+                )
 
             timestamp_us = (end_timestamp_us + start_timestamp_us) // 2
 
@@ -1044,13 +1091,20 @@ class CameraModel(BaseModel, ABC):
         T_sensor_world_start = to_torch(T_sensor_world_start, device=self.device, dtype=self.dtype)
         T_sensor_world_end = to_torch(T_sensor_world_end, device=self.device, dtype=self.dtype)
 
-        assert T_sensor_world_start.shape == (4, 4)
-        assert T_sensor_world_end.shape == (4, 4)
-        assert len(image_points.shape) == 2
-        assert image_points.shape[1] == 2
-        assert image_points.dtype == self.dtype
-        assert T_sensor_world_start.dtype == self.dtype
-        assert T_sensor_world_end.dtype == self.dtype
+        if T_sensor_world_start.shape != (4, 4):
+            raise ValueError(f"T_sensor_world_start must have shape (4, 4), got {T_sensor_world_start.shape}")
+        if T_sensor_world_end.shape != (4, 4):
+            raise ValueError(f"T_sensor_world_end must have shape (4, 4), got {T_sensor_world_end.shape}")
+        if len(image_points.shape) != 2:
+            raise ValueError(f"image_points must be 2-dimensional, got {len(image_points.shape)} dimensions")
+        if image_points.shape[1] != 2:
+            raise ValueError(f"image_points must have 2 columns, got {image_points.shape[1]}")
+        if image_points.dtype != self.dtype:
+            raise TypeError(f"image_points must have dtype {self.dtype}, got {image_points.dtype}")
+        if T_sensor_world_start.dtype != self.dtype:
+            raise TypeError(f"T_sensor_world_start must have dtype {self.dtype}, got {T_sensor_world_start.dtype}")
+        if T_sensor_world_end.dtype != self.dtype:
+            raise TypeError(f"T_sensor_world_end must have dtype {self.dtype}, got {T_sensor_world_end.dtype}")
 
         # Unproject the image points to camera rays
         if camera_rays is not None:
@@ -1100,11 +1154,14 @@ class CameraModel(BaseModel, ABC):
             return_var.T_sensor_worlds[:, 3, 3] = 1
 
         if return_timestamps:
-            assert start_timestamp_us is not None
-            assert end_timestamp_us is not None
-            assert end_timestamp_us >= start_timestamp_us, (
-                "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
-            )
+            if start_timestamp_us is None:
+                raise ValueError("[CameraModel]: start_timestamp_us must not be None when return_timestamps=True")
+            if end_timestamp_us is None:
+                raise ValueError("[CameraModel]: end_timestamp_us must not be None when return_timestamps=True")
+            if end_timestamp_us < start_timestamp_us:
+                raise ValueError(
+                    "[CameraModel]: End timestamp must be larger or equal to the start timestamp"
+                )
             return_var.timestamps_us = (
                 start_timestamp_us + (t[..., None] * (end_timestamp_us - start_timestamp_us)).to(torch.int64)
             ).squeeze(-1)  # [n_image_points]
@@ -1117,7 +1174,8 @@ class CameraModel(BaseModel, ABC):
         # Convert to torch
         pixel_idxs = to_torch(pixel_idxs, device=self.device)
 
-        assert not pixel_idxs.is_floating_point(), "[CameraModel]: Pixel indices must be integers"
+        if pixel_idxs.is_floating_point():
+            raise TypeError("[CameraModel]: Pixel indices must be integers")
 
         # Compute the image point coordinates representing the center of each pixel (shift from top left corner to the center)
         return pixel_idxs.to(self.dtype) + 0.5
@@ -1128,7 +1186,8 @@ class CameraModel(BaseModel, ABC):
         # Convert to torch
         image_points = to_torch(image_points, device=self.device)
 
-        assert image_points.is_floating_point(), "[CameraModel]: Image points must be floating point values"
+        if not image_points.is_floating_point():
+            raise TypeError("[CameraModel]: Image points must be floating point values")
 
         # Compute the pixel indices for given image points (round to top left corner integer coordinate)
         return torch.floor(image_points).to(torch.int32)
@@ -1170,8 +1229,10 @@ class CameraModel(BaseModel, ABC):
         pose_s = pose_s.to(self.device)
         pose_e = pose_e.to(self.device)
 
-        assert pose_s.shape == (4, 4)
-        assert pose_e.shape == (4, 4)
+        if pose_s.shape != (4, 4):
+            raise ValueError(f"pose_s must have shape (4, 4), got {pose_s.shape}")
+        if pose_e.shape != (4, 4):
+            raise ValueError(f"pose_e must have shape (4, 4), got {pose_e.shape}")
 
         # Convert the start and end rotation matrix to quaternions
         pose_s_quat = rotmat_to_unitquat(pose_s[None, :3, :3])  # [1, 4]
@@ -1308,23 +1369,38 @@ class FThetaCameraModel(CameraModel):
         self.newton_iterations: int = newton_iterations
 
         # 2D pixel-distance threshold
-        assert min_2d_norm > 0, "require positive minimum norm threshold"
+        if min_2d_norm <= 0:
+            raise ValueError(f"require positive minimum norm threshold, got {min_2d_norm}")
         self.register_buffer("min_2d_norm", torch.tensor(min_2d_norm, dtype=self.dtype, device=self.device))
 
-        assert self.principal_point.shape == (2,)
-        assert self.principal_point.dtype == self.dtype
-        assert self.fw_poly.shape == (6,)
-        assert self.fw_poly.dtype == self.dtype
-        assert self.dfw_poly.shape == (5,)
-        assert self.dfw_poly.dtype == self.dtype
-        assert self.bw_poly.shape == (6,)
-        assert self.bw_poly.dtype == self.dtype
-        assert self.dbw_poly.shape == (5,)
-        assert self.dbw_poly.dtype == self.dtype
-        assert self.A.shape == (2, 2)
-        assert self.A.dtype == self.dtype
-        assert self.Ainv.shape == (2, 2)
-        assert self.Ainv.dtype == self.dtype
+        if self.principal_point.shape != (2,):
+            raise ValueError(f"principal_point must have shape (2,), got {self.principal_point.shape}")
+        if self.principal_point.dtype != self.dtype:
+            raise TypeError(f"principal_point must have dtype {self.dtype}, got {self.principal_point.dtype}")
+        if self.fw_poly.shape != (6,):
+            raise ValueError(f"fw_poly must have shape (6,), got {self.fw_poly.shape}")
+        if self.fw_poly.dtype != self.dtype:
+            raise TypeError(f"fw_poly must have dtype {self.dtype}, got {self.fw_poly.dtype}")
+        if self.dfw_poly.shape != (5,):
+            raise ValueError(f"dfw_poly must have shape (5,), got {self.dfw_poly.shape}")
+        if self.dfw_poly.dtype != self.dtype:
+            raise TypeError(f"dfw_poly must have dtype {self.dtype}, got {self.dfw_poly.dtype}")
+        if self.bw_poly.shape != (6,):
+            raise ValueError(f"bw_poly must have shape (6,), got {self.bw_poly.shape}")
+        if self.bw_poly.dtype != self.dtype:
+            raise TypeError(f"bw_poly must have dtype {self.dtype}, got {self.bw_poly.dtype}")
+        if self.dbw_poly.shape != (5,):
+            raise ValueError(f"dbw_poly must have shape (5,), got {self.dbw_poly.shape}")
+        if self.dbw_poly.dtype != self.dtype:
+            raise TypeError(f"dbw_poly must have dtype {self.dtype}, got {self.dbw_poly.dtype}")
+        if self.A.shape != (2, 2):
+            raise ValueError(f"A must have shape (2, 2), got {self.A.shape}")
+        if self.A.dtype != self.dtype:
+            raise TypeError(f"A must have dtype {self.dtype}, got {self.A.dtype}")
+        if self.Ainv.shape != (2, 2):
+            raise ValueError(f"Ainv must have shape (2, 2), got {self.Ainv.shape}")
+        if self.Ainv.dtype != self.dtype:
+            raise TypeError(f"Ainv must have dtype {self.dtype}, got {self.Ainv.dtype}")
 
     def get_parameters(self) -> types.FThetaCameraModelParameters:
         """Returns the camera model parameters specific to the current camera model instance"""
@@ -1350,7 +1426,8 @@ class FThetaCameraModel(CameraModel):
         """
 
         image_points = to_torch(image_points, device=self.device)
-        assert image_points.is_floating_point(), "[CameraModel]: image_points must be floating point values"
+        if not image_points.is_floating_point():
+            raise TypeError("[CameraModel]: image_points must be floating point values")
         image_points = image_points.to(self.dtype)
 
         # Get f(theta)-weighted normalized 2d vectors (undoing linear term)
@@ -1491,16 +1568,26 @@ class OpenCVPinholeCameraModel(CameraModel):
             to_torch(camera_model_parameters.thin_prism_coeffs, device=self.device, dtype=self.dtype),
         )
 
-        assert self.principal_point.shape == (2,)
-        assert self.principal_point.dtype == self.dtype
-        assert self.focal_length.shape == (2,)
-        assert self.focal_length.dtype == self.dtype
-        assert self.radial_coeffs.shape == (6,)
-        assert self.radial_coeffs.dtype == self.dtype
-        assert self.tangential_coeffs.shape == (2,)
-        assert self.tangential_coeffs.dtype == self.dtype
-        assert self.thin_prism_coeffs.shape == (4,)
-        assert self.thin_prism_coeffs.dtype == self.dtype
+        if self.principal_point.shape != (2,):
+            raise ValueError(f"principal_point must have shape (2,), got {self.principal_point.shape}")
+        if self.principal_point.dtype != self.dtype:
+            raise TypeError(f"principal_point must have dtype {self.dtype}, got {self.principal_point.dtype}")
+        if self.focal_length.shape != (2,):
+            raise ValueError(f"focal_length must have shape (2,), got {self.focal_length.shape}")
+        if self.focal_length.dtype != self.dtype:
+            raise TypeError(f"focal_length must have dtype {self.dtype}, got {self.focal_length.dtype}")
+        if self.radial_coeffs.shape != (6,):
+            raise ValueError(f"radial_coeffs must have shape (6,), got {self.radial_coeffs.shape}")
+        if self.radial_coeffs.dtype != self.dtype:
+            raise TypeError(f"radial_coeffs must have dtype {self.dtype}, got {self.radial_coeffs.dtype}")
+        if self.tangential_coeffs.shape != (2,):
+            raise ValueError(f"tangential_coeffs must have shape (2,), got {self.tangential_coeffs.shape}")
+        if self.tangential_coeffs.dtype != self.dtype:
+            raise TypeError(f"tangential_coeffs must have dtype {self.dtype}, got {self.tangential_coeffs.dtype}")
+        if self.thin_prism_coeffs.shape != (4,):
+            raise ValueError(f"thin_prism_coeffs must have shape (4,), got {self.thin_prism_coeffs.shape}")
+        if self.thin_prism_coeffs.dtype != self.dtype:
+            raise TypeError(f"thin_prism_coeffs must have dtype {self.dtype}, got {self.thin_prism_coeffs.dtype}")
 
     def get_parameters(self) -> types.OpenCVPinholeCameraModelParameters:
         """Returns the camera model parameters specific to the current camera model instance"""
@@ -1528,7 +1615,8 @@ class OpenCVPinholeCameraModel(CameraModel):
             image_points,
             device=self.device,
         )
-        assert image_points.is_floating_point(), "[CameraModel]: image_points must be floating point values"
+        if not image_points.is_floating_point():
+            raise TypeError("[CameraModel]: image_points must be floating point values")
         image_points = image_points.to(self.dtype)
 
         camera_rays2 = self.__iterative_undistort(image_points)
@@ -1765,13 +1853,18 @@ class OpenCVFisheyeCameraModel(CameraModel):
         self.newton_iterations: int = newton_iterations
 
         # 2D pixel-distance threshold
-        assert min_2d_norm > 0, "require positive minimum norm threshold"
-        self.register_buffer("min_2d_norm", torch.tensor(min_2d_norm, device=self.device, dtype=self.dtype))
+        if min_2d_norm <= 0:
+            raise ValueError(f"require positive minimum norm threshold, got {min_2d_norm}")
+        self.register_buffer("min_2d_norm", torch.tensor(min_2d_norm, dtype=self.dtype, device=self.device))
 
-        assert self.principal_point.shape == (2,)
-        assert self.principal_point.dtype == self.dtype
-        assert self.focal_length.shape == (2,)
-        assert self.focal_length.dtype == self.dtype
+        if self.principal_point.shape != (2,):
+            raise ValueError(f"principal_point must have shape (2,), got {self.principal_point.shape}")
+        if self.principal_point.dtype != self.dtype:
+            raise TypeError(f"principal_point must have dtype {self.dtype}, got {self.principal_point.dtype}")
+        if self.focal_length.shape != (2,):
+            raise ValueError(f"focal_length must have shape (2,), got {self.focal_length.shape}")
+        if self.focal_length.dtype != self.dtype:
+            raise TypeError(f"focal_length must have dtype {self.dtype}, got {self.focal_length.dtype}")
 
         k1, k2, k3, k4 = camera_model_parameters.radial_coeffs[:]
         # ninth-degree forward polynomial (mapping angles to normalized distances) theta + k1*theta^3 + k2*theta^5 + k3*theta^7 + k4*theta^9
@@ -1820,7 +1913,8 @@ class OpenCVFisheyeCameraModel(CameraModel):
             image_points,
             device=self.device,
         )
-        assert image_points.is_floating_point(), "[CameraModel]: image_points must be floating point values"
+        if not image_points.is_floating_point():
+            raise TypeError("[CameraModel]: image_points must be floating point values")
         image_points = image_points.to(self.dtype)
 
         normalized_image_points = (image_points - self.principal_point) / self.focal_length

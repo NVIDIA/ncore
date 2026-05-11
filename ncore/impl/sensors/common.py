@@ -90,21 +90,18 @@ def to_torch(
         var = cast(np.ndarray, var)
 
         if var.dtype == np.uint16:
-            assert np.all(var <= np.iinfo(np.int16).max), (
-                "[CameraModel]: Trying to cast uint16 to int16 but the value exceeds max range."
-            )
+            if not np.all(var <= np.iinfo(np.int16).max):
+                raise ValueError("[CameraModel]: Trying to cast uint16 to int16 but the value exceeds max range.")
             var = var.astype(np.int16)
 
         if var.dtype == np.uint32:
-            assert np.all(var <= np.iinfo(np.int32).max), (
-                "[CameraModel]: Trying to cast uint32 to int32 but the value exceeds max range."
-            )
+            if not np.all(var <= np.iinfo(np.int32).max):
+                raise ValueError("[CameraModel]: Trying to cast uint32 to int32 but the value exceeds max range.")
             var = var.astype(np.int32)
 
         if var.dtype == np.uint64:
-            assert np.all(var <= np.iinfo(np.int64).max), (
-                "[CameraModel]: Trying to cast uint64 to int64 but the value exceeds max range."
-            )
+            if not np.all(var <= np.iinfo(np.int64).max):
+                raise ValueError("[CameraModel]: Trying to cast uint64 to int64 but the value exceeds max range.")
             var = var.astype(np.int64)
 
         var = torch.from_numpy(var)
@@ -138,7 +135,8 @@ def eval_poly_inverse_horner_newton(
     x = eval_poly_horner(
         inverse_poly_approximation_coefficients, y
     )  # approximation / starting points - also returned for zero iterations
-    assert newton_iterations >= 0, "Newton-iteration number needs to be non-negative"
+    if newton_iterations < 0:
+        raise ValueError("Newton-iteration number needs to be non-negative")
 
     # Buffers of intermediate results to allow differentiation
     # (only allocate entries as needed during iteration)
@@ -165,7 +163,8 @@ def rotmat_to_unitquat(R: torch.Tensor) -> torch.Tensor:
     """
 
     num_rotations, D1, D2 = R.shape
-    assert (D1, D2) == (3, 3), "Input has to be a Bx3x3 tensor."
+    if (D1, D2) != (3, 3):
+        raise ValueError("Input has to be a Bx3x3 tensor.")
 
     decision_matrix = torch.empty((num_rotations, 4), dtype=R.dtype, device=R.device)
     quat = torch.empty((num_rotations, 4), dtype=R.dtype, device=R.device)
@@ -246,13 +245,15 @@ def unitquat_slerp(quat_s: torch.Tensor, quat_e: torch.Tensor, t: torch.Tensor, 
         batch of interpolated quaternions [bs, 4]
     """
 
-    assert quat_s.shape == quat_e.shape, "Input quaternions must be of the same shape."
+    if quat_s.shape != quat_e.shape:
+        raise ValueError("Input quaternions must be of the same shape.")
 
     if len(quat_s.shape) == 1:
         quat_s = torch.unsqueeze(quat_s, 0)
         quat_e = torch.unsqueeze(quat_e, 0)
 
-    assert t.ndim == 1 and t.shape[0] == quat_e.shape[0], "t is expected to have shape [bs]."
+    if t.ndim != 1 or t.shape[0] != quat_e.shape[0]:
+        raise ValueError("t is expected to have shape [bs].")
 
     # omega is the 'angle' between both quaternions
     cos_omega = torch.sum(quat_s * quat_e, dim=-1)

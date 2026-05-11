@@ -334,11 +334,11 @@ class TestPoseGraphInterpolator(unittest.TestCase):
     def test_init_graph(self):
         """Test to verify pose graph initialization / path computation is correct"""
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             # invalid edge
             PoseGraphInterpolator.Edge("V3", "V4", np.stack([np.eye(4), get_SE3(np.array([0, 0, 1]))]), None)
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             # invalid edge
             PoseGraphInterpolator.Edge("V3", "V4", get_SE3(np.array([0, 1, 0])), np.array([0, 10], dtype=np.uint64))
 

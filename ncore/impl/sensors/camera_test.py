@@ -673,11 +673,11 @@ class TestReferenceFThetaCamera(CommonTestCase):
         ray = np.array([0, 1, 0]).reshape(1, 3)
 
         # Test invalid inputs
-        self.assertRaises(AssertionError, ftheta_cam.image_points_to_camera_rays, pixel.astype(np.int32))
-        self.assertRaises(AssertionError, ftheta_cam.pixels_to_camera_rays, pixel.astype(np.float32))
+        self.assertRaises(TypeError, ftheta_cam.image_points_to_camera_rays, pixel.astype(np.int32))
+        self.assertRaises(TypeError, ftheta_cam.pixels_to_camera_rays, pixel.astype(np.float32))
 
         self.assertRaises(
-            AssertionError,
+            ValueError,
             ftheta_cam.world_points_to_image_points_shutter_pose,
             ray,
             np.eye(4),
@@ -685,7 +685,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
             **{"return_timestamps": True},
         )
         self.assertRaises(
-            AssertionError,
+            ValueError,
             ftheta_cam.world_points_to_image_points_shutter_pose,
             ray,
             np.eye(4),

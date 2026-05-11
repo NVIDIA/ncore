@@ -147,7 +147,7 @@ class TestData4Reload(unittest.TestCase):
             "throwaway_poses_type",
             group_name=None,  # use default component group
         )
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             coverate_pose_writer.store_dynamic_pose(
                 source_frame_id="rig",
                 target_frame_id="world",
@@ -161,7 +161,7 @@ class TestData4Reload(unittest.TestCase):
             timestamps_us=T_rig_world_timestamps_us[: len(T_rig_worlds) - 1],
             require_sequence_time_coverage=False,
         )
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             coverate_pose_writer.store_dynamic_pose(
                 source_frame_id="rig",
                 target_frame_id="world",
@@ -531,14 +531,14 @@ class TestData4Reload(unittest.TestCase):
             source_version="v0",
         )
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             cuboids_writer.store_observations(
                 cuboid_observations=[
                     dataclasses.replace(ref_observation, timestamp_us=ref_sequence_timestamp_interval_us.stop + 10)
                 ]
             )
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             cuboids_writer.store_observations(
                 cuboid_observations=[
                     dataclasses.replace(
@@ -1667,7 +1667,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         self.assertEqual(rt.shape_suffix, ())
 
     def test_writer_rejects_undeclared_attribute(self):
-        """store_pc with attr not in schema -> AssertionError."""
+        """store_pc with attr not in schema -> ValueError."""
         schemas = {
             "rgb": PointCloudsComponent.AttributeSchema(
                 transform_type=PointCloud.AttributeTransformType.INVARIANT,
@@ -1681,7 +1681,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         rgb = np.array([[128, 64, 32]], dtype=np.uint8)
         extra = np.array([[0.1, 0.2, 0.3]], dtype=np.float32)
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             pc_writer.store_pc(
                 xyz=xyz,
                 reference_frame_id="world",
@@ -1692,7 +1692,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         tmpdir.cleanup()
 
     def test_writer_rejects_missing_schema_attribute(self):
-        """store_pc missing a schema attr -> AssertionError."""
+        """store_pc missing a schema attr -> ValueError."""
         schemas = {
             "rgb": PointCloudsComponent.AttributeSchema(
                 transform_type=PointCloud.AttributeTransformType.INVARIANT,
@@ -1710,7 +1710,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         xyz = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
         rgb = np.array([[128, 64, 32]], dtype=np.uint8)
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             pc_writer.store_pc(
                 xyz=xyz,
                 reference_frame_id="world",
@@ -1721,7 +1721,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         tmpdir.cleanup()
 
     def test_writer_rejects_wrong_shape(self):
-        """store_pc with wrong-shaped array -> AssertionError."""
+        """store_pc with wrong-shaped array -> ValueError."""
         schemas = {
             "rgb": PointCloudsComponent.AttributeSchema(
                 transform_type=PointCloud.AttributeTransformType.INVARIANT,
@@ -1736,7 +1736,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         # Wrong shape: (N, 4) instead of (N, 3)
         rgb_wrong = np.random.default_rng().integers(0, 256, size=(N, 4), dtype=np.uint8)
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             pc_writer.store_pc(
                 xyz=xyz,
                 reference_frame_id="world",
@@ -1747,11 +1747,11 @@ class TestPointCloudsComponent(unittest.TestCase):
         tmpdir.cleanup()
 
     def test_writer_rejects_reference_frame_timestamp_out_of_range(self):
-        """store_pc with reference_frame_timestamp_us outside sequence range -> AssertionError."""
+        """store_pc with reference_frame_timestamp_us outside sequence range -> ValueError."""
         pc_writer, _, tmpdir, _ = self._make_writer_reader()
 
         xyz = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             pc_writer.store_pc(
                 xyz=xyz,
                 reference_frame_id="world",
@@ -1761,11 +1761,11 @@ class TestPointCloudsComponent(unittest.TestCase):
         tmpdir.cleanup()
 
     def test_writer_rejects_wrong_xyz_dtype(self):
-        """store_pc with float64 xyz raises AssertionError (float32 required)."""
+        """store_pc with float64 xyz raises ValueError (float32 required)."""
         pc_writer, _, tmpdir, _ = self._make_writer_reader()
 
         xyz_f64 = np.array([[1.0, 2.0, 3.0]], dtype=np.float64)
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             pc_writer.store_pc(
                 xyz=xyz_f64,  # type: ignore
                 reference_frame_id="world",
@@ -2163,9 +2163,9 @@ class TestCameraLabelsComponent(unittest.TestCase):
     def test_quantization_params_rejects_float_dtype(self) -> None:
         """QuantizationParams must reject non-integer quantized_dtype."""
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             QuantizationParams(quantized_dtype=np.dtype("float32"), scale=1.0, offset=0.0)
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             QuantizationParams(quantized_dtype=np.dtype("float64"), scale=1.0, offset=0.0)
 
     # ------------------------------------------------------------------
@@ -2174,11 +2174,11 @@ class TestCameraLabelsComponent(unittest.TestCase):
     def test_quantization_params_rejects_non_float_intermediate(self) -> None:
         """QuantizationParams must reject non-floating intermediate_dtype."""
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             QuantizationParams(
                 quantized_dtype=np.dtype("uint16"), scale=1.0, offset=0.0, intermediate_dtype=np.dtype("int32")
             )
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             QuantizationParams(
                 quantized_dtype=np.dtype("uint16"), scale=1.0, offset=0.0, intermediate_dtype=np.dtype("uint8")
             )
@@ -2349,7 +2349,7 @@ class TestCameraLabelsComponent(unittest.TestCase):
     # 8. test_reject_empty_camera_id
     # ------------------------------------------------------------------
     def test_reject_empty_camera_id(self) -> None:
-        """Passing an empty camera_id should raise AssertionError."""
+        """Passing an empty camera_id should raise ValueError."""
 
         tmpdir = tempfile.TemporaryDirectory()
         timestamp_interval = HalfClosedInterval(0, 10_000_001)
@@ -2363,7 +2363,7 @@ class TestCameraLabelsComponent(unittest.TestCase):
             generic_meta_data={},
         )
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ValueError):
             store_writer.register_component_writer(
                 CameraLabelsComponent.Writer,
                 "depth.z@front",

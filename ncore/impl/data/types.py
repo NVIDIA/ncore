@@ -127,19 +127,28 @@ class BivariateWindshieldModelParameters(dataclasses_json.DataClassJsonMixin):
 
     def __post_init__(self):
         # Sanity checks
-        assert isinstance(self.reference_poly, ReferencePolynomial)
+        if not isinstance(self.reference_poly, ReferencePolynomial):
+            raise TypeError(f"reference_poly must be ReferencePolynomial, got {type(self.reference_poly).__name__}")
 
-        assert self.horizontal_poly.ndim == 1
-        assert self.horizontal_poly.dtype == np.dtype("float32")
+        if self.horizontal_poly.ndim != 1:
+            raise ValueError(f"horizontal_poly must be 1-dimensional, got ndim={self.horizontal_poly.ndim}")
+        if self.horizontal_poly.dtype != np.dtype("float32"):
+            raise ValueError(f"horizontal_poly must have dtype float32, got {self.horizontal_poly.dtype}")
 
-        assert self.vertical_poly.ndim == 1
-        assert self.horizontal_poly.dtype == np.dtype("float32")
+        if self.vertical_poly.ndim != 1:
+            raise ValueError(f"vertical_poly must be 1-dimensional, got ndim={self.vertical_poly.ndim}")
+        if self.vertical_poly.dtype != np.dtype("float32"):
+            raise ValueError(f"vertical_poly must have dtype float32, got {self.vertical_poly.dtype}")
 
-        assert self.horizontal_poly_inverse.ndim == 1
-        assert self.horizontal_poly.dtype == np.dtype("float32")
+        if self.horizontal_poly_inverse.ndim != 1:
+            raise ValueError(f"horizontal_poly_inverse must be 1-dimensional, got ndim={self.horizontal_poly_inverse.ndim}")
+        if self.horizontal_poly_inverse.dtype != np.dtype("float32"):
+            raise ValueError(f"horizontal_poly_inverse must have dtype float32, got {self.horizontal_poly_inverse.dtype}")
 
-        assert self.vertical_poly_inverse.ndim == 1
-        assert self.horizontal_poly.dtype == np.dtype("float32")
+        if self.vertical_poly_inverse.ndim != 1:
+            raise ValueError(f"vertical_poly_inverse must be 1-dimensional, got ndim={self.vertical_poly_inverse.ndim}")
+        if self.vertical_poly_inverse.dtype != np.dtype("float32"):
+            raise ValueError(f"vertical_poly_inverse must have dtype float32, got {self.vertical_poly_inverse.dtype}")
 
 
 # Represents the collection of all concrete external distortion types
@@ -185,15 +194,20 @@ class CameraModelParameters(ABC):
 
     def __post_init__(self):
         # Sanity checks
-        assert self.resolution.shape == (2,)
-        assert self.resolution.dtype == np.dtype("uint64")
-        assert self.resolution[0] > 0 and self.resolution[1] > 0
+        if self.resolution.shape != (2,):
+            raise ValueError(f"resolution must have shape (2,), got {self.resolution.shape}")
+        if self.resolution.dtype != np.dtype("uint64"):
+            raise ValueError(f"resolution must have dtype uint64, got {self.resolution.dtype}")
+        if not (self.resolution[0] > 0 and self.resolution[1] > 0):
+            raise ValueError(f"resolution elements must be > 0, got {self.resolution}")
 
         if not isinstance(self.shutter_type, ShutterType):
             self.shutter_type = ShutterType(self.shutter_type)
-        assert self.shutter_type in ShutterType.__members__.values()
+        if self.shutter_type not in ShutterType.__members__.values():
+            raise ValueError(f"shutter_type must be a valid ShutterType, got {self.shutter_type}")
 
-        assert isinstance(self.external_distortion_parameters, (type(None), ConcreteExternalDistortionParametersUnion))
+        if not isinstance(self.external_distortion_parameters, (type(None), ConcreteExternalDistortionParametersUnion)):
+            raise TypeError(f"external_distortion_parameters must be None or ConcreteExternalDistortionParametersUnion, got {type(self.external_distortion_parameters).__name__}")
 
 
 @dataclass
@@ -246,20 +260,29 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
     def __post_init__(self):
         # Sanity checks
         super().__post_init__()
-        assert self.principal_point.shape == (2,)
-        assert self.principal_point.dtype == np.dtype("float32")
+        if self.principal_point.shape != (2,):
+            raise ValueError(f"principal_point must have shape (2,), got {self.principal_point.shape}")
+        if self.principal_point.dtype != np.dtype("float32"):
+            raise ValueError(f"principal_point must have dtype float32, got {self.principal_point.dtype}")
 
         if not isinstance(self.reference_poly, FThetaCameraModelParameters.PolynomialType):
             self.reference_poly = FThetaCameraModelParameters.PolynomialType(self.reference_poly)
-        assert self.reference_poly in FThetaCameraModelParameters.PolynomialType.__members__.values()
+        if self.reference_poly not in FThetaCameraModelParameters.PolynomialType.__members__.values():
+            raise ValueError(f"reference_poly must be a valid PolynomialType, got {self.reference_poly}")
 
-        assert self.pixeldist_to_angle_poly.ndim == 1
-        assert len(self.pixeldist_to_angle_poly) <= self.POLYNOMIAL_DEGREE
-        assert self.pixeldist_to_angle_poly.dtype == np.dtype("float32")
+        if self.pixeldist_to_angle_poly.ndim != 1:
+            raise ValueError(f"pixeldist_to_angle_poly must be 1-dimensional, got ndim={self.pixeldist_to_angle_poly.ndim}")
+        if len(self.pixeldist_to_angle_poly) > self.POLYNOMIAL_DEGREE:
+            raise ValueError(f"pixeldist_to_angle_poly length must be <= {self.POLYNOMIAL_DEGREE}, got {len(self.pixeldist_to_angle_poly)}")
+        if self.pixeldist_to_angle_poly.dtype != np.dtype("float32"):
+            raise ValueError(f"pixeldist_to_angle_poly must have dtype float32, got {self.pixeldist_to_angle_poly.dtype}")
 
-        assert self.angle_to_pixeldist_poly.ndim == 1
-        assert len(self.angle_to_pixeldist_poly) <= self.POLYNOMIAL_DEGREE
-        assert self.angle_to_pixeldist_poly.dtype == np.dtype("float32")
+        if self.angle_to_pixeldist_poly.ndim != 1:
+            raise ValueError(f"angle_to_pixeldist_poly must be 1-dimensional, got ndim={self.angle_to_pixeldist_poly.ndim}")
+        if len(self.angle_to_pixeldist_poly) > self.POLYNOMIAL_DEGREE:
+            raise ValueError(f"angle_to_pixeldist_poly length must be <= {self.POLYNOMIAL_DEGREE}, got {len(self.angle_to_pixeldist_poly)}")
+        if self.angle_to_pixeldist_poly.dtype != np.dtype("float32"):
+            raise ValueError(f"angle_to_pixeldist_poly must have dtype float32, got {self.angle_to_pixeldist_poly.dtype}")
 
         # pad polynomials to full size
         self.pixeldist_to_angle_poly = np.pad(
@@ -275,10 +298,13 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
             constant_values=0.0,
         )
 
-        assert self.max_angle > 0.0
+        if self.max_angle <= 0.0:
+            raise ValueError(f"max_angle must be > 0.0, got {self.max_angle}")
 
-        assert self.linear_cde.shape == (3,)
-        assert self.linear_cde.dtype == np.dtype("float32")
+        if self.linear_cde.shape != (3,):
+            raise ValueError(f"linear_cde must have shape (3,), got {self.linear_cde.shape}")
+        if self.linear_cde.dtype != np.dtype("float32"):
+            raise ValueError(f"linear_cde must have dtype float32, got {self.linear_cde.dtype}")
 
         # some datasets might store _invalid_ linear terms (all zero) - workaround by setting these to default linear term
         if np.allclose(self.linear_cde, 0.0):
@@ -319,7 +345,8 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
         # Otherwise make sure the scaled resolution is integer
         else:
             resolution = self.resolution * image_domain_scale_factors
-            assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
+            if not all([r.is_integer() for r in resolution]):
+                raise ValueError(f"Resolution must be integer after scaling, got {resolution}")
 
         # Scale / offset principal point location by transforming it in the scaled image (make sure to account for 0.5px offset
         # of the image domain, as the stored parameters are represented with (0,0) at the center of the first pixel)
@@ -395,21 +422,32 @@ class OpenCVPinholeCameraModelParameters(CameraModelParameters, dataclasses_json
     def __post_init__(self):
         # Sanity checks
         super().__post_init__()
-        assert self.principal_point.shape == (2,)
-        assert self.principal_point.dtype == np.dtype("float32")
+        if self.principal_point.shape != (2,):
+            raise ValueError(f"principal_point must have shape (2,), got {self.principal_point.shape}")
+        if self.principal_point.dtype != np.dtype("float32"):
+            raise ValueError(f"principal_point must have dtype float32, got {self.principal_point.dtype}")
 
-        assert self.focal_length.shape == (2,)
-        assert self.focal_length.dtype == np.dtype("float32")
-        assert self.focal_length[0] > 0.0 and self.focal_length[1] > 0.0
+        if self.focal_length.shape != (2,):
+            raise ValueError(f"focal_length must have shape (2,), got {self.focal_length.shape}")
+        if self.focal_length.dtype != np.dtype("float32"):
+            raise ValueError(f"focal_length must have dtype float32, got {self.focal_length.dtype}")
+        if not (self.focal_length[0] > 0.0 and self.focal_length[1] > 0.0):
+            raise ValueError(f"focal_length elements must be > 0.0, got {self.focal_length}")
 
-        assert self.radial_coeffs.shape == (6,)
-        assert self.radial_coeffs.dtype == np.dtype("float32")
+        if self.radial_coeffs.shape != (6,):
+            raise ValueError(f"radial_coeffs must have shape (6,), got {self.radial_coeffs.shape}")
+        if self.radial_coeffs.dtype != np.dtype("float32"):
+            raise ValueError(f"radial_coeffs must have dtype float32, got {self.radial_coeffs.dtype}")
 
-        assert self.tangential_coeffs.shape == (2,)
-        assert self.tangential_coeffs.dtype == np.dtype("float32")
+        if self.tangential_coeffs.shape != (2,):
+            raise ValueError(f"tangential_coeffs must have shape (2,), got {self.tangential_coeffs.shape}")
+        if self.tangential_coeffs.dtype != np.dtype("float32"):
+            raise ValueError(f"tangential_coeffs must have dtype float32, got {self.tangential_coeffs.dtype}")
 
-        assert self.thin_prism_coeffs.shape == (4,)
-        assert self.thin_prism_coeffs.dtype == np.dtype("float32")
+        if self.thin_prism_coeffs.shape != (4,):
+            raise ValueError(f"thin_prism_coeffs must have shape (4,), got {self.thin_prism_coeffs.shape}")
+        if self.thin_prism_coeffs.dtype != np.dtype("float32"):
+            raise ValueError(f"thin_prism_coeffs must have dtype float32, got {self.thin_prism_coeffs.dtype}")
 
     def transform(
         self,
@@ -446,7 +484,8 @@ class OpenCVPinholeCameraModelParameters(CameraModelParameters, dataclasses_json
         # Otherwise make sure the scaled resolution is integer
         else:
             resolution = self.resolution * image_domain_scale_factors
-            assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
+            if not all([r.is_integer() for r in resolution]):
+                raise ValueError(f"Resolution must be integer after scaling, got {resolution}")
 
         return dataclasses.replace(
             self,
@@ -482,17 +521,25 @@ class OpenCVFisheyeCameraModelParameters(CameraModelParameters, dataclasses_json
     def __post_init__(self):
         # Sanity checks
         super().__post_init__()
-        assert self.principal_point.shape == (2,)
-        assert self.principal_point.dtype == np.dtype("float32")
+        if self.principal_point.shape != (2,):
+            raise ValueError(f"principal_point must have shape (2,), got {self.principal_point.shape}")
+        if self.principal_point.dtype != np.dtype("float32"):
+            raise ValueError(f"principal_point must have dtype float32, got {self.principal_point.dtype}")
 
-        assert self.focal_length.shape == (2,)
-        assert self.focal_length.dtype == np.dtype("float32")
-        assert self.focal_length[0] > 0.0 and self.focal_length[1] > 0.0
+        if self.focal_length.shape != (2,):
+            raise ValueError(f"focal_length must have shape (2,), got {self.focal_length.shape}")
+        if self.focal_length.dtype != np.dtype("float32"):
+            raise ValueError(f"focal_length must have dtype float32, got {self.focal_length.dtype}")
+        if not (self.focal_length[0] > 0.0 and self.focal_length[1] > 0.0):
+            raise ValueError(f"focal_length elements must be > 0.0, got {self.focal_length}")
 
-        assert self.radial_coeffs.shape == (4,)
-        assert self.radial_coeffs.dtype == np.dtype("float32")
+        if self.radial_coeffs.shape != (4,):
+            raise ValueError(f"radial_coeffs must have shape (4,), got {self.radial_coeffs.shape}")
+        if self.radial_coeffs.dtype != np.dtype("float32"):
+            raise ValueError(f"radial_coeffs must have dtype float32, got {self.radial_coeffs.dtype}")
 
-        assert self.max_angle > 0.0
+        if self.max_angle <= 0.0:
+            raise ValueError(f"max_angle must be > 0.0, got {self.max_angle}")
 
     def transform(
         self,
@@ -529,7 +576,8 @@ class OpenCVFisheyeCameraModelParameters(CameraModelParameters, dataclasses_json
         # Otherwise make sure the scaled resolution is integer
         else:
             resolution = self.resolution * image_domain_scale_factors
-            assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
+            if not all([r.is_integer() for r in resolution]):
+                raise ValueError(f"Resolution must be integer after scaling, got {resolution}")
 
         return dataclasses.replace(
             self,
@@ -613,8 +661,10 @@ class BaseSpinningLidarModelParameters(BaseLidarModelParameters):
 
     def __post_init__(self):
         # Sanity checks
-        assert self.spinning_frequency_hz > 0.0
-        assert self.spinning_direction in ["cw", "ccw"]
+        if self.spinning_frequency_hz <= 0.0:
+            raise ValueError(f"spinning_frequency_hz must be > 0.0, got {self.spinning_frequency_hz}")
+        if self.spinning_direction not in ["cw", "ccw"]:
+            raise ValueError(f"spinning_direction must be 'cw' or 'ccw', got '{self.spinning_direction}'")
 
 
 @dataclass()
@@ -629,8 +679,10 @@ class BaseStructuredSpinningLidarModelParameters(BaseSpinningLidarModelParameter
 
     def __post_init__(self):
         # Sanity checks
-        assert self.n_rows > 0
-        assert self.n_columns > 0
+        if self.n_rows <= 0:
+            raise ValueError(f"n_rows must be > 0, got {self.n_rows}")
+        if self.n_columns <= 0:
+            raise ValueError(f"n_columns must be > 0, got {self.n_columns}")
 
 
 @dataclass()
@@ -655,32 +707,34 @@ class RowOffsetStructuredSpinningLidarModelParameters(
     def __post_init__(self):
         # Sanity checks
 
-        assert self.row_elevations_rad.dtype == np.float32
-        assert self.row_elevations_rad.shape == (self.n_rows,)
-        assert self.row_azimuth_offsets_rad.dtype == np.float32
-        assert self.row_azimuth_offsets_rad.shape == (self.n_rows,)
-        assert self.column_azimuths_rad.dtype == np.float32
-        assert self.column_azimuths_rad.shape == (self.n_columns,)
+        if self.row_elevations_rad.dtype != np.float32:
+            raise ValueError(f"row_elevations_rad must have dtype float32, got {self.row_elevations_rad.dtype}")
+        if self.row_elevations_rad.shape != (self.n_rows,):
+            raise ValueError(f"row_elevations_rad must have shape ({self.n_rows},), got {self.row_elevations_rad.shape}")
+        if self.row_azimuth_offsets_rad.dtype != np.float32:
+            raise ValueError(f"row_azimuth_offsets_rad must have dtype float32, got {self.row_azimuth_offsets_rad.dtype}")
+        if self.row_azimuth_offsets_rad.shape != (self.n_rows,):
+            raise ValueError(f"row_azimuth_offsets_rad must have shape ({self.n_rows},), got {self.row_azimuth_offsets_rad.shape}")
+        if self.column_azimuths_rad.dtype != np.float32:
+            raise ValueError(f"column_azimuths_rad must have dtype float32, got {self.column_azimuths_rad.dtype}")
+        if self.column_azimuths_rad.shape != (self.n_columns,):
+            raise ValueError(f"column_azimuths_rad must have shape ({self.n_columns},), got {self.column_azimuths_rad.shape}")
 
         # Check elevation angles are sorted consistently
         relative_row_elevations_rad = util.relative_angle(self.row_elevations_rad[0], self.row_elevations_rad, "cw")
-        assert np.all(np.diff(relative_row_elevations_rad.relative_angle_rad) > 0), (
-            "Row elevation angles must be sorted in descending order (cw)"
-        )
-        assert np.all(~relative_row_elevations_rad.wrap_around_flag), (
-            "Row elevation angles must not wrap around the start element"
-        )
+        if not np.all(np.diff(relative_row_elevations_rad.relative_angle_rad) > 0):
+            raise ValueError("Row elevation angles must be sorted in descending order (cw)")
+        if not np.all(~relative_row_elevations_rad.wrap_around_flag):
+            raise ValueError("Row elevation angles must not wrap around the start element")
 
         # Check order of column azimuth angles is consistent with spinning direction
         relative_column_azimuths_rad = util.relative_angle(
             self.column_azimuths_rad[0], self.column_azimuths_rad, self.spinning_direction
         )
-        assert np.all(np.diff(relative_column_azimuths_rad.relative_angle_rad) > 0), (
-            "Column azimuth angles must be sorted in the spinning direction so the diff between relative angles of consecutive columns should always be positive"
-        )
-        assert np.all(~relative_row_elevations_rad.wrap_around_flag), (
-            "Column azimuth angles (without offsets) must not wrap around the start element"
-        )
+        if not np.all(np.diff(relative_column_azimuths_rad.relative_angle_rad) > 0):
+            raise ValueError("Column azimuth angles must be sorted in the spinning direction so the diff between relative angles of consecutive columns should always be positive")
+        if not np.all(~relative_row_elevations_rad.wrap_around_flag):
+            raise ValueError("Column azimuth angles (without offsets) must not wrap around the start element")
 
     @staticmethod
     def type() -> str:
@@ -776,12 +830,18 @@ class BBox3(dataclasses_json.DataClassJsonMixin):
 
     def __post_init__(self):
         # Sanity checks
-        assert isinstance(self.centroid, tuple)
-        assert all(isinstance(i, float) for i in self.centroid)
-        assert isinstance(self.dim, tuple)
-        assert all(isinstance(i, float) for i in self.dim)
-        assert isinstance(self.rot, tuple)
-        assert all(isinstance(i, float) for i in self.rot)
+        if not isinstance(self.centroid, tuple):
+            raise TypeError(f"centroid must be tuple, got {type(self.centroid).__name__}")
+        if not all(isinstance(i, float) for i in self.centroid):
+            raise TypeError(f"centroid elements must be float, got {[type(i).__name__ for i in self.centroid]}")
+        if not isinstance(self.dim, tuple):
+            raise TypeError(f"dim must be tuple, got {type(self.dim).__name__}")
+        if not all(isinstance(i, float) for i in self.dim):
+            raise TypeError(f"dim elements must be float, got {[type(i).__name__ for i in self.dim]}")
+        if not isinstance(self.rot, tuple):
+            raise TypeError(f"rot must be tuple, got {type(self.rot).__name__}")
+        if not all(isinstance(i, float) for i in self.rot):
+            raise TypeError(f"rot elements must be float, got {[type(i).__name__ for i in self.rot]}")
 
 
 # ---------------------------------------------------------------------------
@@ -886,12 +946,14 @@ class LabelType(dataclasses_json.DataClassJsonMixin):
 
     def __post_init__(self):
         # Sanity checks
-        assert isinstance(self.category, LabelCategory)
-        assert isinstance(self.qualifier, str)
-        assert len(self.qualifier) > 0, (
-            "Qualifier should be a non-empty string to avoid confusion with default LabelType"
-        )
-        assert self.unit is None or isinstance(self.unit, LabelUnit)
+        if not isinstance(self.category, LabelCategory):
+            raise TypeError(f"category must be LabelCategory, got {type(self.category).__name__}")
+        if not isinstance(self.qualifier, str):
+            raise TypeError(f"qualifier must be str, got {type(self.qualifier).__name__}")
+        if len(self.qualifier) == 0:
+            raise ValueError("Qualifier should be a non-empty string to avoid confusion with default LabelType")
+        if not (self.unit is None or isinstance(self.unit, LabelUnit)):
+            raise TypeError(f"unit must be None or LabelUnit, got {type(self.unit).__name__}")
 
     # Well-known constants (assigned after class definition)
     DEPTH_Z_M: ClassVar[LabelType]
@@ -943,12 +1005,10 @@ class QuantizationParams(dataclasses_json.DataClassJsonMixin):
     )  #: Numpy dtype for intermediate arithmetic during (de-)quantization
 
     def __post_init__(self):
-        assert np.issubdtype(self.quantized_dtype, np.integer), (
-            f"quantized_dtype must be an integer type, got {self.quantized_dtype}"
-        )
-        assert np.issubdtype(self.intermediate_dtype, np.floating), (
-            f"intermediate_dtype must be a floating type, got {self.intermediate_dtype}"
-        )
+        if not np.issubdtype(self.quantized_dtype, np.integer):
+            raise ValueError(f"quantized_dtype must be an integer type, got {self.quantized_dtype}")
+        if not np.issubdtype(self.intermediate_dtype, np.floating):
+            raise ValueError(f"intermediate_dtype must be a floating type, got {self.intermediate_dtype}")
 
 
 @dataclass(**({"slots": True, "frozen": True} if sys.version_info >= (3, 10) else {"frozen": True}))
@@ -968,16 +1028,23 @@ class LabelSchema(dataclasses_json.DataClassJsonMixin):
 
     def __post_init__(self):
         # Sanity checks
-        assert isinstance(self.dtype, np.dtype)
-        assert isinstance(self.shape_suffix, tuple) and all(isinstance(i, int) for i in self.shape_suffix)
-        assert isinstance(self.encoding, LabelEncoding)
+        if not isinstance(self.dtype, np.dtype):
+            raise TypeError(f"dtype must be np.dtype, got {type(self.dtype).__name__}")
+        if not (isinstance(self.shape_suffix, tuple) and all(isinstance(i, int) for i in self.shape_suffix)):
+            raise TypeError(f"shape_suffix must be a tuple of ints, got {self.shape_suffix}")
+        if not isinstance(self.encoding, LabelEncoding):
+            raise TypeError(f"encoding must be LabelEncoding, got {type(self.encoding).__name__}")
         if self.encoding == LabelEncoding.IMAGE_ENCODED:
-            assert self.encoded_format is not None, "encoded_format must be provided when encoding is IMAGE_ENCODED"
+            if self.encoded_format is None:
+                raise ValueError("encoded_format must be provided when encoding is IMAGE_ENCODED")
         else:
-            assert self.encoded_format is None, "encoded_format should only be provided when encoding is IMAGE_ENCODED"
+            if self.encoded_format is not None:
+                raise ValueError("encoded_format should only be provided when encoding is IMAGE_ENCODED")
         if self.quantization is not None:
-            assert isinstance(self.quantization, QuantizationParams)
-            assert self.encoding == LabelEncoding.RAW, "Quantization is only supported for RAW encoding"
+            if not isinstance(self.quantization, QuantizationParams):
+                raise TypeError(f"quantization must be QuantizationParams, got {type(self.quantization).__name__}")
+            if self.encoding != LabelEncoding.RAW:
+                raise ValueError("Quantization is only supported for RAW encoding")
 
 
 @dataclass
@@ -1050,18 +1117,26 @@ class CuboidTrackObservation(dataclasses_json.DataClassJsonMixin):
 
     def __post_init__(self):
         # Sanity checks
-        assert isinstance(self.track_id, str)
-        assert isinstance(self.class_id, str)
-        assert isinstance(self.reference_frame_id, str)
-        assert isinstance(self.reference_frame_timestamp_us, int)
-        assert isinstance(self.bbox3, BBox3)
-        assert isinstance(self.timestamp_us, int)
+        if not isinstance(self.track_id, str):
+            raise TypeError(f"track_id must be str, got {type(self.track_id).__name__}")
+        if not isinstance(self.class_id, str):
+            raise TypeError(f"class_id must be str, got {type(self.class_id).__name__}")
+        if not isinstance(self.reference_frame_id, str):
+            raise TypeError(f"reference_frame_id must be str, got {type(self.reference_frame_id).__name__}")
+        if not isinstance(self.reference_frame_timestamp_us, int):
+            raise TypeError(f"reference_frame_timestamp_us must be int, got {type(self.reference_frame_timestamp_us).__name__}")
+        if not isinstance(self.bbox3, BBox3):
+            raise TypeError(f"bbox3 must be BBox3, got {type(self.bbox3).__name__}")
+        if not isinstance(self.timestamp_us, int):
+            raise TypeError(f"timestamp_us must be int, got {type(self.timestamp_us).__name__}")
 
         if not isinstance(self.source, LabelSource):
             self.source = LabelSource(self.source)
-        assert self.source in LabelSource.__members__.values()
+        if self.source not in LabelSource.__members__.values():
+            raise ValueError(f"source must be a valid LabelSource, got {self.source}")
 
-        assert isinstance(self.source_version, (type(None), str))
+        if not isinstance(self.source_version, (type(None), str)):
+            raise TypeError(f"source_version must be None or str, got {type(self.source_version).__name__}")
 
 
 @unique
@@ -1278,7 +1353,11 @@ class CameraLabelDescriptor(dataclasses_json.DataClassJsonMixin):
 
     def __post_init__(self):
         # Sanity checks
-        assert isinstance(self.camera_id, str) and len(self.camera_id) > 0, "camera_id should be a non-empty string"
-        assert isinstance(self.label_type, LabelType)
-        assert isinstance(self.label_schema, LabelSchema)
-        assert isinstance(self.label_source, LabelSource)
+        if not (isinstance(self.camera_id, str) and len(self.camera_id) > 0):
+            raise ValueError("camera_id should be a non-empty string")
+        if not isinstance(self.label_type, LabelType):
+            raise TypeError(f"label_type must be LabelType, got {type(self.label_type).__name__}")
+        if not isinstance(self.label_schema, LabelSchema):
+            raise TypeError(f"label_schema must be LabelSchema, got {type(self.label_schema).__name__}")
+        if not isinstance(self.label_source, LabelSource):
+            raise TypeError(f"label_source must be LabelSource, got {type(self.label_source).__name__}")

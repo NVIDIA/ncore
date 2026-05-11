@@ -529,7 +529,8 @@ class WaymoConverter4(FileBasedDataConverter):
             )
 
             # Collect all lidar per-frame data
-            assert len(frames) > 1  # require at least two frames to compute frame bound timestamps
+            if len(frames) <= 1:
+                raise ValueError("Require at least two frames to compute frame bound timestamps")
             for i, frame in tqdm.tqdm(enumerate(frames), desc=f"Process {lidar_ncore_id}", total=len(frames)):
                 # Get frame timestamps
                 frame_start_timestamp_us = raw_frame_start_timestamps_us[i]

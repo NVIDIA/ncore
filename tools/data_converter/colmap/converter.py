@@ -104,7 +104,8 @@ class ColmapCamera:
     def camera_model(self) -> Union[OpenCVPinholeCameraModelParameters, OpenCVFisheyeCameraModelParameters]:
         camera = self.colmap_camera
 
-        assert camera.camera_type in [0, 1, 2, 3, 4, 5], f"Unsupported camera type: {camera.camera_type}"
+        if camera.camera_type not in [0, 1, 2, 3, 4, 5]:
+            raise ValueError(f"Unsupported camera type: {camera.camera_type}")
 
         width = round(camera.width / self.downsample_factor)
         height = round(camera.height / self.downsample_factor)

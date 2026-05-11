@@ -396,9 +396,8 @@ class SensorProtocol(Protocol):
         elif relative_frame_time == 1.0:
             target_timestamps_us = self.frames_timestamps_us[:, 1]
         else:
-            assert 0.0 <= relative_frame_time <= 1.0, (
-                f"relative_frame_time must be in [0, 1], got {relative_frame_time}"
-            )
+            if not (0.0 <= relative_frame_time <= 1.0):
+                raise ValueError(f"relative_frame_time must be in [0, 1], got {relative_frame_time}")
             target_timestamps_us = (
                 self.frames_timestamps_us[:, 0]
                 + relative_frame_time * (self.frames_timestamps_us[:, 1] - self.frames_timestamps_us[:, 0])

@@ -267,7 +267,8 @@ class SequenceComponentGroupsWriter:
         can infer the correct extra-argument signature from the concrete writer
         class that is passed in."""
 
-        assert len(component_instance_name) > 0, "Component instance name must not be empty"
+        if not len(component_instance_name) > 0:
+            raise ValueError("Component instance name must not be empty")
 
         # The signature uses Callable[Concatenate[...], CW] for type-safe kwargs
         # inference, but we also need access to ComponentWriter static class attributes.
@@ -277,7 +278,8 @@ class SequenceComponentGroupsWriter:
         component_base_name = writer_cls.get_component_name()
         component_id = f"{component_base_name}:{component_instance_name}"
 
-        assert component_id not in self._component_writers, f"Component writer for {component_id} already registered"
+        if component_id in self._component_writers:
+            raise ValueError(f"Component writer for {component_id} already registered")
 
         # Create the component in the requested group, separated by component base name
         component_group = (
@@ -359,7 +361,8 @@ class SequenceComponentGroupsReader:
 
         component_group_upaths: List[UPath] = self.expand_component_group_paths(component_group_paths)
 
-        assert len(component_group_upaths), "No component inputs provided"
+        if not len(component_group_upaths):
+            raise ValueError("No component inputs provided")
 
         # Load component stores concurrently (to hide latency) and check for sequence consistency
         self._component_stores: Dict[str, Tuple[zarr.Group, UPath]] = {}  # use str as the generic path / URL type
@@ -620,8 +623,9 @@ P = ParamSpec("P")
 
 
 def validate_frame_name(name: str) -> str:
-    """Checks if the given name is a valid frame name (non-empty, no whitespace), returns it if valid, raises AssertionError otherwise"""
-    assert len(name) and not name.isspace(), f"Frame '{name}' is invalid, must not be empty or contain whitespace"
+    """Checks if the given name is a valid frame name (non-empty, no whitespace), returns it if valid, raises ValueError otherwise"""
+    if not (len(name) and not name.isspace()):
+        raise ValueError(f"Frame '{name}' is invalid, must not be empty or contain whitespace")
 
     return name
 
@@ -667,15 +671,20 @@ class PosesComponent:
             Makes sure the inverse transformation is not already stored."""
 
             # Sanity checks
-            assert pose.shape == (4, 4)
-            assert np.issubdtype(pose.dtype, np.floating), "Poses must be of float type"
-            assert np.all(pose[3, :] == [0.0, 0.0, 0.0, 1.0]), "Invalid SE3 transformation"
+            if pose.shape != (4, 4):
+                raise ValueError(f"Pose must have shape (4, 4), got {pose.shape}")
+            if not np.issubdtype(pose.dtype, np.floating):
+                raise TypeError("Poses must be of float type")
+            if not np.all(pose[3, :] == [0.0, 0.0, 0.0, 1.0]):
+                raise ValueError("Invalid SE3 transformation")
 
             key = (validate_frame_name(source_frame_id), validate_frame_name(target_frame_id))
             inv_key = key[::-1]
 
-            assert key not in self.data["static_poses"], f"Static pose {key} already exists"
-            assert inv_key not in self.data["static_poses"], f"Inverse static pose {inv_key} already exists"
+            if key in self.data["static_poses"]:
+                raise ValueError(f"Static pose {key} already exists")
+            if inv_key in self.data["static_poses"]:
+                raise ValueError(f"Inverse static pose {inv_key} already exists")
 
             self.data["static_poses"][str(key)] = {"pose": pose.tolist(), "dtype": str(pose.dtype)}
 
@@ -699,39 +708,52 @@ class PosesComponent:
             Makes sure the inverse transformation is not already stored."""
 
             # Sanity / timestamp consistency checks
-            assert poses.shape[1:] == (4, 4)
-            assert np.issubdtype(poses.dtype, np.floating), "Poses must be of float type"
-            assert np.all(poses[:, 3, :] == [0.0, 0.0, 0.0, 1.0]), "Invalid SE3 transformations"
+            if poses.shape[1:] != (4, 4):
+                raise ValueError(f"Poses must have shape (N, 4, 4), got trailing shape {poses.shape[1:]}")
+            if not np.issubdtype(poses.dtype, np.floating):
+                raise TypeError("Poses must be of float type")
+            if not np.all(poses[:, 3, :] == [0.0, 0.0, 0.0, 1.0]):
+                raise ValueError("Invalid SE3 transformations")
 
-            assert timestamps_us.ndim == 1
-            assert timestamps_us.dtype == np.dtype("uint64")
+            if timestamps_us.ndim != 1:
+                raise ValueError(f"timestamps_us must be 1-D, got ndim={timestamps_us.ndim}")
+            if timestamps_us.dtype != np.dtype("uint64"):
+                raise TypeError(f"timestamps_us must have dtype uint64, got {timestamps_us.dtype}")
 
-            assert len(poses) == len(timestamps_us)
+            if len(poses) != len(timestamps_us):
+                raise ValueError(f"poses length {len(poses)} != timestamps_us length {len(timestamps_us)}")
 
-            assert len(poses) > 1, "At least two poses required for a dynamic pose trajectory to support interpolation"
+            if not len(poses) > 1:
+                raise ValueError("At least two poses required for a dynamic pose trajectory to support interpolation")
 
-            assert np.all(np.diff(timestamps_us) > 0), "Timestamps must be strictly increasing"
+            if not np.all(np.diff(timestamps_us) > 0):
+                raise ValueError("Timestamps must be strictly increasing")
 
-            assert (
+            if not (
                 timestamps_us[0].item() in self._sequence_timestamp_interval_us
                 and timestamps_us[-1].item() in self._sequence_timestamp_interval_us
-            ), "Dynamic poses samples must be fully contained in the sequence time range"
+            ):
+                raise ValueError("Dynamic poses samples must be fully contained in the sequence time range")
 
             if require_sequence_time_coverage:
-                assert timestamps_us[0] == self._sequence_timestamp_interval_us.start, (
-                    "Dynamic poses must cover the full sequence time range - "
-                    "the first timestamp is after the sequence start time"
-                )
-                assert timestamps_us[-1] == self._sequence_timestamp_interval_us.stop - 1, (
-                    "Dynamic poses must cover the full sequence time range - "
-                    "the last timestamp is before the sequence end time"
-                )
+                if timestamps_us[0] != self._sequence_timestamp_interval_us.start:
+                    raise ValueError(
+                        "Dynamic poses must cover the full sequence time range - "
+                        "the first timestamp is after the sequence start time"
+                    )
+                if timestamps_us[-1] != self._sequence_timestamp_interval_us.stop - 1:
+                    raise ValueError(
+                        "Dynamic poses must cover the full sequence time range - "
+                        "the last timestamp is before the sequence end time"
+                    )
 
             key = (validate_frame_name(source_frame_id), validate_frame_name(target_frame_id))
             inv_key = key[::-1]
 
-            assert key not in self.data["dynamic_poses"], f"Dynamic poses {key} already exists"
-            assert inv_key not in self.data["dynamic_poses"], f"Inverse dynamic poses {inv_key} already exists"
+            if key in self.data["dynamic_poses"]:
+                raise ValueError(f"Dynamic poses {key} already exists")
+            if inv_key in self.data["dynamic_poses"]:
+                raise ValueError(f"Inverse dynamic poses {inv_key} already exists")
 
             self.data["dynamic_poses"][str(key)] = {
                 "poses": poses.tolist(),
@@ -1021,24 +1043,24 @@ class BaseSensorComponentWriter(ComponentWriter):
         generic_meta_data: Dict[str, types.JsonLike],
     ) -> zarr.Group:
         # Sanity / timestamp consistency checks
-        assert np.shape(frame_timestamps_us) == (2,)
-        assert frame_timestamps_us.dtype == np.dtype("uint64")
-        assert frame_timestamps_us[1] >= frame_timestamps_us[0]
+        if np.shape(frame_timestamps_us) != (2,):
+            raise ValueError(f"frame_timestamps_us must have shape (2,), got {np.shape(frame_timestamps_us)}")
+        if frame_timestamps_us.dtype != np.dtype("uint64"):
+            raise TypeError(f"frame_timestamps_us must have dtype uint64, got {frame_timestamps_us.dtype}")
+        if not frame_timestamps_us[1] >= frame_timestamps_us[0]:
+            raise ValueError("Frame end timestamp must be >= frame start timestamp")
 
-        assert frame_timestamps_us[0].item() in self._sequence_timestamp_interval_us, (
-            "Frame start timestamp must be contained in the sequence time range"
-        )
-        assert frame_timestamps_us[1].item() in self._sequence_timestamp_interval_us, (
-            "Frame end timestamp must be contained in the sequence time range"
-        )
+        if frame_timestamps_us[0].item() not in self._sequence_timestamp_interval_us:
+            raise ValueError("Frame start timestamp must be contained in the sequence time range")
+        if frame_timestamps_us[1].item() not in self._sequence_timestamp_interval_us:
+            raise ValueError("Frame end timestamp must be contained in the sequence time range")
 
         # Initialize frame group
         frame_group = self._get_frame_group(frame_timestamps_us)
 
         # Store timestamp data
-        assert frame_timestamps_us[1].item() not in self._frames_timestamps_us, (
-            "Frame with the same end-of-frame timestamp already exists"
-        )
+        if frame_timestamps_us[1].item() in self._frames_timestamps_us:
+            raise ValueError("Frame with the same end-of-frame timestamp already exists")
         self._frames_timestamps_us[frame_timestamps_us[1].item()] = frame_timestamps_us[0].item()
 
         # Store additional generic frame data and meta-data (not dimension / dtype checked)
@@ -1141,7 +1163,8 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
 
         # Store per-ray data
         for name, (ray_data_data, chunks) in ray_data.items():
-            assert len(ray_data_data) == n_rays, f"{name} doesn't have required ray count"
+            if len(ray_data_data) != n_rays:
+                raise ValueError(f"{name} doesn't have required ray count")
             ray_bundle_group.create_dataset(
                 name,
                 data=ray_data_data,
@@ -1156,9 +1179,10 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
         # Store per-return data
         absent_mask = None
         for name, (return_data_data, chunks) in return_data.items():
-            assert return_data_data.shape[:2] == (n_returns, n_rays), (
-                f"{name} doesn't have required ray / return count {(n_returns, n_rays)}"
-            )
+            if return_data_data.shape[:2] != (n_returns, n_rays):
+                raise ValueError(
+                    f"{name} doesn't have required ray / return count {(n_returns, n_rays)}"
+                )
 
             # Determine local absent mask from NaN values,
             # which needs to be consistent over all dimensions of a return
@@ -1168,9 +1192,10 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
                 d_axes = tuple(range(2, return_data_data.ndim))
                 all_nan = local_absent_mask.all(axis=d_axes)
                 any_nan = local_absent_mask.any(axis=d_axes)
-                assert np.array_equal(all_nan, any_nan), (
-                    f"Partial NaN detected at positions: {np.argwhere(all_nan != any_nan)[:5].tolist()} in higher-dimensional return data {name}"
-                )
+                if not np.array_equal(all_nan, any_nan):
+                    raise ValueError(
+                        f"Partial NaN detected at positions: {np.argwhere(all_nan != any_nan)[:5].tolist()} in higher-dimensional return data {name}"
+                    )
                 local_absent_mask = all_nan
 
             assert local_absent_mask.shape == (n_returns, n_rays), (
@@ -1182,7 +1207,8 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
                 absent_mask = local_absent_mask
             else:
                 # validate absent mask consistency
-                assert np.array_equal(absent_mask, local_absent_mask), f"Inconsistent NaN masks in return data {name}"
+                if not np.array_equal(absent_mask, local_absent_mask):
+                    raise ValueError(f"Inconsistent NaN masks in return data {name}")
 
             ray_bundle_returns_group.create_dataset(
                 name,
@@ -1404,12 +1430,16 @@ class LidarSensorComponent:
             generic_meta_data: Dict[str, types.JsonLike],
         ) -> "Self":
             ## Sanity / consistency checks
-            assert direction.ndim == 2
-            assert np.shape(direction)[1] == 3
-            assert direction.dtype == np.dtype("float32")
+            if direction.ndim != 2:
+                raise ValueError(f"direction must be 2-D, got ndim={direction.ndim}")
+            if np.shape(direction)[1] != 3:
+                raise ValueError(f"direction must have 3 columns, got {np.shape(direction)[1]}")
+            if direction.dtype != np.dtype("float32"):
+                raise TypeError(f"direction must have dtype float32, got {direction.dtype}")
 
             # make sure directions are unit-norm
-            assert np.all(np.abs(np.sum(direction**2, axis=1) - 1.0) < 1e-4), "Direction vectors are not unit-norm"
+            if not np.all(np.abs(np.sum(direction**2, axis=1) - 1.0) < 1e-4):
+                raise ValueError("Direction vectors are not unit-norm")
 
             n_rays = len(direction)
 
@@ -1421,17 +1451,22 @@ class LidarSensorComponent:
                 "direction": (direction, direction.shape),
             }
 
-            assert timestamp_us.dtype == np.dtype("uint64")
-            assert timestamp_us.shape == (n_rays,)
+            if timestamp_us.dtype != np.dtype("uint64"):
+                raise TypeError(f"timestamp_us must have dtype uint64, got {timestamp_us.dtype}")
+            if timestamp_us.shape != (n_rays,):
+                raise ValueError(f"timestamp_us must have shape ({n_rays},), got {timestamp_us.shape}")
             if n_rays:
-                assert (frame_timestamps_us[0] <= timestamp_us.min()) and (
+                if not ((frame_timestamps_us[0] <= timestamp_us.min()) and (
                     timestamp_us.max() <= frame_timestamps_us[1]
-                ), "Point timestamps outside frame time bounds"
+                )):
+                    raise ValueError("Point timestamps outside frame time bounds")
             ray_data["timestamp_us"] = (timestamp_us, timestamp_us.shape)
 
             if model_element is not None:
-                assert model_element.shape == (n_rays, 2)
-                assert model_element.dtype == np.dtype("uint16")
+                if model_element.shape != (n_rays, 2):
+                    raise ValueError(f"model_element must have shape ({n_rays}, 2), got {model_element.shape}")
+                if model_element.dtype != np.dtype("uint16"):
+                    raise TypeError(f"model_element must have dtype uint16, got {model_element.dtype}")
                 ray_data["model_element"] = (model_element, model_element.shape)
 
             ## Per return data
@@ -1439,19 +1474,26 @@ class LidarSensorComponent:
             return_data: Dict[str, Tuple[npt.NDArray[np.float32], Tuple[int, ...]]] = {}
 
             # distance
-            assert distance_m.ndim == 2
+            if distance_m.ndim != 2:
+                raise ValueError(f"distance_m must be 2-D, got ndim={distance_m.ndim}")
             n_returns = distance_m.shape[0]
-            assert distance_m.shape[1] == n_rays
-            assert distance_m.dtype == np.dtype("float32")
+            if distance_m.shape[1] != n_rays:
+                raise ValueError(f"distance_m must have {n_rays} columns, got {distance_m.shape[1]}")
+            if distance_m.dtype != np.dtype("float32"):
+                raise TypeError(f"distance_m must have dtype float32, got {distance_m.dtype}")
             distance_m_finite = distance_m[np.isfinite(distance_m)]
-            assert np.all(distance_m_finite >= 0.0), "Distance contains negative values"
+            if not np.all(distance_m_finite >= 0.0):
+                raise ValueError("Distance contains negative values")
             return_data["distance_m"] = (distance_m, (1, n_rays))  # chunk along returns
 
             # intensity
-            assert intensity.shape == (n_returns, n_rays)
-            assert intensity.dtype == np.dtype("float32")
+            if intensity.shape != (n_returns, n_rays):
+                raise ValueError(f"intensity must have shape ({n_returns}, {n_rays}), got {intensity.shape}")
+            if intensity.dtype != np.dtype("float32"):
+                raise TypeError(f"intensity must have dtype float32, got {intensity.dtype}")
             intensity_finite = intensity[np.isfinite(intensity)]
-            assert np.all(0.0 <= intensity_finite) and np.all(intensity_finite <= 1.0), "Intensity not normalized"
+            if not (np.all(0.0 <= intensity_finite) and np.all(intensity_finite <= 1.0)):
+                raise ValueError("Intensity not normalized")
             return_data["intensity"] = (intensity, (1, n_rays))  # chunk along returns
 
             # Store point-clouds data
@@ -1509,12 +1551,16 @@ class RadarSensorComponent:
             generic_meta_data: Dict[str, types.JsonLike],
         ) -> "Self":
             ## Sanity / consistency checks
-            assert direction.ndim == 2
-            assert np.shape(direction)[1] == 3
-            assert direction.dtype == np.dtype("float32")
+            if direction.ndim != 2:
+                raise ValueError(f"direction must be 2-D, got ndim={direction.ndim}")
+            if np.shape(direction)[1] != 3:
+                raise ValueError(f"direction must have 3 columns, got {np.shape(direction)[1]}")
+            if direction.dtype != np.dtype("float32"):
+                raise TypeError(f"direction must have dtype float32, got {direction.dtype}")
 
             # make sure directions are unit-norm
-            assert np.all(np.abs(np.sum(direction**2, axis=1) - 1.0) < 1e-4), "Direction vectors are not unit-norm"
+            if not np.all(np.abs(np.sum(direction**2, axis=1) - 1.0) < 1e-4):
+                raise ValueError("Direction vectors are not unit-norm")
 
             n_rays = len(direction)
 
@@ -1526,12 +1572,15 @@ class RadarSensorComponent:
                 "direction": (direction, direction.shape),
             }
 
-            assert timestamp_us.dtype == np.dtype("uint64")
-            assert timestamp_us.shape == (n_rays,)
+            if timestamp_us.dtype != np.dtype("uint64"):
+                raise TypeError(f"timestamp_us must have dtype uint64, got {timestamp_us.dtype}")
+            if timestamp_us.shape != (n_rays,):
+                raise ValueError(f"timestamp_us must have shape ({n_rays},), got {timestamp_us.shape}")
             if n_rays:
-                assert (frame_timestamps_us[0] <= timestamp_us.min()) and (
+                if not ((frame_timestamps_us[0] <= timestamp_us.min()) and (
                     timestamp_us.max() <= frame_timestamps_us[1]
-                ), "Point timestamps outside frame time bounds"
+                )):
+                    raise ValueError("Point timestamps outside frame time bounds")
             ray_data["timestamp_us"] = (timestamp_us, timestamp_us.shape)
 
             ## Per return data
@@ -1539,12 +1588,16 @@ class RadarSensorComponent:
             return_data: Dict[str, Tuple[npt.NDArray[np.float32], Tuple[int, ...]]] = {}
 
             # distance
-            assert distance_m.ndim == 2
+            if distance_m.ndim != 2:
+                raise ValueError(f"distance_m must be 2-D, got ndim={distance_m.ndim}")
             n_returns = distance_m.shape[0]
-            assert distance_m.shape[1] == n_rays
-            assert distance_m.dtype == np.dtype("float32")
+            if distance_m.shape[1] != n_rays:
+                raise ValueError(f"distance_m must have {n_rays} columns, got {distance_m.shape[1]}")
+            if distance_m.dtype != np.dtype("float32"):
+                raise TypeError(f"distance_m must have dtype float32, got {distance_m.dtype}")
             distance_m_finite = distance_m[np.isfinite(distance_m)]
-            assert np.all(distance_m_finite >= 0.0), "Distance contains negative values"
+            if not np.all(distance_m_finite >= 0.0):
+                raise ValueError("Distance contains negative values")
             return_data["distance_m"] = (distance_m, (1, n_rays))  # chunk along returns
 
             # Store point-clouds data
@@ -1591,12 +1644,14 @@ class CuboidsComponent:
             obs_dict_list = []
             for obs in cuboid_observations:
                 # Check timestamp validity before serialization
-                assert obs.timestamp_us in self._sequence_timestamp_interval_us, (
-                    f"Cuboid track observation timestamp {obs.timestamp_us} not in the sequence time range"
-                )
-                assert obs.reference_frame_timestamp_us in self._sequence_timestamp_interval_us, (
-                    f"Cuboid track observation reference frame timestamp {obs.reference_frame_timestamp_us} not in the sequence time range"
-                )
+                if obs.timestamp_us not in self._sequence_timestamp_interval_us:
+                    raise ValueError(
+                        f"Cuboid track observation timestamp {obs.timestamp_us} not in the sequence time range"
+                    )
+                if obs.reference_frame_timestamp_us not in self._sequence_timestamp_interval_us:
+                    raise ValueError(
+                        f"Cuboid track observation reference frame timestamp {obs.reference_frame_timestamp_us} not in the sequence time range"
+                    )
                 obs_dict_list.append(obs.to_dict())
 
             self._group.create_group("cuboids").attrs.put({"cuboid_track_observations": obs_dict_list})
@@ -1704,29 +1759,35 @@ class PointCloudsComponent:
             compressor = Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE)
 
             # -- Validate xyz --
-            assert xyz.dtype == np.dtype("float32")
-            assert xyz.ndim == 2 and xyz.shape[1] == 3, f"xyz must be (N, 3), got {xyz.shape}"
+            if xyz.dtype != np.dtype("float32"):
+                raise ValueError(f"xyz must have dtype float32, got {xyz.dtype}")
+            if not (xyz.ndim == 2 and xyz.shape[1] == 3):
+                raise ValueError(f"xyz must be (N, 3), got {xyz.shape}")
             N = xyz.shape[0]
 
             # -- Validate timestamp --
-            assert reference_frame_timestamp_us in self._sequence_timestamp_interval_us, (
-                f"reference_frame_timestamp_us {reference_frame_timestamp_us} not in sequence time range"
-            )
+            if reference_frame_timestamp_us not in self._sequence_timestamp_interval_us:
+                raise ValueError(
+                    f"reference_frame_timestamp_us {reference_frame_timestamp_us} not in sequence time range"
+                )
 
             # -- Validate attributes against schema --
-            assert (provided_keys := set(attributes.keys())) == (schema_keys := set(self._attribute_schemas.keys())), (
-                f"Attribute keys mismatch: expected {schema_keys}, got {provided_keys}"
-            )
+            provided_keys = set(attributes.keys())
+            schema_keys = set(self._attribute_schemas.keys())
+            if provided_keys != schema_keys:
+                raise ValueError(f"Attribute keys mismatch: expected {schema_keys}, got {provided_keys}")
 
             for attr_name, attr_array in attributes.items():
                 schema = self._attribute_schemas[attr_name]
                 expected_shape = (N,) + schema.shape_suffix
-                assert attr_array.shape == expected_shape, (
-                    f"Attribute '{attr_name}' shape mismatch: expected {expected_shape}, got {attr_array.shape}"
-                )
-                assert np.dtype(attr_array.dtype) == schema.dtype, (
-                    f"Attribute '{attr_name}' dtype mismatch: expected {schema.dtype}, got {attr_array.dtype}"
-                )
+                if attr_array.shape != expected_shape:
+                    raise ValueError(
+                        f"Attribute '{attr_name}' shape mismatch: expected {expected_shape}, got {attr_array.shape}"
+                    )
+                if np.dtype(attr_array.dtype) != schema.dtype:
+                    raise ValueError(
+                        f"Attribute '{attr_name}' dtype mismatch: expected {schema.dtype}, got {attr_array.dtype}"
+                    )
 
             # -- Create per-pc group --
             pc_group = self._pcs_group.require_group(str(len(self._pc_timestamps)))
@@ -1826,7 +1887,8 @@ class PointCloudsComponent:
         # -- schema access -----------------------------------------------------
 
         def get_attribute_schema(self, name: str) -> PointCloudsComponent.AttributeSchema:
-            assert name in self._attribute_schemas, f"Unknown attribute: {name}"
+            if name not in self._attribute_schemas:
+                raise ValueError(f"Unknown attribute: {name}")
             return self._attribute_schemas[name]
 
         # -- per-pc data access ------------------------------------------------
@@ -1921,32 +1983,37 @@ class CameraLabelsComponent:
             compressor = Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE)
 
             # Sanity checks
-            assert timestamp_us in self._sequence_timestamp_interval_us, (
-                f"timestamp_us {timestamp_us} not in sequence time range"
-            )
-            assert timestamp_us not in self._timestamps, f"Duplicate timestamp_us: {timestamp_us}"
+            if timestamp_us not in self._sequence_timestamp_interval_us:
+                raise ValueError(f"timestamp_us {timestamp_us} not in sequence time range")
+            if timestamp_us in self._timestamps:
+                raise ValueError(f"Duplicate timestamp_us: {timestamp_us}")
 
             # Store label-associated data in a dedicated subgroup named by the timestamp
             label_group = self._labels_group.require_group(str(timestamp_us))
 
             if self._descriptor.label_schema.encoding == types.LabelEncoding.RAW:
-                assert isinstance(data, np.ndarray), "RAW encoding requires a numpy array"
+                if not isinstance(data, np.ndarray):
+                    raise TypeError("RAW encoding requires a numpy array")
 
                 # Validate shape: (H, W) for scalar, (H, W, *shape_suffix) for multi-channel
                 if self._descriptor.label_schema.shape_suffix:
-                    assert data.ndim == 2 + len(self._descriptor.label_schema.shape_suffix), (
-                        f"Expected ndim={2 + len(self._descriptor.label_schema.shape_suffix)}, got {data.ndim}"
-                    )
-                    assert data.shape[2:] == self._descriptor.label_schema.shape_suffix, (
-                        f"shape_suffix mismatch: expected {self._descriptor.label_schema.shape_suffix}, got {data.shape[2:]}"
-                    )
+                    if data.ndim != 2 + len(self._descriptor.label_schema.shape_suffix):
+                        raise ValueError(
+                            f"Expected ndim={2 + len(self._descriptor.label_schema.shape_suffix)}, got {data.ndim}"
+                        )
+                    if data.shape[2:] != self._descriptor.label_schema.shape_suffix:
+                        raise ValueError(
+                            f"shape_suffix mismatch: expected {self._descriptor.label_schema.shape_suffix}, got {data.shape[2:]}"
+                        )
                 else:
-                    assert data.ndim == 2, f"Scalar label must be 2-D (H, W), got ndim={data.ndim}"
+                    if data.ndim != 2:
+                        raise ValueError(f"Scalar label must be 2-D (H, W), got ndim={data.ndim}")
 
                 # Validate dtype — caller must pass data in the expected dtype
-                assert np.dtype(data.dtype) == self._descriptor.label_schema.dtype, (
-                    f"dtype mismatch: expected {self._descriptor.label_schema.dtype}, got {data.dtype}"
-                )
+                if np.dtype(data.dtype) != self._descriptor.label_schema.dtype:
+                    raise TypeError(
+                        f"dtype mismatch: expected {self._descriptor.label_schema.dtype}, got {data.dtype}"
+                    )
 
                 # Quantize if configured
                 stored = data
@@ -1958,7 +2025,8 @@ class CameraLabelsComponent:
                 label_group.create_dataset("data", data=stored, chunks=stored.shape, compressor=compressor)
 
             elif self._descriptor.label_schema.encoding == types.LabelEncoding.IMAGE_ENCODED:
-                assert isinstance(data, bytes), "IMAGE_ENCODED encoding requires bytes"
+                if not isinstance(data, bytes):
+                    raise TypeError("IMAGE_ENCODED encoding requires bytes")
 
                 label_group.create_dataset(
                     "data",
@@ -2022,9 +2090,10 @@ class CameraLabelsComponent:
         # -- per-label access --------------------------------------------------
 
         def _label_group(self, timestamp_us: int) -> zarr.Group:
-            assert timestamp_us in self._timestamp_to_index, (
-                f"Unknown timestamp: {timestamp_us}. Available: {list(self._timestamp_to_index.keys())[:5]}..."
-            )
+            if timestamp_us not in self._timestamp_to_index:
+                raise ValueError(
+                    f"Unknown timestamp: {timestamp_us}. Available: {list(self._timestamp_to_index.keys())[:5]}..."
+                )
             return cast(zarr.Group, self._group["labels"][str(timestamp_us)])
 
         class CameraLabelHandle:

@@ -128,7 +128,8 @@ def _plot_points_on_image(
 
 def se3_matrix(se3_delta: np.ndarray) -> np.ndarray:
     """Create the corresponding 4x4 matrix for se3_delta parameters"""
-    assert len(se3_delta) == 6
+    if len(se3_delta) != 6:
+        raise ValueError(f"se3_delta must have exactly 6 elements, got {len(se3_delta)}")
     T = np.eye(4)
     T[:3, :3] = R.from_rotvec(se3_delta[3:]).as_matrix()
     T[:3, 3] = se3_delta[:3]
@@ -334,7 +335,8 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
         motion_compensator = MotionCompensator(ray_sensor.pose_graph)
         if params.enable_lidar_model and isinstance(ray_sensor, LidarSensorProtocol):
             lidar_model = StructuredLidarModel.maybe_from_parameters(ray_sensor.model_parameters, device=params.device)
-            assert lidar_model is not None, f"No structured lidar model available for sensor {source_id}"
+            if lidar_model is None:
+                raise ValueError(f"No structured lidar model available for sensor {source_id}")
             msg += " | with structured lidar model"
 
     for frame_index in tqdm.tqdm(indices):
@@ -457,7 +459,8 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
 
         save_path: Optional[Path] = None
         if params.encode_images:
-            assert len(params.output_dir)
+            if not len(params.output_dir):
+                raise ValueError("output_dir must not be empty when encode_images is enabled")
 
             output_path = Path(params.output_dir)
             output_path.mkdir(parents=True, exist_ok=True)

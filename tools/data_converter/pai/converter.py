@@ -223,7 +223,8 @@ class _PaiConversionMixin:
         T_rig_worlds = T_rig_worlds[selected_range, :, :]
         T_rig_world_timestamps_us = T_rig_world_timestamps_us[selected_range]
 
-        assert len(T_rig_worlds) >= 2, "at least two poses required in selected time range"
+        if len(T_rig_worlds) < 2:
+            raise ValueError("at least two poses required in selected time range")
 
         # Select local world base pose (first pose defines global frame)
         T_world_world_global = T_rig_worlds[0].copy()
@@ -456,10 +457,8 @@ class _PaiConversionMixin:
 
         # Platform details
         self.platform_class = self.provider.get_platform_class()
-        assert self.platform_class in [
-            "hyperion_8",
-            "hyperion_8.1",
-        ]
+        if self.platform_class not in ["hyperion_8", "hyperion_8.1"]:
+            raise ValueError(f"Unsupported platform class: {self.platform_class}")
 
     def decode_lidars(self, active_lidar_id):
         logger = self.logger.getChild("decode_lidar")

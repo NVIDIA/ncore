@@ -44,7 +44,8 @@ class MD5Hasher:
         Returns:
             The updated hash object
         """
-        assert filename.is_file()
+        if not filename.is_file():
+            raise FileNotFoundError(f"File not found: {filename}")
         with filename.open("rb") as f:
             for chunk in iter(lambda: f.read(chunk_size), b""):
                 hash.update(chunk)
@@ -80,7 +81,8 @@ class MD5Hasher:
         Returns:
             The updated hash object
         """
-        assert directory.is_dir()
+        if not directory.is_dir():
+            raise FileNotFoundError(f"Directory not found: {directory}")
         for path in sorted(directory.iterdir(), key=lambda p: str(p).lower()):
             hash.update(path.name.encode())
             if path.is_file():
