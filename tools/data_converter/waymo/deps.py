@@ -13,21 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Proxy module for Waymo Open Dataset dependencies.
-
-There are potential conflicts between protobuf versions incorporated as an (outdated)
-tensorflow dependency, and the actual ones we'd like to use directly from the proto rules.
-This module removes the internal ones (which have a <pip-hub>_<pyversion>_protobuf_... path
-component) to avoid conflicts.
-"""
-
-import sys
-
-
-# Push current paths and filter out conflicting protobuf paths
-sys_path = sys.path
-sys.path = [p for p in sys.path if "_protobuf_" not in p]
+"""Proxy module for Waymo Open Dataset dependencies."""
 
 import tensorflow.compat.v1 as tf  # ty:ignore[unresolved-import]
 
@@ -35,7 +21,3 @@ from waymo_open_dataset import dataset_pb2, label_pb2  # ty:ignore[unresolved-im
 from waymo_open_dataset.protos import camera_segmentation_pb2  # ty:ignore[unresolved-import]
 from waymo_open_dataset.utils import range_image_utils as waymo_range_image_utils  # ty:ignore[unresolved-import]
 from waymo_open_dataset.utils import transform_utils as waymo_transform_utils  # ty:ignore[unresolved-import]
-
-
-# Pop modified paths back to original
-sys.path = sys_path

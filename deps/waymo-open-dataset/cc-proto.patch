@@ -7,7 +7,7 @@ index 2ddaf42..3fbf9ad 100644
 +"""Build rule to build py protos."""
  
 -load("@com_google_protobuf//:protobuf.bzl", "cc_proto_library", "py_proto_library")
-+load("@rules_proto//proto:defs.bzl", "proto_library")
++load("@protobuf//bazel:proto_library.bzl", "proto_library")
 +load("@rules_python//python:proto.bzl", _py_proto_library = "py_proto_library")
 +
 +# Re-define py_proto_library to avoid deprecation warning from rules_proto

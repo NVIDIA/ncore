@@ -18,6 +18,11 @@
 # TensorFlow for reading tfrecords
 tensorflow
 
+# Pin pip protobuf to match the Bazel protobuf module version (30.0 = Python 6.30.x)
+# to ensure the protoc compiler and Python runtime are from the same release.
+# Bump both together: MODULE.bazel bazel_dep + this pin.
+protobuf>=6.30,<6.31
+
 # Numerical computation
 numpy
 scipy

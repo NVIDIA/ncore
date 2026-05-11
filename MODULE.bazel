@@ -29,8 +29,12 @@ bazel_dep(name = "rules_multirun", version = "0.13.0")
 bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "buildifier_prebuilt", version = "8.2.1")
 bazel_dep(name = "bazel_skylib", version = "1.7.1")
-bazel_dep(name = "rules_proto", version = "7.1.0")
 bazel_dep(name = "platforms", version = "1.0.0")
+
+## protobuf
+# Keep in sync with the pip protobuf pin in deps/pip/requirements_waymo.in
+# (Bazel protobuf 30.x = pip protobuf 6.30.x).
+bazel_dep(name = "protobuf", version = "30.0")
 
 ## rules_python
 bazel_dep(name = "rules_python", version = "1.2.0")
