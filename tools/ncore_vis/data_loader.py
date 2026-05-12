@@ -406,3 +406,9 @@ class DataLoader:
             no cuboid observations are available.
         """
         return self._cuboid_tracks
+
+    def get_cuboid_label_source_names(self) -> List[str]:
+        """Return sorted list of unique label source names present in cuboid observations."""
+        if self._cuboid_df.empty:
+            return []
+        return sorted(self._cuboid_df["source"].unique().tolist())

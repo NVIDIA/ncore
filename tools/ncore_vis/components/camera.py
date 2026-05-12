@@ -213,7 +213,10 @@ class CameraComponent(VisualizationComponent):
 
         # Shared overlay settings (single values applied to all cameras)
         self._overlay_cuboids: bool = False
-        self._cuboid_source: str = LabelSource.AUTOLABEL.name
+        cuboid_label_source_names = self.data_loader.get_cuboid_label_source_names()
+        self._cuboid_label_source_name: str = (
+            cuboid_label_source_names[0] if cuboid_label_source_names else LabelSource.AUTOLABEL.name
+        )
         self._project_lidar: bool = False
         self._project_lidar_id: str = ""
         self._project_mode: str = "rolling-shutter"
@@ -296,8 +299,8 @@ class CameraComponent(VisualizationComponent):
                 )
                 source_dropdown = self.client.gui.add_dropdown(
                     "Cuboid Source",
-                    options=[s.name for s in LabelSource],
-                    initial_value=self._cuboid_source,
+                    options=cuboid_label_source_names if cuboid_label_source_names else [LabelSource.AUTOLABEL.name],
+                    initial_value=self._cuboid_label_source_name,
                     hint="Label source for cuboid overlays on all cameras",
                 )
                 self._bind_overlay_settings(
@@ -583,7 +586,7 @@ class CameraComponent(VisualizationComponent):
 
         @source_dropdown.on_update
         def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
-            self._cuboid_source = source_dropdown.value
+            self._cuboid_label_source_name = source_dropdown.value
             self._refresh_all_cameras()
 
     def _bind_lidar_projection_settings(
@@ -1327,7 +1330,7 @@ class CameraComponent(VisualizationComponent):
         # Iterate over all tracks; interpolate each to the mid-frame time.
         for track in self.data_loader.get_cuboid_tracks():
             # Filter by label source
-            if track.source.name != self._cuboid_source:
+            if track.source.name != self._cuboid_label_source_name:
                 continue
 
             if (obs := track.interpolate_at(mid_timestamp_us, max_clamp_us=max_clamp_us)) is None:

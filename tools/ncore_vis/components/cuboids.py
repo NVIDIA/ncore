@@ -45,11 +45,17 @@ class CuboidsComponent(VisualizationComponent):
         self._enabled: bool = True
         self._show_labels: bool = False
 
-        default_source = LabelSource.AUTOLABEL.name
-
         # Don't create the tab if there are no cuboid observations.
         if not self.data_loader.get_cuboid_tracks():
             return
+
+        # Determine available sources from the actual data
+        available_cuboid_label_source_names = self.data_loader.get_cuboid_label_source_names()
+        if not available_cuboid_label_source_names:
+            return
+
+        default_cuboid_label_source_name = available_cuboid_label_source_names[0]
+        self._cuboid_source = default_cuboid_label_source_name
 
         with tab_group.add_tab("Cuboids"):
             cuboid_checkbox = self.client.gui.add_checkbox(
@@ -57,8 +63,8 @@ class CuboidsComponent(VisualizationComponent):
             )
             source_dropdown = self.client.gui.add_dropdown(
                 "Cuboid Source",
-                options=[s.name for s in LabelSource],
-                initial_value=default_source,
+                options=available_cuboid_label_source_names,
+                initial_value=default_cuboid_label_source_name,
                 hint="Label source for cuboid observations",
             )
             label_checkbox = self.client.gui.add_checkbox(
