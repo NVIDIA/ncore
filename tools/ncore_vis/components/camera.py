@@ -787,8 +787,11 @@ class CameraComponent(VisualizationComponent):
             )
             self._poses[camera_id] = pose_handle
 
-            # Image (with optional overlays)
-            image = cam.get_frame_image_array(frame_idx)
+            # Image (with optional overlays) — convert to RGB for viser compatibility
+            pil_img = cam.get_frame_image(frame_idx)
+            if pil_img.mode != "RGB":
+                pil_img = pil_img.convert("RGB")
+            image = np.asarray(pil_img)
 
             if self._project_lidar:
                 try:
