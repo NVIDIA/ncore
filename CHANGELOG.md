@@ -10,6 +10,29 @@ All notable changes to the NCore project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - - -
+## [v19.2.0](https://github.com/NVIDIA/ncore/compare/d606bf47b50b5350562f485b6e4dd0a57c44fdef..v19.2.0) - 2026-05-12
+
+### Highlights
+
+- Add support for KITTI raw dataset conversion to NCore V4 format, enabling users to easily convert and utilize the popular KITTI dataset in the latest NCore format with native support for camera labels and efficient storage.
+
+- Add component-level generic_data support in NCore V4, allowing components to store and access arbitrary user-defined data in a flexible and extensible way, enabling new use cases and easier integration of custom data types without modifying the core library.
+
+- Replaced mypy with ty for static type checking, resulting in significantly faster type checking times (approximately 9x faster) while maintaining strong type safety and improving developer productivity.
+
+#### ➕ Added
+- (**data_converter**) add KITTI raw dataset to NCore V4 converter - ([f425aa9](https://github.com/NVIDIA/ncore/commit/f425aa97392b317fe282ca475ffabd7528f4fee9)) - Janick Martinez Esturo
+- (**v4**) add component-level generic_data support - ([5ec4d7b](https://github.com/NVIDIA/ncore/commit/5ec4d7b798d37449c7fd7c88313161f631fe7e32)) - Janick Martinez Esturo
+#### 🪲 Fixed
+- (**format**) use portable shebang in ruff_isort.sh - ([a5024ee](https://github.com/NVIDIA/ncore/commit/a5024ee92e96da3a7cd84b022f476edcf9125e92)) - Janick Martinez Esturo
+- (**ncore_vis**) handle grayscale camera images via PIL conversion - ([c7826d2](https://github.com/NVIDIA/ncore/commit/c7826d241102ea70898d0708141b334c1fa6a271)) - Janick Martinez Esturo
+- (**ncore_vis**) default cuboid source filter to first available source - ([23f435f](https://github.com/NVIDIA/ncore/commit/23f435fc0c834dac638616dfa2cafb35c744d386)) - Janick Martinez Esturo
+#### 🏗️ Build
+- (**deps**) replace archived rules_proto with protobuf 30.0, bump TF - ([40e0b2d](https://github.com/NVIDIA/ncore/commit/40e0b2dfb3ccbe7b574eac07308bafedd2e998fa)) - Janick Martinez Esturo
+- remove mypy in favor of ty (~9x faster type checking) - ([d606bf4](https://github.com/NVIDIA/ncore/commit/d606bf47b50b5350562f485b6e4dd0a57c44fdef)) - Janick Martinez Esturo
+
+- - -
+
 ## [v19.1.1](https://github.com/NVIDIA/ncore/compare/5a278ff4d250f0ee6c1a2a81bdeb7c40367c2f90..v19.1.1) - 2026-05-08
 
 This is a bugfix release to allow using the V4 compat APIs in `PYTHONOPTIMIZE=1` settings.
