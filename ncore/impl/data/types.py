@@ -130,13 +130,13 @@ class BivariateWindshieldModelParameters(dataclasses_json.DataClassJsonMixin):
         assert self.horizontal_poly.dtype == np.dtype("float32")
 
         assert self.vertical_poly.ndim == 1
-        assert self.horizontal_poly.dtype == np.dtype("float32")
+        assert self.vertical_poly.dtype == np.dtype("float32")
 
         assert self.horizontal_poly_inverse.ndim == 1
-        assert self.horizontal_poly.dtype == np.dtype("float32")
+        assert self.horizontal_poly_inverse.dtype == np.dtype("float32")
 
         assert self.vertical_poly_inverse.ndim == 1
-        assert self.horizontal_poly.dtype == np.dtype("float32")
+        assert self.vertical_poly_inverse.dtype == np.dtype("float32")
 
 
 # Represents the collection of all concrete external distortion types
