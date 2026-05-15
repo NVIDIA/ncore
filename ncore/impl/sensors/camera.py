@@ -28,6 +28,7 @@ from ncore.impl.common.util import map_optional, unpack_optional
 from ncore.impl.data import types
 from ncore.impl.sensors.common import (
     BaseModel,
+    RollingShutterSolver,
     eval_poly_horner,
     eval_poly_inverse_horner_newton,
     rotmat_to_unitquat,
@@ -224,6 +225,24 @@ class BivariateWindshieldModel(ExternalDistortionModel):
             self.order_theta,
             self.poly_eval_2d,
         )
+
+
+class _CameraRollingShutterProjector(RollingShutterSolver.Projector):
+    """Camera-specific rolling-shutter projector.
+
+    Convergence is measured by mean absolute change in relative frame time (derived from
+    projected image coordinates) between iterations.
+    """
+
+    def __init__(self, camera_model: CameraModel) -> None:
+        self._model = camera_model
+
+    def project(self, sensor_points: torch.Tensor) -> RollingShutterSolver.ProjectionResult:
+        result = self._model.camera_rays_to_image_points(sensor_points)
+        return RollingShutterSolver.ProjectionResult(projected=result.image_points, valid_flag=result.valid_flag)
+
+    def relative_frame_time(self, projected: torch.Tensor) -> torch.Tensor:
+        return self._model.image_points_relative_frame_times(projected)
 
 
 class CameraModel(BaseModel, ABC):
@@ -434,8 +453,7 @@ class CameraModel(BaseModel, ABC):
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
         max_iterations: int = 10,
-        stop_mean_error_px: float = 1e-3,
-        stop_delta_mean_error_px: float = 1e-5,
+        stop_t_delta: float = 1e-4,  # ~0.1 px for 1080p
         return_T_world_sensors: bool = False,
         return_valid_indices: bool = False,
         return_timestamps: bool = False,
@@ -457,8 +475,7 @@ class CameraModel(BaseModel, ABC):
             start_timestamp_us,
             end_timestamp_us,
             max_iterations,
-            stop_mean_error_px,
-            stop_delta_mean_error_px,
+            stop_t_delta,
             return_T_world_sensors,
             return_valid_indices,
             return_timestamps,
@@ -554,8 +571,7 @@ class CameraModel(BaseModel, ABC):
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
         max_iterations: int = 10,
-        stop_mean_error_px: float = 1e-3,
-        stop_delta_mean_error_px: float = 1e-5,
+        stop_t_delta: float = 1e-4,  # ~0.1 px for 1080p
         return_T_world_sensors: bool = False,
         return_valid_indices: bool = False,
         return_timestamps: bool = False,
@@ -589,15 +605,13 @@ class CameraModel(BaseModel, ABC):
             start_timestamp_us = int(start_timestamp_us)
             end_timestamp_us = int(end_timestamp_us)
 
-        # Always perform transformation using start pose
-        image_points_start = self.camera_rays_to_image_points(
-            (T_world_sensor_start[:3, :3] @ world_points.transpose(0, 1) + T_world_sensor_start[:3, 3, None]).transpose(
-                0, 1
-            )
-        )
-
-        # Global-shutter special case - no need for rolling-shutter compensation, use projections from start-pose as single available pose
+        # Global-shutter special case - no need for rolling-shutter compensation
         if self.shutter_type == types.ShutterType.GLOBAL:
+            image_points_start = self.camera_rays_to_image_points(
+                (
+                    T_world_sensor_start[:3, :3] @ world_points.transpose(0, 1) + T_world_sensor_start[:3, 3, None]
+                ).transpose(0, 1)
+            )
             return_var = self.WorldPointsToImagePointsReturn(
                 image_points=(
                     image_points_start.image_points[image_points_start.valid_flag]
@@ -618,125 +632,53 @@ class CameraModel(BaseModel, ABC):
                 )
             return return_var
 
-        # Do initial transformations using both start and mean pose to determine all candidate points and take union of valid projections as iteration starting points
-        image_points_end = self.camera_rays_to_image_points(
-            (T_world_sensor_end[:3, :3] @ world_points.transpose(0, 1) + T_world_sensor_end[:3, 3, None]).transpose(
-                0, 1
-            )
+        iter_result = RollingShutterSolver.solve(
+            world_points=world_points,
+            T_world_sensor_start=T_world_sensor_start,
+            T_world_sensor_end=T_world_sensor_end,
+            max_iterations=max_iterations,
+            stop_t_delta=stop_t_delta,
+            projector=_CameraRollingShutterProjector(self),
         )
 
-        valid = image_points_start.valid_flag | image_points_end.valid_flag  # union of valid image points
-        init_image_points = image_points_end.image_points
-        init_image_points[image_points_start.valid_flag] = image_points_start.image_points[
-            image_points_start.valid_flag
-        ]  # this prefers points at the start-of-frame pose over end-of-frame points
-        # - the optimization will determine the final timestamp for each point
-
-        # Exit early if no point projected to a valid image point
-        if not valid.any():
-            return_var = self.WorldPointsToImagePointsReturn(
-                image_points=(
-                    torch.empty((0, 2), dtype=self.dtype, device=self.device)
-                    if not return_all_projections
-                    else init_image_points
-                )
-            )
-            if return_T_world_sensors:
-                return_var.T_world_sensors = torch.empty((0, 4, 4), dtype=self.dtype, device=self.device)
-            if return_valid_indices:
-                return_var.valid_indices = torch.empty((0,), dtype=torch.int64, device=self.device)
-            if return_timestamps:
-                return_var.timestamps_us = torch.empty((0,), dtype=torch.int64, device=self.device)
-            return return_var
-
-        # Convert the start and end rotation matrix to quaternions for subsequent interpolations
-        world_sensor_s_quat = rotmat_to_unitquat(T_world_sensor_start[None, :3, :3])  # [1, 4]
-        world_sensor_e_quat = rotmat_to_unitquat(T_world_sensor_end[None, :3, :3])  # [1, 4]
-
-        # For valid image points, compute the new timestamp and project again
-        image_points_rs_prev = init_image_points[valid, :]
-        mean_error_px = 1e12
-
-        # Pre-compute values that are constant across iterations
-        n_valid = int(valid.sum().item())
-        s_quat_expanded = world_sensor_s_quat.expand(n_valid, -1)
-        e_quat_expanded = world_sensor_e_quat.expand(n_valid, -1)
-        trans_start = T_world_sensor_start[:3, 3]  # [3]
-        trans_end = T_world_sensor_end[:3, 3]  # [3]
-
-        for _ in range(max_iterations):
-            t = self.image_points_relative_frame_times(image_points_rs_prev)
-
-            rot_rs = unitquat_to_rotmat(unitquat_slerp(s_quat_expanded, e_quat_expanded, t))  # [n_valid, 3, 3]
-
-            # Use broadcasting for translation interpolation
-            trans_rs = (1 - t)[..., None] * trans_start + t[..., None] * trans_end
-
-            cam_rays_rs = (torch.bmm(rot_rs, world_points[valid, :, None]) + trans_rs[..., None]).squeeze(-1)
-            image_points_rs = self.camera_rays_to_image_points(cam_rays_rs)
-
-            # Compute mean error of projections that are still valid now and check if we are still
-            # making progress relative to previous iteration
-            if (
-                abs(
-                    mean_error_px
-                    - (
-                        mean_error_px := torch.linalg.norm(
-                            image_points_rs.image_points[image_points_rs.valid_flag]
-                            - image_points_rs_prev[image_points_rs.valid_flag],
-                            dim=1,
-                        ).mean()
-                    )
-                )
-                <= stop_delta_mean_error_px
-            ):
-                break
-
-            # Check if error bound was reached
-            if mean_error_px <= stop_mean_error_px:
-                break
-
-            image_points_rs_prev = image_points_rs.image_points
+        projection_valid = iter_result.projection_valid
+        projection_init = iter_result.projection_init
+        projection = iter_result.projection
+        rot_rs = iter_result.rot_rs
+        trans_rs = iter_result.trans_rs
+        t = iter_result.t
 
         # We always return image points
-        return_var = self.WorldPointsToImagePointsReturn(
-            image_points=image_points_rs.image_points[image_points_rs.valid_flag]
-        )
+        return_var = self.WorldPointsToImagePointsReturn(image_points=projection)
 
         if return_T_world_sensors:
-            # Generate the output matrix
-            trans_matrices = torch.empty(
-                (int(image_points_rs.valid_flag.sum().item()), 4, 4), dtype=self.dtype, device=self.device
-            )
-            trans_matrices[:, :3, 3] = trans_rs[image_points_rs.valid_flag]
-            trans_matrices[:, :3, :3] = rot_rs[image_points_rs.valid_flag, ...]
+            # Assemble [n, 4, 4] rigid transformation matrices from rotation and translation
+            n = projection.shape[0]
+            trans_matrices = torch.empty((n, 4, 4), dtype=self.dtype, device=self.device)
+            trans_matrices[:, :3, :3] = rot_rs
+            trans_matrices[:, :3, 3] = trans_rs
             trans_matrices[:, 3] = torch.tensor([0, 0, 0, 1], device=self.device, dtype=self.dtype)
-
             return_var.T_world_sensors = trans_matrices
 
         if return_valid_indices:
-            # Combine validity flags
-            # (valid_rs represents a strict logical subset of full valid flags, so no logical operation required)
-            valid[torch.argwhere(valid).squeeze()] = image_points_rs.valid_flag
-            return_var.valid_indices = torch.argwhere(valid).squeeze(1)
+            return_var.valid_indices = torch.argwhere(projection_valid).squeeze(1)
 
         if return_timestamps:
             return_var.timestamps_us = (
                 cast(int, start_timestamp_us)
-                + (
-                    t[image_points_rs.valid_flag, None] * (cast(int, end_timestamp_us) - cast(int, start_timestamp_us))
-                ).to(torch.int64)
+                + (t[:, None] * (cast(int, end_timestamp_us) - cast(int, start_timestamp_us))).to(torch.int64)
             ).squeeze(1)
 
         if return_all_projections:
-            if not return_valid_indices:
-                valid[torch.argwhere(valid).squeeze()] = image_points_rs.valid_flag
-                valid_indices = torch.argwhere(valid).squeeze(1)
-            else:
-                valid_indices = unpack_optional(return_var.valid_indices)
-
-            return_var.image_points = init_image_points
-            return_var.image_points[valid_indices] = image_points_rs.image_points[image_points_rs.valid_flag]
+            valid_indices = (
+                unpack_optional(return_var.valid_indices)
+                if return_valid_indices
+                else torch.argwhere(projection_valid).squeeze(1)
+            )
+            return_var.image_points = projection_init
+            return_var.image_points[valid_indices] = projection.to(
+                dtype=projection_init.dtype, device=projection_init.device
+            )
 
         return return_var
 
@@ -1070,9 +1012,9 @@ class CameraModel(BaseModel, ABC):
         t = self.image_points_relative_frame_times(image_points)
 
         # Use broadcasting instead of repeat() for translation interpolation
-        trans_start = T_sensor_world_start[:3, 3]  # [3]
-        trans_end = T_sensor_world_end[:3, 3]  # [3]
-        world_position_rs = (1 - t)[..., None] * trans_start + t[..., None] * trans_end  # [n_image_points, 3]
+        transl_start = T_sensor_world_start[:3, 3]  # [3]
+        transl_end = T_sensor_world_end[:3, 3]  # [3]
+        world_position_rs = (1 - t)[..., None] * transl_start + t[..., None] * transl_end  # [n_image_points, 3]
 
         R_sensor_world_rs = unitquat_to_rotmat(
             unitquat_slerp(

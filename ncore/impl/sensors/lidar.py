@@ -27,11 +27,29 @@ from scipy import spatial as scipy_spatial
 from ncore.impl.data import types, util
 from ncore.impl.sensors.common import (
     BaseModel,
+    RollingShutterSolver,
     rotmat_to_unitquat,
     to_torch,
     unitquat_slerp,
     unitquat_to_rotmat,
 )
+
+
+class _LidarRollingShutterProjector(RollingShutterSolver.Projector):
+    """Lidar-specific rolling-shutter projector.
+
+    Convergence is measured by mean absolute change in relative frame time between iterations.
+    """
+
+    def __init__(self, lidar_model: RowOffsetStructuredSpinningLidarModel) -> None:
+        self._model = lidar_model
+
+    def project(self, sensor_points: torch.Tensor) -> RollingShutterSolver.ProjectionResult:
+        result = self._model.sensor_rays_to_sensor_angles(sensor_points, normalized=False)
+        return RollingShutterSolver.ProjectionResult(projected=result.sensor_angles, valid_flag=result.valid_flag)
+
+    def relative_frame_time(self, projected: torch.Tensor) -> torch.Tensor:
+        return self._model.sensor_angles_relative_frame_times(projected)
 
 
 class LidarModel(BaseModel, ABC):
@@ -436,11 +454,12 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
         max_iterations: int = 10,
-        stop_mean_relative_time_error: float = 1e-4,
-        stop_delta_mean_relative_time_error: float = 1e-6,
+        stop_t_delta: float = 1e-4,
+        stop_t_delta_rate: float = 1e-6,  # stop when progress stalls (discrete column quantization)
         return_T_world_sensors: bool = False,
         return_valid_indices: bool = False,
         return_timestamps: bool = False,
+        return_all_projections: bool = False,
     ) -> RowOffsetStructuredSpinningLidarModel.WorldPointsToSensorAnglesReturn:
         """Projects world points to corresponding sensor angle coordinates using *rolling-shutter compensation* of sensor motion"""
 
@@ -470,131 +489,53 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         assert isinstance(max_iterations, int)
         assert max_iterations > 0
 
-        # Do initial transformations using both start and end pose to determine all candidate points and take union of valid projections as iteration starting points
-        sensor_angles_start = self.sensor_rays_to_sensor_angles(
-            (T_world_sensor_start[:3, :3] @ world_points.transpose(0, 1) + T_world_sensor_start[:3, 3, None]).transpose(
-                0, 1
-            ),
-            normalized=False,
+        iter_result = RollingShutterSolver.solve(
+            world_points=world_points,
+            T_world_sensor_start=T_world_sensor_start,
+            T_world_sensor_end=T_world_sensor_end,
+            max_iterations=max_iterations,
+            stop_t_delta=stop_t_delta,
+            projector=_LidarRollingShutterProjector(self),
+            stop_t_delta_rate=stop_t_delta_rate,
         )
 
-        sensor_angles_end = self.sensor_rays_to_sensor_angles(
-            (T_world_sensor_end[:3, :3] @ world_points.transpose(0, 1) + T_world_sensor_end[:3, 3, None]).transpose(
-                0, 1
-            ),
-            normalized=False,
-        )
-
-        valid = sensor_angles_start.valid_flag | sensor_angles_end.valid_flag  # union of valid image points
-        initial_angles = sensor_angles_end.sensor_angles
-        relative_time = torch.ones_like(initial_angles[:, 0])
-        initial_angles[sensor_angles_start.valid_flag] = sensor_angles_start.sensor_angles[
-            sensor_angles_start.valid_flag
-        ]
-        relative_time[sensor_angles_start.valid_flag] = 0.0
-        # this prefers points at the start-of-frame pose over end-of-frame points
-        # - the optimization will determine the final timestamp for each point
-
-        # Exit early if no point projected to a valid sensor angle
-        if not valid.any():
-            return_var = self.WorldPointsToSensorAnglesReturn(
-                sensor_angles=torch.empty((0, 2), dtype=self.dtype, device=self.device)
-            )
-            if return_T_world_sensors:
-                return_var.T_world_sensors = torch.empty((0, 4, 4), dtype=self.dtype, device=self.device)
-            if return_valid_indices:
-                return_var.valid_indices = torch.empty((0,), dtype=torch.int64, device=self.device)
-            if return_timestamps:
-                return_var.timestamps_us = torch.empty((0,), dtype=torch.int64, device=self.device)
-            return return_var
-
-        # Convert the start and end rotation matrix to quaternions for subsequent interpolations
-        world_sensor_s_quat = rotmat_to_unitquat(T_world_sensor_start[None, :3, :3])  # [1, 4]
-        world_sensor_e_quat = rotmat_to_unitquat(T_world_sensor_end[None, :3, :3])  # [1, 4]
-
-        # For valid image points, compute the new timestamp and project again
-        sensor_angles_rs_prev = initial_angles[valid, :]
-        relative_time_prev = relative_time[valid].clone()
-        mean_relative_time_error = 0.5  # initialize the value to a expected value of random association [0,1]
-
-        # Pre-compute values that are constant across iterations
-        n_valid = int(valid.sum().item())
-        s_quat_expanded = world_sensor_s_quat.expand(n_valid, -1)
-        e_quat_expanded = world_sensor_e_quat.expand(n_valid, -1)
-        trans_start = T_world_sensor_start[:3, 3]  # [3]
-        trans_end = T_world_sensor_end[:3, 3]  # [3]
-
-        for _ in range(max_iterations):
-            relative_time = self.sensor_angles_relative_frame_times(sensor_angles_rs_prev)  # [n_valid]
-
-            rot_rs = unitquat_to_rotmat(
-                unitquat_slerp(s_quat_expanded, e_quat_expanded, relative_time)
-            )  # [n_valid, 3, 3]
-
-            # Use broadcasting for translation interpolation
-            trans_rs = (1 - relative_time)[..., None] * trans_start + relative_time[..., None] * trans_end
-
-            sensor_angles = self.sensor_rays_to_sensor_angles(
-                (torch.bmm(rot_rs, world_points[valid, :, None]) + trans_rs[..., None]).squeeze(-1), normalized=False
-            )
-
-            # Compute mean error of projections that are still valid now and check if we are still
-            # making progress relative to previous iteration
-            if (
-                abs(
-                    mean_relative_time_error
-                    - (
-                        mean_relative_time_error := (
-                            relative_time[sensor_angles.valid_flag] - relative_time_prev[sensor_angles.valid_flag]
-                        )
-                        .abs()
-                        .mean()
-                        .item()
-                    )
-                )
-                <= stop_delta_mean_relative_time_error
-            ):
-                break
-
-            # Check if error bound was reached
-            if mean_relative_time_error <= stop_mean_relative_time_error:
-                break
-
-            sensor_angles_rs_prev[sensor_angles.valid_flag] = sensor_angles.sensor_angles[sensor_angles.valid_flag]
-            relative_time_prev[sensor_angles.valid_flag] = relative_time[sensor_angles.valid_flag].clone()
+        projection_valid = iter_result.projection_valid
+        projection = iter_result.projection
+        rot_rs = iter_result.rot_rs
+        trans_rs = iter_result.trans_rs
+        relative_time_final = iter_result.t
 
         # We always return sensor angles points
-        return_var = self.WorldPointsToSensorAnglesReturn(
-            sensor_angles=sensor_angles.sensor_angles[sensor_angles.valid_flag]
-        )
+        return_var = self.WorldPointsToSensorAnglesReturn(sensor_angles=projection)
 
         if return_T_world_sensors:
-            # Generate the output matrix
-            trans_matrices = torch.empty(
-                (int(sensor_angles.valid_flag.sum().item()), 4, 4), dtype=self.dtype, device=self.device
-            )
-            trans_matrices[:, :3, 3] = trans_rs[sensor_angles.valid_flag]
-            trans_matrices[:, :3, :3] = rot_rs[sensor_angles.valid_flag, ...]
+            # Assemble [n, 4, 4] rigid transformation matrices from rotation and translation
+            n = projection.shape[0]
+            trans_matrices = torch.empty((n, 4, 4), dtype=self.dtype, device=self.device)
+            trans_matrices[:, :3, :3] = rot_rs
+            trans_matrices[:, :3, 3] = trans_rs
             trans_matrices[:, 3] = torch.tensor([0, 0, 0, 1], device=self.device, dtype=self.dtype)
-
             return_var.T_world_sensors = trans_matrices
 
         if return_valid_indices:
-            # Combine validity flags
-            # (valid_rs represents a strict logical subset of full valid flags, so no logical operation required)
-            valid[torch.argwhere(valid).squeeze()] = sensor_angles.valid_flag
-            return_var.valid_indices = torch.argwhere(valid).squeeze(1)
+            return_var.valid_indices = torch.argwhere(projection_valid).squeeze(1)
 
         if return_timestamps:
-            # type checkers can't see that we are doing the same above already
             assert start_timestamp_us is not None
             assert end_timestamp_us is not None
             return_var.timestamps_us = (
                 start_timestamp_us
-                + (relative_time[sensor_angles.valid_flag, None] * (end_timestamp_us - start_timestamp_us)).to(
-                    torch.int64
-                )
+                + (relative_time_final[:, None] * (end_timestamp_us - start_timestamp_us)).to(torch.int64)
             ).squeeze(1)
+
+        if return_all_projections:
+            valid_indices = (
+                return_var.valid_indices if return_valid_indices else torch.argwhere(projection_valid).squeeze(1)
+            )
+            return_var.sensor_angles = iter_result.projection_init
+            return_var.sensor_angles[valid_indices] = projection.to(
+                dtype=iter_result.projection_init.dtype, device=iter_result.projection_init.device
+            )
 
         return return_var
 
@@ -661,9 +602,9 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         t = elements[:, 1].to(self.dtype) / (self.n_columns - 1)
 
         # Use broadcasting for translation interpolation
-        trans_start = T_sensor_world_start[:3, 3]  # [3]
-        trans_end = T_sensor_world_end[:3, 3]  # [3]
-        world_position_rs = (1 - t)[..., None] * trans_start + t[..., None] * trans_end  # [n_elements, 3]
+        transl_start = T_sensor_world_start[:3, 3]  # [3]
+        transl_end = T_sensor_world_end[:3, 3]  # [3]
+        world_position_rs = (1 - t)[..., None] * transl_start + t[..., None] * transl_end  # [n_elements, 3]
 
         R_sensor_world_rs = unitquat_to_rotmat(
             unitquat_slerp(
