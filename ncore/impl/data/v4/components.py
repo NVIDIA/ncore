@@ -52,7 +52,7 @@ from upath import UPath
 from zarr._storage.store import Store
 
 from ncore.impl.common.transformations import HalfClosedInterval
-from ncore.impl.common.util import MD5Hasher
+from ncore.impl.common.util import MD5Hasher, unpack_optional
 from ncore.impl.data import stores, types, util
 from ncore.impl.data.types import PointCloud
 
@@ -274,7 +274,7 @@ class SequenceComponentGroupsWriter:
         component_writer_type: "Callable[Concatenate[zarr.Group, HalfClosedInterval, P], CW]",
         component_instance_name: str,
         group_name: Optional[str] = None,
-        generic_meta_data: Dict[str, types.JsonLike] = {},
+        generic_meta_data: Optional[Dict[str, types.JsonLike]] = None,
         *args: "P.args",
         **kwargs: "P.kwargs",
     ) -> CW:
@@ -285,6 +285,7 @@ class SequenceComponentGroupsWriter:
         :data:`~typing.ParamSpec` + :data:`~typing.Concatenate`, type checkers
         can infer the correct extra-argument signature from the concrete writer
         class that is passed in."""
+        generic_meta_data = unpack_optional(generic_meta_data, default={})
 
         assert len(component_instance_name) > 0, "Component instance name must not be empty"
 
@@ -1744,9 +1745,10 @@ class PointCloudsComponent:
             component_group: zarr.Group,
             sequence_timestamp_interval_us: HalfClosedInterval,
             coordinate_unit: PointCloud.CoordinateUnit,
-            attribute_schemas: Dict[str, PointCloudsComponent.AttributeSchema] = {},
+            attribute_schemas: Optional[Dict[str, PointCloudsComponent.AttributeSchema]] = None,
         ) -> None:
             super().__init__(component_group, sequence_timestamp_interval_us)
+            attribute_schemas = unpack_optional(attribute_schemas, default={})
 
             self._coordinate_unit = coordinate_unit
             self._attribute_schemas = attribute_schemas
@@ -1766,9 +1768,9 @@ class PointCloudsComponent:
             xyz: npt.NDArray[np.float32],
             reference_frame_id: str,
             reference_frame_timestamp_us: int,
-            attributes: Dict[str, npt.NDArray[Any]] = {},
-            generic_data: Dict[str, npt.NDArray[Any]] = {},
-            generic_meta_data: Dict[str, types.JsonLike] = {},
+            attributes: Optional[Dict[str, npt.NDArray[Any]]] = None,
+            generic_data: Optional[Dict[str, npt.NDArray[Any]]] = None,
+            generic_meta_data: Optional[Dict[str, types.JsonLike]] = None,
         ) -> None:
             """Store a single point cloud.
 
@@ -1778,6 +1780,9 @@ class PointCloudsComponent:
             The ``reference_frame_timestamp_us`` is also collected into the
             source-level ``pc_timestamps_us`` array written by :meth:`finalize`.
             """
+            attributes = unpack_optional(attributes, default={})
+            generic_data = unpack_optional(generic_data, default={})
+            generic_meta_data = unpack_optional(generic_meta_data, default={})
             compressor = Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE)
 
             # -- Validate xyz --
@@ -1979,7 +1984,7 @@ class CameraLabelsComponent:
             self,
             data: "Union[npt.NDArray[Any], bytes]",
             timestamp_us: int,
-            generic_meta_data: Dict[str, types.JsonLike] = {},
+            generic_meta_data: Optional[Dict[str, types.JsonLike]] = None,
         ) -> None:
             """Store a single camera label.
 
@@ -1995,6 +2000,7 @@ class CameraLabelsComponent:
             generic_meta_data
                 Optional per-label metadata.
             """
+            generic_meta_data = unpack_optional(generic_meta_data, default={})
             compressor = Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE)
 
             # Sanity checks
