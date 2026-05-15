@@ -68,10 +68,10 @@ def closest_index_sorted(sorted_array: np.ndarray, value: int) -> int:
     return idx
 
 
-def numpy_array_field(datatype: "npt.DTypeLike", default=None):
+def numpy_array_field(datatype: "npt.DTypeLike", default=None) -> Any:
     """Provides encoder / decoder functionality for numpy arrays into field types compatible with dataclass-JSON"""
 
-    def decoder(*args, **kwargs):
+    def decoder(*args, **kwargs) -> np.ndarray:
         return np.array(*args, **kwargs).astype(datatype)
 
     metadata = dataclasses_json.config(encoder=np.ndarray.tolist, decoder=decoder)
@@ -82,21 +82,21 @@ def numpy_array_field(datatype: "npt.DTypeLike", default=None):
         return field(default=None, metadata=metadata)
 
 
-def enum_field(enum_class, default=None):
+def enum_field(enum_class, default=None) -> Any:
     """Provides encoder / decoder functionality for enum types into field types compatible with dataclass-JSON"""
 
-    def encoder(variant):
+    def encoder(variant) -> str:
         """encode enum as name's string representation. This way values in JSON are "human-readable"""
         return variant.name
 
-    def decoder(variant):
+    def decoder(variant) -> Any:
         """load enum variant from name's string to value map of the enumeration type"""
         return enum_class.__members__[variant]
 
     return field(default=default, metadata=dataclasses_json.config(encoder=encoder, decoder=decoder))
 
 
-def dtype_field(default: Optional[np.dtype] = None):
+def dtype_field(default: Optional[np.dtype] = None) -> Any:
     """Provides encoder / decoder functionality for numpy dtype fields into field types compatible with dataclass-JSON.
 
     Serializes as the dtype's string name (e.g., ``"float32"``, ``"uint8"``).

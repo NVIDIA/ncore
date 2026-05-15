@@ -375,7 +375,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             )
 
         @override
-        def get_frame_ray_bundle_direction(self, frame_index):
+        def get_frame_ray_bundle_direction(self, frame_index: int) -> "npt.NDArray[np.float32]":
             """Returns the per-ray directions for the ray-bundle for a specific frame"""
             return self.ray_bundle_reader.get_frame_ray_bundle_data(
                 self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(), "direction"

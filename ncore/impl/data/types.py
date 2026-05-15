@@ -122,7 +122,7 @@ class BivariateWindshieldModelParameters(dataclasses_json.DataClassJsonMixin):
         """Returns a string-identifier of the external distortion model"""
         return "bivariate-windshield"
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Sanity checks
         assert isinstance(self.reference_poly, ReferencePolynomial)
 
@@ -180,7 +180,7 @@ class CameraModelParameters(ABC):
             a transformed version of the concrete camera model parameters
         """
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Sanity checks
         assert self.resolution.shape == (2,)
         assert self.resolution.dtype == np.dtype("uint64")
@@ -240,7 +240,7 @@ class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataCl
 
     POLYNOMIAL_DEGREE = 6
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Sanity checks
         super().__post_init__()
         assert self.principal_point.shape == (2,)
@@ -389,7 +389,7 @@ class OpenCVPinholeCameraModelParameters(CameraModelParameters, dataclasses_json
         """Returns a string-identifier of the camera model"""
         return "opencv-pinhole"
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Sanity checks
         super().__post_init__()
         assert self.principal_point.shape == (2,)
@@ -476,7 +476,7 @@ class OpenCVFisheyeCameraModelParameters(CameraModelParameters, dataclasses_json
         """Returns a string-identifier of the camera model"""
         return "opencv-fisheye"
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Sanity checks
         super().__post_init__()
         assert self.principal_point.shape == (2,)
@@ -608,7 +608,7 @@ class BaseSpinningLidarModelParameters(BaseLidarModelParameters):
         "cw", "ccw"
     ]  # direction of spinning, either clockwise (cw) or counter-clockwise (ccw) [around z axis]
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Sanity checks
         assert self.spinning_frequency_hz > 0.0
         assert self.spinning_direction in ["cw", "ccw"]
@@ -624,7 +624,7 @@ class BaseStructuredSpinningLidarModelParameters(BaseSpinningLidarModelParameter
     n_rows: int  # number of rows
     n_columns: int  # number of columns
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Sanity checks
         assert self.n_rows > 0
         assert self.n_columns > 0
@@ -649,7 +649,7 @@ class RowOffsetStructuredSpinningLidarModelParameters(
         np.float32
     )  # azimuth angle offsets for each row (optional, can be zero if no row offsets) [around z axis, relative to x axis] [(Nrows,) radians]
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Sanity checks
 
         assert self.row_elevations_rad.dtype == np.float32
@@ -771,7 +771,7 @@ class BBox3(dataclasses_json.DataClassJsonMixin):
             rot=(float(array[6]), float(array[7]), float(array[8])),
         )
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Sanity checks
         assert isinstance(self.centroid, tuple)
         assert all(isinstance(i, float) for i in self.centroid)
@@ -881,7 +881,7 @@ class LabelType(dataclasses_json.DataClassJsonMixin):
         ),
     )  #: Physical unit of the label values, if applicable
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Sanity checks
         assert isinstance(self.category, LabelCategory)
         assert isinstance(self.qualifier, str)
@@ -939,7 +939,7 @@ class QuantizationParams(dataclasses_json.DataClassJsonMixin):
         metadata=dataclasses_json.config(exclude=lambda _: True),
     )  #: Numpy dtype for intermediate arithmetic during (de-)quantization
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         assert np.issubdtype(self.quantized_dtype, np.integer), (
             f"quantized_dtype must be an integer type, got {self.quantized_dtype}"
         )
@@ -963,7 +963,7 @@ class LabelSchema(dataclasses_json.DataClassJsonMixin):
     )
     quantization: Optional[QuantizationParams] = None  #: Optional quantization parameters
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Sanity checks
         assert isinstance(self.dtype, np.dtype)
         assert isinstance(self.shape_suffix, tuple) and all(isinstance(i, int) for i in self.shape_suffix)
@@ -1045,7 +1045,7 @@ class CuboidTrackObservation(dataclasses_json.DataClassJsonMixin):
             reference_frame_timestamp_us=target_frame_timestamp_us,
         )
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Sanity checks
         assert isinstance(self.track_id, str)
         assert isinstance(self.class_id, str)
@@ -1230,7 +1230,7 @@ class PointCloud:
 class EncodedImageData:
     """Represents encoded image data of a specific format in memory"""
 
-    def __init__(self, encoded_image_data: bytes, encoded_image_format: str):
+    def __init__(self, encoded_image_data: bytes, encoded_image_format: str) -> None:
         self._encoded_image_data = encoded_image_data
         self._encoded_image_format = encoded_image_format
 
@@ -1273,7 +1273,7 @@ class CameraLabelDescriptor(dataclasses_json.DataClassJsonMixin):
         cat = self.label_type.category.name.lower()
         return f"{cat}.{self.label_type.qualifier}@{self.camera_id}"
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Sanity checks
         assert isinstance(self.camera_id, str) and len(self.camera_id) > 0, "camera_id should be a non-empty string"
         assert isinstance(self.label_type, LabelType)

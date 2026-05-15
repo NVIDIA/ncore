@@ -141,7 +141,7 @@ class BivariateWindshieldModel(ExternalDistortionModel):
         )
 
     @staticmethod
-    def compute_poly_order(poly_coeffs: torch.Tensor):
+    def compute_poly_order(poly_coeffs: torch.Tensor) -> int:
         """Computes the order of a bivariate polynomial give it's array of coefficients"""
         order = 0
         num_terms = 0

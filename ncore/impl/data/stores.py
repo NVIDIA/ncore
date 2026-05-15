@@ -108,7 +108,7 @@ class IndexedTarStore(Store):
         itar_path: Union[str, Path, UPath],
         mode: Literal["r", "w"] = "r",
         index_tail_read_size: Optional[int] = 1 << 20,  # 1 MiB by default
-    ):
+    ) -> None:
         if mode not in ["r", "w"]:
             raise ValueError("TarRecordIndex: only r/w modes supported")
 
@@ -150,7 +150,7 @@ class IndexedTarStore(Store):
         else:
             self.index = self.TarRecordIndex()
 
-    def __delitem__(self, _: str):
+    def __delitem__(self, _: str) -> None:
         raise NotImplementedError("Deleting items is not supported")
 
     def __iter__(self) -> Iterator[str]:
@@ -190,7 +190,7 @@ class IndexedTarStore(Store):
 
             return value
 
-    def __setitem__(self, item: str, value):
+    def __setitem__(self, item: str, value) -> None:
         if self.mode != "w":
             raise zarr.errors.ReadOnlyError
 
@@ -231,13 +231,13 @@ class IndexedTarStore(Store):
 
             self.index.records[item] = record
 
-    def __enter__(self):
+    def __enter__(self) -> IndexedTarStore:
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         """Needs to be called after finishing updating the store"""
         with self.mutex:
             if self.mode == "w":
@@ -250,7 +250,7 @@ class IndexedTarStore(Store):
 
             self.tar_file_object.close()
 
-    def reload_resources(self):
+    def reload_resources(self) -> None:
         """Reloads the tar file object *only* - useful to re-initialize the store in multi-process 'fork()' settings"""
         with self.mutex:
             # get current tar file path and seek positions, and close file object
@@ -366,10 +366,10 @@ class IndexedTarStore(Store):
         return index, cls.TailBuffer(start=index_start_in_file, data=tail_buffer)
 
     @classmethod
-    def _save_tar_index(cls, tar_file_object: IO[Any], index: TarRecordIndex):
+    def _save_tar_index(cls, tar_file_object: IO[Any], index: TarRecordIndex) -> None:
         """Saves a tar record index at the end of a tar file object (needs to be finalized / have two empty blocks appended already)"""
 
-        def fill_block():
+        def fill_block() -> None:
             # Fill up block with zeros
             _, remainder = divmod(tar_file_object.tell(), tarfile.BLOCKSIZE)
             if remainder > 0:
@@ -420,7 +420,7 @@ class IndexedTarStore(Store):
         fill_block()
 
 
-def consolidate_compressed_metadata(store: zarr.storage.BaseStore, metadata_key=".zmetadata.cbor.xz"):
+def consolidate_compressed_metadata(store: zarr.storage.BaseStore, metadata_key=".zmetadata.cbor.xz") -> None:
     """Consolidate all metadata for groups and arrays within the given store
     into a single compressed cbor resource and put it under the given key.
 
@@ -434,7 +434,7 @@ def consolidate_compressed_metadata(store: zarr.storage.BaseStore, metadata_key=
 
     if version == 2:
 
-        def is_zarr_key(key):
+        def is_zarr_key(key) -> bool:
             return key.endswith(".zarray") or key.endswith(".zgroup") or key.endswith(".zattrs")
 
     else:
@@ -458,7 +458,7 @@ class ConsolidatedCompressedMetadataStore(zarr.storage.ConsolidatedMetadataStore
     """A layer over other storage, where the metadata has been consolidated into a single compressed key."""
 
     # Overwrite constructor to perform decompression of metadata
-    def __init__(self, store: zarr.storage.StoreLike, metadata_key=".zmetadata.cbor.xz"):
+    def __init__(self, store: zarr.storage.StoreLike, metadata_key=".zmetadata.cbor.xz") -> None:
         self.store = Store._ensure_store(store)
 
         # retrieve consolidated metadata

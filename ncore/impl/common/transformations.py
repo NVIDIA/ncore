@@ -148,7 +148,7 @@ class PoseInterpolator:
         """Returns the timestamps corresponding to the original poses used for interpolation"""
         return self._timestamps
 
-    def __init__(self, poses, timestamps):
+    def __init__(self, poses, timestamps) -> None:
         """Initializes the PoseInterpolator
 
         Args:
@@ -354,7 +354,7 @@ class PoseInterpolator:
         return result
 
 
-def so3_trans_2_se3(so3, trans):
+def so3_trans_2_se3(so3, trans) -> np.ndarray:
     """Create a 4x4 rigid transformation matrix given so3 rotation and translation.
 
     Args:
@@ -407,7 +407,7 @@ def se3_inverse(T: np.ndarray, unbatch: bool = True) -> np.ndarray:
     return ret
 
 
-def transform_point_cloud(pc, T):
+def transform_point_cloud(pc, T) -> np.ndarray:
     """Transform the point cloud with the provided transformation matrix,
         support torch.Tensor and np.ndarry.
     Args:
@@ -554,7 +554,7 @@ class MotionCompensator:
     def __init__(
         self,
         pose_graph: PoseGraphInterpolator,
-    ):
+    ) -> None:
         """
         Initializes motion-compensator to use a pose-graph interpolator
 
@@ -704,7 +704,7 @@ class PoseGraphInterpolator:
             target_node: str,
             T_source_target: npt.NDArray[np.floating],
             timestamps_us: Optional[npt.NDArray[np.uint64]],
-        ):
+        ) -> None:
             self.source_node = source_node
             self.target_node = target_node
             self.T_source_target = T_source_target  # either [4,4] (static) or [n,4,4] (dynamic)
@@ -755,7 +755,7 @@ class PoseGraphInterpolator:
             else:
                 raise KeyError("Invalid source/target node for edge")
 
-    def __init__(self, edges: List[Edge]):
+    def __init__(self, edges: List[Edge]) -> None:
         # Collect graph
         self._nodes: Set[str] = set()
         for edge in edges:

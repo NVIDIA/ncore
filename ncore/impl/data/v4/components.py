@@ -727,7 +727,7 @@ class PosesComponent:
 
             self.data: Dict = {"static_poses": {}, "dynamic_poses": {}}
 
-        def finalize(self):
+        def finalize(self) -> None:
             """Actually store the json-encoded pose data"""
 
             self._group.create_group("static_poses").attrs.put(self.data["static_poses"])
@@ -1055,7 +1055,7 @@ class BaseSensorComponentWriter(ComponentWriter):
             int, int
         ] = {}  # collect end-of-frame timestamps mapping to start of frame timestamps
 
-    def finalize(self):
+    def finalize(self) -> None:
         """Perform final operations after all user-data was written to the sensor component"""
 
         # Collect all frame timestamps to be stored as global property (supporting no frames at all and out-of-order frames)
@@ -1419,7 +1419,7 @@ class CameraSensorComponent:
         class EncodedImageDataHandle:
             """References encoded image data without loading it"""
 
-            def __init__(self, image_dataset: zarr.Array):
+            def __init__(self, image_dataset: zarr.Array) -> None:
                 self._image_dataset = image_dataset
 
             def get_data(self) -> types.EncodedImageData:

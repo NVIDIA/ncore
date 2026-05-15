@@ -311,7 +311,7 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
             sensor_rays=torch.stack([x, y, z], dim=-1), valid_flag=self._valid_sensor_angles(sensor_angles)
         )
 
-    def _init_angles_to_columns_map(self):
+    def _init_angles_to_columns_map(self) -> None:
         """Computes angles to column map as a 2D array of shape resolution_factor * (n_rows, n_columns)."""
 
         assert torch.iinfo(self.angles_to_columns_map_dtype).max >= self.n_columns - 1, (
