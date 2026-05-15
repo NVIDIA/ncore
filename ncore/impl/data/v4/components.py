@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import ast
 import concurrent.futures
 import io
 import json
@@ -833,7 +834,7 @@ class PosesComponent:
             """Returns all static poses (rigid transformations) between named coordinate frames, if available"""
 
             for key, static_pose in self._group["static_poses"].attrs.items():
-                yield eval(key), np.array(static_pose["pose"], dtype=static_pose["dtype"])
+                yield ast.literal_eval(key), np.array(static_pose["pose"], dtype=static_pose["dtype"])
 
         def get_dynamic_poses(
             self,
@@ -842,7 +843,7 @@ class PosesComponent:
 
             for key, dynamic_poses in self._group["dynamic_poses"].attrs.items():
                 yield (
-                    eval(key),
+                    ast.literal_eval(key),
                     (
                         np.array(dynamic_poses["poses"], dtype=dynamic_poses["dtype"]),
                         np.array(dynamic_poses["timestamps_us"], dtype=np.uint64),
