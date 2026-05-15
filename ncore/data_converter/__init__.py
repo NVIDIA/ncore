@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 """Package containing common and abstract functionality to implement NCore data-converters"""
 
 from ncore.impl.data_converter.base import (

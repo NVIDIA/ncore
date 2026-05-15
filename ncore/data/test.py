@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the
 
+from __future__ import annotations
+
 
 def test_import_package():
     """Make sure package can be imported"""
