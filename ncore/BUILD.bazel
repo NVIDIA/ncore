@@ -62,10 +62,14 @@ py_wheel(
         "zarr>=2.12.0,<3.0.0",
         "cbor2",
         "scipy",
-        "torch",
         "typing_extensions",
         "universal_pathlib",
     ],
+    extra_requires = {
+        "sensors": [
+            "torch",
+        ],
+    },
     summary = "A unified data format and library for AV / robotics",
     # Build / deploy wheels:
     # - bazel build //ncore:ncore_wheel.dist --stamp --embed_label=<VERSION>

@@ -13,17 +13,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Package exposing methods related to NCore's sensor types"""
+"""Package exposing methods related to NCore's sensor types.
 
-from ncore.impl.sensors.camera import (
-    BivariateWindshieldModel,
-    CameraModel,
-    ExternalDistortionModel,
-    FThetaCameraModel,
-    OpenCVFisheyeCameraModel,
-    OpenCVPinholeCameraModel,
-)
-from ncore.impl.sensors.lidar import LidarModel, RowOffsetStructuredSpinningLidarModel, StructuredLidarModel
+This module requires PyTorch. Install it with: pip install ncore[sensors]
+"""
+
+from __future__ import annotations
+
+import importlib
+
+from typing import TYPE_CHECKING
+
+
+if TYPE_CHECKING:
+    from ncore.impl.sensors.camera import (
+        BivariateWindshieldModel as BivariateWindshieldModel,
+        CameraModel as CameraModel,
+        ExternalDistortionModel as ExternalDistortionModel,
+        FThetaCameraModel as FThetaCameraModel,
+        OpenCVFisheyeCameraModel as OpenCVFisheyeCameraModel,
+        OpenCVPinholeCameraModel as OpenCVPinholeCameraModel,
+    )
+    from ncore.impl.sensors.lidar import (
+        LidarModel as LidarModel,
+        RowOffsetStructuredSpinningLidarModel as RowOffsetStructuredSpinningLidarModel,
+        StructuredLidarModel as StructuredLidarModel,
+    )
 
 
 __all__ = [
@@ -37,3 +52,30 @@ __all__ = [
     "StructuredLidarModel",
     "RowOffsetStructuredSpinningLidarModel",
 ]
+
+
+def __getattr__(name: str):
+    if name in __all__:
+        try:
+            import torch  # noqa: F401
+        except ImportError:
+            raise ImportError(
+                "torch is required for sensor model evaluation. "
+                "Install it with: pip install ncore[sensors]"
+            ) from None
+
+        if name in (
+            "BivariateWindshieldModel",
+            "CameraModel",
+            "ExternalDistortionModel",
+            "FThetaCameraModel",
+            "OpenCVFisheyeCameraModel",
+            "OpenCVPinholeCameraModel",
+        ):
+            module = importlib.import_module("ncore.impl.sensors.camera")
+        else:
+            module = importlib.import_module("ncore.impl.sensors.lidar")
+
+        return getattr(module, name)
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
