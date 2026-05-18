@@ -44,6 +44,7 @@ import click
 import DracoPy  # ty:ignore[unresolved-import]
 import imageio
 import numpy as np
+import PyNvVideoCodec as nvc
 import tqdm
 
 from scipy.spatial.transform import Rotation as R
@@ -774,14 +775,22 @@ class _PaiConversionMixin:
             video_path = self.provider.get_video_path(camera_id)
             self.logger.info(f"Extracting {len(timestamps_df)} frames from {video_path.name}")
 
-            reader = imageio.get_reader(video_path, "ffmpeg")  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
+            # Decode video using PyNvVideoCodec (MIT license, GPU-accelerated H.264 decode).
+            # use_device_memory=False: frames are returned in host (CPU) memory as numpy-compatible
+            # objects, since the downstream pipeline (JPEG encoding via pillow) is CPU-based.
+            # output_color_type=RGB: interleaved uint8 HWC format matching the expected numpy array layout.
+            decoder = nvc.SimpleDecoder(
+                str(video_path),
+                use_device_memory=False,
+                output_color_type=nvc.OutputColorType.RGB,  # ty: ignore[unresolved-attribute]
+            )
 
             for frame_idx in tqdm.tqdm(range(len(timestamps_df)), desc=f"Camera {camera_id}"):
                 # Keep timestamp as int because as these might be negative
                 frame_end_timestamp_us = int(timestamps_df.iloc[frame_idx]["timestamp"])
 
                 # Read the image / forward the reader
-                image = reader.get_data(frame_idx)
+                image = np.from_dlpack(decoder[frame_idx])
 
                 # Compute start of frame from rolling shutter delay
                 frame_start_timestamp_us = frame_end_timestamp_us - shutter_delay_us

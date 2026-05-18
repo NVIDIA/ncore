@@ -603,15 +603,6 @@ imageio==2.37.2 \
     # via
     #   -r deps/pip/requirements_pai.in
     #   viser
-imageio-ffmpeg==0.6.0 \
-    --hash=sha256:02fa47c83703c37df6bfe4896aab339013f62bf02c5ebf2dce6da56af04ffc0a \
-    --hash=sha256:196faa79366b4a82f95c0f4053191d2013f4714a715780f0ad2a68ff37483cc2 \
-    --hash=sha256:1d47bebd83d2c5fc770720d211855f208af8a596c82d17730aa51e815cdee6dc \
-    --hash=sha256:9d2baaf867088508d4a3458e61eeb30e945c4ad8016025545f66c4b5aaef0a61 \
-    --hash=sha256:b1ae3173414b5fc5f538a726c4e48ea97edc0d2cdc11f103afee655c463fa742 \
-    --hash=sha256:c7e46fcec401dd990405049d2e2f475e2b397779df2519b544b8aab515195282 \
-    --hash=sha256:e2556bed8e005564a9f925bb7afa4002d82770d6b08825078b7697ab88ba1755
-    # via -r deps/pip/requirements_pai.in
 imagesize==1.4.1 \
     --hash=sha256:0d8d18d08f840c19d0ee7ca1fd82490fdc3729b7ac93f49870406ddde8ef8d8b \
     --hash=sha256:69150444affb9cb0d5cc5a92b3676f0b2fb7cd9ae39e947a5e11a36b4497cd4a
@@ -1832,6 +1823,19 @@ pygments==2.19.1 \
     #   pydata-sphinx-theme
     #   rich
     #   sphinx
+pynvvideocodec==2.1.0 \
+    --hash=sha256:09cdd222c761855cde9b05ddc13d21893473cebae50077eca20b4eac0fed8acb \
+    --hash=sha256:133b47336cd9b3a161707b02d2ceb9e5af387cb9833335d60c16eddf7322b3ea \
+    --hash=sha256:34ddbb22230f4963f5b25b41af0a1579c3731fb95c79993502dd014a4dec7fd6 \
+    --hash=sha256:3e1ecef741e1943978911998aa1a9d683be8b005957646db6c9b0d53f943f9af \
+    --hash=sha256:6d653240ce835e9ab531a4d61350a4af54f7f7859e5392e1323c030ffcfc8ff0 \
+    --hash=sha256:7c35887e294613825c9011dc1b6962d0c0374049b1ce8939cee97db5d82b28e8 \
+    --hash=sha256:af7e44d13cfb524626c72d947f12a3b192cfa1deb4b598a7778bd4aa1e6fd4ac \
+    --hash=sha256:b8d9b47b5c910953d6c24fa60fd7bf6ac57f3d4a20831fcaf35e039349a91d42 \
+    --hash=sha256:c317fbad725b1b81936b863edcd98920bc4be423b9965719657030359d7afe29 \
+    --hash=sha256:e778af3319a759c1728065e9e4682f591c44dedbbc90c1ca71d025dce65d6a58 \
+    --hash=sha256:ee5d2dc56ac5ca8d223fa6fe8f57c67faf5ee1c9360216d9194cfbcd3f9d3948
+    # via -r deps/pip/requirements_pai.in
 pyparsing==3.2.1 \
     --hash=sha256:506ff4f4386c4cec0590ec19e6302d3aedb992fdc02c761e90416f158dacf8e1 \
     --hash=sha256:61980854fd66de3a90028d679a954d5f2623e83144b5afe5ee86f43d762e5f0a
