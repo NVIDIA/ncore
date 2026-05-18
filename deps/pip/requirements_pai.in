@@ -16,6 +16,14 @@
 cbor2>=5.9.0; python_version>="3.9"
 cbor2; python_version<"3.9"
 imageio>=2.35.0
+# imageio-ffmpeg: BSD-2-Clause Python wrapper around ffmpeg.
+# NOTE ON REDISTRIBUTION: The PyPI wheels bundle a GPL-licensed ffmpeg binary.
+# Anyone shipping containers that include this wheel is redistributing that binary
+# and must comply with ffmpeg's GPL (or rebuild with LGPL-only codecs).
+# To avoid bundling the binary: pip install --no-binary imageio-ffmpeg imageio-ffmpeg
+# and provide system ffmpeg on PATH.
+# ALTERNATIVE: For H.264 decode on NVIDIA GPUs, consider PyNvVideoCodec (MIT license,
+# pip install PyNvVideoCodec). See https://developer.nvidia.com/pynvvideocodec
 imageio-ffmpeg>=0.5.0
 DracoPy>=2.0.0
 remotezip>=0.12.0
