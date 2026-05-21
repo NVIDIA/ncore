@@ -2738,3 +2738,440 @@ class TestCameraLabelsComponent(unittest.TestCase):
         self.assertEqual(rt.dtype, np.dtype("uint8"))
         self.assertEqual(rt.encoding, LabelEncoding.IMAGE_ENCODED)
         self.assertIsNone(rt.quantization)
+
+
+# ==============================================================================
+# Tests for zero-dimension array support (_normalize_chunks)
+# ==============================================================================
+
+
+@parameterized_class(
+    ("store_type"),
+    [
+        ("itar",),
+        ("directory",),
+    ],
+)
+class TestZeroDimArraySupport(unittest.TestCase):
+    """Tests that arrays with zero-length dimensions can be stored and read back correctly."""
+
+    store_type: Literal["itar", "directory"]
+
+    def setUp(self):
+        np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
+
+    # ------------------------------------------------------------------
+    # 1. PointCloudsComponent: zero-point point cloud
+    # ------------------------------------------------------------------
+    def test_point_cloud_zero_points(self) -> None:
+        """Write a PC with xyz.shape == (0, 3), attributes (0, ...), and generic_data (0,), verify roundtrip."""
+        tmpdir = tempfile.TemporaryDirectory()
+        timestamp_interval = HalfClosedInterval(0, 10_000_001)
+
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(tmpdir.name),
+            store_base_name=(seq_id := "zero-pc-test"),
+            sequence_id=seq_id,
+            sequence_timestamp_interval_us=timestamp_interval,
+            store_type=self.store_type,
+            generic_meta_data={},
+        )
+
+        schemas = {
+            "rgb": PointCloudsComponent.AttributeSchema(
+                transform_type=PointCloud.AttributeTransformType.INVARIANT,
+                dtype=np.dtype("uint8"),
+                shape_suffix=(3,),
+            ),
+        }
+
+        pc_writer = store_writer.register_component_writer(
+            PointCloudsComponent.Writer,
+            "empty_pc",
+            coordinate_unit=PointCloud.CoordinateUnit.METERS,
+            attribute_schemas=schemas,
+        )
+
+        # Store a point cloud with zero points
+        xyz = np.zeros((0, 3), dtype=np.float32)
+        rgb = np.zeros((0, 3), dtype=np.uint8)
+
+        pc_writer.store_pc(
+            xyz=xyz,
+            reference_frame_id="world",
+            reference_frame_timestamp_us=1_000_000,
+            attributes={"rgb": rgb},
+            generic_data={"track_ids": np.zeros((0,), dtype=np.int32)},
+            generic_meta_data={"empty": True},
+        )
+
+        # Finalize and read back
+        store_paths = store_writer.finalize()
+        reader = SequenceComponentGroupsReader(component_group_paths=store_paths)
+        pc_readers = reader.open_component_readers(PointCloudsComponent.Reader)
+        pc_reader = pc_readers["empty_pc"]
+
+        self.assertEqual(pc_reader.pcs_count, 1)
+        np.testing.assert_array_equal(pc_reader.get_pc_xyz(0), xyz)
+        self.assertEqual(pc_reader.get_pc_xyz(0).shape, (0, 3))
+        np.testing.assert_array_equal(pc_reader.get_pc_attribute(0, "rgb"), rgb)
+        self.assertEqual(pc_reader.get_pc_attribute(0, "rgb").shape, (0, 3))
+
+        # generic data
+        np.testing.assert_array_equal(pc_reader.get_pc_generic_data(0, "track_ids"), np.zeros((0,), dtype=np.int32))
+        self.assertEqual(pc_reader.get_pc_generic_meta_data(0), {"empty": True})
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 2. PointCloudsComponent: zero-point PC with per-PC generic data of shape (0, K)
+    # ------------------------------------------------------------------
+    def test_point_cloud_zero_points_multidim_generic_data(self) -> None:
+        """Write a zero-point PC with multi-dimensional generic data (0, 4)."""
+        tmpdir = tempfile.TemporaryDirectory()
+        timestamp_interval = HalfClosedInterval(0, 10_000_001)
+
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(tmpdir.name),
+            store_base_name=(seq_id := "zero-pc-gd-test"),
+            sequence_id=seq_id,
+            sequence_timestamp_interval_us=timestamp_interval,
+            store_type=self.store_type,
+            generic_meta_data={},
+        )
+
+        pc_writer = store_writer.register_component_writer(
+            PointCloudsComponent.Writer,
+            "empty_pc_gd",
+            coordinate_unit=PointCloud.CoordinateUnit.METERS,
+        )
+
+        xyz = np.zeros((0, 3), dtype=np.float32)
+        pc_writer.store_pc(
+            xyz=xyz,
+            reference_frame_id="sensor",
+            reference_frame_timestamp_us=500_000,
+            generic_data={"features": np.zeros((0, 4), dtype=np.float32)},
+        )
+
+        store_paths = store_writer.finalize()
+        reader = SequenceComponentGroupsReader(component_group_paths=store_paths)
+        pc_readers = reader.open_component_readers(PointCloudsComponent.Reader)
+        pc_reader = pc_readers["empty_pc_gd"]
+
+        self.assertEqual(pc_reader.pcs_count, 1)
+        result = pc_reader.get_pc_generic_data(0, "features")
+        self.assertEqual(result.shape, (0, 4))
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 3. LidarSensorComponent: zero rays
+    # ------------------------------------------------------------------
+    def test_lidar_zero_rays(self) -> None:
+        """Store a lidar frame with n_rays=0, verify roundtrip."""
+        tmpdir = tempfile.TemporaryDirectory()
+        timestamp_interval = HalfClosedInterval(0, 10_000_001)
+
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(tmpdir.name),
+            store_base_name=(seq_id := "zero-lidar-test"),
+            sequence_id=seq_id,
+            sequence_timestamp_interval_us=timestamp_interval,
+            store_type=self.store_type,
+            generic_meta_data={},
+        )
+
+        # Need poses for the sensor
+        poses_writer = store_writer.register_component_writer(PosesComponent.Writer, "lidar_poses")
+        poses_writer.store_static_pose(
+            source_frame_id="lidar",
+            target_frame_id="rig",
+            pose=np.eye(4, dtype=np.float32),
+        )
+
+        lidar_writer = store_writer.register_component_writer(LidarSensorComponent.Writer, "lidar", "lidars")
+
+        # Zero rays frame
+        direction = np.zeros((0, 3), dtype=np.float32)
+        timestamp_us = np.zeros((0,), dtype=np.uint64)
+        # 1 return, 0 rays
+        distance_m = np.zeros((1, 0), dtype=np.float32)
+        intensity = np.zeros((1, 0), dtype=np.float32)
+        frame_timestamps_us = np.array([0, 100_000], dtype=np.uint64)
+
+        lidar_writer.store_frame(
+            direction=direction,
+            timestamp_us=timestamp_us,
+            model_element=None,
+            distance_m=distance_m,
+            intensity=intensity,
+            frame_timestamps_us=frame_timestamps_us,
+            generic_data={},
+            generic_meta_data={},
+        )
+
+        # Finalize and read back
+        store_paths = store_writer.finalize()
+        reader = SequenceComponentGroupsReader(component_group_paths=store_paths)
+        lidar_readers = reader.open_component_readers(LidarSensorComponent.Reader)
+        lidar_reader = lidar_readers["lidar"]
+
+        # Verify frame exists
+        self.assertEqual(len(lidar_reader.frames_timestamps_us), 1)
+        frame_ts = lidar_reader.frames_timestamps_us[0, 1]  # end-of-frame timestamp
+        self.assertEqual(lidar_reader.get_frame_ray_bundle_count(frame_ts), 0)
+
+        # Read back ray data
+        direction_read = lidar_reader.get_frame_ray_bundle_data(frame_ts, "direction")
+        self.assertEqual(direction_read.shape, (0, 3))
+
+        timestamp_read = lidar_reader.get_frame_ray_bundle_data(frame_ts, "timestamp_us")
+        self.assertEqual(timestamp_read.shape, (0,))
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 4. RadarSensorComponent: zero rays
+    # ------------------------------------------------------------------
+    def test_radar_zero_rays(self) -> None:
+        """Store a radar frame with n_rays=0, verify roundtrip."""
+        tmpdir = tempfile.TemporaryDirectory()
+        timestamp_interval = HalfClosedInterval(0, 10_000_001)
+
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(tmpdir.name),
+            store_base_name=(seq_id := "zero-radar-test"),
+            sequence_id=seq_id,
+            sequence_timestamp_interval_us=timestamp_interval,
+            store_type=self.store_type,
+            generic_meta_data={},
+        )
+
+        poses_writer = store_writer.register_component_writer(PosesComponent.Writer, "radar_poses")
+        poses_writer.store_static_pose(
+            source_frame_id="radar",
+            target_frame_id="rig",
+            pose=np.eye(4, dtype=np.float32),
+        )
+
+        radar_writer = store_writer.register_component_writer(RadarSensorComponent.Writer, "radar", "radars")
+
+        # Zero rays frame
+        direction = np.zeros((0, 3), dtype=np.float32)
+        timestamp_us = np.zeros((0,), dtype=np.uint64)
+        distance_m = np.zeros((1, 0), dtype=np.float32)
+        frame_timestamps_us = np.array([0, 100_000], dtype=np.uint64)
+
+        radar_writer.store_frame(
+            direction=direction,
+            timestamp_us=timestamp_us,
+            distance_m=distance_m,
+            frame_timestamps_us=frame_timestamps_us,
+            generic_data={},
+            generic_meta_data={},
+        )
+
+        # Finalize and read back
+        store_paths = store_writer.finalize()
+        reader = SequenceComponentGroupsReader(component_group_paths=store_paths)
+        radar_readers = reader.open_component_readers(RadarSensorComponent.Reader)
+        radar_reader = radar_readers["radar"]
+
+        self.assertEqual(len(radar_reader.frames_timestamps_us), 1)
+        frame_ts = radar_reader.frames_timestamps_us[0, 1]
+        self.assertEqual(radar_reader.get_frame_ray_bundle_count(frame_ts), 0)
+
+        direction_read = radar_reader.get_frame_ray_bundle_data(frame_ts, "direction")
+        self.assertEqual(direction_read.shape, (0, 3))
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 5. CameraLabelsComponent: label with zero trailing shape_suffix dim
+    # ------------------------------------------------------------------
+    def test_camera_label_zero_shape_suffix_dim(self) -> None:
+        """Write a camera label where shape_suffix has a zero dim (e.g., zero object annotations per pixel)."""
+        tmpdir = tempfile.TemporaryDirectory()
+        timestamp_interval = HalfClosedInterval(0, 10_000_001)
+
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(tmpdir.name),
+            store_base_name=(seq_id := "zero-label-test"),
+            sequence_id=seq_id,
+            sequence_timestamp_interval_us=timestamp_interval,
+            store_type=self.store_type,
+            generic_meta_data={},
+        )
+
+        # shape_suffix=(0,) means the label is (H, W, 0) -- zero annotations per pixel
+        descriptor = CameraLabelDescriptor(
+            camera_id="front",
+            label_type=LabelType.DEPTH_Z_M,
+            label_schema=LabelSchema(
+                dtype=np.dtype("float32"),
+                shape_suffix=(0,),
+                encoding=LabelEncoding.RAW,
+            ),
+            label_source=LabelSource.AUTOLABEL,
+        )
+
+        writer = store_writer.register_component_writer(
+            CameraLabelsComponent.Writer,
+            descriptor.default_instance_name,
+            descriptor=descriptor,
+        )
+
+        # Data shape: (H, W, 0) -- H and W are non-zero, trailing dim is 0
+        label_data = np.zeros((32, 48, 0), dtype=np.float32)
+        writer.store_label(data=label_data, timestamp_us=1_000_000)
+
+        store_paths = store_writer.finalize()
+        reader = SequenceComponentGroupsReader(component_group_paths=store_paths)
+        label_readers = reader.open_component_readers(CameraLabelsComponent.Reader)
+        instance_name = descriptor.default_instance_name
+        self.assertIn(instance_name, label_readers)
+        label_reader = label_readers[instance_name]
+
+        self.assertEqual(label_reader.labels_count, 1)
+        handle = label_reader.get_label(1_000_000)
+        result = handle.get_data()
+        self.assertEqual(result.shape, (32, 48, 0))
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 6. Component-level generic data with zero dim
+    # ------------------------------------------------------------------
+    def test_component_generic_data_zero_dim(self) -> None:
+        """Write component-level generic data with zero dimensions at various positions in multi-dim arrays."""
+        tmpdir = tempfile.TemporaryDirectory()
+        timestamp_interval = HalfClosedInterval(0, 10_000_001)
+
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(tmpdir.name),
+            store_base_name=(seq_id := "zero-generic-data-test"),
+            sequence_id=seq_id,
+            sequence_timestamp_interval_us=timestamp_interval,
+            store_type=self.store_type,
+            generic_meta_data={},
+        )
+
+        poses_writer = store_writer.register_component_writer(
+            PosesComponent.Writer,
+            "test_poses",
+        )
+
+        poses_writer.store_static_pose(
+            source_frame_id="sensor",
+            target_frame_id="rig",
+            pose=np.eye(4, dtype=np.float32),
+        )
+
+        # Multiple arrays with zeros at different dimension positions
+        empty_1d = np.zeros((0,), dtype=np.float32)  # single dim zero
+        empty_leading = np.zeros((0, 5), dtype=np.int32)  # zero in leading dim
+        empty_middle = np.zeros((3, 0, 4), dtype=np.float64)  # zero in middle dim
+        empty_trailing = np.zeros((2, 7, 0), dtype=np.uint8)  # zero in trailing dim
+        empty_multi = np.zeros((0, 0, 3), dtype=np.float32)  # multiple zero dims
+        empty_all = np.zeros((0, 0, 0), dtype=np.int16)  # all dims zero
+
+        poses_writer.set_generic_data(
+            data={
+                "empty_1d": empty_1d,
+                "empty_leading": empty_leading,
+                "empty_middle": empty_middle,
+                "empty_trailing": empty_trailing,
+                "empty_multi": empty_multi,
+                "empty_all": empty_all,
+            },
+            meta_data={"note": "various zero-dim positions"},
+        )
+
+        store_paths = store_writer.finalize()
+        reader = SequenceComponentGroupsReader(component_group_paths=store_paths)
+        poses_readers = reader.open_component_readers(PosesComponent.Reader)
+        poses_reader = poses_readers["test_poses"]
+
+        # Verify all shapes round-trip correctly
+        self.assertEqual(poses_reader.get_generic_data("empty_1d").shape, (0,))
+        self.assertEqual(poses_reader.get_generic_data("empty_leading").shape, (0, 5))
+        self.assertEqual(poses_reader.get_generic_data("empty_middle").shape, (3, 0, 4))
+        self.assertEqual(poses_reader.get_generic_data("empty_trailing").shape, (2, 7, 0))
+        self.assertEqual(poses_reader.get_generic_data("empty_multi").shape, (0, 0, 3))
+        self.assertEqual(poses_reader.get_generic_data("empty_all").shape, (0, 0, 0))
+
+        # Verify dtypes are preserved
+        self.assertEqual(poses_reader.get_generic_data("empty_1d").dtype, np.float32)
+        self.assertEqual(poses_reader.get_generic_data("empty_leading").dtype, np.int32)
+        self.assertEqual(poses_reader.get_generic_data("empty_middle").dtype, np.float64)
+        self.assertEqual(poses_reader.get_generic_data("empty_trailing").dtype, np.uint8)
+        self.assertEqual(poses_reader.get_generic_data("empty_multi").dtype, np.float32)
+        self.assertEqual(poses_reader.get_generic_data("empty_all").dtype, np.int16)
+
+        # Verify metadata
+        self.assertEqual(poses_reader.generic_meta_data.get("note"), "various zero-dim positions")
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 7. Per-frame generic data with zero dim (via sensor writer)
+    # ------------------------------------------------------------------
+    def test_per_frame_generic_data_zero_dim(self) -> None:
+        """Write per-frame generic data with a zero-length dimension, verify roundtrip."""
+        tmpdir = tempfile.TemporaryDirectory()
+        timestamp_interval = HalfClosedInterval(0, 10_000_001)
+
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(tmpdir.name),
+            store_base_name=(seq_id := "zero-frame-gd-test"),
+            sequence_id=seq_id,
+            sequence_timestamp_interval_us=timestamp_interval,
+            store_type=self.store_type,
+            generic_meta_data={},
+        )
+
+        poses_writer = store_writer.register_component_writer(PosesComponent.Writer, "frame_gd_poses")
+        poses_writer.store_static_pose(
+            source_frame_id="lidar",
+            target_frame_id="rig",
+            pose=np.eye(4, dtype=np.float32),
+        )
+
+        lidar_writer = store_writer.register_component_writer(LidarSensorComponent.Writer, "lidar_gd", "lidars")
+
+        # Store a frame with non-zero rays but zero-dim generic data
+        rng = np.random.default_rng(123)
+        n_rays = 5
+        raw_pts = rng.random((n_rays, 3)).astype(np.float32) + 0.1
+        norms = np.linalg.norm(raw_pts, axis=1)
+        direction = (raw_pts / norms[:, np.newaxis]).astype(np.float32)
+        distance_m = norms[np.newaxis, :].astype(np.float32)
+        intensity = rng.random((1, n_rays)).astype(np.float32)
+        per_ray_ts = np.linspace(0, 100_000, num=n_rays, dtype=np.uint64)
+        frame_timestamps_us = np.array([0, 100_000], dtype=np.uint64)
+
+        # generic data with zero first dim -- e.g., empty track associations
+        empty_tracks = np.zeros((0, 3), dtype=np.float64)
+
+        lidar_writer.store_frame(
+            direction=direction,
+            timestamp_us=per_ray_ts,
+            model_element=None,
+            distance_m=distance_m,
+            intensity=intensity,
+            frame_timestamps_us=frame_timestamps_us,
+            generic_data={"tracks": empty_tracks},
+            generic_meta_data={},
+        )
+
+        store_paths = store_writer.finalize()
+        reader = SequenceComponentGroupsReader(component_group_paths=store_paths)
+        lidar_readers = reader.open_component_readers(LidarSensorComponent.Reader)
+        lidar_reader = lidar_readers["lidar_gd"]
+
+        frame_ts = lidar_reader.frames_timestamps_us[0, 1]
+        gd = lidar_reader.get_frame_generic_data(frame_ts, "tracks")
+        self.assertEqual(gd.shape, (0, 3))
+
+        tmpdir.cleanup()

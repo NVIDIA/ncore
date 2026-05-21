@@ -72,6 +72,34 @@ _logger = logging.getLogger(__name__)
 VERSION = "v4"
 
 
+def _normalize_chunks(
+    shape: "Tuple[int, ...]",
+    *,
+    require_nonzero_dims: "Optional[Tuple[int, ...]]" = None,
+) -> "Tuple[int, ...]":
+    """Normalize a chunk shape by replacing zero dimensions with 1.
+
+    Zarr v2 rejects chunk tuples containing zeros (division by zero in internal
+    bookkeeping). This helper ensures that every dimension in the chunk tuple is
+    at least 1 while the *logical* data shape passed to ``create_dataset`` via
+    the ``data=`` argument remains unchanged.
+
+    Args:
+        shape: The data shape to derive a chunk shape from.
+        require_nonzero_dims: Optional tuple of dimension indices that MUST be
+            non-zero (raises AssertionError otherwise). When ``None`` (the
+            default) all dimensions are allowed to be zero and get clamped to 1
+            in the returned chunk shape.
+
+    Returns:
+        A chunk-safe tuple where any zero dimension is replaced with 1.
+    """
+    if require_nonzero_dims is not None:
+        for d in require_nonzero_dims:
+            assert shape[d] != 0, f"Dimension {d} must be non-zero, got shape {shape}"
+    return tuple(max(1, s) for s in shape)
+
+
 @dataclass
 class SequenceMeta(dataclasses_json.DataClassJsonMixin):
     """Strongly typed representation for V4 sequence metadata"""
@@ -252,7 +280,7 @@ class SequenceComponentGroupsWriter:
                     gd_group.create_dataset(
                         name,
                         data=array,
-                        chunks=array.shape,
+                        chunks=_normalize_chunks(array.shape),
                         compressor=compressor,
                     )
 
@@ -1127,7 +1155,7 @@ class BaseSensorComponentWriter(ComponentWriter):
                 name,
                 data=value,
                 # we are not accessing sub-ranges, so disable chunking
-                chunks=value.shape,
+                chunks=_normalize_chunks(value.shape),
                 # use compression that is fast to decode on modern hardware
                 compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
             )
@@ -1224,7 +1252,7 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
             ray_bundle_group.create_dataset(
                 name,
                 data=ray_data_data,
-                chunks=chunks,
+                chunks=_normalize_chunks(chunks),
                 # use compression that is fast to decode on modern hardware
                 compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
             )
@@ -1266,7 +1294,7 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
             ray_bundle_returns_group.create_dataset(
                 name,
                 data=return_data_data,
-                chunks=chunks,
+                chunks=_normalize_chunks(chunks),
                 # use compression that is fast to decode on modern hardware
                 compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
             )
@@ -1281,7 +1309,7 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
             "ray_bundle_returns_valid_mask_packed",
             data=valid_mask_packed,
             # we are not accessing sub-ranges, so disable chunking
-            chunks=valid_mask_packed.shape,
+            chunks=_normalize_chunks(valid_mask_packed.shape),
             # use compression that is fast to decode on modern hardware
             compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
         ).attrs.put({"n_returns": n_returns, "n_rays": n_rays})
@@ -1826,7 +1854,7 @@ class PointCloudsComponent:
             pc_group.create_dataset(
                 "xyz",
                 data=xyz,
-                chunks=xyz.shape,
+                chunks=_normalize_chunks(xyz.shape, require_nonzero_dims=(1,)),
                 compressor=compressor,
             )
 
@@ -1835,7 +1863,7 @@ class PointCloudsComponent:
                 pc_group.create_dataset(
                     attr_name,
                     data=attr_array,
-                    chunks=attr_array.shape,
+                    chunks=_normalize_chunks(attr_array.shape),
                     compressor=compressor,
                 )
 
@@ -1845,7 +1873,7 @@ class PointCloudsComponent:
                 gd_group.create_dataset(
                     gd_name,
                     data=gd_array,
-                    chunks=gd_array.shape,
+                    chunks=_normalize_chunks(gd_array.shape),
                     compressor=compressor,
                 )
 
@@ -1857,7 +1885,7 @@ class PointCloudsComponent:
             self._group.create_dataset(
                 "pc_timestamps_us",
                 data=ts_array,
-                chunks=(max(1, len(ts_array)),),
+                chunks=_normalize_chunks(ts_array.shape),
                 compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
             )
 
@@ -2039,7 +2067,12 @@ class CameraLabelsComponent:
                         q.quantized_dtype
                     )
 
-                label_group.create_dataset("data", data=stored, chunks=stored.shape, compressor=compressor)
+                label_group.create_dataset(
+                    "data",
+                    data=stored,
+                    chunks=_normalize_chunks(stored.shape, require_nonzero_dims=(0, 1)),
+                    compressor=compressor,
+                )
 
             elif self._descriptor.label_schema.encoding == types.LabelEncoding.IMAGE_ENCODED:
                 assert isinstance(data, bytes), "IMAGE_ENCODED encoding requires bytes"
@@ -2063,7 +2096,7 @@ class CameraLabelsComponent:
             self._group.create_dataset(
                 "timestamps_us",
                 data=ts_array,
-                chunks=(max(1, len(ts_array)),),
+                chunks=_normalize_chunks(ts_array.shape),
                 compressor=Blosc(cname="lz4", clevel=5, shuffle=Blosc.BITSHUFFLE),
             )
 
