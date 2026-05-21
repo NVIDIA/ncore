@@ -78,8 +78,10 @@ runs:
           - MODULE.bazel
           - deps/pip/requirements_3_8.txt
           - deps/pip/requirements_3_11.txt
-        # Only save caches on push (not on PRs) to avoid cache pollution
-        cache-save: ${{ github.event_name != 'pull_request' }}
+        # Only save caches on push to main/PR branches (not on merge_group) to avoid
+        # cache pollution. merge_group runs use ephemeral refs that are never reused,
+        # so caches saved there waste the 10 GB budget without any restore benefit.
+        cache-save: ${{ github.event_name == 'push' }}
         # Bump to force-invalidate all CI caches (e.g. after changing cache structure)
         cache-version: 2
         # Add custom bazelrc options: color / timestamps / conditionally skip GPU tests
