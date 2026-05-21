@@ -87,7 +87,7 @@ class BivariateWindshieldModel(ExternalDistortionModel):
     horizontal_poly: torch.Tensor  #: Polynomial used for horizontal component of distortion in forward direction
     vertical_poly: torch.Tensor  #: Polynomial used for vertical component of distortion in forward direction
 
-    # Backward correction coefficient (transforms internal to external)
+    # Backward correction coefficients (transforms internal to external)
     horizontal_poly_inverse: (
         torch.Tensor
     )  #: Polynomial used for horizontal component of distortion in backward direction
@@ -234,7 +234,7 @@ class CameraModel(BaseModel, ABC):
     external_distortion: Optional[
         ExternalDistortionModel
     ]  #: Source of distortion external to the camera (e.g. windshield). Can be empty (None) if no such source exists.
-    #  If a source exits, rays will be distorted prior to reaching the camera and it's associated lens distortion if applicable
+    #  If a source exists, rays will be distorted prior to reaching the camera and its associated lens distortion if applicable
 
     def __init__(
         self, camera_model_parameters: types.CameraModelParameters, device: Union[str, torch.device], dtype: torch.dtype
