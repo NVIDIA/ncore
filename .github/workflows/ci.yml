@@ -31,6 +31,8 @@ on:
     - 'pull-request/[0-9]+'
     tags:
     - '**'
+  merge_group:
+    branches: [main]
 
 permissions:
   contents: read

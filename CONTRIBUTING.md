@@ -140,6 +140,16 @@ PRs are merged via **rebase only** (no merge commits).
 
 Before submitting your PR, ensure your branch is _rebased_ on the latest `main` and is free of merge commits.
 
+### Merge Queue
+
+`main` is gated by GitHub's **merge queue**. Once your PR is approved and CI
+is green, click "Merge when ready" -- GitHub will rebase your branch on top of
+`main` plus any earlier queued PRs, re-run the required checks against that
+combined state, and only land the rebase if everything is still green. You do
+not need to manually rebase or re-run CI when another PR lands first. PRs that
+would conflict or fail after rebase are kicked back out of the queue
+automatically.
+
 ## Releases & Versioning
 
 NCore uses [Semantic Versioning](https://semver.org/) with versions determined automatically from [Conventional Commits](https://www.conventionalcommits.org/) via [cocogitto](https://docs.cocogitto.io/).

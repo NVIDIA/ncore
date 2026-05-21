@@ -21,6 +21,8 @@ name: Conventional Commits
 on:
   pull_request:
     branches: ['**']
+  merge_group:
+    branches: [main]
 
 permissions:
   contents: read
@@ -34,7 +36,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Required for cocogitto to access full commit history
-          ref: ${{ github.event.pull_request.head.sha }}  # Check PR HEAD, not merge commit
+          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
 
       - name: Check conventional commits
         uses: cocogitto/cocogitto-action@9a9fe03b31c47444290c0d7f9b1ee1b44ee13f20
