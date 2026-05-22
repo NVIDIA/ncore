@@ -15,5 +15,3 @@ bazel-*
 
 *.swp
 *.swo
-
-MODULE.bazel.lock
