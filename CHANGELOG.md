@@ -10,6 +10,38 @@ All notable changes to the NCore project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - - -
+
+## [v19.2.1](https://github.com/NVIDIA/ncore/compare/0cc85ea8a054470f223106ebf3ffe3a5d704c1e5..v19.2.1) - 2026-05-21
+
+### Highlights
+
+- Remove `ffmpeg` dependency in favor of `PyNvVideoCodec` for H.264 decode (used in PAI converter)
+
+- Support empty chunk arrays (some recent use cases might produce empty arrays, e.g., camera-labels)
+
+- Fix various security and static type issues
+
+#### ➕ Added
+- (**components**) support empty chunk arrays via _normalize_chunks - ([b4e9a3c](https://github.com/NVIDIA/ncore/commit/b4e9a3c7ba6981bacaaf82dbca563630cd2632ee)) - Janick Martinez Esturo
+- (**pai**) replace imageio-ffmpeg with PyNvVideoCodec for H.264 decode - ([711ff8e](https://github.com/NVIDIA/ncore/commit/711ff8ebf84c6e61376174daae545964884ab538)) - Janick Martinez Esturo
+#### 🪲 Fixed
+- (**ci**) restrict cache-save to push events only - ([808e776](https://github.com/NVIDIA/ncore/commit/808e776798c66835c8c1ca5f7bfca78b7b2a1e7b)) - Janick Martinez Esturo
+- (**components**) replace eval() with ast.literal_eval() for safe metadata parsing - ([e31874b](https://github.com/NVIDIA/ncore/commit/e31874ba2e8a23b0405e5ee4e50d19f31b66716a)) - Janick Martinez Esturo
+- (**components**) replace mutable default arguments with safe alternatives - ([499b509](https://github.com/NVIDIA/ncore/commit/499b5090186741ce99a9537ea2e3e62a4a4e49fe)) - Janick Martinez Esturo
+- (**types**) correct dtype validation in BivariateWindshieldModelParameters - ([0cc85ea](https://github.com/NVIDIA/ncore/commit/0cc85ea8a054470f223106ebf3ffe3a5d704c1e5)) - Janick Martinez Esturo
+#### 📚 Documentation
+- (**deps**) add licensing notes for imageio-ffmpeg dependency - ([6ea118e](https://github.com/NVIDIA/ncore/commit/6ea118eb423094d8b63871823057db6b251dc363)) - Janick Martinez Esturo
+- fix typos in windshield distortion model comments - ([59bfc70](https://github.com/NVIDIA/ncore/commit/59bfc708a6bcac1fd660391a933d71c262717f71)) - Janick Martinez Esturo
+#### ⚙️ CI
+- add merge_group triggers for GitHub merge queue - ([1a9889f](https://github.com/NVIDIA/ncore/commit/1a9889f6a8fef339ed35bec35077cc47161f6166)) - Janick Martinez Esturo
+#### 🏗️ Build
+- (**bazelignore**) Add .worktrees to .bazelignore - ([43c05b5](https://github.com/NVIDIA/ncore/commit/43c05b5239c9d0dc65135c13d1c273a62a7d1336)) - Janick Martinez Esturo
+#### 🔧 Chore
+- (**tools**) remove unused transform_point_cloud import - ([76ee08f](https://github.com/NVIDIA/ncore/commit/76ee08f72ce719d262764248132f7bd2750f4ce9)) - Janick Martinez Esturo
+- (**types**) add missing return type annotations across impl/ - ([19622dc](https://github.com/NVIDIA/ncore/commit/19622dc4346cd0ab48355c60e458dde9dd152e5b)) - Janick Martinez Esturo
+
+- - -
+
 ## [v19.2.0](https://github.com/NVIDIA/ncore/compare/d606bf47b50b5350562f485b6e4dd0a57c44fdef..v19.2.0) - 2026-05-12
 
 ### Highlights
