@@ -70,26 +70,20 @@ runs:
         bazelisk-cache: true
         # Store build cache per workflow
         disk-cache: ${{ github.workflow }}
-        # Share repository cache between workflows.
-        # The repo contents cache (--repo_contents_cache, enabled by default since Bazel 8.3.0)
-        # lives under the repository cache directory, so caching it here also persists
-        # cached repo contents (Python interpreters, pip wheels, etc.) across CI runs.
-        repository-cache: |
-          - MODULE.bazel
-          - deps/pip/requirements_3_8.txt
-          - deps/pip/requirements_3_11.txt
+        # Skip repository-cache: at ~12 GB it takes longer to download+extract than
+        # to let Bazel re-fetch wheels in parallel. The committed MODULE.bazel.lock
+        # eliminates PyPI index queries, and the disk-cache covers build actions.
         # Only save caches on push to main/PR branches (not on merge_group) to avoid
         # cache pollution. merge_group runs use ephemeral refs that are never reused,
         # so caches saved there waste the 10 GB budget without any restore benefit.
         cache-save: ${{ github.event_name == 'push' }}
         # Bump to force-invalidate all CI caches (e.g. after changing cache structure)
-        cache-version: 2
+        cache-version: 3
         # Add custom bazelrc options: color / timestamps / conditionally skip GPU tests
         bazelrc: |
             build --color=yes
             build --show_timestamps
             ${{ inputs.gpu-enabled != 'true' && 'test --config=no-gpu' || '' }}
-            common --repo_contents_cache=~/.cache/bazel-repo/contents
 
     # Ensure bazelisk is on PATH for subsequent steps. The setup-bazel action
     # uses core.addPath() which doesn't propagate through composite actions
