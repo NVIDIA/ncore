@@ -20,7 +20,7 @@ build --remote_instance_name ncore
 # Use the committed MODULE.bazel.lock to skip network resolution of module extensions.
 # This avoids ~2.5 min of PyPI Simple API fetches on every CI run.
 # If you change MODULE.bazel or deps/pip/requirements_*.txt, run:
-#   bazel mod deps --lockfile_mode=update
+#   bazel build //... --lockfile_mode=update --nobuild
 # and commit the updated MODULE.bazel.lock.
 common --lockfile_mode=error
 
