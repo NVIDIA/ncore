@@ -16,7 +16,12 @@
 # General public dependencies of ncore package independent of python version
 numpy
 dataclasses_json>=0.2.12 # deserialization fails with earlier versions
-pillow
+
+# pillow version rationale:
+# - 12.2.0 fixes CVE-2026-42311 (out-of-bounds write in decode.c/encode.c)
+# - 12.x dropped Python 3.8 support; last 3.8-compatible version is 10.4.0
+pillow>=12.2.0; python_version>="3.9"
+pillow; python_version<"3.9"
 
 # zarr version rationales:
 # - 2.17.0 contains crucial perf improvements ["Cache result of FSStore._fsspec_installed()" https://github.com/zarr-developers/zarr-python/pull/1581]
