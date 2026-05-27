@@ -18,4 +18,5 @@ bazel-out
 bazel-testlogs
 modules
 
+.venv
 .worktrees
