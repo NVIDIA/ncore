@@ -27,6 +27,8 @@ import scipy
 import scipy.linalg
 import torch
 
+from numpy.polynomial.polynomial import Polynomial
+
 from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.types import (
     BivariateWindshieldModelParameters,
@@ -1714,7 +1716,7 @@ class TestBivariateWindshieldModel(CommonTestCase):
 
 
 class TestOpenCVFisheyeMaxAngle(unittest.TestCase):
-    """Tests for OpenCVFisheyeCameraModel.compute_max_angle."""
+    """Tests for OpenCVFisheyeCameraModelParameters.compute_max_angle."""
 
     # Shared camera intrinsics (real-world ScanNet++ DSLR values)
     RESOLUTION = np.array([1752, 1168], dtype=np.uint64)
@@ -1724,7 +1726,7 @@ class TestOpenCVFisheyeMaxAngle(unittest.TestCase):
 
     def test_compute_max_angle_basic(self):
         """compute_max_angle returns a plausible angle for typical fisheye intrinsics."""
-        angle = OpenCVFisheyeCameraModel.compute_max_angle(
+        angle = OpenCVFisheyeCameraModelParameters.compute_max_angle(
             self.RESOLUTION, self.FOCAL_LENGTH, self.PRINCIPAL_POINT, self.RADIAL_COEFFS
         )
         # Should be a reasonable fisheye half-FOV (roughly 60-100 degrees)
@@ -1738,14 +1740,16 @@ class TestOpenCVFisheyeMaxAngle(unittest.TestCase):
         principal_point = np.array([1000.0, 1000.0], dtype=np.float32)  # centred
         radial_coeffs = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
 
-        angle = OpenCVFisheyeCameraModel.compute_max_angle(resolution, focal_length, principal_point, radial_coeffs)
+        angle = OpenCVFisheyeCameraModelParameters.compute_max_angle(
+            resolution, focal_length, principal_point, radial_coeffs
+        )
         # Farthest corner is at (0,0) or (2000,2000), distance = sqrt(1^2 + 1^2) = sqrt(2)
         expected = np.sqrt(2.0)  # normalised distance = corner distance / f = 1000/1000 * sqrt(2)
         self.assertAlmostEqual(angle, expected, places=5)
 
     def test_compute_max_angle_forward_inverse_consistency(self):
         """The computed angle, when passed through the forward polynomial, should give the max corner distance."""
-        angle = OpenCVFisheyeCameraModel.compute_max_angle(
+        angle = OpenCVFisheyeCameraModelParameters.compute_max_angle(
             self.RESOLUTION, self.FOCAL_LENGTH, self.PRINCIPAL_POINT, self.RADIAL_COEFFS
         )
 
@@ -1777,7 +1781,7 @@ class TestOpenCVFisheyeMaxAngle(unittest.TestCase):
 
     def test_json_round_trip(self):
         """Serialise and deserialise with a computed max_angle; the value should survive the round-trip."""
-        max_angle = OpenCVFisheyeCameraModel.compute_max_angle(
+        max_angle = OpenCVFisheyeCameraModelParameters.compute_max_angle(
             self.RESOLUTION, self.FOCAL_LENGTH, self.PRINCIPAL_POINT, self.RADIAL_COEFFS
         )
         original = OpenCVFisheyeCameraModelParameters(
@@ -1796,15 +1800,101 @@ class TestOpenCVFisheyeMaxAngle(unittest.TestCase):
     def test_asymmetric_principal_point(self):
         """max_angle picks the farthest corner, not the nearest."""
         # Principal point near top-left corner -> farthest corner is bottom-right
-        angle_tl = OpenCVFisheyeCameraModel.compute_max_angle(
+        angle_tl = OpenCVFisheyeCameraModelParameters.compute_max_angle(
             self.RESOLUTION, self.FOCAL_LENGTH, np.array([100.0, 100.0], dtype=np.float32), self.RADIAL_COEFFS
         )
         # Principal point near centre
-        angle_c = OpenCVFisheyeCameraModel.compute_max_angle(
+        angle_c = OpenCVFisheyeCameraModelParameters.compute_max_angle(
             self.RESOLUTION, self.FOCAL_LENGTH, np.array([876.0, 584.0], dtype=np.float32), self.RADIAL_COEFFS
         )
         # Off-centre principal point should give a larger max_angle
         self.assertGreater(angle_tl, angle_c)
+
+
+class TestOpenCVFisheyeMaxAngleMonotonicity(unittest.TestCase):
+    """Tests for the monotonicity-aware compute_max_angle on OpenCVFisheyeCameraModel."""
+
+    def test_non_monotone_polynomial_gives_reasonable_angle(self):
+        """The reported bug case: corners outside FOV should not produce angle > pi."""
+        # These intrinsics have a polynomial that folds before reaching the image corners
+        max_angle = OpenCVFisheyeCameraModelParameters.compute_max_angle(
+            np.array([1920, 1536], dtype=np.uint64),
+            np.array([449.191, 448.985], dtype=np.float32),
+            np.array([959.917, 767.244], dtype=np.float32),
+            np.array([0.145375, -0.0673299, 0.0201295, -0.00245998], dtype=np.float32),
+        )
+        # The old implementation returned 7.87 rad which is nonsense (> 2*pi)
+        # The angle must be less than pi (180 degrees) for any physical camera
+        self.assertLess(max_angle, np.pi)
+        # Should be a reasonable fisheye FOV (at least 45 degrees)
+        self.assertGreater(max_angle, np.deg2rad(45))
+
+    def test_non_monotone_polynomial_derivative_positive(self):
+        """The returned angle should be within the monotone region of the polynomial."""
+        radial_coeffs = np.array([0.145375, -0.0673299, 0.0201295, -0.00245998], dtype=np.float32)
+        max_angle = OpenCVFisheyeCameraModelParameters.compute_max_angle(
+            np.array([1920, 1536], dtype=np.uint64),
+            np.array([449.191, 448.985], dtype=np.float32),
+            np.array([959.917, 767.244], dtype=np.float32),
+            radial_coeffs,
+        )
+        # Build derivative polynomial for OpenCV fisheye:
+        # r(theta) = theta*(1 + k1*t^2 + k2*t^4 + k3*t^6 + k4*t^8)
+        # r'(theta) = 1 + 3*k1*t^2 + 5*k2*t^4 + 7*k3*t^6 + 9*k4*t^8
+        k1, k2, k3, k4 = radial_coeffs.astype(np.float64)
+        dfw_coeffs = np.array([1.0, 0.0, 3.0 * k1, 0.0, 5.0 * k2, 0.0, 7.0 * k3, 0.0, 9.0 * k4])
+        d_poly = Polynomial(dfw_coeffs)
+
+        # Verify derivative is non-negative at the returned angle (tolerance for floating point)
+        dr = d_poly(max_angle)
+        self.assertGreaterEqual(dr, -1e-10)
+
+    def test_well_behaved_polynomial_still_works(self):
+        """ScanNet++ intrinsics (well-behaved) should still give a plausible angle."""
+        angle = OpenCVFisheyeCameraModelParameters.compute_max_angle(
+            np.array([1752, 1168], dtype=np.uint64),
+            np.array([789.28, 789.46], dtype=np.float32),
+            np.array([883.03, 581.78], dtype=np.float32),
+            np.array([-0.0542, 0.0301, -0.0229, 0.0064], dtype=np.float32),
+        )
+        # Should still be in the 60-100 degree range (same as existing test)
+        self.assertGreater(angle, np.deg2rad(60))
+        self.assertLess(angle, np.deg2rad(100))
+
+    def test_monotonicity_guarantee_multiple_cameras(self):
+        """For various coefficient sets, verify monotonicity up to the returned angle."""
+        test_cases = [
+            # (resolution, focal, pp, radial_coeffs)
+            (
+                np.array([1920, 1536], dtype=np.uint64),
+                np.array([449.191, 448.985], dtype=np.float32),
+                np.array([959.917, 767.244], dtype=np.float32),
+                np.array([0.145375, -0.0673299, 0.0201295, -0.00245998], dtype=np.float32),
+            ),
+            (
+                np.array([1752, 1168], dtype=np.uint64),
+                np.array([789.28, 789.46], dtype=np.float32),
+                np.array([883.03, 581.78], dtype=np.float32),
+                np.array([-0.0542, 0.0301, -0.0229, 0.0064], dtype=np.float32),
+            ),
+            (
+                np.array([2000, 2000], dtype=np.uint64),
+                np.array([1000.0, 1000.0], dtype=np.float32),
+                np.array([1000.0, 1000.0], dtype=np.float32),
+                np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            ),
+        ]
+
+        for resolution, focal, pp, radial in test_cases:
+            max_angle = OpenCVFisheyeCameraModelParameters.compute_max_angle(resolution, focal, pp, radial)
+            k1, k2, k3, k4 = radial.astype(np.float64)
+            dfw_coeffs = np.array([1.0, 0.0, 3.0 * k1, 0.0, 5.0 * k2, 0.0, 7.0 * k3, 0.0, 9.0 * k4])
+            d_poly = Polynomial(dfw_coeffs)
+            # Sample derivative at many points up to max_angle
+            thetas = np.linspace(0, max_angle, 200)
+            for t in thetas:
+                dr = d_poly(t)
+                self.assertGreaterEqual(dr, -1e-10, f"Derivative negative at theta={t:.4f} for radial={radial}")
 
 
 if __name__ == "__main__":

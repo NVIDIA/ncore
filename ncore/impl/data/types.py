@@ -536,6 +536,58 @@ class OpenCVFisheyeCameraModelParameters(CameraModelParameters, dataclasses_json
             focal_length=self.focal_length * image_domain_scale_factors,
         )
 
+    @staticmethod
+    def compute_max_angle(
+        resolution: np.ndarray,
+        focal_length: np.ndarray,
+        principal_point: np.ndarray,
+        radial_coeffs: np.ndarray,
+    ) -> float:
+        """Estimate ``max_angle`` from the farthest image corner, respecting
+        monotonicity of the forward polynomial.
+
+        Finds the largest angle *theta* such that the OpenCV fisheye forward
+        distortion model
+
+        .. math::
+            r(\\theta) = \\theta\\,(1 + k_1\\theta^2 + k_2\\theta^4 + k_3\\theta^6 + k_4\\theta^8)
+
+        is monotonically increasing (i.e. :math:`r'(\\theta) > 0`) and
+        :math:`r(\\theta)` does not exceed the normalised pixel distance of
+        the farthest image corner.
+
+        Parameters
+        ----------
+        resolution : np.ndarray
+            Image resolution ``[width, height]`` (uint64 or int, ``[2,]``).
+        focal_length : np.ndarray
+            Focal lengths ``[fu, fv]`` (float32, ``[2,]``).
+        principal_point : np.ndarray
+            Principal point ``[cu, cv]`` (float32, ``[2,]``).
+        radial_coeffs : np.ndarray
+            Fisheye radial distortion coefficients ``[k1, k2, k3, k4]``
+            (float32, ``[4,]``).
+
+        Returns
+        -------
+        float
+            Maximum angle in radians.
+        """
+        # Normalised distance from principal point to each image corner
+        corners = np.array(
+            [[0, 0], [resolution[0], 0], [0, resolution[1]], [resolution[0], resolution[1]]],
+            dtype=np.float64,
+        )
+        normalised = (corners - principal_point) / focal_length
+        max_r: float = float(np.max(np.linalg.norm(normalised, axis=1)))
+
+        # Forward polynomial r(theta) = theta + k1*theta^3 + k2*theta^5 + k3*theta^7 + k4*theta^9
+        # Coefficients in standard form: [0, 1, 0, k1, 0, k2, 0, k3, 0, k4]
+        k = radial_coeffs
+        fw_poly = np.array([0.0, 1.0, 0.0, k[0], 0.0, k[1], 0.0, k[2], 0.0, k[3]])
+
+        return util.compute_max_angle_with_monotonicity(fw_poly, max_r)
+
 
 # Represents the collection of all concrete camera model parameter type
 ConcreteCameraModelParametersUnion = Union[

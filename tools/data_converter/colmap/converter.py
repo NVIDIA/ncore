@@ -49,7 +49,6 @@ from ncore.impl.data.types import (
     ShutterType,
 )
 from ncore.impl.data.v4.types import ComponentGroupAssignments
-from ncore.impl.sensors.camera import OpenCVFisheyeCameraModel
 from tools.data_converter.cli import cli
 
 
@@ -130,7 +129,7 @@ class ColmapCamera:
         if camera.camera_type == 5:
             resolution = np.array([width, height], dtype=np.uint64)
             radial_coeffs = np.array([camera.k1, camera.k2, camera.k3, camera.k4], dtype=np.float32)
-            max_angle = OpenCVFisheyeCameraModel.compute_max_angle(
+            max_angle = OpenCVFisheyeCameraModelParameters.compute_max_angle(
                 resolution, focal_length, principal_point, radial_coeffs
             )
             return OpenCVFisheyeCameraModelParameters(
