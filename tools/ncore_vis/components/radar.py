@@ -28,22 +28,19 @@ import logging
 
 from typing import Any, Dict, List, Tuple
 
-import matplotlib
 import numpy as np
 import viser
 
 from ncore.impl.common.transformations import HalfClosedInterval, transform_point_cloud
 from ncore.impl.data.types import FrameTimepoint
+from tools.colormaps import jet as jet_colormap
+from tools.colormaps import turbo as turbo_colormap
 from tools.ncore_vis.components.base import VisualizationComponent, register_component
 
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_POINT_COLOR: np.ndarray = np.array([0, 255, 0], dtype=np.uint8)
-
-# Pre-fetch colormaps once at module level.
-_JET_CMAP: matplotlib.colors.Colormap = matplotlib.colormaps["jet"]
-_TURBO_CMAP: matplotlib.colors.Colormap = matplotlib.colormaps["turbo"]
 
 # Supported color styles (no intensity or model element styles for radar).
 _COLOR_STYLES: List[str] = [
@@ -104,7 +101,7 @@ class RadarComponent(VisualizationComponent):
         self._fused_frame_step: int = 0
         self._fused_range: Tuple[int, int] = (0, 0)
         self._motion_comp: bool = True
-        self._range_cycle: float = 50.0
+        self._range_cycle: float = 25.0
         self._height_range: Tuple[float, float] = (-5.0, 15.0)
 
         # Early return if no radar sensors available (no empty tab).
@@ -150,7 +147,7 @@ class RadarComponent(VisualizationComponent):
                     min=5.0,
                     max=200.0,
                     step=1.0,
-                    initial_value=50.0,
+                    initial_value=25.0,
                 )
                 height_range_slider = self.client.gui.add_multi_slider(
                     "Height Range (m)",
@@ -504,8 +501,7 @@ class RadarComponent(VisualizationComponent):
         cycle = max(1.0, self._range_cycle)
         ranges = np.linalg.norm(points_sensor, axis=1)
         normalized = (ranges % cycle) / cycle
-        rgba = _JET_CMAP(normalized)
-        return (rgba[:, :3] * 255.0).astype(np.uint8)
+        return jet_colormap(normalized)
 
     def _color_height_turbo(self, points_world: np.ndarray) -> np.ndarray:
         """Color by world-frame Z height using the turbo colormap."""
@@ -513,8 +509,7 @@ class RadarComponent(VisualizationComponent):
         z_range = max(z_max - z_min, 0.01)
         z = points_world[:, 2]
         normalized = np.clip((z - z_min) / z_range, 0.0, 1.0)
-        rgba = _TURBO_CMAP(normalized)
-        return (rgba[:, :3] * 255.0).astype(np.uint8)
+        return turbo_colormap(normalized)
 
     def _color_timestamp(self, radar_id: str, frame_idx: int, n_points: int) -> np.ndarray:
         """Color by per-point timestamp within the frame using the turbo colormap."""
@@ -528,8 +523,7 @@ class RadarComponent(VisualizationComponent):
         ts_max = float(timestamps.max())
         ts_range = max(ts_max - ts_min, 1.0)
         normalized = (timestamps.astype(np.float64) - ts_min) / ts_range
-        rgba = _TURBO_CMAP(normalized)
-        return (rgba[:, :3] * 255.0).astype(np.uint8)
+        return turbo_colormap(normalized)
 
     def _color_metadata_field(self, radar_id: str, frame_idx: int, field_name: str, n_points: int) -> np.ndarray:
         """Color by a generic_data metadata field.
@@ -549,8 +543,7 @@ class RadarComponent(VisualizationComponent):
             v_max = float(values.max())
             v_range = max(v_max - v_min, 1e-9)
             normalized = (values - v_min) / v_range
-            rgba = _TURBO_CMAP(normalized)
-            return (rgba[:, :3] * 255.0).astype(np.uint8)
+            return turbo_colormap(normalized)
 
         # Multi-channel uint8: return as-is.
         if data.dtype == np.uint8:

@@ -15,47 +15,28 @@
 
 import dataclasses
 import logging
-import os
 
+from email.policy import default
 from pathlib import Path
 from typing import Optional, Tuple
 
 import click
-import matplotlib
-
-from ncore.impl.data.compat import LidarSensorProtocol, PointCloudsSourceProtocol, RayBundleSensorProtocol
-
-
-def _select_matplotlib_backend() -> None:
-    """Select the best available matplotlib backend.
-
-    Uses WebAgg for interactive display (opens plot in browser, no GUI toolkit required),
-    otherwise falls back to Agg (non-interactive, save-only).
-    """
-    if os.environ.get("MPLBACKEND"):
-        return  # respect explicit user override
-    if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
-        matplotlib.use("WebAgg")
-    else:
-        matplotlib.use("Agg")
-
-
-_select_matplotlib_backend()
-
+import cv2
 import numpy as np
 import tqdm
 
-from matplotlib import pyplot as plt
 from scipy.spatial.transform import Rotation as R
 
 from ncore.impl.common.transformations import MotionCompensator, se3_inverse, transform_point_cloud
 from ncore.impl.common.util import unpack_optional
 from ncore.impl.data import types
+from ncore.impl.data.compat import LidarSensorProtocol, PointCloudsSourceProtocol, RayBundleSensorProtocol
 from ncore.impl.data.util import padded_index_string
 from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 from ncore.impl.sensors.camera import CameraModel
 from ncore.impl.sensors.lidar import StructuredLidarModel
+from tools.colormaps import jet as jet_colormap
 
 
 try:
@@ -68,62 +49,37 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def _rgba(r: float) -> list[float]:
-    """Generate an RGBA color from a range value using the jet colormap."""
-    c = list(plt.get_cmap("jet")((r % 50.0) / 50.0))
-    c[-1] = 0.5  # alpha
-    return c
-
-
-_fig = None
-
-
 def _plot_points_on_image(
-    projected_points,
-    camera_image,
-    title: str = "",
-    point_size: float = 5.0,
-    show: bool = True,
-    save_path: Optional[str] = None,
+    projected_points: np.ndarray,
+    camera_image: np.ndarray,
+    point_size: float = 1.0,
+    range_cycle: float = 25.0,
+    save_path: str = "",
 ) -> None:
-    """Plot projected points on a camera image with range-based jet coloring.
+    """Render projected points on a camera image and write to disk.
+
+    Points are colored by range using the jet colormap. The output image has
+    the exact same resolution as the input camera image (no rescaling or
+    padding).
 
     Args:
         projected_points: [N, 3] numpy array with [camera_x, camera_y, range].
-        camera_image: Decoded camera image array.
-        title: Optional title for the plot.
-        point_size: Scatter point size.
-        show: Whether to display the plot interactively.
-        save_path: If provided, save the figure to this path.
+        camera_image: Decoded camera image array (H, W, 3), RGB uint8.
+        point_size: Radius of rendered points in pixels.
+        range_cycle: Range value at which the point color will cycle in the colormap (in meters).
+        save_path: Path to save the output PNG image.
     """
-    global _fig
-    if _fig is None:
-        _fig = plt.figure(figsize=(20, 12))
-    _fig.clf()
-    plt.imshow(camera_image)
-    plt.grid(visible=False)
-
-    xs = []
-    ys = []
-    colors = []
-    for point in projected_points:
-        xs.append(point[0])
-        ys.append(point[1])
-        colors.append(_rgba(point[2]))
-
-    if len(title):
-        plt.title(title)
-
-    plt.scatter(xs, ys, c=colors, s=point_size, edgecolors="none")
-    plt.axis("off")
-    plt.grid(visible=False)
-
-    if show:
-        plt.show()
-
-    if save_path:
-        plt.tight_layout()
-        plt.savefig(save_path)
+    output = camera_image.copy()
+    if projected_points.shape[0] > 0:
+        normalized = (projected_points[:, 2] % range_cycle) / range_cycle
+        colors = jet_colormap(normalized)
+        radius = max(1, int(round(point_size)))
+        for i in range(projected_points.shape[0]):
+            px = int(round(projected_points[i, 0]))
+            py = int(round(projected_points[i, 1]))
+            color = (int(colors[i, 0]), int(colors[i, 1]), int(colors[i, 2]))
+            cv2.circle(output, (px, py), radius, color, thickness=-1, lineType=cv2.LINE_AA)
+    cv2.imwrite(save_path, cv2.cvtColor(output, cv2.COLOR_RGB2BGR))
 
 
 def se3_matrix(se3_delta: np.ndarray) -> np.ndarray:
@@ -149,13 +105,13 @@ class CLIBaseParams:
     stop_frame: Optional[int]
     step_frame: Optional[int]
     point_size: float
+    range_cycle: float
     device: str
     pose: str
     output_dir: str
     external_distortion: bool
     file_prefix: str
     file_suffix: str
-    encode_images: bool
     enable_lidar_model: bool
     timestamp_image_names: bool
     open_consolidated: bool
@@ -197,9 +153,15 @@ class CLIBaseParams:
 @click.option("--open-consolidated/--no-open-consolidated", default=True, help="Pre-load shard meta-data?")
 @click.option(
     "--point-size",
+    type=click.FloatRange(min=1.0, max_open=True),
+    default=1.0,
+    help="Point radius in pixels",
+)
+@click.option(
+    "--range-cycle",
     type=click.FloatRange(min=0.0, max_open=True),
-    default=4.0,
-    help="Point size of rendering",
+    default=25.0,
+    help="Range value at which the point color will cycle in the colormap (in meters)",
 )
 @click.option(
     "--device", type=click.Choice(["cuda", "cpu"]), help="Device used for the computation via torch", default="cuda"
@@ -210,7 +172,7 @@ class CLIBaseParams:
     help="Per-pixel poses to use (rolling-shutter optimization, mean frame pose, start frame pose, end frame pose)",
     default="rolling-shutter",
 )
-@click.option("--output-dir", type=str, help="Path to the output folder if encoding images", required=False, default="")
+@click.option("--output-dir", type=str, help="Path to the output folder for rendered images", required=True)
 @click.option(
     "--external-distortion/--no-external-distortion",
     is_flag=True,
@@ -219,7 +181,6 @@ class CLIBaseParams:
 )
 @click.option("--file-prefix", type=str, help="Prefix to prepend to output files", required=False, default="")
 @click.option("--file-suffix", type=str, help="Suffix to append to output files", required=False, default="")
-@click.option("--encode-images/--no-encode-images", is_flag=True, default=False, help="Encode image files for frames")
 @click.option(
     "--lidar-model/--no-lidar-model",
     "enable_lidar_model",
@@ -337,6 +298,11 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
             assert lidar_model is not None, f"No structured lidar model available for sensor {source_id}"
             msg += " | with structured lidar model"
 
+    logger.info(msg)
+
+    output_path = Path(params.output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
     for frame_index in tqdm.tqdm(indices):
         # Get the camera timestamp and find the closest point cloud
         cam_timestamp_start_us = cam_sensor.get_frame_timestamp_us(frame_index, types.FrameTimepoint.START)
@@ -415,8 +381,6 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
             cam_sensor.get_frames_T_sensor_target("world", frame_index, types.FrameTimepoint.END)
         )
 
-        logger.info(msg)
-
         match params.pose:
             case "rolling-shutter":
                 world_point_projections = cam_model.world_points_to_image_points_shutter_pose(
@@ -455,26 +419,18 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
         transformed_points = transform_point_cloud(pc_xyz[valid_idx, None, :], trans_matrices).squeeze(1)
         dist_rs = np.linalg.norm(transformed_points, axis=1, keepdims=True)
 
-        save_path: Optional[Path] = None
-        if params.encode_images:
-            assert len(params.output_dir)
-
-            output_path = Path(params.output_dir)
-            output_path.mkdir(parents=True, exist_ok=True)
-
-            if params.timestamp_image_names:
-                save_path = output_path / (params.file_prefix + str(cam_timestamp_end_us) + params.file_suffix + ".png")
-            else:
-                save_path = output_path / (
-                    params.file_prefix + padded_index_string(frame_index) + params.file_suffix + ".png"
-                )
+        if params.timestamp_image_names:
+            save_path = output_path / (params.file_prefix + str(cam_timestamp_end_us) + params.file_suffix + ".png")
+        else:
+            save_path = output_path / (
+                params.file_prefix + padded_index_string(frame_index) + params.file_suffix + ".png"
+            )
 
         _plot_points_on_image(
             np.concatenate((image_point_coords[:, :2], dist_rs), axis=1),
             img_frame,
-            msg if not params.encode_images else "",
             point_size=params.point_size,
-            show=not params.encode_images,
+            range_cycle=params.range_cycle,
             save_path=str(save_path),
         )
 

@@ -22,6 +22,7 @@ Example invocation::
         -- \
         --source-id=lidar00 \
         --camera-id=camera01 \
+        --output-dir=<OUTPUT_FOLDER> \
         v4 \
         --component-group=<SEQUENCE_META.json>
 
@@ -31,6 +32,7 @@ Or with multiple component groups::
         -- \
         --source-id=lidar00 \
         --camera-id=camera01 \
+        --output-dir=<OUTPUT_FOLDER> \
         v4 \
         --component-group=<COMPONENT_GROUP0> \
         --component-group=<COMPONENT_GROUP1>

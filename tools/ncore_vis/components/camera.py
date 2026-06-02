@@ -23,7 +23,6 @@ import logging
 from typing import Any, Dict, List, Tuple
 
 import cv2
-import matplotlib
 import numpy as np
 import torch
 import viser
@@ -34,6 +33,8 @@ from ncore.impl.common.transformations import HalfClosedInterval, transform_poin
 from ncore.impl.data.types import FrameTimepoint, LabelCategory, LabelSource
 from ncore.impl.data.util import closest_index_sorted
 from ncore.impl.sensors.camera import CameraModel
+from tools.colormaps import jet as jet_colormap
+from tools.colormaps import turbo as turbo_colormap
 from tools.ncore_vis.components.base import VisualizationComponent, register_component
 from tools.ncore_vis.utils import se3_to_position_wxyz
 
@@ -78,10 +79,6 @@ _UNIT_CUBE_CORNERS: np.ndarray = np.array(
 # Projection mode choices for lidar overlay.
 _PROJECTION_MODES: List[str] = ["rolling-shutter", "mean", "start", "end"]
 
-# Pre-fetch colormaps for projection coloring.
-_JET_CMAP: matplotlib.colors.Colormap = matplotlib.colormaps["jet"]
-_TURBO_CMAP: matplotlib.colors.Colormap = matplotlib.colormaps["turbo"]
-
 # 20-color palette for segmentation visualization.
 _SEGMENTATION_PALETTE: np.ndarray = np.array(
     [
@@ -119,8 +116,7 @@ def _colorize_depth(data: np.ndarray, target_h: int, target_w: int) -> np.ndarra
     if vmax <= vmin:
         vmax = vmin + 1.0
     normalized = np.clip((data - vmin) / (vmax - vmin), 0.0, 1.0)
-    rgba = _TURBO_CMAP(normalized)
-    colored: np.ndarray = (rgba[:, :, :3] * 255.0).astype(np.uint8)
+    colored: np.ndarray = turbo_colormap(normalized)
     if colored.shape[:2] != (target_h, target_w):
         colored = cv2.resize(colored, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
     return colored
@@ -221,14 +217,14 @@ class CameraComponent(VisualizationComponent):
         self._project_lidar_id: str = ""
         self._project_mode: str = "rolling-shutter"
         self._project_point_size: int = 1
-        self._project_range_cycle: float = 50.0
+        self._project_range_cycle: float = 25.0
         self._project_radar: bool = False
         self._project_radar_id: str = "All"
         self._project_point_clouds: bool = False
         self._project_point_clouds_id: str = ""
         self._project_pc_point_size: int = 2
         self._project_pc_color_mode: str = "RGB"  # "RGB", "Range (jet)", "Height (turbo)"
-        self._project_pc_range_cycle: float = 50.0
+        self._project_pc_range_cycle: float = 25.0
         self._show_mask: bool = False
         self._mask_name: str = ""
         self._mask_opacity: float = 0.3
@@ -333,7 +329,7 @@ class CameraComponent(VisualizationComponent):
                         min=5.0,
                         max=200.0,
                         step=1.0,
-                        initial_value=50.0,
+                        initial_value=25.0,
                         hint="Range in meters before jet colormap wraps",
                     )
                     self._bind_lidar_projection_settings(
@@ -1036,8 +1032,7 @@ class CameraComponent(VisualizationComponent):
 
         # Compute colors for all points at once (image is RGB, no channel swap needed)
         normalized = (ranges % cycle) / cycle
-        rgba = _JET_CMAP(normalized)  # [N, 4]
-        colors_rgb = (rgba[:, :3] * 255.0).astype(np.uint8)
+        colors_rgb = jet_colormap(normalized)
 
         for i in range(image_coords.shape[0]):
             px = int(round(image_coords[i, 0]))
@@ -1120,8 +1115,7 @@ class CameraComponent(VisualizationComponent):
         point_radius = max(2, self._project_point_size + 1)
 
         normalized = (ranges % cycle) / cycle
-        rgba = _JET_CMAP(normalized)
-        colors_rgb = (rgba[:, :3] * 255.0).astype(np.uint8)
+        colors_rgb = jet_colormap(normalized)
 
         for i in range(image_coords.shape[0]):
             px = int(round(image_coords[i, 0]))
@@ -1214,8 +1208,7 @@ class CameraComponent(VisualizationComponent):
             h_min, h_max = heights.min(), heights.max()
             span = max(h_max - h_min, 1e-6)
             normalized = (heights - h_min) / span
-            rgba = _TURBO_CMAP(normalized)
-            colors_rgb = (rgba[:, :3] * 255.0).astype(np.uint8)
+            colors_rgb = turbo_colormap(normalized)
         else:
             # Range-based jet coloring (default / fallback)
             if projection.T_world_sensors is not None:
@@ -1225,8 +1218,7 @@ class CameraComponent(VisualizationComponent):
             else:
                 ranges = np.linalg.norm(valid_world, axis=1)
             normalized = (ranges % cycle) / cycle
-            rgba = _JET_CMAP(normalized)
-            colors_rgb = (rgba[:, :3] * 255.0).astype(np.uint8)
+            colors_rgb = jet_colormap(normalized)
 
         # Draw points on image (image is RGB, cv2.circle uses channel values as-is)
         output_image = image.copy()

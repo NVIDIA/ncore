@@ -21,21 +21,18 @@ import logging
 
 from typing import Any, Dict, List, Tuple
 
-import matplotlib
 import numpy as np
 import viser
 
 from ncore.impl.common.transformations import HalfClosedInterval
+from tools.colormaps import jet as jet_colormap
+from tools.colormaps import turbo as turbo_colormap
 from tools.ncore_vis.components.base import VisualizationComponent, register_component
 
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_POINT_COLOR: np.ndarray = np.array([0, 128, 255], dtype=np.uint8)
-
-# Pre-fetch colormaps once at module level.
-_TURBO_CMAP: matplotlib.colors.Colormap = matplotlib.colormaps["turbo"]
-_JET_CMAP: matplotlib.colors.Colormap = matplotlib.colormaps["jet"]
 
 # Base color styles (always available).
 _BASE_COLOR_STYLES: List[str] = [
@@ -114,7 +111,7 @@ class PointCloudsComponent(VisualizationComponent):
                 self._point_size[source_id] = 0.025
                 self._show_pc[source_id] = True
                 self._height_range[source_id] = (-5.0, 15.0)
-                self._range_cycle[source_id] = 50.0
+                self._range_cycle[source_id] = 25.0
 
                 with self.client.gui.add_folder(source_id):
                     pc_slider = self.client.gui.add_slider(
@@ -155,7 +152,7 @@ class PointCloudsComponent(VisualizationComponent):
                             min=5.0,
                             max=200.0,
                             step=1.0,
-                            initial_value=50.0,
+                            initial_value=25.0,
                         )
 
                     self._bind_callbacks(
@@ -344,13 +341,11 @@ class PointCloudsComponent(VisualizationComponent):
         z_range = max(z_max - z_min, 0.01)
         z = points_world[:, 2]
         normalized = np.clip((z - z_min) / z_range, 0.0, 1.0)
-        rgba = _TURBO_CMAP(normalized)
-        return (rgba[:, :3] * 255.0).astype(np.uint8)
+        return turbo_colormap(normalized)
 
     def _color_range_jet(self, points_world: np.ndarray, source_id: str) -> np.ndarray:
         """Color by range from origin using the jet colormap."""
         cycle = max(1.0, self._range_cycle[source_id])
         ranges = np.linalg.norm(points_world, axis=1)
         normalized = (ranges % cycle) / cycle
-        rgba = _JET_CMAP(normalized)
-        return (rgba[:, :3] * 255.0).astype(np.uint8)
+        return jet_colormap(normalized)

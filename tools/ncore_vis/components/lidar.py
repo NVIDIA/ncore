@@ -22,22 +22,19 @@ import logging
 
 from typing import Any, Dict, List, Optional, Tuple
 
-import matplotlib
 import numpy as np
 import viser
 
 from ncore.impl.common.transformations import HalfClosedInterval, transform_point_cloud
 from ncore.impl.data.types import FrameTimepoint
+from tools.colormaps import jet as jet_colormap
+from tools.colormaps import turbo as turbo_colormap
 from tools.ncore_vis.components.base import VisualizationComponent, register_component
 
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_POINT_COLOR: np.ndarray = np.array([255, 0, 0], dtype=np.uint8)
-
-# Pre-fetch colormaps once at module level.
-_JET_CMAP: matplotlib.colors.Colormap = matplotlib.colormaps["jet"]
-_TURBO_CMAP: matplotlib.colors.Colormap = matplotlib.colormaps["turbo"]
 
 # Supported color styles.
 _COLOR_STYLES: List[str] = [
@@ -122,7 +119,7 @@ class LidarComponent(VisualizationComponent):
                 self._is_fused[lidar_id] = False
                 self._fused_range[lidar_id] = (0, max_frame)
                 self._motion_comp[lidar_id] = True
-                self._range_cycle[lidar_id] = 50.0
+                self._range_cycle[lidar_id] = 25.0
                 self._height_range[lidar_id] = (-5.0, 15.0)
 
                 frame_step_init = min(40, max_frame) if max_frame > 0 else 0
@@ -160,7 +157,7 @@ class LidarComponent(VisualizationComponent):
                             min=5.0,
                             max=200.0,
                             step=1.0,
-                            initial_value=50.0,
+                            initial_value=25.0,
                         )
                         height_range_slider = self.client.gui.add_multi_slider(
                             "Height Range (m)",
@@ -535,8 +532,7 @@ class LidarComponent(VisualizationComponent):
         cycle = max(1.0, self._range_cycle[lidar_id])
         ranges = np.linalg.norm(points_sensor, axis=1)
         normalized = (ranges % cycle) / cycle
-        rgba = _JET_CMAP(normalized)  # [N, 4] float in [0, 1]
-        return (rgba[:, :3] * 255.0).astype(np.uint8)
+        return jet_colormap(normalized)
 
     def _color_height_turbo(self, points_world: np.ndarray, lidar_id: str) -> np.ndarray:
         """Color by world-frame Z height using the turbo colormap."""
@@ -544,8 +540,7 @@ class LidarComponent(VisualizationComponent):
         z_range = max(z_max - z_min, 0.01)
         z = points_world[:, 2]
         normalized = np.clip((z - z_min) / z_range, 0.0, 1.0)
-        rgba = _TURBO_CMAP(normalized)  # [N, 4] float in [0, 1]
-        return (rgba[:, :3] * 255.0).astype(np.uint8)
+        return turbo_colormap(normalized)
 
     def _color_timestamp(self, lidar_id: str, frame_idx: int, n_points: int) -> np.ndarray:
         """Color by per-point timestamp within the frame using the turbo colormap."""
@@ -559,8 +554,7 @@ class LidarComponent(VisualizationComponent):
         ts_max = float(timestamps.max())
         ts_range = max(ts_max - ts_min, 1.0)
         normalized = (timestamps.astype(np.float64) - ts_min) / ts_range
-        rgba = _TURBO_CMAP(normalized)
-        return (rgba[:, :3] * 255.0).astype(np.uint8)
+        return turbo_colormap(normalized)
 
     def _color_model_element(self, lidar_id: str, frame_idx: int, n_points: int, column: int) -> np.ndarray:
         """Color by model element index (row or column) using the turbo colormap.
@@ -584,8 +578,7 @@ class LidarComponent(VisualizationComponent):
         indices = model_elements[:, column].astype(np.float64)
         idx_max = max(float(indices.max()), 1.0)
         normalized = indices / idx_max
-        rgba = _TURBO_CMAP(normalized)
-        return (rgba[:, :3] * 255.0).astype(np.uint8)
+        return turbo_colormap(normalized)
 
     def _color_metadata_field(self, lidar_id: str, frame_idx: int, field_name: str, n_points: int) -> np.ndarray:
         """Color by a generic_data metadata field.
