@@ -39,6 +39,7 @@ The project is developed within the `NVIDIA SIL Lab <https://research.nvidia.com
    tools/data_vis
    tools/ncore_vis
    tools/ncore_sequence_meta
+   tools/lidar_model_eval
    conversions/index
 
 .. toctree::

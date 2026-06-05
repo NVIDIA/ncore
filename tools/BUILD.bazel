@@ -114,6 +114,27 @@ py_binary(
 #################################################################
 
 py_binary(
+    name = "ncore_evaluate_lidar_model",
+    srcs = ["ncore_evaluate_lidar_model.py"],
+    deps = [
+        ":pylib_cli",
+        ":pylib_colormaps",
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/data:pylib_types",
+        "//ncore/impl/data:pylib_util",
+        "//ncore/impl/data/v4:pylib_compat",
+        "//ncore/impl/sensors:pylib_camera",
+        "//ncore/impl/sensors:pylib_lidar",
+        requirement("click"),
+        requirement("numpy"),
+        requirement("opencv_python_headless"),
+        requirement("tqdm"),
+    ],
+)
+
+#################################################################
+
+py_binary(
     name = "ncore_export_colored_pc",
     srcs = ["ncore_export_colored_pc.py"],
     deps = [
