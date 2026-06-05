@@ -15,6 +15,7 @@
 
 load("@ncore_pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_library")
+load("//bazel/pytest:defs.bzl", "pytest_test")
 
 # targets might be used in various places also outside of the repo, so make it public
 package(default_visibility = ["//visibility:public"])
@@ -29,5 +30,30 @@ py_library(
     deps = [
         "//tools:pylib_debug",
         requirement("click"),
+    ],
+)
+
+#################################################################
+
+py_library(
+    name = "pylib_structured_lidar_model",
+    srcs = [
+        "structured_lidar_model.py",
+    ],
+    deps = [
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/data:pylib_types",
+        requirement("numpy"),
+    ],
+)
+
+pytest_test(
+    name = "pytest_structured_lidar_model",
+    srcs = ["structured_lidar_model_test.py"],
+    args = ["--import-mode=importlib"],
+    deps = [
+        ":pylib_structured_lidar_model",
+        requirement("numpy"),
+        requirement("parameterized"),
     ],
 )
