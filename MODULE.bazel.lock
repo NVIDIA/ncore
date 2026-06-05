@@ -1502,7 +1502,7 @@
         "bzlTransitiveDigest": "WyF2tLBpR8cyete55VmU+AwLC/mhDbnIlEdbVymbm04=",
         "usagesDigest": "DXk0VBJUK7HdLXJE59BVPG4lCTTPnHGNQg/SH9dTuVE=",
         "recordedFileInputs": {
-          "@@//deps/pip/requirements_3_11.txt": "25f80937bc0e6da6757b2896a8b78dc8e3c88776b24e0827bd3f0fb90eb6dc47",
+          "@@//deps/pip/requirements_3_11.txt": "01687dd0690641cecfe0cfa3a5a8ba2186f65112c34b4ab7b64caa55a416ae56",
           "@@//deps/pip/requirements_3_8.txt": "94c254d645dc1d0555f48e66fa499aa2efecfc5e547500cd4ed409aee28e8880",
           "@@rules_fuzzing+//fuzzing/requirements.txt": "ab04664be026b632a0d2a2446c4f65982b7654f5b6851d2f9d399a19b7242a5b",
           "@@rules_python+//tools/publish/requirements_darwin.txt": "095d4a4f3d639dce831cd493367631cd51b53665292ab20194bac2c0c6458fa8",
@@ -2082,6 +2082,60 @@
               "sha256": "123e894118b8a599fd80d3ec1a6d4cc7ce4e5882b1317a7e1ba69b56e95f991f",
               "urls": [
                 "https://files.pythonhosted.org/packages/76/9a/0e33f5054c54d349ea62c277191c020c2d6ef1d65ab2cb1993f91ec846d1/bleach-6.2.0.tar.gz"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_cachetools_py3_none_any_9876787e": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "cachetools-7.1.3-py3-none-any.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "cachetools==7.1.3",
+              "sha256": "9876787e2346e20584d5cca236cb5d49d04e7193de91646f230725b2e1e8b804",
+              "urls": [
+                "https://files.pythonhosted.org/packages/68/52/8ff5c1a3b2e821ced9b2998fba3ee29aa4525c0bf51e5ee55dd6f61a4ed5/cachetools-7.1.3-py3-none-any.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_cachetools_sdist_135cfe94": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/cu128/torch"
+              ],
+              "filename": "cachetools-7.1.3.tar.gz",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "cachetools==7.1.3",
+              "sha256": "135cfe944bc3c1e805505f65dae0bef375a2f96261171ab66c79ef77d0bda39d",
+              "urls": [
+                "https://files.pythonhosted.org/packages/8f/c1/67cfb86aa21144796ff51068326d467fbef8ee42f8d08a3a8a926106cf0c/cachetools-7.1.3.tar.gz"
               ]
             }
           },
@@ -2739,6 +2793,306 @@
               ]
             }
           },
+          "ncore_pip_deps_311_contourpy_cp311_cp311_macosx_10_9_x86_64_3e8b974d": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "contourpy-1.3.1-cp311-cp311-macosx_10_9_x86_64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "contourpy==1.3.1",
+              "sha256": "3e8b974d8db2c5610fb4e76307e265de0edb655ae8169e8b21f41807ccbeec4b",
+              "urls": [
+                "https://files.pythonhosted.org/packages/12/bb/11250d2906ee2e8b466b5f93e6b19d525f3e0254ac8b445b56e618527718/contourpy-1.3.1-cp311-cp311-macosx_10_9_x86_64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_contourpy_cp311_cp311_macosx_11_0_arm64_20914c8c": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "contourpy-1.3.1-cp311-cp311-macosx_11_0_arm64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "contourpy==1.3.1",
+              "sha256": "20914c8c973f41456337652a6eeca26d2148aa96dd7ac323b74516988bea89fc",
+              "urls": [
+                "https://files.pythonhosted.org/packages/67/71/1e6e95aee21a500415f5d2dbf037bf4567529b6a4e986594d7026ec5ae90/contourpy-1.3.1-cp311-cp311-macosx_11_0_arm64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_contourpy_cp311_cp311_manylinux_2_17_aarch64_19d40d37": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "contourpy-1.3.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "contourpy==1.3.1",
+              "sha256": "19d40d37c1c3a4961b4619dd9d77b12124a453cc3d02bb31a07d58ef684d3d86",
+              "urls": [
+                "https://files.pythonhosted.org/packages/31/2c/b88986e8d79ac45efe9d8801ae341525f38e087449b6c2f2e6050468a42c/contourpy-1.3.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_contourpy_cp311_cp311_manylinux_2_17_ppc64le_113231fe": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "contourpy-1.3.1-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "contourpy==1.3.1",
+              "sha256": "113231fe3825ebf6f15eaa8bc1f5b0ddc19d42b733345eae0934cb291beb88b6",
+              "urls": [
+                "https://files.pythonhosted.org/packages/c4/18/65280989b151fcf33a8352f992eff71e61b968bef7432fbfde3a364f0730/contourpy-1.3.1-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_contourpy_cp311_cp311_manylinux_2_17_s390x_4dbbc03a": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "contourpy-1.3.1-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "contourpy==1.3.1",
+              "sha256": "4dbbc03a40f916a8420e420d63e96a1258d3d1b58cbdfd8d1f07b49fcbd38e85",
+              "urls": [
+                "https://files.pythonhosted.org/packages/f5/c7/5fd0146c93220dbfe1a2e0f98969293b86ca9bc041d6c90c0e065f4619ad/contourpy-1.3.1-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_contourpy_cp311_cp311_manylinux_2_17_x86_64_3a04ecd6": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "contourpy-1.3.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "contourpy==1.3.1",
+              "sha256": "3a04ecd68acbd77fa2d39723ceca4c3197cb2969633836ced1bea14e219d077c",
+              "urls": [
+                "https://files.pythonhosted.org/packages/85/fc/7fa5d17daf77306840a4e84668a48ddff09e6bc09ba4e37e85ffc8e4faa3/contourpy-1.3.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_contourpy_cp311_cp311_musllinux_1_2_aarch64_c414fc1e": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "contourpy-1.3.1-cp311-cp311-musllinux_1_2_aarch64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "contourpy==1.3.1",
+              "sha256": "c414fc1ed8ee1dbd5da626cf3710c6013d3d27456651d156711fa24f24bd1291",
+              "urls": [
+                "https://files.pythonhosted.org/packages/ef/e7/104065c8270c7397c9571620d3ab880558957216f2b5ebb7e040f85eeb22/contourpy-1.3.1-cp311-cp311-musllinux_1_2_aarch64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_contourpy_cp311_cp311_musllinux_1_2_x86_64_31c1b55c": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "contourpy-1.3.1-cp311-cp311-musllinux_1_2_x86_64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "contourpy==1.3.1",
+              "sha256": "31c1b55c1f34f80557d3830d3dd93ba722ce7e33a0b472cba0ec3b6535684d8f",
+              "urls": [
+                "https://files.pythonhosted.org/packages/e2/4a/c788d0bdbf32c8113c2354493ed291f924d4793c4a2e85b69e737a21a658/contourpy-1.3.1-cp311-cp311-musllinux_1_2_x86_64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_contourpy_cp311_cp311_win_amd64_b2bdca22": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "contourpy-1.3.1-cp311-cp311-win_amd64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "contourpy==1.3.1",
+              "sha256": "b2bdca22a27e35f16794cf585832e542123296b4687f9fd96822db6bae17bfc9",
+              "urls": [
+                "https://files.pythonhosted.org/packages/a8/7e/cd93cab453720a5d6cb75588cc17dcdc08fc3484b9de98b885924ff61900/contourpy-1.3.1-cp311-cp311-win_amd64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_contourpy_sdist_dfd97abd": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/cu128/torch"
+              ],
+              "filename": "contourpy-1.3.1.tar.gz",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "contourpy==1.3.1",
+              "sha256": "dfd97abd83335045a913e3bcc4a09c0ceadbe66580cf573fe961f4a825efa699",
+              "urls": [
+                "https://files.pythonhosted.org/packages/25/c2/fc7193cc5383637ff390a712e88e4ded0452c9fbcf84abe3de5ea3df1866/contourpy-1.3.1.tar.gz"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_cycler_py3_none_any_85cef7cf": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "cycler-0.12.1-py3-none-any.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "cycler==0.12.1",
+              "sha256": "85cef7cff222d8644161529808465972e51340599459b8ac3ccbac5a854e0d30",
+              "urls": [
+                "https://files.pythonhosted.org/packages/e7/05/c19819d5e3d95294a6f5947fb9b9629efb316b96de511b418c53d245aae6/cycler-0.12.1-py3-none-any.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_cycler_sdist_88bb128f": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/cu128/torch"
+              ],
+              "filename": "cycler-0.12.1.tar.gz",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "cycler==0.12.1",
+              "sha256": "88bb128f02ba341da8ef447245a9e138fae777f6a23943da4540077d3601eb1c",
+              "urls": [
+                "https://files.pythonhosted.org/packages/a9/95/a3dbbb5028f35eafb79008e7522a75244477d2838f38cbb722248dabc2a8/cycler-0.12.1.tar.gz"
+              ]
+            }
+          },
           "ncore_pip_deps_311_dataclasses_json_py3_none_any_0dbf33f2": {
             "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
             "attributes": {
@@ -3078,6 +3432,60 @@
               "sha256": "422b6f6d859da6f2ef57857761bfb392480502a64c3028ca9bbe86085d72115d",
               "urls": [
                 "https://files.pythonhosted.org/packages/98/97/06afe62762c9a8a86af0cfb7bfdab22a43ad17138b07af5b1a58442690a2/deprecated-1.2.18.tar.gz"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_descartes_py2_none_any_b7e412e7": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "descartes-1.1.0-py2-none-any.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "descartes==1.1.0",
+              "sha256": "b7e412e7e6e294412f1d0f661f187babc970088c2456089e6801eebb043c2e1b",
+              "urls": [
+                "https://files.pythonhosted.org/packages/e7/29/b23b57c92a1cf58da25070c10cab90fb38de22523ef7bdc76acdad717645/descartes-1.1.0-py2-none-any.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_descartes_sdist_135a5021": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/cu128/torch"
+              ],
+              "filename": "descartes-1.1.0.tar.gz",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "descartes==1.1.0",
+              "sha256": "135a502146af5ed6ff359975e2ebc5fa4b71b5432c355c2cafdc6dea1337035b",
+              "urls": [
+                "https://files.pythonhosted.org/packages/1d/6f/81735a30432b74f41db6754dd13869021ccfed3088d1cf7a6cfc0af9ac49/descartes-1.1.0.tar.gz"
               ]
             }
           },
@@ -3543,6 +3951,60 @@
               ]
             }
           },
+          "ncore_pip_deps_311_fire_py3_none_any_e43fd8a5": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "fire-0.7.1-py3-none-any.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "fire==0.7.1",
+              "sha256": "e43fd8a5033a9001e7e2973bab96070694b9f12f2e0ecf96d4683971b5ab1882",
+              "urls": [
+                "https://files.pythonhosted.org/packages/e5/4c/93d0f85318da65923e4b91c1c2ff03d8a458cbefebe3bc612a6693c7906d/fire-0.7.1-py3-none-any.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_fire_sdist_3b208f05": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/cu128/torch"
+              ],
+              "filename": "fire-0.7.1.tar.gz",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "fire==0.7.1",
+              "sha256": "3b208f05c736de98fb343310d090dcc4d8c78b2a89ea4f32b837c586270a9cbf",
+              "urls": [
+                "https://files.pythonhosted.org/packages/c0/00/f8d10588d2019d6d6452653def1ee807353b21983db48550318424b5ff18/fire-0.7.1.tar.gz"
+              ]
+            }
+          },
           "ncore_pip_deps_311_flatbuffers_py2_none_any_7634f50c": {
             "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
             "attributes": {
@@ -3564,6 +4026,228 @@
               "sha256": "7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4",
               "urls": [
                 "https://files.pythonhosted.org/packages/e8/2d/d2a548598be01649e2d46231d151a6c56d10b964d94043a335ae56ea2d92/flatbuffers-25.12.19-py2.py3-none-any.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_fonttools_cp311_cp311_macosx_10_9_universal2_7ef04bc7": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "fonttools-4.56.0-cp311-cp311-macosx_10_9_universal2.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "fonttools==4.56.0",
+              "sha256": "7ef04bc7827adb7532be3d14462390dd71287644516af3f1e67f1e6ff9c6d6df",
+              "urls": [
+                "https://files.pythonhosted.org/packages/35/56/a2f3e777d48fcae7ecd29de4d96352d84e5ea9871e5f3fc88241521572cf/fonttools-4.56.0-cp311-cp311-macosx_10_9_universal2.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_fonttools_cp311_cp311_macosx_10_9_x86_64_ffda9b8c": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "fonttools-4.56.0-cp311-cp311-macosx_10_9_x86_64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "fonttools==4.56.0",
+              "sha256": "ffda9b8cd9cb8b301cae2602ec62375b59e2e2108a117746f12215145e3f786c",
+              "urls": [
+                "https://files.pythonhosted.org/packages/71/85/d483e9c4e5ed586b183bf037a353e8d766366b54fd15519b30e6178a6a6e/fonttools-4.56.0-cp311-cp311-macosx_10_9_x86_64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_fonttools_cp311_cp311_manylinux_2_17_aarch64_e2e993e8": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "fonttools-4.56.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "fonttools==4.56.0",
+              "sha256": "e2e993e8db36306cc3f1734edc8ea67906c55f98683d6fd34c3fc5593fdbba4c",
+              "urls": [
+                "https://files.pythonhosted.org/packages/09/67/060473b832b2fade03c127019794df6dc02d9bc66fa4210b8e0d8a99d1e5/fonttools-4.56.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_fonttools_cp311_cp311_manylinux_2_17_x86_64_003548ea": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "fonttools-4.56.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "fonttools==4.56.0",
+              "sha256": "003548eadd674175510773f73fb2060bb46adb77c94854af3e0cc5bc70260049",
+              "urls": [
+                "https://files.pythonhosted.org/packages/28/e9/47c02d5a7027e8ed841ab6a10ca00c93dadd5f16742f1af1fa3f9978adf4/fonttools-4.56.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_fonttools_cp311_cp311_musllinux_1_2_aarch64_bd982582": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "fonttools-4.56.0-cp311-cp311-musllinux_1_2_aarch64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "fonttools==4.56.0",
+              "sha256": "bd9825822e7bb243f285013e653f6741954d8147427aaa0324a862cdbf4cbf62",
+              "urls": [
+                "https://files.pythonhosted.org/packages/bf/8a/221d456d1afb8ca043cfd078f59f187ee5d0a580f4b49351b9ce95121f57/fonttools-4.56.0-cp311-cp311-musllinux_1_2_aarch64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_fonttools_cp311_cp311_musllinux_1_2_x86_64_b23d30a2": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "fonttools-4.56.0-cp311-cp311-musllinux_1_2_x86_64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "fonttools==4.56.0",
+              "sha256": "b23d30a2c0b992fb1c4f8ac9bfde44b5586d23457759b6cf9a787f1a35179ee0",
+              "urls": [
+                "https://files.pythonhosted.org/packages/a4/8c/e503863adf7a6aeff7b960e2f66fa44dd0c29a7a8b79765b2821950d7b05/fonttools-4.56.0-cp311-cp311-musllinux_1_2_x86_64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_fonttools_cp311_cp311_win_amd64_14a3e3e6": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "fonttools-4.56.0-cp311-cp311-win_amd64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "fonttools==4.56.0",
+              "sha256": "14a3e3e6b211660db54ca1ef7006401e4a694e53ffd4553ab9bc87ead01d0f05",
+              "urls": [
+                "https://files.pythonhosted.org/packages/3b/90/4926e653041c4116ecd43e50e3c79f5daae6dcafc58ceb64bc4f71dd4924/fonttools-4.56.0-cp311-cp311-win_amd64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_fonttools_py3_none_any_1088182f": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "fonttools-4.56.0-py3-none-any.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "fonttools==4.56.0",
+              "sha256": "1088182f68c303b50ca4dc0c82d42083d176cba37af1937e1a976a31149d4d14",
+              "urls": [
+                "https://files.pythonhosted.org/packages/bf/ff/44934a031ce5a39125415eb405b9efb76fe7f9586b75291d66ae5cbfc4e6/fonttools-4.56.0-py3-none-any.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_fonttools_sdist_a114d156": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/cu128/torch"
+              ],
+              "filename": "fonttools-4.56.0.tar.gz",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "fonttools==4.56.0",
+              "sha256": "a114d1567e1a1586b7e9e7fc2ff686ca542a82769a296cef131e4c4af51e58f4",
+              "urls": [
+                "https://files.pythonhosted.org/packages/1c/8c/9ffa2a555af0e5e5d0e2ed7fdd8c9bef474ed676995bb4c57c9cd0014248/fonttools-4.56.0.tar.gz"
               ]
             }
           },
@@ -4647,6 +5331,60 @@
               ]
             }
           },
+          "ncore_pip_deps_311_joblib_py3_none_any_5fc3c503": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "joblib-1.5.3-py3-none-any.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "joblib==1.5.3",
+              "sha256": "5fc3c5039fc5ca8c0276333a188bbd59d6b7ab37fe6632daa76bc7f9ec18e713",
+              "urls": [
+                "https://files.pythonhosted.org/packages/7b/91/984aca2ec129e2757d1e4e3c81c3fcda9d0f85b74670a094cc443d9ee949/joblib-1.5.3-py3-none-any.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_joblib_sdist_8561a326": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/cu128/torch"
+              ],
+              "filename": "joblib-1.5.3.tar.gz",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "joblib==1.5.3",
+              "sha256": "8561a3269e6801106863fd0d6d84bb737be9e7631e33aaed3fb9ce5953688da3",
+              "urls": [
+                "https://files.pythonhosted.org/packages/41/f2/d34e8b3a08a9cc79a50b2208a93dce981fe615b64d5a4d4abee421d898df/joblib-1.5.3.tar.gz"
+              ]
+            }
+          },
           "ncore_pip_deps_311_jsonschema_py3_none_any_fbadb6f8": {
             "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
             "attributes": {
@@ -4968,6 +5706,324 @@
               "sha256": "ef479173102ad29db89b53c232efdc3fb5ad57c28bc27ead59f3e78a1eecd05b",
               "urls": [
                 "https://files.pythonhosted.org/packages/35/e7/97a7664581b73e4f9ff1d3a767a493b6ac5d3e0ed1926bd2b6b2c8bbccd7/keras-3.14.1.tar.gz"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_kiwisolver_cp311_cp311_macosx_10_9_universal2_a4d36019": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "kiwisolver-1.4.8-cp311-cp311-macosx_10_9_universal2.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "kiwisolver==1.4.8",
+              "sha256": "a4d3601908c560bdf880f07d94f31d734afd1bb71e96585cace0e38ef44c6d84",
+              "urls": [
+                "https://files.pythonhosted.org/packages/da/ed/c913ee28936c371418cb167b128066ffb20bbf37771eecc2c97edf8a6e4c/kiwisolver-1.4.8-cp311-cp311-macosx_10_9_universal2.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_kiwisolver_cp311_cp311_macosx_10_9_x86_64_856b269c": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "kiwisolver-1.4.8-cp311-cp311-macosx_10_9_x86_64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "kiwisolver==1.4.8",
+              "sha256": "856b269c4d28a5c0d5e6c1955ec36ebfd1651ac00e1ce0afa3e28da95293b561",
+              "urls": [
+                "https://files.pythonhosted.org/packages/4c/45/4a7f896f7467aaf5f56ef093d1f329346f3b594e77c6a3c327b2d415f521/kiwisolver-1.4.8-cp311-cp311-macosx_10_9_x86_64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_kiwisolver_cp311_cp311_macosx_11_0_arm64_c2b9a96e": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "kiwisolver-1.4.8-cp311-cp311-macosx_11_0_arm64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "kiwisolver==1.4.8",
+              "sha256": "c2b9a96e0f326205af81a15718a9073328df1173a2619a68553decb7097fd5d7",
+              "urls": [
+                "https://files.pythonhosted.org/packages/5f/b4/c12b3ac0852a3a68f94598d4c8d569f55361beef6159dce4e7b624160da2/kiwisolver-1.4.8-cp311-cp311-macosx_11_0_arm64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_kiwisolver_cp311_cp311_manylinux_2_17_aarch64_dace81d2": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "kiwisolver-1.4.8-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "kiwisolver==1.4.8",
+              "sha256": "dace81d28c787956bfbfbbfd72fdcef014f37d9b48830829e488fdb32b49d954",
+              "urls": [
+                "https://files.pythonhosted.org/packages/8d/bf/b4b169b050c8421a7c53ea1ea74e4ef9c335ee9013216c558a047f162d20/kiwisolver-1.4.8-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_kiwisolver_cp311_cp311_manylinux_2_17_ppc64le_11e1022b": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "kiwisolver-1.4.8-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "kiwisolver==1.4.8",
+              "sha256": "11e1022b524bd48ae56c9b4f9296bce77e15a2e42a502cceba602f804b32bb79",
+              "urls": [
+                "https://files.pythonhosted.org/packages/66/5a/e13bd341fbcf73325ea60fdc8af752addf75c5079867af2e04cc41f34434/kiwisolver-1.4.8-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_kiwisolver_cp311_cp311_manylinux_2_17_s390x_3b9b4d28": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "kiwisolver-1.4.8-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "kiwisolver==1.4.8",
+              "sha256": "3b9b4d2892fefc886f30301cdd80debd8bb01ecdf165a449eb6e78f79f0fabd6",
+              "urls": [
+                "https://files.pythonhosted.org/packages/9b/4f/5955dcb376ba4a830384cc6fab7d7547bd6759fe75a09564910e9e3bb8ea/kiwisolver-1.4.8-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_kiwisolver_cp311_cp311_manylinux_2_17_x86_64_3a96c0e7": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "kiwisolver-1.4.8-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "kiwisolver==1.4.8",
+              "sha256": "3a96c0e790ee875d65e340ab383700e2b4891677b7fcd30a699146f9384a2bb0",
+              "urls": [
+                "https://files.pythonhosted.org/packages/3a/97/5edbed69a9d0caa2e4aa616ae7df8127e10f6586940aa683a496c2c280b9/kiwisolver-1.4.8-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_kiwisolver_cp311_cp311_musllinux_1_2_aarch64_23454ff0": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "kiwisolver-1.4.8-cp311-cp311-musllinux_1_2_aarch64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "kiwisolver==1.4.8",
+              "sha256": "23454ff084b07ac54ca8be535f4174170c1094a4cff78fbae4f73a4bcc0d4dab",
+              "urls": [
+                "https://files.pythonhosted.org/packages/13/fc/e756382cb64e556af6c1809a1bbb22c141bbc2445049f2da06b420fe52bf/kiwisolver-1.4.8-cp311-cp311-musllinux_1_2_aarch64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_kiwisolver_cp311_cp311_musllinux_1_2_ppc64le_b21dbe16": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "kiwisolver-1.4.8-cp311-cp311-musllinux_1_2_ppc64le.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "kiwisolver==1.4.8",
+              "sha256": "b21dbe165081142b1232a240fc6383fd32cdd877ca6cc89eab93e5f5883e1c25",
+              "urls": [
+                "https://files.pythonhosted.org/packages/e9/39/483558c2a913ab8384d6e4b66a932406f87c95a6080112433da5ed668559/kiwisolver-1.4.8-cp311-cp311-musllinux_1_2_ppc64le.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_kiwisolver_cp311_cp311_musllinux_1_2_s390x_768cade2": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "kiwisolver-1.4.8-cp311-cp311-musllinux_1_2_s390x.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "kiwisolver==1.4.8",
+              "sha256": "768cade2c2df13db52475bd28d3a3fac8c9eff04b0e9e2fda0f3760f20b3f7fc",
+              "urls": [
+                "https://files.pythonhosted.org/packages/01/aa/efad1fbca6570a161d29224f14b082960c7e08268a133fe5dc0f6906820e/kiwisolver-1.4.8-cp311-cp311-musllinux_1_2_s390x.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_kiwisolver_cp311_cp311_musllinux_1_2_x86_64_d47cfb26": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "kiwisolver-1.4.8-cp311-cp311-musllinux_1_2_x86_64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "kiwisolver==1.4.8",
+              "sha256": "d47cfb2650f0e103d4bf68b0b5804c68da97272c84bb12850d877a95c056bd67",
+              "urls": [
+                "https://files.pythonhosted.org/packages/c9/4f/15988966ba46bcd5ab9d0c8296914436720dd67fca689ae1a75b4ec1c72f/kiwisolver-1.4.8-cp311-cp311-musllinux_1_2_x86_64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_kiwisolver_cp311_cp311_win_amd64_ed33ca20": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "kiwisolver-1.4.8-cp311-cp311-win_amd64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "kiwisolver==1.4.8",
+              "sha256": "ed33ca2002a779a2e20eeb06aea7721b6e47f2d4b8a8ece979d8ba9e2a167e34",
+              "urls": [
+                "https://files.pythonhosted.org/packages/2d/27/bdf1c769c83f74d98cbc34483a972f221440703054894a37d174fba8aa68/kiwisolver-1.4.8-cp311-cp311-win_amd64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_kiwisolver_sdist_23d5f023": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/cu128/torch"
+              ],
+              "filename": "kiwisolver-1.4.8.tar.gz",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "kiwisolver==1.4.8",
+              "sha256": "23d5f023bdc8c7e54eb65f03ca5d5bb25b601eac4d7f1a042888a1f45237987e",
+              "urls": [
+                "https://files.pythonhosted.org/packages/82/59/7c91426a8ac292e1cdd53a63b6d9439abd573c875c3f92c146767dd33faf/kiwisolver-1.4.8.tar.gz"
               ]
             }
           },
@@ -6195,6 +7251,150 @@
               ]
             }
           },
+          "ncore_pip_deps_311_matplotlib_cp311_cp311_macosx_10_12_x86_64_fd44fc75": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "matplotlib-3.10.0-cp311-cp311-macosx_10_12_x86_64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "matplotlib==3.10.0",
+              "sha256": "fd44fc75522f58612ec4a33958a7e5552562b7705b42ef1b4f8c0818e304a363",
+              "urls": [
+                "https://files.pythonhosted.org/packages/0c/f1/e37f6c84d252867d7ddc418fff70fc661cfd363179263b08e52e8b748e30/matplotlib-3.10.0-cp311-cp311-macosx_10_12_x86_64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_matplotlib_cp311_cp311_macosx_11_0_arm64_c58a9622": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "matplotlib-3.10.0-cp311-cp311-macosx_11_0_arm64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "matplotlib==3.10.0",
+              "sha256": "c58a9622d5dbeb668f407f35f4e6bfac34bb9ecdcc81680c04d0258169747997",
+              "urls": [
+                "https://files.pythonhosted.org/packages/c7/8b/92e9da1f28310a1f6572b5c55097b0c0ceb5e27486d85fb73b54f5a9b939/matplotlib-3.10.0-cp311-cp311-macosx_11_0_arm64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_matplotlib_cp311_cp311_manylinux_2_17_aarch64_845d9656": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "matplotlib-3.10.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "matplotlib==3.10.0",
+              "sha256": "845d96568ec873be63f25fa80e9e7fae4be854a66a7e2f0c8ccc99e94a8bd4ef",
+              "urls": [
+                "https://files.pythonhosted.org/packages/c5/cb/49e83f0fd066937a5bd3bc5c5d63093703f3637b2824df8d856e0558beef/matplotlib-3.10.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_matplotlib_cp311_cp311_manylinux_2_17_x86_64_5439f4c5": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "matplotlib-3.10.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "matplotlib==3.10.0",
+              "sha256": "5439f4c5a3e2e8eab18e2f8c3ef929772fd5641876db71f08127eed95ab64683",
+              "urls": [
+                "https://files.pythonhosted.org/packages/b2/7d/2d873209536b9ee17340754118a2a17988bc18981b5b56e6715ee07373ac/matplotlib-3.10.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_matplotlib_cp311_cp311_musllinux_1_2_x86_64_4673ff67": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "matplotlib-3.10.0-cp311-cp311-musllinux_1_2_x86_64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "matplotlib==3.10.0",
+              "sha256": "4673ff67a36152c48ddeaf1135e74ce0d4bce1bbf836ae40ed39c29edf7e2765",
+              "urls": [
+                "https://files.pythonhosted.org/packages/b8/03/57d6cbbe85c61fe4cbb7c94b54dce443d68c21961830833a1f34d056e5ea/matplotlib-3.10.0-cp311-cp311-musllinux_1_2_x86_64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_matplotlib_cp311_cp311_win_amd64_7e8632ba": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "matplotlib-3.10.0-cp311-cp311-win_amd64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "matplotlib==3.10.0",
+              "sha256": "7e8632baebb058555ac0cde75db885c61f1212e47723d63921879806b40bec6a",
+              "urls": [
+                "https://files.pythonhosted.org/packages/14/cf/e382598f98be11bf51dd0bc60eca44a517f6793e3dc8b9d53634a144620c/matplotlib-3.10.0-cp311-cp311-win_amd64.whl"
+              ]
+            }
+          },
           "ncore_pip_deps_311_matplotlib_inline_py3_none_any_d56ce515": {
             "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
             "attributes": {
@@ -6246,6 +7446,36 @@
               "sha256": "e1ee949c340d771fc39e241ea75683deb94762c8fa5f2927ec57c83c4dffa9fe",
               "urls": [
                 "https://files.pythonhosted.org/packages/c7/74/97e72a36efd4ae2bccb3463284300f8953f199b5ffbc04cbbb0ec78f74b1/matplotlib_inline-0.2.1.tar.gz"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_matplotlib_sdist_b886d02a": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/cu128/torch"
+              ],
+              "filename": "matplotlib-3.10.0.tar.gz",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "matplotlib==3.10.0",
+              "sha256": "b886d02a581b96704c9d1ffe55709e49b4d2d52709ccebc4be42db856e511278",
+              "urls": [
+                "https://files.pythonhosted.org/packages/68/dd/fa2e1a45fce2d09f4aea3cee169760e672c8262325aa5796c49d543dc7e6/matplotlib-3.10.0.tar.gz"
               ]
             }
           },
@@ -7434,6 +8664,30 @@
               "sha256": "2a02aba9ed12e4ac4eb3ea9421c420301a0c6460d9830d74a9df87efa4912010",
               "urls": [
                 "https://files.pythonhosted.org/packages/65/6e/09db70a523a96d25e115e71cc56a6f9031e7b8cd166c1ac8438307c14058/numpy-1.26.4.tar.gz"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_nuscenes_devkit_py3_none_any_76cee0e7": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "nuscenes_devkit-1.2.0-py3-none-any.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "nuscenes-devkit==1.2.0",
+              "sha256": "76cee0e7f96ec96d6269ee3acb4ff69e8ac2f9413e974d9eb542233ea7479bf1",
+              "urls": [
+                "https://files.pythonhosted.org/packages/3a/13/e9124913743cd815fff25a3438072e4d184100e1d548ad926189e3e6988c/nuscenes_devkit-1.2.0-py3-none-any.whl"
               ]
             }
           },
@@ -10335,6 +11589,180 @@
               ]
             }
           },
+          "ncore_pip_deps_311_pycocotools_cp311_cp311_macosx_10_9_universal2_81bdceeb": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "pycocotools-2.0.11-cp311-cp311-macosx_10_9_universal2.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "pycocotools==2.0.11",
+              "sha256": "81bdceebb4c64e9265213e2d733808a12f9c18dfb14457323cc6b9af07fa0e61",
+              "urls": [
+                "https://files.pythonhosted.org/packages/b3/3f/41ce3fce61b7721158f21b61727eb054805babc0088cfa48506935b80a36/pycocotools-2.0.11-cp311-cp311-macosx_10_9_universal2.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_pycocotools_cp311_cp311_manylinux_2_17_aarch64_a1c05f91": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "pycocotools-2.0.11-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "pycocotools==2.0.11",
+              "sha256": "a1c05f91ccc658dfe01325267209c4b435da1722c93eeb5749fabc1d087b6882",
+              "urls": [
+                "https://files.pythonhosted.org/packages/e2/9b/a739705b246445bd1376394bf9d1ec2dd292b16740e92f203461b2bb12ed/pycocotools-2.0.11-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_pycocotools_cp311_cp311_manylinux_2_17_x86_64_18ba75ff": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "pycocotools-2.0.11-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "pycocotools==2.0.11",
+              "sha256": "18ba75ff58cedb33a85ce2c18f1452f1fe20c9dd59925eec5300b2bf6205dbe1",
+              "urls": [
+                "https://files.pythonhosted.org/packages/34/70/7a12752784e57d8034a76c245c618a2f88a9d2463862b990f314aea7e5d6/pycocotools-2.0.11-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_pycocotools_cp311_cp311_musllinux_1_2_aarch64_69341779": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "pycocotools-2.0.11-cp311-cp311-musllinux_1_2_aarch64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "pycocotools==2.0.11",
+              "sha256": "693417797f0377fd094eb815c0a1e7d1c3c0251b71e3b3779fce3b3cf24793c5",
+              "urls": [
+                "https://files.pythonhosted.org/packages/5c/fc/d703599ac728209dba08aea8d4bee884d5adabfcd9041abed1658d863747/pycocotools-2.0.11-cp311-cp311-musllinux_1_2_aarch64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_pycocotools_cp311_cp311_musllinux_1_2_x86_64_b6a07071": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "pycocotools-2.0.11-cp311-cp311-musllinux_1_2_x86_64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "pycocotools==2.0.11",
+              "sha256": "b6a07071c441d0f5e480a8f287106191582e40289d4e242dfe684e0c8a751088",
+              "urls": [
+                "https://files.pythonhosted.org/packages/81/d9/e1cfc320bbb2cd58c3b4398c3821cbe75d93c16ed3135ac9e774a18a02d3/pycocotools-2.0.11-cp311-cp311-musllinux_1_2_x86_64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_pycocotools_cp311_cp311_win_amd64_8e159232": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "pycocotools-2.0.11-cp311-cp311-win_amd64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "pycocotools==2.0.11",
+              "sha256": "8e159232adae3aef6b4e2d37b008bff107b26e9ed3b48e70ea6482302834bd34",
+              "urls": [
+                "https://files.pythonhosted.org/packages/a2/23/d17f6111c2a6ae8631d4fa90202bea05844da715d61431fbc34d276462d5/pycocotools-2.0.11-cp311-cp311-win_amd64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_pycocotools_sdist_34254d76": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/cu128/torch"
+              ],
+              "filename": "pycocotools-2.0.11.tar.gz",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "pycocotools==2.0.11",
+              "sha256": "34254d76da85576fcaf5c1f3aa9aae16b8cb15418334ba4283b800796bd1993d",
+              "urls": [
+                "https://files.pythonhosted.org/packages/a2/df/32354b5dda963ffdfc8f75c9acf8828ef7890723a4ed57bb3ff2dc1d6f7e/pycocotools-2.0.11.tar.gz"
+              ]
+            }
+          },
           "ncore_pip_deps_311_pycollada_py3_none_any_636e6496": {
             "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
             "attributes": {
@@ -10566,6 +11994,114 @@
               "sha256": "ee5d2dc56ac5ca8d223fa6fe8f57c67faf5ee1c9360216d9194cfbcd3f9d3948",
               "urls": [
                 "https://files.pythonhosted.org/packages/e5/29/0cb89a9cb860ecb0c96fc44a1aec7096909fe725c1fe9ca014e12fe2f994/pynvvideocodec-2.1.0-cp311-cp311-win_amd64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_pyparsing_py3_none_any_506ff4f4": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "pyparsing-3.2.1-py3-none-any.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "pyparsing==3.2.1",
+              "sha256": "506ff4f4386c4cec0590ec19e6302d3aedb992fdc02c761e90416f158dacf8e1",
+              "urls": [
+                "https://files.pythonhosted.org/packages/1c/a7/c8a2d361bf89c0d9577c934ebb7421b25dc84bf3a8e3ac0a40aed9acc547/pyparsing-3.2.1-py3-none-any.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_pyparsing_sdist_61980854": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/cu128/torch"
+              ],
+              "filename": "pyparsing-3.2.1.tar.gz",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "pyparsing==3.2.1",
+              "sha256": "61980854fd66de3a90028d679a954d5f2623e83144b5afe5ee86f43d762e5f0a",
+              "urls": [
+                "https://files.pythonhosted.org/packages/8b/1a/3544f4f299a47911c2ab3710f534e52fea62a633c96806995da5d25be4b2/pyparsing-3.2.1.tar.gz"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_pyquaternion_py3_none_any_e65f6e3f": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "pyquaternion-0.9.9-py3-none-any.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "pyquaternion==0.9.9",
+              "sha256": "e65f6e3f7b1fdf1a9e23f82434334a1ae84f14223eee835190cd2e841f8172ec",
+              "urls": [
+                "https://files.pythonhosted.org/packages/49/b3/d8482e8cacc8ea15a356efea13d22ce1c5914a9ee36622ba250523240bf2/pyquaternion-0.9.9-py3-none-any.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_pyquaternion_sdist_b1f61af2": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/cu128/torch"
+              ],
+              "filename": "pyquaternion-0.9.9.tar.gz",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "pyquaternion==0.9.9",
+              "sha256": "b1f61af219cb2fe966b5fb79a192124f2e63a3f7a777ac3cadf2957b1a81bea8",
+              "urls": [
+                "https://files.pythonhosted.org/packages/7d/0d/3d092aa20efaedacb89c3221a92c6491be5b28f618a2c36b52b53e7446c2/pyquaternion-0.9.9.tar.gz"
               ]
             }
           },
@@ -11691,6 +13227,156 @@
               ]
             }
           },
+          "ncore_pip_deps_311_scikit_learn_cp311_cp311_macosx_10_9_x86_64_146b4d36": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "scikit_learn-1.8.0-cp311-cp311-macosx_10_9_x86_64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "scikit-learn==1.8.0",
+              "sha256": "146b4d36f800c013d267b29168813f7a03a43ecd2895d04861f1240b564421da",
+              "urls": [
+                "https://files.pythonhosted.org/packages/c9/92/53ea2181da8ac6bf27170191028aee7251f8f841f8d3edbfdcaf2008fde9/scikit_learn-1.8.0-cp311-cp311-macosx_10_9_x86_64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_scikit_learn_cp311_cp311_macosx_12_0_arm64_f984ca4b": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "scikit_learn-1.8.0-cp311-cp311-macosx_12_0_arm64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "scikit-learn==1.8.0",
+              "sha256": "f984ca4b14914e6b4094c5d52a32ea16b49832c03bd17a110f004db3c223e8e1",
+              "urls": [
+                "https://files.pythonhosted.org/packages/01/18/d154dc1638803adf987910cdd07097d9c526663a55666a97c124d09fb96a/scikit_learn-1.8.0-cp311-cp311-macosx_12_0_arm64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_scikit_learn_cp311_cp311_manylinux_2_27_aarch64_5e30adb8": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "scikit_learn-1.8.0-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "scikit-learn==1.8.0",
+              "sha256": "5e30adb87f0cc81c7690a84f7932dd66be5bac57cfe16b91cb9151683a4a2d3b",
+              "urls": [
+                "https://files.pythonhosted.org/packages/8a/44/226142fcb7b7101e64fdee5f49dbe6288d4c7af8abf593237b70fca080a4/scikit_learn-1.8.0-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_scikit_learn_cp311_cp311_manylinux_2_27_x86_64_ada8121b": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "scikit_learn-1.8.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "scikit-learn==1.8.0",
+              "sha256": "ada8121bcb4dac28d930febc791a69f7cb1673c8495e5eee274190b73a4559c1",
+              "urls": [
+                "https://files.pythonhosted.org/packages/36/4d/4a67f30778a45d542bbea5db2dbfa1e9e100bf9ba64aefe34215ba9f11f6/scikit_learn-1.8.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_scikit_learn_cp311_cp311_win_amd64_c57b1b61": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "scikit_learn-1.8.0-cp311-cp311-win_amd64.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "scikit-learn==1.8.0",
+              "sha256": "c57b1b610bd1f40ba43970e11ce62821c2e6569e4d74023db19c6b26f246cb3b",
+              "urls": [
+                "https://files.pythonhosted.org/packages/89/3c/45c352094cfa60050bcbb967b1faf246b22e93cb459f2f907b600f2ceda5/scikit_learn-1.8.0-cp311-cp311-win_amd64.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_scikit_learn_sdist_9bccbb3b": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/cu128/torch"
+              ],
+              "filename": "scikit_learn-1.8.0.tar.gz",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "scikit-learn==1.8.0",
+              "sha256": "9bccbb3b40e3de10351f8f5068e105d0f4083b1a65fa07b6634fbc401a6287fd",
+              "urls": [
+                "https://files.pythonhosted.org/packages/0e/d4/40988bf3b8e34feec1d0e6a051446b1f66225f8529b9309becaeef62b6c4/scikit_learn-1.8.0.tar.gz"
+              ]
+            }
+          },
           "ncore_pip_deps_311_scipy_cp311_cp311_macosx_10_13_x86_64_92233b2d": {
             "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
             "attributes": {
@@ -11991,7 +13677,7 @@
               ]
             }
           },
-          "ncore_pip_deps_311_shapely_cp311_cp311_macosx_10_9_x86_64_91121757": {
+          "ncore_pip_deps_311_shapely_cp311_cp311_macosx_10_9_x86_64_5cf23400": {
             "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
@@ -12005,17 +13691,17 @@
                 "cp311_osx_x86_64",
                 "cp311_windows_x86_64"
               ],
-              "filename": "shapely-2.1.2-cp311-cp311-macosx_10_9_x86_64.whl",
+              "filename": "shapely-2.0.7-cp311-cp311-macosx_10_9_x86_64.whl",
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
-              "requirement": "shapely==2.1.2",
-              "sha256": "91121757b0a36c9aac3427a651a7e6567110a4a67c97edf04f8d55d4765f6618",
+              "requirement": "shapely==2.0.7",
+              "sha256": "5cf23400cb25deccf48c56a7cdda8197ae66c0e9097fcdd122ac2007e320bc34",
               "urls": [
-                "https://files.pythonhosted.org/packages/8f/8d/1ff672dea9ec6a7b5d422eb6d095ed886e2e523733329f75fdcb14ee1149/shapely-2.1.2-cp311-cp311-macosx_10_9_x86_64.whl"
+                "https://files.pythonhosted.org/packages/1d/ad/21798c2fec013e289f8ab91d42d4d3299c315b8c4460c08c75fef0901713/shapely-2.0.7-cp311-cp311-macosx_10_9_x86_64.whl"
               ]
             }
           },
-          "ncore_pip_deps_311_shapely_cp311_cp311_macosx_11_0_arm64_16a9c722": {
+          "ncore_pip_deps_311_shapely_cp311_cp311_macosx_11_0_arm64_d8f1da01": {
             "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
@@ -12029,17 +13715,17 @@
                 "cp311_osx_x86_64",
                 "cp311_windows_x86_64"
               ],
-              "filename": "shapely-2.1.2-cp311-cp311-macosx_11_0_arm64.whl",
+              "filename": "shapely-2.0.7-cp311-cp311-macosx_11_0_arm64.whl",
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
-              "requirement": "shapely==2.1.2",
-              "sha256": "16a9c722ba774cf50b5d4541242b4cce05aafd44a015290c82ba8a16931ff63d",
+              "requirement": "shapely==2.0.7",
+              "sha256": "d8f1da01c04527f7da59ee3755d8ee112cd8967c15fab9e43bba936b81e2a013",
               "urls": [
-                "https://files.pythonhosted.org/packages/4f/ce/28fab8c772ce5db23a0d86bf0adaee0c4c79d5ad1db766055fa3dab442e2/shapely-2.1.2-cp311-cp311-macosx_11_0_arm64.whl"
+                "https://files.pythonhosted.org/packages/15/63/eef4f180f1b5859c70e7f91d2f2570643e5c61e7d7c40743d15f8c6cbc42/shapely-2.0.7-cp311-cp311-macosx_11_0_arm64.whl"
               ]
             }
           },
-          "ncore_pip_deps_311_shapely_cp311_cp311_manylinux_2_17_aarch64_cc4f7397": {
+          "ncore_pip_deps_311_shapely_cp311_cp311_manylinux_2_17_aarch64_8f623b64": {
             "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
@@ -12053,17 +13739,17 @@
                 "cp311_osx_x86_64",
                 "cp311_windows_x86_64"
               ],
-              "filename": "shapely-2.1.2-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+              "filename": "shapely-2.0.7-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
-              "requirement": "shapely==2.1.2",
-              "sha256": "cc4f7397459b12c0b196c9efe1f9d7e92463cbba142632b4cc6d8bbbbd3e2b09",
+              "requirement": "shapely==2.0.7",
+              "sha256": "8f623b64bb219d62014781120f47499a7adc30cf7787e24b659e56651ceebcb0",
               "urls": [
-                "https://files.pythonhosted.org/packages/70/8b/868b7e3f4982f5006e9395c1e12343c66a8155c0374fdc07c0e6a1ab547d/shapely-2.1.2-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl"
+                "https://files.pythonhosted.org/packages/fe/67/77851dd17738bbe7762a0ef1acf7bc499d756f68600dd68a987d78229412/shapely-2.0.7-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
               ]
             }
           },
-          "ncore_pip_deps_311_shapely_cp311_cp311_manylinux_2_17_x86_64_136ab87b": {
+          "ncore_pip_deps_311_shapely_cp311_cp311_manylinux_2_17_x86_64_e6d95703": {
             "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
@@ -12077,17 +13763,17 @@
                 "cp311_osx_x86_64",
                 "cp311_windows_x86_64"
               ],
-              "filename": "shapely-2.1.2-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+              "filename": "shapely-2.0.7-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
-              "requirement": "shapely==2.1.2",
-              "sha256": "136ab87b17e733e22f0961504d05e77e7be8c9b5a8184f685b4a91a84efe3c26",
+              "requirement": "shapely==2.0.7",
+              "sha256": "e6d95703efaa64aaabf278ced641b888fc23d9c6dd71f8215091afd8a26a66e3",
               "urls": [
-                "https://files.pythonhosted.org/packages/13/02/58b0b8d9c17c93ab6340edd8b7308c0c5a5b81f94ce65705819b7416dba5/shapely-2.1.2-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+                "https://files.pythonhosted.org/packages/0b/a5/2c8dbb0f383519771df19164e3bf3a8895d195d2edeab4b6040f176ee28e/shapely-2.0.7-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
               ]
             }
           },
-          "ncore_pip_deps_311_shapely_cp311_cp311_musllinux_1_2_aarch64_16c5d0fc": {
+          "ncore_pip_deps_311_shapely_cp311_cp311_win_amd64_b52f3ab8": {
             "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
@@ -12101,65 +13787,17 @@
                 "cp311_osx_x86_64",
                 "cp311_windows_x86_64"
               ],
-              "filename": "shapely-2.1.2-cp311-cp311-musllinux_1_2_aarch64.whl",
+              "filename": "shapely-2.0.7-cp311-cp311-win_amd64.whl",
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
-              "requirement": "shapely==2.1.2",
-              "sha256": "16c5d0fc45d3aa0a69074979f4f1928ca2734fb2e0dde8af9611e134e46774e7",
+              "requirement": "shapely==2.0.7",
+              "sha256": "b52f3ab845d32dfd20afba86675c91919a622f4627182daec64974db9b0b4608",
               "urls": [
-                "https://files.pythonhosted.org/packages/af/61/8e389c97994d5f331dcffb25e2fa761aeedfb52b3ad9bcdd7b8671f4810a/shapely-2.1.2-cp311-cp311-musllinux_1_2_aarch64.whl"
+                "https://files.pythonhosted.org/packages/27/57/8ec7c62012bed06731f7ee979da7f207bbc4b27feed5f36680b6a70df54f/shapely-2.0.7-cp311-cp311-win_amd64.whl"
               ]
             }
           },
-          "ncore_pip_deps_311_shapely_cp311_cp311_musllinux_1_2_x86_64_6ddc759f": {
-            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
-            "attributes": {
-              "dep_template": "@ncore_pip_deps//{name}:{target}",
-              "experimental_target_platforms": [
-                "cp311_linux_aarch64",
-                "cp311_linux_arm",
-                "cp311_linux_ppc",
-                "cp311_linux_s390x",
-                "cp311_linux_x86_64",
-                "cp311_osx_aarch64",
-                "cp311_osx_x86_64",
-                "cp311_windows_x86_64"
-              ],
-              "filename": "shapely-2.1.2-cp311-cp311-musllinux_1_2_x86_64.whl",
-              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
-              "repo": "ncore_pip_deps_311",
-              "requirement": "shapely==2.1.2",
-              "sha256": "6ddc759f72b5b2b0f54a7e7cde44acef680a55019eb52ac63a7af2cf17cb9cd2",
-              "urls": [
-                "https://files.pythonhosted.org/packages/d3/d4/9b2a9fe6039f9e42ccf2cb3e84f219fd8364b0c3b8e7bbc857b5fbe9c14c/shapely-2.1.2-cp311-cp311-musllinux_1_2_x86_64.whl"
-              ]
-            }
-          },
-          "ncore_pip_deps_311_shapely_cp311_cp311_win_amd64_c64d5c97": {
-            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
-            "attributes": {
-              "dep_template": "@ncore_pip_deps//{name}:{target}",
-              "experimental_target_platforms": [
-                "cp311_linux_aarch64",
-                "cp311_linux_arm",
-                "cp311_linux_ppc",
-                "cp311_linux_s390x",
-                "cp311_linux_x86_64",
-                "cp311_osx_aarch64",
-                "cp311_osx_x86_64",
-                "cp311_windows_x86_64"
-              ],
-              "filename": "shapely-2.1.2-cp311-cp311-win_amd64.whl",
-              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
-              "repo": "ncore_pip_deps_311",
-              "requirement": "shapely==2.1.2",
-              "sha256": "c64d5c97b2f47e3cd9b712eaced3b061f2b71234b3fc263e0fcf7d889c6559dc",
-              "urls": [
-                "https://files.pythonhosted.org/packages/38/1e/3f8ea46353c2a33c1669eb7327f9665103aa3a8dfe7f2e4ef714c210b2c2/shapely-2.1.2-cp311-cp311-win_amd64.whl"
-              ]
-            }
-          },
-          "ncore_pip_deps_311_shapely_sdist_2ed4ecb2": {
+          "ncore_pip_deps_311_shapely_sdist_28fe2997": {
             "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
             "attributes": {
               "dep_template": "@ncore_pip_deps//{name}:{target}",
@@ -12179,13 +13817,13 @@
                 "--find-links",
                 "https://download.pytorch.org/whl/cu128/torch"
               ],
-              "filename": "shapely-2.1.2.tar.gz",
+              "filename": "shapely-2.0.7.tar.gz",
               "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
               "repo": "ncore_pip_deps_311",
-              "requirement": "shapely==2.1.2",
-              "sha256": "2ed4ecb28320a433db18a5bf029986aa8afcfd740745e78847e330d5d94922a9",
+              "requirement": "shapely==2.0.7",
+              "sha256": "28fe2997aab9a9dc026dc6a355d04e85841546b2a5d232ed953e3321ab958ee5",
               "urls": [
-                "https://files.pythonhosted.org/packages/4d/bc/0989043118a27cccb4e906a46b7565ce36ca7b57f5a18b78f4f1b0f72d9d/shapely-2.1.2.tar.gz"
+                "https://files.pythonhosted.org/packages/21/c0/a911d1fd765d07a2b6769ce155219a281bfbe311584ebe97340d75c5bdb1/shapely-2.0.7.tar.gz"
               ]
             }
           },
@@ -13188,6 +14826,60 @@
               "sha256": "998d8d27da6d48442e8e1f016119076b690d962507531df4890fcd2db2ef8a6f",
               "urls": [
                 "https://files.pythonhosted.org/packages/37/72/88311445fd44c455c7d553e61f95412cf89054308a1aa2434ab835075fc5/termcolor-2.5.0.tar.gz"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_threadpoolctl_py3_none_any_43a0b8fd": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "filename": "threadpoolctl-3.6.0-py3-none-any.whl",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "threadpoolctl==3.6.0",
+              "sha256": "43a0b8fd5a2928500110039e43a5eed8480b918967083ea48dc3ab9f13c4a7fb",
+              "urls": [
+                "https://files.pythonhosted.org/packages/32/d5/f9a850d79b0851d1d4ef6456097579a9005b31fea68726a4ae5f2d82ddd9/threadpoolctl-3.6.0-py3-none-any.whl"
+              ]
+            }
+          },
+          "ncore_pip_deps_311_threadpoolctl_sdist_8ab8b4aa": {
+            "repoRuleId": "@@rules_python+//python/private/pypi:whl_library.bzl%whl_library",
+            "attributes": {
+              "dep_template": "@ncore_pip_deps//{name}:{target}",
+              "experimental_target_platforms": [
+                "cp311_linux_aarch64",
+                "cp311_linux_arm",
+                "cp311_linux_ppc",
+                "cp311_linux_s390x",
+                "cp311_linux_x86_64",
+                "cp311_osx_aarch64",
+                "cp311_osx_x86_64",
+                "cp311_windows_x86_64"
+              ],
+              "extra_pip_args": [
+                "--index-url",
+                "https://pypi.org/simple",
+                "--find-links",
+                "https://download.pytorch.org/whl/cu128/torch"
+              ],
+              "filename": "threadpoolctl-3.6.0.tar.gz",
+              "python_interpreter_target": "@@rules_python++python+python_3_11_host//:python",
+              "repo": "ncore_pip_deps_311",
+              "requirement": "threadpoolctl==3.6.0",
+              "sha256": "8ab8b4aa3491d812b623328249fab5302a68d2d71745c8a4c719a2fcaba9f44e",
+              "urls": [
+                "https://files.pythonhosted.org/packages/b7/4d/08c89e34946fce2aec4fbb45c9016efd5f4d7f24af8e5d93296e935631d8/threadpoolctl-3.6.0.tar.gz"
               ]
             }
           },
@@ -20040,16 +21732,20 @@
                 "babel": "{\"ncore_pip_deps_311_babel_py3_none_any_4d0b5309\":[{\"filename\":\"babel-2.17.0-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_babel_sdist_0c54cffb\":[{\"filename\":\"babel-2.17.0.tar.gz\",\"version\":\"3.11\"}]}",
                 "beautifulsoup4": "{\"ncore_pip_deps_311_beautifulsoup4_py3_none_any_99045d7d\":[{\"filename\":\"beautifulsoup4-4.13.3-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_beautifulsoup4_sdist_1bd32405\":[{\"filename\":\"beautifulsoup4-4.13.3.tar.gz\",\"version\":\"3.11\"}]}",
                 "bleach": "{\"ncore_pip_deps_311_bleach_py3_none_any_117d9c60\":[{\"filename\":\"bleach-6.2.0-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_bleach_sdist_123e8941\":[{\"filename\":\"bleach-6.2.0.tar.gz\",\"version\":\"3.11\"}]}",
+                "cachetools": "{\"ncore_pip_deps_311_cachetools_py3_none_any_9876787e\":[{\"filename\":\"cachetools-7.1.3-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_cachetools_sdist_135cfe94\":[{\"filename\":\"cachetools-7.1.3.tar.gz\",\"version\":\"3.11\"}]}",
                 "cbor2": "{\"ncore_pip_deps_311_cbor2_cp311_cp311_macosx_11_0_arm64_0485d337\":[{\"filename\":\"cbor2-5.9.0-cp311-cp311-macosx_11_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_cbor2_cp311_cp311_manylinux_2_17_aarch64_a9d6e4e0\":[{\"filename\":\"cbor2-5.9.0-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_cbor2_cp311_cp311_manylinux_2_17_x86_64_5326336f\":[{\"filename\":\"cbor2-5.9.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_cbor2_cp311_cp311_musllinux_1_2_aarch64_5e702b02\":[{\"filename\":\"cbor2-5.9.0-cp311-cp311-musllinux_1_2_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_cbor2_cp311_cp311_musllinux_1_2_x86_64_2372d357\":[{\"filename\":\"cbor2-5.9.0-cp311-cp311-musllinux_1_2_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_cbor2_cp311_cp311_win_amd64_1d02b65f\":[{\"filename\":\"cbor2-5.9.0-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_cbor2_py3_none_any_27695cbd\":[{\"filename\":\"cbor2-5.9.0-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_cbor2_sdist_85c7a462\":[{\"filename\":\"cbor2-5.9.0.tar.gz\",\"version\":\"3.11\"}],\"ncore_pip_deps_38_cbor2_cp38_cp38_macosx_10_9_x86_64_d2984a48\":[{\"filename\":\"cbor2-5.4.6-cp38-cp38-macosx_10_9_x86_64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_cbor2_cp38_cp38_macosx_11_0_arm64_c285a2cb\":[{\"filename\":\"cbor2-5.4.6-cp38-cp38-macosx_11_0_arm64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_cbor2_cp38_cp38_manylinux_2_17_aarch64_6709d976\":[{\"filename\":\"cbor2-5.4.6-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_cbor2_cp38_cp38_manylinux_2_17_x86_64_96087fa5\":[{\"filename\":\"cbor2-5.4.6-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_cbor2_cp38_cp38_musllinux_1_1_aarch64_0d2b926b\":[{\"filename\":\"cbor2-5.4.6-cp38-cp38-musllinux_1_1_aarch64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_cbor2_cp38_cp38_musllinux_1_1_x86_64_6e1b5aee\":[{\"filename\":\"cbor2-5.4.6-cp38-cp38-musllinux_1_1_x86_64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_cbor2_cp38_cp38_win_amd64_79e048e6\":[{\"filename\":\"cbor2-5.4.6-cp38-cp38-win_amd64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_cbor2_py3_none_any_181ac494\":[{\"filename\":\"cbor2-5.4.6-py3-none-any.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_cbor2_sdist_b893500d\":[{\"filename\":\"cbor2-5.4.6.tar.gz\",\"version\":\"3.8\"}]}",
                 "certifi": "{\"ncore_pip_deps_311_certifi_py3_none_any_ca78db45\":[{\"filename\":\"certifi-2025.1.31-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_certifi_sdist_3d5da692\":[{\"filename\":\"certifi-2025.1.31.tar.gz\",\"version\":\"3.11\"}]}",
                 "charset_normalizer": "{\"ncore_pip_deps_311_charset_normalizer_cp311_cp311_macosx_10_9_universal2_8bfa33f4\":[{\"filename\":\"charset_normalizer-3.4.1-cp311-cp311-macosx_10_9_universal2.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_charset_normalizer_cp311_cp311_manylinux_2_17_aarch64_28bf5762\":[{\"filename\":\"charset_normalizer-3.4.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_charset_normalizer_cp311_cp311_manylinux_2_17_ppc64le_f08ff5e9\":[{\"filename\":\"charset_normalizer-3.4.1-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_charset_normalizer_cp311_cp311_manylinux_2_17_s390x_234ac59e\":[{\"filename\":\"charset_normalizer-3.4.1-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_charset_normalizer_cp311_cp311_manylinux_2_17_x86_64_fd4ec41f\":[{\"filename\":\"charset_normalizer-3.4.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_charset_normalizer_cp311_cp311_musllinux_1_2_aarch64_c96836c9\":[{\"filename\":\"charset_normalizer-3.4.1-cp311-cp311-musllinux_1_2_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_charset_normalizer_cp311_cp311_musllinux_1_2_ppc64le_09b5e673\":[{\"filename\":\"charset_normalizer-3.4.1-cp311-cp311-musllinux_1_2_ppc64le.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_charset_normalizer_cp311_cp311_musllinux_1_2_s390x_5777ee08\":[{\"filename\":\"charset_normalizer-3.4.1-cp311-cp311-musllinux_1_2_s390x.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_charset_normalizer_cp311_cp311_musllinux_1_2_x86_64_237bdbe6\":[{\"filename\":\"charset_normalizer-3.4.1-cp311-cp311-musllinux_1_2_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_charset_normalizer_cp311_cp311_win_amd64_d7f50a1f\":[{\"filename\":\"charset_normalizer-3.4.1-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_charset_normalizer_py3_none_any_d98b1668\":[{\"filename\":\"charset_normalizer-3.4.1-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_charset_normalizer_sdist_44251f18\":[{\"filename\":\"charset_normalizer-3.4.1.tar.gz\",\"version\":\"3.11\"}]}",
                 "click": "{\"ncore_pip_deps_311_click_py3_none_any_63c132bb\":[{\"filename\":\"click-8.1.8-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_click_sdist_ed53c9d8\":[{\"filename\":\"click-8.1.8.tar.gz\",\"version\":\"3.11\"}]}",
                 "colorlog": "{\"ncore_pip_deps_311_colorlog_py3_none_any_2d7e8348\":[{\"filename\":\"colorlog-6.10.1-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_colorlog_sdist_eb4ae5cb\":[{\"filename\":\"colorlog-6.10.1.tar.gz\",\"version\":\"3.11\"}]}",
+                "contourpy": "{\"ncore_pip_deps_311_contourpy_cp311_cp311_macosx_10_9_x86_64_3e8b974d\":[{\"filename\":\"contourpy-1.3.1-cp311-cp311-macosx_10_9_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_contourpy_cp311_cp311_macosx_11_0_arm64_20914c8c\":[{\"filename\":\"contourpy-1.3.1-cp311-cp311-macosx_11_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_contourpy_cp311_cp311_manylinux_2_17_aarch64_19d40d37\":[{\"filename\":\"contourpy-1.3.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_contourpy_cp311_cp311_manylinux_2_17_ppc64le_113231fe\":[{\"filename\":\"contourpy-1.3.1-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_contourpy_cp311_cp311_manylinux_2_17_s390x_4dbbc03a\":[{\"filename\":\"contourpy-1.3.1-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_contourpy_cp311_cp311_manylinux_2_17_x86_64_3a04ecd6\":[{\"filename\":\"contourpy-1.3.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_contourpy_cp311_cp311_musllinux_1_2_aarch64_c414fc1e\":[{\"filename\":\"contourpy-1.3.1-cp311-cp311-musllinux_1_2_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_contourpy_cp311_cp311_musllinux_1_2_x86_64_31c1b55c\":[{\"filename\":\"contourpy-1.3.1-cp311-cp311-musllinux_1_2_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_contourpy_cp311_cp311_win_amd64_b2bdca22\":[{\"filename\":\"contourpy-1.3.1-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_contourpy_sdist_dfd97abd\":[{\"filename\":\"contourpy-1.3.1.tar.gz\",\"version\":\"3.11\"}]}",
+                "cycler": "{\"ncore_pip_deps_311_cycler_py3_none_any_85cef7cf\":[{\"filename\":\"cycler-0.12.1-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_cycler_sdist_88bb128f\":[{\"filename\":\"cycler-0.12.1.tar.gz\",\"version\":\"3.11\"}]}",
                 "dataclasses_json": "{\"ncore_pip_deps_311_dataclasses_json_py3_none_any_0dbf33f2\":[{\"filename\":\"dataclasses_json-0.6.7-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_dataclasses_json_sdist_b6b3e528\":[{\"filename\":\"dataclasses_json-0.6.7.tar.gz\",\"version\":\"3.11\"}],\"ncore_pip_deps_38_dataclasses_json_py3_none_any_5ec6fed6\":[{\"filename\":\"dataclasses_json-0.5.14-py3-none-any.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_dataclasses_json_sdist_d82896a9\":[{\"filename\":\"dataclasses_json-0.5.14.tar.gz\",\"version\":\"3.8\"}]}",
                 "debugpy": "{\"ncore_pip_deps_311_debugpy_cp311_cp311_macosx_14_0_universal2_36f48298\":[{\"filename\":\"debugpy-1.8.12-cp311-cp311-macosx_14_0_universal2.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_debugpy_cp311_cp311_manylinux_2_5_x86_64_a28ed481\":[{\"filename\":\"debugpy-1.8.12-cp311-cp311-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_debugpy_cp311_cp311_win_amd64_4703575b\":[{\"filename\":\"debugpy-1.8.12-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_debugpy_py2_none_any_274b6a20\":[{\"filename\":\"debugpy-1.8.12-py2.py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_debugpy_sdist_646530b0\":[{\"filename\":\"debugpy-1.8.12.tar.gz\",\"version\":\"3.11\"}]}",
                 "decorator": "{\"ncore_pip_deps_311_decorator_py3_none_any_d316bb41\":[{\"filename\":\"decorator-5.2.1-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_decorator_sdist_65f26614\":[{\"filename\":\"decorator-5.2.1.tar.gz\",\"version\":\"3.11\"}]}",
                 "defusedxml": "{\"ncore_pip_deps_311_defusedxml_py2_none_any_a352e7e4\":[{\"filename\":\"defusedxml-0.7.1-py2.py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_defusedxml_sdist_1bb3032d\":[{\"filename\":\"defusedxml-0.7.1.tar.gz\",\"version\":\"3.11\"}]}",
                 "deprecated": "{\"ncore_pip_deps_311_deprecated_py2_none_any_bd501178\":[{\"filename\":\"Deprecated-1.2.18-py2.py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_deprecated_sdist_422b6f6d\":[{\"filename\":\"deprecated-1.2.18.tar.gz\",\"version\":\"3.11\"}]}",
+                "descartes": "{\"ncore_pip_deps_311_descartes_py2_none_any_b7e412e7\":[{\"filename\":\"descartes-1.1.0-py2-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_descartes_sdist_135a5021\":[{\"filename\":\"descartes-1.1.0.tar.gz\",\"version\":\"3.11\"}]}",
                 "docutils": "{\"ncore_pip_deps_311_docutils_py3_none_any_d0013f54\":[{\"filename\":\"docutils-0.22.4-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_docutils_sdist_4db53b1f\":[{\"filename\":\"docutils-0.22.4.tar.gz\",\"version\":\"3.11\"}]}",
                 "dracopy": "{\"ncore_pip_deps_311_dracopy_cp311_cp311_macosx_10_9_x86_64_c4131151\":[{\"filename\":\"dracopy-2.0.0-cp311-cp311-macosx_10_9_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_dracopy_cp311_cp311_macosx_11_0_arm64_e16575ab\":[{\"filename\":\"dracopy-2.0.0-cp311-cp311-macosx_11_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_dracopy_cp311_cp311_manylinux_2_24_aarch64_418964da\":[{\"filename\":\"dracopy-2.0.0-cp311-cp311-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_dracopy_cp311_cp311_manylinux_2_24_x86_64_fa9a3215\":[{\"filename\":\"dracopy-2.0.0-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_dracopy_cp311_cp311_win_amd64_106c968f\":[{\"filename\":\"dracopy-2.0.0-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}]}",
                 "embreex": "{\"ncore_pip_deps_311_embreex_cp311_cp311_macosx_10_9_x86_64_8154ab34\":[{\"filename\":\"embreex-2.17.7.post7-cp311-cp311-macosx_10_9_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_embreex_cp311_cp311_manylinux_2_12_x86_64_c4775a4d\":[{\"filename\":\"embreex-2.17.7.post7-cp311-cp311-manylinux2010_x86_64.manylinux_2_12_x86_64.manylinux_2_28_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_embreex_cp311_cp311_win_amd64_a1157976\":[{\"filename\":\"embreex-2.17.7.post7-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}]}",
@@ -20059,7 +21755,9 @@
                 "fasteners": "{\"ncore_pip_deps_311_fasteners_py3_none_any_758819cb\":[{\"filename\":\"fasteners-0.19-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_fasteners_sdist_b4f37c3a\":[{\"filename\":\"fasteners-0.19.tar.gz\",\"version\":\"3.11\"}],\"ncore_pip_deps_38_fasteners_py3_none_any_1d4caf5f\":[{\"filename\":\"fasteners-0.18-py3-none-any.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_fasteners_sdist_cb7c13ef\":[{\"filename\":\"fasteners-0.18.tar.gz\",\"version\":\"3.8\"}]}",
                 "fastjsonschema": "{\"ncore_pip_deps_311_fastjsonschema_py3_none_any_c9e5b7e9\":[{\"filename\":\"fastjsonschema-2.21.1-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_fastjsonschema_sdist_794d4f0a\":[{\"filename\":\"fastjsonschema-2.21.1.tar.gz\",\"version\":\"3.11\"}]}",
                 "filelock": "{\"ncore_pip_deps_311_filelock_py3_none_any_96f5f634\":[{\"filename\":\"filelock-3.29.0-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_filelock_sdist_69974355\":[{\"filename\":\"filelock-3.29.0.tar.gz\",\"version\":\"3.11\"}]}",
+                "fire": "{\"ncore_pip_deps_311_fire_py3_none_any_e43fd8a5\":[{\"filename\":\"fire-0.7.1-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_fire_sdist_3b208f05\":[{\"filename\":\"fire-0.7.1.tar.gz\",\"version\":\"3.11\"}]}",
                 "flatbuffers": "{\"ncore_pip_deps_311_flatbuffers_py2_none_any_7634f50c\":[{\"filename\":\"flatbuffers-25.12.19-py2.py3-none-any.whl\",\"version\":\"3.11\"}]}",
+                "fonttools": "{\"ncore_pip_deps_311_fonttools_cp311_cp311_macosx_10_9_universal2_7ef04bc7\":[{\"filename\":\"fonttools-4.56.0-cp311-cp311-macosx_10_9_universal2.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_fonttools_cp311_cp311_macosx_10_9_x86_64_ffda9b8c\":[{\"filename\":\"fonttools-4.56.0-cp311-cp311-macosx_10_9_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_fonttools_cp311_cp311_manylinux_2_17_aarch64_e2e993e8\":[{\"filename\":\"fonttools-4.56.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_fonttools_cp311_cp311_manylinux_2_17_x86_64_003548ea\":[{\"filename\":\"fonttools-4.56.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_fonttools_cp311_cp311_musllinux_1_2_aarch64_bd982582\":[{\"filename\":\"fonttools-4.56.0-cp311-cp311-musllinux_1_2_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_fonttools_cp311_cp311_musllinux_1_2_x86_64_b23d30a2\":[{\"filename\":\"fonttools-4.56.0-cp311-cp311-musllinux_1_2_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_fonttools_cp311_cp311_win_amd64_14a3e3e6\":[{\"filename\":\"fonttools-4.56.0-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_fonttools_py3_none_any_1088182f\":[{\"filename\":\"fonttools-4.56.0-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_fonttools_sdist_a114d156\":[{\"filename\":\"fonttools-4.56.0.tar.gz\",\"version\":\"3.11\"}]}",
                 "fsspec": "{\"ncore_pip_deps_311_fsspec_py3_none_any_7c771235\":[{\"filename\":\"fsspec-2025.10.0-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_fsspec_sdist_b6789427\":[{\"filename\":\"fsspec-2025.10.0.tar.gz\",\"version\":\"3.11\"}],\"ncore_pip_deps_38_fsspec_py3_none_any_efb87af3\":[{\"filename\":\"fsspec-2025.3.0-py3-none-any.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_fsspec_sdist_a935fd1e\":[{\"filename\":\"fsspec-2025.3.0.tar.gz\",\"version\":\"3.8\"}]}",
                 "gast": "{\"ncore_pip_deps_311_gast_py3_none_any_52b18231\":[{\"filename\":\"gast-0.6.0-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_gast_sdist_88fc5300\":[{\"filename\":\"gast-0.6.0.tar.gz\",\"version\":\"3.11\"}]}",
                 "google_pasta": "{\"ncore_pip_deps_311_google_pasta_py3_none_any_b3248279\":[{\"filename\":\"google_pasta-0.2.0-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_google_pasta_sdist_c9f2c8df\":[{\"filename\":\"google-pasta-0.2.0.tar.gz\",\"version\":\"3.11\"}]}",
@@ -20076,12 +21774,14 @@
                 "ipython_pygments_lexers": "{\"ncore_pip_deps_311_ipython_pygments_lexers_py3_none_any_a9462224\":[{\"filename\":\"ipython_pygments_lexers-1.1.1-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_ipython_pygments_lexers_sdist_09c01380\":[{\"filename\":\"ipython_pygments_lexers-1.1.1.tar.gz\",\"version\":\"3.11\"}]}",
                 "jedi": "{\"ncore_pip_deps_311_jedi_py2_none_any_a8ef22bd\":[{\"filename\":\"jedi-0.19.2-py2.py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_jedi_sdist_4770dc3d\":[{\"filename\":\"jedi-0.19.2.tar.gz\",\"version\":\"3.11\"}]}",
                 "jinja2": "{\"ncore_pip_deps_311_jinja2_py3_none_any_aba0f4dc\":[{\"filename\":\"jinja2-3.1.5-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_jinja2_sdist_8fefff8d\":[{\"filename\":\"jinja2-3.1.5.tar.gz\",\"version\":\"3.11\"}]}",
+                "joblib": "{\"ncore_pip_deps_311_joblib_py3_none_any_5fc3c503\":[{\"filename\":\"joblib-1.5.3-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_joblib_sdist_8561a326\":[{\"filename\":\"joblib-1.5.3.tar.gz\",\"version\":\"3.11\"}]}",
                 "jsonschema": "{\"ncore_pip_deps_311_jsonschema_py3_none_any_fbadb6f8\":[{\"filename\":\"jsonschema-4.23.0-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_jsonschema_sdist_d71497fe\":[{\"filename\":\"jsonschema-4.23.0.tar.gz\",\"version\":\"3.11\"}]}",
                 "jsonschema_specifications": "{\"ncore_pip_deps_311_jsonschema_specifications_py3_none_any_a09a0680\":[{\"filename\":\"jsonschema_specifications-2024.10.1-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_jsonschema_specifications_sdist_0f38b836\":[{\"filename\":\"jsonschema_specifications-2024.10.1.tar.gz\",\"version\":\"3.11\"}]}",
                 "jupyter_client": "{\"ncore_pip_deps_311_jupyter_client_py3_none_any_e8a19cc9\":[{\"filename\":\"jupyter_client-8.6.3-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_jupyter_client_sdist_35b3a094\":[{\"filename\":\"jupyter_client-8.6.3.tar.gz\",\"version\":\"3.11\"}]}",
                 "jupyter_core": "{\"ncore_pip_deps_311_jupyter_core_py3_none_any_4f7315d2\":[{\"filename\":\"jupyter_core-5.7.2-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_jupyter_core_sdist_aa5f8d32\":[{\"filename\":\"jupyter_core-5.7.2.tar.gz\",\"version\":\"3.11\"}]}",
                 "jupyterlab_pygments": "{\"ncore_pip_deps_311_jupyterlab_pygments_py3_none_any_841a8902\":[{\"filename\":\"jupyterlab_pygments-0.3.0-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_jupyterlab_pygments_sdist_721aca4d\":[{\"filename\":\"jupyterlab_pygments-0.3.0.tar.gz\",\"version\":\"3.11\"}]}",
                 "keras": "{\"ncore_pip_deps_311_keras_py3_none_any_ebd2c14d\":[{\"filename\":\"keras-3.14.1-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_keras_sdist_ef479173\":[{\"filename\":\"keras-3.14.1.tar.gz\",\"version\":\"3.11\"}]}",
+                "kiwisolver": "{\"ncore_pip_deps_311_kiwisolver_cp311_cp311_macosx_10_9_universal2_a4d36019\":[{\"filename\":\"kiwisolver-1.4.8-cp311-cp311-macosx_10_9_universal2.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_kiwisolver_cp311_cp311_macosx_10_9_x86_64_856b269c\":[{\"filename\":\"kiwisolver-1.4.8-cp311-cp311-macosx_10_9_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_kiwisolver_cp311_cp311_macosx_11_0_arm64_c2b9a96e\":[{\"filename\":\"kiwisolver-1.4.8-cp311-cp311-macosx_11_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_kiwisolver_cp311_cp311_manylinux_2_17_aarch64_dace81d2\":[{\"filename\":\"kiwisolver-1.4.8-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_kiwisolver_cp311_cp311_manylinux_2_17_ppc64le_11e1022b\":[{\"filename\":\"kiwisolver-1.4.8-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_kiwisolver_cp311_cp311_manylinux_2_17_s390x_3b9b4d28\":[{\"filename\":\"kiwisolver-1.4.8-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_kiwisolver_cp311_cp311_manylinux_2_17_x86_64_3a96c0e7\":[{\"filename\":\"kiwisolver-1.4.8-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_kiwisolver_cp311_cp311_musllinux_1_2_aarch64_23454ff0\":[{\"filename\":\"kiwisolver-1.4.8-cp311-cp311-musllinux_1_2_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_kiwisolver_cp311_cp311_musllinux_1_2_ppc64le_b21dbe16\":[{\"filename\":\"kiwisolver-1.4.8-cp311-cp311-musllinux_1_2_ppc64le.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_kiwisolver_cp311_cp311_musllinux_1_2_s390x_768cade2\":[{\"filename\":\"kiwisolver-1.4.8-cp311-cp311-musllinux_1_2_s390x.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_kiwisolver_cp311_cp311_musllinux_1_2_x86_64_d47cfb26\":[{\"filename\":\"kiwisolver-1.4.8-cp311-cp311-musllinux_1_2_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_kiwisolver_cp311_cp311_win_amd64_ed33ca20\":[{\"filename\":\"kiwisolver-1.4.8-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_kiwisolver_sdist_23d5f023\":[{\"filename\":\"kiwisolver-1.4.8.tar.gz\",\"version\":\"3.11\"}]}",
                 "libclang": "{\"ncore_pip_deps_311_libclang_py2_none_macosx_10_9_x86_64_6f14c3f1\":[{\"filename\":\"libclang-18.1.1-py2.py3-none-macosx_10_9_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_libclang_py2_none_macosx_11_0_arm64_83ce5045\":[{\"filename\":\"libclang-18.1.1-py2.py3-none-macosx_11_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_libclang_py2_none_manylinux_2_12_x86_64_c533091d\":[{\"filename\":\"libclang-18.1.1-py2.py3-none-manylinux2010_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_libclang_py2_none_manylinux_2_17_aarch64_54dda940\":[{\"filename\":\"libclang-18.1.1-py2.py3-none-manylinux2014_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_libclang_py2_none_manylinux_2_17_armv7l_cf4a99b0\":[{\"filename\":\"libclang-18.1.1-py2.py3-none-manylinux2014_armv7l.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_libclang_py2_none_musllinux_1_2_x86_64_69f8eb8f\":[{\"filename\":\"libclang-18.1.1-py2.py3-none-musllinux_1_2_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_libclang_py2_none_win_amd64_4dd2d3b8\":[{\"filename\":\"libclang-18.1.1-py2.py3-none-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_libclang_sdist_a1214966\":[{\"filename\":\"libclang-18.1.1.tar.gz\",\"version\":\"3.11\"}]}",
                 "lxml": "{\"ncore_pip_deps_311_lxml_cp311_cp311_macosx_10_9_universal2_13e35cbc\":[{\"filename\":\"lxml-6.0.2-cp311-cp311-macosx_10_9_universal2.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_lxml_cp311_cp311_macosx_10_9_x86_64_3b1675e0\":[{\"filename\":\"lxml-6.0.2-cp311-cp311-macosx_10_9_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_lxml_cp311_cp311_manylinux_2_17_aarch64_8ac6e581\":[{\"filename\":\"lxml-6.0.2-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_lxml_cp311_cp311_manylinux_2_17_x86_64_5aa0fc67\":[{\"filename\":\"lxml-6.0.2-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_lxml_cp311_cp311_manylinux_2_26_aarch64_de496365\":[{\"filename\":\"lxml-6.0.2-cp311-cp311-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_lxml_cp311_cp311_manylinux_2_26_x86_64_7d2de809\":[{\"filename\":\"lxml-6.0.2-cp311-cp311-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_lxml_cp311_cp311_manylinux_2_31_armv7l_b2c3da8d\":[{\"filename\":\"lxml-6.0.2-cp311-cp311-manylinux_2_31_armv7l.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_lxml_cp311_cp311_musllinux_1_2_aarch64_2593c77e\":[{\"filename\":\"lxml-6.0.2-cp311-cp311-musllinux_1_2_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_lxml_cp311_cp311_musllinux_1_2_armv7l_3e3cb088\":[{\"filename\":\"lxml-6.0.2-cp311-cp311-musllinux_1_2_armv7l.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_lxml_cp311_cp311_musllinux_1_2_x86_64_b8f18914\":[{\"filename\":\"lxml-6.0.2-cp311-cp311-musllinux_1_2_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_lxml_cp311_cp311_win_amd64_e5867f26\":[{\"filename\":\"lxml-6.0.2-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_lxml_sdist_cd79f336\":[{\"filename\":\"lxml-6.0.2.tar.gz\",\"version\":\"3.11\"}]}",
                 "manifold3d": "{\"ncore_pip_deps_311_manifold3d_cp311_cp311_macosx_10_14_universal2_6f395cc9\":[{\"filename\":\"manifold3d-3.4.0-cp311-cp311-macosx_10_14_universal2.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_manifold3d_cp311_cp311_macosx_10_14_x86_64_ae5dee5e\":[{\"filename\":\"manifold3d-3.4.0-cp311-cp311-macosx_10_14_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_manifold3d_cp311_cp311_macosx_11_0_arm64_2d7c7cae\":[{\"filename\":\"manifold3d-3.4.0-cp311-cp311-macosx_11_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_manifold3d_cp311_cp311_manylinux_2_17_aarch64_b332ee7b\":[{\"filename\":\"manifold3d-3.4.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_manifold3d_cp311_cp311_manylinux_2_27_x86_64_ec538215\":[{\"filename\":\"manifold3d-3.4.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_manifold3d_cp311_cp311_win_amd64_4d330587\":[{\"filename\":\"manifold3d-3.4.0-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_manifold3d_sdist_4e082bda\":[{\"filename\":\"manifold3d-3.4.0.tar.gz\",\"version\":\"3.11\"}]}",
@@ -20090,6 +21790,7 @@
                 "markdown_it_py": "{\"ncore_pip_deps_311_markdown_it_py_py3_none_any_35521684\":[{\"filename\":\"markdown_it_py-3.0.0-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_markdown_it_py_sdist_e3f60a94\":[{\"filename\":\"markdown-it-py-3.0.0.tar.gz\",\"version\":\"3.11\"}]}",
                 "markupsafe": "{\"ncore_pip_deps_311_markupsafe_cp311_cp311_macosx_10_9_universal2_9025b401\":[{\"filename\":\"MarkupSafe-3.0.2-cp311-cp311-macosx_10_9_universal2.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_markupsafe_cp311_cp311_macosx_11_0_arm64_93335ca3\":[{\"filename\":\"MarkupSafe-3.0.2-cp311-cp311-macosx_11_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_markupsafe_cp311_cp311_manylinux_2_17_aarch64_2cb8438c\":[{\"filename\":\"MarkupSafe-3.0.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_markupsafe_cp311_cp311_manylinux_2_17_x86_64_a123e330\":[{\"filename\":\"MarkupSafe-3.0.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_markupsafe_cp311_cp311_musllinux_1_2_aarch64_d8213e09\":[{\"filename\":\"MarkupSafe-3.0.2-cp311-cp311-musllinux_1_2_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_markupsafe_cp311_cp311_musllinux_1_2_x86_64_0bff5e0a\":[{\"filename\":\"MarkupSafe-3.0.2-cp311-cp311-musllinux_1_2_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_markupsafe_cp311_cp311_win_amd64_70a87b41\":[{\"filename\":\"MarkupSafe-3.0.2-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_markupsafe_sdist_ee55d3ed\":[{\"filename\":\"markupsafe-3.0.2.tar.gz\",\"version\":\"3.11\"}]}",
                 "marshmallow": "{\"ncore_pip_deps_311_marshmallow_py3_none_any_3350409f\":[{\"filename\":\"marshmallow-3.26.1-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_marshmallow_sdist_e6d8affb\":[{\"filename\":\"marshmallow-3.26.1.tar.gz\",\"version\":\"3.11\"}],\"ncore_pip_deps_38_marshmallow_py3_none_any_684939db\":[{\"filename\":\"marshmallow-3.20.1-py3-none-any.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_marshmallow_sdist_5d2371bb\":[{\"filename\":\"marshmallow-3.20.1.tar.gz\",\"version\":\"3.8\"}]}",
+                "matplotlib": "{\"ncore_pip_deps_311_matplotlib_cp311_cp311_macosx_10_12_x86_64_fd44fc75\":[{\"filename\":\"matplotlib-3.10.0-cp311-cp311-macosx_10_12_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_matplotlib_cp311_cp311_macosx_11_0_arm64_c58a9622\":[{\"filename\":\"matplotlib-3.10.0-cp311-cp311-macosx_11_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_matplotlib_cp311_cp311_manylinux_2_17_aarch64_845d9656\":[{\"filename\":\"matplotlib-3.10.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_matplotlib_cp311_cp311_manylinux_2_17_x86_64_5439f4c5\":[{\"filename\":\"matplotlib-3.10.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_matplotlib_cp311_cp311_musllinux_1_2_x86_64_4673ff67\":[{\"filename\":\"matplotlib-3.10.0-cp311-cp311-musllinux_1_2_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_matplotlib_cp311_cp311_win_amd64_7e8632ba\":[{\"filename\":\"matplotlib-3.10.0-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_matplotlib_sdist_b886d02a\":[{\"filename\":\"matplotlib-3.10.0.tar.gz\",\"version\":\"3.11\"}]}",
                 "matplotlib_inline": "{\"ncore_pip_deps_311_matplotlib_inline_py3_none_any_d56ce515\":[{\"filename\":\"matplotlib_inline-0.2.1-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_matplotlib_inline_sdist_e1ee949c\":[{\"filename\":\"matplotlib_inline-0.2.1.tar.gz\",\"version\":\"3.11\"}]}",
                 "mdurl": "{\"ncore_pip_deps_311_mdurl_py3_none_any_84008a41\":[{\"filename\":\"mdurl-0.1.2-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_mdurl_sdist_bb413d29\":[{\"filename\":\"mdurl-0.1.2.tar.gz\",\"version\":\"3.11\"}]}",
                 "mistune": "{\"ncore_pip_deps_311_mistune_py2_none_any_bad7f5d4\":[{\"filename\":\"mistune-2.0.5-py2.py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_mistune_sdist_0246113c\":[{\"filename\":\"mistune-2.0.5.tar.gz\",\"version\":\"3.11\"}]}",
@@ -20105,6 +21806,7 @@
                 "networkx": "{\"ncore_pip_deps_311_networkx_py3_none_any_d47fbf30\":[{\"filename\":\"networkx-3.6.1-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_networkx_sdist_26b7c357\":[{\"filename\":\"networkx-3.6.1.tar.gz\",\"version\":\"3.11\"}]}",
                 "numcodecs": "{\"ncore_pip_deps_311_numcodecs_cp311_cp311_macosx_10_9_x86_64_698f1d59\":[{\"filename\":\"numcodecs-0.15.1-cp311-cp311-macosx_10_9_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_numcodecs_cp311_cp311_macosx_11_0_arm64_bef8c8e6\":[{\"filename\":\"numcodecs-0.15.1-cp311-cp311-macosx_11_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_numcodecs_cp311_cp311_manylinux_2_17_x86_64_cdfaef9f\":[{\"filename\":\"numcodecs-0.15.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_numcodecs_cp311_cp311_win_amd64_e2547fa3\":[{\"filename\":\"numcodecs-0.15.1-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_numcodecs_sdist_eeed77e4\":[{\"filename\":\"numcodecs-0.15.1.tar.gz\",\"version\":\"3.11\"}],\"ncore_pip_deps_38_numcodecs_cp38_cp38_macosx_10_9_x86_64_0c240858\":[{\"filename\":\"numcodecs-0.11.0-cp38-cp38-macosx_10_9_x86_64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_numcodecs_cp38_cp38_manylinux_2_17_x86_64_ee5bda16\":[{\"filename\":\"numcodecs-0.11.0-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_numcodecs_cp38_cp38_win_amd64_bd05cdb8\":[{\"filename\":\"numcodecs-0.11.0-cp38-cp38-win_amd64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_numcodecs_sdist_6c058b32\":[{\"filename\":\"numcodecs-0.11.0.tar.gz\",\"version\":\"3.8\"}]}",
                 "numpy": "{\"ncore_pip_deps_311_numpy_cp311_cp311_macosx_10_9_x86_64_4c66707f\":[{\"filename\":\"numpy-1.26.4-cp311-cp311-macosx_10_9_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_numpy_cp311_cp311_macosx_11_0_arm64_edd8b5fe\":[{\"filename\":\"numpy-1.26.4-cp311-cp311-macosx_11_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_numpy_cp311_cp311_manylinux_2_17_aarch64_7ab55401\":[{\"filename\":\"numpy-1.26.4-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_numpy_cp311_cp311_manylinux_2_17_x86_64_666dbfb6\":[{\"filename\":\"numpy-1.26.4-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_numpy_cp311_cp311_musllinux_1_1_aarch64_96ff0b2a\":[{\"filename\":\"numpy-1.26.4-cp311-cp311-musllinux_1_1_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_numpy_cp311_cp311_musllinux_1_1_x86_64_60dedbb9\":[{\"filename\":\"numpy-1.26.4-cp311-cp311-musllinux_1_1_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_numpy_cp311_cp311_win_amd64_cd25bcec\":[{\"filename\":\"numpy-1.26.4-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_numpy_sdist_2a02aba9\":[{\"filename\":\"numpy-1.26.4.tar.gz\",\"version\":\"3.11\"}],\"ncore_pip_deps_38_numpy_cp38_cp38_macosx_10_9_x86_64_cf240200\":[{\"filename\":\"numpy-1.19.5-cp38-cp38-macosx_10_9_x86_64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_numpy_cp38_cp38_manylinux_2_12_x86_64_a9d17f2b\":[{\"filename\":\"numpy-1.19.5-cp38-cp38-manylinux2010_x86_64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_numpy_cp38_cp38_manylinux_2_17_aarch64_99abf4f3\":[{\"filename\":\"numpy-1.19.5-cp38-cp38-manylinux2014_aarch64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_numpy_cp38_cp38_manylinux_2_5_x86_64_012426a4\":[{\"filename\":\"numpy-1.19.5-cp38-cp38-manylinux1_x86_64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_numpy_cp38_cp38_win_amd64_811daee3\":[{\"filename\":\"numpy-1.19.5-cp38-cp38-win_amd64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_numpy_sdist_a76f5024\":[{\"filename\":\"numpy-1.19.5.zip\",\"version\":\"3.8\"}]}",
+                "nuscenes_devkit": "{\"ncore_pip_deps_311_nuscenes_devkit_py3_none_any_76cee0e7\":[{\"filename\":\"nuscenes_devkit-1.2.0-py3-none-any.whl\",\"version\":\"3.11\"}]}",
                 "nvidia_cublas_cu12": "{\"ncore_pip_deps_311_nvidia_cublas_cu12_py3_none_manylinux_2_27_aarch64_93a4e0e3\":[{\"filename\":\"nvidia_cublas_cu12-12.8.3.14-py3-none-manylinux_2_27_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_nvidia_cublas_cu12_py3_none_manylinux_2_27_x86_64_3f0e05e7\":[{\"filename\":\"nvidia_cublas_cu12-12.8.3.14-py3-none-manylinux_2_27_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_nvidia_cublas_cu12_py3_none_win_amd64_9ae5eae5\":[{\"filename\":\"nvidia_cublas_cu12-12.8.3.14-py3-none-win_amd64.whl\",\"version\":\"3.11\"}]}",
                 "nvidia_cuda_cupti_cu12": "{\"ncore_pip_deps_311_nvidia_cuda_cupti_cu12_py3_none_manylinux_2_17_aarch64_ff154211\":[{\"filename\":\"nvidia_cuda_cupti_cu12-12.8.57-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_nvidia_cuda_cupti_cu12_py3_none_manylinux_2_17_x86_64_8e0b2eb8\":[{\"filename\":\"nvidia_cuda_cupti_cu12-12.8.57-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_nvidia_cuda_cupti_cu12_py3_none_win_amd64_bbed719c\":[{\"filename\":\"nvidia_cuda_cupti_cu12-12.8.57-py3-none-win_amd64.whl\",\"version\":\"3.11\"}]}",
                 "nvidia_cuda_nvrtc_cu12": "{\"ncore_pip_deps_311_nvidia_cuda_nvrtc_cu12_py3_none_manylinux_2_12_x86_64_a0fa9c2a\":[{\"filename\":\"nvidia_cuda_nvrtc_cu12-12.8.61-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_nvidia_cuda_nvrtc_cu12_py3_none_manylinux_2_17_aarch64_b1f376bf\":[{\"filename\":\"nvidia_cuda_nvrtc_cu12-12.8.61-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_nvidia_cuda_nvrtc_cu12_py3_none_win_amd64_9c8887bf\":[{\"filename\":\"nvidia_cuda_nvrtc_cu12-12.8.61-py3-none-win_amd64.whl\",\"version\":\"3.11\"}]}",
@@ -20139,10 +21841,13 @@
                 "ptyprocess": "{\"ncore_pip_deps_311_ptyprocess_py2_none_any_4b41f396\":[{\"filename\":\"ptyprocess-0.7.0-py2.py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_ptyprocess_sdist_5c5d0a3b\":[{\"filename\":\"ptyprocess-0.7.0.tar.gz\",\"version\":\"3.11\"}]}",
                 "pure_eval": "{\"ncore_pip_deps_311_pure_eval_py3_none_any_1db8e35b\":[{\"filename\":\"pure_eval-0.2.3-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pure_eval_sdist_5f4e983f\":[{\"filename\":\"pure_eval-0.2.3.tar.gz\",\"version\":\"3.11\"}]}",
                 "pyarrow": "{\"ncore_pip_deps_311_pyarrow_cp311_cp311_macosx_12_0_arm64_6f0147ee\":[{\"filename\":\"pyarrow-23.0.1-cp311-cp311-macosx_12_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pyarrow_cp311_cp311_macosx_12_0_x86_64_0ae6e17c\":[{\"filename\":\"pyarrow-23.0.1-cp311-cp311-macosx_12_0_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pyarrow_cp311_cp311_manylinux_2_28_aarch64_fed70202\":[{\"filename\":\"pyarrow-23.0.1-cp311-cp311-manylinux_2_28_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pyarrow_cp311_cp311_manylinux_2_28_x86_64_26d50dee\":[{\"filename\":\"pyarrow-23.0.1-cp311-cp311-manylinux_2_28_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pyarrow_cp311_cp311_musllinux_1_2_aarch64_3c30143b\":[{\"filename\":\"pyarrow-23.0.1-cp311-cp311-musllinux_1_2_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pyarrow_cp311_cp311_musllinux_1_2_x86_64_db2190fa\":[{\"filename\":\"pyarrow-23.0.1-cp311-cp311-musllinux_1_2_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pyarrow_cp311_cp311_win_amd64_f00f993a\":[{\"filename\":\"pyarrow-23.0.1-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pyarrow_sdist_b8c5873e\":[{\"filename\":\"pyarrow-23.0.1.tar.gz\",\"version\":\"3.11\"}]}",
+                "pycocotools": "{\"ncore_pip_deps_311_pycocotools_cp311_cp311_macosx_10_9_universal2_81bdceeb\":[{\"filename\":\"pycocotools-2.0.11-cp311-cp311-macosx_10_9_universal2.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pycocotools_cp311_cp311_manylinux_2_17_aarch64_a1c05f91\":[{\"filename\":\"pycocotools-2.0.11-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pycocotools_cp311_cp311_manylinux_2_17_x86_64_18ba75ff\":[{\"filename\":\"pycocotools-2.0.11-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pycocotools_cp311_cp311_musllinux_1_2_aarch64_69341779\":[{\"filename\":\"pycocotools-2.0.11-cp311-cp311-musllinux_1_2_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pycocotools_cp311_cp311_musllinux_1_2_x86_64_b6a07071\":[{\"filename\":\"pycocotools-2.0.11-cp311-cp311-musllinux_1_2_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pycocotools_cp311_cp311_win_amd64_8e159232\":[{\"filename\":\"pycocotools-2.0.11-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pycocotools_sdist_34254d76\":[{\"filename\":\"pycocotools-2.0.11.tar.gz\",\"version\":\"3.11\"}]}",
                 "pycollada": "{\"ncore_pip_deps_311_pycollada_py3_none_any_636e6496\":[{\"filename\":\"pycollada-0.9.3-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pycollada_sdist_c34d6dcf\":[{\"filename\":\"pycollada-0.9.3.tar.gz\",\"version\":\"3.11\"}]}",
                 "pydata_sphinx_theme": "{\"ncore_pip_deps_311_pydata_sphinx_theme_py3_none_any_225331e8\":[{\"filename\":\"pydata_sphinx_theme-0.16.1-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pydata_sphinx_theme_sdist_a08b7f0b\":[{\"filename\":\"pydata_sphinx_theme-0.16.1.tar.gz\",\"version\":\"3.11\"}]}",
                 "pygments": "{\"ncore_pip_deps_311_pygments_py3_none_any_9ea1544a\":[{\"filename\":\"pygments-2.19.1-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pygments_sdist_61c16d2a\":[{\"filename\":\"pygments-2.19.1.tar.gz\",\"version\":\"3.11\"}]}",
                 "pynvvideocodec": "{\"ncore_pip_deps_311_pynvvideocodec_cp311_cp311_manylinux_2_28_aarch64_b8d9b47b\":[{\"filename\":\"pynvvideocodec-2.1.0-cp311-cp311-manylinux_2_28_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pynvvideocodec_cp311_cp311_manylinux_2_28_x86_64_6d653240\":[{\"filename\":\"pynvvideocodec-2.1.0-cp311-cp311-manylinux_2_28_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pynvvideocodec_cp311_cp311_win_amd64_ee5d2dc5\":[{\"filename\":\"pynvvideocodec-2.1.0-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}]}",
+                "pyparsing": "{\"ncore_pip_deps_311_pyparsing_py3_none_any_506ff4f4\":[{\"filename\":\"pyparsing-3.2.1-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pyparsing_sdist_61980854\":[{\"filename\":\"pyparsing-3.2.1.tar.gz\",\"version\":\"3.11\"}]}",
+                "pyquaternion": "{\"ncore_pip_deps_311_pyquaternion_py3_none_any_e65f6e3f\":[{\"filename\":\"pyquaternion-0.9.9-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pyquaternion_sdist_b1f61af2\":[{\"filename\":\"pyquaternion-0.9.9.tar.gz\",\"version\":\"3.11\"}]}",
                 "pytest": "{\"ncore_pip_deps_311_pytest_py3_none_any_50e16d95\":[{\"filename\":\"pytest-8.3.4-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pytest_sdist_965370d0\":[{\"filename\":\"pytest-8.3.4.tar.gz\",\"version\":\"3.11\"}],\"ncore_pip_deps_38_pytest_py3_none_any_78bf1645\":[{\"filename\":\"pytest-7.4.0-py3-none-any.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_pytest_sdist_b4bf8c45\":[{\"filename\":\"pytest-7.4.0.tar.gz\",\"version\":\"3.8\"}]}",
                 "python_dateutil": "{\"ncore_pip_deps_311_python_dateutil_py2_none_any_a8b2bc7b\":[{\"filename\":\"python_dateutil-2.9.0.post0-py2.py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_python_dateutil_sdist_37dd5420\":[{\"filename\":\"python-dateutil-2.9.0.post0.tar.gz\",\"version\":\"3.11\"}]}",
                 "pytz": "{\"ncore_pip_deps_311_pytz_py2_none_any_89dd22dc\":[{\"filename\":\"pytz-2025.1-py2.py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_pytz_sdist_c2db42be\":[{\"filename\":\"pytz-2025.1.tar.gz\",\"version\":\"3.11\"}]}",
@@ -20154,9 +21859,10 @@
                 "roman_numerals": "{\"ncore_pip_deps_311_roman_numerals_py3_none_any_647ba99c\":[{\"filename\":\"roman_numerals-4.1.0-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_roman_numerals_sdist_1af8b147\":[{\"filename\":\"roman_numerals-4.1.0.tar.gz\",\"version\":\"3.11\"}]}",
                 "rpds_py": "{\"ncore_pip_deps_311_rpds_py_cp311_cp311_macosx_10_12_x86_64_d20cfb4e\":[{\"filename\":\"rpds_py-0.22.3-cp311-cp311-macosx_10_12_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_rpds_py_cp311_cp311_macosx_11_0_arm64_68049202\":[{\"filename\":\"rpds_py-0.22.3-cp311-cp311-macosx_11_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_rpds_py_cp311_cp311_manylinux_2_17_aarch64_fb4f868f\":[{\"filename\":\"rpds_py-0.22.3-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_rpds_py_cp311_cp311_manylinux_2_17_armv7l_bc51abd0\":[{\"filename\":\"rpds_py-0.22.3-cp311-cp311-manylinux_2_17_armv7l.manylinux2014_armv7l.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_rpds_py_cp311_cp311_manylinux_2_17_ppc64le_0f3cec04\":[{\"filename\":\"rpds_py-0.22.3-cp311-cp311-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_rpds_py_cp311_cp311_manylinux_2_17_s390x_7ef9d9da\":[{\"filename\":\"rpds_py-0.22.3-cp311-cp311-manylinux_2_17_s390x.manylinux2014_s390x.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_rpds_py_cp311_cp311_manylinux_2_17_x86_64_59f4a79c\":[{\"filename\":\"rpds_py-0.22.3-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_rpds_py_cp311_cp311_musllinux_1_2_aarch64_e89391e6\":[{\"filename\":\"rpds_py-0.22.3-cp311-cp311-musllinux_1_2_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_rpds_py_cp311_cp311_musllinux_1_2_x86_64_1352ae4f\":[{\"filename\":\"rpds_py-0.22.3-cp311-cp311-musllinux_1_2_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_rpds_py_cp311_cp311_win_amd64_8bd7c8cf\":[{\"filename\":\"rpds_py-0.22.3-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_rpds_py_sdist_e32fee8a\":[{\"filename\":\"rpds_py-0.22.3.tar.gz\",\"version\":\"3.11\"}]}",
                 "rtree": "{\"ncore_pip_deps_311_rtree_py3_none_macosx_10_9_x86_64_d6721842\":[{\"filename\":\"rtree-1.4.1-py3-none-macosx_10_9_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_rtree_py3_none_macosx_11_0_arm64_a7e48d80\":[{\"filename\":\"rtree-1.4.1-py3-none-macosx_11_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_rtree_py3_none_manylinux_2_24_aarch64_efa8c449\":[{\"filename\":\"rtree-1.4.1-py3-none-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_rtree_py3_none_manylinux_2_24_x86_64_12de4578\":[{\"filename\":\"rtree-1.4.1-py3-none-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_rtree_py3_none_musllinux_1_2_aarch64_b558edda\":[{\"filename\":\"rtree-1.4.1-py3-none-musllinux_1_2_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_rtree_py3_none_musllinux_1_2_x86_64_f155bc8d\":[{\"filename\":\"rtree-1.4.1-py3-none-musllinux_1_2_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_rtree_py3_none_win_amd64_efe125f4\":[{\"filename\":\"rtree-1.4.1-py3-none-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_rtree_sdist_c6b1b355\":[{\"filename\":\"rtree-1.4.1.tar.gz\",\"version\":\"3.11\"}]}",
+                "scikit_learn": "{\"ncore_pip_deps_311_scikit_learn_cp311_cp311_macosx_10_9_x86_64_146b4d36\":[{\"filename\":\"scikit_learn-1.8.0-cp311-cp311-macosx_10_9_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_scikit_learn_cp311_cp311_macosx_12_0_arm64_f984ca4b\":[{\"filename\":\"scikit_learn-1.8.0-cp311-cp311-macosx_12_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_scikit_learn_cp311_cp311_manylinux_2_27_aarch64_5e30adb8\":[{\"filename\":\"scikit_learn-1.8.0-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_scikit_learn_cp311_cp311_manylinux_2_27_x86_64_ada8121b\":[{\"filename\":\"scikit_learn-1.8.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_scikit_learn_cp311_cp311_win_amd64_c57b1b61\":[{\"filename\":\"scikit_learn-1.8.0-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_scikit_learn_sdist_9bccbb3b\":[{\"filename\":\"scikit_learn-1.8.0.tar.gz\",\"version\":\"3.11\"}]}",
                 "scipy": "{\"ncore_pip_deps_311_scipy_cp311_cp311_macosx_10_13_x86_64_92233b2d\":[{\"filename\":\"scipy-1.15.2-cp311-cp311-macosx_10_13_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_scipy_cp311_cp311_macosx_12_0_arm64_62ca1ff3\":[{\"filename\":\"scipy-1.15.2-cp311-cp311-macosx_12_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_scipy_cp311_cp311_macosx_14_0_arm64_4c667649\":[{\"filename\":\"scipy-1.15.2-cp311-cp311-macosx_14_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_scipy_cp311_cp311_macosx_14_0_x86_64_a8bf5cb4\":[{\"filename\":\"scipy-1.15.2-cp311-cp311-macosx_14_0_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_scipy_cp311_cp311_manylinux_2_17_aarch64_6a8e34cf\":[{\"filename\":\"scipy-1.15.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_scipy_cp311_cp311_manylinux_2_17_x86_64_28a0d2c2\":[{\"filename\":\"scipy-1.15.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_scipy_cp311_cp311_musllinux_1_2_aarch64_42dabaaa\":[{\"filename\":\"scipy-1.15.2-cp311-cp311-musllinux_1_2_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_scipy_cp311_cp311_musllinux_1_2_x86_64_6f5e296e\":[{\"filename\":\"scipy-1.15.2-cp311-cp311-musllinux_1_2_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_scipy_cp311_cp311_win_amd64_597a0c70\":[{\"filename\":\"scipy-1.15.2-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_scipy_sdist_cd58a314\":[{\"filename\":\"scipy-1.15.2.tar.gz\",\"version\":\"3.11\"}],\"ncore_pip_deps_38_scipy_cp38_cp38_macosx_10_9_x86_64_5678f88c\":[{\"filename\":\"scipy-1.10.1-cp38-cp38-macosx_10_9_x86_64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_scipy_cp38_cp38_macosx_12_0_arm64_39becb03\":[{\"filename\":\"scipy-1.10.1-cp38-cp38-macosx_12_0_arm64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_scipy_cp38_cp38_manylinux_2_17_aarch64_bce5869c\":[{\"filename\":\"scipy-1.10.1-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_scipy_cp38_cp38_manylinux_2_17_x86_64_07c3457c\":[{\"filename\":\"scipy-1.10.1-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_scipy_cp38_cp38_win_amd64_049a8bbf\":[{\"filename\":\"scipy-1.10.1-cp38-cp38-win_amd64.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_scipy_sdist_2cf9dfb8\":[{\"filename\":\"scipy-1.10.1.tar.gz\",\"version\":\"3.8\"}]}",
                 "setuptools": "{\"ncore_pip_deps_311_setuptools_py3_none_any_e3982f44\":[{\"filename\":\"setuptools-75.8.0-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_setuptools_sdist_c5afc8f4\":[{\"filename\":\"setuptools-75.8.0.tar.gz\",\"version\":\"3.11\"}]}",
-                "shapely": "{\"ncore_pip_deps_311_shapely_cp311_cp311_macosx_10_9_x86_64_91121757\":[{\"filename\":\"shapely-2.1.2-cp311-cp311-macosx_10_9_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_shapely_cp311_cp311_macosx_11_0_arm64_16a9c722\":[{\"filename\":\"shapely-2.1.2-cp311-cp311-macosx_11_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_shapely_cp311_cp311_manylinux_2_17_aarch64_cc4f7397\":[{\"filename\":\"shapely-2.1.2-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_shapely_cp311_cp311_manylinux_2_17_x86_64_136ab87b\":[{\"filename\":\"shapely-2.1.2-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_shapely_cp311_cp311_musllinux_1_2_aarch64_16c5d0fc\":[{\"filename\":\"shapely-2.1.2-cp311-cp311-musllinux_1_2_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_shapely_cp311_cp311_musllinux_1_2_x86_64_6ddc759f\":[{\"filename\":\"shapely-2.1.2-cp311-cp311-musllinux_1_2_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_shapely_cp311_cp311_win_amd64_c64d5c97\":[{\"filename\":\"shapely-2.1.2-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_shapely_sdist_2ed4ecb2\":[{\"filename\":\"shapely-2.1.2.tar.gz\",\"version\":\"3.11\"}]}",
+                "shapely": "{\"ncore_pip_deps_311_shapely_cp311_cp311_macosx_10_9_x86_64_5cf23400\":[{\"filename\":\"shapely-2.0.7-cp311-cp311-macosx_10_9_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_shapely_cp311_cp311_macosx_11_0_arm64_d8f1da01\":[{\"filename\":\"shapely-2.0.7-cp311-cp311-macosx_11_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_shapely_cp311_cp311_manylinux_2_17_aarch64_8f623b64\":[{\"filename\":\"shapely-2.0.7-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_shapely_cp311_cp311_manylinux_2_17_x86_64_e6d95703\":[{\"filename\":\"shapely-2.0.7-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_shapely_cp311_cp311_win_amd64_b52f3ab8\":[{\"filename\":\"shapely-2.0.7-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_shapely_sdist_28fe2997\":[{\"filename\":\"shapely-2.0.7.tar.gz\",\"version\":\"3.11\"}]}",
                 "six": "{\"ncore_pip_deps_311_six_py2_none_any_4721f391\":[{\"filename\":\"six-1.17.0-py2.py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_six_sdist_ff70335d\":[{\"filename\":\"six-1.17.0.tar.gz\",\"version\":\"3.11\"}]}",
                 "snowballstemmer": "{\"ncore_pip_deps_311_snowballstemmer_py2_none_any_c8e1716e\":[{\"filename\":\"snowballstemmer-2.2.0-py2.py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_snowballstemmer_sdist_09b16deb\":[{\"filename\":\"snowballstemmer-2.2.0.tar.gz\",\"version\":\"3.11\"}]}",
                 "soupsieve": "{\"ncore_pip_deps_311_soupsieve_py3_none_any_e72c4ff0\":[{\"filename\":\"soupsieve-2.6-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_soupsieve_sdist_e2e68417\":[{\"filename\":\"soupsieve-2.6.tar.gz\",\"version\":\"3.11\"}]}",
@@ -20175,6 +21881,7 @@
                 "tensorboard_data_server": "{\"ncore_pip_deps_311_tensorboard_data_server_py3_none_any_7e0610d2\":[{\"filename\":\"tensorboard_data_server-0.7.2-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_tensorboard_data_server_py3_none_macosx_10_9_x86_64_9fe5d242\":[{\"filename\":\"tensorboard_data_server-0.7.2-py3-none-macosx_10_9_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_tensorboard_data_server_py3_none_manylinux_2_31_x86_64_ef687163\":[{\"filename\":\"tensorboard_data_server-0.7.2-py3-none-manylinux_2_31_x86_64.whl\",\"version\":\"3.11\"}]}",
                 "tensorflow": "{\"ncore_pip_deps_311_tensorflow_cp311_cp311_macosx_12_0_arm64_5f964016\":[{\"filename\":\"tensorflow-2.20.0-cp311-cp311-macosx_12_0_arm64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_tensorflow_cp311_cp311_manylinux_2_17_aarch64_3e9568c8\":[{\"filename\":\"tensorflow-2.20.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_tensorflow_cp311_cp311_manylinux_2_17_x86_64_481499fd\":[{\"filename\":\"tensorflow-2.20.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_tensorflow_cp311_cp311_win_amd64_7551558a\":[{\"filename\":\"tensorflow-2.20.0-cp311-cp311-win_amd64.whl\",\"version\":\"3.11\"}]}",
                 "termcolor": "{\"ncore_pip_deps_311_termcolor_py3_none_any_37b17b5f\":[{\"filename\":\"termcolor-2.5.0-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_termcolor_sdist_998d8d27\":[{\"filename\":\"termcolor-2.5.0.tar.gz\",\"version\":\"3.11\"}]}",
+                "threadpoolctl": "{\"ncore_pip_deps_311_threadpoolctl_py3_none_any_43a0b8fd\":[{\"filename\":\"threadpoolctl-3.6.0-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_threadpoolctl_sdist_8ab8b4aa\":[{\"filename\":\"threadpoolctl-3.6.0.tar.gz\",\"version\":\"3.11\"}]}",
                 "tinycss2": "{\"ncore_pip_deps_311_tinycss2_py3_none_any_3a49cf47\":[{\"filename\":\"tinycss2-1.4.0-py3-none-any.whl\",\"version\":\"3.11\"}],\"ncore_pip_deps_311_tinycss2_sdist_10c0972f\":[{\"filename\":\"tinycss2-1.4.0.tar.gz\",\"version\":\"3.11\"}]}",
                 "tomli": "{\"ncore_pip_deps_38_tomli_py3_none_any_939de3e7\":[{\"filename\":\"tomli-2.0.1-py3-none-any.whl\",\"version\":\"3.8\"}],\"ncore_pip_deps_38_tomli_sdist_de526c12\":[{\"filename\":\"tomli-2.0.1.tar.gz\",\"version\":\"3.8\"}]}",
                 "torch": "{\"ncore_pip_deps_311_torch\":[{\"version\":\"3.11\"}],\"ncore_pip_deps_38_torch\":[{\"version\":\"3.8\"}]}",
@@ -20213,16 +21920,20 @@
                 "babel",
                 "beautifulsoup4",
                 "bleach",
+                "cachetools",
                 "cbor2",
                 "certifi",
                 "charset_normalizer",
                 "click",
                 "colorlog",
+                "contourpy",
+                "cycler",
                 "dataclasses_json",
                 "debugpy",
                 "decorator",
                 "defusedxml",
                 "deprecated",
+                "descartes",
                 "docutils",
                 "dracopy",
                 "embreex",
@@ -20232,7 +21943,9 @@
                 "fasteners",
                 "fastjsonschema",
                 "filelock",
+                "fire",
                 "flatbuffers",
+                "fonttools",
                 "fsspec",
                 "gast",
                 "google_pasta",
@@ -20249,12 +21962,14 @@
                 "ipython_pygments_lexers",
                 "jedi",
                 "jinja2",
+                "joblib",
                 "jsonschema",
                 "jsonschema_specifications",
                 "jupyter_client",
                 "jupyter_core",
                 "jupyterlab_pygments",
                 "keras",
+                "kiwisolver",
                 "libclang",
                 "lxml",
                 "manifold3d",
@@ -20263,6 +21978,7 @@
                 "markdown_it_py",
                 "markupsafe",
                 "marshmallow",
+                "matplotlib",
                 "matplotlib_inline",
                 "mdurl",
                 "mistune",
@@ -20278,6 +21994,7 @@
                 "networkx",
                 "numcodecs",
                 "numpy",
+                "nuscenes_devkit",
                 "nvidia_cublas_cu12",
                 "nvidia_cuda_cupti_cu12",
                 "nvidia_cuda_nvrtc_cu12",
@@ -20312,10 +22029,13 @@
                 "ptyprocess",
                 "pure_eval",
                 "pyarrow",
+                "pycocotools",
                 "pycollada",
                 "pydata_sphinx_theme",
                 "pygments",
                 "pynvvideocodec",
+                "pyparsing",
+                "pyquaternion",
                 "pytest",
                 "python_dateutil",
                 "pytz",
@@ -20327,6 +22047,7 @@
                 "roman_numerals",
                 "rpds_py",
                 "rtree",
+                "scikit_learn",
                 "scipy",
                 "setuptools",
                 "shapely",
@@ -20348,6 +22069,7 @@
                 "tensorboard_data_server",
                 "tensorflow",
                 "termcolor",
+                "threadpoolctl",
                 "tinycss2",
                 "tomli",
                 "torch",

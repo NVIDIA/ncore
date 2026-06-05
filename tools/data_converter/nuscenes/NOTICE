@@ -1,0 +1,11 @@
+nuScenes Dataset
+Copyright (c) 2019 nuScenes (https://www.nuscenes.org)
+
+This converter processes data from the nuScenes dataset.
+The nuScenes dataset is released under the Creative Commons
+Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0).
+
+Users must agree to the nuScenes Terms of Use before downloading or using the dataset:
+https://www.nuscenes.org/terms-of-use
+
+The nuscenes-devkit library is released under the Apache License 2.0.

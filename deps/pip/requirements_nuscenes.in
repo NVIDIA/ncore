@@ -13,19 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Import common dependencies
--r requirements_tests.in
--r requirements_ncore.in
--r requirements_docs.in
--r requirements_tools.in
--r requirements_waymo.in
--r requirements_colmap.in
--r requirements_nuscenes.in
--r requirements_pai.in
-
-# Public API restrictions for 3.11
-# torch 2.7+ supports numpy 2.x natively, no constraint needed
-
---find-links https://download.pytorch.org/whl/cu128/torch
-torch==2.7.0+cu128
-
+# nuScenes converter dependencies
+nuscenes-devkit
+# pyquaternion is a transitive dependency of nuscenes-devkit that we also use directly
+# for quaternion-to-rotation-matrix conversion and SLERP interpolation.
+pyquaternion

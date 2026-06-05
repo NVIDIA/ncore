@@ -5,13 +5,14 @@ Data Conversions
 ================
 
 NCore provides conversion tools for importing 3rd-party dataset formats into
-the NCore V4 component-based format. Supported formats include KITTI, Waymo,
-COLMAP (including ScanNet++), and PAI.
+the NCore V4 component-based format. Supported formats include KITTI, nuScenes,
+Waymo, COLMAP (including ScanNet++), and PAI.
 
 .. toctree::
    :maxdepth: 1
 
    kitti/kitti
+   nuscenes/nuscenes
    waymo/waymo
    colmap/colmap
    pai/pai
