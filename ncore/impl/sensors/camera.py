@@ -369,13 +369,15 @@ class CameraModel(BaseModel, ABC):
         """
         if isinstance(cam_model_parameters, types.FThetaCameraModelParameters):
             return FThetaCameraModel(cam_model_parameters, device, dtype)
+        elif isinstance(cam_model_parameters, types.IdealPinholeCameraModelParameters):
+            return IdealPinholeCameraModel(cam_model_parameters, device, dtype)
         elif isinstance(cam_model_parameters, types.OpenCVPinholeCameraModelParameters):
             return OpenCVPinholeCameraModel(cam_model_parameters, device, dtype)
         elif isinstance(cam_model_parameters, types.OpenCVFisheyeCameraModelParameters):
             return OpenCVFisheyeCameraModel(cam_model_parameters, device, dtype)
         else:
             raise TypeError(
-                f"unsupported camera model type {type(cam_model_parameters)}, currently supporting Ftheta/OpenCV-Pinhole/OpenCV-Fisheye only"
+                f"unsupported camera model type {type(cam_model_parameters)}, currently supporting Ftheta/Ideal-Pinhole/OpenCV-Pinhole/OpenCV-Fisheye only"
             )
 
     @dataclass
@@ -1394,11 +1396,131 @@ class FThetaCameraModel(CameraModel):
         return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
 
 
-class OpenCVPinholeCameraModel(CameraModel):
-    """Camera model for OpenCV pinhole cameras"""
+class PinholeCameraModel(CameraModel, ABC):
+    """Abstract base for pinhole-family camera models
+
+    Holds the shared principal point and focal length and implements the closed-form
+    (distortion-free) ideal pinhole projection / unprojection used directly by
+    :class:`IdealPinholeCameraModel` and as the linear core of
+    :class:`OpenCVPinholeCameraModel`.
+    """
 
     principal_point: torch.Tensor
     focal_length: torch.Tensor
+
+    def __init__(
+        self,
+        camera_model_parameters: types.PinholeCameraModelParameters,
+        device: Union[str, torch.device],
+        dtype: torch.dtype,
+    ):
+        super().__init__(camera_model_parameters, device, dtype)
+        del (device, dtype)
+
+        self.register_buffer(
+            "principal_point",
+            to_torch(camera_model_parameters.principal_point, device=self.device, dtype=self.dtype),
+        )
+        self.register_buffer(
+            "focal_length",
+            to_torch(camera_model_parameters.focal_length, device=self.device, dtype=self.dtype),
+        )
+
+        assert self.principal_point.shape == (2,)
+        assert self.principal_point.dtype == self.dtype
+        assert self.focal_length.shape == (2,)
+        assert self.focal_length.dtype == self.dtype
+
+    def _ideal_image_points_to_camera_rays(self, image_points: torch.Tensor) -> torch.Tensor:
+        """Closed-form ideal-pinhole unprojection of image points to normalized rays"""
+        cam_rays2 = (image_points - self.principal_point) / self.focal_length
+        cam_rays3 = torch.cat([cam_rays2, torch.ones_like(cam_rays2[:, :1])], dim=1)
+        return cam_rays3 / torch.linalg.norm(cam_rays3, axis=1, keepdims=True)
+
+    def _ideal_camera_rays_to_image_points(
+        self, cam_rays: torch.Tensor, return_jacobians: bool
+    ) -> CameraModel.ImagePointsReturn:
+        """Closed-form ideal-pinhole projection of normalized camera rays to image points"""
+        image_points = torch.zeros_like(cam_rays[:, :2])
+
+        # Points must be in front of the camera plane
+        valid = cam_rays[:, 2] > 0.0
+        valid_idx = torch.where(valid)[0]
+
+        cam_rays_valid = torch.index_select(cam_rays, 0, valid_idx)
+
+        if return_jacobians:
+            cam_rays_valid.requires_grad = True
+
+        uv_normalized = cam_rays_valid[:, :2] / cam_rays_valid[:, 2:3]  # [n,2]
+        image_points[valid_idx] = uv_normalized * self.focal_length + self.principal_point
+
+        # Check if the image points fall within the image
+        valid_x = torch.logical_and(0.0 <= image_points[valid_idx, 0], image_points[valid_idx, 0] < self.resolution[0])
+        valid_y = torch.logical_and(0.0 <= image_points[valid_idx, 1], image_points[valid_idx, 1] < self.resolution[1])
+
+        valid_pts = valid_x & valid_y
+        valid[valid_idx[~valid_pts]] = False
+
+        if return_jacobians:
+            jacobians = torch.zeros((len(cam_rays), 2, 3), dtype=self.dtype, device=self.device)
+
+            initial_gradient = torch.ones((len(valid_idx),), dtype=self.dtype, device=self.device)
+            image_points[valid_idx, 0].backward(gradient=initial_gradient, retain_graph=True, inputs=cam_rays_valid)
+
+            assert cam_rays_valid.grad is not None
+            jacobians[valid_idx, 0] = cam_rays_valid.grad
+
+            cam_rays_valid.grad.zero_()
+
+            image_points[valid_idx, 1].backward(gradient=initial_gradient)
+            jacobians[valid_idx, 1] = cam_rays_valid.grad
+        else:
+            jacobians = None
+
+        return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
+
+
+class IdealPinholeCameraModel(PinholeCameraModel):
+    """Camera model for an ideal (distortion-free) pinhole camera"""
+
+    def __init__(
+        self,
+        camera_model_parameters: types.IdealPinholeCameraModelParameters,
+        device: Union[str, torch.device] = torch.device("cuda"),
+        dtype: torch.dtype = torch.float32,
+    ):
+        super().__init__(camera_model_parameters, device, dtype)
+
+    def get_parameters(self) -> types.IdealPinholeCameraModelParameters:
+        """Returns the camera model parameters specific to the current camera model instance"""
+        return types.IdealPinholeCameraModelParameters(
+            resolution=self.resolution.cpu().numpy().astype(np.uint64),
+            shutter_type=self.shutter_type,
+            external_distortion_parameters=cast(
+                Optional[types.ConcreteExternalDistortionParametersUnion],
+                map_optional(self.external_distortion, lambda x: x.get_parameters()),
+            ),
+            principal_point=self.principal_point.cpu().numpy().astype(np.float32),
+            focal_length=self.focal_length.cpu().numpy().astype(np.float32),
+        )
+
+    def _image_points_to_camera_rays_impl(self, image_points: torch.Tensor) -> torch.Tensor:
+        image_points = to_torch(image_points, device=self.device)
+        assert image_points.is_floating_point(), "[CameraModel]: image_points must be floating point values"
+        image_points = image_points.to(self.dtype)
+        return self._ideal_image_points_to_camera_rays(image_points)
+
+    def _camera_rays_to_image_points_impl(
+        self, cam_rays: torch.Tensor, return_jacobians
+    ) -> CameraModel.ImagePointsReturn:
+        cam_rays = to_torch(cam_rays, device=self.device, dtype=self.dtype)
+        return self._ideal_camera_rays_to_image_points(cam_rays, return_jacobians)
+
+
+class OpenCVPinholeCameraModel(PinholeCameraModel):
+    """Camera model for OpenCV pinhole cameras"""
+
     radial_coeffs: torch.Tensor
     tangential_coeffs: torch.Tensor
     thin_prism_coeffs: torch.Tensor
@@ -1413,14 +1535,6 @@ class OpenCVPinholeCameraModel(CameraModel):
         del (device, dtype)
 
         self.register_buffer(
-            "principal_point",
-            to_torch(camera_model_parameters.principal_point, device=self.device, dtype=self.dtype),
-        )
-        self.register_buffer(
-            "focal_length",
-            to_torch(camera_model_parameters.focal_length, device=self.device, dtype=self.dtype),
-        )
-        self.register_buffer(
             "radial_coeffs",
             to_torch(camera_model_parameters.radial_coeffs, device=self.device, dtype=self.dtype),
         )
@@ -1433,16 +1547,18 @@ class OpenCVPinholeCameraModel(CameraModel):
             to_torch(camera_model_parameters.thin_prism_coeffs, device=self.device, dtype=self.dtype),
         )
 
-        assert self.principal_point.shape == (2,)
-        assert self.principal_point.dtype == self.dtype
-        assert self.focal_length.shape == (2,)
-        assert self.focal_length.dtype == self.dtype
         assert self.radial_coeffs.shape == (6,)
         assert self.radial_coeffs.dtype == self.dtype
         assert self.tangential_coeffs.shape == (2,)
         assert self.tangential_coeffs.dtype == self.dtype
         assert self.thin_prism_coeffs.shape == (4,)
         assert self.thin_prism_coeffs.dtype == self.dtype
+
+        # Whether the model is free of any (lens) distortion - allows skipping the
+        # distortion computation and iterative undistortion and falling back to the
+        # closed-form ideal pinhole path. Reuses the parameters' own check (which also
+        # accounts for external distortion).
+        self._is_distortion_free: bool = camera_model_parameters.is_distortion_free
 
     def get_parameters(self) -> types.OpenCVPinholeCameraModelParameters:
         """Returns the camera model parameters specific to the current camera model instance"""
@@ -1473,6 +1589,11 @@ class OpenCVPinholeCameraModel(CameraModel):
         assert image_points.is_floating_point(), "[CameraModel]: image_points must be floating point values"
         image_points = image_points.to(self.dtype)
 
+        # Distortion-free OpenCV pinholes are equivalent to an ideal pinhole - use the
+        # closed-form path and skip the iterative undistortion
+        if self._is_distortion_free:
+            return self._ideal_image_points_to_camera_rays(image_points)
+
         camera_rays2 = self.__iterative_undistort(image_points)
         camera_rays3 = torch.cat([camera_rays2, torch.ones_like(camera_rays2[:, :1])], dim=1)
 
@@ -1487,6 +1608,11 @@ class OpenCVPinholeCameraModel(CameraModel):
         """
 
         cam_rays = to_torch(cam_rays, device=self.device, dtype=self.dtype)
+
+        # Distortion-free OpenCV pinholes are equivalent to an ideal pinhole - use the
+        # closed-form path and skip the distortion computation
+        if self._is_distortion_free:
+            return self._ideal_camera_rays_to_image_points(cam_rays, return_jacobians)
 
         # Initialize the valid flag and set all the points behind the camera plane to invalid
         image_points = torch.zeros_like(cam_rays[:, :2])

@@ -34,16 +34,20 @@ from ncore.impl.data.types import (
     BivariateWindshieldModelParameters,
     ConcreteCameraModelParametersUnion,
     FThetaCameraModelParameters,
+    IdealPinholeCameraModelParameters,
     OpenCVFisheyeCameraModelParameters,
     OpenCVPinholeCameraModelParameters,
     ReferencePolynomial,
     ShutterType,
+    decode_camera_model_parameters,
+    encode_camera_model_parameters,
 )
 from ncore.impl.sensors.camera import (
     BivariateWindshieldModel,
     CameraModel,
     ExternalDistortionModel,
     FThetaCameraModel,
+    IdealPinholeCameraModel,
     OpenCVFisheyeCameraModel,
     OpenCVPinholeCameraModel,
     to_torch,
@@ -73,7 +77,9 @@ def _get_test_devices() -> Tuple[torch.device, ...]:
     return (torch.device("cpu"), torch.device("cuda"))
 
 
-ConcreteCameraModelUnion = Union[FThetaCameraModel, OpenCVPinholeCameraModel, OpenCVFisheyeCameraModel]
+ConcreteCameraModelUnion = Union[
+    FThetaCameraModel, IdealPinholeCameraModel, OpenCVPinholeCameraModel, OpenCVFisheyeCameraModel
+]
 
 
 class ReferenceFThetaCamera:
@@ -808,6 +814,60 @@ class TestPinholeCamera(CommonTestCase):
                     MAX_DEVIATION_IN_IMAGE_COORDINATES,
                 )
 
+    def test_opencv_reference(self):
+        """Validates the torch OpenCV-pinhole projection against the ``cv2.projectPoints`` reference"""
+
+        np_dtype = np.float64 if self.dtype == torch.float64 else np.float32
+
+        cam_model_params = OpenCVPinholeCameraModelParameters(
+            resolution=np.array([1920, 1280], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array([935.1248081874216, 635.052474560227], dtype=np.float32),
+            focal_length=np.array([2059.0471439559833, 2049.0471439559833], dtype=np.float32),
+            # rational radial [k1..k6], tangential [p1,p2], thin-prism [s1..s4]
+            radial_coeffs=np.array([0.0424, -0.3417, 0.01, 0.02, -0.01, 0.02], dtype=np.float32),
+            tangential_coeffs=np.array([0.001805535524580487, -0.00005530628187935031], dtype=np.float32),
+            thin_prism_coeffs=np.array([0.01, 0.02, 0.02, 0.01], dtype=np.float32),
+        )
+        cam_model = OpenCVPinholeCameraModel(cam_model_params, device=self.device, dtype=self.dtype)
+
+        # cv2 distortion vector order: [k1, k2, p1, p2, k3, k4, k5, k6, s1, s2, s3, s4]
+        K = np.array(
+            [
+                [cam_model_params.focal_length[0], 0, cam_model_params.principal_point[0]],
+                [0, cam_model_params.focal_length[1], cam_model_params.principal_point[1]],
+                [0, 0, 1],
+            ],
+            dtype=np_dtype,
+        )
+        r = cam_model_params.radial_coeffs
+        p = cam_model_params.tangential_coeffs
+        s = cam_model_params.thin_prism_coeffs
+        distortion = np.array([r[0], r[1], p[0], p[1], r[2], r[3], r[4], r[5], s[0], s[1], s[2], s[3]], dtype=np_dtype)
+        rvec = np.zeros(3, dtype=np_dtype)
+        tvec = np.zeros(3, dtype=np_dtype)
+
+        MAX_DEVIATION_IN_IMAGE_COORDINATES = 0.01
+
+        # A spread of rays in front of the camera (moderate angles to stay within the
+        # rational model's valid radial range)
+        for x in np.linspace(-0.3, 0.3, num=7):
+            for y in np.linspace(-0.2, 0.2, num=5):
+                with self.subTest(x=x, y=y):
+                    ray = np.array([[x, y, 1.0]], dtype=np_dtype)
+
+                    ours = cam_model.camera_rays_to_image_points(
+                        to_torch(ray, device=cam_model.device, dtype=cam_model.dtype)
+                    )
+
+                    reference, _ = cv2.projectPoints(ray.reshape(1, 1, 3), rvec, tvec, K, distortion)
+                    reference = reference.reshape(1, 2)
+
+                    self.assertLessEqual(
+                        np.linalg.norm(reference - np.array(ours.image_points.cpu())).item(),
+                        MAX_DEVIATION_IN_IMAGE_COORDINATES,
+                    )
+
 
 class ReferenceSimplePinholeCamera:
     """Simple reference pinhole camera with symbolic evaluations (supporting k1,k2,k3,p1,p2)"""
@@ -1340,6 +1400,12 @@ class CameraModelsBaseTestCase(CommonTestCase):
                 ),
                 max_angle=np.deg2rad(140 / 2),
             ),
+            IdealPinholeCameraModelParameters(
+                resolution=np.array([1920, 1280], dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array([959.5, 639.5], dtype=np.float32),
+                focal_length=np.array([1480.0, 1480.0], dtype=np.float32),
+            ),
         ]
 
         # Add an arbitrary dummy windshield model
@@ -1400,6 +1466,18 @@ class TestParameterIO(CameraModelsBaseTestCase):
 
                 # make sure retrieved parameters still correspond to reference
                 self.assertEqual(cam_model_params.to_json(), cam_model.get_parameters().to_json())
+
+    def test_encode_decode_roundtrip(self):
+        """Validate encode/decode of camera model parameters preserves all model types"""
+
+        for cam_model_params in self.cam_model_params + self.cam_model_params_wsd:
+            with self.subTest(cam_model_params=cam_model_params):
+                encoded = encode_camera_model_parameters(cam_model_params)
+                self.assertEqual(encoded["camera_model_type"], cam_model_params.type())
+
+                decoded = decode_camera_model_parameters(encoded)
+                self.assertIs(type(decoded), type(cam_model_params))
+                self.assertEqual(decoded.to_json(), cam_model_params.to_json())
 
 
 @parameterized.parameterized_class(
@@ -1895,6 +1973,346 @@ class TestOpenCVFisheyeMaxAngleMonotonicity(unittest.TestCase):
             for t in thetas:
                 dr = d_poly(t)
                 self.assertGreaterEqual(dr, -1e-10, f"Derivative negative at theta={t:.4f} for radial={radial}")
+
+
+@parameterized.parameterized_class(
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
+)
+class TestIdealPinholeCamera(CommonTestCase):
+    """Tests for the ideal (distortion-free) pinhole camera model"""
+
+    device: torch.device
+    dtype: torch.dtype
+
+    def _make_ideal(self) -> IdealPinholeCameraModel:
+        params = IdealPinholeCameraModelParameters(
+            resolution=np.array([640, 480], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array([320.0, 240.0], dtype=np.float32),
+            focal_length=np.array([500.0, 510.0], dtype=np.float32),
+        )
+        model = CameraModel.from_parameters(params, device=self.device, dtype=self.dtype)
+        assert isinstance(model, IdealPinholeCameraModel)
+        return model
+
+    def _make_zero_coeff_opencv(self) -> OpenCVPinholeCameraModel:
+        params = OpenCVPinholeCameraModelParameters(
+            resolution=np.array([640, 480], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array([320.0, 240.0], dtype=np.float32),
+            focal_length=np.array([500.0, 510.0], dtype=np.float32),
+            radial_coeffs=np.zeros(6, dtype=np.float32),
+            tangential_coeffs=np.zeros(2, dtype=np.float32),
+            thin_prism_coeffs=np.zeros(4, dtype=np.float32),
+        )
+        model = CameraModel.from_parameters(params, device=self.device, dtype=self.dtype)
+        assert isinstance(model, OpenCVPinholeCameraModel)
+        return model
+
+    def test_opencv_reference(self):
+        """Validates the ideal (distortion-free) pinhole projection against ``cv2.projectPoints``"""
+
+        np_dtype = np.float64 if self.dtype == torch.float64 else np.float32
+        model = self._make_ideal()
+        params = model.get_parameters()
+
+        K = np.array(
+            [
+                [params.focal_length[0], 0, params.principal_point[0]],
+                [0, params.focal_length[1], params.principal_point[1]],
+                [0, 0, 1],
+            ],
+            dtype=np_dtype,
+        )
+        # An ideal pinhole has no distortion
+        distortion = np.zeros(5, dtype=np_dtype)
+        rvec = np.zeros(3, dtype=np_dtype)
+        tvec = np.zeros(3, dtype=np_dtype)
+
+        for x in np.linspace(-0.4, 0.4, num=7):
+            for y in np.linspace(-0.3, 0.3, num=5):
+                with self.subTest(x=x, y=y):
+                    ray = np.array([[x, y, 1.0]], dtype=np_dtype)
+                    ours = model.camera_rays_to_image_points(to_torch(ray, device=model.device, dtype=model.dtype))
+                    reference, _ = cv2.projectPoints(ray.reshape(1, 1, 3), rvec, tvec, K, distortion)
+                    reference = reference.reshape(1, 2)
+                    self.assertLessEqual(np.linalg.norm(reference - np.array(ours.image_points.cpu())).item(), 0.01)
+
+    def test_dispatch_and_type(self):
+        model = self._make_ideal()
+        self.assertEqual(IdealPinholeCameraModelParameters.type(), "ideal-pinhole")
+        self.assertIsInstance(model, IdealPinholeCameraModel)
+
+    def test_opencv_is_not_ideal_instance(self):
+        # An OpenCV pinhole must NOT be an instance of the ideal pinhole params/model
+        self.assertFalse(issubclass(OpenCVPinholeCameraModelParameters, IdealPinholeCameraModelParameters))
+        self.assertFalse(issubclass(OpenCVPinholeCameraModel, IdealPinholeCameraModel))
+
+    def test_roundtrip(self):
+        model = self._make_ideal()
+        pixels = torch.tensor([[100, 80], [320, 240], [500, 400]], dtype=torch.int32, device=self.device)
+        rays = model.pixels_to_camera_rays(pixels)
+        result = model.camera_rays_to_pixels(rays)
+        self.assertTrue(bool(result.valid_flag.all()))
+        self._compareVector(result.pixels.cpu().numpy(), pixels.cpu().numpy())
+
+    def test_parity_with_zero_coeff_opencv(self):
+        ideal = self._make_ideal()
+        opencv = self._make_zero_coeff_opencv()
+
+        image_points = ideal.pixels_to_image_points(
+            torch.tensor([[100, 80], [320, 240], [500, 400]], dtype=torch.int32, device=self.device)
+        )
+        rays_ideal = ideal.image_points_to_camera_rays(image_points)
+        rays_opencv = opencv.image_points_to_camera_rays(image_points)
+        self.assertIsNone(
+            np.testing.assert_array_almost_equal(rays_ideal.cpu().numpy(), rays_opencv.cpu().numpy(), decimal=5)
+        )
+
+        proj_ideal = ideal.camera_rays_to_image_points(rays_ideal)
+        proj_opencv = opencv.camera_rays_to_image_points(rays_opencv)
+        self.assertIsNone(
+            np.testing.assert_array_almost_equal(
+                proj_ideal.image_points.cpu().numpy(), proj_opencv.image_points.cpu().numpy(), decimal=4
+            )
+        )
+
+    def test_distortion_free_flag(self):
+        self.assertTrue(self._make_zero_coeff_opencv()._is_distortion_free)
+
+        distorted = OpenCVPinholeCameraModelParameters(
+            resolution=np.array([640, 480], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array([320.0, 240.0], dtype=np.float32),
+            focal_length=np.array([500.0, 500.0], dtype=np.float32),
+            radial_coeffs=np.array([-0.2, 0.05, 0, 0, 0, 0], dtype=np.float32),
+            tangential_coeffs=np.zeros(2, dtype=np.float32),
+            thin_prism_coeffs=np.zeros(4, dtype=np.float32),
+        )
+        self.assertFalse(distorted.is_distortion_free)
+        model = CameraModel.from_parameters(distorted, device=self.device, dtype=self.dtype)
+        assert isinstance(model, OpenCVPinholeCameraModel)
+        self.assertFalse(model._is_distortion_free)
+
+    def test_jacobian_path(self):
+        model = self._make_ideal()
+        rays = model.pixels_to_camera_rays(torch.tensor([[100, 80], [320, 240]], dtype=torch.int32, device=self.device))
+        result = model.camera_rays_to_image_points(rays, return_jacobians=True)
+        jacobians = result.jacobians
+        self.assertIsNotNone(jacobians)
+        assert jacobians is not None
+        self.assertEqual(tuple(jacobians.shape), (2, 2, 3))
+
+
+class TestIdealPinholeFromSource(unittest.TestCase):
+    """Tests for IdealPinholeCameraModelParameters.from_source() / natural_fov() / fov()"""
+
+    @staticmethod
+    def _ideal(focal=(500.0, 500.0), resolution=(640, 480), principal_point=(320.0, 240.0)):
+        return IdealPinholeCameraModelParameters(
+            resolution=np.array(resolution, dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array(principal_point, dtype=np.float32),
+            focal_length=np.array(focal, dtype=np.float32),
+        )
+
+    @staticmethod
+    def _opencv(focal=(400.0, 410.0)):
+        return OpenCVPinholeCameraModelParameters(
+            resolution=np.array([640, 480], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array([300.0, 250.0], dtype=np.float32),
+            focal_length=np.array(focal, dtype=np.float32),
+            radial_coeffs=np.array([-0.2, 0.05, 0, 0, 0, 0], dtype=np.float32),
+            tangential_coeffs=np.zeros(2, dtype=np.float32),
+            thin_prism_coeffs=np.zeros(4, dtype=np.float32),
+        )
+
+    @staticmethod
+    def _fisheye(focal=(300.0, 300.0), max_angle_deg=70.0):
+        return OpenCVFisheyeCameraModelParameters(
+            resolution=np.array([640, 480], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array([320.0, 240.0], dtype=np.float32),
+            focal_length=np.array(focal, dtype=np.float32),
+            radial_coeffs=np.zeros(4, dtype=np.float32),
+            max_angle=np.radians(max_angle_deg),
+        )
+
+    @staticmethod
+    def _ftheta(c1=1250.0, c=1.0, max_angle_deg=45.0, principal_point=(960.0, 540.0)):
+        return FThetaCameraModelParameters(
+            resolution=np.array([1920, 1080], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array(principal_point, dtype=np.float32),
+            reference_poly=FThetaCameraModelParameters.PolynomialType.ANGLE_TO_PIXELDIST,
+            pixeldist_to_angle_poly=np.array([0.0, 0.0008, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            angle_to_pixeldist_poly=np.array([0.0, c1, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            max_angle=np.radians(max_angle_deg),
+            linear_cde=np.array([c, 0.0, 0.0], dtype=np.float32),
+        )
+
+    def test_default_ideal_identity(self):
+        params = self._ideal()
+        ideal = IdealPinholeCameraModelParameters.from_source(params)
+        self.assertEqual(ideal.type(), "ideal-pinhole")
+        np.testing.assert_allclose(ideal.focal_length, params.focal_length, rtol=1e-5)
+        np.testing.assert_array_equal(ideal.principal_point, params.principal_point)
+        np.testing.assert_array_equal(ideal.resolution, params.resolution)
+
+    def test_default_opencv_drops_distortion_preserves_anisotropy(self):
+        params = self._opencv(focal=(400.0, 410.0))
+        ideal = IdealPinholeCameraModelParameters.from_source(params)
+        self.assertIsInstance(ideal, IdealPinholeCameraModelParameters)
+        # focal (incl. anisotropic fx != fy) preserved, distortion dropped
+        np.testing.assert_allclose(ideal.focal_length, params.focal_length, rtol=1e-5)
+        np.testing.assert_array_equal(ideal.principal_point, params.principal_point)
+
+    def test_default_fisheye_uses_focal(self):
+        params = self._fisheye(focal=(300.0, 300.0))
+        ideal = IdealPinholeCameraModelParameters.from_source(params)
+        np.testing.assert_allclose(ideal.focal_length, params.focal_length, rtol=1e-5)
+
+    def test_ftheta_focal_from_forward_poly_with_linear_term(self):
+        # focal = [c1 * c, c1] (forward poly first-order coeff, x scaled by linear term c)
+        params = self._ftheta(c1=1250.0, c=1.002)
+        ideal = IdealPinholeCameraModelParameters.from_source(params)
+        self.assertAlmostEqual(float(ideal.focal_length[0]), 1250.0 * 1.002, places=2)
+        self.assertAlmostEqual(float(ideal.focal_length[1]), 1250.0, places=2)
+
+    def test_ftheta_non_positive_focal_raises(self):
+        params = self._ftheta(c1=0.0)
+        with self.assertRaises(ValueError):
+            IdealPinholeCameraModelParameters.from_source(params)
+
+    @parameterized.parameterized.expand(_get_test_devices())
+    def test_ftheta_principal_point_pixel_center_shift(self, device: torch.device):
+        # F-Theta stores the principal point in the pixel-center convention; the ideal
+        # pinhole uses the image-coordinate (top-left) convention, so from_source must
+        # apply a +0.5 shift. Verify both the value and that the principal ray projects
+        # to the same image point through the source and the ideal models.
+        params = self._ftheta(principal_point=(959.5, 539.5))
+        ideal = IdealPinholeCameraModelParameters.from_source(params)
+        np.testing.assert_allclose(ideal.principal_point, np.array([960.0, 540.0], dtype=np.float32), atol=1e-4)
+
+        source_model = CameraModel.from_parameters(params, device=device, dtype=torch.float64)
+        ideal_model = CameraModel.from_parameters(ideal, device=device, dtype=torch.float64)
+        principal_ray = np.array([[0.0, 0.0, 1.0]], dtype=np.float32)
+        src_pt = source_model.camera_rays_to_image_points(principal_ray).image_points[0].cpu().numpy()
+        ideal_pt = ideal_model.camera_rays_to_image_points(principal_ray).image_points[0].cpu().numpy()
+        np.testing.assert_allclose(src_pt, ideal_pt, atol=1e-3)
+
+    def test_natural_fov_and_roundtrip(self):
+        params = self._opencv(focal=(400.0, 410.0))
+        nat = IdealPinholeCameraModelParameters.natural_fov(params)
+        self.assertEqual(nat.shape, (2,))
+
+        # fov() of the default-converted model equals natural_fov(source)
+        ideal = IdealPinholeCameraModelParameters.from_source(params)
+        np.testing.assert_allclose(ideal.fov(), nat, rtol=1e-5)
+
+        # passing natural_fov back as a per-axis target reproduces the default
+        roundtrip = IdealPinholeCameraModelParameters.from_source(params, target_fov=nat)
+        np.testing.assert_allclose(roundtrip.focal_length, ideal.focal_length, rtol=1e-4)
+
+    def test_scalar_target_fov_narrow_and_widen(self):
+        params = self._ideal(focal=(500.0, 500.0))
+        default_focal = float(IdealPinholeCameraModelParameters.from_source(params).focal_length[0])
+
+        narrow = IdealPinholeCameraModelParameters.from_source(params, target_fov=np.radians(40.0))
+        wide = IdealPinholeCameraModelParameters.from_source(params, target_fov=np.radians(120.0))
+
+        # narrower FOV -> larger focal; wider FOV -> smaller focal
+        self.assertGreater(float(narrow.focal_length[0]), default_focal)
+        self.assertLess(float(wide.focal_length[0]), default_focal)
+
+    def test_scalar_target_fov_preserves_focal_aspect_ratio(self):
+        # Anisotropic source + non-square resolution: a scalar target_fov must scale the
+        # focal isotropically, preserving fx:fy (no squashing).
+        params = self._ideal(focal=(900.0, 950.0), resolution=(1920, 1080), principal_point=(960.0, 540.0))
+        out = IdealPinholeCameraModelParameters.from_source(params, target_fov=np.radians(60.0))
+        self.assertAlmostEqual(float(out.focal_length[0]) / float(out.focal_length[1]), 900.0 / 950.0, places=4)
+        # The binding (tighter) axis lands at the requested FOV, the other stays within it
+        half = IdealPinholeCameraModelParameters._max_corner_half_extent(out.resolution, out.principal_point)
+        fov = 2.0 * np.arctan2(half, out.focal_length)
+        self.assertLessEqual(float(fov.max()), np.radians(60.0) + 1e-4)
+        self.assertAlmostEqual(float(fov.max()), np.radians(60.0), places=3)
+
+    def test_per_axis_target_fov(self):
+        params = self._ideal(focal=(500.0, 500.0), resolution=(1920, 1080), principal_point=(960.0, 540.0))
+        target = np.array([np.radians(90.0), np.radians(50.0)], dtype=np.float64)
+        out = IdealPinholeCameraModelParameters.from_source(params, target_fov=target)
+        half = IdealPinholeCameraModelParameters._max_corner_half_extent(out.resolution, out.principal_point)
+        fov = 2.0 * np.arctan2(half, out.focal_length)
+        np.testing.assert_allclose(fov, target, atol=1e-4)
+
+    def test_wide_fisheye_default_succeeds_as_central_crop(self):
+        # A wide F-Theta fisheye yields a valid (always < 180deg) pinhole by default: the
+        # paraxial focal maps a narrow rectilinear central window. A wider rectilinear
+        # view is obtained with an explicit target_fov.
+        params = self._ftheta(c1=490.0, max_angle_deg=120.0)
+        params = dataclasses.replace(
+            params,
+            resolution=np.array([1920, 1536], dtype=np.uint64),
+            principal_point=np.array([960.0, 768.0], dtype=np.float32),
+        )
+        default = IdealPinholeCameraModelParameters.from_source(params)
+        self.assertIsInstance(default, IdealPinholeCameraModelParameters)
+        # default focal == paraxial focal [c1, c1] (c == 1 here)
+        np.testing.assert_allclose(default.focal_length, np.array([490.0, 490.0], dtype=np.float32), rtol=1e-5)
+        # any pinhole FOV is strictly below 180 degrees
+        self.assertTrue(np.all(default.fov() < np.pi))
+
+        # widening to an explicit target FOV reduces the focal
+        wide = IdealPinholeCameraModelParameters.from_source(params, target_fov=np.radians(150.0))
+        self.assertLess(float(wide.focal_length[0]), float(default.focal_length[0]))
+
+    def test_invalid_target_fov_raises(self):
+        params = self._ideal()
+        for bad in (0.0, -1.0, np.pi, 4.0):
+            with self.assertRaises(ValueError):
+                IdealPinholeCameraModelParameters.from_source(params, target_fov=bad)
+        with self.assertRaises(ValueError):
+            IdealPinholeCameraModelParameters.from_source(params, target_fov=np.array([1.0, 1.0, 1.0]))
+
+    def test_unsupported_source_raises(self):
+        # Pass an object that is not a supported camera model (cast so the static type
+        # matches the signature; the runtime value is intentionally wrong).
+        not_a_camera = cast(ConcreteCameraModelParametersUnion, object())
+        with self.assertRaises(TypeError):
+            IdealPinholeCameraModelParameters.from_source(not_a_camera)
+
+
+class TestIdealPinholeParameterIO(unittest.TestCase):
+    """Serialization round-trip for the ideal pinhole parameters"""
+
+    def test_encode_decode(self):
+        params = IdealPinholeCameraModelParameters(
+            resolution=np.array([640, 480], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array([320.0, 240.0], dtype=np.float32),
+            focal_length=np.array([500.0, 500.0], dtype=np.float32),
+        )
+        encoded = encode_camera_model_parameters(params)
+        self.assertEqual(encoded["camera_model_type"], "ideal-pinhole")
+        decoded = decode_camera_model_parameters(encoded)
+        self.assertIsInstance(decoded, IdealPinholeCameraModelParameters)
+        assert isinstance(decoded, IdealPinholeCameraModelParameters)
+        np.testing.assert_array_equal(decoded.resolution, params.resolution)
+        np.testing.assert_array_equal(decoded.focal_length, params.focal_length)
+        np.testing.assert_array_equal(decoded.principal_point, params.principal_point)
+
+    def test_transform(self):
+        params = IdealPinholeCameraModelParameters(
+            resolution=np.array([640, 480], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array([320.0, 240.0], dtype=np.float32),
+            focal_length=np.array([500.0, 500.0], dtype=np.float32),
+        )
+        transformed = params.transform(0.5)
+        np.testing.assert_array_equal(transformed.resolution, np.array([320, 240], dtype=np.uint64))
+        np.testing.assert_array_equal(transformed.focal_length, np.array([250.0, 250.0], dtype=np.float32))
+        np.testing.assert_array_equal(transformed.principal_point, np.array([160.0, 120.0], dtype=np.float32))
 
 
 if __name__ == "__main__":

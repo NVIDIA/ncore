@@ -20,6 +20,9 @@ The following camera models are supported:
 * :ref:`FTheta Camera Model <ftheta_camera_model>` - NVIDIA's FTheta camera
   model with polynomial distortion parameterization, suitable for both
   perspective and wide field-of-view cameras
+* :ref:`Ideal Pinhole Camera Model <ideal_pinhole_camera_model>` - Efficient
+  distortion-free pinhole camera model, also used as the target for
+  :ref:`rectification <rectification>`
 * :ref:`OpenCV Pinhole Camera Model <opencv_pinhole_camera_model>` - Standard
   pinhole camera model with rational radial, tangential, and thin prism
   distortion coefficients
@@ -103,6 +106,50 @@ The FTheta model projects 3D camera rays to image coordinates through the follow
 The inverse operation uses the backward polynomial (either reference or approximate inverse).
 
 **Example:** For a typical FTheta model, both forward and backward polynomials contain 6 coefficients each (float32, [6,]).
+
+.. _ideal_pinhole_camera_model:
+
+**Ideal Pinhole Camera Model**
+
+If ``camera_model_type = 'ideal-pinhole'`` the following intrinsic parameters
+will additionally be available in ``camera_model_parameters``:
+
+* ``principal_point`` - u and v coordinate of the principal point,
+  following the :ref:`image coordinate conventions
+  <image_coordinate_conventions>` (float32, [2,])
+* ``focal_length`` - focal lengths in u and v direction, resp., mapping
+  normalized camera coordinates to image coordinates relative to the
+  principal point (float32, [2,])
+
+**Mathematical Model:**
+
+The ideal pinhole model is a distortion-free perspective projection. It is the
+most efficient camera model (no distortion polynomial evaluation, no iterative
+undistortion) and the natural target for :ref:`rectification <rectification>`.
+
+1. **Normalize**: Convert camera ray ``[x, y, z]`` to normalized coordinates:
+
+   .. math::
+
+      x' = \frac{x}{z}, \quad y' = \frac{y}{z}
+
+2. **Project to Image**: Apply focal length and principal point:
+
+   .. math::
+
+      \begin{bmatrix} u \\ v \end{bmatrix} =
+      \begin{bmatrix} f_u x' + u_0 \\ f_v y' + v_0 \end{bmatrix}
+
+Unprojection is the closed-form inverse :math:`x' = (u - u_0) / f_u`,
+:math:`y' = (v - v_0) / f_v`, followed by normalization of ``[x', y', 1]``.
+
+.. note::
+
+   An :ref:`OpenCV Pinhole <opencv_pinhole_camera_model>` whose distortion
+   coefficients are all zero (and which carries no external distortion) is
+   equivalent to an ideal pinhole and is evaluated through the same closed-form
+   path internally. The ``ideal-pinhole`` and ``opencv-pinhole`` model types are
+   *siblings*: an OpenCV pinhole is **not** an instance of an ideal pinhole.
 
 .. _opencv_pinhole_camera_model:
 

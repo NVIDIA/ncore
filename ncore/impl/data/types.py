@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import dataclasses
 import io
+import math
 import sys
 
 from abc import ABC, abstractmethod
@@ -365,8 +366,15 @@ if sys.version_info <= (3, 9):
 
 
 @dataclass
-class OpenCVPinholeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
-    """Represents Pinhole-specific (OpenCV-like) camera model parameters"""
+class PinholeCameraModelParameters(CameraModelParameters):
+    """Abstract base for pinhole-family camera model parameters
+
+    A pinhole-family camera shares a principal point and focal length and a common
+    (rescale/crop) ``transform()``. Concrete subclasses are the distortion-free
+    :class:`IdealPinholeCameraModelParameters` and the distortion-capable
+    :class:`OpenCVPinholeCameraModelParameters`. The two are *siblings* (an OpenCV
+    pinhole is not an instance of an ideal pinhole).
+    """
 
     principal_point: np.ndarray = util.numpy_array_field(
         np.float32
@@ -374,20 +382,6 @@ class OpenCVPinholeCameraModelParameters(CameraModelParameters, dataclasses_json
     focal_length: np.ndarray = util.numpy_array_field(
         np.float32
     )  #: Focal lengths in u and v direction, resp., mapping (distorted) normalized camera coordinates to image coordinates relative to the principal point (float32, [2,])
-    radial_coeffs: np.ndarray = util.numpy_array_field(
-        np.float32
-    )  #: Radial distortion coefficients ``[k1,k2,k3,k4,k5,k6]`` parameterizing the rational radial distortion factor :math:`\frac{1 + k_1r^2 + k_2r^4 + k_3r^6}{1 + k_4r^2 + k_5r^4 + k_6r^6}` for squared norms :math:`r^2` of normalized camera coordinates (float32, [6,])
-    tangential_coeffs: np.ndarray = util.numpy_array_field(
-        np.float32
-    )  #: Tangential distortion coefficients ``[p1,p2]`` parameterizing the tangential distortion components :math:`\begin{bmatrix} 2p_1x'y' + p_2 \left(r^2 + 2{x'}^2 \right) \\ p_1 \left(r^2 + 2{y'}^2 \right) + 2p_2x'y' \end{bmatrix}` for normalized camera coordinates :math:`\begin{bmatrix} x' \\ y' \end{bmatrix}` (float32, [2,])
-    thin_prism_coeffs: np.ndarray = util.numpy_array_field(
-        np.float32
-    )  #: Thins prism distortion coefficients ``[s1,s2,s3,s4]`` parameterizing the thin prism distortion components :math:`\begin{bmatrix} s_1r^2 + s_2r^4 \\ s_3r^2 + s_4r^4 \end{bmatrix}` for squared norms :math:`r^2` of normalized camera coordinates (float32, [4,]
-
-    @staticmethod
-    def type() -> str:
-        """Returns a string-identifier of the camera model"""
-        return "opencv-pinhole"
 
     def __post_init__(self) -> None:
         # Sanity checks
@@ -399,23 +393,14 @@ class OpenCVPinholeCameraModelParameters(CameraModelParameters, dataclasses_json
         assert self.focal_length.dtype == np.dtype("float32")
         assert self.focal_length[0] > 0.0 and self.focal_length[1] > 0.0
 
-        assert self.radial_coeffs.shape == (6,)
-        assert self.radial_coeffs.dtype == np.dtype("float32")
-
-        assert self.tangential_coeffs.shape == (2,)
-        assert self.tangential_coeffs.dtype == np.dtype("float32")
-
-        assert self.thin_prism_coeffs.shape == (4,)
-        assert self.thin_prism_coeffs.dtype == np.dtype("float32")
-
     def transform(
         self,
         image_domain_scale: Union[float, Tuple[float, float]],
         image_domain_offset: Tuple[float, float] = (0.0, 0.0),
         new_resolution: Optional[Tuple[int, int]] = None,
-    ) -> OpenCVPinholeCameraModelParameters:
+    ) -> Self:
         """
-        Applies a transformation to OpenCV pinhole camera model parameter
+        Applies a transformation to pinhole-family camera model parameters
 
         Args:
             image_domain_scale: an isotropic (if float) or anisotropic (if tuple of floats) scaling of the
@@ -425,7 +410,7 @@ class OpenCVPinholeCameraModelParameters(CameraModelParameters, dataclasses_json
             new_resolution: an optional new resolution to set (if None, the full scaled resolution is used).
 
         Returns:
-            a transformed version of the OpenCV pinhole camera model parameters
+            a transformed version of the pinhole-family camera model parameters
         """
 
         # Get scale factors for each image domain dimension
@@ -451,6 +436,230 @@ class OpenCVPinholeCameraModelParameters(CameraModelParameters, dataclasses_json
             principal_point=self.principal_point * image_domain_scale_factors
             - np.array(image_domain_offset, dtype=np.float32),
             focal_length=self.focal_length * image_domain_scale_factors,
+        )
+
+
+@dataclass
+class IdealPinholeCameraModelParameters(PinholeCameraModelParameters, dataclasses_json.DataClassJsonMixin):
+    """Represents an ideal (distortion-free) pinhole camera
+
+    An ideal pinhole maps normalized camera coordinates directly to image coordinates
+    via ``focal_length`` and ``principal_point`` with no lens distortion. It is the most
+    efficient camera model and the natural target for rectification.
+    """
+
+    @staticmethod
+    def type() -> str:
+        """Returns a string-identifier of the camera model"""
+        return "ideal-pinhole"
+
+    def fov(self) -> np.ndarray:
+        """Per-axis full field-of-view angles ``[fov_x, fov_y]`` [rad] of this ideal pinhole
+
+        The pinhole maps angle to pixel distance as ``r = f * tan(theta)``, so the full
+        field of view to the farthest image border along each axis is
+        ``2 * atan(half_extent / focal)``.
+        """
+        half_extent = IdealPinholeCameraModelParameters._max_corner_half_extent(self.resolution, self.principal_point)
+        return IdealPinholeCameraModelParameters._fov_for_focal(half_extent, self.focal_length)
+
+    @staticmethod
+    def natural_fov(source: ConcreteCameraModelParametersUnion) -> np.ndarray:
+        """Per-axis full field-of-view angles ``[fov_x, fov_y]`` [rad] of ``source``'s ideal pinhole
+
+        This is the field of view of the (paraxial) ideal pinhole that
+        :meth:`from_source` produces by default (``target_fov=None``). It is the natural
+        value to scale when choosing a ``target_fov`` (e.g. ``0.8 * natural_fov(source)``
+        to narrow, ``1.2 * ...`` to widen). May be ``>= pi`` for wide fisheye /
+        omnidirectional cameras, in which case :meth:`from_source` requires an explicit
+        feasible ``target_fov``.
+
+        Args:
+            source: the source camera model parameters to convert.
+
+        Returns:
+            per-axis full field-of-view angles [rad] (float, ``[2,]``).
+        """
+        focal, principal_point, resolution = IdealPinholeCameraModelParameters._paraxial_geometry(source)
+        half_extent = IdealPinholeCameraModelParameters._max_corner_half_extent(resolution, principal_point)
+        return IdealPinholeCameraModelParameters._fov_for_focal(half_extent, focal)
+
+    @staticmethod
+    def from_source(
+        source: ConcreteCameraModelParametersUnion,
+        target_fov: Union[float, np.ndarray, None] = None,
+    ) -> IdealPinholeCameraModelParameters:
+        """Construct an ideal (distortion-free) pinhole approximating ``source``
+
+        The source camera's paraxial pinhole geometry (focal length, principal point,
+        resolution) is extracted and an ideal pinhole is assembled. The angular extent
+        is controlled by ``target_fov`` (full field-of-view angles [rad]):
+
+        * ``None``: use the source's natural per-axis field of view (:meth:`natural_fov`).
+        * ``float``: an isotropic target full field of view, preserving the source
+          focal-length aspect ratio (the most binding axis lands exactly at this value).
+        * ``np.ndarray`` ``[2,]``: per-axis target full field of view ``[fov_x, fov_y]``;
+          ``from_source(source, target_fov=natural_fov(source))`` reproduces the default.
+
+        ``target_fov`` selects *which rays* the pinhole covers (the angular extent), not a
+        magnification: because a pinhole maps angle to pixel distance as
+        ``r = f * tan(theta)``, different values yield genuinely different views (the
+        periphery stretches increasingly for wider fields of view; the optical axis stays
+        fixed). Widening past the source's captured field of view is allowed and yields
+        invalid (out-of-source) regions when rectifying.
+
+        Args:
+            source: the source camera model parameters to convert. Supported types are
+                    F-Theta, OpenCV pinhole, OpenCV fisheye and ideal pinhole.
+            target_fov: optional target full field-of-view angle(s) [rad] (see above).
+
+        Returns:
+            ideal pinhole camera model parameters approximating ``source``.
+
+        Raises:
+            TypeError: if ``source`` is of an unsupported camera model type.
+            ValueError: if the resulting field of view cannot be represented by a pinhole
+                        (any axis at or beyond 180 degrees), or ``target_fov`` is invalid.
+        """
+        paraxial_focal, principal_point, resolution = IdealPinholeCameraModelParameters._paraxial_geometry(source)
+        half_extent = IdealPinholeCameraModelParameters._max_corner_half_extent(resolution, principal_point)
+
+        # Resolve target_fov to the per-axis focal length (all float32):
+        # - None: the source's paraxial focal (preserves its exact aspect ratio).
+        # - scalar: scale the paraxial focal by a single factor so the binding (widest)
+        #   axis reaches the requested field of view, preserving the focal aspect ratio.
+        # - array: a per-axis field of view, converted to a per-axis focal.
+        if target_fov is None:
+            focal_length = paraxial_focal
+        elif isinstance(target_fov, (int, float)):
+            IdealPinholeCameraModelParameters._assert_fov_in_range(np.full(2, float(target_fov), dtype=np.float32))
+            focal_at_target = half_extent / np.float32(math.tan(float(target_fov) / 2.0))
+            focal_length = paraxial_focal * np.float32((focal_at_target / paraxial_focal).max())
+        else:
+            fov = np.asarray(target_fov, dtype=np.float32)
+            if fov.shape != (2,):
+                raise ValueError(f"target_fov array must have shape (2,), got {fov.shape}")
+            IdealPinholeCameraModelParameters._assert_fov_in_range(fov)
+            focal_length = half_extent / np.tan(fov / 2.0)
+
+        # A pinhole focal always yields a representable (< 180 deg) field of view, so the
+        # only infeasible cases are the explicit target_fov ranges checked above.
+
+        return IdealPinholeCameraModelParameters(
+            resolution=resolution,
+            shutter_type=source.shutter_type,
+            principal_point=principal_point,
+            focal_length=focal_length.astype(np.float32),
+        )
+
+    @staticmethod
+    def _paraxial_geometry(
+        source: ConcreteCameraModelParametersUnion,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Extract the (paraxial focal, principal point, resolution) of ``source``'s ideal pinhole
+
+        Returns the per-axis focal length ``[fu, fv]`` of the pinhole that best matches
+        the source near the optical axis, preserving the source focal aspect ratio. All
+        returned arrays are float32. The principal point follows the standard
+        :ref:`image coordinate conventions <image_coordinate_conventions>` (top-left pixel
+        origin), matching the ideal-pinhole / OpenCV models.
+
+        * ideal / OpenCV pinhole / OpenCV fisheye: the model's own ``focal_length`` and
+          ``principal_point`` (already in image coordinates).
+        * F-Theta: the first-order coefficient of the angles-to-pixeldistances (forward)
+          polynomial scaled by the linear term's ``c`` factor, i.e.
+          ``[c1 * c, c1]`` with ``c1 = angle_to_pixeldist_poly[1]`` and
+          ``c = linear_cde[0]``. The forward polynomial maps
+          ``delta = f(theta) = c0 + c1*theta + ...`` with ``r = f*tan(theta) ~= f*theta``
+          near ``theta = 0``, so ``d(delta)/d(theta)|_0 = c1``; the linear term applies a
+          per-axis scale (shear components ``d``, ``e`` are not representable by a pinhole
+          and are dropped). F-Theta stores the principal point in the NVIDIA pixel-center
+          convention, so a ``+0.5`` shift is applied to bring it into image coordinates.
+        """
+        if isinstance(source, FThetaCameraModelParameters):
+            if (c1 := float(source.angle_to_pixeldist_poly[1])) <= 0.0:
+                raise ValueError(f"Cannot derive a positive focal length for an ideal pinhole (got {c1})")
+            c = float(source.linear_cde[0])
+            focal = np.array([c1 * c, c1], dtype=np.float32)
+            # F-Theta principal point is in the pixel-center convention; shift by +0.5 to
+            # match the image-coordinate convention used by the ideal pinhole model.
+            principal_point = (source.principal_point + 0.5).astype(np.float32)
+            return focal, principal_point, source.resolution
+        elif isinstance(
+            source,
+            (IdealPinholeCameraModelParameters, OpenCVPinholeCameraModelParameters, OpenCVFisheyeCameraModelParameters),
+        ):
+            return source.focal_length, source.principal_point, source.resolution
+        else:
+            raise TypeError(f"Unsupported camera model type for ideal pinhole conversion: {type(source).__name__}")
+
+    @staticmethod
+    def _max_corner_half_extent(resolution: np.ndarray, principal_point: np.ndarray) -> np.ndarray:
+        """Largest half-extent from the principal point to an image border per axis [px] ([2,])"""
+        # resolution is integer (uint64); cast to the float principal-point dtype before subtracting
+        return np.maximum(principal_point, resolution.astype(principal_point.dtype) - principal_point)
+
+    @staticmethod
+    def _fov_for_focal(half_extent: np.ndarray, focal: np.ndarray) -> np.ndarray:
+        """Per-axis full field of view ``2 * atan(half_extent / focal)`` [rad] (float32, ``[2,]``)"""
+        return (2.0 * np.arctan2(half_extent, focal)).astype(np.float32)
+
+    @staticmethod
+    def _assert_fov_in_range(fov: np.ndarray) -> None:
+        """Assert all per-axis full field-of-view angles [rad] are in ``(0, pi)``"""
+        if not np.all((0.0 < fov) & (fov < math.pi)):
+            raise ValueError(
+                "Field of view "
+                f"({[round(math.degrees(float(f)), 1) for f in np.atleast_1d(fov)]} deg) "
+                "cannot be represented by an ideal pinhole (each axis must be in (0, 180) deg)"
+            )
+
+
+@dataclass
+class OpenCVPinholeCameraModelParameters(PinholeCameraModelParameters, dataclasses_json.DataClassJsonMixin):
+    """Represents Pinhole-specific (OpenCV-like) camera model parameters"""
+
+    radial_coeffs: np.ndarray = util.numpy_array_field(
+        np.float32
+    )  #: Radial distortion coefficients ``[k1,k2,k3,k4,k5,k6]`` parameterizing the rational radial distortion factor :math:`\frac{1 + k_1r^2 + k_2r^4 + k_3r^6}{1 + k_4r^2 + k_5r^4 + k_6r^6}` for squared norms :math:`r^2` of normalized camera coordinates (float32, [6,])
+    tangential_coeffs: np.ndarray = util.numpy_array_field(
+        np.float32
+    )  #: Tangential distortion coefficients ``[p1,p2]`` parameterizing the tangential distortion components :math:`\begin{bmatrix} 2p_1x'y' + p_2 \left(r^2 + 2{x'}^2 \right) \\ p_1 \left(r^2 + 2{y'}^2 \right) + 2p_2x'y' \end{bmatrix}` for normalized camera coordinates :math:`\begin{bmatrix} x' \\ y' \end{bmatrix}` (float32, [2,])
+    thin_prism_coeffs: np.ndarray = util.numpy_array_field(
+        np.float32
+    )  #: Thins prism distortion coefficients ``[s1,s2,s3,s4]`` parameterizing the thin prism distortion components :math:`\begin{bmatrix} s_1r^2 + s_2r^4 \\ s_3r^2 + s_4r^4 \end{bmatrix}` for squared norms :math:`r^2` of normalized camera coordinates (float32, [4,]
+
+    @staticmethod
+    def type() -> str:
+        """Returns a string-identifier of the camera model"""
+        return "opencv-pinhole"
+
+    def __post_init__(self) -> None:
+        # Sanity checks (principal_point / focal_length are checked by the base)
+        super().__post_init__()
+
+        assert self.radial_coeffs.shape == (6,)
+        assert self.radial_coeffs.dtype == np.dtype("float32")
+
+        assert self.tangential_coeffs.shape == (2,)
+        assert self.tangential_coeffs.dtype == np.dtype("float32")
+
+        assert self.thin_prism_coeffs.shape == (4,)
+        assert self.thin_prism_coeffs.dtype == np.dtype("float32")
+
+    @property
+    def is_distortion_free(self) -> bool:
+        """Whether this OpenCV pinhole is free of any distortion
+
+        ``True`` iff all radial, tangential and thin-prism coefficients are zero and no
+        external distortion is attached. A distortion-free OpenCV pinhole is equivalent
+        to an ideal pinhole (see :meth:`IdealPinholeCameraModelParameters.from_source`).
+        """
+        return (
+            self.external_distortion_parameters is None
+            and not np.any(self.radial_coeffs)
+            and not np.any(self.tangential_coeffs)
+            and not np.any(self.thin_prism_coeffs)
         )
 
 
@@ -591,7 +800,10 @@ class OpenCVFisheyeCameraModelParameters(CameraModelParameters, dataclasses_json
 
 # Represents the collection of all concrete camera model parameter type
 ConcreteCameraModelParametersUnion = Union[
-    FThetaCameraModelParameters, OpenCVPinholeCameraModelParameters, OpenCVFisheyeCameraModelParameters
+    FThetaCameraModelParameters,
+    IdealPinholeCameraModelParameters,
+    OpenCVPinholeCameraModelParameters,
+    OpenCVFisheyeCameraModelParameters,
 ]
 
 
@@ -631,6 +843,8 @@ def decode_camera_model_parameters(encoded_parameters: Mapping) -> ConcreteCamer
     # Return typed camera model parameters
     if camera_model_type == "ftheta":
         return FThetaCameraModelParameters.from_dict(camera_model_parameters)
+    elif camera_model_type == "ideal-pinhole":
+        return IdealPinholeCameraModelParameters.from_dict(camera_model_parameters)
     elif camera_model_type in [
         "opencv-pinhole",
         # keep 'pinhole' for backwards-compatibility with existing data
