@@ -11,6 +11,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - - -
 
+## [v19.3.0](https://github.com/NVIDIA/ncore/compare/c69e32a2e3d576745211e3dd66f9fa8142037154..v19.3.0) - 2026-06-05
+
+### Highlights
+
+- nuScenes V4 converter + lidar model tooling (#128): Full nuScenes dataset support in NCore V4 format, shipping with a new generic lidar model library and evaluation tool:
+  - Converts nuScenes to V4 (closing #123), covering 6 cameras, HDL-32E lidar, 5 radars, and 3D cuboid annotations. Achieves 0.029deg far-range angular error on the lidar model - on par with PAI extraction quality.
+  - Change was a little involved on the lidar model side as nuScenes does only expose motion-compensated data without per-point timestamps, but effort resulted in a couple of additional re-usable features / tools:
+    - Structured lidar model estimation library ([docs](https://github.com/NVIDIA/ncore/tree/main/tools/data_converter#structured-lidar-model-extraction)): Generic, reusable library for deriving spinning lidar models from motion-compensated point clouds. Works without raw per-point timestamps (but still relies on some additional assumptions for now). Composable steps for azimuth extraction, column alignment, resolution upsampling, and multi-frame optimization. HDL-32E presets included.
+    - Lidar model evaluation [tool](https://nvidia.github.io/ncore/tools/lidar_model_eval.html) (`ncore_evaluate_lidar_model`): CLI tool that compares model-predicted vs. native ray directions on any sequence and validates against target thresholds. Reports angular error (mean/median/p95), per-row and per-frame breakdowns, and optionally renders overlay and error heatmap images onto camera frames.
+- Generic Rolling-shutter solver refactor (#119): Extracted a shared and abstract `RollingShutterSolver` implementation from previously hardcoded camera and lidar models into a generic utility class, unifying both (camera convergence was based on pixel-deltas, whereas lidar uses the more general time-convergence criteria working for all sensors). This is groundwork for eventually adding support for solid-state lidars (#125). No observerable public behavior change, but includes a deeper [analysis](https://github.com/NVIDIA/ncore/pull/119#issuecomment-4553040552) of the convergence pattern we see in practice for currently "time-linear" camera/lidar sensors, and also implements additional higher-order (approximate) differential solver variants that would handle non-linear measurement time readout behaviors better also.
+
+- OpenCV fisheye `compute_max_angle` fix (#140): Replaced Newton-Raphson inversion with a hybrid analytical solver that correctly handles non-monotone distortion polynomials (images wider than the valid FOV). Up to 1667x faster by determining inflexion points via Eigenvalue decomposition; fixes nonsensical output angles (e.g. 451 deg) for affected cameras (example image of now-supported fisheye lenses of the model).  
+Note that the API location changed from the model to the parameter pack, which is a mild breaking change, but as arguments remain compatible and usage is likely low opted for a minor instead of a major version bump.
+
+#### ➕ Added
+- (**data_converter**) add structured lidar model extraction library - ([d818a9e](https://github.com/NVIDIA/ncore/commit/d818a9e13dd01637d94edd1f0f644a053da791c9)) - Janick Martinez Esturo
+- (**nuscenes**) add nuScenes to NCore V4 converter - ([827506d](https://github.com/NVIDIA/ncore/commit/827506d36f38f926ec348a9b89bd900dd08aca8d)) - Janick Martinez Esturo
+- (**tools**) add lidar model evaluation tool - ([b694dea](https://github.com/NVIDIA/ncore/commit/b694dea445421747f9bfe5bb1b11b61a205fd0d9)) - Janick Martinez Esturo
+- Add OpenCV-based colormap utilities, remove matplotlib dependency - ([c8fdd35](https://github.com/NVIDIA/ncore/commit/c8fdd350635504e111e4f8ec510b6d55a57034ac)) - Janick Martinez Esturo
+#### 🪲 Fixed
+- ![BREAKING](https://img.shields.io/badge/BREAKING-red) (**data**) respect monotonicity in OpenCV fisheye compute_max_angle - ([c67ecfa](https://github.com/NVIDIA/ncore/commit/c67ecfac779539831ba21c40bc72b7f14de9cd08)) - Janick Martinez Esturo
+- (**pillow**) Update Pillow to 12.2.0 to address CVE-2026-42311 - ([1497969](https://github.com/NVIDIA/ncore/commit/149796983a4fdb909be57e57c156d6d10ed01de8)) - Janick Martinez Esturo
+- Lockfile update - ([0f82eae](https://github.com/NVIDIA/ncore/commit/0f82eaed635be626fa0b0e5f06931b7010392e11)) - Janick Martinez Esturo
+#### ⚡ Performance
+- (**ci**) drop repository-cache to eliminate 3 min download overhead - ([e234b54](https://github.com/NVIDIA/ncore/commit/e234b54a4cefcc7be137ef38a539bfceac00f343)) - Janick Martinez Esturo
+- (**ci**) commit MODULE.bazel.lock to skip PyPI resolution in CI - ([0498325](https://github.com/NVIDIA/ncore/commit/049832552f120d7c432a717f305f8d36145cb6b5)) - Janick Martinez Esturo
+#### 🔄 Changed
+- (**sensors**) extract shared rolling-shutter solver into generic utility - ([c1e21ea](https://github.com/NVIDIA/ncore/commit/c1e21ea034eef6f75ea4540f72d6bd59149688c2)) - Janick Martinez Esturo
+#### ⚙️ CI
+- remove redundant tag trigger from CI workflow - ([c69e32a](https://github.com/NVIDIA/ncore/commit/c69e32a2e3d576745211e3dd66f9fa8142037154)) - Janick Martinez Esturo
+#### 🏗️ Build
+- (**bazelignore**) Ignore .venv directory in .bazelignore - ([bc07978](https://github.com/NVIDIA/ncore/commit/bc079781f73f8ab644a4f592445b462fe5b91879)) - Janick Martinez Esturo
+
+- - -
+
 ## [v19.2.1](https://github.com/NVIDIA/ncore/compare/0cc85ea8a054470f223106ebf3ffe3a5d704c1e5..v19.2.1) - 2026-05-21
 
 ### Highlights

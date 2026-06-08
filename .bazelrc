@@ -40,7 +40,7 @@ test --test_output=errors
 test:no-gpu --test_env=NCORE_NO_GPU_TESTS=1
 
 # Wheel versioning
-build --embed_label=19.2.1
+build --embed_label=19.3.0
 
 # ty type checker aspect
 build --aspects //bazel/lint:linters.bzl%ty
