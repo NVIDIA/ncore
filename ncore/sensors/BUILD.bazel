@@ -26,6 +26,7 @@ py_library(
     deps = [
         "//ncore/impl/sensors:pylib_camera",
         "//ncore/impl/sensors:pylib_lidar",
+        "//ncore/impl/sensors:pylib_rectification",
     ],
 )
 

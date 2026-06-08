@@ -33,8 +33,8 @@ from ncore.impl.common.transformations import HalfClosedInterval, se3_inverse
 from ncore.impl.data.types import (
     BBox3,
     CuboidTrackObservation,
+    IdealPinholeCameraModelParameters,
     LabelSource,
-    OpenCVPinholeCameraModelParameters,
     ShutterType,
 )
 from ncore.impl.data.v4.components import (
@@ -476,18 +476,15 @@ class KittiConverter4(FileBasedDataConverter):
                     generic_meta_data={},
                 )
 
-            # Store camera intrinsics (rectified = zero distortion)
+            # Store camera intrinsics (rectified = ideal pinhole, no distortion)
             intrinsics_writer.store_camera_intrinsics(
                 camera_id=ncore_cam_id,
-                camera_model_parameters=OpenCVPinholeCameraModelParameters(
+                camera_model_parameters=IdealPinholeCameraModelParameters(
                     resolution=np.array([width, height], dtype=np.uint64),
                     shutter_type=ShutterType.GLOBAL,
                     external_distortion_parameters=None,
                     principal_point=np.array([cu, cv], dtype=np.float32),
                     focal_length=np.array([fu, fv], dtype=np.float32),
-                    radial_coeffs=np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
-                    tangential_coeffs=np.array([0.0, 0.0], dtype=np.float32),
-                    thin_prism_coeffs=np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32),
                 ),
             )
 

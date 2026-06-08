@@ -81,6 +81,34 @@ pytest_test(
 )
 
 py_library(
+    name = "pylib_rectification",
+    srcs = [
+        "rectification.py",
+    ],
+    deps = [
+        ":pylib_camera",
+        ":pylib_common",
+        requirement("numpy"),
+        requirement("torch"),
+    ],
+)
+
+pytest_test(
+    name = "pytest_rectification",
+    srcs = [
+        "rectification_test.py",
+    ],
+    deps = [
+        ":pylib_camera",
+        ":pylib_rectification",
+        "//ncore/impl/data:pylib_types",
+        requirement("numpy"),
+        requirement("parameterized"),
+        requirement("torch"),
+    ],
+)
+
+py_library(
     name = "pylib_lidar",
     srcs = [
         "lidar.py",

@@ -359,6 +359,105 @@ The following parameters will be available in ``external_distortion_parameters``
 - **Backward distortion** (undistort_camera_rays): transforms rays from internal (camera sensor) to external (world)
 
 
+.. _rectification:
+
+Rectification
+-------------
+
+Rectification maps imagery from a *source* camera into a *target* camera's image
+domain. It is a generic "from-camera -> to-camera" intrinsic remap within a
+shared camera frame; the most common use is mapping a distorted source camera to
+a distortion-free :ref:`ideal pinhole <ideal_pinhole_camera_model>` target, but
+the target may itself be distorted.
+
+**Deriving an ideal target (``IdealPinholeCameraModelParameters.from_source``)**
+
+The ``IdealPinholeCameraModelParameters.from_source(source, target_fov=None)``
+factory builds an :ref:`ideal pinhole <ideal_pinhole_camera_model>` approximating
+any supported source camera. It extracts the source's paraxial pinhole geometry
+(focal length, principal point, resolution), preserving the source focal aspect
+ratio:
+
+* Ideal / OpenCV pinhole / OpenCV fisheye: the model's own ``focal_length``
+  (anisotropic ``fx != fy`` preserved; OpenCV pinhole distortion is dropped).
+* FTheta: the first-order coefficient of the angles-to-pixeldistances (forward)
+  polynomial scaled by the linear term, i.e. ``[c1 * c, c1]`` with
+  :math:`c_1 = \mathrm{angle\_to\_pixeldist\_poly}[1]` and
+  :math:`c = \mathrm{linear\_cde}[0]`, since
+  :math:`\mathrm{d}\,\delta/\mathrm{d}\theta|_{\theta=0} = c_1` and
+  :math:`r = f\tan\theta \approx f\theta` near :math:`\theta = 0` (the linear
+  term's shear components are not representable by a pinhole and are dropped).
+
+The ``target_fov`` argument selects the angular extent of the rectified pinhole
+as a *full* field-of-view angle [rad]:
+
+* ``None``: use the source's natural field of view (the paraxial focal). A
+  pinhole focal always yields a field of view strictly below 180 degrees, so for
+  wide fisheye / omnidirectional cameras this is a narrow rectilinear *central
+  window* of the captured scene.
+* ``float``: an isotropic target full field of view, preserving the source focal
+  aspect ratio (the most binding image axis lands exactly at this value).
+* ``np.ndarray`` of shape ``[2,]``: per-axis target full field of view
+  ``[fov_x, fov_y]``.
+
+``target_fov`` selects *which rays* the pinhole covers, not a magnification:
+because a pinhole maps angle to pixel distance as :math:`r = f\tan\theta`,
+different values yield genuinely different views (the periphery stretches
+increasingly for wider fields of view; the optical axis stays fixed). Widening
+past the source's captured field of view is allowed and yields invalid
+(out-of-source) regions, which the :class:`~ncore.sensors.Rectificator` zeroes.
+``from_source`` raises ``ValueError`` if a requested field of view cannot be
+represented by a pinhole (any axis at or beyond 180 degrees), and ``TypeError``
+for an unsupported source model.
+
+Use ``IdealPinholeCameraModelParameters.natural_fov(source)`` (per-axis full FOV
+``np.ndarray``) to discover a sensible value to scale, e.g.:
+
+.. code-block:: python
+
+   import numpy as np
+   from ncore.data import IdealPinholeCameraModelParameters
+   from ncore.sensors import CameraModel, Rectificator
+
+   source_params = source_model.get_parameters()
+
+   # Default rectification (source's natural field of view)
+   target_params = IdealPinholeCameraModelParameters.from_source(source_params)
+
+   # Widen by 20% (e.g. to recover more of a wide lens) or set an explicit FOV
+   target_params = IdealPinholeCameraModelParameters.from_source(
+       source_params, target_fov=1.2 * IdealPinholeCameraModelParameters.natural_fov(source_params)
+   )
+   target_params = IdealPinholeCameraModelParameters.from_source(source_params, target_fov=np.radians(90.0))
+
+   target = CameraModel.from_parameters(target_params)
+   rect = Rectificator(source_model, target)
+
+**Rectificator**
+
+The ``Rectificator`` (``ncore.sensors.Rectificator``) is constructed from a
+source/target :class:`CameraModel` pair and builds a backward sample map
+(target -> source) once:
+
+1. each target pixel is unprojected to a ray with the target model,
+2. the ray is re-projected to a source image coordinate with the source model.
+
+It exposes:
+
+* ``sample_map`` - ``[H, W, 2]`` source image coordinates to sample for each
+  target pixel (usable directly with custom / GPU / OpenCV resampling).
+* ``valid_mask`` - ``[H, W]`` boolean mask of target pixels whose ray projects
+  inside the source image.
+* ``apply(image, mode="bilinear", padding_mode="zeros")`` - resamples a source
+  image (``[H, W]``, ``[H, W, C]`` or ``[N, H, W, C]``, channels-last) into the
+  target domain, zeroing invalid pixels. ``mode`` selects the interpolation
+  (``"bilinear"``, ``"nearest"`` or ``"bicubic"``) and ``padding_mode`` the
+  out-of-bounds sampling behaviour (``"zeros"``, ``"border"`` or
+  ``"reflection"``); both are forwarded to ``torch.nn.functional.grid_sample``.
+* ``source_points_to_target(points)`` / ``target_points_to_source(points)`` -
+  map sparse continuous image points between the two cameras.
+
+
 Lidar Models
 ------------
 
