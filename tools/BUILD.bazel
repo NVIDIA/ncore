@@ -79,12 +79,16 @@ py_binary(
     srcs = ["ncore_export_camera.py"],
     deps = [
         ":pylib_cli",
+        "//ncore/impl/data:pylib_types",
         "//ncore/impl/data:pylib_util",
         "//ncore/impl/data/v4:pylib_compat",
         "//ncore/impl/data/v4:pylib_components",
+        "//ncore/impl/sensors:pylib_camera",
+        "//ncore/impl/sensors:pylib_rectification",
         requirement("click"),
         requirement("numpy"),
         requirement("opencv_python_headless"),
+        requirement("torch"),
         requirement("tqdm"),
     ],
 )

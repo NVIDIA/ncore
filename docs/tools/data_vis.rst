@@ -177,3 +177,82 @@ Or with multiple component groups::
         v4 \
         --component-group=<COMPONENT_GROUP0> \
         --component-group=<COMPONENT_GROUP1>
+
+Rectification
+~~~~~~~~~~~~~
+
+Passing ``--rectify`` rectifies each frame to an ideal (distortion-free) pinhole
+camera before exporting. The ideal-pinhole target is derived from the source
+camera intrinsics via ``IdealPinholeCameraModelParameters.from_source()``
+(see :ref:`rectification`), the frames are remapped with a
+:class:`~ncore.sensors.Rectificator` and re-encoded as PNG, and the resulting
+ideal-pinhole intrinsics are written alongside the images as
+``<camera_id>.rectified_intrinsics.json``.
+
+::
+
+    bazel run //tools:ncore_export_camera \
+        -- \
+        --output-dir=<OUTPUT_FOLDER> \
+        --camera-id=camera00 \
+        --rectify \
+        --rectify-target-fov-deg=120 \
+        v4 \
+        --component-group=<SEQUENCE_META.json>
+
+``--rectify-target-fov-deg`` selects *which rays* the rectified pinhole covers,
+i.e. the angular extent (field of view) around the optical axis. Because a
+pinhole maps angle to pixel distance as :math:`r = f\tan\theta`, different
+values produce genuinely different views of the world: a wider field of view
+stretches the periphery increasingly towards the image border (the optical
+center stays fixed). When omitted, the source's natural field of view is used
+(for wide fisheye / omnidirectional cameras this is a narrow rectilinear central
+window, since the full field of view cannot be represented by a pinhole).
+Widening past the captured field of view yields black borders; rectification
+fails if the requested field of view cannot be represented by a pinhole (at or
+beyond 180 degrees).
+
+``--rectify-fov-factor`` multiplies the (target or natural) field of view before
+rectifying: ``> 1`` widens, ``< 1`` narrows. It is a convenient way to zoom
+relative to the inferred default without computing an explicit angle, e.g.
+``--rectify-fov-factor 0.8`` to keep the central 80% of the natural field of
+view.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 10 60
+
+   * - Option
+     - Default
+     - Description
+   * - ``--output-dir``
+     - (required)
+     - Directory for the exported frames (and rectified intrinsics, if rectifying)
+   * - ``--camera-id``
+     - ``camera_front_wide_120fov``
+     - Camera sensor to export image frames for
+   * - ``--start-frame`` / ``--stop-frame`` / ``--step-frame``
+     - all / all / 1
+     - Frame export range and downsampling step
+   * - ``--encode-images`` / ``--no-encode-images``
+     - ``--encode-images``
+     - Whether to write per-frame image files
+   * - ``--timestamp-image-names`` / ``--no-timestamp-image-names``
+     - ``--no-timestamp-image-names``
+     - Use timestamp filenames instead of frame-index filenames
+   * - ``--encode-video``
+     - off
+     - Encode an MP4 video of the (possibly rectified) frames
+   * - ``--encode-video-fps``
+     - ``30``
+     - Frame-rate for video encoding
+   * - ``--rectify`` / ``--no-rectify``
+     - ``--no-rectify``
+     - Rectify frames to an ideal (distortion-free) pinhole before exporting
+   * - ``--rectify-target-fov-deg``
+     - (natural FOV)
+     - Target full field of view [deg] of the rectified pinhole (wider or narrower than the natural FOV)
+   * - ``--rectify-fov-factor``
+     - ``1.0``
+     - Multiplicative factor on the (target or natural) field of view (``> 1`` widens, ``< 1`` narrows)
+
