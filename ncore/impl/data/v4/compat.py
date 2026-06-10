@@ -424,8 +424,8 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             )
             return RayBundleSensorProtocol.FramePointCloud(
                 motion_compensation=True,
-                xyz_m_start=motion_compensation_result.xyz_s_sensorend if with_start_points else None,
-                xyz_m_end=motion_compensation_result.xyz_e_sensorend,
+                xyz_m_start=motion_compensation_result.xyz_s_reftime if with_start_points else None,
+                xyz_m_end=motion_compensation_result.xyz_e_reftime,
             )
 
         @override

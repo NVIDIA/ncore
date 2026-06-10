@@ -387,14 +387,14 @@ def _render_frame_comparison(
             timestamp_us=timestamps,
             frame_start_timestamp_us=frame_start_us,
             frame_end_timestamp_us=frame_end_us,
-        ).xyz_e_sensorend
+        ).xyz_e_reftime
         model_mc = motion_compensator.motion_compensate_points(
             sensor_id=source_id,
             xyz_pointtime=model_sensor_pts,
             timestamp_us=timestamps,
             frame_start_timestamp_us=frame_start_us,
             frame_end_timestamp_us=frame_end_us,
-        ).xyz_e_sensorend
+        ).xyz_e_reftime
     else:
         native_mc = native_sensor_pts
         model_mc = model_sensor_pts

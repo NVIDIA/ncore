@@ -502,7 +502,7 @@ class NuScenesConverter4(FileBasedDataConverter):
 
                 xyz_decomp_j = motion_compensator.motion_decompensate_points(
                     sensor_id=LIDAR_ID,
-                    xyz_sensorend=xyz_j,
+                    xyz_reftime=xyz_j,
                     timestamp_us=ts_j,
                     frame_start_timestamp_us=frame_start_j,
                     frame_end_timestamp_us=frame_end_j,

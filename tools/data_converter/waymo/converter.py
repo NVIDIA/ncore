@@ -643,7 +643,7 @@ class WaymoConverter4(FileBasedDataConverter):
                 # Undo motion-compensation for ray bundle direction and distance computation
                 xyz_m = motion_compensator.motion_decompensate_points(
                     sensor_id=lidar_ncore_id,
-                    xyz_sensorend=xyz_e,
+                    xyz_reftime=xyz_e,
                     timestamp_us=point_timestamps_us,
                     frame_start_timestamp_us=frame_start_timestamp_us,
                     frame_end_timestamp_us=frame_end_timestamp_us,

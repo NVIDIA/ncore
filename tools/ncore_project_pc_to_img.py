@@ -339,7 +339,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
                 timestamp_us=ray_sensor.get_frame_ray_bundle_timestamp_us(pc_frame_index),
                 frame_start_timestamp_us=ray_sensor.get_frame_timestamp_us(pc_frame_index, types.FrameTimepoint.START),
                 frame_end_timestamp_us=ray_sensor.get_frame_timestamp_us(pc_frame_index, types.FrameTimepoint.END),
-            ).xyz_e_sensorend
+            ).xyz_e_reftime
 
             # Transform the point cloud to the world coordinate frame
             pc_xyz = transform_point_cloud(

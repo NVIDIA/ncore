@@ -667,7 +667,7 @@ def align_frame(
         # Step 5: Decompensate
         xyz_decomp_full = motion_compensator.motion_decompensate_points(
             sensor_id=sensor_id,
-            xyz_sensorend=xyz_mc,
+            xyz_reftime=xyz_mc,
             timestamp_us=point_timestamps,
             frame_start_timestamp_us=frame_start_us,
             frame_end_timestamp_us=frame_end_us,
@@ -692,7 +692,7 @@ def align_frame(
     final_timestamps = compute_frame_timestamps(model_col.astype(np.int64), n_model_cols, frame_start_us, frame_end_us)
     xyz_decompensated = motion_compensator.motion_decompensate_points(
         sensor_id=sensor_id,
-        xyz_sensorend=xyz_mc[valid_mask],
+        xyz_reftime=xyz_mc[valid_mask],
         timestamp_us=final_timestamps,
         frame_start_timestamp_us=frame_start_us,
         frame_end_timestamp_us=frame_end_us,
