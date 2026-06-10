@@ -58,7 +58,7 @@ py_binary(
 )
 
 alias(
-    name = "nuscenes-v4",
+    name = "nuscenes",
     actual = ":convert",
 )
 
