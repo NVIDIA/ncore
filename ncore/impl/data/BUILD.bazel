@@ -81,6 +81,7 @@ pytest_test(
     deps = [
         ":pylib_util",
         requirement("numpy"),
+        requirement("torch"),
     ],
 )
 

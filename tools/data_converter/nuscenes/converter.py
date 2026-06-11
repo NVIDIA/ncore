@@ -96,9 +96,11 @@ class NuScenesConverter4Config(FileBasedDataConverterConfig):
     store_type: Literal["itar", "directory"] = "itar"
     component_group_profile: Literal["default", "separate-sensors", "separate-all"] = "separate-sensors"
     store_sequence_meta: bool = True
+    # Defaults below match the CLI options (see nuscenes_v4) and the README so a
+    # programmatically-constructed config behaves the same as the command line.
     lidar_model_optimization_passes: int = 1
     lidar_model_source: Literal["empirical", "nominal"] = "empirical"
-    lidar_model_resolution: int = 1
+    lidar_model_resolution: int = 4
 
 
 # -----------------------------------------------------------------------------
@@ -998,7 +1000,7 @@ class NuScenesConverter4(FileBasedDataConverter):
     "lidar_model_source",
     "--lidar-model-source",
     type=click.Choice(["empirical", "nominal"], case_sensitive=False),
-    default="nominal",
+    default="empirical",
     show_default=True,
     help="Model derivation source: 'empirical' derives from data, 'nominal' uses HDL-32E spec values.",
 )

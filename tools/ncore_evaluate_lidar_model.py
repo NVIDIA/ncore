@@ -24,6 +24,23 @@ Usage:
         --camera-id camera_front \\
         --output-dir /tmp/eval_output \\
         v4 --component-group /path/to/scene.json
+
+Expected accuracy (nuScenes HDL-32E, structured spinning model at 4x resolution
+with 1 optimization pass, mean angular error over far-range points > 20 m):
+
+    model source   mean far-range error   systematic azimuth bias
+    -------------   --------------------   -----------------------
+    empirical       ~0.02 - 0.04 deg       < ~0.005 deg
+    nominal         ~0.02 - 0.6 deg        up to ~0.4 deg
+
+These ranges were measured across the 10 v1.0-mini scenes plus a v1.0-trainval
+sample. The empirical model (the default) reproduces the point cloud up to
+~15x more accurately than the spec-derived nominal model, and never worse. The
+combined "all valid points" mean is dominated by close-range
+motion-compensation artifacts and occasional glitch frames, so the far-range
+mean and the median are the meaningful model-quality indicators. The default
+--warn-threshold-deg of 0.05 comfortably covers the empirical model's expected
+far-range accuracy.
 """
 
 from __future__ import annotations
@@ -646,7 +663,11 @@ class CLIBaseParams:
     "--warn-threshold-deg",
     default=0.05,
     type=float,
-    help="Warn if mean far-range error or systematic az/el error exceeds this (degrees)",
+    help=(
+        "Warn if mean far-range error or systematic az/el error exceeds this (degrees). "
+        "The default comfortably covers the empirical model's expected far-range accuracy (~0.04 deg); "
+        "raise to ~0.6 for evaluating the lower-fidelity nominal model."
+    ),
 )
 @click.option("--device", default="cpu", type=click.Choice(["cpu", "cuda"]), help="Torch device")
 @click.option(

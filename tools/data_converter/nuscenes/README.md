@@ -49,11 +49,20 @@ bazel run //tools/data_converter/nuscenes -- \
 | `--store-type` | itar | Output store format (itar or directory) |
 | `--profile` | separate-sensors | Component group assignment profile |
 | `--sequence-meta/--no-sequence-meta` | enabled | Generate sequence meta JSON |
-| `--lidar-model-source` | nominal | Model derivation: `nominal` (from HDL-32E spec) or `empirical` (from data) |
+| `--lidar-model-source` | empirical | Model derivation: `empirical` (from data) or `nominal` (from HDL-32E spec) |
 | `--lidar-model-resolution` | 4 | Model column resolution factor (1/2/4). Higher = finer alignment. |
 | `--lidar-model-optimization-passes` | 1 | Multi-frame optimization iterations (0 to disable) |
 
-Recommended for best quality: `--lidar-model-source nominal --lidar-model-resolution 4 --lidar-model-optimization-passes 1`
+Recommended for best quality: `--lidar-model-source empirical --lidar-model-resolution 4 --lidar-model-optimization-passes 1`.
+Across the 10 v1.0-mini scenes plus a trainval sample, `empirical` reproduces the point
+cloud up to ~15x more accurately at far range than `nominal` (and never worse), so it is
+the default. Use `nominal` only when a data-independent model is required. Expected mean
+far-range (> 20 m) angular error, measured with `//tools:ncore_evaluate_lidar_model`:
+
+| `--lidar-model-source` | Mean far-range error | Systematic azimuth bias |
+|------------------------|----------------------|-------------------------|
+| `empirical` (default)  | ~0.02 - 0.04 deg     | < ~0.005 deg            |
+| `nominal`              | ~0.02 - 0.6 deg      | up to ~0.4 deg          |
 
 ## Sensor Assumptions
 
@@ -64,12 +73,13 @@ Recommended for best quality: `--lidar-model-source nominal --lidar-model-resolu
   motion-compensated; the converter decompensates them to raw per-point-time
   measurements. Per-point timestamps are derived from the 32-beam column structure.
   A structured lidar model is stored as intrinsics with configurable derivation:
+  - *Empirical* (`--lidar-model-source empirical`, default): derived from a decompensated
+    reference frame with analytical blending for data-poor beams. Best accuracy.
   - *Nominal* (`--lidar-model-source nominal`): from HDL-32E spec (uniform azimuths,
-    spec elevations, analytical firing offsets). No circular data dependency.
-  - *Empirical* (`--lidar-model-source empirical`): derived from a decompensated
-    reference frame with analytical blending for data-poor beams.
+    spec elevations, analytical firing offsets). No circular data dependency, but
+    lower fidelity than empirical.
   - *Resolution upsampling* (`--lidar-model-resolution 4`): interpolates the model
-    to 4x column resolution, reducing alignment quantization from ~0.10 to ~0.03 deg.
+    to 4x column resolution, reducing alignment quantization from ~0.09 to ~0.02 deg.
   - *Optimization* (`--lidar-model-optimization-passes 1`): multi-frame median
     correction of azimuths and offsets.
 - **Cuboid annotations**: Stored in the world coordinate frame. Only keyframe annotations

@@ -179,24 +179,31 @@ def relative_angle(
 
     two_pi = 2 * np.pi
 
-    # Check for wrap-around condition
-    wrap_around_flag = abs(angle_rad - ref_angle_rad) >= two_pi
-
-    # Project both angles to [0, 2π)
-    ref_angle_rad = ref_angle_rad % two_pi
-    angle_rad = angle_rad % two_pi
-
+    # Signed difference between ref and angle, then a single reduction to [0, 2π).
+    # We subtract before reducing rather than reducing each operand separately:
+    # the subtraction with the python-scalar `ref_angle_rad` keeps `angle_rad`'s
+    # dtype (a python scalar does not upcast a numpy/torch float32 array), so the
+    # whole computation stays in float32 for float32 inputs. Reducing each operand
+    # independently instead promoted `ref_angle_rad % 2π` to float64 while
+    # `angle_rad % 2π` stayed float32, so the same value reduced to results ~1 ULP
+    # apart; for ref == angle_rad[i] that made the relative angle wrap to ~2π
+    # instead of 0 and broke, e.g., the strict-monotonicity check on a structured
+    # lidar model's column azimuths whose reference reduces near the ±π boundary.
+    # (a - b) mod 2π == (a mod 2π - b mod 2π) mod 2π, so this is exact.
     if direction == "cw":
-        # Clockwise: going from ref to angle in CW direction
-        diff_angle = ref_angle_rad - angle_rad
+        # Clockwise: going from ref to angle in CW direction.
+        signed_diff = ref_angle_rad - angle_rad
     elif direction == "ccw":
-        # Counter-clockwise: going from ref to angle in CCW direction
-        diff_angle = angle_rad - ref_angle_rad
+        # Counter-clockwise: going from ref to angle in CCW direction.
+        signed_diff = angle_rad - ref_angle_rad
     else:
         raise ValueError(f"Invalid spinning direction: {direction}")
 
+    # Wrap-around: the absolute separation spans at least a full revolution.
+    wrap_around_flag = abs(angle_rad - ref_angle_rad) >= two_pi
+
     return RelativeAngleResult(
-        relative_angle_rad=cast(TensorLike, diff_angle % two_pi), wrap_around_flag=wrap_around_flag
+        relative_angle_rad=cast(TensorLike, signed_diff % two_pi), wrap_around_flag=wrap_around_flag
     )
 
 
