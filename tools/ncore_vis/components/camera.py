@@ -30,9 +30,10 @@ import viser
 from scipy.spatial.transform import Rotation as RotLib
 
 from ncore.impl.common.transformations import HalfClosedInterval, transform_point_cloud
-from ncore.impl.data.types import FrameTimepoint, LabelCategory, LabelSource
+from ncore.impl.data.types import FrameTimepoint, IdealPinholeCameraModelParameters, LabelCategory, LabelSource
 from ncore.impl.data.util import closest_index_sorted
 from ncore.impl.sensors.camera import CameraModel
+from ncore.impl.sensors.rectification import Rectificator
 from tools.colormaps import jet as jet_colormap
 from tools.colormaps import turbo as turbo_colormap
 from tools.ncore_vis.components.base import VisualizationComponent, register_component
@@ -232,6 +233,16 @@ class CameraComponent(VisualizationComponent):
         # Camera model device and cached CameraModel instances (one per camera sensor)
         self._device: str = "cuda" if torch.cuda.is_available() else "cpu"
         self._camera_models: Dict[str, CameraModel] = {}
+
+        # Optional rectification to an ideal pinhole camera. When enabled, camera images
+        # are remapped to a distortion-free pinhole and overlays project into that target
+        # domain so they stay faithful. ``_rectify_fov_factor`` scales the natural field of
+        # view (>1 widens, <1 narrows).
+        self._rectify: bool = False
+        self._rectify_fov_factor: float = 1.0
+        self._target_models: Dict[str, CameraModel] = {}
+        self._rectificators: Dict[str, Rectificator] = {}
+
         self._build_camera_models()
 
         # Cache camera aspect ratios and load static masks
@@ -288,6 +299,26 @@ class CameraComponent(VisualizationComponent):
                     self._device = device_dropdown.value
                     self._build_camera_models()
                     self._refresh_all_cameras()
+
+                # -- Rectification to an ideal pinhole --
+                rectify_checkbox = self.client.gui.add_checkbox(
+                    "Rectify",
+                    initial_value=self._rectify,
+                    hint="Rectify camera images to an ideal (distortion-free) pinhole; overlays project faithfully",
+                )
+                rectify_fov_slider = self.client.gui.add_slider(
+                    "Rectify FOV Scale",
+                    min=0.3,
+                    max=1.5,
+                    step=0.05,
+                    initial_value=self._rectify_fov_factor,
+                    hint="Scale of the rectified field of view relative to the camera's natural FOV "
+                    "(>1 widens, <1 narrows)",
+                )
+                self._bind_rectification_settings(
+                    rectify_checkbox=rectify_checkbox,
+                    rectify_fov_slider=rectify_fov_slider,
+                )
 
                 # -- Cuboid overlay --
                 overlay_cuboids_checkbox = self.client.gui.add_checkbox(
@@ -719,7 +750,12 @@ class CameraComponent(VisualizationComponent):
             self._refresh_all_cameras()
 
     def _build_camera_models(self) -> None:
-        """Build (or rebuild) the per-camera :class:`CameraModel` cache using ``self._device``."""
+        """Build (or rebuild) the per-camera :class:`CameraModel` cache using ``self._device``.
+
+        Also (re)builds the ideal-pinhole target models and :class:`Rectificator` instances
+        used when rectification is enabled. Call after changing ``self._device``,
+        ``self._rectify`` or ``self._rectify_fov_factor``.
+        """
         self._camera_models = {
             camera_id: CameraModel.from_parameters(
                 self.data_loader.get_camera_sensor(camera_id).model_parameters,
@@ -728,6 +764,47 @@ class CameraComponent(VisualizationComponent):
             )
             for camera_id in self.data_loader.camera_ids
         }
+
+        self._target_models = {}
+        self._rectificators = {}
+        if self._rectify:
+            for camera_id in self.data_loader.camera_ids:
+                source_params = self.data_loader.get_camera_sensor(camera_id).model_parameters
+                target_fov = self._rectify_fov_factor * IdealPinholeCameraModelParameters.natural_fov(source_params)
+                target_params = IdealPinholeCameraModelParameters.from_source(source_params, target_fov=target_fov)
+                target_model = CameraModel.from_parameters(target_params, device=self._device, dtype=torch.float32)
+                self._target_models[camera_id] = target_model
+                self._rectificators[camera_id] = Rectificator(self._camera_models[camera_id], target_model)
+
+    def _render_camera_model(self, camera_id: str) -> CameraModel:
+        """Returns the camera model overlays should project into for *camera_id*.
+
+        When rectification is enabled this is the ideal-pinhole target model (so overlays
+        align with the rectified image); otherwise the source camera model.
+        """
+        if self._rectify and camera_id in self._target_models:
+            return self._target_models[camera_id]
+        return self._camera_models[camera_id]
+
+    def _bind_rectification_settings(
+        self,
+        rectify_checkbox: viser.GuiInputHandle[bool],
+        rectify_fov_slider: viser.GuiInputHandle[float],
+    ) -> None:
+        """Wire the rectification toggle and FOV-scale slider (rebuild targets, then refresh)."""
+
+        @rectify_checkbox.on_update
+        def _(_: viser.GuiEvent) -> None:
+            self._rectify = rectify_checkbox.value
+            self._build_camera_models()
+            self._refresh_all_cameras()
+
+        @rectify_fov_slider.on_update
+        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+            self._rectify_fov_factor = rectify_fov_slider.value
+            if self._rectify:
+                self._build_camera_models()
+                self._refresh_all_cameras()
 
     def _refresh_all_cameras(self) -> None:
         """Re-render all cameras in parallel (used when a shared overlay setting changes)."""
@@ -789,6 +866,14 @@ class CameraComponent(VisualizationComponent):
                 pil_img = pil_img.convert("RGB")
             image = np.asarray(pil_img)
 
+            # Optional rectification to an ideal pinhole (overlays below project into the
+            # rectified target domain via _render_camera_model, so they stay faithful).
+            aspect = self._aspects[camera_id]
+            if self._rectify and (rectificator := self._rectificators.get(camera_id)) is not None:
+                image = rectificator.apply(image).detach().cpu().numpy().astype(np.uint8)
+                width, height = self._target_models[camera_id].resolution.tolist()
+                aspect = float(width) / float(height)
+
             if self._project_lidar:
                 try:
                     image = self._overlay_lidar_projection(camera_id, frame_idx, image)
@@ -833,7 +918,7 @@ class CameraComponent(VisualizationComponent):
             frustum_handle = self.client.scene.add_camera_frustum(
                 f"/cameras/{camera_id}/pose/frustum",
                 fov=_DEFAULT_CAMERA_FOV,
-                aspect=self._aspects[camera_id],
+                aspect=aspect,
                 scale=_DEFAULT_CAMERA_SCALE,
                 image=image,
                 visible=visible,
@@ -987,7 +1072,7 @@ class CameraComponent(VisualizationComponent):
 
         cam = self.data_loader.get_camera_sensor(camera_id)
         lidar_sensor = self.data_loader.get_lidar_sensor(lidar_id)
-        camera_model = self._camera_models[camera_id]
+        camera_model = self._render_camera_model(camera_id)
 
         # Find closest lidar frame to the camera frame (by center-of-frame timestamp)
         cam_interval = self.data_loader.get_sensor_frame_interval_us(camera_id, frame_idx)
@@ -1073,7 +1158,7 @@ class CameraComponent(VisualizationComponent):
         """Project a single radar sensor's point cloud onto *image* (mutates in-place)."""
         cam = self.data_loader.get_camera_sensor(camera_id)
         radar_sensor = self.data_loader.get_radar_sensor(radar_id)
-        camera_model = self._camera_models[camera_id]
+        camera_model = self._render_camera_model(camera_id)
 
         # Find closest radar frame to the camera frame (by center-of-frame timestamp)
         cam_interval = self.data_loader.get_sensor_frame_interval_us(camera_id, frame_idx)
@@ -1149,7 +1234,7 @@ class CameraComponent(VisualizationComponent):
 
         cam = self.data_loader.get_camera_sensor(camera_id)
         source = self.data_loader.get_point_clouds_source(source_id)
-        camera_model = self._camera_models[camera_id]
+        camera_model = self._render_camera_model(camera_id)
 
         if source.pcs_count == 0:
             return image
@@ -1299,7 +1384,7 @@ class CameraComponent(VisualizationComponent):
             Copy of the image with visible cuboid edges drawn.
         """
         cam = self.data_loader.get_camera_sensor(camera_id)
-        camera_model = self._camera_models[camera_id]
+        camera_model = self._render_camera_model(camera_id)
 
         world_id = self.data_loader.world_frame_id
         pose_graph = self.data_loader.pose_graph

@@ -89,6 +89,7 @@ py_library(
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data:pylib_util",
         "//ncore/impl/sensors:pylib_camera",
+        "//ncore/impl/sensors:pylib_rectification",
         "//tools:pylib_colormaps",
         requirement("numpy"),
         requirement("opencv_python_headless"),

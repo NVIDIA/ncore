@@ -140,6 +140,14 @@ The **Overlay Settings** folder (collapsed by default) in the Cameras tab
 contains shared controls that apply uniformly to all cameras, grouped by
 feature with the toggle as the first entry in each group:
 
+Rectification:
+
+- **Rectify**: toggle rectification of all camera images to an ideal
+  (distortion-free) pinhole. Overlays project into the rectified target model so
+  they stay faithful with the rectification (see :ref:`rectification`).
+- **Rectify FOV Scale**: scale of the rectified field of view relative to the
+  camera's natural field of view (``> 1`` widens, ``< 1`` narrows)
+
 Cuboid overlay:
 
 - **Overlay Cuboids**: toggle cuboid edge projection on all cameras
@@ -157,6 +165,18 @@ Mask overlay (only shown if masks are available):
 - **Show Mask**: toggle mask overlay on all cameras
 - **Mask Name**: select a named camera mask to overlay
 - **Mask Opacity**: transparency of the mask color tint (default 0.3)
+
+Camera Rectification
+^^^^^^^^^^^^^^^^^^^^
+
+When **Rectify** is enabled, each camera image is remapped to an ideal
+(distortion-free) pinhole using a :class:`~ncore.sensors.Rectificator`, and the
+active camera model used for all overlay projections (lidar, radar, point
+clouds, cuboids) is switched to that ideal-pinhole target so the overlays remain
+aligned with the rectified image. The **Rectify FOV Scale** slider multiplies
+the camera's natural field of view (``> 1`` widens, ``< 1`` narrows); widening
+past the captured field of view yields black borders. See :ref:`rectification`
+for the underlying conversion.
 
 Camera Cuboid Overlay
 ^^^^^^^^^^^^^^^^^^^^^
