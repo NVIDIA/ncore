@@ -355,6 +355,109 @@ class TestMotionCompensator(unittest.TestCase):
         )
         np.testing.assert_array_equal(default, explicit)
 
+    def test_result_exposes_frame_ids(self):
+        """The result records the reference (sensor) frame and the anchor frame."""
+        motion_compensator = MotionCompensator(self.loader.pose_graph)
+        lidar_sensor = self.loader.get_lidar_sensor("lidar_gt_top_p128_v4p5")
+
+        xyz_m_ref = lidar_sensor.get_frame_point_cloud(
+            0, motion_compensation=False, with_start_points=False, return_index=0
+        ).xyz_m_end
+        timestamp_us = lidar_sensor.get_frame_ray_bundle_timestamp_us(0)
+        frame_start_us = lidar_sensor.get_frame_timestamp_us(0, types.FrameTimepoint.START)
+        frame_end_us = lidar_sensor.get_frame_timestamp_us(0, types.FrameTimepoint.END)
+
+        result = motion_compensator.motion_compensate_points(
+            lidar_sensor.sensor_id, xyz_m_ref, timestamp_us, frame_start_us, frame_end_us
+        )
+        self.assertEqual(result.reference_frame_id, lidar_sensor.sensor_id)
+        self.assertEqual(result.anchor_frame_id, "world")
+        self.assertEqual(result.reference_timestamp_us, frame_end_us)
+
+        # The empty-input path carries the same frame metadata.
+        empty = motion_compensator.motion_compensate_points(
+            lidar_sensor.sensor_id,
+            np.empty((0, 3), dtype=np.float32),
+            np.empty((0,), dtype=np.uint64),
+            frame_start_us,
+            frame_end_us,
+        )
+        self.assertEqual(empty.reference_frame_id, lidar_sensor.sensor_id)
+        self.assertEqual(empty.anchor_frame_id, "world")
+
+
+class TestMotionCompensatorAnchorFrame(unittest.TestCase):
+    """Anchor-frame parameterization on a small synthetic pose graph (no external data)."""
+
+    def _build_graph(self) -> PoseGraphInterpolator:
+        # sensor -(static)-> rig -(dynamic)-> world -(static)-> world_global.
+        # "world" and "world_global" differ only by a static transform, so either is a
+        # valid anchor that preserves the within-frame motion; "rig" is NOT (the
+        # sensor is static relative to it, so it would see no motion).
+        timestamps_us = np.array([1000, 2000], dtype=np.uint64)
+        T_rig_world = np.stack([get_SE3(np.array([0.0, 0.0, 0.0])), get_SE3(np.array([1.0, 2.0, 3.0]))])
+        T_sensor_rig = get_SE3(np.array([0.5, -0.5, 0.25]))
+        T_world_world_global = get_SE3(np.array([10.0, -20.0, 5.0]))
+        return PoseGraphInterpolator(
+            [
+                PoseGraphInterpolator.Edge("rig", "world", T_rig_world, timestamps_us),
+                PoseGraphInterpolator.Edge("lidar", "rig", T_sensor_rig, None),
+                PoseGraphInterpolator.Edge("world", "world_global", T_world_world_global, None),
+            ]
+        )
+
+    def test_compensation_independent_of_static_anchor_choice(self):
+        """Anchors related by a static transform (world / world_global) give identical results."""
+        compensator = MotionCompensator(self._build_graph())
+
+        rng = np.random.default_rng(0)
+        xyz = rng.normal(size=(64, 3)).astype(np.float32)
+        timestamp_us = np.linspace(1000, 2000, 64).astype(np.uint64)
+
+        via_world = compensator.motion_compensate_points(
+            "lidar", xyz, timestamp_us, 1000, 2000, anchor_frame_id="world"
+        )
+        via_global = compensator.motion_compensate_points(
+            "lidar", xyz, timestamp_us, 1000, 2000, anchor_frame_id="world_global"
+        )
+
+        np.testing.assert_array_almost_equal(via_world.xyz_e_reftime, via_global.xyz_e_reftime, decimal=4)
+        self.assertEqual(via_world.anchor_frame_id, "world")
+        self.assertEqual(via_global.anchor_frame_id, "world_global")
+
+        # Round-trip with a non-default anchor recovers the input.
+        roundtrip = compensator.motion_decompensate_points(
+            "lidar", via_global.xyz_e_reftime, timestamp_us, 1000, 2000, anchor_frame_id="world_global"
+        )
+        np.testing.assert_array_almost_equal(roundtrip, xyz, decimal=4)
+
+    def test_from_sensor_rig_custom_frame_names(self):
+        """from_sensor_rig honors custom anchor/rig frame node names."""
+        timestamps_us = np.array([1000, 2000], dtype=np.uint64)
+        T_rig_anchor = np.stack([get_SE3(np.array([0.0, 0.0, 0.0])), get_SE3(np.array([2.0, 0.0, -1.0]))])
+        T_sensor_rig = get_SE3(np.array([0.1, 0.2, 0.3]))
+
+        compensator = MotionCompensator.from_sensor_rig(
+            sensor_id="lidar",
+            T_sensor_rig=T_sensor_rig,
+            T_rig_worlds=T_rig_anchor,
+            T_rig_worlds_timestamps_us=timestamps_us,
+            anchor_frame_id="ego_world",
+            rig_frame_id="chassis",
+        )
+
+        rng = np.random.default_rng(1)
+        xyz = rng.normal(size=(32, 3)).astype(np.float32)
+        timestamp_us = np.linspace(1000, 2000, 32).astype(np.uint64)
+
+        compensated = compensator.motion_compensate_points(
+            "lidar", xyz, timestamp_us, 1000, 2000, anchor_frame_id="ego_world"
+        )
+        roundtrip = compensator.motion_decompensate_points(
+            "lidar", compensated.xyz_e_reftime, timestamp_us, 1000, 2000, anchor_frame_id="ego_world"
+        )
+        np.testing.assert_array_almost_equal(roundtrip, xyz, decimal=4)
+
 
 def get_SE3(t: np.ndarray) -> np.ndarray:
     """SE3 matrix with variable translation part"""
