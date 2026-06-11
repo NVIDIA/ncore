@@ -38,9 +38,9 @@ from ncore.impl.sensors.rectification import Rectificator
 
 
 try:
-    from .cli import OptionalStrParamType
+    from .cli import OptionalStrParamType, ResolutionParamType
 except ImportError:
-    from tools.cli import OptionalStrParamType
+    from tools.cli import OptionalStrParamType, ResolutionParamType
 
 
 @dataclass(kw_only=True, slots=True, frozen=True)
@@ -60,6 +60,7 @@ class CLIBaseParams:
         rectify: Whether to rectify frames to an ideal pinhole camera before exporting
         rectify_target_fov_deg: Optional target full field of view [deg] of the rectified pinhole
         rectify_fov_factor: Multiplicative factor applied to the target (or natural) field of view
+        rectify_resolution: Optional output resolution (width, height) of the rectified pinhole
     """
 
     camera_id: str
@@ -74,6 +75,7 @@ class CLIBaseParams:
     rectify: bool
     rectify_target_fov_deg: Optional[float]
     rectify_fov_factor: float
+    rectify_resolution: Optional[Tuple[int, int]]
 
 
 @click.group()
@@ -121,6 +123,13 @@ class CLIBaseParams:
     default=1.0,
     help="Multiplicative factor applied to the (target or natural) field of view before rectifying; "
     ">1 widens, <1 narrows (only used with --rectify)",
+)
+@click.option(
+    "--rectify-resolution",
+    type=ResolutionParamType(),
+    default=None,
+    help="Output resolution 'WxH' of the rectified pinhole, allowing a different resolution / aspect "
+    "ratio than the source (only used with --rectify). If omitted, the source resolution is kept.",
 )
 @click.pass_context
 def cli(ctx, **kwargs):
@@ -202,6 +211,20 @@ def _build_rectificator(
 
     target_parameters = IdealPinholeCameraModelParameters.from_source(source_parameters, target_fov=target_fov)
 
+    # Optionally re-canvas onto a different output resolution / aspect ratio. A per-axis
+    # image-domain scale (new_res / current_res) scales the focal length and principal
+    # point together with the resolution, so the field of view is preserved on each axis
+    # (a pinhole's per-axis FOV = 2*atan(half_extent / focal) is invariant to this scale).
+    if params.rectify_resolution is not None:
+        current_resolution = target_parameters.resolution
+        scale = (
+            float(params.rectify_resolution[0]) / float(current_resolution[0]),
+            float(params.rectify_resolution[1]) / float(current_resolution[1]),
+        )
+        target_parameters = target_parameters.transform(
+            image_domain_scale=scale, new_resolution=params.rectify_resolution
+        )
+
     source_model = CameraModel.from_parameters(source_parameters, device="cpu")
     target_model = CameraModel.from_parameters(target_parameters, device="cpu")
     return Rectificator(source_model, target_model), target_parameters
@@ -231,7 +254,8 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
             json.dump(encode_camera_model_parameters(target_parameters), f, indent=2)
         logger.info(
             f"Rectifying '{params.camera_id}' to an ideal pinhole "
-            f"(target_fov_deg={params.rectify_target_fov_deg}, fov_factor={params.rectify_fov_factor}). "
+            f"(target_fov_deg={params.rectify_target_fov_deg}, fov_factor={params.rectify_fov_factor}, "
+            f"resolution={params.rectify_resolution}). "
             f"Rectified intrinsics written to '{intrinsics_path}'"
         )
 

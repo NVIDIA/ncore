@@ -218,6 +218,21 @@ relative to the inferred default without computing an explicit angle, e.g.
 ``--rectify-fov-factor 0.8`` to keep the central 80% of the natural field of
 view.
 
+``--rectify-resolution`` (e.g. ``1280x720``) exports the rectified pinhole at a
+different output resolution / aspect ratio than the source. The rectified
+intrinsics are re-canvassed onto the requested resolution while preserving the
+per-axis field of view (the focal length and principal point scale with the
+resolution). When omitted, the source resolution is kept. For example::
+
+    bazel run //tools:ncore_export_camera \
+        -- \
+        --output-dir=<OUTPUT_FOLDER> \
+        --camera-id=camera00 \
+        --rectify \
+        --rectify-resolution=1280x720 \
+        v4 \
+        --component-group=<SEQUENCE_META.json>
+
 .. list-table::
    :header-rows: 1
    :widths: 30 10 60
@@ -255,4 +270,7 @@ view.
    * - ``--rectify-fov-factor``
      - ``1.0``
      - Multiplicative factor on the (target or natural) field of view (``> 1`` widens, ``< 1`` narrows)
+   * - ``--rectify-resolution``
+     - (source resolution)
+     - Output resolution ``WxH`` of the rectified pinhole (different resolution / aspect ratio than the source)
 

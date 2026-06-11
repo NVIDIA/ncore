@@ -49,3 +49,21 @@ class NPArrayParamType(click.ParamType):
             return np.fromstring(value.replace("[", "").replace("]", ""), sep=",", dtype=self.dtype).reshape(self.dim)
         except ValueError:
             self.fail(f"{value!r} is not a valid numpy array", param, ctx)
+
+
+class ResolutionParamType(click.ParamType):
+    """Click cmdl argument type for a ``'WxH'`` image resolution -> ``(width, height)``"""
+
+    name = "WxH"
+
+    def convert(self, value: Optional[str], param, ctx) -> Optional[Tuple[int, int]]:
+        if value is None:
+            return None
+        try:
+            width_str, height_str = value.lower().split("x")
+            width, height = int(width_str), int(height_str)
+        except ValueError:
+            self.fail(f"{value!r} is not a valid resolution, expected 'WxH' (e.g. '1920x1080')", param, ctx)
+        if width <= 0 or height <= 0:
+            self.fail(f"resolution must be positive, got {value!r}", param, ctx)
+        return (width, height)
