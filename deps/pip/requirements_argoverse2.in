@@ -13,20 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Import common dependencies
--r requirements_tests.in
--r requirements_ncore.in
--r requirements_docs.in
--r requirements_tools.in
--r requirements_waymo.in
--r requirements_colmap.in
--r requirements_nuscenes.in
--r requirements_argoverse2.in
--r requirements_pai.in
-
-# Public API restrictions for 3.11
-# torch 2.7+ supports numpy 2.x natively, no constraint needed
-
---find-links https://download.pytorch.org/whl/cu128/torch
-torch==2.7.0+cu128
-
+# Argoverse 2 converter dependencies.
+# The converter reads the AV2 Feather files directly and intentionally avoids the
+# heavy `av2` devkit (torch, kornia, numba, polars, PyAV). Quaternion handling uses
+# scipy (already an ncore dependency), so no extra dependency is needed here.
+pyarrow

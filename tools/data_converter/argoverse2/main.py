@@ -13,20 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Import common dependencies
--r requirements_tests.in
--r requirements_ncore.in
--r requirements_docs.in
--r requirements_tools.in
--r requirements_waymo.in
--r requirements_colmap.in
--r requirements_nuscenes.in
--r requirements_argoverse2.in
--r requirements_pai.in
+"""Argoverse 2 converter CLI entry point."""
 
-# Public API restrictions for 3.11
-# torch 2.7+ supports numpy 2.x natively, no constraint needed
+from tools.data_converter.argoverse2.converter import argoverse2_v4  # noqa: F401 -- registers CLI command
+from tools.data_converter.cli import cli
 
---find-links https://download.pytorch.org/whl/cu128/torch
-torch==2.7.0+cu128
 
+if __name__ == "__main__":
+    cli(show_default=True)

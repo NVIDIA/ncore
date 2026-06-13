@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@ncore_pip_deps//:requirements.bzl", "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("//bazel/pytest:defs.bzl", "pytest_test")
+
+# Argoverse 2 specific utilities: feather readers, sensor maps, lidar unit split
+py_library(
+    name = "pylib_utils",
+    srcs = ["utils.py"],
+    deps = [
+        requirement("numpy"),
+        requirement("pyarrow"),
+        requirement("scipy"),
+        requirement("universal_pathlib"),
+        "//ncore:pylib",
+        "//tools/data_converter:pylib_structured_lidar_model",
+    ],
+)
+
+# Converter library (config, converter class, CLI registration)
+py_library(
+    name = "pylib",
+    srcs = [
+        "converter.py",
+    ],
+    deps = [
+        ":pylib_utils",
+        requirement("click"),
+        requirement("numpy"),
+        requirement("pyarrow"),
+        requirement("scipy"),
+        requirement("tqdm"),
+        requirement("universal_pathlib"),
+        "//ncore:pylib",
+        "//tools/data_converter:pylib_cli",
+        "//tools/data_converter:pylib_structured_lidar_model",
+    ],
+)
+
+# Standalone CLI binary
+py_binary(
+    name = "convert",
+    srcs = ["main.py"],
+    main = "main.py",
+    deps = [":pylib"],
+)
+
+alias(
+    name = "argoverse2",
+    actual = ":convert",
+)
+
+# Integration test for the Argoverse 2 converter (requires AV2_DIR env var)
+pytest_test(
+    name = "pytest_converter",
+    srcs = ["converter_test.py"],
+    python_versions = ["3.11"],
+    tags = ["manual"],  # Only run when explicitly requested (needs external data)
+    deps = [
+        ":pylib",
+        requirement("numpy"),
+        requirement("parameterized"),
+        requirement("pyarrow"),
+        requirement("torch"),
+        requirement("universal_pathlib"),
+        "//ncore:pylib",
+    ],
+)
+
+# Data-free unit test for the VLP-32C lidar-model derivation (runs in CI).
+pytest_test(
+    name = "pytest_utils",
+    srcs = ["utils_test.py"],
+    python_versions = ["3.11"],
+    deps = [
+        ":pylib_utils",
+        requirement("numpy"),
+        requirement("pyarrow"),
+        requirement("torch"),
+        requirement("universal_pathlib"),
+        "//ncore:pylib",
+    ],
+)

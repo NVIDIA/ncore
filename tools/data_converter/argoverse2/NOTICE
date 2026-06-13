@@ -1,0 +1,12 @@
+Argoverse 2 Dataset
+Copyright (c) 2021 Argo AI, LLC
+
+This converter processes data from the Argoverse 2 (AV2) Sensor Dataset.
+The Argoverse 2 dataset is released under the Creative Commons
+Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0).
+
+Users must agree to the Argoverse Terms of Use before downloading or using the dataset:
+https://www.argoverse.org/about.html#terms-of-use
+
+This converter reads the Argoverse 2 on-disk Feather files directly and does not
+depend on the av2 devkit. The av2 devkit is released under the MIT License.
