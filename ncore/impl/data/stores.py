@@ -262,9 +262,9 @@ class IndexedTarStore(Store):
                 self.tar_file_object = self.itar_upath.open("rb")
             else:
                 # universal_path for Python 3.8 (<=0.2.6) doesn't expose a
-                # write/read mode in it's static type-hints, although "wb+" is still accepted
+                # write/read mode in it's static type-hints, although "rb+" is still accepted
                 # if the FS supports it, so ignore type-checker here
-                self.tar_file_object = self.itar_upath.open("wb+")  # type: ignore[call-overload]
+                self.tar_file_object = self.itar_upath.open("rb+")  # type: ignore[call-overload]
 
             if self.mode == "w":
                 # assign the new file object to the tar file (only required for write mode)

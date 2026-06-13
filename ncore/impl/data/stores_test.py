@@ -132,6 +132,29 @@ class TestIndexedTarStore(unittest.TestCase):
                     else:
                         zarr.open(store=s_itar_in, mode="r")
 
+    def test_reload_resources_preserves_write_mode_archive(self):
+        """Verify writer resource reload does not truncate already-written archive data."""
+        with tempfile.NamedTemporaryFile(suffix=".itar") as f:
+            with IndexedTarStore(f.name, mode="w") as store:
+                store["first"] = b"first payload"
+                store.tar_file_object.flush()
+
+                size_before_reload = Path(f.name).stat().st_size
+                self.assertGreater(size_before_reload, 0)
+
+                store.reload_resources()
+
+                self.assertEqual(Path(f.name).stat().st_size, size_before_reload)
+                self.assertEqual(store["first"], b"first payload")
+
+                store["second"] = b"second payload"
+                self.assertEqual(store["first"], b"first payload")
+                self.assertEqual(store["second"], b"second payload")
+
+            with IndexedTarStore(f.name, mode="r") as store:
+                self.assertEqual(store["first"], b"first payload")
+                self.assertEqual(store["second"], b"second payload")
+
     def test_index_tail_cache_avoids_extra_file_reads(self):
         """Payloads fully covered by the index tail read must not trigger further ``read()`` calls."""
 
