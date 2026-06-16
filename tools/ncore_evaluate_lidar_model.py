@@ -65,13 +65,14 @@ from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 from ncore.impl.sensors.camera import CameraModel
 from ncore.impl.sensors.lidar import StructuredLidarModel
-from tools.colormaps import turbo as turbo_colormap
 
 
 try:
     from .cli import OptionalStrParamType
+    from .colormaps import turbo as turbo_colormap
 except ImportError:
     from tools.cli import OptionalStrParamType
+    from tools.colormaps import turbo as turbo_colormap
 
 
 logging.basicConfig(level=logging.INFO)
