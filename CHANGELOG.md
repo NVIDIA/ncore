@@ -11,6 +11,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - - -
 
+## [v19.4.0](https://github.com/NVIDIA/ncore/compare/9fdf7c70b69473c1e558f37d6baaf9055d15986d..v19.4.0) - 2026-06-16
+
+### Highlights
+
+- Rectification: Add first class citizen `IdealPinholeCameraModel` and associated `Rectificator` for simple transformation of any supported distorted camera model to rectified ones. The new camera model is integrated into the full sensor stack and visualization tools, and existing `OpenCVPinholeCameraModel` makes use of a more efficient distortion-free fallback mode if possible. This enables easy rectification of images from cameras lenses with distortion and visualization with corrected geometry in `ncore_vis`.
+- Add support for configurable anchor frames and reference timestamps in `MotionCompensator`, allowing to specify custom frames of reference and timestamps for more flexible and accurate motion compensation results that are both more general and easier to interpret.
+- Fix various edge cases in nuScenes lidar model estimation, now robustly handling all scenes.
+
+#### ➕ Added
+- (**sensors**) add Rectificator for distorted-to-rectified image remap - ([3b16d3c](https://github.com/NVIDIA/ncore/commit/3b16d3cb95b1e3f292b2e014263a34f14ccb0b87)) - Janick Martinez Esturo
+- (**sensors**) add ideal pinhole camera model - ([9c36528](https://github.com/NVIDIA/ncore/commit/9c36528b989cb2c72db885163a9f14e68d362dc8)) - Janick Martinez Esturo
+- (**tools**) add rectification to ncore_vis camera visualization - ([7cad764](https://github.com/NVIDIA/ncore/commit/7cad7641c0bcca5337f1f0f3003e3328c8b77432)) - Janick Martinez Esturo
+- (**tools**) add --rectify-resolution to ncore_export_camera - ([4f6b447](https://github.com/NVIDIA/ncore/commit/4f6b44738e677225ed664e089b7a50df600013d5)) - Janick Martinez Esturo
+- (**tools**) add rectification mode to ncore_export_camera - ([3931d72](https://github.com/NVIDIA/ncore/commit/3931d72756644667df65ad8350bd6ddef5b6690f)) - Janick Martinez Esturo
+- (**transformations**) configurable anchor frame + self-describing compensation result - ([b134328](https://github.com/NVIDIA/ncore/commit/b134328b6fdb28ebc0134952a5adb061b4146cee)) - Janick Martinez Esturo
+- (**transformations**) support custom reference timestamp in motion (de)compensation - ([131e86a](https://github.com/NVIDIA/ncore/commit/131e86a10c01909c4a02788f9bcf5fd7cdaa9786)) - Janick Martinez Esturo
+#### 🪲 Fixed
+- (**evaluate-lidar-model**) Downstream inclusing via local / relative imports - ([38c9fb4](https://github.com/NVIDIA/ncore/commit/38c9fb42a1680bf7ed8664fad46db716139ba6d7)) - Janick Martinez Esturo
+- (**itar-store**) preserve writer reload contents - ([bfef84d](https://github.com/NVIDIA/ncore/commit/bfef84d908428a37c388c99c4e7729b4e73a98ba)) - Minh Vu
+- (**nuscenes**) make lidar model estimation robust and accurate - ([b743c1a](https://github.com/NVIDIA/ncore/commit/b743c1a5acae5449edf66cae342b4fefcbe05e1c)) - Janick Martinez Esturo
+- (**nuscenes**) Update alias name for nuscenes data converter - ([9fdf7c7](https://github.com/NVIDIA/ncore/commit/9fdf7c70b69473c1e558f37d6baaf9055d15986d)) - Janick Martinez Esturo
+#### 🧪 Tests
+- (**nuscenes**) update camera intrinsics test for ideal pinhole model - ([f09d7c0](https://github.com/NVIDIA/ncore/commit/f09d7c084fd354797d78db9f5c6e4464e8c10150)) - Janick Martinez Esturo
+
+- - -
+
 ## [v19.3.0](https://github.com/NVIDIA/ncore/compare/c69e32a2e3d576745211e3dd66f9fa8142037154..v19.3.0) - 2026-06-05
 
 ### Highlights
