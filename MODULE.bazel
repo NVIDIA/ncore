@@ -24,11 +24,11 @@ module(
 
 bazel_dep(name = "aspect_rules_lint", version = "2.5.2")
 bazel_dep(name = "rules_uv", version = "0.88.0")
-bazel_dep(name = "rules_shell", version = "0.5.0")
+bazel_dep(name = "rules_shell", version = "0.6.1")
 bazel_dep(name = "rules_multirun", version = "0.13.0")
 bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "buildifier_prebuilt", version = "8.2.1")
-bazel_dep(name = "bazel_skylib", version = "1.7.1")
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
 bazel_dep(name = "platforms", version = "1.0.0")
 
 ## protobuf
