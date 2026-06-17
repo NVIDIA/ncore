@@ -40,7 +40,8 @@ be used as a drop-in replacement for directory stores in all NCore APIs. Via
 also be accessed transparently from cloud storage backends (e.g., S3, GCS)
 without requiring a local copy.
 
-**Tradeoffs:**
+Tradeoffs
+~~~~~~~~~
 
 * ``.itar`` (container file) -- efficient for distribution, cloud storage,
   and atomic transfers; supports both sequential streaming and random access via

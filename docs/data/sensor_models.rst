@@ -46,7 +46,8 @@ The ``camera_model_parameters`` dictionary will unconditionally contain:
 
 .. _ftheta_camera_model:
 
-**FTheta Camera Model**
+FTheta Camera Model
+^^^^^^^^^^^^^^^^^^^
 
 If ``camera_model_type = 'ftheta'`` the following intrinsic parameters
 will additionally be available in ``camera_model_parameters``:
@@ -77,7 +78,8 @@ will additionally be available in ``camera_model_parameters``:
   :math:`\begin{bmatrix} c & d \\ e & 1 \end{bmatrix}` transforming between
   sensor coordinates (in mm) to image coordinates (in px) (float32, [3,])
 
-**Mathematical Model:**
+Mathematical Model
+""""""""""""""""""
 
 The FTheta model projects 3D camera rays to image coordinates through the following steps:
 
@@ -109,7 +111,8 @@ The inverse operation uses the backward polynomial (either reference or approxim
 
 .. _ideal_pinhole_camera_model:
 
-**Ideal Pinhole Camera Model**
+Ideal Pinhole Camera Model
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 If ``camera_model_type = 'ideal-pinhole'`` the following intrinsic parameters
 will additionally be available in ``camera_model_parameters``:
@@ -121,7 +124,8 @@ will additionally be available in ``camera_model_parameters``:
   normalized camera coordinates to image coordinates relative to the
   principal point (float32, [2,])
 
-**Mathematical Model:**
+Mathematical Model
+""""""""""""""""""
 
 The ideal pinhole model is a distortion-free perspective projection. It is the
 most efficient camera model (no distortion polynomial evaluation, no iterative
@@ -153,7 +157,8 @@ Unprojection is the closed-form inverse :math:`x' = (u - u_0) / f_u`,
 
 .. _opencv_pinhole_camera_model:
 
-**OpenCV Pinhole Camera Model**
+OpenCV Pinhole Camera Model
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 If ``camera_model_type = 'opencv-pinhole'`` the following intrinsic parameters
 will additionally be available in ``camera_model_parameters``:
@@ -181,7 +186,8 @@ will additionally be available in ``camera_model_parameters``:
   \end{bmatrix}` for squared norms :math:`r^2` of normalized camera
   coordinates (float32, [4,])
 
-**Mathematical Model:**
+Mathematical Model
+""""""""""""""""""
 
 The OpenCV Pinhole model applies radial, tangential, and thin prism distortions:
 
@@ -229,7 +235,8 @@ The OpenCV Pinhole model applies radial, tangential, and thin prism distortions:
 
 .. _opencv_fisheye_camera_model:
 
-**OpenCV Fisheye Camera Model**
+OpenCV Fisheye Camera Model
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 If ``camera_model_type = 'opencv-fisheye'`` the following intrinsic parameters
 will additionally be available in ``camera_model_parameters``:
@@ -248,7 +255,8 @@ will additionally be available in ``camera_model_parameters``:
 * ``max_angle`` - maximal extrinsic ray angle [rad] with the principal
   direction (float32)
 
-**Mathematical Model:**
+Mathematical Model
+""""""""""""""""""
 
 The OpenCV Fisheye model uses a fisheye distortion polynomial:
 
@@ -293,11 +301,13 @@ When ``external_distortion_parameters`` is present, it will contain:
 
 .. _bivariate_windshield_model:
 
-**Bivariate Windshield Model**
+Bivariate Windshield Model
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 If ``external_distortion_type = 'bivariate-windshield'``, this models optical distortion caused by a vehicle's windshield. This model is only applicable when the camera's entire field of view projects through the windshield.
 
-**Mathematical Model:**
+Mathematical Model
+""""""""""""""""""
 
 The distortion operates on spherical angle representations of sensor rays with direction [x, y, z]:
 
@@ -341,7 +351,8 @@ The distortion operates on spherical angle representations of sensor rays with d
    
       [x', y', z'] = \left[\sin(\phi'), \sin(\theta'), \sqrt{1 - \sin^2(\phi') - \sin^2(\theta')}\right]
 
-**Parameters:**
+Parameters
+""""""""""
 
 The following parameters will be available in ``external_distortion_parameters``:
 
@@ -353,7 +364,8 @@ The following parameters will be available in ``external_distortion_parameters``
 
 **Example:** For a 2nd-order bivariate polynomial (N=2), the coefficient arrays contain 6 elements: [c₀, c₁, c₂, c₃, c₄, c₅]. For a 3rd-order polynomial (N=3), they contain 10 elements. The number of coefficients for order N is given by: (N+1)·(N+2)/2
 
-**Direction:**
+Direction
+"""""""""
 
 - **Forward distortion** (distort_camera_rays): transforms rays from external (world) to internal (camera sensor)
 - **Backward distortion** (undistort_camera_rays): transforms rays from internal (camera sensor) to external (world)
@@ -370,9 +382,11 @@ shared camera frame; the most common use is mapping a distorted source camera to
 a distortion-free :ref:`ideal pinhole <ideal_pinhole_camera_model>` target, but
 the target may itself be distorted.
 
-**Deriving an ideal target (``IdealPinholeCameraModelParameters.from_source``)**
+Deriving an ideal target
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The ``IdealPinholeCameraModelParameters.from_source(source, target_fov=None)``
+The :meth:`IdealPinholeCameraModelParameters.from_source(source, target_fov=None)
+<ncore.data.IdealPinholeCameraModelParameters.from_source>`
 factory builds an :ref:`ideal pinhole <ideal_pinhole_camera_model>` approximating
 any supported source camera. It extracts the source's paraxial pinhole geometry
 (focal length, principal point, resolution), preserving the source focal aspect
@@ -406,11 +420,13 @@ different values yield genuinely different views (the periphery stretches
 increasingly for wider fields of view; the optical axis stays fixed). Widening
 past the source's captured field of view is allowed and yields invalid
 (out-of-source) regions, which the :class:`~ncore.sensors.Rectificator` zeroes.
-``from_source`` raises ``ValueError`` if a requested field of view cannot be
-represented by a pinhole (any axis at or beyond 180 degrees), and ``TypeError``
-for an unsupported source model.
+:meth:`~ncore.data.IdealPinholeCameraModelParameters.from_source` raises
+``ValueError`` if a requested field of view cannot be represented by a pinhole
+(any axis at or beyond 180 degrees), and ``TypeError`` for an unsupported source
+model.
 
-Use ``IdealPinholeCameraModelParameters.natural_fov(source)`` (per-axis full FOV
+Use :meth:`IdealPinholeCameraModelParameters.natural_fov(source)
+<ncore.data.IdealPinholeCameraModelParameters.natural_fov>` (per-axis full FOV
 ``np.ndarray``) to discover a sensible value to scale, e.g.:
 
 .. code-block:: python
@@ -433,10 +449,11 @@ Use ``IdealPinholeCameraModelParameters.natural_fov(source)`` (per-axis full FOV
    target = CameraModel.from_parameters(target_params)
    rect = Rectificator(source_model, target)
 
-**Rectificator**
+Rectificator
+^^^^^^^^^^^^
 
-The ``Rectificator`` (``ncore.sensors.Rectificator``) is constructed from a
-source/target :class:`CameraModel` pair and builds a backward sample map
+The :class:`~ncore.sensors.Rectificator` is constructed from a
+source/target :class:`~ncore.sensors.CameraModel` pair and builds a backward sample map
 (target -> source) once:
 
 1. each target pixel is unprojected to a ray with the target model,
@@ -476,15 +493,18 @@ The ``lidar_model_parameters`` dictionary contains model-specific parameters for
 
 .. _row_offset_spinning_lidar_model:
 
-**Row-Offset Structured Spinning Lidar Model**
+Row-Offset Structured Spinning Lidar Model
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 If ``lidar_model_type = 'row-offset-spinning'``, this models structured spinning lidar sensors with per-row azimuth offsets (compatible with sensors like Hesai P128).
 
-**Mathematical Model:**
+Mathematical Model
+""""""""""""""""""
 
 The Row-Offset Structured Spinning Lidar model parameterizes lidar returns using per-row elevation angles and per-column azimuth angles with row-specific offsets.
 
-**Notation:**
+Notation
+""""""""
 
 - α (alpha): elevation angle in radians
 - β (beta): azimuth angle in radians
@@ -528,7 +548,8 @@ The Row-Offset Structured Spinning Lidar model parameterizes lidar returns using
    
       \beta = \arctan2(y, x)
 
-**Parameters:**
+Parameters
+""""""""""
 
 The following parameters will be available in ``lidar_model_parameters``:
 

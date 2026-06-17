@@ -391,7 +391,8 @@ sources per camera.
                     ├── generic_meta_data: {...} (per-label metadata)
                     └── format: str              (IMAGE_ENCODED only)
 
-**Label Type System:**
+Label Type System
+^^^^^^^^^^^^^^^^^
 
 Labels use a *tagged-union* type consisting of a high-level
 :class:`~ncore.data.LabelCategory` enum and a free-form qualifier string.
@@ -410,7 +411,8 @@ Supported categories:
 * ``FEATURE`` -- Per-pixel feature embeddings (``"dinov2"``, ``"clip"``, ...)
 * ``OTHER`` -- Catch-all for uncategorised labels
 
-**Encoding:**
+Encoding
+^^^^^^^^
 
 * ``RAW`` -- Numpy array stored as a zarr dataset regular compression. Shape
   is ``[H, W] + shape_suffix`` (e.g., ``[H, W, 2]`` for optical flow).
@@ -420,13 +422,15 @@ Supported categories:
   zarr uint8 dataset with no compression. Consumers can call ``get_encoded_data()`` for raw
   bytes (GPU-based decoding) or ``get_data()`` for Pillow-decoded numpy arrays.
 
-**Instance naming convention:**
+Instance naming convention
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Instance names are opaque identifiers.  The recommended convention is
 ``category.qualifier@camera_id`` (e.g., ``depth.z@front_50fov``).  The
 component does *not* parse or validate instance names.
 
-**Compat layer access:**
+Compat layer access
+^^^^^^^^^^^^^^^^^^^^
 
 Labels are accessed through :class:`~ncore.data.CameraLabelsProtocol` via
 :meth:`~ncore.data.SequenceLoaderProtocol.get_camera_labels` (by ID) or

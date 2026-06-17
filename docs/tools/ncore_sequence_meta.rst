@@ -37,7 +37,8 @@ components)::
 Options
 -------
 
-**Global options:**
+Global options
+^^^^^^^^^^^^^^
 
 .. list-table::
    :header-rows: 1
@@ -59,7 +60,8 @@ Options
      - off
      - Enable debug-level logging
 
-**V4 sub-command options:**
+V4 sub-command options
+^^^^^^^^^^^^^^^^^^^^^^^
 
 .. list-table::
    :header-rows: 1
