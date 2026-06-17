@@ -482,7 +482,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             return self._model_parameters
 
         @override
-        def get_frame_ray_bundle_model_element(self, frame_index: int) -> Optional[npt.NDArray[np.uint16]]:
+        def get_frame_ray_bundle_model_element(self, frame_index: int) -> Optional[npt.NDArray[Any]]:
             """Returns the per-ray model elements for a ray bundle for a specific frame, if available"""
 
             if self.lidar_reader.has_frame_ray_bundle_data(
