@@ -2275,8 +2275,10 @@ class TestCameraLabelsComponent(unittest.TestCase):
             )
         )
 
-        # Original data in range [0, 65.535] so it fits uint16 after quantization
-        original = np.random.default_rng().random((32, 48), dtype=np.float32) * 60.0
+        # Original data in range [0, 65.535] so it fits uint16 after quantization.
+        # Seed the RNG so the test is deterministic and not flaky across CI runs.
+        max_value = 60.0
+        original = np.random.default_rng(0).random((32, 48), dtype=np.float32) * max_value
 
         writer.store_label(data=original, timestamp_us=1_000_000)
 
@@ -2285,8 +2287,12 @@ class TestCameraLabelsComponent(unittest.TestCase):
 
         dequantized = reader.get_label(1_000_000).get_data()
 
-        # Expect quantization error of at most 0.5 * scale = 0.0005
-        np.testing.assert_allclose(dequantized, original, atol=0.5 * quant.scale, rtol=0)
+        # Ideal quantization error is at most 0.5 * scale. Both `original` and the
+        # dequantized output are float32, so each carries up to ~max_value * eps_f32
+        # of representation error on top of the rounding error. Allow for that margin
+        # so the bound is not violated by float32 rounding alone.
+        atol = 0.5 * quant.scale + 2.0 * max_value * float(np.finfo(np.float32).eps)
+        np.testing.assert_allclose(dequantized, original, atol=atol, rtol=0)
 
         tmpdir.cleanup()
 
@@ -2316,8 +2322,9 @@ class TestCameraLabelsComponent(unittest.TestCase):
             )
         )
 
-        # Data in range [-100, 227.67] maps to int16 range [0, 32767]
-        original = (np.random.default_rng().random((16, 24), dtype=np.float32) * 300.0) - 100.0
+        # Data in range [-100, 227.67] maps to int16 range [0, 32767].
+        # Seed the RNG so the test is deterministic and not flaky across CI runs.
+        original = (np.random.default_rng(0).random((16, 24), dtype=np.float32) * 300.0) - 100.0
 
         writer.store_label(data=original, timestamp_us=1_000_000)
 
@@ -2356,7 +2363,8 @@ class TestCameraLabelsComponent(unittest.TestCase):
             )
         )
 
-        original = np.random.default_rng().random((16, 24), dtype=np.float32) * 60.0
+        # Seed the RNG so the test is deterministic and not flaky across CI runs.
+        original = np.random.default_rng(0).random((16, 24), dtype=np.float32) * 60.0
 
         writer.store_label(data=original, timestamp_us=1_000_000)
 
