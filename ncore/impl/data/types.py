@@ -23,7 +23,6 @@ import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from enum import IntEnum, auto, unique
-from functools import lru_cache
 from typing import (
     TYPE_CHECKING,
     Callable,
@@ -1499,6 +1498,7 @@ class EncodedImageData:
     def __init__(self, encoded_image_data: bytes, encoded_image_format: str) -> None:
         self._encoded_image_data = encoded_image_data
         self._encoded_image_format = encoded_image_format
+        self._decoded_image: Optional[PILImage.Image] = None
 
     def get_encoded_image_data(self) -> bytes:
         """Returns encoded image data"""
@@ -1508,10 +1508,19 @@ class EncodedImageData:
         """Returns encoded image format"""
         return self._encoded_image_format
 
-    @lru_cache(maxsize=1)
     def get_decoded_image(self) -> PILImage.Image:
-        """Returns decoded image from image data"""
-        return PILImage.open(io.BytesIO(self.get_encoded_image_data()), formats=[self.get_encoded_image_format()])
+        """Returns decoded image from image data.
+
+        The result is memoized per instance. (Using ``functools.lru_cache`` on a
+        method is avoided here: it keys the cache on ``self`` and keeps a global,
+        process-wide strong reference to the instance, which both leaks memory and
+        survives ``fork()`` into DataLoader workers in whatever state it held.)
+        """
+        if self._decoded_image is None:
+            self._decoded_image = PILImage.open(
+                io.BytesIO(self.get_encoded_image_data()), formats=[self.get_encoded_image_format()]
+            )
+        return self._decoded_image
 
 
 class EncodedImageHandle(Protocol):

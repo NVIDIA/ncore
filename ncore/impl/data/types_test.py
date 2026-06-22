@@ -13,15 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import io
 import unittest
 
 from typing import Optional
 
 import numpy as np
 import numpy.testing as npt
+import PIL.Image as PILImage
 
 from ncore.impl.common.transformations import PoseGraphInterpolator
-from ncore.impl.data.types import PointCloud
+from ncore.impl.data.types import EncodedImageData, PointCloud
 
 
 class TestPointCloud(unittest.TestCase):
@@ -310,3 +312,48 @@ class TestPointCloud(unittest.TestCase):
         # (0,1,0) rotated +90° Z -> (-1,0,0)
         pc_b = pc_world.transform("sensor_b", 0, pg)
         npt.assert_allclose(pc_b.get_attribute("normal"), [[-1.0, 0.0, 0.0]], atol=1e-6)
+
+
+def _encode_png(arr: np.ndarray) -> bytes:
+    buf = io.BytesIO()
+    PILImage.fromarray(arr, mode="RGB").save(buf, format="PNG")
+    return buf.getvalue()
+
+
+class TestEncodedImageData(unittest.TestCase):
+    """Tests for EncodedImageData decode."""
+
+    @staticmethod
+    def _sample_png() -> bytes:
+        rng = np.random.default_rng(0)
+        return _encode_png(rng.integers(0, 256, size=(8, 8, 3), dtype=np.uint8))
+
+    def test_decode_roundtrip(self) -> None:
+        """get_decoded_image() returns a usable image of the expected size."""
+        image = EncodedImageData(self._sample_png(), "PNG").get_decoded_image()
+        self.assertEqual(np.asarray(image.convert("RGB")).shape, (8, 8, 3))
+
+    def test_decode_is_memoized(self) -> None:
+        """Repeated calls return the same decoded object (per-instance memoization)."""
+        image_data = EncodedImageData(self._sample_png(), "PNG")
+        self.assertIs(image_data.get_decoded_image(), image_data.get_decoded_image())
+
+    def test_memoization_survives_interleaved_instances(self) -> None:
+        """Memoization is stable across interleaved use of other instances.
+
+        Guards against regressing to a method-level ``lru_cache(maxsize=1)``,
+        whose single global slot would be evicted by the intervening
+        ``other`` call, so ``first.get_decoded_image()`` would re-decode and
+        return a different object on the second call.
+        """
+        png = self._sample_png()
+        first = EncodedImageData(png, "PNG")
+        other = EncodedImageData(png, "PNG")
+        a1 = first.get_decoded_image()
+        other.get_decoded_image()  # would evict a method-level maxsize=1 cache
+        a2 = first.get_decoded_image()
+        self.assertIs(a1, a2)
+
+
+if __name__ == "__main__":
+    unittest.main()
