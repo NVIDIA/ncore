@@ -11,6 +11,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - - -
 
+## [v19.5.0](https://github.com/NVIDIA/ncore/compare/53545751be26cec23eb014d157aba7edb08afae3..v19.5.0) - 2026-06-23
+
+### Highlights
+
+- Add support for Argoverse 2 datasets in NCore V4 converter (second half of #123)
+  - All 9 global-shutter cameras (7 ring + 2 stereo), two stacked Velodyne VLP-32C lidar units, as well as cuboid labels are supported.
+  - First dataset that provides a synchronized stereo camera pair (front-facing, monochrome).
+  - Two lidar VLP-32C units are decomposed faithfully, with structured model estimation and per-point `model_element` storage for
+    accurate model-based ray direction reconstruction.
+
+#### ➕ Added
+- (**argoverse2**) add Argoverse 2 Sensor Dataset to NCore V4 converter - ([73b75c7](https://github.com/NVIDIA/ncore/commit/73b75c751725245093d7c63344d3bcf49046290d)) - Janick Martinez Esturo
+#### 🪲 Fixed
+- (**bazel**) update bazel dependencies - ([5354575](https://github.com/NVIDIA/ncore/commit/53545751be26cec23eb014d157aba7edb08afae3)) - Janick Martinez Esturo
+- expose CameraModelParameters in public API - ([c933063](https://github.com/NVIDIA/ncore/commit/c933063ee63edc9de924672a469b010fb3b06a80)) - Janick Martinez Esturo
+#### 🔄 Changed
+- (**data**) memoize EncodedImageData.get_decoded_image per instance - ([58d246d](https://github.com/NVIDIA/ncore/commit/58d246d73f9a6222ff3122ae919cad31e9837b26)) - Janick Martinez Esturo
+#### 📚 Documentation
+- fix from_source rendering and promote bold pseudo-headings - ([e8cafba](https://github.com/NVIDIA/ncore/commit/e8cafba3b540ec7373812059aa4e2fb1cdca093f)) - Janick Martinez Esturo
+#### 🧪 Tests
+- (**data**) fix flaky quantized depth roundtrip tests - ([8b8c22b](https://github.com/NVIDIA/ncore/commit/8b8c22bd595b781b715231bf7cf15ee3357076bc)) - Janick Martinez Esturo
+
+- - -
+
 ## [v19.4.0](https://github.com/NVIDIA/ncore/compare/9fdf7c70b69473c1e558f37d6baaf9055d15986d..v19.4.0) - 2026-06-16
 
 ### Highlights
