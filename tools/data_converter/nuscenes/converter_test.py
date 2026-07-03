@@ -29,7 +29,6 @@ import unittest
 from typing import Literal, cast
 
 import numpy as np
-import torch
 
 from parameterized import parameterized_class
 from upath import UPath

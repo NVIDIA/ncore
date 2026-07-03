@@ -22,11 +22,8 @@ import numpy as np
 from ncore.impl.data import util as data_util
 from tools.data_converter.structured_lidar_model import (
     HDL32E_ELEVATIONS_RAD,
-    HDL32E_FIRING_PAIR_INTERVAL_US,
     HDL32E_N_BEAMS,
     HDL32E_N_COLUMNS,
-    HDL32E_SCAN_DURATION_US,
-    AlignedFrameData,
     ColumnAlignment,
     _binned_correction,
     assign_model_columns,

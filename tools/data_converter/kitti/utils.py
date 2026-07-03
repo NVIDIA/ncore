@@ -352,7 +352,7 @@ class Tracklet:
     object_type: str
     h: float
     w: float
-    l: float
+    l: float  # noqa: E741 -- KITTI length dimension (matches the <l> XML tag; paired with h/w)
     first_frame: int
     poses: list[TrackletPose] = field(default_factory=list)
 

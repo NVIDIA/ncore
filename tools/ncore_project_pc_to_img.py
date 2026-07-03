@@ -16,7 +16,6 @@
 import dataclasses
 import logging
 
-from email.policy import default
 from pathlib import Path
 from typing import Optional, Tuple
 

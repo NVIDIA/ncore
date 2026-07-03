@@ -16,7 +16,7 @@
 import tempfile
 import unittest
 
-from typing import List, Literal, Tuple, Union
+from typing import List, Literal, Tuple
 
 import numpy as np
 

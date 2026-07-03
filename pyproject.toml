@@ -22,6 +22,17 @@ exclude = [
     ".ci-keep",
 ]
 
+[tool.ruff.lint]
+# Keep ruff's default rule set (currently pycodestyle E4/E7/E9 + pyflakes F)
+# and additionally enable `isort` import sorting (I), so a single `ruff check`
+# run by bazel/format/ruff_isort.sh handles both ordering and linting
+extend-select = ["I"]
+
+[tool.ruff.lint.per-file-ignores]
+# Generated protobuf modules are not hand-edited; do not lint them
+"*_pb2.py" = ["F401", "F403", "F405", "E402"]
+"*_pb2_grpc.py" = ["F401", "F403", "F405", "E402"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["ncore", "tools"]
 default-section = "third-party"

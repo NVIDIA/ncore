@@ -38,7 +38,7 @@ import tempfile
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, Literal, Optional, cast
+from typing import Callable, Dict, Literal, cast
 
 import click
 import DracoPy  # ty:ignore[unresolved-import]

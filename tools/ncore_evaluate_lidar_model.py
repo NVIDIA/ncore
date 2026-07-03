@@ -533,7 +533,7 @@ def _print_summary(
     print(f"LIDAR MODEL EVALUATION SUMMARY ({len(all_metrics)} frames, {total_points:,} valid points)")
     print("=" * 70)
 
-    print(f"\n  Combined angular error (all valid points):")
+    print("\n  Combined angular error (all valid points):")
     print(f"    mean   = {weighted_mean:.4f} deg")
     print(f"    median = {np.median(all_median):.4f} deg")
     print(f"    p95    = {np.median(all_p95):.4f} deg (median of per-frame p95)")
@@ -555,7 +555,7 @@ def _print_summary(
         print(f"    p95         = {px_p95:.2f} px")
 
     # Per-frame table
-    print(f"\n  Per-frame breakdown:")
+    print("\n  Per-frame breakdown:")
     print(f"    {'Frame':>6} {'N pts':>8} {'Mean(deg)':>10} {'P95(deg)':>10} {'Az err':>10} {'El err':>10}")
     print(f"    {'-' * 6} {'-' * 8} {'-' * 10} {'-' * 10} {'-' * 10} {'-' * 10}")
     for m in all_metrics:
@@ -564,7 +564,7 @@ def _print_summary(
         )
 
     # Per-row breakdown (aggregated across all frames)
-    print(f"\n  Per-row (beam) breakdown:")
+    print("\n  Per-row (beam) breakdown:")
     print(f"    {'Row':>4} {'Mean(deg)':>10} {'Mean far(deg)':>14}")
     print(f"    {'-' * 4} {'-' * 10} {'-' * 14}")
 
@@ -584,7 +584,7 @@ def _print_summary(
             print(f"    {r:4d} {row_mean:10.4f} {row_mean_far:14.4f}")
 
     # Detect systematic patterns
-    print(f"\n  Systematic pattern detection:")
+    print("\n  Systematic pattern detection:")
     row_means = row_err_sum / np.maximum(row_count, 1)
     best_row = int(np.argmin(row_means))
     worst_row = int(np.argmax(row_means))
@@ -594,7 +594,7 @@ def _print_summary(
 
     # Per-frame variance (indicates alignment instability)
     frame_means = [m.mean_err_deg for m in all_metrics]
-    print(f"\n  Frame-to-frame consistency:")
+    print("\n  Frame-to-frame consistency:")
     print(f"    Mean of frame means: {np.mean(frame_means):.4f} deg")
     print(f"    Std of frame means:  {np.std(frame_means):.4f} deg")
     print(f"    Best frame:  {all_metrics[int(np.argmin(frame_means))].frame_index} ({min(frame_means):.4f} deg)")

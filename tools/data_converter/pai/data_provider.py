@@ -28,7 +28,7 @@ import json
 import logging
 
 from pathlib import Path
-from typing import Any, Dict, Protocol, cast, runtime_checkable
+from typing import Any, Dict, Protocol, runtime_checkable
 
 import pandas as pd
 import pyarrow.parquet as pq

@@ -76,6 +76,8 @@ This project uses:
 
 Note a special case for Bazel: the commands above are used both for traditional formatting and for linter warnings. Bazel attempts to fix some of the linter warnings automatically as part of the `//:format` target, but others will be left untouched and need to be manually corrected by the user.
 
+For Python, in addition to `ruff format` and import sorting, the `//:format` and `//:format.check` targets run a `ruff check` lint pass using ruff's default rule set (pyflakes `F` plus the pycodestyle `E4`/`E7`/`E9` subsets). The rule selection and per-file ignores are configured under `[tool.ruff.lint]` in `pyproject.toml`. Auto-fixable violations (e.g. unused imports) are corrected by `//:format`; the rest are reported by `//:format.check` and must be fixed manually.
+
 ### Static Type Checking
 
 All Python code is checked with `ty`, which runs automatically as a Bazel aspect during builds.

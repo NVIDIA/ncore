@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import logging
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Dict, List, Literal, Optional
 
 import click
@@ -532,8 +532,6 @@ class NuScenesConverter4(FileBasedDataConverter):
             self.logger.info(
                 f"Upsampled model to {self._lidar_model_resolution}x ({lidar_model_parameters.n_columns} columns)"
             )
-
-        n_model_cols = lidar_model_parameters.n_columns
 
         # --- Process each frame ---
         optimization_data: List[AlignedFrameData] = []

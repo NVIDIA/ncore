@@ -15,7 +15,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Wrapper to call Ruff via Bazel for both import sorting and formatting
+# Wrapper to call Ruff via Bazel for import sorting, formatting and linting.
+#
+# This is wired into //:format (fix mode) and //:format.check (check mode) as
+# the `python` formatter of the format_multirun in bazel/format/BUILD.bazel.
+
+# Processed files: format_multirun enumerates the files to process with
+# `git ls-files -t --cached --modified --other --exclude-standard`, i.e. tracked
+# files plus untracked-but-not-gitignored files, and passes them as positional
+# arguments, adding `--check` in check mode.
+#
+# Two passes run on that same file list:
+#   1. `ruff check` -- import sorting (isort) and linting in one pass. The rule
+#      selection (including `I` for import sorting) and per-file ignores live in
+#      [tool.ruff.lint] in pyproject.toml.
+#   2. `ruff format` -- formatting. Kept separate because `ruff format` does not
+#      sort imports (https://docs.astral.sh/ruff/formatter/#sorting-imports).
 
 # --- begin runfiles.bash initialization v3 ---
 # Copy-pasted from the Bazel Bash runfiles library v3.
@@ -56,12 +71,14 @@ for arg in "$@"; do
 done
 
 if [ -n "$CHECK_ARG" ]; then
-    # Check mode: show what would change + fail on diff
+    # Check mode: fail on any lint/import-order violation, then on format diff.
     set -e
-    $RUFF_BIN check --select I --force-exclude --diff $FILES
+    $RUFF_BIN check --force-exclude --diff $FILES
     $RUFF_BIN format --check --force-exclude --diff $FILES
 else
-    # Fix mode: apply changes
-    $RUFF_BIN check --select I --fix $FILES
+    # Fix mode: apply import sorting + auto-fixable lint fixes, then format.
+    # Do not abort on unfixable violations so that //:format still formats
+    # everything it can; //:format.check reports the remaining violations.
+    $RUFF_BIN check --force-exclude --fix $FILES || true
     $RUFF_BIN format --force-exclude $FILES
 fi
