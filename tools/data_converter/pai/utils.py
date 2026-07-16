@@ -56,8 +56,13 @@ def filter_ego_vehicle_points(
     half_width = vehicle_bbox["width"] / 2 + padding
     half_height = vehicle_bbox["height"] / 2 + padding
 
-    # Center offset
+    # Box center in the rig frame. x uses the rear-axle-to-bbox-center offset; z
+    # uses the vehicle mid-height because the rig z origin is at ground level, so
+    # the box must span ground..roof. Centering z at 0 leaves the upper body / roof
+    # (z > height/2 + padding) outside the box, so ego self-returns near a
+    # roof-mounted lidar are not filtered.
     center_x = vehicle_bbox["rear_axle_to_bbox_center"]
+    center_z = vehicle_bbox["height"] / 2
 
     # Check if points are outside bbox
     valid = np.logical_or.reduce(
@@ -66,8 +71,8 @@ def filter_ego_vehicle_points(
             points_rig[:, 0] > (center_x + half_length),
             points_rig[:, 1] < -half_width,
             points_rig[:, 1] > half_width,
-            points_rig[:, 2] < -half_height,
-            points_rig[:, 2] > half_height,
+            points_rig[:, 2] < (center_z - half_height),
+            points_rig[:, 2] > (center_z + half_height),
         ]
     )
 
