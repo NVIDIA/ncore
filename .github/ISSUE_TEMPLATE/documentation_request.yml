@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Documentation Request
+description: Report incorrect or needed documentation for NCore
+title: "[DOC]"
+labels: ["documentation"]
+assignees:
+  - daehyoungko
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to report incorrect documentation or request new documentation.
+        Fill out the section that applies to your request.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Request Type
+      description: Are you reporting incorrect documentation or requesting new documentation?
+      options:
+        - Incorrect documentation
+        - Needed documentation
+    validations:
+      required: true
+
+  - type: textarea
+    id: location
+    attributes:
+      label: Location of Documentation
+      description: For incorrect docs, provide links and line numbers if applicable. For needed docs, describe where it should live.
+    validations:
+      required: false
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Description
+      description: |
+        For incorrect documentation: describe what you found to be incorrect and the steps you took to verify it.
+        For needed documentation: describe what documentation you believe is needed and why.
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested Fix or Desired Documentation
+      description: Detail your proposed changes, or a clear description of the documentation you would like to see.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context, references, or screenshots related to this request.
+    validations:
+      required: false
