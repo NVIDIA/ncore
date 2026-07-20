@@ -37,6 +37,14 @@ Interested in contributing to NCore? See [CONTRIBUTING.md](CONTRIBUTING.md) for 
 
 This project will download and install additional third-party open source software as dependencies. Review the license terms of these open source projects before use. See [ATTRIBUTIONS.md](ATTRIBUTIONS.md) for a list of direct dependencies and their licenses.
 
+## Support
+
+**`NCore` code-level bugs, documentation issues, and feature requests**: file a [GitHub issue](../../issues/new/choose) using the appropriate template (Bug Report, Documentation Request, or Feature Request). The relevant NVIDIA responder is auto-assigned via the template's `assignees:` field.
+
+**Usage and how-to questions** related to _NuRec_ / _Omniverse_: please post on the [NVIDIA Developer Forum (Omniverse / NuRec)](https://forums.developer.nvidia.com/c/omniverse/platform/nurec/752). Such questions are not tracked in this repository.
+
+**Security vulnerabilities**: please use [NVIDIA's Vulnerability Disclosure Program](https://app.intigriti.com/programs/nvidia/nvidiavdp/detail) (see [SECURITY.md](SECURITY.md)). Do not file security issues publicly here.
+
 ## License
 
 NCore is provided under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the full license text.

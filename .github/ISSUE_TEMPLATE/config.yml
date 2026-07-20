@@ -1,8 +1,19 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+# GitHub Issues on this repo are reserved for NCore code-level bugs,
+# documentation requests, and feature requests. Usage/how-to questions about
+# NuRec / Omniverse are routed to the NVIDIA Developer Forum via the
+# contact_link below. Security reports go through NVIDIA's VDP (see SECURITY.md).
 blank_issues_enabled: false
 contact_links:
-  - name: Documentation
+  - name: Ask a NuRec / Omniverse question (usage, how-to)
+    url: https://forums.developer.nvidia.com/c/omniverse/platform/nurec/752
+    about: >
+      Usage and how-to questions about NuRec / Omniverse are not tracked in this
+      repository. Please post them on the NVIDIA Developer Forum (Omniverse /
+      NuRec category), which the support team monitors. GitHub Issues here are
+      for NCore code-level bugs, documentation, and feature requests only.
+  - name: NCore documentation
     url: https://nvidia.github.io/ncore/
-    about: Check the documentation before filing an issue.
+    about: Check the NCore documentation before filing an issue.

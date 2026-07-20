@@ -3,7 +3,10 @@
 
 name: Bug Report
 description: Report a bug or unexpected behavior in NCore
+title: "[BUG]"
 labels: ["bug"]
+assignees:
+  - daehyoungko
 body:
   - type: markdown
     attributes:

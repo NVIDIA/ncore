@@ -3,7 +3,10 @@
 
 name: Feature Request
 description: Suggest a new feature or enhancement for NCore
+title: "[FEA]"
 labels: ["enhancement"]
+assignees:
+  - daehyoungko
 body:
   - type: markdown
     attributes:
