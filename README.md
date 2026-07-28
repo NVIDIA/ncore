@@ -8,7 +8,7 @@ SPDX-License-Identifier: Apache-2.0
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/NVIDIA/ncore/actions/workflows/ci.yml/badge.svg)](https://github.com/NVIDIA/ncore/actions/workflows/ci.yml)
 
-NCore provides data representations, APIs, and tools to support data-driven neural reconstructions with a focus on robotics and autonomous vehicle data.
+NVIDIA NCore is an open, self-contained multi-sensor data platform with a focus on robotics and autonomous vehicle data. It defines a canonical component-based data format, GPU-accelerated camera and LiDAR sensor models, dataset converters, and APIs for reconstruction and simulation. NCore is used by NVIDIA Omniverse NuRec and other research and development workflows.
 
 **Project Site:** [research.nvidia.com/labs/sil/projects/ncore](https://research.nvidia.com/labs/sil/projects/ncore)
 
