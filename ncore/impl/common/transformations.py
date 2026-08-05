@@ -18,7 +18,7 @@ from __future__ import annotations
 import sys
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union, overload
 
 import numpy as np
 
@@ -30,6 +30,11 @@ from ncore.impl.common.util import unpack_optional
 
 if TYPE_CHECKING:
     import numpy.typing as npt  # type: ignore[import-not-found]  # noqa: F401
+
+    # torch is used for type annotations only - this module deliberately keeps its
+    # runtime dependencies to numpy + scipy (see //ncore/impl/common:pylib_transformations),
+    # so 'torch' is not resolvable to the type checker here.
+    import torch  # type: ignore[import-not-found]  # noqa: F401  # ty: ignore[unresolved-import]
 
 
 def time_bounds(timestamps_us: List[int], seek_sec: Optional[float], duration_sec: Optional[float]) -> tuple[int, int]:
@@ -407,9 +412,21 @@ def se3_inverse(T: np.ndarray, unbatch: bool = True) -> np.ndarray:
     return ret
 
 
-def transform_point_cloud(pc, T) -> np.ndarray:
+@overload
+def transform_point_cloud(pc: np.ndarray, T) -> np.ndarray: ...
+
+
+@overload
+def transform_point_cloud(pc: "torch.Tensor", T) -> "torch.Tensor": ...
+
+
+def transform_point_cloud(pc, T):
     """Transform the point cloud with the provided transformation matrix,
         support torch.Tensor and np.ndarry.
+
+    The returned type matches the type of ``pc``: a numpy array in, a numpy array
+    out; a torch tensor in, a torch tensor out.
+
     Args:
         pc (np.array): point cloud coordinates (x,y,z) [num_pts, 3] or [bs, num_pts, 3]
         T (np.array): se3 transformation matrix  [4, 4] or [bs, 4, 4]
