@@ -23,9 +23,8 @@ Camera Sensors
     4. **Right Color (camera_color_right)** -- Point Grey Flea 2, rectified
 
 All cameras use CCD sensors (global shutter) and images are provided
-rectified with zero distortion. The camera intrinsics are stored using
-:class:`~ncore.data.OpenCVPinholeCameraModelParameters` with distortion
-coefficients set to zero.
+rectified with zero distortion, so the camera intrinsics are stored using
+:class:`~ncore.data.IdealPinholeCameraModelParameters`.
 
 LiDAR Sensor
 ^^^^^^^^^^^^^
