@@ -27,8 +27,8 @@ Camera Sensors
     6. **Back Right (camera_back_right)** -- 1600x900, 70 deg FOV
 
 All cameras use Basler acA1600-60gc sensors (global shutter). Images are
-provided undistorted with zero distortion coefficients. Camera intrinsics
-are stored using :class:`~ncore.data.OpenCVPinholeCameraModelParameters`
+provided undistorted with zero distortion coefficients, so camera intrinsics
+are stored using :class:`~ncore.data.IdealPinholeCameraModelParameters`
 with ``ShutterType.GLOBAL``.
 
 LiDAR Sensor
