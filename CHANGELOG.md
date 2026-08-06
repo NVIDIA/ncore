@@ -11,6 +11,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - - -
 
+### Highlights
+
+- This is a patch release resolving a few public facing API issues, as well as some documentation and build / typing improvements.
+
+## [v19.5.1](https://github.com/NVIDIA/ncore/compare/c95e49587d653b68f0c9b25b15b1ee0ac3bf0a81..v19.5.1) - 2026-08-05
+#### 🪲 Fixed
+- (**pai-converter**) center ego-vehicle bbox z-gate at height/2 - ([c824979](https://github.com/NVIDIA/ncore/commit/c82497929b7a64318965cfbc0e773a763548c8c7)) - Wei Zhang
+- (**transformations**) type transform_point_cloud as polymorphic - ([77e600a](https://github.com/NVIDIA/ncore/commit/77e600a4c6b5900777cc157ce9c308f3ca755856)) - Janick Martinez Esturo
+#### 📚 Documentation
+- (**conversions**) correct camera model for nuScenes and KITTI - ([a82cbe6](https://github.com/NVIDIA/ncore/commit/a82cbe6c2f6578649c0172bec18983c12ca80db1)) - Janick Martinez Esturo
+- (**support**) add NuRec support issue chooser and README support banner - ([39c2811](https://github.com/NVIDIA/ncore/commit/39c28118029a4598477601ec93c43504d6477267)) - Janick Martinez Esturo
+- clarify NCore positioning and NuRec relationship - ([12f4429](https://github.com/NVIDIA/ncore/commit/12f4429522c98356c5a46eee1d84f29bd846e367)) - Alex Perec
+#### 🏗️ Build
+- (**format**) add ruff check lint pass to //:format and fix violations - ([c95e495](https://github.com/NVIDIA/ncore/commit/c95e49587d653b68f0c9b25b15b1ee0ac3bf0a81)) - Janick Martinez Esturo
+
+- - -
+
 ## [v19.5.0](https://github.com/NVIDIA/ncore/compare/53545751be26cec23eb014d157aba7edb08afae3..v19.5.0) - 2026-06-23
 
 ### Highlights
