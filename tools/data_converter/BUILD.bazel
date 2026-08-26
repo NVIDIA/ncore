@@ -20,6 +20,11 @@ load("//bazel/pytest:defs.bzl", "pytest_test")
 # targets might be used in various places also outside of the repo, so make it public
 package(default_visibility = ["//visibility:public"])
 
+exports_files(
+    ["cli.py"],
+    visibility = ["//ncore/converters:__pkg__"],
+)
+
 #################################################################
 
 py_library(

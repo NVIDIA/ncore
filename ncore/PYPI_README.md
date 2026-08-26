@@ -20,6 +20,16 @@ A unified data format and library for autonomous vehicle and robotics sensor dat
 pip install nvidia-ncore
 ```
 
+To convert raw [PhysicalAI-Autonomous-Vehicles](https://huggingface.co/datasets/nvidia/PhysicalAI-Autonomous-Vehicles)
+clips without a source checkout, install the optional PAI converter extra:
+
+```bash
+pip install "nvidia-ncore[pai]"
+ncore-convert --help
+```
+
+See the [PAI data converter README](https://github.com/NVIDIA/ncore/blob/main/tools/data_converter/pai/README.md) for usage.
+
 ## Documentation
 
 <https://nvidia.github.io/ncore>

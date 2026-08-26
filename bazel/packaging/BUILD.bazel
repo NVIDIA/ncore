@@ -13,22 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cbor2>=5.9.0; python_version>="3.9"
-cbor2; python_version<"3.9"
-imageio>=2.35.0
-# PyNvVideoCodec: MIT-licensed GPU-accelerated video codec library (NVIDIA).
-# Used for H.264 decode in the PAI data converter. Requires an NVIDIA GPU (Turing+).
-# See https://developer.nvidia.com/pynvvideocodec
-PyNvVideoCodec
-DracoPy>=2.0.0
-remotezip>=0.12.0
-requests>=2.31.0
-rich
-numpy
-pandas
-point-cloud-utils
-pyarrow
-pillow
-scipy
-tqdm
-universal_pathlib
+load("@rules_python//python:defs.bzl", "py_binary")
+
+py_binary(
+    name = "namespace_converter_srcs",
+    srcs = ["namespace_converter_srcs.py"],
+    main = "namespace_converter_srcs.py",
+    visibility = ["//ncore:__subpackages__"],
+)

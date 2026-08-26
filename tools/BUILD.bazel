@@ -19,6 +19,11 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 # targets might be used in various places also outside of the repo, so make it public
 package(default_visibility = ["//visibility:public"])
 
+exports_files(
+    ["debug.py"],
+    visibility = ["//ncore/converters:__pkg__"],
+)
+
 #################################################################
 
 py_library(

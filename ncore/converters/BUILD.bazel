@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@rules_python//python:defs.bzl", "py_library")
+load("@rules_python//python:packaging.bzl", "py_package")
+
+_NAMESPACED_SRCS = [
+    "__init__.py",
+    "cli.py",
+    "debug.py",
+    "pai/__init__.py",
+    "pai/converter.py",
+    "pai/data_provider.py",
+    "pai/utils.py",
+    "pai/pai_remote/__init__.py",
+    "pai/pai_remote/config.py",
+    "pai/pai_remote/index.py",
+    "pai/pai_remote/remote.py",
+    "pai/pai_remote/streaming.py",
+]
+
+genrule(
+    name = "namespaced_srcs",
+    srcs = [
+        "//tools:debug.py",
+        "//tools/data_converter:cli.py",
+        "//tools/data_converter/pai:converter.py",
+        "//tools/data_converter/pai:data_provider.py",
+        "//tools/data_converter/pai:utils.py",
+        "//tools/data_converter/pai/pai_remote:config.py",
+        "//tools/data_converter/pai/pai_remote:index.py",
+        "//tools/data_converter/pai/pai_remote:remote.py",
+        "//tools/data_converter/pai/pai_remote:streaming.py",
+    ],
+    outs = _NAMESPACED_SRCS,
+    cmd = "$(execpath //bazel/packaging:namespace_converter_srcs) --out-root $(RULEDIR) $(SRCS)",
+    tools = ["//bazel/packaging:namespace_converter_srcs"],
+)
+
+py_library(
+    name = "pylib",
+    srcs = _NAMESPACED_SRCS,
+    visibility = ["//ncore:__pkg__"],
+)
+
+py_package(
+    name = "pai_converter_pkg",
+    packages = [
+        "ncore.converters",
+        "ncore.converters.pai",
+        "ncore.converters.pai.pai_remote",
+    ],
+    visibility = ["//ncore:__pkg__"],
+    deps = [":pylib"],
+)

@@ -17,6 +17,35 @@ Convert clip data from the [NVIDIA PhysicalAI-Autonomous-Vehicles](https://huggi
   # or pass --hf-token hf_... to individual commands
   ```
 
+## Installed package usage
+
+Install the converter from PyPI (no source checkout required):
+
+```bash
+pip install "nvidia-ncore[pai]"
+```
+
+The `ncore-convert` console script exposes the same subcommands as the Bazel target
+`//tools/data_converter/pai:convert`:
+
+```bash
+# Streaming conversion directly from HuggingFace
+ncore-convert --output-dir /path/to/output pai-stream-v4 --clip-id <clip-id>
+
+# Local conversion from pai-clip-dl output
+ncore-convert --root-dir /path/to/data --output-dir /path/to/output pai-v4 --clip-id <clip-id>
+```
+
+The `[pai]` extra installs the converter-specific Python dependencies (Click, DracoPy,
+imageio, pandas, pyarrow, PyNvVideoCodec, remotezip, requests, and others). The base
+`nvidia-ncore` package already provides the core NCore library dependencies
+(including scipy and universal_pathlib). The installed modules live under
+`ncore.converters`. `pai-clip-dl` remains a Bazel-only tool in this repository.
+Camera decode via PyNvVideoCodec requires an NVIDIA GPU (Turing or newer).
+
+For development inside this repository, continue using the Bazel commands documented
+below.
+
 ## Dataset Overview
 
 The dataset contains 306,152 clips organized into ~3,146 chunks of ~100 clips each.

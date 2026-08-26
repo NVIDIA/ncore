@@ -15,6 +15,7 @@
 
 load("@rules_python//python:defs.bzl", "py_library")
 load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
+load("//bazel/pytest:defs.bzl", "pytest_test")
 
 # Proxy library to include PEP 561 type-marker
 py_library(
@@ -45,6 +46,25 @@ py_wheel(
     author = "NVIDIA Corporation",
     description_file = "PYPI_README.md",
     distribution = "nvidia-ncore",
+    entry_points = {
+        "console_scripts": [
+            "ncore-convert = ncore.converters.pai.converter:cli",
+        ],
+    },
+    extra_requires = {
+        "pai": [
+            "click",
+            "debugpy",
+            "DracoPy>=2.0.0",
+            "imageio>=2.35.0",
+            "pandas",
+            "pyarrow",
+            "PyNvVideoCodec",
+            "remotezip>=0.12.0",
+            "requests>=2.31.0",
+            "tqdm",
+        ],
+    },
     homepage = "https://github.com/NVIDIA/ncore",
     license = "Apache-2.0",
     platform = "any",
@@ -75,5 +95,14 @@ py_wheel(
     version = "{BUILD_EMBED_LABEL}",
     deps = [
         ":ncore_pkg",
+        "//ncore/converters:pai_converter_pkg",
     ],
+)
+
+pytest_test(
+    name = "pytest_wheel_packaging",
+    srcs = ["wheel_packaging_test.py"],
+    data = [":ncore_wheel"],
+    # The wheel target depends on DracoPy / PyNvVideoCodec, which are only available for Python 3.11.
+    python_versions = ["3.11"],
 )
