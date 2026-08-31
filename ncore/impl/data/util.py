@@ -167,6 +167,10 @@ def relative_angle(
     """
     Compute the relative angle from ref_angle_rad to angle_rad in the specified direction
 
+    'angle_rad' must be a floating-point numpy array/scalar or torch tensor; the
+    result carries its dtype, independently of the installed numpy version. The
+    reference is a plain python float and is converted into that dtype.
+
     Args:
         ref_angle_rad: reference angle in radians [float]
         angle_rad: tensor of angles to compute relative angles for, in radians
@@ -179,16 +183,48 @@ def relative_angle(
 
     two_pi = 2 * np.pi
 
+    # The angles carry the precision of the computation, so they must be a dtype-
+    # bearing float type (numpy array/scalar or torch tensor) rather than a bare
+    # python scalar -- otherwise there is nothing to pin the reduction to, and the
+    # result would silently fall back to whatever python/numpy promotion yields.
+    # The dtype is read duck-typed so this stays generic over numpy and torch
+    # without importing torch.
+    dtype = getattr(angle_rad, "dtype", None)
+    assert dtype is not None, (
+        f"relative_angle expects numpy/torch angles carrying a dtype, got '{type(angle_rad).__name__}'"
+    )
+
+    # Angles are floats by contract, for numpy and torch alike. A non-float dtype
+    # would silently mis-reduce: numpy would truncate the 2π period below to 6 and
+    # return wrong angles, while torch would quietly promote to float32 and narrow
+    # a float64-precision caller. Reject both loudly instead. numpy spells
+    # float-ness as dtype.kind, torch as dtype.is_floating_point (present since
+    # torch 1.12, the oldest version this package supports).
+    is_floating = dtype.kind == "f" if isinstance(dtype, np.dtype) else dtype.is_floating_point
+    assert is_floating, f"relative_angle expects floating-point angles, got dtype '{dtype}'"
+
+    # Carry the angles' float dtype through the whole computation, including the
+    # 2π period. numpy promotes a numpy *scalar* mixed with a python float
+    # differently across major versions -- numpy 1 used value-based promotion and
+    # widened `float32_scalar % python_float` to float64, while numpy 2 (NEP 50)
+    # keeps it float32 -- so leaving the period as a python float makes the result
+    # depend on the installed numpy version. That shifted, e.g., the float32
+    # `span_rad` of a structured lidar model's vertical FOV by ~1 ULP, which moves
+    # the angle grid and thus reassigns boundary cells of its angles-to-columns map.
+    # Pinning the dtype here makes the result version-independent by construction
+    # rather than by accident. Arrays are unaffected either way (a python scalar
+    # does not upcast a numpy/torch array), and torch needs no coercion at all: it
+    # is already dtype-preserving against python scalars.
+    if isinstance(dtype, np.dtype):
+        ref_angle_rad = cast(float, dtype.type(ref_angle_rad))
+        two_pi = dtype.type(two_pi)
+
     # Signed difference between ref and angle, then a single reduction to [0, 2π).
     # We subtract before reducing rather than reducing each operand separately:
-    # the subtraction with the python-scalar `ref_angle_rad` keeps `angle_rad`'s
-    # dtype (a python scalar does not upcast a numpy/torch float32 array), so the
-    # whole computation stays in float32 for float32 inputs. Reducing each operand
-    # independently instead promoted `ref_angle_rad % 2π` to float64 while
-    # `angle_rad % 2π` stayed float32, so the same value reduced to results ~1 ULP
-    # apart; for ref == angle_rad[i] that made the relative angle wrap to ~2π
-    # instead of 0 and broke, e.g., the strict-monotonicity check on a structured
-    # lidar model's column azimuths whose reference reduces near the ±π boundary.
+    # reducing them independently made the same value reduce to results ~1 ULP
+    # apart, so for ref == angle_rad[i] the relative angle wrapped to ~2π instead
+    # of 0 and broke, e.g., the strict-monotonicity check on a structured lidar
+    # model's column azimuths whose reference reduces near the ±π boundary.
     # (a - b) mod 2π == (a mod 2π - b mod 2π) mod 2π, so this is exact.
     if direction == "cw":
         # Clockwise: going from ref to angle in CW direction.

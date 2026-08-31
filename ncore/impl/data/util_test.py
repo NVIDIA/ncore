@@ -178,3 +178,88 @@ class TestRelativeAngle(unittest.TestCase):
         self.assertEqual(float(rel.relative_angle_rad[0].item()), 0.0)
         self.assertTrue(bool((torch.diff(rel.relative_angle_rad) > 0).all()))
         self.assertTrue(bool((~rel.wrap_around_flag).all()))
+
+    def test_float32_scalar_matches_float32_array(self) -> None:
+        """A float32 scalar angle reduces exactly like the same angle in an array.
+
+        Regression: the 2π period was a python float, so the scalar path depended
+        on numpy's scalar/python-float promotion, which changed between major
+        versions (numpy 1 widened `float32_scalar % python_float` to float64;
+        numpy 2 keeps it float32 under NEP 50). The array path was float32 either
+        way, so the two disagreed by ~1 ULP under numpy 1 and the result silently
+        depended on the installed numpy. Carrying the operand dtype into the
+        period makes both paths -- and both numpy versions -- agree exactly.
+
+        The "ccw" direction makes the reduction actually active: its signed
+        differences are negative and must wrap into [0, 2π). A signed difference
+        that already lies inside the interval passes through the modulo unchanged
+        and would not exercise the period's dtype at all.
+        """
+        angles = (np.pi - 1e-3 - np.linspace(0.0, 2.0 * np.pi * (1.0 - 1e-4), 64)).astype(np.float32)
+        ref = float(angles[0])
+
+        for direction in ("cw", "ccw"):
+            array_rel = relative_angle(ref, angles, direction).relative_angle_rad
+            self.assertEqual(array_rel.dtype, np.float32)
+
+            for index, angle in enumerate(angles):
+                scalar_rel = relative_angle(ref, angle, direction).relative_angle_rad
+
+                # Same dtype as the array path, and bit-identical to it.
+                self.assertEqual(np.asarray(scalar_rel).dtype, np.float32)
+                self.assertEqual(float(scalar_rel), float(array_rel[index]))
+
+                # get_vertical_fov consumes the scalar result via .item().
+                self.assertTrue(hasattr(scalar_rel, "item"))
+
+    def test_float64_angles_stay_float64(self) -> None:
+        """Pinning the period to the operand dtype must not narrow float64 input."""
+        angles = np.pi - 1e-3 - np.linspace(0.0, 2.0 * np.pi * (1.0 - 1e-4), 64)
+        self.assertEqual(angles.dtype, np.float64)
+
+        rel = relative_angle(float(angles[0]), angles, "cw")
+
+        self.assertEqual(rel.relative_angle_rad.dtype, np.float64)
+        self.assertEqual(float(rel.relative_angle_rad[0]), 0.0)
+
+    def test_non_floating_angles_rejected(self) -> None:
+        """Angles must be dtype-bearing floats rather than silently mis-reduced.
+
+        numpy would carry an integer dtype into the 2π period, truncating it to 6
+        and returning wrong angles with no error; torch would instead promote
+        silently to float32, narrowing a float64-precision caller. Both fail
+        loudly here, so the contract does not depend on which array library the
+        caller happens to use.
+        """
+        for angles in (
+            np.array([1, 2, 3], dtype=np.int32),
+            np.int64(2),
+            np.array([1, 2], dtype=np.uint64),
+            np.array([1.0 + 0j]),
+            torch.tensor([1, 2, 3], dtype=torch.int32),
+            torch.tensor([1, 2], dtype=torch.int64),
+            torch.tensor([1.0 + 0j]),
+        ):
+            with self.assertRaises(AssertionError):
+                relative_angle(0.5, angles, "cw")
+
+        # The angles carry the precision of the computation, so a bare python
+        # scalar -- which has no dtype to pin the reduction to -- is rejected too.
+        for scalar in (1.0, 1):
+            with self.assertRaises(AssertionError):
+                relative_angle(0.5, scalar, "cw")
+
+    def test_torch_float_dtypes_are_preserved(self) -> None:
+        """torch input keeps its own dtype: it needs validation, not coercion.
+
+        torch is already dtype-preserving against python scalars, so the period
+        is left as a python float for it -- unlike numpy, whose scalar promotion
+        rules changed between major versions.
+        """
+        for torch_dtype in (torch.float32, torch.float64):
+            angles = torch.tensor([1.0, 0.5, 0.0, -0.5], dtype=torch_dtype)
+
+            rel = relative_angle(float(angles[0].item()), angles, "cw")
+
+            self.assertEqual(rel.relative_angle_rad.dtype, torch_dtype)
+            self.assertEqual(float(rel.relative_angle_rad[0].item()), 0.0)
