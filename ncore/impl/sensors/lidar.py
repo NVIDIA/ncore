@@ -406,9 +406,17 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
         _, idxs = kdtree.query(grid_rays.sensor_rays.cpu().numpy())
         idxs = to_torch(idxs, device=self.device, dtype=torch.int32)
 
-        # Map the indices to the columns by dividing with the total number of rows and (implicit) flooring
+        # Map the indices to the columns by dividing with the total number of rows and flooring.
+        # The division is done in integers: routing it through a float divide would be exact only
+        # while the flat index stays below 2**24 (the point where float32 can no longer represent
+        # consecutive integers), above which the quotient rounds up at every element whose index is
+        # just past a multiple of n_rows and the cell is assigned to the next column. Today's maps
+        # stay well below that (7372800 elements for a 128x3600 sensor at resolution factor 4), so
+        # this is behaviour-preserving, but it removes the dependency on that headroom.
         self.angles_to_columns_map = (
-            (idxs / self.n_rows).to(self.angles_to_columns_map_dtype).reshape(grid_elevations_rad.shape)
+            torch.div(idxs, self.n_rows, rounding_mode="floor")
+            .to(self.angles_to_columns_map_dtype)
+            .reshape(grid_elevations_rad.shape)
         )
 
     def sensor_angles_relative_frame_times(self, sensor_angles: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:

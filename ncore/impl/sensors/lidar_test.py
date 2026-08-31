@@ -17,6 +17,7 @@ import itertools
 import json
 import os
 import unittest
+import unittest.mock
 
 from typing import Tuple
 
@@ -27,6 +28,7 @@ import torch
 from ncore.impl.common.transformations import se3_inverse
 from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.types import RowOffsetStructuredSpinningLidarModelParameters
+from ncore.impl.sensors import lidar as lidar_module
 from ncore.impl.sensors.common import to_torch
 from ncore.impl.sensors.lidar import RowOffsetStructuredSpinningLidarModel
 
@@ -185,6 +187,70 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
         np.testing.assert_array_almost_equal(
             relative_timestamps, relative_timestamp_reconstructed.cpu().numpy(), decimal=6
         )
+
+    def test_angles_to_columns_map_values(self):
+        """Every mapped column index must be a valid column of the model.
+
+        The map is built by flooring a flat element index by the row count, so a
+        rounding error there shows up as an out-of-range or off-by-one column.
+        """
+        self.lidar_model._init_angles_to_columns_map()
+        angles_to_columns_map = unpack_optional(self.lidar_model.angles_to_columns_map)
+
+        self.assertEqual(
+            tuple(angles_to_columns_map.shape),
+            (
+                self.param_file_mapresfactor[1] * self.model_parameters.n_rows,
+                self.param_file_mapresfactor[1] * self.model_parameters.n_columns,
+            ),
+        )
+        self.assertGreaterEqual(int(angles_to_columns_map.min()), 0)
+        self.assertLessEqual(int(angles_to_columns_map.max()), self.model_parameters.n_columns - 1)
+
+    def test_flat_index_to_column_is_exact_integer_division(self):
+        """The flat-index-to-column conversion must be an exact integer floor.
+
+        _init_angles_to_columns_map turns a flat element index (column-major, so
+        flat = column * n_rows + row) into a column index. Routing that through a
+        float divide is exact only while the flat index stays below 2**24, where
+        float32 can still represent consecutive integers; above it the quotient
+        rounds up at every index just past a multiple of n_rows, moving those
+        cells into the next column.
+
+        A model with that many elements (>2**24, i.e. a >16.7M-point KD-tree) is
+        far too expensive to build here, so the nearest-neighbour lookup is
+        stubbed to return flat indices straddling the limit. That still exercises
+        the real conversion inside _init_angles_to_columns_map. Realistic sizes
+        are covered end-to-end by test_angles_to_columns.
+        """
+        n_rows = self.model_parameters.n_rows
+        model = RowOffsetStructuredSpinningLidarModel(
+            self.model_parameters,
+            angles_to_columns_map_init=False,
+            angles_to_columns_map_resolution_factor=1,  # keep the stubbed grid small
+            angles_to_columns_map_dtype=torch.int32,  # the injected indices exceed int16
+            device=self.device,
+            dtype=self.dtype,
+        )
+        n_grid = self.model_parameters.n_rows * self.model_parameters.n_columns
+        # Start a couple of whole columns below 2**24 so the range crosses the
+        # first flat index whose float32 representation rounds into the next column.
+        flat_indices = np.arange(2**24 - 2 * n_rows, 2**24 - 2 * n_rows + n_grid, dtype=np.int64)
+
+        class _StubKDTree:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            def query(self, *args, **kwargs):
+                return np.zeros(n_grid, dtype=np.float64), flat_indices
+
+        with unittest.mock.patch.object(lidar_module.scipy_spatial, "cKDTree", _StubKDTree):
+            model._init_angles_to_columns_map()
+
+        expected = torch.tensor(flat_indices // n_rows, dtype=torch.int32).reshape(
+            self.model_parameters.n_rows, self.model_parameters.n_columns
+        )
+        self.assertTrue(torch.equal(unpack_optional(model.angles_to_columns_map).cpu(), expected))
 
     def test_rolling_shutter_projection(self):
         """Make sure rolling-shutter unprojection / projection work (mostly) consistent"""
