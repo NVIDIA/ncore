@@ -14,6 +14,9 @@
 # limitations under the License.
 
 import unittest
+import warnings
+
+from typing import cast
 
 import numpy as np
 import torch
@@ -59,6 +62,155 @@ class TestClosestIndexSorted(unittest.TestCase):
             check(sorted_timestamp_array, sorted_timestamp_array[idx], idx)  # exact hit
             check(sorted_timestamp_array, sorted_timestamp_array[idx] - 1, idx)  # inexact hit
             check(sorted_timestamp_array, sorted_timestamp_array[idx] + 1, idx)  # inexact hit
+
+    def test_uint64_timestamps_are_exact(self) -> None:
+        """uint64 timestamps are searched and compared exactly, not via float64.
+
+        Regression, with one failure mode per numpy major version -- both found
+        by fuzzing against an exact python-int reference:
+
+        - numpy 1 compares a python int against an integer array in float64,
+          which is lossy above 2**53, so searchsorted lands next to the true
+          insertion point and the wrong neighbour wins.
+        - numpy 2 searches exactly (NEP 50), but for the same reason keeps the
+          neighbour subtraction in uint64. Where the old code computed
+          `sorted_array[idx] - value` with a larger value on the right, the
+          result wrapped to ~1.8e19 instead of going negative, so the nearer
+          neighbour lost the comparison. numpy 1 had hidden that wrap by
+          promoting to float64.
+
+        Each case below therefore fails on exactly one of the two versions, so
+        together they pin the behaviour on both.
+        """
+        cases = (
+            # Lands 1 below element 3; float64 search (numpy 1) mis-locates it.
+            (
+                (
+                    3993155382513731309,
+                    3993155382513864527,
+                    3993155382513998127,
+                    3993155382514268707,
+                    3993155382514642505,
+                ),
+                3993155382514455305,
+                3,
+            ),
+            # 302 above element 3, 243857 below element 4; uint64 wrap (numpy 2).
+            (
+                (
+                    3060375013392637474,
+                    3060375013392686493,
+                    3060375013392765053,
+                    3060375013392945927,
+                    3060375013393190086,
+                ),
+                3060375013392946229,
+                3,
+            ),
+        )
+        for values, query, expected in cases:
+            timestamps_us = np.array(values, dtype=np.uint64)
+            with warnings.catch_warnings():
+                warnings.simplefilter("error")  # a uint64 wrap raises a RuntimeWarning
+                self.assertEqual(closest_index_sorted(timestamps_us, query), expected, f"query={query}")
+
+        # Exhaustive agreement with an exact python-int reference near the seams.
+        timestamps_us = np.array(cases[1][0], dtype=np.uint64)
+        exact = [int(x) for x in timestamps_us]
+        for element in exact:
+            for delta in (-2, -1, 0, 1, 2):
+                query = element + delta
+                expected = min(
+                    range(len(exact)),
+                    key=lambda i, q=query: (abs(exact[i] - q), -i),  # ties -> larger index
+                )
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error")
+                    self.assertEqual(closest_index_sorted(timestamps_us, query), expected, f"query={query}")
+
+    def test_uint64_query_out_of_range(self) -> None:
+        """Queries outside the array (or outside the dtype) resolve to an end.
+
+        A negative query cannot be represented as uint64: numpy 2 raises
+        OverflowError rather than converting it, so it must be answered before
+        reaching any array arithmetic.
+        """
+        timestamps_us = np.array([1000, 2000, 3000], dtype=np.uint64)
+
+        for query, expected in ((-5, 0), (0, 0), (999, 0), (5000, 2), (2**64 + 7, 2), (10**25, 2)):
+            with warnings.catch_warnings():
+                warnings.simplefilter("error")
+                self.assertEqual(closest_index_sorted(timestamps_us, query), expected, f"query={query}")
+
+    def test_ties_resolve_to_larger_index(self) -> None:
+        """A query exactly between its two neighbours keeps selecting the later one."""
+        self.assertEqual(closest_index_sorted(np.array([1000, 2000], dtype=np.uint64), 1500), 1)
+        self.assertEqual(closest_index_sorted(np.array([1000.0, 2000.0]), 1500), 1)
+
+    def test_duplicate_elements(self) -> None:
+        """Repeated elements keep resolving to the first of the run.
+
+        The end-of-range shortcuts must not swallow a query that lands exactly on
+        a duplicated last element: that one still has to go through the search, or
+        it would report the end of the run instead of its start.
+        """
+        self.assertEqual(closest_index_sorted(np.array([870, 870, 1331, 1331], dtype=np.uint64), 1331), 2)
+        self.assertEqual(closest_index_sorted(np.array([10, 20, 20, 30], dtype=np.uint64), 20), 1)
+        self.assertEqual(closest_index_sorted(np.array([10, 20, 20, 30], dtype=np.uint64), 21), 2)
+
+    def test_numpy_scalar_queries(self) -> None:
+        """A numpy scalar query is normalised, so it stays as exact as a python int.
+
+        The signature asks for a python int, but a numpy scalar is easy to pass by
+        accident (`arr[i]` rather than `arr[i].item()`). Left alone it would be
+        compared under numpy's own promotion rules, which are lossy above 2**53,
+        and a float would additionally round differently in the bounds check than
+        in the dtype conversion -- far enough to push the search past the end of
+        the array. Both cases below are real, found by fuzzing.
+        """
+        # np.uint64 query: without normalisation this answers 1 instead of 0.
+        timestamps_us = np.array(
+            [
+                1445925052418470747,
+                1445925052418504286,
+                1445925052418750773,
+                1445925052418898571,
+                1445925052419344034,
+            ],
+            dtype=np.uint64,
+        )
+        query = 1445925052418487440  # 16693 above element 0, 16846 below element 1
+        for scalar in (query, np.uint64(query), np.int64(query)):
+            with warnings.catch_warnings():
+                warnings.simplefilter("error")
+                # cast: passing a numpy scalar is off-contract, which is the point.
+                self.assertEqual(closest_index_sorted(timestamps_us, cast(int, scalar)), 0, f"query={scalar!r}")
+
+        # float query: without normalisation this raises IndexError. A float cannot
+        # hold such a timestamp at all, but it must still resolve to a valid index.
+        timestamps_us = np.array(
+            [
+                2579916036746490823,
+                2579916036746617919,
+                2579916036747054606,
+                2579916036747107128,
+                2579916036747196230,
+            ],
+            dtype=np.uint64,
+        )
+        self.assertIn(
+            closest_index_sorted(timestamps_us, cast(int, np.float64(2579916036747196561))),
+            range(len(timestamps_us)),
+        )
+
+    def test_float_arrays_still_supported(self) -> None:
+        """Float arrays are compared as floats rather than truncated to integers."""
+        values = np.array([0.0, 1.5, 3.0], dtype=np.float64)
+
+        self.assertEqual(closest_index_sorted(values, 0), 0)
+        self.assertEqual(closest_index_sorted(values, 1), 1)
+        self.assertEqual(closest_index_sorted(values, 2), 1)  # 1.5 is nearer than 3.0
+        self.assertEqual(closest_index_sorted(values, 3), 2)
 
 
 class TestComputeMaxAngleWithMonotonicity(unittest.TestCase):

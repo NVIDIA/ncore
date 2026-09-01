@@ -53,18 +53,44 @@ def padded_index_string(index: int, index_digits=INDEX_DIGITS) -> str:
 def closest_index_sorted(sorted_array: np.ndarray, value: int) -> int:
     """Returns the index of the closest value within a *sorted* array relative to a query value.
 
+    Where the query falls exactly between its two neighbours, the later one wins.
+
     Note: we are *not* checking that the input is sorted
     """
     if not len(sorted_array):
         raise ValueError("input array is empty")
 
-    idx = int(np.searchsorted(sorted_array, value, side="left"))
+    sorted_array = np.asarray(sorted_array)
+    # Normalise the query to a python int up front, so the bounds check below and
+    # the dtype conversion after it see exactly the same value. A numpy scalar
+    # would instead be compared under numpy's own promotion rules -- lossy above
+    # 2**53 -- and a float would round differently in the two places, which can
+    # push the search past the end of the array.
+    value = int(value)
 
-    if idx > 0:
-        if idx == len(sorted_array):
-            return idx - 1
-        if abs(value - sorted_array[idx - 1]) < abs(sorted_array[idx] - value):
-            return idx - 1
+    # Answer out-of-range queries from the ends. That also leaves `value` within
+    # the array's own range, so it is representable in the array's dtype and the
+    # search below can run in that dtype -- which is what keeps it exact. Searching
+    # with the python int instead let numpy pick the common type: numpy 1 converts
+    # both to float64, which is lossy above 2**53, so searchsorted landed next to
+    # the true insertion point on uint64 timestamps. The upper bound is strict so a
+    # query equal to a repeated last element still resolves to the start of that run.
+    if value <= sorted_array[0].item():
+        return 0
+    if value > sorted_array[-1].item():
+        return len(sorted_array) - 1
+
+    idx = int(np.searchsorted(sorted_array, sorted_array.dtype.type(value), side="left"))
+
+    # `value` is above the first element and no greater than the last, so
+    # 0 < idx < len(sorted_array) and both neighbours exist. Comparing them as
+    # python scalars keeps the differences exact: `.item()` yields an
+    # arbitrary-precision int for integer dtypes, where subtracting in the array
+    # dtype would instead wrap on an unsigned type (numpy 2 keeps uint64 under
+    # NEP 50; numpy 1 hid that by promoting to float64) and silently pick the
+    # further neighbour.
+    if abs(value - sorted_array[idx - 1].item()) < abs(sorted_array[idx].item() - value):
+        return idx - 1
 
     return idx
 
