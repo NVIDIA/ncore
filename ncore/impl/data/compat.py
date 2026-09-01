@@ -564,13 +564,16 @@ class LidarSensorProtocol(RayBundleSensorProtocol, Protocol):
         """Returns parameters specific to the lidar's intrinsic model (optional as not mandatory)"""
         ...
 
-    def get_frame_ray_bundle_model_element(self, frame_index: int) -> Optional[npt.NDArray[np.uint16]]:
+    def get_frame_ray_bundle_model_element(self, frame_index: int) -> Optional[npt.NDArray[Any]]:
         """Returns the per-ray model elements for a ray bundle for a specific frame, if available.
 
         Args:
             frame_index: Index of the frame
         Returns:
-            Array of per-ray model elements [N,] or None if not available
+            Array of per-ray model element indices / sampling coordinates with a
+            leading per-ray dimension N and any trailing shape ((N,), (N, K),
+            (N, A, B, ...)); integer dtype or floating dtype up to float32. None
+            if not available.
         """
         ...
 
