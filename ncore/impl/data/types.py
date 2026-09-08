@@ -147,8 +147,13 @@ CameraModelParametersSelf = TypeVar("CameraModelParametersSelf", bound="CameraMo
 
 
 @dataclass
-class CameraModelParameters(ABC):
-    """Represents parameters common to all camera models"""
+class CameraModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
+    """Represents parameters common to all camera models
+
+    The JSON (de)serialization interface (:meth:`to_dict` / :meth:`from_dict`) is provided by
+    :class:`dataclasses_json.DataClassJsonMixin` on this base, so that code operating on the
+    abstract type can serialize parameters without narrowing to a concrete model first.
+    """
 
     resolution: np.ndarray = util.numpy_array_field(
         np.uint64
@@ -180,6 +185,17 @@ class CameraModelParameters(ABC):
             a transformed version of the concrete camera model parameters
         """
 
+    @staticmethod
+    def type() -> str:
+        """Returns a string-identifier of the camera model
+
+        Concrete camera model parameters must override this with their own stable identifier; it
+        keys the serialized representation (see :func:`encode_camera_model_parameters`). This is
+        deliberately not an :func:`abstractmethod` so that adding it to this base does not render
+        pre-existing out-of-tree subclasses non-instantiable.
+        """
+        raise NotImplementedError("Concrete camera model parameters must implement type()")
+
     def __post_init__(self) -> None:
         # Sanity checks
         assert self.resolution.shape == (2,)
@@ -194,7 +210,7 @@ class CameraModelParameters(ABC):
 
 
 @dataclass
-class FThetaCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
+class FThetaCameraModelParameters(CameraModelParameters):
     """Represents FTheta-specific camera model parameters"""
 
     @unique
@@ -439,7 +455,7 @@ class PinholeCameraModelParameters(CameraModelParameters):
 
 
 @dataclass
-class IdealPinholeCameraModelParameters(PinholeCameraModelParameters, dataclasses_json.DataClassJsonMixin):
+class IdealPinholeCameraModelParameters(PinholeCameraModelParameters):
     """Represents an ideal (distortion-free) pinhole camera
 
     An ideal pinhole maps normalized camera coordinates directly to image coordinates
@@ -615,7 +631,7 @@ class IdealPinholeCameraModelParameters(PinholeCameraModelParameters, dataclasse
 
 
 @dataclass
-class OpenCVPinholeCameraModelParameters(PinholeCameraModelParameters, dataclasses_json.DataClassJsonMixin):
+class OpenCVPinholeCameraModelParameters(PinholeCameraModelParameters):
     """Represents Pinhole-specific (OpenCV-like) camera model parameters"""
 
     radial_coeffs: np.ndarray = util.numpy_array_field(
@@ -663,7 +679,7 @@ class OpenCVPinholeCameraModelParameters(PinholeCameraModelParameters, dataclass
 
 
 @dataclass
-class OpenCVFisheyeCameraModelParameters(CameraModelParameters, dataclasses_json.DataClassJsonMixin):
+class OpenCVFisheyeCameraModelParameters(CameraModelParameters):
     """Represents Fisheye-specific (OpenCV-like) camera model parameters"""
 
     principal_point: np.ndarray = util.numpy_array_field(
