@@ -19,7 +19,8 @@ import math
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union, cast
+from functools import singledispatch
+from typing import Generic, Optional, Tuple, TypeVar, Union, cast, overload
 
 import numpy as np
 import torch
@@ -245,8 +246,27 @@ class _CameraRollingShutterProjector(RollingShutterSolver.Projector):
         return self._model.image_points_relative_frame_times(projected)
 
 
-class CameraModel(BaseModel, ABC):
-    """Base class for all camera models"""
+#: Type of the camera model parameters a concrete camera model returns from get_parameters().
+#:
+#: Covariant: the parameter appears only in a return position, and invariance would leave
+#: `CameraModel[FThetaCameraModelParameters]` and `CameraModel[OpenCVPinholeCameraModelParameters]`
+#: with no common `CameraModel[...]` supertype, so a type checker joining a heterogeneous
+#: collection of concrete camera models would fall back past `CameraModel` entirely.
+CameraModelParametersT_co = TypeVar("CameraModelParametersT_co", bound=types.CameraModelParameters, covariant=True)
+
+#: Invariant counterpart used for the free factory's generic overload; a covariant type variable
+#: cannot appear in a function parameter position.
+CameraModelParametersT = TypeVar("CameraModelParametersT", bound=types.CameraModelParameters)
+
+
+class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
+    """Base class for all camera models
+
+    Generic in the concrete camera model parameter type the model round-trips through
+    :meth:`get_parameters`, so that a ``CameraModel`` remains statically useful without having to
+    narrow it to a concrete model type. Plain (unparameterized) ``CameraModel`` annotations remain
+    valid and behave as before.
+    """
 
     resolution: torch.Tensor  #: Width and height of the image in pixels (int32, [2,])
     shutter_type: types.ShutterType  #: Shutter type of the camera's imaging sensor
@@ -284,6 +304,13 @@ class CameraModel(BaseModel, ABC):
         assert self.resolution.dtype == torch.int32
         assert self.shutter_type in types.ShutterType, f"Unsupported shutter type {self.shutter_type}"
         assert self.external_distortion is None or isinstance(self.external_distortion, ExternalDistortionModel)
+
+    @abstractmethod
+    def get_parameters(self) -> CameraModelParametersT_co:
+        """
+        Returns the camera model parameters specific to the current camera model instance
+        """
+        pass
 
     @abstractmethod
     def _image_points_to_camera_rays_impl(self, image_points: torch.Tensor) -> torch.Tensor:
@@ -360,25 +387,20 @@ class CameraModel(BaseModel, ABC):
 
     @staticmethod
     def from_parameters(
-        cam_model_parameters: types.ConcreteCameraModelParametersUnion,
+        cam_model_parameters: types.CameraModelParameters,
         device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
     ) -> CameraModel:
         """
         Initialize a generic camera model class from camera model parameters
+
+        .. deprecated::
+            Prefer the module-level :func:`camera_model_from_parameters`, which dispatches on the
+            parameter type (and can be extended for out-of-tree models via
+            :func:`register_camera_model`) instead of being a closed dispatch table inherited by
+            every camera model.
         """
-        if isinstance(cam_model_parameters, types.FThetaCameraModelParameters):
-            return FThetaCameraModel(cam_model_parameters, device, dtype)
-        elif isinstance(cam_model_parameters, types.IdealPinholeCameraModelParameters):
-            return IdealPinholeCameraModel(cam_model_parameters, device, dtype)
-        elif isinstance(cam_model_parameters, types.OpenCVPinholeCameraModelParameters):
-            return OpenCVPinholeCameraModel(cam_model_parameters, device, dtype)
-        elif isinstance(cam_model_parameters, types.OpenCVFisheyeCameraModelParameters):
-            return OpenCVFisheyeCameraModel(cam_model_parameters, device, dtype)
-        else:
-            raise TypeError(
-                f"unsupported camera model type {type(cam_model_parameters)}, currently supporting Ftheta/Ideal-Pinhole/OpenCV-Pinhole/OpenCV-Fisheye only"
-            )
+        return camera_model_from_parameters(cam_model_parameters, device, dtype)
 
     @dataclass
     class WorldPointsToPixelsReturn:
@@ -1155,7 +1177,7 @@ class CameraModel(BaseModel, ABC):
         return xy_norms
 
 
-class FThetaCameraModel(CameraModel):
+class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
     """Camera model for F-Theta lenses"""
 
     reference_poly: types.FThetaCameraModelParameters.PolynomialType
@@ -1396,7 +1418,14 @@ class FThetaCameraModel(CameraModel):
         return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
 
 
-class PinholeCameraModel(CameraModel, ABC):
+#: Type of the pinhole-family camera model parameters a concrete pinhole model returns
+#: (covariant, see CameraModelParametersT_co)
+PinholeCameraModelParametersT_co = TypeVar(
+    "PinholeCameraModelParametersT_co", bound=types.PinholeCameraModelParameters, covariant=True
+)
+
+
+class PinholeCameraModel(CameraModel[PinholeCameraModelParametersT_co], ABC):
     """Abstract base for pinhole-family camera models
 
     Holds the shared principal point and focal length and implements the closed-form
@@ -1481,7 +1510,7 @@ class PinholeCameraModel(CameraModel, ABC):
         return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
 
 
-class IdealPinholeCameraModel(PinholeCameraModel):
+class IdealPinholeCameraModel(PinholeCameraModel[types.IdealPinholeCameraModelParameters]):
     """Camera model for an ideal (distortion-free) pinhole camera"""
 
     def __init__(
@@ -1518,7 +1547,7 @@ class IdealPinholeCameraModel(PinholeCameraModel):
         return self._ideal_camera_rays_to_image_points(cam_rays, return_jacobians)
 
 
-class OpenCVPinholeCameraModel(PinholeCameraModel):
+class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModelParameters]):
     """Camera model for OpenCV pinhole cameras"""
 
     radial_coeffs: torch.Tensor
@@ -1730,7 +1759,7 @@ class OpenCVPinholeCameraModel(PinholeCameraModel):
         return cam_rays
 
 
-class OpenCVFisheyeCameraModel(CameraModel):
+class OpenCVFisheyeCameraModel(CameraModel[types.OpenCVFisheyeCameraModelParameters]):
     """Camera model for OpenCV fisheye cameras"""
 
     principal_point: torch.Tensor
@@ -1907,3 +1936,137 @@ class OpenCVFisheyeCameraModel(CameraModel):
             jacobians = None
 
         return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
+
+
+@singledispatch
+def _camera_model_from_parameters(
+    cam_model_parameters: types.CameraModelParameters,
+    device: Union[str, torch.device] = torch.device("cuda"),
+    dtype: torch.dtype = torch.float32,
+) -> CameraModel:
+    """Open dispatch registry backing :func:`camera_model_from_parameters`
+
+    Kept separate from the public entry point so that the latter can carry precise
+    :func:`typing.overload` signatures: a checker cannot see through the ``singledispatch``
+    decorator, and stacking overloads on top of it is rejected outright.
+    """
+    raise TypeError(
+        f"unsupported camera model type {type(cam_model_parameters)}, currently supporting "
+        "Ftheta/Ideal-Pinhole/OpenCV-Pinhole/OpenCV-Fisheye only; register out-of-tree camera "
+        "models with register_camera_model()"
+    )
+
+
+@_camera_model_from_parameters.register
+def _(
+    cam_model_parameters: types.FThetaCameraModelParameters,
+    device: Union[str, torch.device] = torch.device("cuda"),
+    dtype: torch.dtype = torch.float32,
+) -> FThetaCameraModel:
+    return FThetaCameraModel(cam_model_parameters, device, dtype)
+
+
+@_camera_model_from_parameters.register
+def _(
+    cam_model_parameters: types.IdealPinholeCameraModelParameters,
+    device: Union[str, torch.device] = torch.device("cuda"),
+    dtype: torch.dtype = torch.float32,
+) -> IdealPinholeCameraModel:
+    return IdealPinholeCameraModel(cam_model_parameters, device, dtype)
+
+
+@_camera_model_from_parameters.register
+def _(
+    cam_model_parameters: types.OpenCVPinholeCameraModelParameters,
+    device: Union[str, torch.device] = torch.device("cuda"),
+    dtype: torch.dtype = torch.float32,
+) -> OpenCVPinholeCameraModel:
+    return OpenCVPinholeCameraModel(cam_model_parameters, device, dtype)
+
+
+@_camera_model_from_parameters.register
+def _(
+    cam_model_parameters: types.OpenCVFisheyeCameraModelParameters,
+    device: Union[str, torch.device] = torch.device("cuda"),
+    dtype: torch.dtype = torch.float32,
+) -> OpenCVFisheyeCameraModel:
+    return OpenCVFisheyeCameraModel(cam_model_parameters, device, dtype)
+
+
+#: Registers a camera model factory for a camera model parameter type
+#:
+#: Accepts the same forms as :meth:`functools.singledispatch.register`, i.e. it can be used as a
+#: bare decorator on a factory whose first parameter is annotated with the parameter type it
+#: builds from::
+#:
+#:     @register_camera_model
+#:     def _(cam_model_parameters: MyCameraModelParameters, device=..., dtype=...) -> MyCameraModel:
+#:         return MyCameraModel(cam_model_parameters, device, dtype)
+#:
+#: Dispatch follows the parameter type's MRO, so a model parameter type derived from a registered
+#: one resolves to the base's factory unless it registers its own.
+register_camera_model = _camera_model_from_parameters.register
+
+
+@overload
+def camera_model_from_parameters(
+    cam_model_parameters: types.FThetaCameraModelParameters,
+    device: Union[str, torch.device] = ...,
+    dtype: torch.dtype = ...,
+) -> FThetaCameraModel: ...
+
+
+@overload
+def camera_model_from_parameters(
+    cam_model_parameters: types.IdealPinholeCameraModelParameters,
+    device: Union[str, torch.device] = ...,
+    dtype: torch.dtype = ...,
+) -> IdealPinholeCameraModel: ...
+
+
+@overload
+def camera_model_from_parameters(
+    cam_model_parameters: types.OpenCVPinholeCameraModelParameters,
+    device: Union[str, torch.device] = ...,
+    dtype: torch.dtype = ...,
+) -> OpenCVPinholeCameraModel: ...
+
+
+@overload
+def camera_model_from_parameters(
+    cam_model_parameters: types.OpenCVFisheyeCameraModelParameters,
+    device: Union[str, torch.device] = ...,
+    dtype: torch.dtype = ...,
+) -> OpenCVFisheyeCameraModel: ...
+
+
+@overload
+def camera_model_from_parameters(
+    cam_model_parameters: CameraModelParametersT,
+    device: Union[str, torch.device] = ...,
+    dtype: torch.dtype = ...,
+) -> CameraModel[CameraModelParametersT]: ...
+
+
+def camera_model_from_parameters(
+    cam_model_parameters: types.CameraModelParameters,
+    device: Union[str, torch.device] = torch.device("cuda"),
+    dtype: torch.dtype = torch.float32,
+) -> CameraModel:
+    """Initializes the camera model corresponding to the given camera model parameters
+
+    Dispatches on the runtime type of ``cam_model_parameters``. Out-of-tree camera models can
+    participate by registering their factory via :func:`register_camera_model`.
+
+    Args:
+        cam_model_parameters: the camera model parameters to build the camera model from.
+        device: the device to instantiate the camera model on.
+        dtype: the floating point type to instantiate the camera model with.
+
+    Returns:
+        the camera model corresponding to ``cam_model_parameters``.
+
+    Raises:
+        TypeError: if no camera model is registered for the given parameter type.
+    """
+    return _camera_model_from_parameters(cam_model_parameters, device, dtype)

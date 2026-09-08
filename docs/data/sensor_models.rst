@@ -433,7 +433,7 @@ Use :meth:`IdealPinholeCameraModelParameters.natural_fov(source)
 
    import numpy as np
    from ncore.data import IdealPinholeCameraModelParameters
-   from ncore.sensors import CameraModel, Rectificator
+   from ncore.sensors import Rectificator, camera_model_from_parameters
 
    source_params = source_model.get_parameters()
 
@@ -446,7 +446,7 @@ Use :meth:`IdealPinholeCameraModelParameters.natural_fov(source)
    )
    target_params = IdealPinholeCameraModelParameters.from_source(source_params, target_fov=np.radians(90.0))
 
-   target = CameraModel.from_parameters(target_params)
+   target = camera_model_from_parameters(target_params)
    rect = Rectificator(source_model, target)
 
 Rectificator
