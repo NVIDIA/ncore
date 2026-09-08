@@ -32,6 +32,7 @@ from numpy.polynomial.polynomial import Polynomial
 from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.types import (
     BivariateWindshieldModelParameters,
+    CameraModelParameters,
     ConcreteCameraModelParametersUnion,
     FThetaCameraModelParameters,
     IdealPinholeCameraModelParameters,
@@ -50,6 +51,8 @@ from ncore.impl.sensors.camera import (
     IdealPinholeCameraModel,
     OpenCVFisheyeCameraModel,
     OpenCVPinholeCameraModel,
+    camera_model_from_parameters,
+    register_camera_model,
     to_torch,
 )
 
@@ -2313,6 +2316,99 @@ class TestIdealPinholeParameterIO(unittest.TestCase):
         np.testing.assert_array_equal(transformed.resolution, np.array([320, 240], dtype=np.uint64))
         np.testing.assert_array_equal(transformed.focal_length, np.array([250.0, 250.0], dtype=np.float32))
         np.testing.assert_array_equal(transformed.principal_point, np.array([160.0, 120.0], dtype=np.float32))
+
+
+class TestCameraModelFactory(unittest.TestCase):
+    """Tests for the free camera_model_from_parameters() factory and its open registry"""
+
+    # Reuse the parameter builders of the from_source test case
+    _ideal = staticmethod(TestIdealPinholeFromSource._ideal)
+    _opencv = staticmethod(TestIdealPinholeFromSource._opencv)
+    _fisheye = staticmethod(TestIdealPinholeFromSource._fisheye)
+    _ftheta = staticmethod(TestIdealPinholeFromSource._ftheta)
+
+    def test_dispatches_to_concrete_model(self):
+        for params, expected in (
+            (self._ftheta(), FThetaCameraModel),
+            (self._ideal(), IdealPinholeCameraModel),
+            (self._opencv(), OpenCVPinholeCameraModel),
+            (self._fisheye(), OpenCVFisheyeCameraModel),
+        ):
+            with self.subTest(model=expected.__name__):
+                model = camera_model_from_parameters(params, device="cpu")
+                self.assertIsInstance(model, expected)
+                # The parameters round-trip back out through the abstract interface
+                self.assertEqual(model.get_parameters().type(), params.type())
+
+    def test_deprecated_static_factory_forwards(self):
+        params = self._ideal()
+        self.assertIsInstance(
+            CameraModel.from_parameters(params, device="cpu", dtype=torch.float32), IdealPinholeCameraModel
+        )
+
+    def test_unregistered_parameters_raise(self):
+        not_a_camera = cast(ConcreteCameraModelParametersUnion, object())
+        with self.assertRaises(TypeError):
+            camera_model_from_parameters(not_a_camera, device="cpu")
+
+    def test_out_of_tree_registration(self):
+        @dataclasses.dataclass
+        class CustomCameraModelParameters(IdealPinholeCameraModelParameters):
+            @staticmethod
+            def type() -> str:
+                return "custom"
+
+        class CustomCameraModel(IdealPinholeCameraModel):
+            pass
+
+        # Without a registration, dispatch falls back to the base's factory along the MRO
+        params = CustomCameraModelParameters(
+            resolution=np.array([640, 480], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array([320.0, 240.0], dtype=np.float32),
+            focal_length=np.array([500.0, 500.0], dtype=np.float32),
+        )
+        self.assertIsInstance(camera_model_from_parameters(params, device="cpu"), IdealPinholeCameraModel)
+
+        @register_camera_model
+        def _(
+            cam_model_parameters: CustomCameraModelParameters,
+            device: Union[str, torch.device] = torch.device("cuda"),
+            dtype: torch.dtype = torch.float32,
+        ) -> CustomCameraModel:
+            return CustomCameraModel(cam_model_parameters, device, dtype)
+
+        # The registry is process-global and singledispatch offers no unregister; keying it on a
+        # method-local parameter type keeps the registration unreachable from other tests
+        self.assertIsInstance(camera_model_from_parameters(params, device="cpu"), CustomCameraModel)
+
+    def test_camera_model_parameters_type_is_covariant(self):
+        # A heterogeneous collection of concrete camera models must still have `CameraModel` as a
+        # common static supertype. With an invariant parameter type it would not: a type checker
+        # joining the element types would fall back past `CameraModel` to its own bases, and every
+        # call to a `CameraModel` method on the joined type would be an error. This assignment only
+        # type-checks while `CameraModelParametersT_co` stays covariant, and the calls below keep
+        # the check honest at runtime too.
+        models: List[CameraModel[CameraModelParameters]] = [
+            camera_model_from_parameters(self._ftheta(), device="cpu"),
+            camera_model_from_parameters(self._ideal(), device="cpu"),
+            camera_model_from_parameters(self._opencv(), device="cpu"),
+            camera_model_from_parameters(self._fisheye(), device="cpu"),
+        ]
+        for model in models:
+            self.assertEqual(tuple(model.resolution.shape), (2,))
+            self.assertIsInstance(model.get_parameters(), CameraModelParameters)
+
+    def test_abstract_base_declares_serialization(self):
+        # Parameters can be serialized through the abstract type without narrowing
+        def encode(parameters: CameraModelParameters) -> dict:
+            return {"camera_model_type": parameters.type(), "camera_model_parameters": parameters.to_dict()}
+
+        self.assertEqual(encode(self._ideal())["camera_model_type"], "ideal-pinhole")
+
+        # ... but the base itself has no identifier of its own
+        with self.assertRaises(NotImplementedError):
+            CameraModelParameters.type()
 
 
 if __name__ == "__main__":

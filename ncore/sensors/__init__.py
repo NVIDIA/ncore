@@ -24,6 +24,8 @@ from ncore.impl.sensors.camera import (
     OpenCVFisheyeCameraModel,
     OpenCVPinholeCameraModel,
     PinholeCameraModel,
+    camera_model_from_parameters,
+    register_camera_model,
 )
 from ncore.impl.sensors.lidar import LidarModel, RowOffsetStructuredSpinningLidarModel, StructuredLidarModel
 from ncore.impl.sensors.rectification import Rectificator
@@ -31,6 +33,8 @@ from ncore.impl.sensors.rectification import Rectificator
 
 __all__ = [
     "CameraModel",
+    "camera_model_from_parameters",
+    "register_camera_model",
     "FThetaCameraModel",
     "PinholeCameraModel",
     "IdealPinholeCameraModel",
