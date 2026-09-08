@@ -16,14 +16,36 @@
 import io
 import unittest
 
-from typing import Optional
+from typing import List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 import numpy.testing as npt
 import PIL.Image as PILImage
 
 from ncore.impl.common.transformations import PoseGraphInterpolator
-from ncore.impl.data.types import EncodedImageData, PointCloud
+from ncore.impl.data.types import (
+    CameraModelParameters,
+    EncodedImageData,
+    FThetaCameraModelParameters,
+    IdealPinholeCameraModelParameters,
+    OpenCVFisheyeCameraModelParameters,
+    OpenCVPinholeCameraModelParameters,
+    PointCloud,
+    ShutterType,
+)
+
+
+#: A caller-side generic helper over camera model parameters. Bound to the abstract base, this is
+#: the shape downstream code needs in order to transform parameters while keeping the caller's
+#: concrete type; it only type-checks because every `transform` override returns `Self`.
+_CameraModelParametersT = TypeVar("_CameraModelParametersT", bound=CameraModelParameters)
+
+
+def _downscale(
+    parameters: _CameraModelParametersT,
+    image_domain_scale: Union[float, Tuple[float, float]],
+) -> _CameraModelParametersT:
+    return parameters.transform(image_domain_scale)
 
 
 class TestPointCloud(unittest.TestCase):
@@ -353,6 +375,76 @@ class TestEncodedImageData(unittest.TestCase):
         other.get_decoded_image()  # would evict a method-level maxsize=1 cache
         a2 = first.get_decoded_image()
         self.assertIs(a1, a2)
+
+
+class TestCameraModelParametersTransformSelf(unittest.TestCase):
+    """`transform` must preserve the concrete parameter type, statically and at runtime"""
+
+    _RESOLUTION = np.array([640, 480], dtype=np.uint64)
+    _PRINCIPAL_POINT = np.array([320.0, 240.0], dtype=np.float32)
+    _FOCAL_LENGTH = np.array([500.0, 500.0], dtype=np.float32)
+
+    @classmethod
+    def _ftheta(cls) -> FThetaCameraModelParameters:
+        return FThetaCameraModelParameters(
+            resolution=cls._RESOLUTION,
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=cls._PRINCIPAL_POINT,
+            reference_poly=FThetaCameraModelParameters.PolynomialType.ANGLE_TO_PIXELDIST,
+            pixeldist_to_angle_poly=np.array([0.0, 0.0008, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            angle_to_pixeldist_poly=np.array([0.0, 1250.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            max_angle=float(np.radians(45.0)),
+            linear_cde=np.array([1.0, 0.0, 0.0], dtype=np.float32),
+        )
+
+    @classmethod
+    def _all_parameters(cls) -> List[CameraModelParameters]:
+        resolution = cls._RESOLUTION
+        principal_point = cls._PRINCIPAL_POINT
+        focal_length = cls._FOCAL_LENGTH
+        return [
+            cls._ftheta(),
+            IdealPinholeCameraModelParameters(
+                resolution=resolution,
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=principal_point,
+                focal_length=focal_length,
+            ),
+            OpenCVPinholeCameraModelParameters(
+                resolution=resolution,
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=principal_point,
+                focal_length=focal_length,
+                radial_coeffs=np.zeros(6, dtype=np.float32),
+                tangential_coeffs=np.zeros(2, dtype=np.float32),
+                thin_prism_coeffs=np.zeros(4, dtype=np.float32),
+            ),
+            OpenCVFisheyeCameraModelParameters(
+                resolution=resolution,
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=principal_point,
+                focal_length=focal_length,
+                radial_coeffs=np.zeros(4, dtype=np.float32),
+                max_angle=float(np.radians(70.0)),
+            ),
+        ]
+
+    def test_transform_preserves_concrete_type(self):
+        # Statically, `_downscale` is generic over the abstract base and returns the caller's own
+        # type; that only holds while every override returns `Self` rather than its own class.
+        for parameters in self._all_parameters():
+            with self.subTest(model=parameters.type()):
+                transformed = _downscale(parameters, 0.5)
+                self.assertIs(type(transformed), type(parameters))
+                npt.assert_array_equal(transformed.resolution, np.array([320, 240], dtype=np.uint64))
+
+    def test_generic_helper_keeps_the_concrete_static_type(self):
+        # Assigning to the concrete type is what pins the `Self` behaviour for the type checker;
+        # with a non-`Self` override this narrows to the declaring class and fails to check. This
+        # needs a statically concrete input, so it takes `_ftheta()` rather than an element of
+        # `_all_parameters()`, which is typed as the abstract base.
+        ftheta: FThetaCameraModelParameters = _downscale(self._ftheta(), 0.5)
+        self.assertIsInstance(ftheta.angle_to_pixeldist_poly, np.ndarray)
 
 
 if __name__ == "__main__":

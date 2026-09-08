@@ -34,7 +34,6 @@ from typing import (
     Optional,
     Protocol,
     Tuple,
-    TypeVar,
     Union,
 )
 
@@ -142,9 +141,6 @@ class BivariateWindshieldModelParameters(dataclasses_json.DataClassJsonMixin):
 # Represents the collection of all concrete external distortion types
 ConcreteExternalDistortionParametersUnion = Union[BivariateWindshieldModelParameters]
 
-# Self type-var for camera model parameters consistent with PEP 673 but compatible with Python < 3.11
-CameraModelParametersSelf = TypeVar("CameraModelParametersSelf", bound="CameraModelParameters")
-
 
 @dataclass
 class CameraModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
@@ -166,11 +162,11 @@ class CameraModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
 
     @abstractmethod
     def transform(
-        self: CameraModelParametersSelf,
+        self,
         image_domain_scale: Union[float, Tuple[float, float]],
         image_domain_offset: Tuple[float, float] = (0.0, 0.0),
         new_resolution: Optional[Tuple[int, int]] = None,
-    ) -> CameraModelParametersSelf:
+    ) -> Self:
         """
         Applies a transformation to camera model parameter
 
@@ -302,7 +298,7 @@ class FThetaCameraModelParameters(CameraModelParameters):
         image_domain_scale: Union[float, Tuple[float, float]],
         image_domain_offset: Tuple[float, float] = (0.0, 0.0),
         new_resolution: Optional[Tuple[int, int]] = None,
-    ) -> FThetaCameraModelParameters:
+    ) -> Self:
         """
         Applies a transformation to FTheta camera model parameter
 
@@ -720,7 +716,7 @@ class OpenCVFisheyeCameraModelParameters(CameraModelParameters):
         image_domain_scale: Union[float, Tuple[float, float]],
         image_domain_offset: Tuple[float, float] = (0.0, 0.0),
         new_resolution: Optional[Tuple[int, int]] = None,
-    ) -> OpenCVFisheyeCameraModelParameters:
+    ) -> Self:
         """
         Applies a transformation to OpenCV fisheye camera model parameter
 
