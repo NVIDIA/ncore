@@ -39,26 +39,46 @@ from ncore.impl.sensors.common import (
 )
 
 
-class ExternalDistortionModel(BaseModel, ABC):
-    """Base class for distortion effects from external causes to the camera"""
+#: Type of the external distortion parameters a concrete model returns from get_parameters().
+#:
+#: Covariant: the parameter appears only in a return position, and invariance would leave concrete
+#: instantiations with no common `ExternalDistortionModel[...]` supertype.
+ExternalDistortionParametersT_co = TypeVar(
+    "ExternalDistortionParametersT_co", bound=types.ExternalDistortionParameters, covariant=True
+)
+
+#: Invariant counterpart used for the free factory's generic overload; a covariant type variable
+#: cannot appear in a function parameter position.
+ExternalDistortionParametersT = TypeVar("ExternalDistortionParametersT", bound=types.ExternalDistortionParameters)
+
+
+class ExternalDistortionModel(BaseModel, ABC, Generic[ExternalDistortionParametersT_co]):
+    """Base class for distortion effects from external causes to the camera
+
+    Generic in the concrete parameter type the model round-trips through :meth:`get_parameters`, so
+    that an ``ExternalDistortionModel`` remains statically useful without having to narrow it to a
+    concrete model type. Plain (unparameterized) annotations remain valid and behave as before.
+    """
 
     @staticmethod
     def from_parameters(
-        external_distortion_parameters: types.ConcreteExternalDistortionParametersUnion,
+        external_distortion_parameters: types.ExternalDistortionParameters,
         device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
     ) -> ExternalDistortionModel:
         """
         Initialize a generic external distortion model from parameters
+
+        .. deprecated::
+            Prefer the module-level :func:`external_distortion_model_from_parameters`, which
+            dispatches on the parameter type (and can be extended for out-of-tree models via
+            :func:`register_external_distortion_model`) instead of being a closed dispatch table
+            inherited by every external distortion model.
         """
-        if isinstance(external_distortion_parameters, types.BivariateWindshieldModelParameters):
-            return BivariateWindshieldModel(external_distortion_parameters, device, dtype)
-        raise TypeError(
-            f"Unsupported external distortion type {type(external_distortion_parameters)}, currently only supporting 'BivariateWindshieldModel' type."
-        )
+        return external_distortion_model_from_parameters(external_distortion_parameters, device, dtype)
 
     @abstractmethod
-    def get_parameters(self) -> types.ConcreteExternalDistortionParametersUnion:
+    def get_parameters(self) -> ExternalDistortionParametersT_co:
         """Returns the parameters specific to the concrete distortion model"""
         pass
 
@@ -77,7 +97,7 @@ class ExternalDistortionModel(BaseModel, ABC):
         pass
 
 
-class BivariateWindshieldModel(ExternalDistortionModel):
+class BivariateWindshieldModel(ExternalDistortionModel[types.BivariateWindshieldModelParameters]):
     """Implements an external distortion caused by a vehicle's windshield. The model is only applicable for cameras where the whole area of interest is projected through the windshield.
 
     The distortion is computed on spherical phi/theta angle-based representations of a sensor ray with direction=[x,y,z] such that phi = asin(x/(x^2+y+2+z^2)) and theta = asin(y/(x^2+y^2+z^2)).
@@ -132,7 +152,7 @@ class BivariateWindshieldModel(ExternalDistortionModel):
         self.order_phi = self.compute_poly_order(self.horizontal_poly)
         self.order_theta = self.compute_poly_order(self.vertical_poly)
 
-    def get_parameters(self) -> types.ConcreteExternalDistortionParametersUnion:
+    def get_parameters(self) -> types.BivariateWindshieldModelParameters:
         """Returns the parameters specific to the current windshield distortion model instance"""
         return types.BivariateWindshieldModelParameters(
             reference_poly=self.reference_poly,
@@ -295,7 +315,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
                 Optional[torch.nn.Module],
                 map_optional(
                     camera_model_parameters.external_distortion_parameters,
-                    lambda x: ExternalDistortionModel.from_parameters(x, self.device, self.dtype),
+                    lambda x: external_distortion_model_from_parameters(x, self.device, self.dtype),
                 ),
             ),
         )
@@ -2005,6 +2025,15 @@ def _(
 #:
 #: Dispatch follows the parameter type's MRO, so a model parameter type derived from a registered
 #: one resolves to the base's factory unless it registers its own.
+#:
+#: Registration is a runtime mechanism; it cannot extend the overloads of
+#: :func:`camera_model_from_parameters`. Out-of-tree parameters deriving from
+#: :class:`~ncore.impl.data.types.CameraModelParameters` therefore resolve statically through the generic
+#: overload to ``CameraModel[TheirParameters]``, which is precise enough for most uses. Parameters
+#: deriving from a *concrete* NCore parameters class instead match that class's overload, so the
+#: call statically yields the NCore model type even though the registered factory runs. Register a
+#: distinct parameters type, or wrap the call in an own typed helper, where the precise model type
+#: matters.
 register_camera_model = _camera_model_from_parameters.register
 
 
@@ -2070,3 +2099,89 @@ def camera_model_from_parameters(
         TypeError: if no camera model is registered for the given parameter type.
     """
     return _camera_model_from_parameters(cam_model_parameters, device, dtype)
+
+
+@singledispatch
+def _external_distortion_model_from_parameters(
+    external_distortion_parameters: types.ExternalDistortionParameters,
+    device: Union[str, torch.device] = torch.device("cuda"),
+    dtype: torch.dtype = torch.float32,
+) -> ExternalDistortionModel:
+    """Open dispatch registry backing :func:`external_distortion_model_from_parameters`
+
+    Kept separate from the public entry point so that the latter can carry precise
+    :func:`typing.overload` signatures: a checker cannot see through the ``singledispatch``
+    decorator, and stacking overloads on top of it is rejected outright.
+    """
+    raise TypeError(
+        f"Unsupported external distortion type {type(external_distortion_parameters)}, currently "
+        "only supporting 'BivariateWindshieldModel'; register out-of-tree external distortion "
+        "models with register_external_distortion_model()"
+    )
+
+
+@_external_distortion_model_from_parameters.register
+def _(
+    external_distortion_parameters: types.BivariateWindshieldModelParameters,
+    device: Union[str, torch.device] = torch.device("cuda"),
+    dtype: torch.dtype = torch.float32,
+) -> BivariateWindshieldModel:
+    return BivariateWindshieldModel(external_distortion_parameters, device, dtype)
+
+
+#: Registers an external distortion model factory for an external distortion parameter type
+#:
+#: Accepts the same forms as :meth:`functools.singledispatch.register`, i.e. it can be used as a
+#: bare decorator on a factory whose first parameter is annotated with the parameter type it
+#: builds from. Dispatch follows the parameter type's MRO, so a parameter type derived from a
+#: registered one resolves to the base's factory unless it registers its own.
+#:
+#: Registration is a runtime mechanism; it cannot extend the overloads of
+#: :func:`external_distortion_model_from_parameters`. Out-of-tree parameters deriving from
+#: :class:`~ncore.impl.data.types.ExternalDistortionParameters` therefore resolve statically through the generic
+#: overload to ``ExternalDistortionModel[TheirParameters]``, which is precise enough for most uses. Parameters
+#: deriving from a *concrete* NCore parameters class instead match that class's overload, so the
+#: call statically yields the NCore model type even though the registered factory runs. Register a
+#: distinct parameters type, or wrap the call in an own typed helper, where the precise model type
+#: matters.
+register_external_distortion_model = _external_distortion_model_from_parameters.register
+
+
+@overload
+def external_distortion_model_from_parameters(
+    external_distortion_parameters: types.BivariateWindshieldModelParameters,
+    device: Union[str, torch.device] = ...,
+    dtype: torch.dtype = ...,
+) -> BivariateWindshieldModel: ...
+
+
+@overload
+def external_distortion_model_from_parameters(
+    external_distortion_parameters: ExternalDistortionParametersT,
+    device: Union[str, torch.device] = ...,
+    dtype: torch.dtype = ...,
+) -> ExternalDistortionModel[ExternalDistortionParametersT]: ...
+
+
+def external_distortion_model_from_parameters(
+    external_distortion_parameters: types.ExternalDistortionParameters,
+    device: Union[str, torch.device] = torch.device("cuda"),
+    dtype: torch.dtype = torch.float32,
+) -> ExternalDistortionModel:
+    """Initializes the external distortion model corresponding to the given parameters
+
+    Dispatches on the runtime type of ``external_distortion_parameters``. Out-of-tree models can
+    participate by registering their factory via :func:`register_external_distortion_model`.
+
+    Args:
+        external_distortion_parameters: the parameters to build the distortion model from.
+        device: the device to instantiate the model on.
+        dtype: the floating point type to instantiate the model with.
+
+    Returns:
+        the external distortion model corresponding to ``external_distortion_parameters``.
+
+    Raises:
+        TypeError: if no model is registered for the given parameter type.
+    """
+    return _external_distortion_model_from_parameters(external_distortion_parameters, device, dtype)

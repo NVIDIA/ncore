@@ -34,6 +34,7 @@ from ncore.impl.data.types import (
     BivariateWindshieldModelParameters,
     CameraModelParameters,
     ConcreteCameraModelParametersUnion,
+    ExternalDistortionParameters,
     FThetaCameraModelParameters,
     IdealPinholeCameraModelParameters,
     OpenCVFisheyeCameraModelParameters,
@@ -52,7 +53,9 @@ from ncore.impl.sensors.camera import (
     OpenCVFisheyeCameraModel,
     OpenCVPinholeCameraModel,
     camera_model_from_parameters,
+    external_distortion_model_from_parameters,
     register_camera_model,
+    register_external_distortion_model,
     to_torch,
 )
 
@@ -2409,6 +2412,120 @@ class TestCameraModelFactory(unittest.TestCase):
         # ... but the base itself has no identifier of its own
         with self.assertRaises(NotImplementedError):
             CameraModelParameters.type()
+
+
+class TestExternalDistortionModelFactory(unittest.TestCase):
+    """Tests for the free external_distortion_model_from_parameters() factory and its registry"""
+
+    @staticmethod
+    def _windshield() -> BivariateWindshieldModelParameters:
+        return BivariateWindshieldModelParameters(
+            reference_poly=ReferencePolynomial.FORWARD,
+            horizontal_poly=np.array([0.0, 1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            vertical_poly=np.array([0.0, 0.0, 1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            horizontal_poly_inverse=np.array([0.0, 1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            vertical_poly_inverse=np.array([0.0, 0.0, 1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+        )
+
+    def test_dispatches_to_concrete_model(self):
+        parameters = self._windshield()
+        model = external_distortion_model_from_parameters(parameters, device="cpu")
+        self.assertIsInstance(model, BivariateWindshieldModel)
+        # The parameters round-trip back out through the abstract interface
+        self.assertEqual(model.get_parameters().type(), parameters.type())
+
+    def test_deprecated_static_factory_forwards(self):
+        self.assertIsInstance(
+            ExternalDistortionModel.from_parameters(self._windshield(), device="cpu"), BivariateWindshieldModel
+        )
+
+    def test_unregistered_parameters_raise(self):
+        with self.assertRaises(TypeError):
+            external_distortion_model_from_parameters(cast(ExternalDistortionParameters, object()), device="cpu")
+
+    def test_out_of_tree_registration(self):
+        @dataclasses.dataclass
+        class CustomDistortionParameters(BivariateWindshieldModelParameters):
+            @staticmethod
+            def type() -> str:
+                return "custom"
+
+        class CustomDistortionModel(BivariateWindshieldModel):
+            pass
+
+        parameters = CustomDistortionParameters(**dataclasses.asdict(self._windshield()))
+
+        # Without a registration, dispatch falls back to the base's factory along the MRO
+        self.assertIsInstance(
+            external_distortion_model_from_parameters(parameters, device="cpu"), BivariateWindshieldModel
+        )
+
+        @register_external_distortion_model
+        def _(
+            external_distortion_parameters: CustomDistortionParameters,
+            device: Union[str, torch.device] = torch.device("cuda"),
+            dtype: torch.dtype = torch.float32,
+        ) -> CustomDistortionModel:
+            return CustomDistortionModel(external_distortion_parameters, device, dtype)
+
+        # The registry is process-global and singledispatch offers no unregister; keying it on a
+        # method-local parameter type keeps the registration unreachable from other tests
+        self.assertIsInstance(
+            external_distortion_model_from_parameters(parameters, device="cpu"), CustomDistortionModel
+        )
+
+    def test_abstract_base_declares_serialization(self):
+        # Parameters can be serialized through the abstract type without narrowing
+        def encode(parameters: ExternalDistortionParameters) -> dict:
+            return {"external_distortion_type": parameters.type(), "parameters": parameters.to_dict()}
+
+        self.assertEqual(encode(self._windshield())["external_distortion_type"], "bivariate-windshield")
+
+        # ... but the base itself has no identifier of its own
+        with self.assertRaises(NotImplementedError):
+            ExternalDistortionParameters.type()
+
+    def test_from_dict_reconstructs_the_concrete_distortion_type(self):
+        # `dataclasses_json` constructs whatever type the field is annotated with, so this is the
+        # path that breaks if `external_distortion_parameters` names an abstract type: the nested
+        # dict would deserialize into that base instead of the concrete model's parameters, and the
+        # failure only shows up later where the value is used. Cover the raw `from_dict` path in
+        # addition to the encode/decode helpers, which construct the concrete type by hand.
+        camera = IdealPinholeCameraModelParameters(
+            resolution=np.array([640, 480], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array([320.0, 240.0], dtype=np.float32),
+            focal_length=np.array([500.0, 500.0], dtype=np.float32),
+            external_distortion_parameters=self._windshield(),
+        )
+        restored = IdealPinholeCameraModelParameters.from_dict(camera.to_dict())
+        self.assertIsInstance(restored.external_distortion_parameters, BivariateWindshieldModelParameters)
+        self.assertEqual(restored.to_json(), camera.to_json())
+
+    def test_abstract_base_is_not_instantiable(self):
+        # `ABC` does not prevent instantiation without an abstract method, and `type()` is
+        # deliberately non-abstract, so the base guards itself explicitly.
+        with self.assertRaises(TypeError):
+            ExternalDistortionParameters()
+
+    def test_encode_decode_roundtrip_with_distortion(self):
+        # The `external_distortion_parameters` field deliberately keeps naming the concrete union
+        # rather than the new abstract base: widening a field a caller *reads* is a breaking change
+        # for downstream consumers that pass it on to concretely-typed APIs, and it also changes
+        # what `dataclasses_json` reconstructs (see test_from_dict_reconstructs_the_concrete_
+        # distortion_type). It is left to the separate widening pass that covers the other read
+        # positions. This pins the round-trip that has to keep working either way.
+        camera = IdealPinholeCameraModelParameters(
+            resolution=np.array([640, 480], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array([320.0, 240.0], dtype=np.float32),
+            focal_length=np.array([500.0, 500.0], dtype=np.float32),
+            external_distortion_parameters=self._windshield(),
+        )
+        encoded = encode_camera_model_parameters(camera)
+        self.assertEqual(encoded["external_distortion_type"], "bivariate-windshield")
+        decoded = decode_camera_model_parameters(encoded)
+        self.assertEqual(decoded.to_json(), camera.to_json())
 
 
 if __name__ == "__main__":
