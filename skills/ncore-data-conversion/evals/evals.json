@@ -1,0 +1,79 @@
+[
+  {
+    "id": "ncore-data-conversion-001",
+    "question": "I have a directory of Waymo Open Dataset .tfrecord files and I need them in NCore V4 format. How do I do that?",
+    "expected_skill": "ncore-data-conversion",
+    "expected_script": null,
+    "ground_truth": "The agent used the skill to route the user to the built-in Waymo converter, gave the bazel run //tools/data_converter/waymo:convert invocation with the waymo-v4 subcommand and the base --root-dir/--output-dir flags, and did not suggest writing a converter.",
+    "expected_behavior": [
+      "The agent identified that NCore ships a built-in Waymo converter",
+      "The agent gave the correct Bazel target and the waymo-v4 subcommand",
+      "The agent noted that re-running the same sequence over an existing itar store truncates it, while different sequences coexist under <output-dir>/<sequence_id>/",
+      "The agent did not propose authoring a new converter or a template"
+    ]
+  },
+  {
+    "id": "ncore-data-conversion-002",
+    "question": "NCore doesn't ship a converter for my dataset. It's per-frame files with a spinning LiDAR and a few calibrated cameras. What's the right way to get it into V4?",
+    "expected_skill": "ncore-data-conversion",
+    "expected_script": null,
+    "ground_truth": "The agent used the skill to explain that no built-in converter exists and that the correct approach is to adapt the nearest in-tree converter, chosen by input layout and sensor model rather than by name, working on a feature branch and checking the resulting store.",
+    "expected_behavior": [
+      "The agent said no built-in converter exists for the dataset",
+      "The agent directed the user to adapt the nearest in-tree converter, naming a plausible candidate such as nuScenes or Argoverse 2 for a per-frame spinning-lidar layout",
+      "The agent pointed at that converter's own source as the reference implementation",
+      "The agent did not offer a generic scaffold or template to copy"
+    ]
+  },
+  {
+    "id": "ncore-data-conversion-003",
+    "question": "I converted a sequence, and when I project the LiDAR points onto the camera images they don't land on the right things. How do I work out what's wrong?",
+    "expected_skill": "ncore-data-conversion",
+    "expected_script": null,
+    "ground_truth": "The agent used the skill to separate the possible causes rather than guessing among them. It explained that extrinsics, intrinsics and timestamps all produce misalignment, and that projecting frames where the rig is stationary removes timing as a variable, since timestamp errors have no geometric effect without ego motion. It noted that the cause is often in the source data rather than introduced by conversion.",
+    "expected_behavior": [
+      "The agent proposed projecting frames at standstill to separate calibration faults from timing faults, rather than guessing at a single cause",
+      "The agent named extrinsics, intrinsics and timestamps as distinct causes that produce the same appearance",
+      "The agent did not reference a validate.py or any validator, which do not exist in the repository",
+      "The agent used ncore_vis or ncore_sequence_meta to inspect the store, and ncore_project_pc_to_img only where the sequence has both a camera and a lidar",
+      "The agent did not claim that conversion can correct a calibration error present in the source dataset"
+    ]
+  },
+  {
+    "id": "ncore-data-conversion-004",
+    "question": "My lidar is a Livox-style sensor with a non-repetitive scan pattern, so it has no fixed row and column grid. How should I store its returns in V4?",
+    "expected_skill": "ncore-data-conversion",
+    "expected_script": null,
+    "ground_truth": "The agent used the skill to explain that a structured spinning lidar model is optional: the sensor should still use LidarSensorComponent, passing model_element=None so that raw ray bundles with per-ray timestamps are stored without a row and column model.",
+    "expected_behavior": [
+      "The agent said LidarSensorComponent is still the right component",
+      "The agent said to pass model_element=None rather than forcing a structured spinning model",
+      "The agent noted that per-ray timestamps are preserved without a structured model",
+      "The agent did not propose PointCloudsComponent as the primary answer solely on the grounds that timestamps would otherwise be lost"
+    ]
+  },
+  {
+    "id": "ncore-data-conversion-005",
+    "question": "I already have my scene in NCore V4 format and I want to train a neural radiance field reconstruction. What learning rate and batch size should I use, and how do I launch the training?",
+    "expected_skill": null,
+    "expected_script": null,
+    "ground_truth": "The agent correctly identified this as a reconstruction training task rather than a data conversion task, and declined to answer from this skill, since the data is already in V4 format and training is a downstream consumer's concern.",
+    "expected_behavior": [
+      "The agent did not invoke the skill for this training-related question",
+      "The agent stated that training and rendering are outside this skill's scope",
+      "The agent did not invent NCore flags or converter options to answer it"
+    ]
+  },
+  {
+    "id": "ncore-data-conversion-006",
+    "question": "I have a converted V4 sequence with cars and pedestrians in it. How do I extract each object as a separate 3D asset I can drop into a simulator?",
+    "expected_skill": null,
+    "expected_script": null,
+    "ground_truth": "The agent correctly identified per-object 3D asset extraction as outside this skill's scope, which covers getting data into V4 and checking it, not deriving assets from a reconstructed scene.",
+    "expected_behavior": [
+      "The agent did not invoke the skill for this asset-extraction question",
+      "The agent stated that extracting per-object 3D assets is outside this skill's scope",
+      "The agent did not invent an NCore tool or converter flag that performs asset extraction"
+    ]
+  }
+]
