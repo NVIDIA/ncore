@@ -27,7 +27,14 @@ from ncore.impl.sensors.camera import (
     camera_model_from_parameters,
     register_camera_model,
 )
-from ncore.impl.sensors.lidar import LidarModel, RowOffsetStructuredSpinningLidarModel, StructuredLidarModel
+from ncore.impl.sensors.lidar import (
+    LidarModel,
+    RowOffsetStructuredSpinningLidarModel,
+    StructuredLidarModel,
+    lidar_model_from_parameters,
+    maybe_lidar_model_from_parameters,
+    register_lidar_model,
+)
 from ncore.impl.sensors.rectification import Rectificator
 
 
@@ -43,6 +50,9 @@ __all__ = [
     "ExternalDistortionModel",
     "BivariateWindshieldModel",
     "LidarModel",
+    "lidar_model_from_parameters",
+    "maybe_lidar_model_from_parameters",
+    "register_lidar_model",
     "StructuredLidarModel",
     "RowOffsetStructuredSpinningLidarModel",
     "Rectificator",
