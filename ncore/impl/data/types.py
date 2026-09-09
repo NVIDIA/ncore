@@ -94,7 +94,41 @@ class ReferencePolynomial(IntEnum):
 
 
 @dataclass
-class BivariateWindshieldModelParameters(dataclasses_json.DataClassJsonMixin):
+class ExternalDistortionParameters(dataclasses_json.DataClassJsonMixin, ABC):
+    """Represents parameters common to all external distortion models
+
+    External distortion is any source of distortion outside the camera itself (e.g. a windshield).
+    The JSON (de)serialization interface (:meth:`to_dict` / :meth:`from_dict`) is provided by
+    :class:`dataclasses_json.DataClassJsonMixin` on this base, so that code operating on the
+    abstract type can serialize parameters without narrowing to a concrete model first.
+    """
+
+    @staticmethod
+    def type() -> str:
+        """Returns a string-identifier of the external distortion model
+
+        Concrete external distortion parameters must override this with their own stable
+        identifier; it keys the serialized representation (see
+        :func:`encode_camera_model_parameters`). This is deliberately not an
+        :func:`abstractmethod` so that adding it to this base does not render pre-existing
+        out-of-tree subclasses non-instantiable.
+        """
+        raise NotImplementedError("Concrete external distortion parameters must implement type()")
+
+    def __post_init__(self) -> None:
+        # `ABC` alone does not prevent instantiation when a class declares no abstract method, and
+        # `type()` is deliberately non-abstract here so that out-of-tree subclasses stay
+        # instantiable. Guard the base explicitly: `dataclasses_json` constructs whatever type a
+        # field is annotated with, so an abstract annotation would otherwise yield a silently
+        # useless base instance instead of a concrete model's parameters.
+        if type(self) is ExternalDistortionParameters:
+            raise TypeError(
+                "ExternalDistortionParameters is abstract; instantiate a concrete external distortion model's parameters"
+            )
+
+
+@dataclass
+class BivariateWindshieldModelParameters(ExternalDistortionParameters):
     """Represents parameters required to create a windshield external distortion model"""
 
     reference_poly: ReferencePolynomial = util.enum_field(ReferencePolynomial)  #: Reference polynomial of the model

@@ -25,7 +25,9 @@ from ncore.impl.sensors.camera import (
     OpenCVPinholeCameraModel,
     PinholeCameraModel,
     camera_model_from_parameters,
+    external_distortion_model_from_parameters,
     register_camera_model,
+    register_external_distortion_model,
 )
 from ncore.impl.sensors.lidar import (
     LidarModel,
@@ -48,6 +50,8 @@ __all__ = [
     "OpenCVPinholeCameraModel",
     "OpenCVFisheyeCameraModel",
     "ExternalDistortionModel",
+    "external_distortion_model_from_parameters",
+    "register_external_distortion_model",
     "BivariateWindshieldModel",
     "LidarModel",
     "lidar_model_from_parameters",
