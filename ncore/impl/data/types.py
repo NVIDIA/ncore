@@ -873,10 +873,33 @@ def decode_camera_model_parameters(encoded_parameters: Mapping) -> ConcreteCamer
 
 
 @dataclass()
-class BaseLidarModelParameters:
-    """Represents parameters common to all lidar models"""
+class BaseLidarModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
+    """Represents parameters common to all lidar models
 
-    pass
+    The JSON (de)serialization interface (:meth:`to_dict` / :meth:`from_dict`) is provided by
+    :class:`dataclasses_json.DataClassJsonMixin` on this base, so that code operating on the
+    abstract type can serialize parameters without narrowing to a concrete model first.
+    """
+
+    @staticmethod
+    def type() -> str:
+        """Returns a string-identifier of the lidar model
+
+        Concrete lidar model parameters must override this with their own stable identifier; it
+        keys the serialized representation (see :func:`encode_lidar_model_parameters`). This is
+        deliberately not an :func:`abstractmethod` so that adding it to this base does not render
+        pre-existing out-of-tree subclasses non-instantiable.
+        """
+        raise NotImplementedError("Concrete lidar model parameters must implement type()")
+
+    def __post_init__(self) -> None:
+        # `ABC` alone does not prevent instantiation when a class declares no abstract method, and
+        # `type()` is deliberately non-abstract here so that out-of-tree subclasses stay
+        # instantiable. Guard the base explicitly: `dataclasses_json` constructs whatever type a
+        # field is annotated with, so an abstract annotation would otherwise yield a silently
+        # useless base instance instead of a concrete model's parameters.
+        if type(self) is BaseLidarModelParameters:
+            raise TypeError("BaseLidarModelParameters is abstract; instantiate a concrete lidar model's parameters")
 
 
 @dataclass()
@@ -912,9 +935,7 @@ class BaseStructuredSpinningLidarModelParameters(BaseSpinningLidarModelParameter
 
 
 @dataclass()
-class RowOffsetStructuredSpinningLidarModelParameters(
-    BaseStructuredSpinningLidarModelParameters, dataclasses_json.DataClassJsonMixin
-):
+class RowOffsetStructuredSpinningLidarModelParameters(BaseStructuredSpinningLidarModelParameters):
     """Represents parameters for a structured spinning lidar model that is using a per-row azimuth-offset (compatible with, e.g., Hesai P128 sensors)"""
 
     # elevation angles
@@ -1004,7 +1025,7 @@ class RowOffsetStructuredSpinningLidarModelParameters(
 ConcreteLidarModelParametersUnion = Union[RowOffsetStructuredSpinningLidarModelParameters]
 
 
-def encode_lidar_model_parameters(lidar_model_parameters: ConcreteLidarModelParametersUnion) -> Dict:
+def encode_lidar_model_parameters(lidar_model_parameters: BaseLidarModelParameters) -> Dict:
     """Encodes lidar intrinsic model parameters to serializable model-typed dictionary"""
 
     encoded = {

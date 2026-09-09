@@ -13,13 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import dataclasses
 import itertools
 import json
 import os
 import unittest
 import unittest.mock
 
-from typing import Tuple
+from typing import List, Tuple, Union, cast
 
 import numpy as np
 import parameterized
@@ -27,10 +28,17 @@ import torch
 
 from ncore.impl.common.transformations import se3_inverse
 from ncore.impl.common.util import unpack_optional
-from ncore.impl.data.types import RowOffsetStructuredSpinningLidarModelParameters
+from ncore.impl.data.types import BaseLidarModelParameters, RowOffsetStructuredSpinningLidarModelParameters
 from ncore.impl.sensors import lidar as lidar_module
 from ncore.impl.sensors.common import to_torch
-from ncore.impl.sensors.lidar import RowOffsetStructuredSpinningLidarModel
+from ncore.impl.sensors.lidar import (
+    LidarModel,
+    RowOffsetStructuredSpinningLidarModel,
+    StructuredLidarModel,
+    lidar_model_from_parameters,
+    maybe_lidar_model_from_parameters,
+    register_lidar_model,
+)
 
 
 # =============================================================================
@@ -71,6 +79,104 @@ class TestRowOffsetStructuredSpinningLidarModelParameters(unittest.TestCase):
 
         # re-enconde and make sure data is equal
         self.assertEqual(model_parameters.to_dict(), self.model_parameters_ref)
+
+
+class TestLidarModelFactory(unittest.TestCase):
+    """Tests for the free lidar_model_from_parameters() factory and its open registry"""
+
+    @staticmethod
+    def _parameters() -> RowOffsetStructuredSpinningLidarModelParameters:
+        with open("ncore/impl/sensors/test_data/row-offset-spinning-lidar-model-parameters.json", "r") as fp:
+            return RowOffsetStructuredSpinningLidarModelParameters.from_dict(json.load(fp))
+
+    def test_dispatches_to_concrete_model(self):
+        model = lidar_model_from_parameters(self._parameters(), device="cpu")
+        self.assertIsInstance(model, RowOffsetStructuredSpinningLidarModel)
+        # The parameters round-trip back out through the abstract interface
+        self.assertEqual(model.get_parameters().type(), self._parameters().type())
+
+    def test_maybe_variant_passes_none_through(self):
+        self.assertIsNone(maybe_lidar_model_from_parameters(None, device="cpu"))
+        self.assertIsInstance(
+            maybe_lidar_model_from_parameters(self._parameters(), device="cpu"),
+            RowOffsetStructuredSpinningLidarModel,
+        )
+
+    def test_deprecated_static_factories_forward(self):
+        parameters = self._parameters()
+        for owner in (LidarModel, StructuredLidarModel):
+            with self.subTest(owner=owner.__name__):
+                self.assertIsInstance(
+                    owner.maybe_from_parameters(parameters, device="cpu"),
+                    RowOffsetStructuredSpinningLidarModel,
+                )
+                self.assertIsNone(owner.maybe_from_parameters(None, device="cpu"))
+
+    def test_unregistered_parameters_raise(self):
+        with self.assertRaises(TypeError):
+            lidar_model_from_parameters(cast(BaseLidarModelParameters, object()), device="cpu")
+
+    def test_out_of_tree_registration(self):
+        @dataclasses.dataclass
+        class CustomLidarModelParameters(RowOffsetStructuredSpinningLidarModelParameters):
+            @staticmethod
+            def type() -> str:
+                return "custom"
+
+        class CustomLidarModel(RowOffsetStructuredSpinningLidarModel):
+            pass
+
+        reference = self._parameters()
+        parameters = CustomLidarModelParameters(**dataclasses.asdict(reference))
+
+        # Without a registration, dispatch falls back to the base's factory along the MRO
+        self.assertIsInstance(
+            lidar_model_from_parameters(parameters, device="cpu"), RowOffsetStructuredSpinningLidarModel
+        )
+
+        @register_lidar_model
+        def _(
+            lidar_model_parameters: CustomLidarModelParameters,
+            device: Union[str, torch.device] = torch.device("cuda"),
+            dtype: torch.dtype = torch.float32,
+        ) -> CustomLidarModel:
+            return CustomLidarModel(lidar_model_parameters, device=device, dtype=dtype)
+
+        # The registry is process-global and singledispatch offers no unregister; keying it on a
+        # method-local parameter type keeps the registration unreachable from other tests.
+        #
+        # Registration is a runtime mechanism and cannot add an overload, so this call statically
+        # resolves through the overload of the concrete base these parameters derive from, i.e. to
+        # `RowOffsetStructuredSpinningLidarModel`. That stays sound here because `CustomLidarModel`
+        # is one; see `register_lidar_model` for when it is not.
+        self.assertIsInstance(lidar_model_from_parameters(parameters, device="cpu"), CustomLidarModel)
+
+    def test_lidar_model_parameters_type_is_covariant(self):
+        # A collection of lidar models must still have `LidarModel` as a common static supertype;
+        # with an invariant parameter type a type checker joining the element types would fall back
+        # past `LidarModel` and reject every method call on the joined type.
+        models: List[LidarModel[BaseLidarModelParameters]] = [
+            lidar_model_from_parameters(self._parameters(), device="cpu"),
+        ]
+        for model in models:
+            self.assertIsInstance(model.get_parameters(), BaseLidarModelParameters)
+
+    def test_abstract_base_is_not_instantiable(self):
+        # `ABC` does not prevent instantiation without an abstract method, and `type()` is
+        # deliberately non-abstract, so the base guards itself explicitly.
+        with self.assertRaises(TypeError):
+            BaseLidarModelParameters()
+
+    def test_abstract_base_declares_serialization(self):
+        # Parameters can be serialized through the abstract type without narrowing
+        def encode(parameters: BaseLidarModelParameters) -> dict:
+            return {"lidar_model_type": parameters.type(), "lidar_model_parameters": parameters.to_dict()}
+
+        self.assertEqual(encode(self._parameters())["lidar_model_type"], "row-offset-spinning")
+
+        # ... but the base itself has no identifier of its own
+        with self.assertRaises(NotImplementedError):
+            BaseLidarModelParameters.type()
 
 
 # NOTE: Uses _get_test_devices() to skip GPU tests when NCORE_NO_GPU_TESTS is set

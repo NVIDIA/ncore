@@ -17,7 +17,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Literal, Optional, Union, cast
+from functools import singledispatch
+from typing import Generic, Literal, Optional, TypeVar, Union, cast, overload
 
 import numpy as np
 import torch
@@ -52,8 +53,34 @@ class _LidarRollingShutterProjector(RollingShutterSolver.Projector):
         return self._model.sensor_angles_relative_frame_times(projected)
 
 
-class LidarModel(BaseModel, ABC):
-    """Base class for all lidar models"""
+#: Type of the lidar model parameters a concrete lidar model returns from get_parameters().
+#:
+#: Covariant: the parameter appears only in a return position, and invariance would leave two
+#: concrete `LidarModel[...]` instantiations with no common `LidarModel[...]` supertype, so a type
+#: checker joining a heterogeneous collection of lidar models would fall back past `LidarModel`.
+LidarModelParametersT_co = TypeVar("LidarModelParametersT_co", bound=types.BaseLidarModelParameters, covariant=True)
+
+#: Invariant counterpart used for the free factory's generic overload; a covariant type variable
+#: cannot appear in a function parameter position.
+LidarModelParametersT = TypeVar("LidarModelParametersT", bound=types.BaseLidarModelParameters)
+
+#: Type of the structured lidar model parameters a concrete structured model returns
+#: (covariant, see LidarModelParametersT_co)
+StructuredLidarModelParametersT_co = TypeVar(
+    "StructuredLidarModelParametersT_co",
+    bound=types.BaseStructuredSpinningLidarModelParameters,
+    covariant=True,
+)
+
+
+class LidarModel(BaseModel, ABC, Generic[LidarModelParametersT_co]):
+    """Base class for all lidar models
+
+    Generic in the concrete lidar model parameter type the model round-trips through
+    :meth:`get_parameters`, so that a ``LidarModel`` remains statically useful without having to
+    narrow it to a concrete model type. Plain (unparameterized) ``LidarModel`` annotations remain
+    valid and behave as before.
+    """
 
     @dataclass
     class SensorAnglesReturn:
@@ -115,20 +142,27 @@ class LidarModel(BaseModel, ABC):
 
     @staticmethod
     def maybe_from_parameters(
-        lidar_model_parameters: Optional[types.ConcreteLidarModelParametersUnion],
+        lidar_model_parameters: Optional[types.BaseLidarModelParameters],
         device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
     ) -> Optional[LidarModel]:
         """
         Initialize a generic lidar model from parameters, if available
+
+        .. deprecated::
+            Prefer the module-level :func:`maybe_lidar_model_from_parameters`, which dispatches on
+            the parameter type (and can be extended for out-of-tree models via
+            :func:`register_lidar_model`) instead of being a closed dispatch table inherited by
+            every lidar model.
         """
-        if lidar_model_parameters is None:
-            return None
-        if isinstance(lidar_model_parameters, types.RowOffsetStructuredSpinningLidarModelParameters):
-            return RowOffsetStructuredSpinningLidarModel(lidar_model_parameters, device=device, dtype=dtype)
-        raise TypeError(
-            f"Unsupported lidar model type {type(lidar_model_parameters)}, currently only supporting 'RowOffsetStructuredSpinningLidarModel'."
-        )
+        return maybe_lidar_model_from_parameters(lidar_model_parameters, device, dtype)
+
+    @abstractmethod
+    def get_parameters(self) -> LidarModelParametersT_co:
+        """
+        Returns the lidar model parameters specific to the current lidar model instance
+        """
+        ...
 
     @abstractmethod
     def sensor_rays_to_sensor_angles(
@@ -145,23 +179,27 @@ class LidarModel(BaseModel, ABC):
         ...
 
 
-class StructuredLidarModel(LidarModel, ABC):
+class StructuredLidarModel(LidarModel[StructuredLidarModelParametersT_co], ABC):
     @staticmethod
     def maybe_from_parameters(
-        lidar_model_parameters: Optional[types.ConcreteLidarModelParametersUnion],
+        lidar_model_parameters: Optional[types.BaseLidarModelParameters],
         device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
     ) -> Optional[StructuredLidarModel]:
         """
-        Initialize a generic lidar model from parameters, if available
+        Initialize a structured lidar model from parameters, if available
+
+        .. deprecated::
+            Prefer the module-level :func:`maybe_lidar_model_from_parameters`. This shadowed the
+            base's static method with a narrowed return type, so which closed dispatch table ran
+            depended only on the class name the caller happened to spell. The parameter type stays
+            as wide as the base's: narrowing it here would be a contravariance violation, so the
+            structured-ness of the result is enforced at runtime instead.
         """
-        if lidar_model_parameters is None:
-            return None
-        if isinstance(lidar_model_parameters, types.RowOffsetStructuredSpinningLidarModelParameters):
-            return RowOffsetStructuredSpinningLidarModel(lidar_model_parameters, device=device, dtype=dtype)
-        raise TypeError(
-            f"Unsupported structured lidar model type {type(lidar_model_parameters)}, currently only supporting 'RowOffsetStructuredSpinningLidarModel'."
-        )
+        model = maybe_lidar_model_from_parameters(lidar_model_parameters, device, dtype)
+        if model is not None and not isinstance(model, StructuredLidarModel):
+            raise TypeError(f"{type(lidar_model_parameters)} does not build a structured lidar model")
+        return model
 
     def elements_to_sensor_points(
         self, elements: Union[torch.Tensor, np.ndarray], element_distances: Union[torch.Tensor, np.ndarray]
@@ -195,7 +233,9 @@ class StructuredLidarModel(LidarModel, ABC):
         ...
 
 
-class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
+class RowOffsetStructuredSpinningLidarModel(
+    StructuredLidarModel[types.RowOffsetStructuredSpinningLidarModelParameters]
+):
     """Represents a structured spinning lidar model that is using a per-row azimuth-offset (compatible with, e.g., Hesai P128 sensors)"""
 
     row_elevations_rad: torch.Tensor
@@ -691,3 +731,112 @@ class RowOffsetStructuredSpinningLidarModel(StructuredLidarModel):
 
         # Check if relative sensor angles are within the FOV of the sensor
         return self._valid_relative_sensor_angles(relative_sensor_angles)
+
+
+@singledispatch
+def _lidar_model_from_parameters(
+    lidar_model_parameters: types.BaseLidarModelParameters,
+    device: Union[str, torch.device] = torch.device("cuda"),
+    dtype: torch.dtype = torch.float32,
+) -> LidarModel:
+    """Open dispatch registry backing :func:`lidar_model_from_parameters`
+
+    Kept separate from the public entry point so that the latter can carry precise
+    :func:`typing.overload` signatures: a checker cannot see through the ``singledispatch``
+    decorator, and stacking overloads on top of it is rejected outright.
+    """
+    raise TypeError(
+        f"Unsupported lidar model type {type(lidar_model_parameters)}, currently only supporting "
+        "'RowOffsetStructuredSpinningLidarModel'; register out-of-tree lidar models with "
+        "register_lidar_model()"
+    )
+
+
+@_lidar_model_from_parameters.register
+def _(
+    lidar_model_parameters: types.RowOffsetStructuredSpinningLidarModelParameters,
+    device: Union[str, torch.device] = torch.device("cuda"),
+    dtype: torch.dtype = torch.float32,
+) -> RowOffsetStructuredSpinningLidarModel:
+    return RowOffsetStructuredSpinningLidarModel(lidar_model_parameters, device=device, dtype=dtype)
+
+
+#: Registers a lidar model factory for a lidar model parameter type
+#:
+#: Accepts the same forms as :meth:`functools.singledispatch.register`, i.e. it can be used as a
+#: bare decorator on a factory whose first parameter is annotated with the parameter type it
+#: builds from. Dispatch follows the parameter type's MRO, so a model parameter type derived from
+#: a registered one resolves to the base's factory unless it registers its own.
+#:
+#: Registration is a runtime mechanism; it cannot extend the overloads of
+#: :func:`lidar_model_from_parameters`. Out-of-tree parameters deriving from
+#: :class:`~ncore.impl.data.types.BaseLidarModelParameters` therefore resolve statically through
+#: the generic overload to ``LidarModel[TheirParameters]``, which is precise enough for most uses.
+#: Parameters deriving from a *concrete* NCore parameters class instead match that class's
+#: overload, so the call statically yields the NCore model type even though the registered factory
+#: runs. Register a distinct parameters type, or wrap the call in an own typed helper, where the
+#: precise model type matters.
+register_lidar_model = _lidar_model_from_parameters.register
+
+
+@overload
+def lidar_model_from_parameters(
+    lidar_model_parameters: types.RowOffsetStructuredSpinningLidarModelParameters,
+    device: Union[str, torch.device] = ...,
+    dtype: torch.dtype = ...,
+) -> RowOffsetStructuredSpinningLidarModel: ...
+
+
+@overload
+def lidar_model_from_parameters(
+    lidar_model_parameters: LidarModelParametersT,
+    device: Union[str, torch.device] = ...,
+    dtype: torch.dtype = ...,
+) -> LidarModel[LidarModelParametersT]: ...
+
+
+def lidar_model_from_parameters(
+    lidar_model_parameters: types.BaseLidarModelParameters,
+    device: Union[str, torch.device] = torch.device("cuda"),
+    dtype: torch.dtype = torch.float32,
+) -> LidarModel:
+    """Initializes the lidar model corresponding to the given lidar model parameters
+
+    Dispatches on the runtime type of ``lidar_model_parameters``. Out-of-tree lidar models can
+    participate by registering their factory via :func:`register_lidar_model`.
+
+    Args:
+        lidar_model_parameters: the lidar model parameters to build the lidar model from.
+        device: the device to instantiate the lidar model on.
+        dtype: the floating point type to instantiate the lidar model with.
+
+    Returns:
+        the lidar model corresponding to ``lidar_model_parameters``.
+
+    Raises:
+        TypeError: if no lidar model is registered for the given parameter type.
+    """
+    return _lidar_model_from_parameters(lidar_model_parameters, device, dtype)
+
+
+def maybe_lidar_model_from_parameters(
+    lidar_model_parameters: Optional[types.BaseLidarModelParameters],
+    device: Union[str, torch.device] = torch.device("cuda"),
+    dtype: torch.dtype = torch.float32,
+) -> Optional[LidarModel]:
+    """Initializes the lidar model corresponding to the given parameters, if any
+
+    Convenience wrapper around :func:`lidar_model_from_parameters` for the common case of an
+    optional lidar model.
+
+    Args:
+        lidar_model_parameters: the lidar model parameters to build from, or None.
+        device: the device to instantiate the lidar model on.
+        dtype: the floating point type to instantiate the lidar model with.
+
+    Returns:
+        the corresponding lidar model, or None if no parameters were given.
+    """
+    if lidar_model_parameters is None:
+        return None
+    return lidar_model_from_parameters(lidar_model_parameters, device, dtype)
