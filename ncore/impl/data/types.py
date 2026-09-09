@@ -21,10 +21,11 @@ import math
 import sys
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import IntEnum, auto, unique
 from typing import (
     TYPE_CHECKING,
+    Any,
     Callable,
     ClassVar,
     Dict,
@@ -34,6 +35,8 @@ from typing import (
     Optional,
     Protocol,
     Tuple,
+    Type,
+    TypeVar,
     Union,
 )
 
@@ -127,7 +130,71 @@ class ExternalDistortionParameters(dataclasses_json.DataClassJsonMixin, ABC):
             )
 
 
+#: Type-var for the external distortion parameters registrar
+ExternalDistortionParametersT = TypeVar("ExternalDistortionParametersT", bound=ExternalDistortionParameters)
+
+#: Key under which the concrete type identifier is stored *inside* the serialized external
+#: distortion parameters. The identifier has to travel with the nested object: `dataclasses_json`
+#: reconstructs whatever type the field is annotated with, so without it an abstract annotation
+#: cannot be resolved back to a concrete class.
+EXTERNAL_DISTORTION_TYPE_KEY = "external_distortion_type"
+
+#: Identifier assumed for external distortion parameters serialized before the type key existed.
+#: The bivariate windshield model was the only concrete type at that point, so untagged data is
+#: unambiguous.
+_LEGACY_EXTERNAL_DISTORTION_TYPE = "bivariate-windshield"
+
+#: Maps the serialized identifier to the concrete external distortion parameters class
+_EXTERNAL_DISTORTION_PARAMETERS_BY_TYPE: Dict[str, Type[ExternalDistortionParameters]] = {}
+
+
+def register_external_distortion_parameters(
+    parameters_class: Type[ExternalDistortionParametersT],
+) -> Type[ExternalDistortionParametersT]:
+    """Registers a concrete external distortion parameters class for deserialization
+
+    Usable as a class decorator. The class is keyed by its :meth:`type` identifier, which is what
+    the serialized form carries, so that out-of-tree external distortion parameters round-trip
+    through :meth:`CameraModelParameters.from_dict` as well as the in-tree ones.
+    """
+    identifier = parameters_class.type()
+    existing = _EXTERNAL_DISTORTION_PARAMETERS_BY_TYPE.get(identifier)
+    if existing is not None and existing is not parameters_class:
+        raise ValueError(f"External distortion type {identifier!r} is already registered to {existing.__name__}")
+    _EXTERNAL_DISTORTION_PARAMETERS_BY_TYPE[identifier] = parameters_class
+    return parameters_class
+
+
+def external_distortion_parameters_field(default: Optional[ExternalDistortionParameters] = None) -> Any:
+    """Field carrying external distortion parameters as a type-tagged (discriminated) object
+
+    Encodes the concrete :meth:`ExternalDistortionParameters.type` alongside the object's own
+    fields and dispatches on it when decoding, so the field can be declared against the abstract
+    base rather than a closed union of concrete types.
+    """
+
+    def encoder(parameters: Optional[ExternalDistortionParameters]) -> Optional[Dict]:
+        if parameters is None:
+            return None
+        return {**parameters.to_dict(), EXTERNAL_DISTORTION_TYPE_KEY: parameters.type()}
+
+    def decoder(encoded: Any) -> Optional[ExternalDistortionParameters]:
+        if encoded is None or isinstance(encoded, ExternalDistortionParameters):
+            # Already-typed values are passed through: `from_dict` is not the only construction
+            # path, and callers assign concrete parameters directly.
+            return encoded
+        encoded = dict(encoded)
+        identifier = encoded.pop(EXTERNAL_DISTORTION_TYPE_KEY, _LEGACY_EXTERNAL_DISTORTION_TYPE)
+        parameters_class = _EXTERNAL_DISTORTION_PARAMETERS_BY_TYPE.get(identifier)
+        if parameters_class is None:
+            raise ValueError(f"Unknown external distortion type: {identifier}")
+        return parameters_class.from_dict(encoded)
+
+    return field(default=default, metadata=dataclasses_json.config(encoder=encoder, decoder=decoder))
+
+
 @dataclass
+@register_external_distortion_parameters
 class BivariateWindshieldModelParameters(ExternalDistortionParameters):
     """Represents parameters required to create a windshield external distortion model"""
 
@@ -190,9 +257,9 @@ class CameraModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
     )  #: Width and height of the image in pixels (uint64, [2,])
     shutter_type: ShutterType = util.enum_field(ShutterType)  #: Shutter type of the camera's imaging sensor
 
-    external_distortion_parameters: Optional[ConcreteExternalDistortionParametersUnion] = (
-        None  #: Optional external distortion source associated to the camera (e.g. windshield). If a source exists, rays will be distorted prior to reaching the camera and its associated lens distortion if applicable
-    )
+    external_distortion_parameters: Optional[ExternalDistortionParameters] = (
+        external_distortion_parameters_field()
+    )  #: Optional external distortion source associated to the camera (e.g. windshield). If a source exists, rays will be distorted prior to reaching the camera and its associated lens distortion if applicable
 
     @abstractmethod
     def transform(
@@ -236,7 +303,7 @@ class CameraModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
             self.shutter_type = ShutterType(self.shutter_type)
         assert self.shutter_type in ShutterType.__members__.values()
 
-        assert isinstance(self.external_distortion_parameters, (type(None), ConcreteExternalDistortionParametersUnion))
+        assert isinstance(self.external_distortion_parameters, (type(None), ExternalDistortionParameters))
 
 
 @dataclass
@@ -860,9 +927,11 @@ def encode_camera_model_parameters(camera_model_parameters: ConcreteCameraModelP
         "camera_model_parameters": camera_model_parameters.to_dict(),
     }
 
-    # Store type of external distortion, if available
+    # The type also travels inside the serialized parameters (see EXTERNAL_DISTORTION_TYPE_KEY).
+    # It is kept here as well so that readers predating the nested tag keep resolving the concrete
+    # type; drop this once no such reader remains.
     if camera_model_parameters.external_distortion_parameters:
-        encoded["external_distortion_type"] = camera_model_parameters.external_distortion_parameters.type()
+        encoded[EXTERNAL_DISTORTION_TYPE_KEY] = camera_model_parameters.external_distortion_parameters.type()
 
     return encoded
 
@@ -875,15 +944,18 @@ def decode_camera_model_parameters(encoded_parameters: Mapping) -> ConcreteCamer
     # Copy as we might modify the dictionary in place
     camera_model_parameters = encoded_parameters["camera_model_parameters"].copy()
 
-    # Hook up typed external distortion type, if present
-    external_distortion_type: Optional[str] = encoded_parameters.get("external_distortion_type")
-    if external_distortion_type is not None:
-        if external_distortion_type == "bivariate-windshield":
-            camera_model_parameters["external_distortion_parameters"] = BivariateWindshieldModelParameters.from_dict(
-                camera_model_parameters["external_distortion_parameters"]
-            )
-        else:
+    # Older payloads carry the external distortion type beside the camera parameters rather than
+    # inside them; move it into the nested object so the field's own decoder can dispatch on it.
+    # Payloads written since then already carry it inside and need nothing here.
+    external_distortion_type: Optional[str] = encoded_parameters.get(EXTERNAL_DISTORTION_TYPE_KEY)
+    nested_distortion = camera_model_parameters.get("external_distortion_parameters")
+    if external_distortion_type is not None and isinstance(nested_distortion, Mapping):
+        if external_distortion_type not in _EXTERNAL_DISTORTION_PARAMETERS_BY_TYPE:
             raise ValueError(f"Unknown external distortion type: {external_distortion_type}")
+        camera_model_parameters["external_distortion_parameters"] = {
+            **nested_distortion,
+            EXTERNAL_DISTORTION_TYPE_KEY: external_distortion_type,
+        }
 
     # Return typed camera model parameters
     if camera_model_type == "ftheta":

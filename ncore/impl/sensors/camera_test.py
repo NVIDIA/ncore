@@ -18,7 +18,7 @@ import itertools
 import os
 import unittest
 
-from typing import List, Tuple, Union, cast
+from typing import Dict, List, Tuple, Union, cast
 
 import cv2
 import numpy as np
@@ -31,6 +31,7 @@ from numpy.polynomial.polynomial import Polynomial
 
 from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.types import (
+    EXTERNAL_DISTORTION_TYPE_KEY,
     BivariateWindshieldModelParameters,
     CameraModelParameters,
     ConcreteCameraModelParametersUnion,
@@ -2427,6 +2428,16 @@ class TestExternalDistortionModelFactory(unittest.TestCase):
             vertical_poly_inverse=np.array([0.0, 0.0, 1.0, 0.0, 0.0, 0.0], dtype=np.float32),
         )
 
+    @classmethod
+    def _camera_with_distortion(cls) -> IdealPinholeCameraModelParameters:
+        return IdealPinholeCameraModelParameters(
+            resolution=np.array([640, 480], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array([320.0, 240.0], dtype=np.float32),
+            focal_length=np.array([500.0, 500.0], dtype=np.float32),
+            external_distortion_parameters=cls._windshield(),
+        )
+
     def test_dispatches_to_concrete_model(self):
         parameters = self._windshield()
         model = external_distortion_model_from_parameters(parameters, device="cpu")
@@ -2486,11 +2497,11 @@ class TestExternalDistortionModelFactory(unittest.TestCase):
             ExternalDistortionParameters.type()
 
     def test_from_dict_reconstructs_the_concrete_distortion_type(self):
-        # `dataclasses_json` constructs whatever type the field is annotated with, so this is the
-        # path that breaks if `external_distortion_parameters` names an abstract type: the nested
-        # dict would deserialize into that base instead of the concrete model's parameters, and the
-        # failure only shows up later where the value is used. Cover the raw `from_dict` path in
-        # addition to the encode/decode helpers, which construct the concrete type by hand.
+        # `dataclasses_json` constructs whatever type the field is annotated with, so with the
+        # field declared against the abstract base this only works because the serialized form
+        # carries the concrete type (EXTERNAL_DISTORTION_TYPE_KEY) and the field's decoder
+        # dispatches on it. Without that, the nested dict deserializes into the base itself and the
+        # failure only surfaces later, where the value is used.
         camera = IdealPinholeCameraModelParameters(
             resolution=np.array([640, 480], dtype=np.uint64),
             shutter_type=ShutterType.GLOBAL,
@@ -2502,6 +2513,75 @@ class TestExternalDistortionModelFactory(unittest.TestCase):
         self.assertIsInstance(restored.external_distortion_parameters, BivariateWindshieldModelParameters)
         self.assertEqual(restored.to_json(), camera.to_json())
 
+    def test_serialized_form_carries_the_concrete_type(self):
+        # The discriminator has to sit inside the nested object: that is what a field declared
+        # against the abstract base has to dispatch on when reconstructing.
+        camera = self._camera_with_distortion()
+        nested: Dict = dict(cast(Dict, camera.to_dict()["external_distortion_parameters"]))
+        self.assertEqual(nested[EXTERNAL_DISTORTION_TYPE_KEY], "bivariate-windshield")
+
+    def test_untagged_legacy_payload_still_decodes(self):
+        # Payloads written before the nested type key exist in stored data; they are unambiguous
+        # because the bivariate windshield was the only concrete type at the time.
+        camera = self._camera_with_distortion()
+        encoded: Dict = dict(camera.to_dict())
+        legacy: Dict = dict(cast(Dict, encoded["external_distortion_parameters"]))
+        legacy.pop(EXTERNAL_DISTORTION_TYPE_KEY)
+        encoded["external_distortion_parameters"] = legacy
+        restored = IdealPinholeCameraModelParameters.from_dict(encoded)
+        self.assertIsInstance(restored.external_distortion_parameters, BivariateWindshieldModelParameters)
+        self.assertEqual(restored.to_json(), camera.to_json())
+
+    def test_legacy_camera_level_type_is_migrated_by_the_decoder(self):
+        # The old encoded layout stored the type beside the camera parameters, with an untagged
+        # nested object. decode_camera_model_parameters has to move it inside.
+        camera = self._camera_with_distortion()
+        encoded = encode_camera_model_parameters(camera)
+        camera_parameters: Dict = dict(cast(Dict, encoded["camera_model_parameters"]))
+        nested: Dict = dict(cast(Dict, camera_parameters["external_distortion_parameters"]))
+        nested.pop(EXTERNAL_DISTORTION_TYPE_KEY)
+        camera_parameters["external_distortion_parameters"] = nested
+        legacy: Dict = dict(encoded)
+        legacy["camera_model_parameters"] = camera_parameters
+        decoded = decode_camera_model_parameters(legacy)
+        self.assertIsInstance(decoded.external_distortion_parameters, BivariateWindshieldModelParameters)
+
+    def test_decode_accepts_old_and_new_payload_structures(self):
+        # The two serialized layouts must decode to the same parameters:
+        #
+        #   old: the type sits beside the camera parameters, the nested object is untagged
+        #   new: the type sits inside the nested object (both are written, for older readers)
+        #
+        # Stored data contains the old layout, so this equivalence is what lets the field be
+        # declared against the abstract base without a migration.
+        camera = self._camera_with_distortion()
+        new_payload = encode_camera_model_parameters(camera)
+
+        camera_parameters: Dict = dict(cast(Dict, new_payload["camera_model_parameters"]))
+        nested: Dict = dict(cast(Dict, camera_parameters["external_distortion_parameters"]))
+        self.assertIn(EXTERNAL_DISTORTION_TYPE_KEY, nested)
+        nested.pop(EXTERNAL_DISTORTION_TYPE_KEY)
+        camera_parameters["external_distortion_parameters"] = nested
+        old_payload: Dict = dict(new_payload)
+        old_payload["camera_model_parameters"] = camera_parameters
+
+        decoded_old = decode_camera_model_parameters(old_payload)
+        decoded_new = decode_camera_model_parameters(new_payload)
+
+        for decoded in (decoded_old, decoded_new):
+            self.assertIsInstance(decoded.external_distortion_parameters, BivariateWindshieldModelParameters)
+        self.assertEqual(decoded_old.to_json(), decoded_new.to_json())
+        self.assertEqual(decoded_old.to_json(), camera.to_json())
+
+    def test_unknown_serialized_type_raises(self):
+        camera = self._camera_with_distortion()
+        encoded: Dict = dict(camera.to_dict())
+        nested: Dict = dict(cast(Dict, encoded["external_distortion_parameters"]))
+        nested[EXTERNAL_DISTORTION_TYPE_KEY] = "not-a-real-distortion"
+        encoded["external_distortion_parameters"] = nested
+        with self.assertRaises(ValueError):
+            IdealPinholeCameraModelParameters.from_dict(encoded)
+
     def test_abstract_base_is_not_instantiable(self):
         # `ABC` does not prevent instantiation without an abstract method, and `type()` is
         # deliberately non-abstract, so the base guards itself explicitly.
@@ -2509,12 +2589,8 @@ class TestExternalDistortionModelFactory(unittest.TestCase):
             ExternalDistortionParameters()
 
     def test_encode_decode_roundtrip_with_distortion(self):
-        # The `external_distortion_parameters` field deliberately keeps naming the concrete union
-        # rather than the new abstract base: widening a field a caller *reads* is a breaking change
-        # for downstream consumers that pass it on to concretely-typed APIs, and it also changes
-        # what `dataclasses_json` reconstructs (see test_from_dict_reconstructs_the_concrete_
-        # distortion_type). It is left to the separate widening pass that covers the other read
-        # positions. This pins the round-trip that has to keep working either way.
+        # The round-trip through the encode/decode helpers, which carry the type beside the camera
+        # parameters as well as inside them.
         camera = IdealPinholeCameraModelParameters(
             resolution=np.array([640, 480], dtype=np.uint64),
             shutter_type=ShutterType.GLOBAL,
