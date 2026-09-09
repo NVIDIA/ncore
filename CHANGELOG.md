@@ -13,6 +13,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Highlights
 
+- Model construction moves from closed dispatch tables to open, module-level factories. Each of the
+  camera, lidar and external distortion hierarchies gains a free
+  `<kind>_model_from_parameters()` that dispatches on the parameter type, together with a
+  `register_<kind>_model` hook so models defined outside NCore can participate. These replace the
+  `from_parameters` / `maybe_from_parameters` static methods, which held an if/elif table over every
+  concrete subclass, had to be edited to add a model, could not build an out-of-tree model, and were
+  inherited by every subclass. The static methods remain as deprecated forwarders.
+- The three model base classes are now generic in their parameter type and declare
+  `get_parameters()`, so a `CameraModel`, `LidarModel` or `ExternalDistortionModel` stays useful
+  without narrowing to a concrete model first. The parameter type is covariant; plain
+  unparameterized annotations and isinstance checks are unaffected.
+- The abstract parameter bases carry the JSON (de)serialization interface, so parameters can be
+  serialized through the abstract type. `ExternalDistortionParameters` is new: that hierarchy
+  previously had an abstract model base but no abstract parameters base at all.
+- `CameraModelParameters.transform` returns `Self` consistently across the hierarchy. Two concrete
+  overrides previously returned their own class with an unannotated `self`, which made them
+  non-substitutable and collapsed the return type to the declaring class for generic callers.
+
+## [v19.6.0](https://github.com/NVIDIA/ncore/compare/7cf76e519c171637bde342f48151d71a7474a6fe..v19.6.0) - 2026-09-09
+#### ➕ Added
+- (**sensors**) add free external_distortion_model_from_parameters factory with open registry - ([e0ac9ed](https://github.com/NVIDIA/ncore/commit/e0ac9edae2023c044afcf1f17317632f286defbe)) - Janick Martinez Esturo
+- (**sensors**) add free lidar_model_from_parameters factory with open registry - ([b2afc10](https://github.com/NVIDIA/ncore/commit/b2afc10c14301434dbeee6e203cb85bdde184be5)) - Janick Martinez Esturo
+- (**sensors**) add free camera_model_from_parameters factory with open registry - ([3e0f6b2](https://github.com/NVIDIA/ncore/commit/3e0f6b2b1c6abbaca81da2ae2d2197bdb3c2a338)) - Janick Martinez Esturo
+#### 🪲 Fixed
+- (**data**) search and compare closest_index_sorted exactly - ([45602dc](https://github.com/NVIDIA/ncore/commit/45602dc9ebbe473b29ff9dc292021b0b57ef4179)) - Janick Martinez Esturo
+- (**sensors**) floor the angles-to-columns map index in integer arithmetic - ([59c698d](https://github.com/NVIDIA/ncore/commit/59c698d206da92b406a4f72619fce3b3a2c64bfd)) - Janick Martinez Esturo
+#### 🔄 Changed
+- (**data**) return Self from every CameraModelParameters.transform override - ([f2bfbba](https://github.com/NVIDIA/ncore/commit/f2bfbbade56b35a0b86ec1393e70e0cef53e524d)) - Janick Martinez Esturo
+- (**data**) declare serialization interface on CameraModelParameters base - ([1b0dc1d](https://github.com/NVIDIA/ncore/commit/1b0dc1d6892f72f81fe43a77ed7a521406c6017e)) - Janick Martinez Esturo
+- (**data**) pin relative_angle to the angles' float dtype - ([7cf76e5](https://github.com/NVIDIA/ncore/commit/7cf76e519c171637bde342f48151d71a7474a6fe)) - Janick Martinez Esturo
+
+- - -
+
+
+### Highlights
+
 - This is a patch release resolving a few public facing API issues, as well as some documentation and build / typing improvements.
 
 ## [v19.5.1](https://github.com/NVIDIA/ncore/compare/c95e49587d653b68f0c9b25b15b1ee0ac3bf0a81..v19.5.1) - 2026-08-05
