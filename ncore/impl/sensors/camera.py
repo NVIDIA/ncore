@@ -1319,7 +1319,7 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
             resolution=self.resolution.cpu().numpy().astype(np.uint64),
             shutter_type=self.shutter_type,
             external_distortion_parameters=cast(
-                Optional[types.ConcreteExternalDistortionParametersUnion],
+                Optional[types.ExternalDistortionParameters],
                 map_optional(self.external_distortion, lambda x: x.get_parameters()),
             ),
             principal_point=self.principal_point.cpu().numpy().astype(np.float32) - 0.5,
@@ -1547,7 +1547,7 @@ class IdealPinholeCameraModel(PinholeCameraModel[types.IdealPinholeCameraModelPa
             resolution=self.resolution.cpu().numpy().astype(np.uint64),
             shutter_type=self.shutter_type,
             external_distortion_parameters=cast(
-                Optional[types.ConcreteExternalDistortionParametersUnion],
+                Optional[types.ExternalDistortionParameters],
                 map_optional(self.external_distortion, lambda x: x.get_parameters()),
             ),
             principal_point=self.principal_point.cpu().numpy().astype(np.float32),
@@ -1616,7 +1616,7 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
             resolution=self.resolution.cpu().numpy().astype(np.uint64),
             shutter_type=self.shutter_type,
             external_distortion_parameters=cast(
-                Optional[types.ConcreteExternalDistortionParametersUnion],
+                Optional[types.ExternalDistortionParameters],
                 map_optional(self.external_distortion, lambda x: x.get_parameters()),
             ),
             principal_point=self.principal_point.cpu().numpy().astype(np.float32),
@@ -1852,7 +1852,7 @@ class OpenCVFisheyeCameraModel(CameraModel[types.OpenCVFisheyeCameraModelParamet
             resolution=self.resolution.cpu().numpy().astype(np.uint64),
             shutter_type=self.shutter_type,
             external_distortion_parameters=cast(
-                Optional[types.ConcreteExternalDistortionParametersUnion],
+                Optional[types.ExternalDistortionParameters],
                 map_optional(self.external_distortion, lambda x: x.get_parameters()),
             ),
             principal_point=self.principal_point.cpu().numpy().astype(np.float32),
