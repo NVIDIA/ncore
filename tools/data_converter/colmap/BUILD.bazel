@@ -15,6 +15,7 @@
 
 load("@ncore_pip_deps//:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("//bazel/pytest:defs.bzl", "pytest_test")
 
 # targets might be used in various places also outside of the repo, so make it public
 package(default_visibility = ["//visibility:public"])
@@ -56,4 +57,18 @@ py_binary(
 alias(
     name = "colmap",
     actual = ":convert",
+)
+
+# Data-free unit test for the synthetic timestamp generation (runs in CI).
+pytest_test(
+    name = "pytest_converter",
+    srcs = ["converter_test.py"],
+    python_versions = ["3.11"],
+    deps = [
+        ":pylib",
+        "@pycolmap",
+        requirement("numpy"),
+        requirement("universal_pathlib"),
+        "//ncore:pylib",
+    ],
 )
