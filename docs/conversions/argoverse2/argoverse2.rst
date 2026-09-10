@@ -132,4 +132,4 @@ Testing
 .. code-block:: bash
 
     AV2_DIR=/path/to/argoverse2/sensor AV2_SPLIT=val \
-        bazel test //tools/data_converter/argoverse2:pytest_converter
+        bazel test //tools/data_converter/argoverse2:pytest_converter_3_11
