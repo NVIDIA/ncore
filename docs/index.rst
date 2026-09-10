@@ -48,4 +48,5 @@ The project is developed within the `NVIDIA SIL Lab <https://research.nvidia.com
    :name: tutorials
 
    tutorial/data_loading
+   tutorial/lidar_model_estimation
    tutorial/data_sanity_check
