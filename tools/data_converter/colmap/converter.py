@@ -81,14 +81,15 @@ class ColmapCamera:
     image_names: list[str] = field(default_factory=list)
     T_ref_camera_list: list[np.ndarray] = field(default_factory=list)
     reference_frame: str = "world"
+    start_time_sec: float = 0.0
 
     @property
     def n_images(self) -> int:
         return len(self.image_names)
 
     @property
-    def timestamps_us(self, start_time_sec: float = 0.0) -> np.ndarray:
-        return (1e6 * (start_time_sec + np.linspace(0.0, self.n_images - 1, self.n_images))).astype(np.uint64)
+    def timestamps_us(self) -> np.ndarray:
+        return (1e6 * (self.start_time_sec + np.linspace(0.0, self.n_images - 1, self.n_images))).astype(np.uint64)
 
     @property
     def T_camera_refs(self) -> np.ndarray:
@@ -385,6 +386,7 @@ class ColmapDataConverter(FileBasedDataConverter):
                     camera_id=ncore_camera_id,
                     colmap_camera=self.scene_manager.cameras[imdata[k].camera_id],
                     image_path=parent_dir / images_dir,
+                    start_time_sec=self.start_time_sec,
                 )
             cameras[ncore_camera_id].T_ref_camera_list.append(T_ref_camera)
             cameras[ncore_camera_id].image_names.append(imdata[k].name)
@@ -409,6 +411,7 @@ class ColmapDataConverter(FileBasedDataConverter):
                         T_ref_camera_list=[np.eye(4)] * len(image_names),
                         image_names=image_names,
                         downsample_factor=downsample_factor,
+                        start_time_sec=self.start_time_sec,
                     )
 
         return cameras
