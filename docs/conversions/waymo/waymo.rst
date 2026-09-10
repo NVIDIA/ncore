@@ -131,7 +131,7 @@ To convert only a time slice of each sequence, use ``--seek-sec`` and/or
      - Output store format. ``itar`` produces an indexed tar archive;
        ``directory`` writes plain zarr directories
    * - ``--profile {default,separate-sensors,separate-all}``
-     - ``default``
+     - ``separate-sensors``
      - Component group layout. ``default`` groups all sensors together;
        ``separate-sensors`` gives each sensor its own group; ``separate-all``
        splits every component type into its own group

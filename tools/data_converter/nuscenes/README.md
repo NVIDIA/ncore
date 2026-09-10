@@ -89,5 +89,5 @@ far-range (> 20 m) angular error, measured with `//tools:ncore_evaluate_lidar_mo
 
 ```bash
 NUSCENES_DIR=/path/to/nuscenes NUSCENES_VERSION=v1.0-mini \
-    bazel test //tools/data_converter/nuscenes:pytest_converter
+    bazel test //tools/data_converter/nuscenes:pytest_converter_3_11
 ```
