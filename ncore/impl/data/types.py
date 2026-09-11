@@ -243,6 +243,21 @@ class BivariateWindshieldModelParameters(ExternalDistortionParameters):
 ConcreteExternalDistortionParametersUnion = Union[BivariateWindshieldModelParameters]
 
 
+@dataclass(frozen=True)
+class ParaxialPinholeGeometry:
+    """Geometry of the ideal pinhole that best matches a camera model near the optical axis
+
+    The paraxial approximation a model is willing to make of itself: the pinhole agreeing with it
+    to first order about the principal direction. It is what
+    :meth:`IdealPinholeCameraModelParameters.from_source` builds on, and what
+    :meth:`IdealPinholeCameraModelParameters.natural_fov` measures.
+    """
+
+    focal_length: np.ndarray  #: Per-axis focal length ``[fu, fv]`` [px] (float32, [2,])
+    principal_point: np.ndarray  #: Principal point in image coordinates [px] (float32, [2,])
+    resolution: np.ndarray  #: Image resolution ``[width, height]`` [px] (uint64, [2,])
+
+
 @dataclass
 class CameraModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
     """Represents parameters common to all camera models
@@ -260,6 +275,22 @@ class CameraModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
     external_distortion_parameters: Optional[ExternalDistortionParameters] = (
         external_distortion_parameters_field()
     )  #: Optional external distortion source associated to the camera (e.g. windshield). If a source exists, rays will be distorted prior to reaching the camera and its associated lens distortion if applicable
+
+    def paraxial_pinhole_geometry(self) -> ParaxialPinholeGeometry:
+        """The ideal pinhole agreeing with this model to first order about the optical axis
+
+        The single extension point behind :meth:`IdealPinholeCameraModelParameters.from_source` and
+        :meth:`IdealPinholeCameraModelParameters.natural_fov`. A model registered out of tree with
+        :func:`ncore.sensors.register_camera_model` becomes usable by both by implementing this, and
+        needs nothing else.
+
+        The default refuses rather than guessing, so a model with no meaningful paraxial pinhole
+        fails with a clear error instead of an attribute lookup on a field it does not have.
+
+        Raises:
+            TypeError: If the concrete model does not define a paraxial pinhole.
+        """
+        raise TypeError(f"Unsupported camera model type for ideal pinhole conversion: {type(self).__name__}")
 
     @abstractmethod
     def transform(
@@ -309,6 +340,27 @@ class CameraModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
 @dataclass
 class FThetaCameraModelParameters(CameraModelParameters):
     """Represents FTheta-specific camera model parameters"""
+
+    def paraxial_pinhole_geometry(self) -> ParaxialPinholeGeometry:
+        """First-order term of the angles-to-pixeldistances polynomial, scaled by the linear term
+
+        The forward polynomial maps ``delta = f(theta) = c0 + c1*theta + ...``, and
+        ``r = f*tan(theta) ~= f*theta`` near ``theta = 0``, so ``d(delta)/d(theta)|_0 = c1``. The
+        linear term contributes a per-axis scale; its shear components ``d`` and ``e`` are not
+        representable by a pinhole and are dropped. The principal point is stored in the NVIDIA
+        pixel-center convention, so a ``+0.5`` shift brings it into image coordinates.
+
+        Raises:
+            ValueError: If the polynomial does not yield a positive focal length.
+        """
+        if (c1 := float(self.angle_to_pixeldist_poly[1])) <= 0.0:
+            raise ValueError(f"Cannot derive a positive focal length for an ideal pinhole (got {c1})")
+        c = float(self.linear_cde[0])
+        return ParaxialPinholeGeometry(
+            np.array([c1 * c, c1], dtype=np.float32),
+            (self.principal_point + 0.5).astype(np.float32),
+            self.resolution,
+        )
 
     @unique
     class PolynomialType(IntEnum):
@@ -494,6 +546,10 @@ class PinholeCameraModelParameters(CameraModelParameters):
     focal_length: np.ndarray = util.numpy_array_field(
         np.float32
     )  #: Focal lengths in u and v direction, resp., mapping (distorted) normalized camera coordinates to image coordinates relative to the principal point (float32, [2,])
+
+    def paraxial_pinhole_geometry(self) -> ParaxialPinholeGeometry:
+        """The model's own focal length and principal point, already in image coordinates"""
+        return ParaxialPinholeGeometry(self.focal_length, self.principal_point, self.resolution)
 
     def __post_init__(self) -> None:
         # Sanity checks
@@ -688,22 +744,13 @@ class IdealPinholeCameraModelParameters(PinholeCameraModelParameters):
           and are dropped). F-Theta stores the principal point in the NVIDIA pixel-center
           convention, so a ``+0.5`` shift is applied to bring it into image coordinates.
         """
-        if isinstance(source, FThetaCameraModelParameters):
-            if (c1 := float(source.angle_to_pixeldist_poly[1])) <= 0.0:
-                raise ValueError(f"Cannot derive a positive focal length for an ideal pinhole (got {c1})")
-            c = float(source.linear_cde[0])
-            focal = np.array([c1 * c, c1], dtype=np.float32)
-            # F-Theta principal point is in the pixel-center convention; shift by +0.5 to
-            # match the image-coordinate convention used by the ideal pinhole model.
-            principal_point = (source.principal_point + 0.5).astype(np.float32)
-            return focal, principal_point, source.resolution
-        elif isinstance(
-            source,
-            (IdealPinholeCameraModelParameters, OpenCVPinholeCameraModelParameters, OpenCVFisheyeCameraModelParameters),
-        ):
-            return source.focal_length, source.principal_point, source.resolution
-        else:
+        # The per-model dispatch lives on the models themselves; the guard keeps the documented
+        # TypeError for arguments that are not camera parameters at all, which method lookup alone
+        # would surface as an AttributeError.
+        if not isinstance(source, CameraModelParameters):
             raise TypeError(f"Unsupported camera model type for ideal pinhole conversion: {type(source).__name__}")
+        geometry = source.paraxial_pinhole_geometry()
+        return geometry.focal_length, geometry.principal_point, geometry.resolution
 
     @staticmethod
     def _max_corner_half_extent(resolution: np.ndarray, principal_point: np.ndarray) -> np.ndarray:
@@ -791,6 +838,10 @@ class OpenCVFisheyeCameraModelParameters(CameraModelParameters):
     #  fisheye distortion polynomial as :math:`\theta(1 + k_1\theta^2 + k_2\theta^4 + k_3\theta^6 + k_4\theta^8)`
     #  for extrinsic camera ray angles :math:`\theta` with the principal direction (float32, [4,])
     max_angle: float = 0.0  #: Maximal extrinsic ray angle [rad] with the principal direction (float32)
+
+    def paraxial_pinhole_geometry(self) -> ParaxialPinholeGeometry:
+        """The model's own focal length and principal point, already in image coordinates"""
+        return ParaxialPinholeGeometry(self.focal_length, self.principal_point, self.resolution)
 
     @staticmethod
     def type() -> str:

@@ -42,6 +42,7 @@ from ncore.impl.data.types import (
     IdealPinholeCameraModelParameters,
     OpenCVFisheyeCameraModelParameters,
     OpenCVPinholeCameraModelParameters,
+    ParaxialPinholeGeometry,
     ReferencePolynomial,
     ShutterType,
     decode_camera_model_parameters,
@@ -2344,6 +2345,64 @@ class TestIdealPinholeFromSource(unittest.TestCase):
 
         with self.assertRaises(TypeError):
             IdealPinholeCameraModelParameters.natural_fov(source)
+
+    def test_out_of_tree_model_opts_in_by_implementing_the_geometry(self):
+        """An out-of-tree model becomes usable by `from_source` / `natural_fov` via one method.
+
+        This is the point of the extension point: nothing in this repository knows about the class
+        below, yet both helpers work on it because it declares its own paraxial pinhole.
+        """
+
+        @dataclass
+        class _OptedInCameraModelParameters(CameraModelParameters):
+            """An out-of-tree model that declares its paraxial pinhole"""
+
+            focal: float = 800.0
+
+            @staticmethod
+            def type() -> str:
+                return "opted-in-test-model"
+
+            def transform(
+                self,
+                image_domain_scale: Union[float, Tuple[float, float]],
+                image_domain_offset: Tuple[float, float] = (0.0, 0.0),
+                new_resolution: Optional[Tuple[int, int]] = None,
+            ) -> Self:
+                return self
+
+            def paraxial_pinhole_geometry(self) -> ParaxialPinholeGeometry:
+                return ParaxialPinholeGeometry(
+                    np.array([self.focal, self.focal], dtype=np.float32),
+                    np.array([320.0, 240.0], dtype=np.float32),
+                    self.resolution,
+                )
+
+        source = _OptedInCameraModelParameters(
+            resolution=np.array((640, 480), dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+        )
+
+        ideal = IdealPinholeCameraModelParameters.from_source(source)
+        self.assertIsInstance(ideal, IdealPinholeCameraModelParameters)
+        np.testing.assert_allclose(ideal.focal_length, np.array([800.0, 800.0], dtype=np.float32))
+        np.testing.assert_array_equal(ideal.resolution, source.resolution)
+
+        # and the derived quantities follow from it, with no further per-model knowledge
+        fov = IdealPinholeCameraModelParameters.natural_fov(source)
+        self.assertEqual(fov.shape, (2,))
+        self.assertTrue(np.all(fov > 0.0))
+
+    def test_paraxial_geometry_matches_the_in_tree_models(self):
+        """The geometry each in-tree model reports is the one `from_source` then builds from."""
+        for concrete in (self._ideal(), self._opencv(), self._fisheye(), self._ftheta()):
+            with self.subTest(model=type(concrete).__name__):
+                geometry = concrete.paraxial_pinhole_geometry()
+                ideal = IdealPinholeCameraModelParameters.from_source(concrete)
+
+                np.testing.assert_allclose(ideal.focal_length, geometry.focal_length, rtol=1e-6)
+                np.testing.assert_allclose(ideal.principal_point, geometry.principal_point, rtol=1e-6)
+                np.testing.assert_array_equal(ideal.resolution, geometry.resolution)
 
     def test_unsupported_source_raises(self):
         # Pass an object that is not a supported camera model (cast so the static type
