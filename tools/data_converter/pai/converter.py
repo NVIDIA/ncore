@@ -70,7 +70,6 @@ from ncore.data_converter import (
 from ncore.impl.common.transformations import HalfClosedInterval, se3_inverse, time_bounds
 from ncore.impl.data.types import (
     BBox3,
-    ConcreteLidarModelParametersUnion,
     CuboidTrackObservation,
     FThetaCameraModelParameters,
     JsonLike,
@@ -351,7 +350,7 @@ class _PaiConversionMixin:
         # Close data streaming provider
         self.provider.close()
 
-    def _load_lidar_model_parameters(self) -> ConcreteLidarModelParametersUnion | None:
+    def _load_lidar_model_parameters(self) -> RowOffsetStructuredSpinningLidarModelParameters | None:
         """Load lidar model parameters from lidar_intrinsics parquet."""
 
         if self.provider.has_file("lidar_intrinsics"):

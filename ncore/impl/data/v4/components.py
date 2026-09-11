@@ -937,7 +937,7 @@ class IntrinsicsComponent:
             self,
             camera_id: str,
             # intrinsics
-            camera_model_parameters: types.ConcreteCameraModelParametersUnion,
+            camera_model_parameters: types.CameraModelParameters,
         ) -> "Self":
             """Store camera-associated intrinsics"""
 
@@ -953,7 +953,7 @@ class IntrinsicsComponent:
             self,
             lidar_id: str,
             # intrinsics
-            lidar_model_parameters: types.ConcreteLidarModelParametersUnion,
+            lidar_model_parameters: types.LidarModelParameters,
         ) -> "Self":
             """Store lidar-associated intrinsics"""
 
@@ -977,11 +977,11 @@ class IntrinsicsComponent:
             """Returns true if the component version is supported by the reader"""
             return version == "v1"
 
-        def get_camera_model_parameters(self, camera_id: str) -> types.ConcreteCameraModelParametersUnion:
+        def get_camera_model_parameters(self, camera_id: str) -> types.CameraModelParameters:
             """Returns the camera model associated with the requested camera sensor"""
             return types.decode_camera_model_parameters(cast(zarr.Group, self._group["cameras"][camera_id]).attrs)
 
-        def get_lidar_model_parameters(self, lidar_id: str) -> Optional[types.ConcreteLidarModelParametersUnion]:
+        def get_lidar_model_parameters(self, lidar_id: str) -> Optional[types.LidarModelParameters]:
             """Returns the lidar model associated with the requested lidar sensor"""
             lidars_group = self._group["lidars"]
 

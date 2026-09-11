@@ -26,7 +26,7 @@ import numpy as np
 import tqdm
 
 from ncore.impl.data.types import (
-    ConcreteCameraModelParametersUnion,
+    CameraModelParameters,
     IdealPinholeCameraModelParameters,
     encode_camera_model_parameters,
 )
@@ -189,7 +189,7 @@ def v4(
 
 
 def _build_rectificator(
-    params: CLIBaseParams, source_parameters: ConcreteCameraModelParametersUnion
+    params: CLIBaseParams, source_parameters: CameraModelParameters
 ) -> Tuple[Rectificator, IdealPinholeCameraModelParameters]:
     """Builds a Rectificator mapping the source camera to an ideal pinhole target
 

@@ -63,14 +63,14 @@ from upath import UPath
 from ncore.impl.common.transformations import HalfClosedInterval, PoseGraphInterpolator
 from ncore.impl.data.types import (
     CameraLabelDescriptor,
-    ConcreteCameraModelParametersUnion,
-    ConcreteLidarModelParametersUnion,
+    CameraModelParameters,
     CuboidTrackObservation,
     EncodedImageData,
     FrameTimepoint,
     JsonLike,
     LabelCategory,
     LabelType,
+    LidarModelParameters,
     PointCloud,
 )
 from ncore.impl.data.util import closest_index_sorted
@@ -412,7 +412,7 @@ class CameraSensorProtocol(SensorProtocol, Protocol):
     """CameraSensorProtocol provides unified access to a relevant subset of common NCore camera sensor APIs"""
 
     @property
-    def model_parameters(self) -> ConcreteCameraModelParametersUnion:
+    def model_parameters(self) -> CameraModelParameters:
         """Returns parameters specific to the camera's intrinsic model"""
         ...
 
@@ -560,7 +560,7 @@ class LidarSensorProtocol(RayBundleSensorProtocol, Protocol):
     """LidarSensorProtocol provides unified access to a relevant subset of common NCore lidar sensor APIs"""
 
     @property
-    def model_parameters(self) -> Optional[ConcreteLidarModelParametersUnion]:
+    def model_parameters(self) -> Optional[LidarModelParameters]:
         """Returns parameters specific to the lidar's intrinsic model (optional as not mandatory)"""
         ...
 

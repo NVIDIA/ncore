@@ -38,13 +38,13 @@ from ncore.impl.data.compat import (
 )
 from ncore.impl.data.types import (
     CameraLabelDescriptor,
-    ConcreteCameraModelParametersUnion,
-    ConcreteLidarModelParametersUnion,
+    CameraModelParameters,
     CuboidTrackObservation,
     FrameTimepoint,
     JsonLike,
     LabelCategory,
     LabelType,
+    LidarModelParameters,
     PointCloud,
 )
 from ncore.impl.data.v4.components import (
@@ -292,13 +292,13 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             self,
             reader: CameraSensorComponent.Reader,
             mask_reader: Optional[MasksComponent.Reader],
-            model_parameters: ConcreteCameraModelParametersUnion,
+            model_parameters: CameraModelParameters,
             pose_graph: PoseGraphInterpolator,
         ):
             super().__init__(reader, pose_graph)
 
             self._mask_reader: Optional[MasksComponent.Reader] = mask_reader
-            self._model_parameters: ConcreteCameraModelParametersUnion = model_parameters
+            self._model_parameters: CameraModelParameters = model_parameters
 
         @property
         def camera_reader(self) -> CameraSensorComponent.Reader:
@@ -306,7 +306,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
 
         @property
         @override
-        def model_parameters(self) -> ConcreteCameraModelParametersUnion:
+        def model_parameters(self) -> CameraModelParameters:
             """Returns parameters specific to the camera's intrinsic model"""
             return self._model_parameters
 
@@ -465,11 +465,11 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             self,
             reader: LidarSensorComponent.Reader,
             pose_graph: PoseGraphInterpolator,
-            model_parameters: Optional[ConcreteLidarModelParametersUnion],
+            model_parameters: Optional[LidarModelParameters],
         ):
             super().__init__(reader, pose_graph)
 
-            self._model_parameters: Optional[ConcreteLidarModelParametersUnion] = model_parameters
+            self._model_parameters: Optional[LidarModelParameters] = model_parameters
 
         @property
         def lidar_reader(self) -> LidarSensorComponent.Reader:
@@ -477,7 +477,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
 
         @property
         @override
-        def model_parameters(self) -> Optional[ConcreteLidarModelParametersUnion]:
+        def model_parameters(self) -> Optional[LidarModelParameters]:
             """Returns parameters specific to the lidar's intrinsic model, if available"""
             return self._model_parameters
 
