@@ -975,7 +975,7 @@ def decode_camera_model_parameters(encoded_parameters: Mapping) -> ConcreteCamer
 
 
 @dataclass()
-class BaseLidarModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
+class LidarModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
     """Represents parameters common to all lidar models
 
     The JSON (de)serialization interface (:meth:`to_dict` / :meth:`from_dict`) is provided by
@@ -1000,12 +1000,12 @@ class BaseLidarModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
         # instantiable. Guard the base explicitly: `dataclasses_json` constructs whatever type a
         # field is annotated with, so an abstract annotation would otherwise yield a silently
         # useless base instance instead of a concrete model's parameters.
-        if type(self) is BaseLidarModelParameters:
-            raise TypeError("BaseLidarModelParameters is abstract; instantiate a concrete lidar model's parameters")
+        if type(self) is LidarModelParameters:
+            raise TypeError("LidarModelParameters is abstract; instantiate a concrete lidar model's parameters")
 
 
 @dataclass()
-class BaseSpinningLidarModelParameters(BaseLidarModelParameters):
+class SpinningLidarModelParameters(LidarModelParameters):
     """Represents parameters common to all spinning lidar models"""
 
     spinning_frequency_hz: float  # spinning frequency / frames per second [Hz]
@@ -1021,7 +1021,7 @@ class BaseSpinningLidarModelParameters(BaseLidarModelParameters):
 
 
 @dataclass()
-class BaseStructuredSpinningLidarModelParameters(BaseSpinningLidarModelParameters):
+class StructuredSpinningLidarModelParameters(SpinningLidarModelParameters):
     """Represents parameters for a structured spinning lidar model.
 
     A structured lidar model consists of a fixed number of rows x columns point measurements per frame
@@ -1037,7 +1037,7 @@ class BaseStructuredSpinningLidarModelParameters(BaseSpinningLidarModelParameter
 
 
 @dataclass()
-class RowOffsetStructuredSpinningLidarModelParameters(BaseStructuredSpinningLidarModelParameters):
+class RowOffsetStructuredSpinningLidarModelParameters(StructuredSpinningLidarModelParameters):
     """Represents parameters for a structured spinning lidar model that is using a per-row azimuth-offset (compatible with, e.g., Hesai P128 sensors)"""
 
     # elevation angles
@@ -1127,7 +1127,7 @@ class RowOffsetStructuredSpinningLidarModelParameters(BaseStructuredSpinningLida
 ConcreteLidarModelParametersUnion = Union[RowOffsetStructuredSpinningLidarModelParameters]
 
 
-def encode_lidar_model_parameters(lidar_model_parameters: BaseLidarModelParameters) -> Dict:
+def encode_lidar_model_parameters(lidar_model_parameters: LidarModelParameters) -> Dict:
     """Encodes lidar intrinsic model parameters to serializable model-typed dictionary"""
 
     encoded = {

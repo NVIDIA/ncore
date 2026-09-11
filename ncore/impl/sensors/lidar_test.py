@@ -28,7 +28,7 @@ import torch
 
 from ncore.impl.common.transformations import se3_inverse
 from ncore.impl.common.util import unpack_optional
-from ncore.impl.data.types import BaseLidarModelParameters, RowOffsetStructuredSpinningLidarModelParameters
+from ncore.impl.data.types import LidarModelParameters, RowOffsetStructuredSpinningLidarModelParameters
 from ncore.impl.sensors import lidar as lidar_module
 from ncore.impl.sensors.common import to_torch
 from ncore.impl.sensors.lidar import (
@@ -114,7 +114,7 @@ class TestLidarModelFactory(unittest.TestCase):
 
     def test_unregistered_parameters_raise(self):
         with self.assertRaises(TypeError):
-            lidar_model_from_parameters(cast(BaseLidarModelParameters, object()), device="cpu")
+            lidar_model_from_parameters(cast(LidarModelParameters, object()), device="cpu")
 
     def test_out_of_tree_registration(self):
         @dataclasses.dataclass
@@ -155,28 +155,28 @@ class TestLidarModelFactory(unittest.TestCase):
         # A collection of lidar models must still have `LidarModel` as a common static supertype;
         # with an invariant parameter type a type checker joining the element types would fall back
         # past `LidarModel` and reject every method call on the joined type.
-        models: List[LidarModel[BaseLidarModelParameters]] = [
+        models: List[LidarModel[LidarModelParameters]] = [
             lidar_model_from_parameters(self._parameters(), device="cpu"),
         ]
         for model in models:
-            self.assertIsInstance(model.get_parameters(), BaseLidarModelParameters)
+            self.assertIsInstance(model.get_parameters(), LidarModelParameters)
 
     def test_abstract_base_is_not_instantiable(self):
         # `ABC` does not prevent instantiation without an abstract method, and `type()` is
         # deliberately non-abstract, so the base guards itself explicitly.
         with self.assertRaises(TypeError):
-            BaseLidarModelParameters()
+            LidarModelParameters()
 
     def test_abstract_base_declares_serialization(self):
         # Parameters can be serialized through the abstract type without narrowing
-        def encode(parameters: BaseLidarModelParameters) -> dict:
+        def encode(parameters: LidarModelParameters) -> dict:
             return {"lidar_model_type": parameters.type(), "lidar_model_parameters": parameters.to_dict()}
 
         self.assertEqual(encode(self._parameters())["lidar_model_type"], "row-offset-spinning")
 
         # ... but the base itself has no identifier of its own
         with self.assertRaises(NotImplementedError):
-            BaseLidarModelParameters.type()
+            LidarModelParameters.type()
 
 
 # NOTE: Uses _get_test_devices() to skip GPU tests when NCORE_NO_GPU_TESTS is set
