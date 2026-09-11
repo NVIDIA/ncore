@@ -57,7 +57,9 @@ from ncore.impl.data.types import (
     ShutterType,
     SpinningLidarModelParameters,
     StructuredSpinningLidarModelParameters,
+    register_camera_model_parameters,
     register_external_distortion_parameters,
+    register_lidar_model_parameters,
 )
 
 
@@ -86,6 +88,8 @@ __all__ = [
     "ConcreteExternalDistortionParametersUnion",
     "ExternalDistortionParameters",
     "register_external_distortion_parameters",
+    "register_lidar_model_parameters",
+    "register_camera_model_parameters",
     "ConcreteLidarModelParametersUnion",
     "PointCloud",
     "LabelCategory",

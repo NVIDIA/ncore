@@ -133,6 +133,7 @@ class ExternalDistortionParameters(dataclasses_json.DataClassJsonMixin, ABC):
 #: Type-var for the external distortion parameters registrar
 ExternalDistortionParametersT = TypeVar("ExternalDistortionParametersT", bound=ExternalDistortionParameters)
 
+
 #: Key under which the concrete type identifier is stored *inside* the serialized external
 #: distortion parameters. The identifier has to travel with the nested object: `dataclasses_json`
 #: reconstructs whatever type the field is annotated with, so without it an abstract annotation
@@ -193,8 +194,8 @@ def external_distortion_parameters_field(default: Optional[ExternalDistortionPar
     return field(default=default, metadata=dataclasses_json.config(encoder=encoder, decoder=decoder))
 
 
-@dataclass
 @register_external_distortion_parameters
+@dataclass
 class BivariateWindshieldModelParameters(ExternalDistortionParameters):
     """Represents parameters required to create a windshield external distortion model"""
 
@@ -337,6 +338,60 @@ class CameraModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
         assert isinstance(self.external_distortion_parameters, (type(None), ExternalDistortionParameters))
 
 
+CameraModelParametersT = TypeVar("CameraModelParametersT", bound=CameraModelParameters)
+
+#: Serialized camera model identifiers that predate the current :meth:`type` values. Kept so that
+#: data written before the rename still resolves to the same concrete class.
+_LEGACY_CAMERA_MODEL_TYPE_ALIASES: Dict[str, str] = {
+    # 'pinhole' was the identifier for what is now the OpenCV pinhole model
+    "pinhole": "opencv-pinhole",
+}
+
+#: Maps the serialized identifier to the concrete camera model parameters class
+_CAMERA_MODEL_PARAMETERS_BY_TYPE: Dict[str, Type[CameraModelParameters]] = {}
+
+#: Maps the serialized identifier to the concrete lidar model parameters class
+_LIDAR_MODEL_PARAMETERS_BY_TYPE: Dict[str, Type["LidarModelParameters"]] = {}
+
+
+def register_camera_model_parameters(
+    parameters_class: Type[CameraModelParametersT],
+) -> Type[CameraModelParametersT]:
+    """Registers a concrete camera model parameters class for deserialization
+
+    Usable as a class decorator. The class is keyed by its :meth:`type` identifier, which is what
+    the serialized form carries in ``camera_model_type``, so that a model registered out of tree
+    round-trips through :func:`decode_camera_model_parameters` as the in-tree ones do.
+
+    This is the deserialization counterpart to :func:`ncore.sensors.register_camera_model`, which
+    registers the model built *from* these parameters. A model that is registered but whose
+    parameters are not can be constructed in memory yet not read back from storage.
+    """
+    identifier = parameters_class.type()
+    existing = _CAMERA_MODEL_PARAMETERS_BY_TYPE.get(identifier)
+    if existing is not None and existing is not parameters_class:
+        raise ValueError(f"Camera model type {identifier!r} is already registered to {existing.__name__}")
+    _CAMERA_MODEL_PARAMETERS_BY_TYPE[identifier] = parameters_class
+    return parameters_class
+
+
+def register_lidar_model_parameters(
+    parameters_class: Type["LidarModelParametersT"],
+) -> Type["LidarModelParametersT"]:
+    """Registers a concrete lidar model parameters class for deserialization
+
+    The lidar counterpart to :func:`register_camera_model_parameters`, keyed by :meth:`type` and
+    read back by :func:`decode_lidar_model_parameters`.
+    """
+    identifier = parameters_class.type()
+    existing = _LIDAR_MODEL_PARAMETERS_BY_TYPE.get(identifier)
+    if existing is not None and existing is not parameters_class:
+        raise ValueError(f"Lidar model type {identifier!r} is already registered to {existing.__name__}")
+    _LIDAR_MODEL_PARAMETERS_BY_TYPE[identifier] = parameters_class
+    return parameters_class
+
+
+@register_camera_model_parameters
 @dataclass
 class FThetaCameraModelParameters(CameraModelParameters):
     """Represents FTheta-specific camera model parameters"""
@@ -607,6 +662,7 @@ class PinholeCameraModelParameters(CameraModelParameters):
         )
 
 
+@register_camera_model_parameters
 @dataclass
 class IdealPinholeCameraModelParameters(PinholeCameraModelParameters):
     """Represents an ideal (distortion-free) pinhole camera
@@ -774,6 +830,7 @@ class IdealPinholeCameraModelParameters(PinholeCameraModelParameters):
             )
 
 
+@register_camera_model_parameters
 @dataclass
 class OpenCVPinholeCameraModelParameters(PinholeCameraModelParameters):
     """Represents Pinhole-specific (OpenCV-like) camera model parameters"""
@@ -822,6 +879,7 @@ class OpenCVPinholeCameraModelParameters(PinholeCameraModelParameters):
         )
 
 
+@register_camera_model_parameters
 @dataclass
 class OpenCVFisheyeCameraModelParameters(CameraModelParameters):
     """Represents Fisheye-specific (OpenCV-like) camera model parameters"""
@@ -1008,21 +1066,13 @@ def decode_camera_model_parameters(encoded_parameters: Mapping) -> CameraModelPa
             EXTERNAL_DISTORTION_TYPE_KEY: external_distortion_type,
         }
 
-    # Return typed camera model parameters
-    if camera_model_type == "ftheta":
-        return FThetaCameraModelParameters.from_dict(camera_model_parameters)
-    elif camera_model_type == "ideal-pinhole":
-        return IdealPinholeCameraModelParameters.from_dict(camera_model_parameters)
-    elif camera_model_type in [
-        "opencv-pinhole",
-        # keep 'pinhole' for backwards-compatibility with existing data
-        "pinhole",
-    ]:
-        return OpenCVPinholeCameraModelParameters.from_dict(camera_model_parameters)
-    elif camera_model_type == "opencv-fisheye":
-        return OpenCVFisheyeCameraModelParameters.from_dict(camera_model_parameters)
-
-    raise ValueError(f"Unknown camera model type: {camera_model_type}")
+    # Resolve through the registry, so a model registered out of tree reads back like an in-tree
+    # one. Identifiers retired by a rename are mapped first.
+    resolved_type = _LEGACY_CAMERA_MODEL_TYPE_ALIASES.get(camera_model_type, camera_model_type)
+    parameters_class = _CAMERA_MODEL_PARAMETERS_BY_TYPE.get(resolved_type)
+    if parameters_class is None:
+        raise ValueError(f"Unknown camera model type: {camera_model_type}")
+    return parameters_class.from_dict(camera_model_parameters)
 
 
 @dataclass()
@@ -1053,6 +1103,9 @@ class LidarModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
         # useless base instance instead of a concrete model's parameters.
         if type(self) is LidarModelParameters:
             raise TypeError("LidarModelParameters is abstract; instantiate a concrete lidar model's parameters")
+
+
+LidarModelParametersT = TypeVar("LidarModelParametersT", bound="LidarModelParameters")
 
 
 @dataclass()
@@ -1087,6 +1140,7 @@ class StructuredSpinningLidarModelParameters(SpinningLidarModelParameters):
         assert self.n_columns > 0
 
 
+@register_lidar_model_parameters
 @dataclass()
 class RowOffsetStructuredSpinningLidarModelParameters(StructuredSpinningLidarModelParameters):
     """Represents parameters for a structured spinning lidar model that is using a per-row azimuth-offset (compatible with, e.g., Hesai P128 sensors)"""
@@ -1194,11 +1248,11 @@ def decode_lidar_model_parameters(encoded_parameters: Mapping) -> LidarModelPara
 
     lidar_model_type = encoded_parameters["lidar_model_type"]
 
-    # Return typed lidar model parameters
-    if lidar_model_type == RowOffsetStructuredSpinningLidarModelParameters.type():
-        return RowOffsetStructuredSpinningLidarModelParameters.from_dict(encoded_parameters["lidar_model_parameters"])
-
-    raise ValueError(f"Unknown lidar model type: {lidar_model_type}")
+    # Resolve through the registry, as the camera side does
+    parameters_class = _LIDAR_MODEL_PARAMETERS_BY_TYPE.get(lidar_model_type)
+    if parameters_class is None:
+        raise ValueError(f"Unknown lidar model type: {lidar_model_type}")
+    return parameters_class.from_dict(encoded_parameters["lidar_model_parameters"])
 
 
 @dataclass
