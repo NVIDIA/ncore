@@ -58,17 +58,17 @@ class _LidarRollingShutterProjector(RollingShutterSolver.Projector):
 #: Covariant: the parameter appears only in a return position, and invariance would leave two
 #: concrete `LidarModel[...]` instantiations with no common `LidarModel[...]` supertype, so a type
 #: checker joining a heterogeneous collection of lidar models would fall back past `LidarModel`.
-LidarModelParametersT_co = TypeVar("LidarModelParametersT_co", bound=types.BaseLidarModelParameters, covariant=True)
+LidarModelParametersT_co = TypeVar("LidarModelParametersT_co", bound=types.LidarModelParameters, covariant=True)
 
 #: Invariant counterpart used for the free factory's generic overload; a covariant type variable
 #: cannot appear in a function parameter position.
-LidarModelParametersT = TypeVar("LidarModelParametersT", bound=types.BaseLidarModelParameters)
+LidarModelParametersT = TypeVar("LidarModelParametersT", bound=types.LidarModelParameters)
 
 #: Type of the structured lidar model parameters a concrete structured model returns
 #: (covariant, see LidarModelParametersT_co)
 StructuredLidarModelParametersT_co = TypeVar(
     "StructuredLidarModelParametersT_co",
-    bound=types.BaseStructuredSpinningLidarModelParameters,
+    bound=types.StructuredSpinningLidarModelParameters,
     covariant=True,
 )
 
@@ -142,7 +142,7 @@ class LidarModel(BaseModel, ABC, Generic[LidarModelParametersT_co]):
 
     @staticmethod
     def maybe_from_parameters(
-        lidar_model_parameters: Optional[types.BaseLidarModelParameters],
+        lidar_model_parameters: Optional[types.LidarModelParameters],
         device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
     ) -> Optional[LidarModel]:
@@ -182,7 +182,7 @@ class LidarModel(BaseModel, ABC, Generic[LidarModelParametersT_co]):
 class StructuredLidarModel(LidarModel[StructuredLidarModelParametersT_co], ABC):
     @staticmethod
     def maybe_from_parameters(
-        lidar_model_parameters: Optional[types.BaseLidarModelParameters],
+        lidar_model_parameters: Optional[types.LidarModelParameters],
         device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
     ) -> Optional[StructuredLidarModel]:
@@ -735,7 +735,7 @@ class RowOffsetStructuredSpinningLidarModel(
 
 @singledispatch
 def _lidar_model_from_parameters(
-    lidar_model_parameters: types.BaseLidarModelParameters,
+    lidar_model_parameters: types.LidarModelParameters,
     device: Union[str, torch.device] = torch.device("cuda"),
     dtype: torch.dtype = torch.float32,
 ) -> LidarModel:
@@ -770,7 +770,7 @@ def _(
 #:
 #: Registration is a runtime mechanism; it cannot extend the overloads of
 #: :func:`lidar_model_from_parameters`. Out-of-tree parameters deriving from
-#: :class:`~ncore.impl.data.types.BaseLidarModelParameters` therefore resolve statically through
+#: :class:`~ncore.impl.data.types.LidarModelParameters` therefore resolve statically through
 #: the generic overload to ``LidarModel[TheirParameters]``, which is precise enough for most uses.
 #: Parameters deriving from a *concrete* NCore parameters class instead match that class's
 #: overload, so the call statically yields the NCore model type even though the registered factory
@@ -796,7 +796,7 @@ def lidar_model_from_parameters(
 
 
 def lidar_model_from_parameters(
-    lidar_model_parameters: types.BaseLidarModelParameters,
+    lidar_model_parameters: types.LidarModelParameters,
     device: Union[str, torch.device] = torch.device("cuda"),
     dtype: torch.dtype = torch.float32,
 ) -> LidarModel:
@@ -820,7 +820,7 @@ def lidar_model_from_parameters(
 
 
 def maybe_lidar_model_from_parameters(
-    lidar_model_parameters: Optional[types.BaseLidarModelParameters],
+    lidar_model_parameters: Optional[types.LidarModelParameters],
     device: Union[str, torch.device] = torch.device("cuda"),
     dtype: torch.dtype = torch.float32,
 ) -> Optional[LidarModel]:

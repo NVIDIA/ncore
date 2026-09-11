@@ -46,6 +46,7 @@ from ncore.impl.data.types import (
     LabelSource,
     LabelType,
     LabelUnit,
+    LidarModelParameters,
     OpenCVFisheyeCameraModelParameters,
     OpenCVPinholeCameraModelParameters,
     PointCloud,
@@ -53,6 +54,8 @@ from ncore.impl.data.types import (
     ReferencePolynomial,
     RowOffsetStructuredSpinningLidarModelParameters,
     ShutterType,
+    SpinningLidarModelParameters,
+    StructuredSpinningLidarModelParameters,
     register_external_distortion_parameters,
 )
 
@@ -71,6 +74,9 @@ __all__ = [
     "OpenCVFisheyeCameraModelParameters",
     "IdealPinholeCameraModelParameters",
     "RowOffsetStructuredSpinningLidarModelParameters",
+    "LidarModelParameters",
+    "SpinningLidarModelParameters",
+    "StructuredSpinningLidarModelParameters",
     "EncodedImageData",
     "EncodedImageHandle",
     "CameraModelParameters",
