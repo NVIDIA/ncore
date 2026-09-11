@@ -576,7 +576,7 @@ class IdealPinholeCameraModelParameters(PinholeCameraModelParameters):
         return IdealPinholeCameraModelParameters._fov_for_focal(half_extent, self.focal_length)
 
     @staticmethod
-    def natural_fov(source: ConcreteCameraModelParametersUnion) -> np.ndarray:
+    def natural_fov(source: CameraModelParameters) -> np.ndarray:
         """Per-axis full field-of-view angles ``[fov_x, fov_y]`` [rad] of ``source``'s ideal pinhole
 
         This is the field of view of the (paraxial) ideal pinhole that
@@ -598,7 +598,7 @@ class IdealPinholeCameraModelParameters(PinholeCameraModelParameters):
 
     @staticmethod
     def from_source(
-        source: ConcreteCameraModelParametersUnion,
+        source: CameraModelParameters,
         target_fov: Union[float, np.ndarray, None] = None,
     ) -> IdealPinholeCameraModelParameters:
         """Construct an ideal (distortion-free) pinhole approximating ``source``
@@ -666,7 +666,7 @@ class IdealPinholeCameraModelParameters(PinholeCameraModelParameters):
 
     @staticmethod
     def _paraxial_geometry(
-        source: ConcreteCameraModelParametersUnion,
+        source: CameraModelParameters,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Extract the (paraxial focal, principal point, resolution) of ``source``'s ideal pinhole
 
@@ -919,7 +919,7 @@ ConcreteCameraModelParametersUnion = Union[
 ]
 
 
-def encode_camera_model_parameters(camera_model_parameters: ConcreteCameraModelParametersUnion) -> Dict:
+def encode_camera_model_parameters(camera_model_parameters: CameraModelParameters) -> Dict:
     """Encodes camera intrinsic model parameters to serializable model-typed dictionary"""
 
     encoded = {
@@ -936,7 +936,7 @@ def encode_camera_model_parameters(camera_model_parameters: ConcreteCameraModelP
     return encoded
 
 
-def decode_camera_model_parameters(encoded_parameters: Mapping) -> ConcreteCameraModelParametersUnion:
+def decode_camera_model_parameters(encoded_parameters: Mapping) -> CameraModelParameters:
     """Decodes model-typed dictionary parameters specific to the camera's intrinsic model"""
 
     camera_model_type = encoded_parameters["camera_model_type"]
@@ -1138,7 +1138,7 @@ def encode_lidar_model_parameters(lidar_model_parameters: LidarModelParameters) 
     return encoded
 
 
-def decode_lidar_model_parameters(encoded_parameters: Mapping) -> ConcreteLidarModelParametersUnion:
+def decode_lidar_model_parameters(encoded_parameters: Mapping) -> LidarModelParameters:
     """Decodes model-typed dictionary parameters specific to the lidars's intrinsic model"""
 
     lidar_model_type = encoded_parameters["lidar_model_type"]
