@@ -18,7 +18,8 @@ import itertools
 import os
 import unittest
 
-from typing import Dict, List, Tuple, Union, cast
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple, Union, cast
 
 import cv2
 import numpy as np
@@ -28,6 +29,7 @@ import scipy.linalg
 import torch
 
 from numpy.polynomial.polynomial import Polynomial
+from typing_extensions import Self
 
 from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.types import (
@@ -2281,6 +2283,67 @@ class TestIdealPinholeFromSource(unittest.TestCase):
                 IdealPinholeCameraModelParameters.from_source(params, target_fov=bad)
         with self.assertRaises(ValueError):
             IdealPinholeCameraModelParameters.from_source(params, target_fov=np.array([1.0, 1.0, 1.0]))
+
+    def test_abstract_typed_source_is_accepted(self):
+        """A source held under the abstract base is usable, without narrowing at the call site.
+
+        This is the contract the signatures promise: callers holding a `CameraModelParameters`,
+        which is what the decoders and the `model_parameters` accessors hand out, can reach these
+        helpers directly. Annotating the local is the point of the test, so keep it.
+        """
+        for concrete in (
+            self._ideal(),
+            self._opencv(),
+            self._fisheye(),
+            self._ftheta(),
+        ):
+            with self.subTest(model=type(concrete).__name__):
+                source: CameraModelParameters = concrete
+
+                fov = IdealPinholeCameraModelParameters.natural_fov(source)
+                self.assertEqual(fov.shape, (2,))
+                self.assertTrue(np.all(fov > 0.0))
+
+                ideal = IdealPinholeCameraModelParameters.from_source(source)
+                self.assertIsInstance(ideal, IdealPinholeCameraModelParameters)
+                np.testing.assert_array_equal(ideal.resolution, concrete.resolution)
+
+    def test_out_of_tree_camera_parameters_raise(self):
+        """A concrete subclass the dispatch does not know is rejected, naming the offending type.
+
+        Reachable as a plain call only because the parameter is the abstract base: an out-of-tree
+        model registered through `register_camera_model` satisfies the signature but has no branch
+        in `_paraxial_geometry`, so the failure has to be a clean `TypeError` rather than an
+        `AttributeError` from a missing field.
+        """
+
+        @dataclass
+        class _OutOfTreeCameraModelParameters(CameraModelParameters):
+            """A minimal out-of-tree model, declaring only what the abstract base requires"""
+
+            @staticmethod
+            def type() -> str:
+                return "out-of-tree-test-model"
+
+            def transform(
+                self,
+                image_domain_scale: Union[float, Tuple[float, float]],
+                image_domain_offset: Tuple[float, float] = (0.0, 0.0),
+                new_resolution: Optional[Tuple[int, int]] = None,
+            ) -> Self:
+                return self
+
+        source = _OutOfTreeCameraModelParameters(
+            resolution=np.array((640, 480), dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+        )
+
+        with self.assertRaises(TypeError) as ctx:
+            IdealPinholeCameraModelParameters.from_source(source)
+        self.assertIn("_OutOfTreeCameraModelParameters", str(ctx.exception))
+
+        with self.assertRaises(TypeError):
+            IdealPinholeCameraModelParameters.natural_fov(source)
 
     def test_unsupported_source_raises(self):
         # Pass an object that is not a supported camera model (cast so the static type
