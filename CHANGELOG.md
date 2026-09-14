@@ -13,6 +13,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Highlights
 
+- Models defined outside NCore are now supported end to end. 19.6.0 introduced
+  `register_camera_model` and its lidar and external distortion counterparts, but registration only
+  reached half way: an out-of-tree model could be constructed, then rejected by
+  `IdealPinholeCameraModelParameters.from_source` / `natural_fov`, which dispatched over a
+  hard-coded chain of the four in-tree models, and could never be read back, because
+  `decode_camera_model_parameters` dispatched over a hard-coded table of the four in-tree
+  identifiers. Both are now open.
+- `CameraModelParameters.paraxial_pinhole_geometry` is the single extension point behind the ideal
+  pinhole helpers. A model declares the pinhole that agrees with it to first order about the optical
+  axis, as a `ParaxialPinholeGeometry`, and the helpers work on it without knowing which model they
+  were handed. A model with no meaningful paraxial pinhole opts out by raising `TypeError`.
+- `decode_camera_model_parameters` and `decode_lidar_model_parameters` resolve the serialized
+  identifier through a registry, with `register_camera_model_parameters` and
+  `register_lidar_model_parameters` as the deserialization counterparts to the model factories'
+  registration hooks. **No serialized format changed**: the identifier was already written from
+  `type()`, so existing data reads exactly as before, including payloads using the retired `pinhole`
+  identifier.
+- Serialized external distortion parameters carry their concrete type inside the nested object,
+  which is what lets `CameraModelParameters.external_distortion_parameters` be declared against the
+  abstract base. Untagged payloads written before this are still read, as the bivariate windshield
+  model.
+- The reader and writer APIs are typed against the abstract parameter bases rather than closed
+  unions of the concrete classes. Callers of `decode_*` and of the `model_parameters` accessors now
+  receive the abstract base and may need an `isinstance` narrow before reading a model-specific
+  field.
+- The abstract lidar parameter bases are exported as `LidarModelParameters`,
+  `SpinningLidarModelParameters` and `StructuredSpinningLidarModelParameters`, restoring symmetry
+  with the camera side, which has exported its abstract base since 19.6.0.
+- Concrete parameter classes must now implement `type`, and concrete camera parameters
+  `paraxial_pinhole_geometry`; both are abstract on their bases rather than defaulted. Subclasses
+  that do not will raise `TypeError` on instantiation. Every model in NCore does, and the
+  requirement is stated now, while no out-of-tree model exists to be broken by it.
+
+## [v19.7.0](https://github.com/NVIDIA/ncore/compare/cd81809f75a25b5e7136e83d59211f33647b4b54..v19.7.0) - 2026-09-14
+#### ➕ Added
+- (**data**) open the model parameter hierarchies to out-of-tree implementations - ([81b4f10](https://github.com/NVIDIA/ncore/commit/81b4f10aa15288ce83d87f570a2c5ad5817253aa)) - Janick Martinez Esturo, Claude Opus 5
+- (**data**) export the abstract lidar model parameter bases - ([6ba9b56](https://github.com/NVIDIA/ncore/commit/6ba9b56669f0e8bd64b9a14316e197afa9afa744)) - Janick Martinez Esturo, Claude Opus 5
+- (**data**) carry the concrete type inside serialized external distortion parameters - ([d59ba59](https://github.com/NVIDIA/ncore/commit/d59ba59eb266446b886e1e13086a14b3ee48a0df)) - Janick Martinez Esturo
+- (**skills**) add the ncore-data-conversion agent skill - ([b5d3b8a](https://github.com/NVIDIA/ncore/commit/b5d3b8a7061f243aa8018a643e68720f253715db)) - Sanchit Garg
+#### 🪲 Fixed
+- (**data**) apply --start-time-sec to COLMAP camera frame timestamps - ([5fcd482](https://github.com/NVIDIA/ncore/commit/5fcd48287b5cd04ed114c046162684f3fae91818)) - Janick Martinez Esturo
+#### 🔄 Changed
+- (**data**) type the reader and writer APIs against the abstract parameter bases - ([11b0cd3](https://github.com/NVIDIA/ncore/commit/11b0cd371cdea26cad0f4f12e3677ab5a88eb863)) - Janick Martinez Esturo, Claude Opus 5
+#### 📚 Documentation
+- (**conversions**) correct stale converter test targets, defaults and revision - ([cd81809](https://github.com/NVIDIA/ncore/commit/cd81809f75a25b5e7136e83d59211f33647b4b54)) - Janick Martinez Esturo
+#### 🧪 Tests
+- (**sensors**) cover the abstract-typed source contract for the ideal pinhole helpers - ([a3131ae](https://github.com/NVIDIA/ncore/commit/a3131aebdd719352080fc49a31c9b513ea61ed44)) - Janick Martinez Esturo, Claude Opus 5
+
+- - -
+
+
+### Highlights
+
 - Model construction moves from closed dispatch tables to open, module-level factories. Each of the
   camera, lidar and external distortion hierarchies gains a free
   `<kind>_model_from_parameters()` that dispatches on the parameter type, together with a
