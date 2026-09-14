@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import dataclasses
+import inspect
 import itertools
 import os
 import unittest
@@ -42,6 +43,7 @@ from ncore.impl.data.types import (
     IdealPinholeCameraModelParameters,
     OpenCVFisheyeCameraModelParameters,
     OpenCVPinholeCameraModelParameters,
+    ParaxialPinholeGeometry,
     ReferencePolynomial,
     ShutterType,
     decode_camera_model_parameters,
@@ -2308,22 +2310,22 @@ class TestIdealPinholeFromSource(unittest.TestCase):
                 self.assertIsInstance(ideal, IdealPinholeCameraModelParameters)
                 np.testing.assert_array_equal(ideal.resolution, concrete.resolution)
 
-    def test_out_of_tree_camera_parameters_raise(self):
-        """A concrete subclass the dispatch does not know is rejected, naming the offending type.
+    def test_out_of_tree_model_opts_in_by_implementing_the_geometry(self):
+        """An out-of-tree model becomes usable by `from_source` / `natural_fov` via one method.
 
-        Reachable as a plain call only because the parameter is the abstract base: an out-of-tree
-        model registered through `register_camera_model` satisfies the signature but has no branch
-        in `_paraxial_geometry`, so the failure has to be a clean `TypeError` rather than an
-        `AttributeError` from a missing field.
+        This is the point of the extension point: nothing in this repository knows about the class
+        below, yet both helpers work on it because it declares its own paraxial pinhole.
         """
 
         @dataclass
-        class _OutOfTreeCameraModelParameters(CameraModelParameters):
-            """A minimal out-of-tree model, declaring only what the abstract base requires"""
+        class _OptedInCameraModelParameters(CameraModelParameters):
+            """An out-of-tree model that declares its paraxial pinhole"""
+
+            focal: float = 800.0
 
             @staticmethod
             def type() -> str:
-                return "out-of-tree-test-model"
+                return "opted-in-test-model"
 
             def transform(
                 self,
@@ -2333,24 +2335,105 @@ class TestIdealPinholeFromSource(unittest.TestCase):
             ) -> Self:
                 return self
 
-        source = _OutOfTreeCameraModelParameters(
+            def paraxial_pinhole_geometry(self) -> ParaxialPinholeGeometry:
+                return ParaxialPinholeGeometry(
+                    np.array([self.focal, self.focal], dtype=np.float32),
+                    np.array([320.0, 240.0], dtype=np.float32),
+                    self.resolution,
+                )
+
+        source = _OptedInCameraModelParameters(
+            resolution=np.array((640, 480), dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+        )
+
+        ideal = IdealPinholeCameraModelParameters.from_source(source)
+        self.assertIsInstance(ideal, IdealPinholeCameraModelParameters)
+        np.testing.assert_allclose(ideal.focal_length, np.array([800.0, 800.0], dtype=np.float32))
+        np.testing.assert_array_equal(ideal.resolution, source.resolution)
+
+        # and the derived quantities follow from it, with no further per-model knowledge
+        fov = IdealPinholeCameraModelParameters.natural_fov(source)
+        self.assertEqual(fov.shape, (2,))
+        self.assertTrue(np.all(fov > 0.0))
+
+    def test_out_of_tree_model_may_opt_out_by_raising(self):
+        """A model with no meaningful paraxial pinhole opts out, and both helpers surface that.
+
+        The method is abstract, so a model cannot inherit a silent refusal: declining is a
+        deliberate `TypeError` the implementation writes itself, which then travels out through
+        `from_source` and `natural_fov` unchanged.
+        """
+
+        @dataclass
+        class _NoPinholeCameraModelParameters(CameraModelParameters):
+            """An out-of-tree model that has no paraxial pinhole and says so"""
+
+            @staticmethod
+            def type() -> str:
+                return "no-pinhole-test-model"
+
+            def transform(
+                self,
+                image_domain_scale: Union[float, Tuple[float, float]],
+                image_domain_offset: Tuple[float, float] = (0.0, 0.0),
+                new_resolution: Optional[Tuple[int, int]] = None,
+            ) -> Self:
+                return self
+
+            def paraxial_pinhole_geometry(self) -> ParaxialPinholeGeometry:
+                raise TypeError(f"{type(self).__name__} has no paraxial pinhole")
+
+        source = _NoPinholeCameraModelParameters(
             resolution=np.array((640, 480), dtype=np.uint64),
             shutter_type=ShutterType.GLOBAL,
         )
 
         with self.assertRaises(TypeError) as ctx:
             IdealPinholeCameraModelParameters.from_source(source)
-        self.assertIn("_OutOfTreeCameraModelParameters", str(ctx.exception))
+        self.assertIn("_NoPinholeCameraModelParameters", str(ctx.exception))
 
         with self.assertRaises(TypeError):
             IdealPinholeCameraModelParameters.natural_fov(source)
 
-    def test_unsupported_source_raises(self):
-        # Pass an object that is not a supported camera model (cast so the static type
-        # matches the signature; the runtime value is intentionally wrong).
-        not_a_camera = cast(ConcreteCameraModelParametersUnion, object())
-        with self.assertRaises(TypeError):
-            IdealPinholeCameraModelParameters.from_source(not_a_camera)
+    def test_model_omitting_the_geometry_cannot_be_instantiated(self):
+        """Omitting it is not a way to decline: the class is abstract and fails at construction.
+
+        This is what makes the requirement real rather than advisory, and it is the reason adding
+        the method is a breaking change for pre-existing out-of-tree subclasses.
+        """
+
+        @dataclass
+        class _IncompleteCameraModelParameters(CameraModelParameters):
+            @staticmethod
+            def type() -> str:
+                return "incomplete-test-model"
+
+            def transform(
+                self,
+                image_domain_scale: Union[float, Tuple[float, float]],
+                image_domain_offset: Tuple[float, float] = (0.0, 0.0),
+                new_resolution: Optional[Tuple[int, int]] = None,
+            ) -> Self:
+                return self
+
+        with self.assertRaises(TypeError) as ctx:
+            _IncompleteCameraModelParameters(
+                resolution=np.array((640, 480), dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+            )
+        self.assertIn("paraxial_pinhole_geometry", str(ctx.exception))
+
+    def test_paraxial_geometry_matches_the_in_tree_models(self):
+        """The geometry each in-tree model reports is the one `from_source` then builds from."""
+        for concrete in (self._ideal(), self._opencv(), self._fisheye(), self._ftheta()):
+            with self.subTest(model=type(concrete).__name__):
+                geometry = concrete.paraxial_pinhole_geometry()
+                ideal = IdealPinholeCameraModelParameters.from_source(concrete)
+
+                np.testing.assert_allclose(ideal.focal_length, geometry.focal_length, rtol=1e-6)
+                np.testing.assert_allclose(ideal.principal_point, geometry.principal_point, rtol=1e-6)
+                np.testing.assert_array_equal(ideal.resolution, geometry.resolution)
 
 
 class TestIdealPinholeParameterIO(unittest.TestCase):
@@ -2473,9 +2556,10 @@ class TestCameraModelFactory(unittest.TestCase):
 
         self.assertEqual(encode(self._ideal())["camera_model_type"], "ideal-pinhole")
 
-        # ... but the base itself has no identifier of its own
-        with self.assertRaises(NotImplementedError):
-            CameraModelParameters.type()
+        # ... but the base itself has no identifier of its own, and requires one from every
+        # concrete subclass rather than defaulting
+        self.assertTrue(inspect.isabstract(CameraModelParameters))
+        self.assertIn("type", CameraModelParameters.__abstractmethods__)
 
 
 class TestExternalDistortionModelFactory(unittest.TestCase):
@@ -2555,9 +2639,10 @@ class TestExternalDistortionModelFactory(unittest.TestCase):
 
         self.assertEqual(encode(self._windshield())["external_distortion_type"], "bivariate-windshield")
 
-        # ... but the base itself has no identifier of its own
-        with self.assertRaises(NotImplementedError):
-            ExternalDistortionParameters.type()
+        # ... but the base itself has no identifier of its own, and requires one from every
+        # concrete subclass rather than defaulting
+        self.assertTrue(inspect.isabstract(ExternalDistortionParameters))
+        self.assertIn("type", ExternalDistortionParameters.__abstractmethods__)
 
     def test_from_dict_reconstructs_the_concrete_distortion_type(self):
         # `dataclasses_json` constructs whatever type the field is annotated with, so with the
