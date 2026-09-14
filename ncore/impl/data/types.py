@@ -107,16 +107,13 @@ class ExternalDistortionParameters(dataclasses_json.DataClassJsonMixin, ABC):
     """
 
     @staticmethod
+    @abstractmethod
     def type() -> str:
-        """Returns a string-identifier of the external distortion model
+        """Returns a string-identifier of the external
 
-        Concrete external distortion parameters must override this with their own stable
-        identifier; it keys the serialized representation (see
-        :func:`encode_camera_model_parameters`). This is deliberately not an
-        :func:`abstractmethod` so that adding it to this base does not render pre-existing
-        out-of-tree subclasses non-instantiable.
+        Concrete subclasses must provide their own stable identifier; it keys the serialized
+        representation (see :func:`CameraModelParameters.to_dict`) and the deserialization registry.
         """
-        raise NotImplementedError("Concrete external distortion parameters must implement type()")
 
     def __post_init__(self) -> None:
         # `ABC` alone does not prevent instantiation when a class declares no abstract method, and
@@ -132,6 +129,7 @@ class ExternalDistortionParameters(dataclasses_json.DataClassJsonMixin, ABC):
 
 #: Type-var for the external distortion parameters registrar
 ExternalDistortionParametersT = TypeVar("ExternalDistortionParametersT", bound=ExternalDistortionParameters)
+
 
 #: Key under which the concrete type identifier is stored *inside* the serialized external
 #: distortion parameters. The identifier has to travel with the nested object: `dataclasses_json`
@@ -193,8 +191,8 @@ def external_distortion_parameters_field(default: Optional[ExternalDistortionPar
     return field(default=default, metadata=dataclasses_json.config(encoder=encoder, decoder=decoder))
 
 
-@dataclass
 @register_external_distortion_parameters
+@dataclass
 class BivariateWindshieldModelParameters(ExternalDistortionParameters):
     """Represents parameters required to create a windshield external distortion model"""
 
@@ -243,6 +241,35 @@ class BivariateWindshieldModelParameters(ExternalDistortionParameters):
 ConcreteExternalDistortionParametersUnion = Union[BivariateWindshieldModelParameters]
 
 
+@dataclass(frozen=True)
+class ParaxialPinholeGeometry:
+    """Geometry of the ideal pinhole that best matches a camera model near the optical axis
+
+    The paraxial approximation a model is willing to make of itself: the pinhole agreeing with it
+    to first order about the principal direction. It is what
+    :meth:`IdealPinholeCameraModelParameters.from_source` builds on, and what
+    :meth:`IdealPinholeCameraModelParameters.natural_fov` measures.
+    """
+
+    focal_length: np.ndarray  #: Per-axis focal length ``[fu, fv]`` [px] (float32, [2,])
+    principal_point: np.ndarray  #: Principal point in image coordinates [px] (float32, [2,])
+    resolution: np.ndarray  #: Image resolution ``[width, height]`` [px] (uint64, [2,])
+
+    def __post_init__(self) -> None:
+        # Sanity checks. These matter more here than on an in-tree parameter class: the values
+        # arrive from an out-of-tree implementation, and a wrong dtype or shape would otherwise
+        # surface far away, inside the focal-length arithmetic of `from_source`.
+        assert self.focal_length.shape == (2,)
+        assert self.focal_length.dtype == np.dtype("float32")
+        assert self.focal_length[0] > 0.0 and self.focal_length[1] > 0.0
+
+        assert self.principal_point.shape == (2,)
+        assert self.principal_point.dtype == np.dtype("float32")
+
+        assert self.resolution.shape == (2,)
+        assert self.resolution.dtype == np.dtype("uint64")
+
+
 @dataclass
 class CameraModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
     """Represents parameters common to all camera models
@@ -260,6 +287,23 @@ class CameraModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
     external_distortion_parameters: Optional[ExternalDistortionParameters] = (
         external_distortion_parameters_field()
     )  #: Optional external distortion source associated to the camera (e.g. windshield). If a source exists, rays will be distorted prior to reaching the camera and its associated lens distortion if applicable
+
+    @abstractmethod
+    def paraxial_pinhole_geometry(self) -> ParaxialPinholeGeometry:
+        """The ideal pinhole agreeing with this model to first order about the optical axis
+
+        The single extension point behind :meth:`IdealPinholeCameraModelParameters.from_source` and
+        :meth:`IdealPinholeCameraModelParameters.natural_fov`. Implementing it is all a model
+        registered out of tree with :func:`ncore.sensors.register_camera_model` needs to be usable
+        by both.
+
+        Required rather than defaulted, like :meth:`transform`, so that a new model has to make a
+        deliberate decision here instead of inheriting a silent refusal. A model with no meaningful
+        paraxial pinhole opts out explicitly by raising :class:`TypeError`.
+
+        Raises:
+            TypeError: If the concrete model does not define a paraxial pinhole.
+        """
 
     @abstractmethod
     def transform(
@@ -283,15 +327,13 @@ class CameraModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
         """
 
     @staticmethod
+    @abstractmethod
     def type() -> str:
-        """Returns a string-identifier of the camera model
+        """Returns a string-identifier of the camera
 
-        Concrete camera model parameters must override this with their own stable identifier; it
-        keys the serialized representation (see :func:`encode_camera_model_parameters`). This is
-        deliberately not an :func:`abstractmethod` so that adding it to this base does not render
-        pre-existing out-of-tree subclasses non-instantiable.
+        Concrete subclasses must provide their own stable identifier; it keys the serialized
+        representation (see :func:`encode_camera_model_parameters`) and the deserialization registry.
         """
-        raise NotImplementedError("Concrete camera model parameters must implement type()")
 
     def __post_init__(self) -> None:
         # Sanity checks
@@ -306,9 +348,84 @@ class CameraModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
         assert isinstance(self.external_distortion_parameters, (type(None), ExternalDistortionParameters))
 
 
+CameraModelParametersT = TypeVar("CameraModelParametersT", bound=CameraModelParameters)
+
+#: Serialized camera model identifiers that predate the current :meth:`type` values. Kept so that
+#: data written before the rename still resolves to the same concrete class.
+_LEGACY_CAMERA_MODEL_TYPE_ALIASES: Dict[str, str] = {
+    # 'pinhole' was the identifier for what is now the OpenCV pinhole model
+    "pinhole": "opencv-pinhole",
+}
+
+#: Maps the serialized identifier to the concrete camera model parameters class
+_CAMERA_MODEL_PARAMETERS_BY_TYPE: Dict[str, Type[CameraModelParameters]] = {}
+
+#: Maps the serialized identifier to the concrete lidar model parameters class
+_LIDAR_MODEL_PARAMETERS_BY_TYPE: Dict[str, Type["LidarModelParameters"]] = {}
+
+
+def register_camera_model_parameters(
+    parameters_class: Type[CameraModelParametersT],
+) -> Type[CameraModelParametersT]:
+    """Registers a concrete camera model parameters class for deserialization
+
+    Usable as a class decorator. The class is keyed by its :meth:`type` identifier, which is what
+    the serialized form carries in ``camera_model_type``, so that a model registered out of tree
+    round-trips through :func:`decode_camera_model_parameters` as the in-tree ones do.
+
+    This is the deserialization counterpart to :func:`ncore.sensors.register_camera_model`, which
+    registers the model built *from* these parameters. A model that is registered but whose
+    parameters are not can be constructed in memory yet not read back from storage.
+    """
+    identifier = parameters_class.type()
+    existing = _CAMERA_MODEL_PARAMETERS_BY_TYPE.get(identifier)
+    if existing is not None and existing is not parameters_class:
+        raise ValueError(f"Camera model type {identifier!r} is already registered to {existing.__name__}")
+    _CAMERA_MODEL_PARAMETERS_BY_TYPE[identifier] = parameters_class
+    return parameters_class
+
+
+def register_lidar_model_parameters(
+    parameters_class: Type["LidarModelParametersT"],
+) -> Type["LidarModelParametersT"]:
+    """Registers a concrete lidar model parameters class for deserialization
+
+    The lidar counterpart to :func:`register_camera_model_parameters`, keyed by :meth:`type` and
+    read back by :func:`decode_lidar_model_parameters`.
+    """
+    identifier = parameters_class.type()
+    existing = _LIDAR_MODEL_PARAMETERS_BY_TYPE.get(identifier)
+    if existing is not None and existing is not parameters_class:
+        raise ValueError(f"Lidar model type {identifier!r} is already registered to {existing.__name__}")
+    _LIDAR_MODEL_PARAMETERS_BY_TYPE[identifier] = parameters_class
+    return parameters_class
+
+
+@register_camera_model_parameters
 @dataclass
 class FThetaCameraModelParameters(CameraModelParameters):
     """Represents FTheta-specific camera model parameters"""
+
+    def paraxial_pinhole_geometry(self) -> ParaxialPinholeGeometry:
+        """First-order term of the angles-to-pixeldistances polynomial, scaled by the linear term
+
+        The forward polynomial maps ``delta = f(theta) = c0 + c1*theta + ...``, and
+        ``r = f*tan(theta) ~= f*theta`` near ``theta = 0``, so ``d(delta)/d(theta)|_0 = c1``. The
+        linear term contributes a per-axis scale; its shear components ``d`` and ``e`` are not
+        representable by a pinhole and are dropped. The principal point is stored in the NVIDIA
+        pixel-center convention, so a ``+0.5`` shift brings it into image coordinates.
+
+        Raises:
+            ValueError: If the polynomial does not yield a positive focal length.
+        """
+        if (c1 := float(self.angle_to_pixeldist_poly[1])) <= 0.0:
+            raise ValueError(f"Cannot derive a positive focal length for an ideal pinhole (got {c1})")
+        c = float(self.linear_cde[0])
+        return ParaxialPinholeGeometry(
+            np.array([c1 * c, c1], dtype=np.float32),
+            (self.principal_point + 0.5).astype(np.float32),
+            self.resolution,
+        )
 
     @unique
     class PolynomialType(IntEnum):
@@ -495,6 +612,10 @@ class PinholeCameraModelParameters(CameraModelParameters):
         np.float32
     )  #: Focal lengths in u and v direction, resp., mapping (distorted) normalized camera coordinates to image coordinates relative to the principal point (float32, [2,])
 
+    def paraxial_pinhole_geometry(self) -> ParaxialPinholeGeometry:
+        """The model's own focal length and principal point, already in image coordinates"""
+        return ParaxialPinholeGeometry(self.focal_length, self.principal_point, self.resolution)
+
     def __post_init__(self) -> None:
         # Sanity checks
         super().__post_init__()
@@ -551,6 +672,7 @@ class PinholeCameraModelParameters(CameraModelParameters):
         )
 
 
+@register_camera_model_parameters
 @dataclass
 class IdealPinholeCameraModelParameters(PinholeCameraModelParameters):
     """Represents an ideal (distortion-free) pinhole camera
@@ -592,9 +714,11 @@ class IdealPinholeCameraModelParameters(PinholeCameraModelParameters):
         Returns:
             per-axis full field-of-view angles [rad] (float, ``[2,]``).
         """
-        focal, principal_point, resolution = IdealPinholeCameraModelParameters._paraxial_geometry(source)
-        half_extent = IdealPinholeCameraModelParameters._max_corner_half_extent(resolution, principal_point)
-        return IdealPinholeCameraModelParameters._fov_for_focal(half_extent, focal)
+        geometry = source.paraxial_pinhole_geometry()
+        half_extent = IdealPinholeCameraModelParameters._max_corner_half_extent(
+            geometry.resolution, geometry.principal_point
+        )
+        return IdealPinholeCameraModelParameters._fov_for_focal(half_extent, geometry.focal_length)
 
     @staticmethod
     def from_source(
@@ -633,7 +757,12 @@ class IdealPinholeCameraModelParameters(PinholeCameraModelParameters):
             ValueError: if the resulting field of view cannot be represented by a pinhole
                         (any axis at or beyond 180 degrees), or ``target_fov`` is invalid.
         """
-        paraxial_focal, principal_point, resolution = IdealPinholeCameraModelParameters._paraxial_geometry(source)
+        geometry = source.paraxial_pinhole_geometry()
+        paraxial_focal, principal_point, resolution = (
+            geometry.focal_length,
+            geometry.principal_point,
+            geometry.resolution,
+        )
         half_extent = IdealPinholeCameraModelParameters._max_corner_half_extent(resolution, principal_point)
 
         # Resolve target_fov to the per-axis focal length (all float32):
@@ -665,47 +794,6 @@ class IdealPinholeCameraModelParameters(PinholeCameraModelParameters):
         )
 
     @staticmethod
-    def _paraxial_geometry(
-        source: CameraModelParameters,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Extract the (paraxial focal, principal point, resolution) of ``source``'s ideal pinhole
-
-        Returns the per-axis focal length ``[fu, fv]`` of the pinhole that best matches
-        the source near the optical axis, preserving the source focal aspect ratio. All
-        returned arrays are float32. The principal point follows the standard
-        :ref:`image coordinate conventions <image_coordinate_conventions>` (top-left pixel
-        origin), matching the ideal-pinhole / OpenCV models.
-
-        * ideal / OpenCV pinhole / OpenCV fisheye: the model's own ``focal_length`` and
-          ``principal_point`` (already in image coordinates).
-        * F-Theta: the first-order coefficient of the angles-to-pixeldistances (forward)
-          polynomial scaled by the linear term's ``c`` factor, i.e.
-          ``[c1 * c, c1]`` with ``c1 = angle_to_pixeldist_poly[1]`` and
-          ``c = linear_cde[0]``. The forward polynomial maps
-          ``delta = f(theta) = c0 + c1*theta + ...`` with ``r = f*tan(theta) ~= f*theta``
-          near ``theta = 0``, so ``d(delta)/d(theta)|_0 = c1``; the linear term applies a
-          per-axis scale (shear components ``d``, ``e`` are not representable by a pinhole
-          and are dropped). F-Theta stores the principal point in the NVIDIA pixel-center
-          convention, so a ``+0.5`` shift is applied to bring it into image coordinates.
-        """
-        if isinstance(source, FThetaCameraModelParameters):
-            if (c1 := float(source.angle_to_pixeldist_poly[1])) <= 0.0:
-                raise ValueError(f"Cannot derive a positive focal length for an ideal pinhole (got {c1})")
-            c = float(source.linear_cde[0])
-            focal = np.array([c1 * c, c1], dtype=np.float32)
-            # F-Theta principal point is in the pixel-center convention; shift by +0.5 to
-            # match the image-coordinate convention used by the ideal pinhole model.
-            principal_point = (source.principal_point + 0.5).astype(np.float32)
-            return focal, principal_point, source.resolution
-        elif isinstance(
-            source,
-            (IdealPinholeCameraModelParameters, OpenCVPinholeCameraModelParameters, OpenCVFisheyeCameraModelParameters),
-        ):
-            return source.focal_length, source.principal_point, source.resolution
-        else:
-            raise TypeError(f"Unsupported camera model type for ideal pinhole conversion: {type(source).__name__}")
-
-    @staticmethod
     def _max_corner_half_extent(resolution: np.ndarray, principal_point: np.ndarray) -> np.ndarray:
         """Largest half-extent from the principal point to an image border per axis [px] ([2,])"""
         # resolution is integer (uint64); cast to the float principal-point dtype before subtracting
@@ -727,6 +815,7 @@ class IdealPinholeCameraModelParameters(PinholeCameraModelParameters):
             )
 
 
+@register_camera_model_parameters
 @dataclass
 class OpenCVPinholeCameraModelParameters(PinholeCameraModelParameters):
     """Represents Pinhole-specific (OpenCV-like) camera model parameters"""
@@ -775,6 +864,7 @@ class OpenCVPinholeCameraModelParameters(PinholeCameraModelParameters):
         )
 
 
+@register_camera_model_parameters
 @dataclass
 class OpenCVFisheyeCameraModelParameters(CameraModelParameters):
     """Represents Fisheye-specific (OpenCV-like) camera model parameters"""
@@ -791,6 +881,10 @@ class OpenCVFisheyeCameraModelParameters(CameraModelParameters):
     #  fisheye distortion polynomial as :math:`\theta(1 + k_1\theta^2 + k_2\theta^4 + k_3\theta^6 + k_4\theta^8)`
     #  for extrinsic camera ray angles :math:`\theta` with the principal direction (float32, [4,])
     max_angle: float = 0.0  #: Maximal extrinsic ray angle [rad] with the principal direction (float32)
+
+    def paraxial_pinhole_geometry(self) -> ParaxialPinholeGeometry:
+        """The model's own focal length and principal point, already in image coordinates"""
+        return ParaxialPinholeGeometry(self.focal_length, self.principal_point, self.resolution)
 
     @staticmethod
     def type() -> str:
@@ -957,21 +1051,13 @@ def decode_camera_model_parameters(encoded_parameters: Mapping) -> CameraModelPa
             EXTERNAL_DISTORTION_TYPE_KEY: external_distortion_type,
         }
 
-    # Return typed camera model parameters
-    if camera_model_type == "ftheta":
-        return FThetaCameraModelParameters.from_dict(camera_model_parameters)
-    elif camera_model_type == "ideal-pinhole":
-        return IdealPinholeCameraModelParameters.from_dict(camera_model_parameters)
-    elif camera_model_type in [
-        "opencv-pinhole",
-        # keep 'pinhole' for backwards-compatibility with existing data
-        "pinhole",
-    ]:
-        return OpenCVPinholeCameraModelParameters.from_dict(camera_model_parameters)
-    elif camera_model_type == "opencv-fisheye":
-        return OpenCVFisheyeCameraModelParameters.from_dict(camera_model_parameters)
-
-    raise ValueError(f"Unknown camera model type: {camera_model_type}")
+    # Resolve through the registry, so a model registered out of tree reads back like an in-tree
+    # one. Identifiers retired by a rename are mapped first.
+    resolved_type = _LEGACY_CAMERA_MODEL_TYPE_ALIASES.get(camera_model_type, camera_model_type)
+    parameters_class = _CAMERA_MODEL_PARAMETERS_BY_TYPE.get(resolved_type)
+    if parameters_class is None:
+        raise ValueError(f"Unknown camera model type: {camera_model_type}")
+    return parameters_class.from_dict(camera_model_parameters)
 
 
 @dataclass()
@@ -984,15 +1070,13 @@ class LidarModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
     """
 
     @staticmethod
+    @abstractmethod
     def type() -> str:
-        """Returns a string-identifier of the lidar model
+        """Returns a string-identifier of the lidar
 
-        Concrete lidar model parameters must override this with their own stable identifier; it
-        keys the serialized representation (see :func:`encode_lidar_model_parameters`). This is
-        deliberately not an :func:`abstractmethod` so that adding it to this base does not render
-        pre-existing out-of-tree subclasses non-instantiable.
+        Concrete subclasses must provide their own stable identifier; it keys the serialized
+        representation (see :func:`encode_lidar_model_parameters`) and the deserialization registry.
         """
-        raise NotImplementedError("Concrete lidar model parameters must implement type()")
 
     def __post_init__(self) -> None:
         # `ABC` alone does not prevent instantiation when a class declares no abstract method, and
@@ -1002,6 +1086,9 @@ class LidarModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
         # useless base instance instead of a concrete model's parameters.
         if type(self) is LidarModelParameters:
             raise TypeError("LidarModelParameters is abstract; instantiate a concrete lidar model's parameters")
+
+
+LidarModelParametersT = TypeVar("LidarModelParametersT", bound="LidarModelParameters")
 
 
 @dataclass()
@@ -1036,6 +1123,7 @@ class StructuredSpinningLidarModelParameters(SpinningLidarModelParameters):
         assert self.n_columns > 0
 
 
+@register_lidar_model_parameters
 @dataclass()
 class RowOffsetStructuredSpinningLidarModelParameters(StructuredSpinningLidarModelParameters):
     """Represents parameters for a structured spinning lidar model that is using a per-row azimuth-offset (compatible with, e.g., Hesai P128 sensors)"""
@@ -1143,11 +1231,11 @@ def decode_lidar_model_parameters(encoded_parameters: Mapping) -> LidarModelPara
 
     lidar_model_type = encoded_parameters["lidar_model_type"]
 
-    # Return typed lidar model parameters
-    if lidar_model_type == RowOffsetStructuredSpinningLidarModelParameters.type():
-        return RowOffsetStructuredSpinningLidarModelParameters.from_dict(encoded_parameters["lidar_model_parameters"])
-
-    raise ValueError(f"Unknown lidar model type: {lidar_model_type}")
+    # Resolve through the registry, as the camera side does
+    parameters_class = _LIDAR_MODEL_PARAMETERS_BY_TYPE.get(lidar_model_type)
+    if parameters_class is None:
+        raise ValueError(f"Unknown lidar model type: {lidar_model_type}")
+    return parameters_class.from_dict(encoded_parameters["lidar_model_parameters"])
 
 
 @dataclass

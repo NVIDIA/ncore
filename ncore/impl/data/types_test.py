@@ -16,22 +16,40 @@
 import io
 import unittest
 
-from typing import List, Optional, Tuple, TypeVar, Union
+from dataclasses import dataclass
+from typing import Any, List, Optional, Tuple, TypeVar, Union, cast
 
 import numpy as np
 import numpy.testing as npt
 import PIL.Image as PILImage
 
+from typing_extensions import Self
+
 from ncore.impl.common.transformations import PoseGraphInterpolator
 from ncore.impl.data.types import (
+    _CAMERA_MODEL_PARAMETERS_BY_TYPE,
+    _EXTERNAL_DISTORTION_PARAMETERS_BY_TYPE,
+    _LIDAR_MODEL_PARAMETERS_BY_TYPE,
+    EXTERNAL_DISTORTION_TYPE_KEY,
     CameraModelParameters,
     EncodedImageData,
+    ExternalDistortionParameters,
     FThetaCameraModelParameters,
     IdealPinholeCameraModelParameters,
+    LidarModelParameters,
     OpenCVFisheyeCameraModelParameters,
     OpenCVPinholeCameraModelParameters,
+    ParaxialPinholeGeometry,
     PointCloud,
+    RowOffsetStructuredSpinningLidarModelParameters,
     ShutterType,
+    decode_camera_model_parameters,
+    decode_lidar_model_parameters,
+    encode_camera_model_parameters,
+    encode_lidar_model_parameters,
+    register_camera_model_parameters,
+    register_external_distortion_parameters,
+    register_lidar_model_parameters,
 )
 
 
@@ -449,3 +467,261 @@ class TestCameraModelParametersTransformSelf(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestModelParametersRegistry(unittest.TestCase):
+    """Round-tripping of legacy, current and out-of-tree camera / lidar parameter identifiers"""
+
+    @staticmethod
+    def _opencv_pinhole() -> OpenCVPinholeCameraModelParameters:
+        return OpenCVPinholeCameraModelParameters(
+            resolution=np.array((640, 480), dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array((320.0, 240.0), dtype=np.float32),
+            focal_length=np.array((500.0, 500.0), dtype=np.float32),
+            radial_coeffs=np.zeros(6, dtype=np.float32),
+            tangential_coeffs=np.zeros(2, dtype=np.float32),
+            thin_prism_coeffs=np.zeros(4, dtype=np.float32),
+        )
+
+    def test_current_camera_identifiers_round_trip(self):
+        """Every in-tree camera model decodes back to its own class"""
+        for params in (
+            self._opencv_pinhole(),
+            IdealPinholeCameraModelParameters(
+                resolution=np.array((640, 480), dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array((320.0, 240.0), dtype=np.float32),
+                focal_length=np.array((500.0, 500.0), dtype=np.float32),
+            ),
+        ):
+            with self.subTest(model=type(params).__name__):
+                decoded = decode_camera_model_parameters(encode_camera_model_parameters(params))
+                self.assertIsInstance(decoded, type(params))
+                self.assertEqual(decoded.to_json(), params.to_json())
+
+    def test_legacy_pinhole_identifier_still_decodes(self):
+        """Data written as 'pinhole' predates the rename to 'opencv-pinhole' and must still load.
+
+        The alias is the one piece of the old if/elif chain that is not recoverable from `type()`,
+        so it is the regression most likely to slip through a move to a registry.
+        """
+        params = self._opencv_pinhole()
+        encoded = dict(encode_camera_model_parameters(params))
+        self.assertEqual(encoded["camera_model_type"], "opencv-pinhole")
+        encoded["camera_model_type"] = "pinhole"
+
+        decoded = decode_camera_model_parameters(encoded)
+        self.assertIsInstance(decoded, OpenCVPinholeCameraModelParameters)
+        self.assertEqual(decoded.to_json(), params.to_json())
+
+    def test_unknown_camera_identifier_raises_naming_it(self):
+        encoded = dict(encode_camera_model_parameters(self._opencv_pinhole()))
+        encoded["camera_model_type"] = "no-such-model"
+        with self.assertRaises(ValueError) as ctx:
+            decode_camera_model_parameters(encoded)
+        self.assertIn("no-such-model", str(ctx.exception))
+
+    def test_out_of_tree_camera_parameters_round_trip(self):
+        """A model this repository knows nothing about reads back, once its parameters register."""
+
+        @register_camera_model_parameters
+        @dataclass
+        class _OutOfTreeCameraModelParameters(CameraModelParameters):
+            focal: float = 700.0
+
+            @staticmethod
+            def type() -> str:
+                return "out-of-tree-registry-test"
+
+            def transform(
+                self,
+                image_domain_scale: Union[float, Tuple[float, float]],
+                image_domain_offset: Tuple[float, float] = (0.0, 0.0),
+                new_resolution: Optional[Tuple[int, int]] = None,
+            ) -> "Self":
+                return self
+
+            def paraxial_pinhole_geometry(self) -> ParaxialPinholeGeometry:
+                return ParaxialPinholeGeometry(
+                    np.array((self.focal, self.focal), dtype=np.float32),
+                    np.array((50.0, 100.0), dtype=np.float32),
+                    self.resolution,
+                )
+
+        try:
+            params = _OutOfTreeCameraModelParameters(
+                resolution=np.array((100, 200), dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+            )
+            decoded = decode_camera_model_parameters(encode_camera_model_parameters(params))
+            self.assertIsInstance(decoded, _OutOfTreeCameraModelParameters)
+            self.assertEqual(cast(Any, decoded).focal, 700.0)
+        finally:
+            _CAMERA_MODEL_PARAMETERS_BY_TYPE.pop("out-of-tree-registry-test", None)
+
+    def test_out_of_tree_lidar_parameters_round_trip(self):
+        """The lidar side of the registry, which had no out-of-tree coverage of its own.
+
+        The one existing out-of-tree lidar test covers `register_lidar_model`, the model factory.
+        This covers `register_lidar_model_parameters`, which is what lets the serialized form be
+        read back at all.
+        """
+
+        @register_lidar_model_parameters
+        @dataclass
+        class _OutOfTreeLidarModelParameters(LidarModelParameters):
+            beam_count: int = 32
+
+            @staticmethod
+            def type() -> str:
+                return "out-of-tree-lidar-test"
+
+        try:
+            params = _OutOfTreeLidarModelParameters(beam_count=64)
+            decoded = decode_lidar_model_parameters(encode_lidar_model_parameters(params))
+            self.assertIsInstance(decoded, _OutOfTreeLidarModelParameters)
+            self.assertEqual(cast(Any, decoded).beam_count, 64)
+            self.assertEqual(decoded.to_json(), params.to_json())
+        finally:
+            _LIDAR_MODEL_PARAMETERS_BY_TYPE.pop("out-of-tree-lidar-test", None)
+
+    def test_out_of_tree_external_distortion_round_trips_inside_a_camera(self):
+        """An out-of-tree distortion survives the nested, type-tagged field on a camera.
+
+        This path differs from the other two: the distortion is not encoded on its own but as a
+        discriminated object inside the camera parameters, so the round trip has to carry the tag
+        through `encode_camera_model_parameters` and resolve it on the way back.
+        """
+
+        @register_external_distortion_parameters
+        @dataclass
+        class _OutOfTreeExternalDistortionParameters(ExternalDistortionParameters):
+            strength: float = 1.5
+
+            @staticmethod
+            def type() -> str:
+                return "out-of-tree-distortion-test"
+
+        try:
+            camera = IdealPinholeCameraModelParameters(
+                resolution=np.array((640, 480), dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array((320.0, 240.0), dtype=np.float32),
+                focal_length=np.array((500.0, 500.0), dtype=np.float32),
+                external_distortion_parameters=_OutOfTreeExternalDistortionParameters(strength=2.5),
+            )
+
+            encoded = encode_camera_model_parameters(camera)
+            nested = encoded["camera_model_parameters"]["external_distortion_parameters"]
+            self.assertEqual(nested[EXTERNAL_DISTORTION_TYPE_KEY], "out-of-tree-distortion-test")
+
+            decoded = decode_camera_model_parameters(encoded)
+            distortion = decoded.external_distortion_parameters
+            self.assertIsInstance(distortion, _OutOfTreeExternalDistortionParameters)
+            self.assertEqual(cast(Any, distortion).strength, 2.5)
+            self.assertEqual(decoded.to_json(), camera.to_json())
+        finally:
+            _EXTERNAL_DISTORTION_PARAMETERS_BY_TYPE.pop("out-of-tree-distortion-test", None)
+
+    def test_duplicate_camera_registration_is_rejected(self):
+        """Two classes claiming one identifier is a bug, and silently shadowing would hide it."""
+        with self.assertRaises(ValueError) as ctx:
+
+            @register_camera_model_parameters
+            @dataclass
+            class _ClashingCameraModelParameters(CameraModelParameters):
+                @staticmethod
+                def type() -> str:
+                    return "opencv-pinhole"
+
+                def transform(
+                    self,
+                    image_domain_scale: Union[float, Tuple[float, float]],
+                    image_domain_offset: Tuple[float, float] = (0.0, 0.0),
+                    new_resolution: Optional[Tuple[int, int]] = None,
+                ) -> "Self":
+                    return self
+
+                def paraxial_pinhole_geometry(self) -> ParaxialPinholeGeometry:
+                    raise TypeError("test model has no paraxial pinhole")
+
+        self.assertIn("opencv-pinhole", str(ctx.exception))
+        # the in-tree class must still own the identifier
+        self.assertIs(_CAMERA_MODEL_PARAMETERS_BY_TYPE["opencv-pinhole"], OpenCVPinholeCameraModelParameters)
+
+    def test_registering_the_same_class_twice_is_idempotent(self):
+        """Re-importing a module must not fail; only a genuine clash should."""
+        self.assertIs(
+            register_camera_model_parameters(OpenCVPinholeCameraModelParameters),
+            OpenCVPinholeCameraModelParameters,
+        )
+
+    def test_current_lidar_identifier_round_trips(self):
+        params = RowOffsetStructuredSpinningLidarModelParameters(
+            n_rows=4,
+            n_columns=8,
+            spinning_frequency_hz=10.0,
+            spinning_direction="cw",
+            row_elevations_rad=np.linspace(0.2, -0.2, 4, dtype=np.float32),
+            column_azimuths_rad=np.linspace(3.0, 2.0, 8, dtype=np.float32),
+            row_azimuth_offsets_rad=np.zeros(4, dtype=np.float32),
+        )
+        decoded = decode_lidar_model_parameters(encode_lidar_model_parameters(params))
+        self.assertIsInstance(decoded, RowOffsetStructuredSpinningLidarModelParameters)
+        self.assertEqual(decoded.to_json(), params.to_json())
+
+    def test_unknown_lidar_identifier_raises_naming_it(self):
+        with self.assertRaises(ValueError) as ctx:
+            decode_lidar_model_parameters({"lidar_model_type": "no-such-lidar", "lidar_model_parameters": {}})
+        self.assertIn("no-such-lidar", str(ctx.exception))
+
+
+class TestParaxialPinholeGeometry(unittest.TestCase):
+    """Validation of the geometry an out-of-tree model hands back"""
+
+    @staticmethod
+    def _valid() -> dict:
+        return dict(
+            focal_length=np.array((500.0, 500.0), dtype=np.float32),
+            principal_point=np.array((320.0, 240.0), dtype=np.float32),
+            resolution=np.array((640, 480), dtype=np.uint64),
+        )
+
+    def test_valid_geometry_is_accepted(self):
+        geometry = ParaxialPinholeGeometry(**self._valid())
+        self.assertEqual(geometry.focal_length.shape, (2,))
+
+    def test_wrong_dtype_is_rejected(self):
+        """A float64 focal is the likeliest out-of-tree slip, and silently poisons the arithmetic."""
+        for field, bad in (
+            ("focal_length", np.array((500.0, 500.0), dtype=np.float64)),
+            ("principal_point", np.array((320.0, 240.0), dtype=np.float64)),
+            ("resolution", np.array((640, 480), dtype=np.int32)),
+        ):
+            with self.subTest(field=field):
+                kwargs = self._valid()
+                kwargs[field] = bad
+                with self.assertRaises(AssertionError):
+                    ParaxialPinholeGeometry(**kwargs)
+
+    def test_wrong_shape_is_rejected(self):
+        for field, bad in (
+            ("focal_length", np.array((500.0, 500.0, 500.0), dtype=np.float32)),
+            ("principal_point", np.array((320.0,), dtype=np.float32)),
+            ("resolution", np.array((640, 480, 3), dtype=np.uint64)),
+        ):
+            with self.subTest(field=field):
+                kwargs = self._valid()
+                kwargs[field] = bad
+                with self.assertRaises(AssertionError):
+                    ParaxialPinholeGeometry(**kwargs)
+
+    def test_non_positive_focal_is_rejected(self):
+        """A non-positive focal has no pinhole meaning and would make the FOV nonsensical."""
+        for focal in ((0.0, 500.0), (500.0, -1.0)):
+            with self.subTest(focal=focal):
+                kwargs = self._valid()
+                kwargs["focal_length"] = np.array(focal, dtype=np.float32)
+                with self.assertRaises(AssertionError):
+                    ParaxialPinholeGeometry(**kwargs)

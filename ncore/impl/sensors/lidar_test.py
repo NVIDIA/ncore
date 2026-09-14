@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import dataclasses
+import inspect
 import itertools
 import json
 import os
@@ -174,9 +175,10 @@ class TestLidarModelFactory(unittest.TestCase):
 
         self.assertEqual(encode(self._parameters())["lidar_model_type"], "row-offset-spinning")
 
-        # ... but the base itself has no identifier of its own
-        with self.assertRaises(NotImplementedError):
-            LidarModelParameters.type()
+        # ... but the base itself has no identifier of its own, and cannot be instantiated without
+        # a concrete subclass supplying one
+        self.assertTrue(inspect.isabstract(LidarModelParameters))
+        self.assertIn("type", LidarModelParameters.__abstractmethods__)
 
 
 # NOTE: Uses _get_test_devices() to skip GPU tests when NCORE_NO_GPU_TESTS is set
