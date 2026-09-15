@@ -21,7 +21,8 @@ import os
 import unittest
 import unittest.mock
 
-from typing import List, Tuple, Union, cast
+from dataclasses import dataclass
+from typing import Any, List, Tuple, Union, cast
 
 import numpy as np
 import parameterized
@@ -29,6 +30,7 @@ import torch
 
 from ncore.impl.common.transformations import se3_inverse
 from ncore.impl.common.util import unpack_optional
+from ncore.impl.data import util
 from ncore.impl.data.types import LidarModelParameters, RowOffsetStructuredSpinningLidarModelParameters
 from ncore.impl.sensors import lidar as lidar_module
 from ncore.impl.sensors.common import to_torch
@@ -63,6 +65,62 @@ def _get_test_devices() -> Tuple[torch.device, ...]:
         # CPU-only torch build (e.g., Python 3.8 with torch+cpu)
         return (torch.device("cpu"),)
     return (torch.device("cpu"), torch.device("cuda"))
+
+
+class TestLidarFieldOfViewContract(unittest.TestCase):
+    """The field-of-view contract every lidar model has to satisfy"""
+
+    def test_out_of_tree_model_supplies_its_own_field_of_view(self):
+        """A model this repository knows nothing about reports its own field of view.
+
+        The in-tree implementation derives both from row elevations and column azimuths, which only
+        a structured spinning lidar has. A model with a different scanning design derives them from
+        whatever it stores, which is why the contract lives on the base and the implementation does
+        not.
+        """
+
+        @dataclass
+        class _FlashLidarModelParameters(LidarModelParameters):
+            """A lidar with no rows, columns or rotation at all"""
+
+            vertical_span_rad: float = 0.5
+            horizontal_span_rad: float = 1.2
+
+            @staticmethod
+            def type() -> str:
+                return "flash-lidar-fov-test"
+
+            def get_vertical_fov(self, dtype: Any = np.float32) -> util.FOV:
+                span = np.array(self.vertical_span_rad, dtype=dtype).item()
+                return util.FOV(start_rad=-span / 2, span_rad=span, direction="cw")
+
+            def get_horizontal_fov(self, dtype: Any = np.float32) -> util.FOV:
+                span = np.array(self.horizontal_span_rad, dtype=dtype).item()
+                return util.FOV(start_rad=-span / 2, span_rad=span, direction="cw")
+
+        parameters = _FlashLidarModelParameters()
+        self.assertAlmostEqual(parameters.get_vertical_fov().span_rad, 0.5)
+        self.assertAlmostEqual(parameters.get_horizontal_fov().span_rad, 1.2)
+
+        # the requested precision reaches the implementation, as it does for the in-tree model
+        coarse = _FlashLidarModelParameters(vertical_span_rad=0.1 + 1e-9).get_vertical_fov(np.float16)
+        exact = _FlashLidarModelParameters(vertical_span_rad=0.1 + 1e-9).get_vertical_fov(np.float64)
+        self.assertNotEqual(coarse.span_rad, exact.span_rad)
+
+    def test_model_omitting_the_field_of_view_cannot_be_instantiated(self):
+        """Omitting either is not an option: the class is abstract and fails at construction."""
+
+        @dataclass
+        class _IncompleteLidarModelParameters(LidarModelParameters):
+            @staticmethod
+            def type() -> str:
+                return "incomplete-lidar-fov-test"
+
+        with self.assertRaises(TypeError) as ctx:
+            _IncompleteLidarModelParameters()
+        message = str(ctx.exception)
+        self.assertIn("get_vertical_fov", message)
+        self.assertIn("get_horizontal_fov", message)
 
 
 class TestRowOffsetStructuredSpinningLidarModelParameters(unittest.TestCase):

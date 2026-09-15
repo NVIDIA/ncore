@@ -20,12 +20,13 @@ from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, TypeVar, Union, cast
 
 import numpy as np
-import numpy.testing as npt
+import numpy.testing as np_testing
 import PIL.Image as PILImage
 
 from typing_extensions import Self
 
 from ncore.impl.common.transformations import PoseGraphInterpolator
+from ncore.impl.data import util
 from ncore.impl.data.types import (
     _CAMERA_MODEL_PARAMETERS_BY_TYPE,
     _EXTERNAL_DISTORTION_PARAMETERS_BY_TYPE,
@@ -129,21 +130,21 @@ class TestPointCloud(unittest.TestCase):
         """xyz returns raw data unchanged when no transform is applied."""
         xyz = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
         pc = self._make_pc(xyz)
-        npt.assert_array_equal(pc.xyz, xyz)
+        np_testing.assert_array_equal(pc.xyz, xyz)
 
     def test_xyz_with_transform(self):
         """xyz applies the accumulated pose graph transform lazily."""
         xyz = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
         pg = self._make_pose_graph_with_translation("sensor", "world", 10.0, 20.0, 30.0)
         pc = self._make_pc(xyz).transform("world", 0, pg)
-        npt.assert_allclose(pc.xyz, [[11.0, 22.0, 33.0]], atol=1e-5)
+        np_testing.assert_allclose(pc.xyz, [[11.0, 22.0, 33.0]], atol=1e-5)
 
     def test_xyz_with_f32_coordinates(self):
         """xyz works correctly with float32 input coordinates."""
         xyz = np.array([[1.5, -2.5, 3.5]], dtype=np.float32)
         pg = self._make_pose_graph_with_translation("sensor", "world", 0.5, 0.5, 0.5)
         pc = self._make_pc(xyz).transform("world", 0, pg)
-        npt.assert_allclose(pc.xyz, [[2.0, -2.0, 4.0]], atol=1e-5)
+        np_testing.assert_allclose(pc.xyz, [[2.0, -2.0, 4.0]], atol=1e-5)
 
     def test_attribute_invariant(self):
         """An INVARIANT attribute (e.g. rgb) is unchanged by a rigid transform."""
@@ -153,7 +154,7 @@ class TestPointCloud(unittest.TestCase):
         }
         pg = self._make_pose_graph_with_rotation_z_90("sensor", "world", 1.0, 2.0, 3.0)
         pc = self._make_pc(np.zeros((3, 3), dtype=np.float32), attrs).transform("world", 0, pg)
-        npt.assert_array_equal(pc.get_attribute("rgb"), rgb)
+        np_testing.assert_array_equal(pc.get_attribute("rgb"), rgb)
 
     def test_attribute_direction(self):
         """A DIRECTION attribute (e.g. normal) is rotated but NOT translated."""
@@ -167,7 +168,7 @@ class TestPointCloud(unittest.TestCase):
         pg = self._make_pose_graph_with_rotation_z_90("sensor", "world", 99.0, 99.0, 99.0)
         pc = self._make_pc(np.zeros((1, 3), dtype=np.float32), attrs).transform("world", 0, pg)
         # 90-deg Z rotation: (1,0,0) -> (0,1,0)
-        npt.assert_allclose(pc.get_attribute("normal"), [[0.0, 1.0, 0.0]], atol=1e-6)
+        np_testing.assert_allclose(pc.get_attribute("normal"), [[0.0, 1.0, 0.0]], atol=1e-6)
 
     def test_attribute_point(self):
         """A POINT attribute (e.g. secondary xyz) gets the full rigid transform."""
@@ -180,7 +181,7 @@ class TestPointCloud(unittest.TestCase):
         pg = self._make_pose_graph_with_rotation_z_90("sensor", "world", 10.0, 20.0, 30.0)
         pc = self._make_pc(np.zeros((1, 3), dtype=np.float32), attrs).transform("world", 0, pg)
         # rotation: (1,0,0) -> (0,1,0), then + (10,20,30) = (10,21,30)
-        npt.assert_allclose(pc.get_attribute("secondary"), [[10.0, 21.0, 30.0]], atol=1e-5)
+        np_testing.assert_allclose(pc.get_attribute("secondary"), [[10.0, 21.0, 30.0]], atol=1e-5)
 
     def test_has_attribute(self):
         """has_attribute returns True for existing and False for missing attributes."""
@@ -300,12 +301,12 @@ class TestPointCloud(unittest.TestCase):
 
         # First transform: sensor_a -> world
         pc_world = pc.transform("world", 0, pg)
-        npt.assert_allclose(pc_world.xyz, [[11.0, 0.0, 0.0]], atol=1e-5)
+        np_testing.assert_allclose(pc_world.xyz, [[11.0, 0.0, 0.0]], atol=1e-5)
         self.assertEqual(pc_world.reference_frame_id, "world")
 
         # Second transform: world -> sensor_b (accumulated on the same raw data)
         pc_b = pc_world.transform("sensor_b", 0, pg)
-        npt.assert_allclose(pc_b.xyz, [[11.0, -20.0, 0.0]], atol=1e-5)
+        np_testing.assert_allclose(pc_b.xyz, [[11.0, -20.0, 0.0]], atol=1e-5)
         self.assertEqual(pc_b.reference_frame_id, "sensor_b")
 
     def test_accumulated_transform_with_direction_attribute(self):
@@ -346,12 +347,12 @@ class TestPointCloud(unittest.TestCase):
 
         # sensor_a -> world: rotates (1,0,0) by +90° Z -> (0,1,0)
         pc_world = pc.transform("world", 0, pg)
-        npt.assert_allclose(pc_world.get_attribute("normal"), [[0.0, 1.0, 0.0]], atol=1e-6)
+        np_testing.assert_allclose(pc_world.get_attribute("normal"), [[0.0, 1.0, 0.0]], atol=1e-6)
 
         # world -> sensor_b: sensor_b->world is -90° Z, so world->sensor_b is +90° Z
         # (0,1,0) rotated +90° Z -> (-1,0,0)
         pc_b = pc_world.transform("sensor_b", 0, pg)
-        npt.assert_allclose(pc_b.get_attribute("normal"), [[-1.0, 0.0, 0.0]], atol=1e-6)
+        np_testing.assert_allclose(pc_b.get_attribute("normal"), [[-1.0, 0.0, 0.0]], atol=1e-6)
 
 
 def _encode_png(arr: np.ndarray) -> bytes:
@@ -454,7 +455,7 @@ class TestCameraModelParametersTransformSelf(unittest.TestCase):
             with self.subTest(model=parameters.type()):
                 transformed = _downscale(parameters, 0.5)
                 self.assertIs(type(transformed), type(parameters))
-                npt.assert_array_equal(transformed.resolution, np.array([320, 240], dtype=np.uint64))
+                np_testing.assert_array_equal(transformed.resolution, np.array([320, 240], dtype=np.uint64))
 
     def test_generic_helper_keeps_the_concrete_static_type(self):
         # Assigning to the concrete type is what pins the `Self` behaviour for the type checker;
@@ -576,6 +577,14 @@ class TestModelParametersRegistry(unittest.TestCase):
             @staticmethod
             def type() -> str:
                 return "out-of-tree-lidar-test"
+
+            def get_vertical_fov(self, dtype: Any = np.float32) -> util.FOV:
+                span = np.array(0.4, dtype=dtype)
+                return util.FOV(start_rad=float(-span.item() / 2), span_rad=float(span.item()), direction="cw")
+
+            def get_horizontal_fov(self, dtype: Any = np.float32) -> util.FOV:
+                span = np.array(2 * np.pi, dtype=dtype)
+                return util.FOV(start_rad=0.0, span_rad=float(span.item()), direction="cw")
 
         try:
             params = _OutOfTreeLidarModelParameters(beam_count=64)
