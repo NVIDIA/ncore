@@ -1069,6 +1069,24 @@ class LidarModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
     abstract type can serialize parameters without narrowing to a concrete model first.
     """
 
+    @abstractmethod
+    def get_vertical_fov(self, dtype: "npt.DTypeLike" = np.float32) -> util.FOV:
+        """The lidar's vertical field of view, in the requested dtype precision
+
+        Every lidar has a vertical and a horizontal field of view, whatever its scanning design, so
+        both are declared here rather than on the one concrete model that happens to implement them
+        today. A model derives them from whatever it stores: elevations and azimuths for a
+        structured spinning lidar, something else entirely for a flash or solid-state one.
+        """
+
+    @abstractmethod
+    def get_horizontal_fov(self, dtype: "npt.DTypeLike" = np.float32) -> util.FOV:
+        """The lidar's horizontal field of view, in the requested dtype precision
+
+        See :meth:`get_vertical_fov`. A model that spins through a full revolution reports a span of
+        ``2 * pi``.
+        """
+
     @staticmethod
     @abstractmethod
     def type() -> str:
