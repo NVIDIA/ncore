@@ -13,6 +13,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Highlights
 
+- `LidarModelParameters` declares `get_vertical_fov` and `get_horizontal_fov`. Every lidar has a
+  vertical and a horizontal field of view, whatever its scanning design, the same way every camera
+  has a resolution, but both were previously declared only on
+  `RowOffsetStructuredSpinningLidarModelParameters`. There was no way to ask an arbitrary lidar for
+  its field of view, and a second model could have arrived with a different spelling or none at all.
+- The implementation stays on the row-offset model. It derives the vertical extent from
+  `row_elevations_rad` and the horizontal one from `column_azimuths_rad` and
+  `row_azimuth_offsets_rad`, all of which exist only there. A model with a different scanning design
+  derives the same two quantities from whatever it stores, which is the reason the contract belongs
+  on the base and the derivation does not.
+- Concrete lidar parameter classes must now implement both, as they already must implement `type`.
+  Every model in NCore does, and no out-of-tree lidar model exists yet, so nothing outside this
+  repository is affected.
+
+## [v19.8.0](https://github.com/NVIDIA/ncore/compare/e7306c7fdb6697ca0ca0fece2332d6c58c5064da..v19.8.0) - 2026-09-15
+#### ➕ Added
+- (**data**) declare the field-of-view contract on the lidar parameter base - ([e7306c7](https://github.com/NVIDIA/ncore/commit/e7306c7fdb6697ca0ca0fece2332d6c58c5064da)) - Janick Martinez Esturo, Claude Opus 5
+
+- - -
+
+
+### Highlights
+
 - Models defined outside NCore are now supported end to end. 19.6.0 introduced
   `register_camera_model` and its lidar and external distortion counterparts, but registration only
   reached half way: an out-of-tree model could be constructed, then rejected by
