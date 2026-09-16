@@ -1497,8 +1497,8 @@ class LidarSensorComponent:
             ],  # per-ray unit-norm direction vectors in sensor frame at measure time (raw / not motion-compensated, needs to have unit norm) (float32, [N, 3])
             timestamp_us: npt.NDArray[np.uint64],  # per-ray timestamp in microseconds (uint64, [N])
             model_element: Optional[
-                npt.NDArray[np.uint16]
-            ],  # per-ray model element indices, if applicable (uint16, [N, 2])
+                npt.NDArray[Any]
+            ],  # per-ray model element indices / sampling coordinates, if applicable. Shape is (N, ...): a leading per-ray dimension N followed by any number of trailing dimensions (none -> (N,), or (N, A, B, ...)). dtype may be any integer type (discrete model index) or any floating type up to float32 (continuous model sampling coordinate, e.g. float16 / float32); float64 (and wider) is disallowed as too storage-heavy. The shape and dtype are self-describing in storage and interpreted by the associated lidar model (e.g. (N, 2) (row, col) for the current structured spinning model; extra dimensions may encode zone, scan-direction / frame parity for solid-state models).
             # per-ray return data for R returns - non-existing values are indicated via NaNs
             distance_m: npt.NDArray[
                 np.float32
@@ -1537,8 +1537,17 @@ class LidarSensorComponent:
             ray_data["timestamp_us"] = (timestamp_us, timestamp_us.shape)
 
             if model_element is not None:
-                assert model_element.shape == (n_rays, 2)
-                assert model_element.dtype == np.dtype("uint16")
+                assert model_element.ndim >= 1, "model_element must have a leading per-ray dimension"
+                assert model_element.shape[0] == n_rays, (
+                    "model_element must have one entry per ray (leading dimension == n_rays)"
+                )
+                # Allow any integer dtype (discrete model index) or any floating
+                # type up to float32 (continuous model sampling coordinate, e.g.
+                # float16 / float32). float64 (and wider) is disallowed as too
+                # storage-heavy.
+                assert np.issubdtype(model_element.dtype, np.integer) or (
+                    np.issubdtype(model_element.dtype, np.floating) and model_element.dtype.itemsize <= 4
+                ), f"model_element must be an integer type or a float type up to float32, got {model_element.dtype}"
                 ray_data["model_element"] = (model_element, model_element.shape)
 
             ## Per return data
