@@ -20,7 +20,7 @@ import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import singledispatch
-from typing import Generic, Optional, Tuple, TypeVar, Union, cast, overload
+from typing import ClassVar, Generic, Optional, Tuple, TypeVar, Union, cast, overload
 
 import numpy as np
 import torch
@@ -50,6 +50,15 @@ ExternalDistortionParametersT_co = TypeVar(
 #: Invariant counterpart used for the free factory's generic overload; a covariant type variable
 #: cannot appear in a function parameter position.
 ExternalDistortionParametersT = TypeVar("ExternalDistortionParametersT", bound=types.ExternalDistortionParameters)
+
+#: Component count of a *central* camera-ray representation: a 3d direction about the model's
+#: common projection centre. See :attr:`CameraModel.camera_ray_dim`.
+_CENTRAL_CAMERA_RAY_DIM = 3
+
+#: Component count of a *non-central* camera-ray representation: a 3d origin followed by a 3d
+#: direction, matching the ``[point, direction]`` layout of
+#: :class:`CameraModel.WorldRaysReturn`. See :attr:`CameraModel.camera_ray_dim`.
+_NON_CENTRAL_CAMERA_RAY_DIM = 6
 
 
 class ExternalDistortionModel(BaseModel, ABC, Generic[ExternalDistortionParametersT_co]):
@@ -82,17 +91,49 @@ class ExternalDistortionModel(BaseModel, ABC, Generic[ExternalDistortionParamete
         """Returns the parameters specific to the concrete distortion model"""
         pass
 
-    @abstractmethod
     def distort_camera_rays(self, camera_rays: torch.Tensor) -> torch.Tensor:
         """
         Applies distortion to camera rays in forward direction, from external to internal
         """
-        pass
+        self._assert_central_camera_rays(camera_rays)
+        return self._distort_camera_rays_impl(camera_rays)
 
-    @abstractmethod
     def undistort_camera_rays(self, camera_rays: torch.Tensor) -> torch.Tensor:
         """
         Applies distortion to camera rays in backward direction, from internal to external
+        """
+        self._assert_central_camera_rays(camera_rays)
+        return self._undistort_camera_rays_impl(camera_rays)
+
+    def _assert_central_camera_rays(self, camera_rays: torch.Tensor) -> None:
+        """Rejects non-central (6d ``[origin, direction]``) camera rays
+
+        External distortion deflects each ray individually, so it does not map a parallel ray
+        bundle to another parallel one. It is therefore only defined for *central* camera models,
+        whose rays are 3d directions about a common projection centre (see
+        :attr:`CameraModel.camera_ray_dim`).
+
+        Raises:
+            TypeError: If the rays are not 3d central camera rays.
+        """
+        if camera_rays.shape[-1] != _CENTRAL_CAMERA_RAY_DIM:
+            raise TypeError(
+                f"{type(self).__name__} requires 3d central camera rays, but got rays with last "
+                f"dimension {camera_rays.shape[-1]}. External distortion is undefined for "
+                "non-central camera models, whose rays do not share a common origin."
+            )
+
+    @abstractmethod
+    def _distort_camera_rays_impl(self, camera_rays: torch.Tensor) -> torch.Tensor:
+        """
+        Distortion model-specific implementation of :meth:`distort_camera_rays`
+        """
+        pass
+
+    @abstractmethod
+    def _undistort_camera_rays_impl(self, camera_rays: torch.Tensor) -> torch.Tensor:
+        """
+        Distortion model-specific implementation of :meth:`undistort_camera_rays`
         """
         pass
 
@@ -221,7 +262,7 @@ class BivariateWindshieldModel(ExternalDistortionModel[types.BivariateWindshield
         z = torch.sqrt(torch.clamp(torch.ones_like(x) - xy_norm, 0.0, 1.0)) * torch.sign(normalized_rays[..., 2])
         return torch.stack((x, y, z), -1)
 
-    def distort_camera_rays(self, camera_rays: torch.Tensor) -> torch.Tensor:
+    def _distort_camera_rays_impl(self, camera_rays: torch.Tensor) -> torch.Tensor:
         """
         Applies distortion to camera rays in forward direction, from external to internal
         """
@@ -234,7 +275,7 @@ class BivariateWindshieldModel(ExternalDistortionModel[types.BivariateWindshield
             self.poly_eval_2d,
         )
 
-    def undistort_camera_rays(self, camera_rays: torch.Tensor) -> torch.Tensor:
+    def _undistort_camera_rays_impl(self, camera_rays: torch.Tensor) -> torch.Tensor:
         """
         Applies distortion to camera rays in backward direction, from external to internal
         """
@@ -259,7 +300,7 @@ class _CameraRollingShutterProjector(RollingShutterSolver.Projector):
         self._model = camera_model
 
     def project(self, sensor_points: torch.Tensor) -> RollingShutterSolver.ProjectionResult:
-        result = self._model.camera_rays_to_image_points(sensor_points)
+        result = self._model.camera_points_to_image_points(sensor_points)
         return RollingShutterSolver.ProjectionResult(projected=result.image_points, valid_flag=result.valid_flag)
 
     def relative_frame_time(self, projected: torch.Tensor) -> torch.Tensor:
@@ -295,6 +336,24 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
     ]  #: Source of distortion external to the camera (e.g. windshield). Can be empty (None) if no such source exists.
     #  If a source exists, rays will be distorted prior to reaching the camera and its associated lens distortion if applicable
 
+    camera_ray_dim: ClassVar[int] = _CENTRAL_CAMERA_RAY_DIM
+    """Component count of the camera-ray representation :meth:`image_points_to_camera_rays` returns
+
+    ``3`` for a *central* model, whose rays all pass through a common projection centre and are
+    therefore fully described by a direction. ``6`` for a *non-central* model, whose rays need an
+    explicit per-ray origin and are laid out as ``[origin, direction]``, matching
+    :class:`CameraModel.WorldRaysReturn`. Both are expressed in the extrinsic camera frame.
+
+    A property of the model *type* rather than of an instance, so it is a class attribute and can
+    be read off the class as well as an instance.
+
+    Note this describes unprojection only. The forward direction,
+    :meth:`camera_points_to_image_points`, takes a 3d camera-frame *point* for every model, but
+    what it does with the magnitude differs: a central model's projection is scale-invariant (any
+    point along a ray projects identically), whereas a non-central model projects the point
+    itself, so its magnitude carries the position and must not be normalized away.
+    """
+
     def __init__(
         self, camera_model_parameters: types.CameraModelParameters, device: Union[str, torch.device], dtype: torch.dtype
     ):
@@ -325,6 +384,37 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         assert self.shutter_type in types.ShutterType, f"Unsupported shutter type {self.shutter_type}"
         assert self.external_distortion is None or isinstance(self.external_distortion, ExternalDistortionModel)
 
+        # External distortion deflects each ray individually, so it does not map a parallel ray
+        # bundle to another parallel one - a distorted non-central model would no longer be the
+        # model it claims to be. Rejected here rather than only where the rays are used, because
+        # the *forward* path feeds 3d camera-frame points for central and non-central models
+        # alike: a ray-dimensionality guard alone would let the pairing survive every projection
+        # and only surface on unprojection.
+        if self.external_distortion is not None and self.camera_ray_dim != _CENTRAL_CAMERA_RAY_DIM:
+            raise TypeError(
+                f"{type(self).__name__} is a non-central camera model and cannot carry external "
+                "distortion: deflecting each ray individually would not preserve the parallel ray "
+                "bundle the model is defined by."
+            )
+
+    def _split_camera_rays(self, camera_rays: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Splits camera rays into per-ray origins and directions in the camera frame
+
+        Central models carry no per-ray origin (every ray starts at the projection centre, i.e.
+        the camera frame's origin), so their origins are zero. Returning them explicitly lets the
+        world-ray transformations apply the sensor pose uniformly, without branching on the ray
+        representation: ``R @ 0 + t`` reproduces the broadcast translation exactly.
+
+        Args:
+            camera_rays: camera rays, shape ``[n, camera_ray_dim]``.
+
+        Returns:
+            a tuple of per-ray origins ``[n, 3]`` and directions ``[n, 3]``.
+        """
+        if self.camera_ray_dim == _CENTRAL_CAMERA_RAY_DIM:
+            return torch.zeros_like(camera_rays), camera_rays
+        return camera_rays[:, :3], camera_rays[:, 3:]
+
     @abstractmethod
     def get_parameters(self) -> CameraModelParametersT_co:
         """
@@ -340,11 +430,11 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         pass
 
     @abstractmethod
-    def _camera_rays_to_image_points_impl(
+    def _camera_points_to_image_points_impl(
         self, cam_rays: torch.Tensor, return_jacobians: bool
     ) -> CameraModel.ImagePointsReturn:
         """
-        Camera model-specific implementation of camera_rays_to_image_points
+        Camera model-specific implementation of camera_points_to_image_points
         """
         pass
 
@@ -370,23 +460,44 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
 
         return cam_rays
 
+    def camera_points_to_image_points(
+        self, camera_points: Union[torch.Tensor, np.ndarray], return_jacobians: bool = False
+    ) -> CameraModel.ImagePointsReturn:
+        """
+        For each 3d camera-frame point, computes the corresponding image point coordinates and a
+        valid flag. Optionally, the Jacobians of the per-point transformations can be computed as
+        well
+
+        Takes a *point*, not a direction. For a :ref:`central <central_and_non_central_models>`
+        model the distinction does not matter, as the projection is scale-invariant and every
+        point along a ray projects identically. For a non-central model it does: the point's
+        magnitude carries its position, so normalizing the input changes the result.
+        """
+
+        # If the input is a numpy array first convert it to torch otherwise just send to correct device
+        camera_points = to_torch(camera_points, dtype=self.dtype, device=self.device)
+
+        # Apply external distortion if available
+        if self.external_distortion is not None:
+            camera_points = self.external_distortion.distort_camera_rays(camera_points)
+
+        # Evaluate regular lens model
+        return self._camera_points_to_image_points_impl(camera_points, return_jacobians)
+
     def camera_rays_to_image_points(
         self, cam_rays: Union[torch.Tensor, np.ndarray], return_jacobians: bool = False
     ) -> CameraModel.ImagePointsReturn:
         """
         For each camera ray, computes the corresponding image point coordinates and a valid flag.
         Optionally, the Jacobians of the per-ray transformations can be computed as well
+
+        .. deprecated::
+            Renamed to :meth:`camera_points_to_image_points`. The argument was always a
+            camera-frame *point*, and every central model's projection is scale-invariant, so the
+            name suggested a freedom the method never had. The distinction became observable with
+            the first non-central model, whose projection is not scale-invariant.
         """
-
-        # If the input is a numpy array first convert it to torch otherwise just send to correct device
-        cam_rays = to_torch(cam_rays, dtype=self.dtype, device=self.device)
-
-        # Apply external distortion if available
-        if self.external_distortion is not None:
-            cam_rays = self.external_distortion.distort_camera_rays(cam_rays)
-
-        # Evaluate regular lens model
-        return self._camera_rays_to_image_points_impl(cam_rays, return_jacobians)
+        return self.camera_points_to_image_points(cam_rays, return_jacobians)
 
     def pixels_to_camera_rays(self, pixel_idxs: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
         """
@@ -395,15 +506,27 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
 
         return self.image_points_to_camera_rays(self.pixels_to_image_points(pixel_idxs))
 
-    def camera_rays_to_pixels(self, cam_rays: Union[torch.Tensor, np.ndarray]) -> CameraModel.PixelsReturn:
+    def camera_points_to_pixels(self, camera_points: Union[torch.Tensor, np.ndarray]) -> CameraModel.PixelsReturn:
         """
-        For each camera ray, computes the corresponding pixel index and a valid flag
+        For each 3d camera-frame point, computes the corresponding pixel index and a valid flag
+
+        Takes a *point*, not a direction; see :meth:`camera_points_to_image_points`.
         """
-        image_points = self.camera_rays_to_image_points(cam_rays)
+        image_points = self.camera_points_to_image_points(camera_points)
 
         return CameraModel.PixelsReturn(
             pixels=self.image_points_to_pixels(image_points.image_points), valid_flag=image_points.valid_flag
         )
+
+    def camera_rays_to_pixels(self, cam_rays: Union[torch.Tensor, np.ndarray]) -> CameraModel.PixelsReturn:
+        """
+        For each camera ray, computes the corresponding pixel index and a valid flag
+
+        .. deprecated::
+            Renamed to :meth:`camera_points_to_pixels`; see
+            :meth:`camera_points_to_image_points` for why.
+        """
+        return self.camera_points_to_pixels(cam_rays)
 
     @staticmethod
     def from_parameters(
@@ -651,7 +774,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
 
         # Global-shutter special case - no need for rolling-shutter compensation
         if self.shutter_type == types.ShutterType.GLOBAL:
-            image_points_start = self.camera_rays_to_image_points(
+            image_points_start = self.camera_points_to_image_points(
                 (
                     T_world_sensor_start[:3, :3] @ world_points.transpose(0, 1) + T_world_sensor_start[:3, 3, None]
                 ).transpose(0, 1)
@@ -756,7 +879,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
 
         # Do the transformation
         cam_rays = torch.matmul(R_world_sensor, world_points[:, :, None]).squeeze(-1) + t_world_sensor
-        image_points = self.camera_rays_to_image_points(cam_rays)
+        image_points = self.camera_points_to_image_points(cam_rays)
 
         # We always return image points
         return_var = self.WorldPointsToImagePointsReturn(
@@ -925,18 +1048,26 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
             camera_rays = to_torch(camera_rays, device=self.device, dtype=self.dtype)
             assert len(camera_rays.shape) == 2
             assert len(camera_rays) == len(image_points)
-            assert camera_rays.shape[1] == 3
+            assert camera_rays.shape[1] == self.camera_ray_dim
             assert camera_rays.dtype == self.dtype
         else:
             camera_rays = self.image_points_to_camera_rays(image_points)
 
         R_sensor_world = T_sensor_world[:3, :3]  # [3, 3]
 
-        world_ray_directions = torch.matmul(R_sensor_world, camera_rays[:, :, None]).squeeze(-1)  # [n_image_points, 3]
+        # Non-central models carry a per-ray origin; central models have none, and their zero
+        # origins reproduce the broadcast translation under the same transformation
+        camera_ray_origins, camera_ray_directions = self._split_camera_rays(camera_rays)
 
-        # Use broadcasting to expand translation()
+        world_ray_directions = torch.matmul(R_sensor_world, camera_ray_directions[:, :, None]).squeeze(
+            -1
+        )  # [n_image_points, 3]
+        world_ray_origins = (
+            torch.matmul(R_sensor_world, camera_ray_origins[:, :, None]).squeeze(-1) + T_sensor_world[:3, 3]
+        )  # [n_image_points, 3]
+
         world_rays = torch.empty((len(camera_rays), 6), dtype=self.dtype, device=self.device)
-        world_rays[:, :3] = T_sensor_world[:3, 3]  # broadcasts [3] -> [n_image_points, 3]
+        world_rays[:, :3] = world_ray_origins
         world_rays[:, 3:] = world_ray_directions
 
         return_var = self.WorldRaysReturn(world_rays=world_rays)
@@ -1044,7 +1175,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
             camera_rays = to_torch(camera_rays, device=self.device, dtype=self.dtype)
             assert len(camera_rays.shape) == 2
             assert camera_rays.shape[0] == image_points.shape[0]
-            assert camera_rays.shape[1] == 3
+            assert camera_rays.shape[1] == self.camera_ray_dim
             assert camera_rays.dtype == self.dtype
         else:
             camera_rays = self.image_points_to_camera_rays(image_points)
@@ -1068,13 +1199,20 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
             )
         )  # [n_image_points, 3, 3]
 
-        world_ray_directions_rs = torch.bmm(R_sensor_world_rs, camera_rays[:, :, None]).squeeze(
+        # Non-central models carry a per-ray origin; central models have none, and their zero
+        # origins reproduce the interpolated sensor position under the same transformation
+        camera_ray_origins, camera_ray_directions = self._split_camera_rays(camera_rays)
+
+        world_ray_directions_rs = torch.bmm(R_sensor_world_rs, camera_ray_directions[:, :, None]).squeeze(
             -1
+        )  # [n_image_points, 3]
+        world_ray_origins_rs = (
+            torch.bmm(R_sensor_world_rs, camera_ray_origins[:, :, None]).squeeze(-1) + world_position_rs
         )  # [n_image_points, 3]
 
         # Copy the values in the output variable
         world_rays = torch.empty((len(image_points), 6), dtype=self.dtype, device=self.device)
-        world_rays[:, :3] = world_position_rs
+        world_rays[:, :3] = world_ray_origins_rs
         world_rays[:, 3:] = world_ray_directions_rs
 
         return_var = self.WorldRaysReturn(world_rays=world_rays)
@@ -1362,7 +1500,7 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
 
         return cam_rays
 
-    def _camera_rays_to_image_points_impl(
+    def _camera_points_to_image_points_impl(
         self, cam_rays: torch.Tensor, return_jacobians
     ) -> CameraModel.ImagePointsReturn:
         """
@@ -1486,7 +1624,7 @@ class PinholeCameraModel(CameraModel[PinholeCameraModelParametersT_co], ABC):
         cam_rays3 = torch.cat([cam_rays2, torch.ones_like(cam_rays2[:, :1])], dim=1)
         return cam_rays3 / torch.linalg.norm(cam_rays3, axis=1, keepdims=True)
 
-    def _ideal_camera_rays_to_image_points(
+    def _ideal_camera_points_to_image_points(
         self, cam_rays: torch.Tensor, return_jacobians: bool
     ) -> CameraModel.ImagePointsReturn:
         """Closed-form ideal-pinhole projection of normalized camera rays to image points"""
@@ -1560,11 +1698,11 @@ class IdealPinholeCameraModel(PinholeCameraModel[types.IdealPinholeCameraModelPa
         image_points = image_points.to(self.dtype)
         return self._ideal_image_points_to_camera_rays(image_points)
 
-    def _camera_rays_to_image_points_impl(
+    def _camera_points_to_image_points_impl(
         self, cam_rays: torch.Tensor, return_jacobians
     ) -> CameraModel.ImagePointsReturn:
         cam_rays = to_torch(cam_rays, device=self.device, dtype=self.dtype)
-        return self._ideal_camera_rays_to_image_points(cam_rays, return_jacobians)
+        return self._ideal_camera_points_to_image_points(cam_rays, return_jacobians)
 
 
 class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModelParameters]):
@@ -1649,7 +1787,7 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         # make sure rays are normalized
         return camera_rays3 / torch.linalg.norm(camera_rays3, axis=1, keepdims=True)
 
-    def _camera_rays_to_image_points_impl(
+    def _camera_points_to_image_points_impl(
         self, cam_rays: torch.Tensor, return_jacobians
     ) -> CameraModel.ImagePointsReturn:
         """
@@ -1661,7 +1799,7 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         # Distortion-free OpenCV pinholes are equivalent to an ideal pinhole - use the
         # closed-form path and skip the distortion computation
         if self._is_distortion_free:
-            return self._ideal_camera_rays_to_image_points(cam_rays, return_jacobians)
+            return self._ideal_camera_points_to_image_points(cam_rays, return_jacobians)
 
         # Initialize the valid flag and set all the points behind the camera plane to invalid
         image_points = torch.zeros_like(cam_rays[:, :2])
@@ -1891,7 +2029,7 @@ class OpenCVFisheyeCameraModel(CameraModel[types.OpenCVFisheyeCameraModelParamet
 
         return cam_rays
 
-    def _camera_rays_to_image_points_impl(
+    def _camera_points_to_image_points_impl(
         self, cam_rays: torch.Tensor, return_jacobians
     ) -> CameraModel.ImagePointsReturn:
         """
@@ -1958,6 +2096,120 @@ class OpenCVFisheyeCameraModel(CameraModel[types.OpenCVFisheyeCameraModelParamet
         return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
 
 
+class IdealOrthographicCameraModel(CameraModel[types.IdealOrthographicCameraModelParameters]):
+    """Camera model for an ideal (distortion-free) orthographic camera
+
+    A parallel projection: the camera-frame depth is *dropped* rather than divided by, so a
+    point's image location is invariant to it. This makes the model **non-central** - its rays are
+    parallel and share no common origin - which is why it is the one NCore camera model whose
+    :meth:`image_points_to_camera_rays` returns 6d ``[origin, direction]`` rays
+    (:attr:`~CameraModel.camera_ray_dim` is ``6``).
+
+    Two consequences distinguish it from the central models:
+
+    * A parallel projection has no frustum, so validity is purely the in-image window test. There
+      is deliberately **no** "in front of the camera" (``z > 0``) check.
+    * It cannot carry external distortion, which would not preserve the parallel ray bundle.
+      :class:`CameraModel` rejects that combination at construction.
+    """
+
+    principal_point: torch.Tensor
+    pixels_per_unit: torch.Tensor
+
+    #: An orthographic camera is non-central, so its rays carry an explicit per-ray origin
+    camera_ray_dim: ClassVar[int] = _NON_CENTRAL_CAMERA_RAY_DIM
+
+    def __init__(
+        self,
+        camera_model_parameters: types.IdealOrthographicCameraModelParameters,
+        device: Union[str, torch.device] = torch.device("cuda"),
+        dtype: torch.dtype = torch.float32,
+    ):
+        super().__init__(camera_model_parameters, device, dtype)
+        del (device, dtype)
+
+        self.register_buffer(
+            "principal_point",
+            to_torch(camera_model_parameters.principal_point, device=self.device, dtype=self.dtype),
+        )
+        self.register_buffer(
+            "pixels_per_unit",
+            to_torch(camera_model_parameters.pixels_per_unit, device=self.device, dtype=self.dtype),
+        )
+
+        assert self.principal_point.shape == (2,)
+        assert self.principal_point.dtype == self.dtype
+        assert self.pixels_per_unit.shape == (2,)
+        assert self.pixels_per_unit.dtype == self.dtype
+
+    def get_parameters(self) -> types.IdealOrthographicCameraModelParameters:
+        """Returns the camera model parameters specific to the current camera model instance"""
+        return types.IdealOrthographicCameraModelParameters(
+            resolution=self.resolution.cpu().numpy().astype(np.uint64),
+            shutter_type=self.shutter_type,
+            external_distortion_parameters=cast(
+                Optional[types.ExternalDistortionParameters],
+                map_optional(self.external_distortion, lambda x: x.get_parameters()),
+            ),
+            principal_point=self.principal_point.cpu().numpy().astype(np.float32),
+            pixels_per_unit=self.pixels_per_unit.cpu().numpy().astype(np.float32),
+        )
+
+    def _image_points_to_camera_rays_impl(self, image_points: torch.Tensor) -> torch.Tensor:
+        """
+        Computes the camera ray for each image point
+
+        Returns 6d ``[origin, direction]`` rays: the origins are the image points carried back
+        onto the ``z = 0`` plane of the camera frame, and every direction is the principal
+        direction ``[0, 0, 1]``, since the projection is parallel.
+        """
+        image_points = to_torch(image_points, device=self.device)
+        assert image_points.is_floating_point(), "[CameraModel]: image_points must be floating point values"
+        image_points = image_points.to(self.dtype)
+
+        origins_xy = (image_points - self.principal_point) / self.pixels_per_unit  # [n, 2]
+
+        cam_rays = torch.zeros((len(image_points), _NON_CENTRAL_CAMERA_RAY_DIM), dtype=self.dtype, device=self.device)
+        cam_rays[:, :2] = origins_xy
+        # cam_rays[:, 2] (origin z) stays zero: the rays start on the camera frame's z = 0 plane
+        cam_rays[:, 5] = 1.0  # shared principal direction [0, 0, 1]
+
+        return cam_rays
+
+    def _camera_points_to_image_points_impl(
+        self, cam_rays: torch.Tensor, return_jacobians
+    ) -> CameraModel.ImagePointsReturn:
+        """
+        For each camera-frame point, computes the corresponding image point coordinates
+
+        Note the input is a 3d camera-frame *point*, as for every other camera model: it is the
+        unprojection direction that differs for a non-central model, not the projection.
+        """
+        cam_rays = to_torch(cam_rays, device=self.device, dtype=self.dtype)
+
+        # Drop the depth rather than dividing by it - this is what makes the projection parallel
+        image_points = cam_rays[:, :2] * self.pixels_per_unit + self.principal_point
+
+        # A parallel projection has no frustum, so validity reduces to the image-domain window
+        # test. In particular there is no `z > 0` check: points behind the z = 0 plane project
+        # exactly like points in front of it.
+        valid_x = torch.logical_and(0.0 <= image_points[:, 0], image_points[:, 0] < self.resolution[0])
+        valid_y = torch.logical_and(0.0 <= image_points[:, 1], image_points[:, 1] < self.resolution[1])
+        valid = valid_x & valid_y
+
+        if return_jacobians:
+            # The projection is affine, so the Jacobian is the constant diag(s_u, s_v) padded with
+            # a zero depth column. Built directly rather than by autograd, which the nonlinear
+            # models need but which would only rediscover these constants.
+            jacobians = torch.zeros((len(cam_rays), 2, 3), dtype=self.dtype, device=self.device)
+            jacobians[:, 0, 0] = self.pixels_per_unit[0]
+            jacobians[:, 1, 1] = self.pixels_per_unit[1]
+        else:
+            jacobians = None
+
+        return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
+
+
 @singledispatch
 def _camera_model_from_parameters(
     cam_model_parameters: types.CameraModelParameters,
@@ -1972,8 +2224,8 @@ def _camera_model_from_parameters(
     """
     raise TypeError(
         f"unsupported camera model type {type(cam_model_parameters)}, currently supporting "
-        "Ftheta/Ideal-Pinhole/OpenCV-Pinhole/OpenCV-Fisheye only; register out-of-tree camera "
-        "models with register_camera_model()"
+        "Ftheta/Ideal-Pinhole/OpenCV-Pinhole/OpenCV-Fisheye/Ideal-Orthographic only; register "
+        "out-of-tree camera models with register_camera_model()"
     )
 
 
@@ -2011,6 +2263,15 @@ def _(
     dtype: torch.dtype = torch.float32,
 ) -> OpenCVFisheyeCameraModel:
     return OpenCVFisheyeCameraModel(cam_model_parameters, device, dtype)
+
+
+@_camera_model_from_parameters.register
+def _(
+    cam_model_parameters: types.IdealOrthographicCameraModelParameters,
+    device: Union[str, torch.device] = torch.device("cuda"),
+    dtype: torch.dtype = torch.float32,
+) -> IdealOrthographicCameraModel:
+    return IdealOrthographicCameraModel(cam_model_parameters, device, dtype)
 
 
 #: Registers a camera model factory for a camera model parameter type
@@ -2067,6 +2328,14 @@ def camera_model_from_parameters(
     device: Union[str, torch.device] = ...,
     dtype: torch.dtype = ...,
 ) -> OpenCVFisheyeCameraModel: ...
+
+
+@overload
+def camera_model_from_parameters(
+    cam_model_parameters: types.IdealOrthographicCameraModelParameters,
+    device: Union[str, torch.device] = ...,
+    dtype: torch.dtype = ...,
+) -> IdealOrthographicCameraModel: ...
 
 
 @overload

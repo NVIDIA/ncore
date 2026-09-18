@@ -16,6 +16,7 @@
 import dataclasses
 import inspect
 import itertools
+import math
 import os
 import unittest
 
@@ -40,6 +41,7 @@ from ncore.impl.data.types import (
     ConcreteCameraModelParametersUnion,
     ExternalDistortionParameters,
     FThetaCameraModelParameters,
+    IdealOrthographicCameraModelParameters,
     IdealPinholeCameraModelParameters,
     OpenCVFisheyeCameraModelParameters,
     OpenCVPinholeCameraModelParameters,
@@ -54,6 +56,7 @@ from ncore.impl.sensors.camera import (
     CameraModel,
     ExternalDistortionModel,
     FThetaCameraModel,
+    IdealOrthographicCameraModel,
     IdealPinholeCameraModel,
     OpenCVFisheyeCameraModel,
     OpenCVPinholeCameraModel,
@@ -364,7 +367,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
             self._compareVector(a, e)
 
         # Torch-version
-        a = ftheta_from_reference(camera, self.device, self.dtype).camera_rays_to_image_points(
+        a = ftheta_from_reference(camera, self.device, self.dtype).camera_points_to_image_points(
             np.array(rays3d, ndmin=2)
         )
         e = np.array(imagePoints2dExpected, ndmin=2)
@@ -416,7 +419,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
                     )
 
                     # Verify torch-camera's result
-                    image_points = camera_ftheta.camera_rays_to_image_points(ray3d)
+                    image_points = camera_ftheta.camera_points_to_image_points(ray3d)
                     self.assertLessEqual(
                         np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())).item(),
                         MAX_DEVIATION_IN_PIXEL,
@@ -461,7 +464,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
 
                 with self.subTest(angle=np.degrees(np.arccos(ray3d.cpu()[0][2]))):
                     # Verify torch-camera's result
-                    image_points = camera_ftheta.camera_rays_to_image_points(ray3d)
+                    image_points = camera_ftheta.camera_points_to_image_points(ray3d)
                     self.assertLessEqual(
                         np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())).item(),
                         MAX_DEVIATION_IN_PIXEL,
@@ -523,7 +526,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
 
                 with self.subTest(angle=np.degrees(np.arccos(ray3d.cpu()[0][2]))):
                     # Verify torch-camera's result
-                    image_points = camera_ftheta.camera_rays_to_image_points(ray3d)
+                    image_points = camera_ftheta.camera_points_to_image_points(ray3d)
                     self.assertLessEqual(
                         np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())).item(),
                         MAX_DEVIATION_IN_PIXEL,
@@ -568,8 +571,8 @@ class TestReferenceFThetaCamera(CommonTestCase):
         self._test_rays2imagePoints_rays2Pixels_consistencyTestCase(ftheta_cam, bottomRay)
 
     def _test_rays2imagePoints_rays2Pixels_consistencyTestCase(self, ftheta_cam, cam_ray):
-        image_points = ftheta_cam.camera_rays_to_image_points(np.array(cam_ray, ndmin=2))
-        pixels = ftheta_cam.camera_rays_to_pixels(np.array(cam_ray, ndmin=2))
+        image_points = ftheta_cam.camera_points_to_image_points(np.array(cam_ray, ndmin=2))
+        pixels = ftheta_cam.camera_points_to_pixels(np.array(cam_ray, ndmin=2))
         self._compareVector(torch.floor(image_points.image_points.cpu()), pixels.pixels.cpu().float())
 
     def test_imagePoints2rays_pixels2Rays_consistency(self):
@@ -817,7 +820,7 @@ class TestPinholeCamera(CommonTestCase):
                 ray3d = cam_model.image_points_to_camera_rays(
                     to_torch(expectedPoint2d, device=cam_model.device, dtype=cam_model.dtype)
                 )
-                image_points = cam_model.camera_rays_to_image_points(ray3d)
+                image_points = cam_model.camera_points_to_image_points(ray3d)
 
                 self.assertTrue(image_points.valid_flag)
                 self.assertLessEqual(
@@ -867,7 +870,7 @@ class TestPinholeCamera(CommonTestCase):
                 with self.subTest(x=x, y=y):
                     ray = np.array([[x, y, 1.0]], dtype=np_dtype)
 
-                    ours = cam_model.camera_rays_to_image_points(
+                    ours = cam_model.camera_points_to_image_points(
                         to_torch(ray, device=cam_model.device, dtype=cam_model.dtype)
                     )
 
@@ -1016,7 +1019,7 @@ class TestJacobian(CommonTestCase):
         for ray3d in rays3d:
             pref, Jref = cam_model_ref.camera_ray_to_image_points(ray3d.cpu().numpy())
 
-            proj = cam_model.camera_rays_to_image_points(ray3d.unsqueeze(1).transpose(1, 0), return_jacobians=True)
+            proj = cam_model.camera_points_to_image_points(ray3d.unsqueeze(1).transpose(1, 0), return_jacobians=True)
 
             np.testing.assert_array_almost_equal(pref, proj.image_points.detach()[0].cpu().numpy())
             np.testing.assert_array_almost_equal(
@@ -1147,7 +1150,7 @@ class TestJacobian(CommonTestCase):
         for cam_model in cam_models:
 
             def projection_wrapper(x):
-                return cam_model.camera_rays_to_image_points(x[None, :]).image_points.squeeze()
+                return cam_model.camera_points_to_image_points(x[None, :]).image_points.squeeze()
 
             valid_rays3d = cam_model.image_points_to_camera_rays(
                 torch.Tensor([[20, 40], [11, 12], [15, 20], [500, 500]])
@@ -1169,7 +1172,7 @@ class TestJacobian(CommonTestCase):
             rays3d = torch.cat([valid_rays3d, principal_direction_rays3d, invalid_rays3d])
 
             # evaluate projection with jacobians
-            proj = cam_model.camera_rays_to_image_points(rays3d, return_jacobians=True)
+            proj = cam_model.camera_points_to_image_points(rays3d, return_jacobians=True)
 
             for i, ray3d in enumerate(rays3d):
                 Jref = torch.autograd.functional.jacobian(
@@ -1285,7 +1288,7 @@ class TestFisheyeCamera(CommonTestCase):
                 ray3d = self.cam_model.image_points_to_camera_rays(
                     to_torch(expectedPoint2d, device=self.cam_model.device, dtype=self.dtype)
                 )
-                image_points = self.cam_model.camera_rays_to_image_points(ray3d)
+                image_points = self.cam_model.camera_points_to_image_points(ray3d)
 
                 if i > 0:
                     # avoid 'valid' prevision issues if points get re-projected right onto each side of the image boundary for p=[0,0]
@@ -1561,7 +1564,7 @@ class TestTransformParameters(CameraModelsBaseTestCase):
 
                                 # Validate original image domain -> 3d -> transformed image domain round-trip
                                 ray3d = cam_model.image_points_to_camera_rays(IMAGE_POINTS)
-                                image_points_transformed = cam_model_transformed.camera_rays_to_image_points(ray3d)
+                                image_points_transformed = cam_model_transformed.camera_points_to_image_points(ray3d)
 
                                 self.assertTrue(
                                     image_points_transformed.valid_flag.all(),
@@ -1581,7 +1584,7 @@ class TestTransformParameters(CameraModelsBaseTestCase):
                                     image_points_transformed_ref
                                 )
 
-                                image_points_untransformed = cam_model.camera_rays_to_image_points(ray3d_transformed)
+                                image_points_untransformed = cam_model.camera_points_to_image_points(ray3d_transformed)
 
                                 self.assertTrue(
                                     image_points_untransformed.valid_flag.all(),
@@ -2044,7 +2047,7 @@ class TestIdealPinholeCamera(CommonTestCase):
             for y in np.linspace(-0.3, 0.3, num=5):
                 with self.subTest(x=x, y=y):
                     ray = np.array([[x, y, 1.0]], dtype=np_dtype)
-                    ours = model.camera_rays_to_image_points(to_torch(ray, device=model.device, dtype=model.dtype))
+                    ours = model.camera_points_to_image_points(to_torch(ray, device=model.device, dtype=model.dtype))
                     reference, _ = cv2.projectPoints(ray.reshape(1, 1, 3), rvec, tvec, K, distortion)
                     reference = reference.reshape(1, 2)
                     self.assertLessEqual(np.linalg.norm(reference - np.array(ours.image_points.cpu())).item(), 0.01)
@@ -2063,7 +2066,7 @@ class TestIdealPinholeCamera(CommonTestCase):
         model = self._make_ideal()
         pixels = torch.tensor([[100, 80], [320, 240], [500, 400]], dtype=torch.int32, device=self.device)
         rays = model.pixels_to_camera_rays(pixels)
-        result = model.camera_rays_to_pixels(rays)
+        result = model.camera_points_to_pixels(rays)
         self.assertTrue(bool(result.valid_flag.all()))
         self._compareVector(result.pixels.cpu().numpy(), pixels.cpu().numpy())
 
@@ -2080,8 +2083,8 @@ class TestIdealPinholeCamera(CommonTestCase):
             np.testing.assert_array_almost_equal(rays_ideal.cpu().numpy(), rays_opencv.cpu().numpy(), decimal=5)
         )
 
-        proj_ideal = ideal.camera_rays_to_image_points(rays_ideal)
-        proj_opencv = opencv.camera_rays_to_image_points(rays_opencv)
+        proj_ideal = ideal.camera_points_to_image_points(rays_ideal)
+        proj_opencv = opencv.camera_points_to_image_points(rays_opencv)
         self.assertIsNone(
             np.testing.assert_array_almost_equal(
                 proj_ideal.image_points.cpu().numpy(), proj_opencv.image_points.cpu().numpy(), decimal=4
@@ -2108,11 +2111,550 @@ class TestIdealPinholeCamera(CommonTestCase):
     def test_jacobian_path(self):
         model = self._make_ideal()
         rays = model.pixels_to_camera_rays(torch.tensor([[100, 80], [320, 240]], dtype=torch.int32, device=self.device))
-        result = model.camera_rays_to_image_points(rays, return_jacobians=True)
+        result = model.camera_points_to_image_points(rays, return_jacobians=True)
         jacobians = result.jacobians
         self.assertIsNotNone(jacobians)
         assert jacobians is not None
         self.assertEqual(tuple(jacobians.shape), (2, 2, 3))
+
+
+# The metric window the orthographic test camera views, and the resolution it maps onto. Chosen
+# anisotropic (2 px per unit in u, 4 px per unit in v) so that an axis swap cannot pass unnoticed.
+_ORTHO_RESOLUTION = np.array([256, 192], dtype=np.uint64)
+_ORTHO_WINDOW_MIN = np.array([-48.0, -12.0], dtype=np.float32)
+_ORTHO_WINDOW_MAX = np.array([80.0, 36.0], dtype=np.float32)
+
+
+@parameterized.parameterized_class(
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
+)
+class TestIdealOrthographicCamera(CommonTestCase):
+    """Tests for the ideal (distortion-free) orthographic camera model
+
+    The orthographic model is NCore's only *non-central* camera model, so alongside the projection
+    itself these cover the 6d ``[origin, direction]`` ray representation and the combinations that
+    a parallel projection makes ill-defined.
+    """
+
+    device: torch.device
+    dtype: torch.dtype
+
+    def _params(self) -> IdealOrthographicCameraModelParameters:
+        return IdealOrthographicCameraModelParameters.from_window(
+            window_min=_ORTHO_WINDOW_MIN, window_max=_ORTHO_WINDOW_MAX, resolution=_ORTHO_RESOLUTION
+        )
+
+    def _model(self) -> IdealOrthographicCameraModel:
+        model = CameraModel.from_parameters(self._params(), device=self.device, dtype=self.dtype)
+        assert isinstance(model, IdealOrthographicCameraModel)
+        return model
+
+    def _expected_image_points(self, camera_points: torch.Tensor) -> torch.Tensor:
+        """Window fractions of the camera-frame points, scaled to pixels, computed independently"""
+        window_min = to_torch(_ORTHO_WINDOW_MIN, device=self.device, dtype=self.dtype)
+        window_max = to_torch(_ORTHO_WINDOW_MAX, device=self.device, dtype=self.dtype)
+        resolution = to_torch(_ORTHO_RESOLUTION.astype(np.int64), device=self.device).to(self.dtype)
+        return (camera_points[:, :2] - window_min) / (window_max - window_min) * resolution
+
+    def test_dispatch_and_type(self):
+        self.assertEqual(IdealOrthographicCameraModelParameters.type(), "ideal-orthographic")
+        self.assertIsInstance(self._model(), IdealOrthographicCameraModel)
+
+    def test_projection_matches_window_fractions_across_the_plane(self):
+        """The projection is the plain affine window rescale over the whole extent"""
+        model = self._model()
+        us = torch.linspace(float(_ORTHO_WINDOW_MIN[0]), float(_ORTHO_WINDOW_MAX[0]), 33)
+        vs = torch.linspace(float(_ORTHO_WINDOW_MIN[1]), float(_ORTHO_WINDOW_MAX[1]), 25)
+        gu, gv = torch.meshgrid(us, vs, indexing="ij")
+        points = torch.stack([gu.reshape(-1), gv.reshape(-1), torch.zeros(gu.numel())], dim=-1).to(
+            device=self.device, dtype=self.dtype
+        )
+
+        result = model.camera_points_to_image_points(points)
+
+        self.assertLessEqual(
+            (result.image_points - self._expected_image_points(points)).abs().max().item(),
+            1e-3,
+        )
+
+    def test_projection_ignores_the_dropped_axis(self):
+        """Dropping depth rather than dividing by it makes the mapping z-invariant
+
+        This is the defining property of a parallel projection, and the one that separates it from
+        every other NCore camera model.
+        """
+        model = self._model()
+        points = torch.tensor([[10.0, -5.0, 0.0], [10.0, -5.0, 7.5], [10.0, -5.0, -400.0]]).to(
+            device=self.device, dtype=self.dtype
+        )
+
+        result = model.camera_points_to_image_points(points)
+
+        self.assertLessEqual(
+            (result.image_points - result.image_points[:1]).abs().max().item(),
+            1e-4,
+            msg="orthographic projection must not depend on depth",
+        )
+        self.assertTrue(result.valid_flag.all())
+
+    def test_points_behind_the_camera_stay_valid(self):
+        """A parallel projection has no frustum, so there is no 'in front of the camera' test
+
+        The central models all reject ``z <= 0``; this model must not, or it would silently
+        discard half the volume it is meant to view.
+        """
+        model = self._model()
+        in_front = torch.tensor([[0.0, 0.0, 50.0]]).to(device=self.device, dtype=self.dtype)
+        behind = torch.tensor([[0.0, 0.0, -50.0]]).to(device=self.device, dtype=self.dtype)
+
+        front_result = model.camera_points_to_image_points(in_front)
+        behind_result = model.camera_points_to_image_points(behind)
+
+        self.assertTrue(front_result.valid_flag.all())
+        self.assertTrue(behind_result.valid_flag.all())
+        self.assertLessEqual(
+            (front_result.image_points - behind_result.image_points).abs().max().item(),
+            1e-4,
+        )
+
+    def test_projection_flags_points_outside_the_window(self):
+        """Validity is purely the window test"""
+        model = self._model()
+        points = torch.tensor(
+            [
+                [16.0, 12.0, 0.0],  # window centre
+                [float(_ORTHO_WINDOW_MAX[0]) + 1.0, 0.0, 0.0],  # beyond u_max
+                [0.0, float(_ORTHO_WINDOW_MIN[1]) - 1.0, 0.0],  # beyond v_min
+            ]
+        ).to(device=self.device, dtype=self.dtype)
+
+        result = model.camera_points_to_image_points(points)
+
+        self.assertEqual(result.valid_flag.tolist(), [True, False, False])
+        # The window centre lands at the image centre
+        self.assertLessEqual(
+            (
+                result.image_points[0]
+                - to_torch(_ORTHO_RESOLUTION.astype(np.int64), device=self.device).to(self.dtype) / 2
+            )
+            .abs()
+            .max()
+            .item(),
+            1e-3,
+        )
+
+    def test_unprojection_returns_6d_rays_with_distinct_origins_and_a_shared_direction(self):
+        """The property that motivates the 6d representation
+
+        A central model's rays all start at the projection centre, so a direction identifies them.
+        Here it is the other way round: the direction is shared and the *origin* is what varies,
+        so a 3d ray would collapse every pixel onto the same ray.
+        """
+        model = self._model()
+        self.assertEqual(model.camera_ray_dim, 6)
+
+        rays = model.image_points_to_camera_rays(
+            torch.tensor([[0.5, 0.5], [128.5, 96.5], [255.5, 191.5]]).to(device=self.device, dtype=self.dtype)
+        )
+
+        self.assertEqual(tuple(rays.shape), (3, 6))
+
+        origins, directions = rays[:, :3], rays[:, 3:]
+
+        # Every direction is the principal direction
+        expected_direction = torch.tensor([0.0, 0.0, 1.0]).to(device=self.device, dtype=self.dtype)
+        self.assertLessEqual((directions - expected_direction).abs().max().item(), 1e-6)
+
+        # ... and the origins are pairwise distinct, lying on the camera frame's z = 0 plane
+        self.assertLessEqual(origins[:, 2].abs().max().item(), 1e-6)
+        self.assertGreater((origins[0] - origins[1]).abs().max().item(), 1.0)
+        self.assertGreater((origins[1] - origins[2]).abs().max().item(), 1.0)
+
+    def test_unprojection_projection_roundtrip(self):
+        """Projecting a ray's origin recovers the image point it was unprojected from"""
+        model = self._model()
+        image_points = torch.tensor([[0.5, 0.5], [64.25, 32.75], [128.5, 96.5], [255.5, 191.5]]).to(
+            device=self.device, dtype=self.dtype
+        )
+
+        rays = model.image_points_to_camera_rays(image_points)
+        result = model.camera_points_to_image_points(rays[:, :3])
+
+        self.assertTrue(result.valid_flag.all())
+        self.assertLessEqual((result.image_points - image_points).abs().max().item(), 1e-3)
+
+    def test_jacobian_is_the_constant_affine_scale(self):
+        """The projection is affine, so its Jacobian does not depend on the point"""
+        model = self._model()
+        points = torch.tensor([[1.0, 2.0, 3.0], [-10.0, 5.0, -70.0]]).to(device=self.device, dtype=self.dtype)
+
+        result = model.camera_points_to_image_points(points, return_jacobians=True)
+
+        jacobians = result.jacobians
+        self.assertIsNotNone(jacobians)
+        assert jacobians is not None
+        self.assertEqual(tuple(jacobians.shape), (2, 2, 3))
+
+        params = self._params()
+        expected = torch.zeros((2, 3), dtype=self.dtype, device=self.device)
+        expected[0, 0] = float(params.pixels_per_unit[0])
+        expected[1, 1] = float(params.pixels_per_unit[1])
+        for index in range(2):
+            self.assertLessEqual((jacobians[index] - expected).abs().max().item(), 1e-4)
+
+    def test_projection_is_not_scale_invariant(self):
+        """A non-central projection depends on the point's magnitude
+
+        The counterpart of
+        :meth:`TestCameraPointSemantics.test_central_projections_are_scale_invariant`: here the
+        point's ``x`` and ``y`` *are* the quantity being projected, so rescaling it (e.g.
+        normalizing it into a direction) moves the result. This is why the forward method takes a
+        point rather than a ray.
+        """
+        model = self._model()
+        point = torch.tensor([[10.0, 5.0, 1.0]]).to(device=self.device, dtype=self.dtype)
+
+        at_one = model.camera_points_to_image_points(point).image_points
+        at_three = model.camera_points_to_image_points(point * 3.0).image_points
+
+        self.assertGreater(
+            (at_one - at_three).abs().max().item(),
+            1.0,
+            msg="an orthographic projection must depend on the point's magnitude",
+        )
+
+        # ... and normalizing the input (treating it as a direction) is likewise not equivalent
+        normalized = torch.nn.functional.normalize(point, dim=-1)
+        self.assertGreater(
+            (at_one - model.camera_points_to_image_points(normalized).image_points).abs().max().item(),
+            1.0,
+        )
+
+    def test_window_helpers_round_trip_the_intrinsics(self):
+        """``window_min`` / ``window_max`` restate the intrinsics without loss"""
+        params = self._params()
+
+        self.assertLessEqual(float(np.abs(params.window_min() - _ORTHO_WINDOW_MIN).max()), 1e-3)
+        self.assertLessEqual(float(np.abs(params.window_max() - _ORTHO_WINDOW_MAX).max()), 1e-3)
+
+        restored = IdealOrthographicCameraModelParameters.from_window(
+            window_min=params.window_min(), window_max=params.window_max(), resolution=_ORTHO_RESOLUTION
+        )
+        self.assertEqual(restored.to_json(), params.to_json())
+
+    def test_from_window_rejects_an_empty_window(self):
+        with self.assertRaises(ValueError):
+            IdealOrthographicCameraModelParameters.from_window(
+                window_min=(0.0, 0.0), window_max=(0.0, 10.0), resolution=_ORTHO_RESOLUTION
+            )
+
+    def test_paraxial_pinhole_geometry_is_refused(self):
+        """An orthographic camera has no pinhole approximation - its focal length is infinite"""
+        with self.assertRaises(TypeError):
+            self._params().paraxial_pinhole_geometry()
+
+        with self.assertRaises(TypeError):
+            IdealPinholeCameraModelParameters.from_source(self._params())
+
+    def test_external_distortion_is_rejected_at_construction(self):
+        """Deflecting rays individually would not preserve the parallel bundle"""
+        params = dataclasses.replace(
+            self._params(),
+            external_distortion_parameters=BivariateWindshieldModelParameters(
+                reference_poly=ReferencePolynomial.FORWARD,
+                horizontal_poly=np.array([0.0, 1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                vertical_poly=np.array([0.0, 0.0, 1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                horizontal_poly_inverse=np.array([0.0, 1.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                vertical_poly_inverse=np.array([0.0, 0.0, 1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            ),
+        )
+
+        with self.assertRaises(TypeError):
+            CameraModel.from_parameters(params, device=self.device, dtype=self.dtype)
+
+    def test_parameters_round_trip(self):
+        """Parameters survive the model and the serialized form"""
+        params = self._params()
+        model = self._model()
+        self.assertEqual(model.get_parameters().to_json(), params.to_json())
+
+        encoded = encode_camera_model_parameters(params)
+        self.assertEqual(encoded["camera_model_type"], "ideal-orthographic")
+        decoded = decode_camera_model_parameters(encoded)
+        self.assertIs(type(decoded), IdealOrthographicCameraModelParameters)
+        self.assertEqual(decoded.to_json(), params.to_json())
+
+    def test_image_domain_transform(self):
+        """Rescaling the image domain scales ``pixels_per_unit`` like a pinhole's focal length"""
+        params = self._params()
+        model = self._model()
+
+        for scale_factor in (0.5, 2.0, (0.5, 2.0)):
+            for offset in ((0.0, 0.0), (20.0, 10.0)):
+                with self.subTest(scale_factor=scale_factor, offset=offset):
+                    transformed = params.transform(image_domain_scale=scale_factor, image_domain_offset=offset)
+                    self.assertIs(type(transformed), IdealOrthographicCameraModelParameters)
+
+                    transformed_model = CameraModel.from_parameters(transformed, device=self.device, dtype=self.dtype)
+
+                    image_points = np.array([[64.0, 48.0], [128.0, 96.0], [192.0, 144.0]], dtype=np.float32)
+                    rays = model.image_points_to_camera_rays(image_points)
+                    projected = transformed_model.camera_points_to_image_points(rays[:, :3])
+
+                    scale = np.array(
+                        scale_factor if isinstance(scale_factor, tuple) else (scale_factor, scale_factor),
+                        dtype=np.float32,
+                    )
+                    expected = image_points * scale - np.array(offset, dtype=np.float32)
+
+                    self.assertLessEqual(
+                        float(np.abs(projected.image_points.cpu().numpy() - expected).max()),
+                        1e-2,
+                    )
+
+
+@parameterized.parameterized_class(
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
+)
+class TestCameraPointSemantics(CommonTestCase):
+    """Tests for the point-vs-direction contract of the forward projection
+
+    ``camera_points_to_image_points`` takes a camera-frame *point* for every model. Central
+    models happen to be scale-invariant, so for them a direction of any length works too; that
+    latitude is what the old ``camera_rays_*`` name suggested, and what a non-central model does
+    not have. These pin both halves of that contract.
+    """
+
+    device: torch.device
+    dtype: torch.dtype
+
+    def _central_params(self) -> List[ConcreteCameraModelParametersUnion]:
+        return [
+            IdealPinholeCameraModelParameters(
+                resolution=np.array([640, 480], dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array([320.0, 240.0], dtype=np.float32),
+                focal_length=np.array([500.0, 510.0], dtype=np.float32),
+            ),
+            OpenCVPinholeCameraModelParameters(
+                resolution=np.array([640, 480], dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array([320.0, 240.0], dtype=np.float32),
+                focal_length=np.array([500.0, 510.0], dtype=np.float32),
+                radial_coeffs=np.array([0.1, -0.02, 0.003, 0.0, 0.0, 0.0], dtype=np.float32),
+                tangential_coeffs=np.zeros(2, dtype=np.float32),
+                thin_prism_coeffs=np.zeros(4, dtype=np.float32),
+            ),
+            OpenCVFisheyeCameraModelParameters(
+                resolution=np.array([640, 480], dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array([320.0, 240.0], dtype=np.float32),
+                focal_length=np.array([250.0, 250.0], dtype=np.float32),
+                radial_coeffs=np.array([0.01, 0.001, 0.0, 0.0], dtype=np.float32),
+                max_angle=float(np.deg2rad(80.0)),
+            ),
+        ]
+
+    def test_central_projections_are_scale_invariant(self):
+        """Every point along a ray projects identically for a central model
+
+        Documented in ``conventions.rst``, and the reason the forward argument could be called a
+        "ray" for as long as every model was central.
+        """
+        point = torch.tensor([[0.1, 0.05, 1.0]]).to(device=self.device, dtype=self.dtype)
+
+        for params in self._central_params():
+            with self.subTest(params=type(params).__name__):
+                model = CameraModel.from_parameters(params, device=self.device, dtype=self.dtype)
+                reference = model.camera_points_to_image_points(point).image_points
+
+                for scale in (0.25, 5.0, 100.0):
+                    scaled = model.camera_points_to_image_points(point * scale).image_points
+                    self.assertLessEqual(
+                        (reference - scaled).abs().max().item(),
+                        1e-3,
+                        msg=f"{type(model).__name__} must be scale-invariant (scale {scale})",
+                    )
+
+    def test_camera_ray_dim_is_a_class_attribute(self):
+        """The ray representation is a property of the model type, not of an instance"""
+        self.assertEqual(CameraModel.camera_ray_dim, 3)
+        self.assertEqual(IdealPinholeCameraModel.camera_ray_dim, 3)
+        self.assertEqual(IdealOrthographicCameraModel.camera_ray_dim, 6)
+
+        # ... and it is readable from an instance too, and survives a dtype/device move
+        model = CameraModel.from_parameters(
+            IdealOrthographicCameraModelParameters.from_window(
+                window_min=_ORTHO_WINDOW_MIN, window_max=_ORTHO_WINDOW_MAX, resolution=_ORTHO_RESOLUTION
+            ),
+            device=self.device,
+            dtype=self.dtype,
+        )
+        self.assertEqual(model.camera_ray_dim, 6)
+        self.assertNotIn("camera_ray_dim", model.state_dict())
+
+    def test_deprecated_aliases_forward_to_the_renamed_methods(self):
+        """``camera_rays_*`` still work and agree with ``camera_points_*``
+
+        Exercised on the orthographic model as well as the central ones: its projection is *not*
+        scale-invariant, so it is the only model whose result would change if the alias perturbed
+        the argument on the way through.
+        """
+        point = torch.tensor([[0.1, 0.05, 1.0]]).to(device=self.device, dtype=self.dtype)
+        orthographic = IdealOrthographicCameraModelParameters.from_window(
+            window_min=_ORTHO_WINDOW_MIN, window_max=_ORTHO_WINDOW_MAX, resolution=_ORTHO_RESOLUTION
+        )
+
+        for params in [*self._central_params(), orthographic]:
+            with self.subTest(params=type(params).__name__):
+                model = CameraModel.from_parameters(params, device=self.device, dtype=self.dtype)
+
+                renamed = model.camera_points_to_image_points(point)
+                deprecated = model.camera_rays_to_image_points(point)
+                self.assertLessEqual((renamed.image_points - deprecated.image_points).abs().max().item(), 1e-6)
+                self.assertEqual(renamed.valid_flag.tolist(), deprecated.valid_flag.tolist())
+
+                renamed_pixels = model.camera_points_to_pixels(point)
+                deprecated_pixels = model.camera_rays_to_pixels(point)
+                self.assertEqual(renamed_pixels.pixels.tolist(), deprecated_pixels.pixels.tolist())
+                self.assertEqual(renamed_pixels.valid_flag.tolist(), deprecated_pixels.valid_flag.tolist())
+
+
+@parameterized.parameterized_class(
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
+)
+class TestNonCentralWorldRays(CommonTestCase):
+    """Tests for the world-ray transformations of a non-central camera model
+
+    A central model's rays all start at the sensor position, so the base class used to broadcast
+    the pose translation to every ray. A non-central model needs its per-ray origins transformed
+    by the full pose instead.
+    """
+
+    device: torch.device
+    dtype: torch.dtype
+
+    def _ortho_model(self) -> IdealOrthographicCameraModel:
+        params = IdealOrthographicCameraModelParameters.from_window(
+            window_min=_ORTHO_WINDOW_MIN, window_max=_ORTHO_WINDOW_MAX, resolution=_ORTHO_RESOLUTION
+        )
+        model = CameraModel.from_parameters(params, device=self.device, dtype=self.dtype)
+        assert isinstance(model, IdealOrthographicCameraModel)
+        return model
+
+    def _pose(self) -> torch.Tensor:
+        """A pose with both a non-trivial rotation and a non-trivial translation"""
+        angle = math.pi / 3.0
+        pose = torch.eye(4, dtype=self.dtype, device=self.device)
+        pose[:3, :3] = torch.tensor(
+            [
+                [math.cos(angle), -math.sin(angle), 0.0],
+                [math.sin(angle), math.cos(angle), 0.0],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=self.dtype,
+            device=self.device,
+        )
+        pose[:3, 3] = torch.tensor([11.0, -7.0, 3.0], dtype=self.dtype, device=self.device)
+        return pose
+
+    def test_static_pose_transforms_each_origin_by_the_full_pose(self):
+        model = self._ortho_model()
+        pose = self._pose()
+        image_points = torch.tensor([[0.5, 0.5], [128.5, 96.5], [255.5, 191.5]]).to(
+            device=self.device, dtype=self.dtype
+        )
+
+        camera_rays = model.image_points_to_camera_rays(image_points)
+        result = model.image_points_to_world_rays_static_pose(image_points, pose)
+
+        expected_origins = (pose[:3, :3] @ camera_rays[:, :3].T).T + pose[:3, 3]
+        expected_directions = (pose[:3, :3] @ camera_rays[:, 3:].T).T
+
+        self.assertLessEqual((result.world_rays[:, :3] - expected_origins).abs().max().item(), 1e-4)
+        self.assertLessEqual((result.world_rays[:, 3:] - expected_directions).abs().max().item(), 1e-4)
+
+        # The origins must stay distinct: broadcasting the translation (the old behaviour) would
+        # collapse them all onto the sensor position
+        self.assertGreater((result.world_rays[0, :3] - result.world_rays[1, :3]).abs().max().item(), 1.0)
+
+    def test_shutter_pose_transforms_each_origin_by_its_interpolated_pose(self):
+        params = IdealOrthographicCameraModelParameters.from_window(
+            window_min=_ORTHO_WINDOW_MIN,
+            window_max=_ORTHO_WINDOW_MAX,
+            resolution=_ORTHO_RESOLUTION,
+            shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
+        )
+        model = CameraModel.from_parameters(params, device=self.device, dtype=self.dtype)
+
+        pose_start = torch.eye(4, dtype=self.dtype, device=self.device)
+        pose_end = self._pose()
+        image_points = torch.tensor([[10.5, 0.5], [10.5, 96.5], [10.5, 191.5]]).to(device=self.device, dtype=self.dtype)
+
+        camera_rays = model.image_points_to_camera_rays(image_points)
+        result = model.image_points_to_world_rays_shutter_pose(
+            image_points, pose_start, pose_end, return_T_sensor_worlds=True
+        )
+
+        # Each ray's origin must be its own camera-frame origin under its own interpolated pose
+        poses = unpack_optional(result.T_sensor_worlds)
+        expected_origins = torch.bmm(poses[:, :3, :3], camera_rays[:, :3, None]).squeeze(-1) + poses[:, :3, 3]
+        self.assertLessEqual((result.world_rays[:, :3] - expected_origins).abs().max().item(), 1e-4)
+
+        # The first row is at t = 0, so it must sit at the identity start pose
+        self.assertLessEqual((result.world_rays[0, :3] - camera_rays[0, :3]).abs().max().item(), 1e-4)
+
+    def test_central_models_are_unaffected_by_the_generalization(self):
+        """Regression guard: the shared origin handling must not perturb the central models
+
+        ``R @ 0 + t`` is exactly the translation the base class used to broadcast, so every
+        central model's world rays have to come out bit-identical.
+        """
+        pose = self._pose()
+        image_points = torch.tensor([[100.5, 80.5], [320.5, 240.5], [500.5, 400.5]]).to(
+            device=self.device, dtype=self.dtype
+        )
+
+        central_params: List[ConcreteCameraModelParametersUnion] = [
+            IdealPinholeCameraModelParameters(
+                resolution=np.array([640, 480], dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array([320.0, 240.0], dtype=np.float32),
+                focal_length=np.array([500.0, 510.0], dtype=np.float32),
+            ),
+            OpenCVPinholeCameraModelParameters(
+                resolution=np.array([640, 480], dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array([320.0, 240.0], dtype=np.float32),
+                focal_length=np.array([500.0, 510.0], dtype=np.float32),
+                radial_coeffs=np.array([0.1, -0.02, 0.003, 0.0, 0.0, 0.0], dtype=np.float32),
+                tangential_coeffs=np.zeros(2, dtype=np.float32),
+                thin_prism_coeffs=np.zeros(4, dtype=np.float32),
+            ),
+            OpenCVFisheyeCameraModelParameters(
+                resolution=np.array([640, 480], dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array([320.0, 240.0], dtype=np.float32),
+                focal_length=np.array([250.0, 250.0], dtype=np.float32),
+                radial_coeffs=np.array([0.01, 0.001, 0.0, 0.0], dtype=np.float32),
+                max_angle=np.deg2rad(80.0),
+            ),
+        ]
+
+        for params in central_params:
+            with self.subTest(params=type(params).__name__):
+                model = CameraModel.from_parameters(params, device=self.device, dtype=self.dtype)
+                self.assertEqual(model.camera_ray_dim, 3)
+
+                camera_rays = model.image_points_to_camera_rays(image_points)
+                result = model.image_points_to_world_rays_static_pose(image_points, pose)
+
+                # Every origin is the sensor position, exactly as the broadcast produced
+                self.assertLessEqual((result.world_rays[:, :3] - pose[:3, 3]).abs().max().item(), 1e-6)
+                self.assertLessEqual(
+                    (result.world_rays[:, 3:] - (pose[:3, :3] @ camera_rays.T).T).abs().max().item(),
+                    1e-6,
+                )
 
 
 class TestIdealPinholeFromSource(unittest.TestCase):
@@ -2209,8 +2751,8 @@ class TestIdealPinholeFromSource(unittest.TestCase):
         source_model = CameraModel.from_parameters(params, device=device, dtype=torch.float64)
         ideal_model = CameraModel.from_parameters(ideal, device=device, dtype=torch.float64)
         principal_ray = np.array([[0.0, 0.0, 1.0]], dtype=np.float32)
-        src_pt = source_model.camera_rays_to_image_points(principal_ray).image_points[0].cpu().numpy()
-        ideal_pt = ideal_model.camera_rays_to_image_points(principal_ray).image_points[0].cpu().numpy()
+        src_pt = source_model.camera_points_to_image_points(principal_ray).image_points[0].cpu().numpy()
+        ideal_pt = ideal_model.camera_points_to_image_points(principal_ray).image_points[0].cpu().numpy()
         np.testing.assert_allclose(src_pt, ideal_pt, atol=1e-3)
 
     def test_natural_fov_and_roundtrip(self):
@@ -2631,6 +3173,30 @@ class TestExternalDistortionModelFactory(unittest.TestCase):
         self.assertIsInstance(
             external_distortion_model_from_parameters(parameters, device="cpu"), CustomDistortionModel
         )
+
+    def test_non_central_rays_are_rejected(self):
+        """External distortion is only defined for central models
+
+        The public entry points guard the ray representation, so a caller reaching a distortion
+        model directly still cannot feed it rays it cannot meaningfully deflect.
+        """
+        model = external_distortion_model_from_parameters(self._windshield(), device="cpu")
+        non_central_rays = torch.zeros((4, 6), dtype=torch.float32)
+
+        with self.assertRaises(TypeError):
+            model.distort_camera_rays(non_central_rays)
+
+        with self.assertRaises(TypeError):
+            model.undistort_camera_rays(non_central_rays)
+
+    def test_concrete_models_implement_the_impl_hooks(self):
+        """The guard lives in the base's public methods, so concrete models override ``_impl``"""
+        self.assertIn("_distort_camera_rays_impl", ExternalDistortionModel.__abstractmethods__)
+        self.assertIn("_undistort_camera_rays_impl", ExternalDistortionModel.__abstractmethods__)
+
+        # ... and the public entry points are concrete, so they cannot be bypassed by an override
+        self.assertNotIn("distort_camera_rays", ExternalDistortionModel.__abstractmethods__)
+        self.assertNotIn("undistort_camera_rays", ExternalDistortionModel.__abstractmethods__)
 
     def test_abstract_base_declares_serialization(self):
         # Parameters can be serialized through the abstract type without narrowing

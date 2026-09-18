@@ -422,7 +422,7 @@ class TestCameraRollingShutterIntegration(unittest.TestCase):
         )
 
         # Static projection: transform points to camera frame then project
-        static_result = self.camera.camera_rays_to_image_points(world_points)
+        static_result = self.camera.camera_points_to_image_points(world_points)
 
         # Compare valid points from both methods
         static_valid_points = static_result.image_points[static_result.valid_flag]
@@ -529,13 +529,13 @@ class TestCameraRollingShutterIntegration(unittest.TestCase):
         # Verify by local projection: point should be valid at start pose
         T_start_torch = torch.from_numpy(T_start).to(device=self.device, dtype=self.dtype)
         cam_point_start = (T_start_torch[:3, :3] @ world_point[0] + T_start_torch[:3, 3]).unsqueeze(0)
-        start_proj = self.camera.camera_rays_to_image_points(cam_point_start)
+        start_proj = self.camera.camera_points_to_image_points(cam_point_start)
         self.assertTrue(start_proj.valid_flag[0].item(), "Point should be valid at start pose")
 
         # Verify by local projection: point should be invalid at end pose
         T_end_torch = torch.from_numpy(T_end).to(device=self.device, dtype=self.dtype)
         cam_point_end = (T_end_torch[:3, :3] @ world_point[0] + T_end_torch[:3, 3]).unsqueeze(0)
-        end_proj = self.camera.camera_rays_to_image_points(cam_point_end)
+        end_proj = self.camera.camera_points_to_image_points(cam_point_end)
         self.assertFalse(end_proj.valid_flag[0].item(), "Point should be invalid at end pose")
 
         result = self.camera.world_points_to_image_points_shutter_pose(
@@ -901,8 +901,8 @@ def _legacy_camera_rolling_shutter(
     sensor_points_start = (T_world_sensor_start[:3, :3] @ world_points.T + T_world_sensor_start[:3, 3, None]).T
     sensor_points_end = (T_world_sensor_end[:3, :3] @ world_points.T + T_world_sensor_end[:3, 3, None]).T
 
-    image_points_start = camera.camera_rays_to_image_points(sensor_points_start)
-    image_points_end = camera.camera_rays_to_image_points(sensor_points_end)
+    image_points_start = camera.camera_points_to_image_points(sensor_points_start)
+    image_points_end = camera.camera_points_to_image_points(sensor_points_end)
 
     valid = image_points_start.valid_flag | image_points_end.valid_flag
     init_image_points = image_points_end.image_points.clone()
@@ -931,7 +931,7 @@ def _legacy_camera_rolling_shutter(
         rot_rs = unitquat_to_rotmat(unitquat_slerp(s_quat_expanded, e_quat_expanded, t))
         trans_rs = (1 - t)[..., None] * transl_start + t[..., None] * transl_end
         cam_rays_rs = (torch.bmm(rot_rs, world_points[valid, :, None]) + trans_rs[..., None]).squeeze(-1)
-        image_points_rs = camera.camera_rays_to_image_points(cam_rays_rs)
+        image_points_rs = camera.camera_points_to_image_points(cam_rays_rs)
 
         new_mean_error_px = torch.linalg.norm(
             image_points_rs.image_points[image_points_rs.valid_flag] - image_points_rs_prev[image_points_rs.valid_flag],
@@ -1238,8 +1238,8 @@ class TestFovGapAnalysis(unittest.TestCase):
         sp_start = (T_start[:3, :3] @ world_points.T + T_start[:3, 3, None]).T
         sp_end = (T_end[:3, :3] @ world_points.T + T_end[:3, 3, None]).T
 
-        proj_start = self.camera.camera_rays_to_image_points(sp_start)
-        proj_end = self.camera.camera_rays_to_image_points(sp_end)
+        proj_start = self.camera.camera_points_to_image_points(sp_start)
+        proj_end = self.camera.camera_points_to_image_points(sp_end)
 
         # Current validity check: OR of start and end
         valid_current = proj_start.valid_flag | proj_end.valid_flag
@@ -1257,7 +1257,7 @@ class TestFovGapAnalysis(unittest.TestCase):
         trans_mid = 0.5 * T_start[:3, 3] + 0.5 * T_end[:3, 3]
 
         sp_mid = (rot_mid @ world_points[:, :, None] + trans_mid[None, :, None]).squeeze(-1)
-        proj_mid = self.camera.camera_rays_to_image_points(sp_mid)
+        proj_mid = self.camera.camera_points_to_image_points(sp_mid)
 
         # Assert: point IS valid at midpoint
         self.assertTrue(proj_mid.valid_flag[0].item(), "Point should be inside FOV at t=0.5")

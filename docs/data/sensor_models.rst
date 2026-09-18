@@ -29,6 +29,42 @@ The following camera models are supported:
 * :ref:`OpenCV Fisheye Camera Model <opencv_fisheye_camera_model>` - OpenCV's
   fisheye camera model with polynomial distortion for ultra-wide angle and
   fisheye lenses
+* :ref:`Ideal Orthographic Camera Model <ideal_orthographic_camera_model>` -
+  Distortion-free parallel projection, e.g. for bird's-eye-view raster data
+
+.. _central_and_non_central_models:
+
+Central and Non-Central Models
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Most camera models are **central**: every ray passes through a single centre of
+projection, so a ray is fully described by a 3d direction and its origin is
+implied by the sensor pose. The FTheta, ideal pinhole, OpenCV pinhole and OpenCV
+fisheye models are all central.
+
+The :ref:`ideal orthographic model <ideal_orthographic_camera_model>` is
+**non-central**: its rays are parallel and share no common origin, so a
+direction alone does not identify a ray. Its rays therefore carry an explicit
+per-ray origin and are represented as 6d ``[origin, direction]``, matching the
+layout of the world rays returned by
+:meth:`~ncore.sensors.CameraModel.image_points_to_world_rays_static_pose`. See
+:ref:`camera_ray_conventions`.
+
+:attr:`~ncore.sensors.CameraModel.camera_ray_dim` reports which representation a
+model uses (``3`` or ``6``). Note this concerns *unprojection* only:
+:meth:`~ncore.sensors.CameraModel.camera_points_to_image_points` takes a 3d
+camera-frame *point* for every model. A central model's projection is
+scale-invariant, so any point along a ray (including a normalized direction)
+projects identically; a non-central model's is not, so it must be given the
+actual point. See :ref:`camera_ray_conventions`.
+
+Two operations are unavailable for non-central models, because a parallel ray
+bundle makes them ill-defined rather than merely unimplemented:
+
+* **External distortion** deflects each ray individually, which would not
+  preserve the parallel bundle. It is rejected when the model is constructed.
+* **Rectification** against a central model has no depth-independent solution,
+  since there is no common centre to pivot about. See :ref:`rectification`.
 
 .. _camera_model_parameterizations:
 
@@ -286,6 +322,80 @@ The OpenCV Fisheye model uses a fisheye distortion polynomial:
 
 The inverse operation uses Newton-Raphson iteration to invert the ninth-degree polynomial. **Example:** The radial_coeffs parameter contains [k₁, k₂, k₃, k₄] (float32, [4,]).
 
+.. _ideal_orthographic_camera_model:
+
+Ideal Orthographic Camera Model
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If ``camera_model_type = 'ideal-orthographic'`` the following intrinsic
+parameters will additionally be available in ``camera_model_parameters``:
+
+* ``principal_point`` - u and v coordinate of the principal point,
+  following the :ref:`image coordinate conventions
+  <image_coordinate_conventions>` (float32, [2,])
+* ``pixels_per_unit`` - image scale in u and v direction, resp., in pixels per
+  scene unit, mapping camera coordinates to image coordinates relative to the
+  principal point. Must be positive (float32, [2,])
+
+Mathematical Model
+""""""""""""""""""
+
+The ideal orthographic model is a distortion-free *parallel* projection: the
+camera-frame depth is dropped rather than divided by, so a point's image
+location does not depend on it.
+
+**Project to Image**: Scale the camera-frame coordinates and add the principal
+point:
+
+.. math::
+
+   \begin{bmatrix} u \\ v \end{bmatrix} =
+   \begin{bmatrix} s_u x + u_0 \\ s_v y + v_0 \end{bmatrix}
+
+Unprojection is the closed-form inverse :math:`x = (u - u_0) / s_u`,
+:math:`y = (v - v_0) / s_v`, giving a ray *origin* :math:`[x, y, 0]` on the
+camera frame's :math:`z = 0` plane. Every ray shares the principal direction
+:math:`[0, 0, 1]`, so unprojection returns 6d ``[origin, direction]`` rays (see
+:ref:`central_and_non_central_models`).
+
+``pixels_per_unit`` occupies the same place in the projection as a pinhole's
+``focal_length``, but differs in dimension: a pinhole consumes the dimensionless
+:math:`x/z` and so is measured in pixels, whereas this model consumes
+:math:`x` directly and is therefore measured in pixels per scene unit (meters
+for metric sequences; see the ``coordinate_unit`` field in
+:ref:`data_formats`). An orthographic camera's focal length is infinite, which
+is why it has no pinhole approximation and cannot be rectified to one.
+
+.. note::
+
+   Because a parallel projection has no frustum, validity is purely the
+   in-image test. Unlike the pinhole models there is **no** "in front of the
+   camera" (:math:`z > 0`) check: points behind the :math:`z = 0` plane project
+   exactly like points in front of it.
+
+The intrinsics can equivalently be read as the axis-aligned metric *window* the
+camera views, which is the form consumers working in normalized image
+coordinates (e.g. bird's-eye-view feature maps) tend to want.
+:meth:`~ncore.data.IdealOrthographicCameraModelParameters.window_min` and
+:meth:`~ncore.data.IdealOrthographicCameraModelParameters.window_max` convert to
+it, and
+:meth:`~ncore.data.IdealOrthographicCameraModelParameters.from_window`
+constructs from it:
+
+.. math::
+
+   \text{window\_min} = -\frac{\text{principal\_point}}{\text{pixels\_per\_unit}},
+   \quad
+   \text{window\_max} = \frac{\text{resolution} - \text{principal\_point}}{\text{pixels\_per\_unit}}
+
+.. note::
+
+   Being distortion-free, this model is the orthographic counterpart of the
+   :ref:`ideal pinhole <ideal_pinhole_camera_model>`. A real object-side
+   telecentric lens additionally has image-plane radial distortion; such a
+   model would be a *sibling* of this one, the way ``opencv-pinhole`` is a
+   sibling of ``ideal-pinhole``.
+
 .. _external_distortion_models:
 
 External Distortion Models
@@ -298,6 +408,14 @@ Camera models can optionally include external distortion sources that affect ray
 When ``external_distortion_parameters`` is present, it will contain:
 
 * ``external_distortion_type`` - type of external distortion (str)
+
+.. note::
+
+   External distortion is only defined for :ref:`central
+   <central_and_non_central_models>` camera models. It deflects every ray
+   individually, which would not map a parallel ray bundle to another parallel
+   one, so attaching it to a non-central model (e.g. the :ref:`ideal
+   orthographic <ideal_orthographic_camera_model>` one) raises at construction.
 
 .. _bivariate_windshield_model:
 
@@ -381,6 +499,16 @@ domain. It is a generic "from-camera -> to-camera" intrinsic remap within a
 shared camera frame; the most common use is mapping a distorted source camera to
 a distortion-free :ref:`ideal pinhole <ideal_pinhole_camera_model>` target, but
 the target may itself be distorted.
+
+.. note::
+
+   Both cameras must use the same ray representation (see
+   :ref:`central_and_non_central_models`). Rectifying between a central and a
+   non-central model is ill-posed: with no common projection centre to pivot
+   about, the correspondence between the two image domains depends on the depth
+   of whatever is being viewed, so there is no single depth-independent remap.
+   Rectification between two non-central models is well-defined but not
+   implemented yet.
 
 Deriving an ideal target
 ^^^^^^^^^^^^^^^^^^^^^^^^^

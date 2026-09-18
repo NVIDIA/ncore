@@ -139,6 +139,70 @@ start with ``[0.0, 0.0]`` at the top-left corner of the top-left pixel in the
 image, i.e., both the u and v coordinates of the first pixel span the range
 ``[0.0, 1.0]``.
 
+.. _camera_ray_conventions:
+
+Camera Rays and Camera Points
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+All quantities below are expressed in the **extrinsic camera frame** defined
+above, i.e. relative to the camera frame's origin, with the principal axis along
+:math:`+z`.
+
+Unprojection: camera rays
+"""""""""""""""""""""""""
+
+Unprojecting an image point yields a *camera ray*, whose representation depends
+on whether the camera model is central:
+
+* **Central models** (FTheta, ideal pinhole, OpenCV pinhole, OpenCV fisheye)
+  project through a single centre. A ray is a 3d **direction**
+  ``[dx, dy, dz]``, relative to the camera frame origin, and that origin is
+  where the ray starts, so it does not have to be stored. These directions are
+  returned normalized.
+* **Non-central models** (the ideal orthographic model) have rays that share no
+  common origin, so a direction alone does not identify a ray. A ray is 6d, an
+  explicit origin followed by a direction,
+  ``[ox, oy, oz, dx, dy, dz]``. The origin is a point in the camera frame,
+  stated relative to the same camera frame origin that a central model's
+  direction is measured from.
+
+:attr:`~ncore.sensors.CameraModel.camera_ray_dim` reports which representation a
+model uses. World rays (as returned by the ``image_points_to_world_rays_*`` and
+``pixels_to_world_rays_*`` methods) are always 6d ``[origin, direction]``, for
+every model.
+
+Projection: camera points
+"""""""""""""""""""""""""
+
+The forward direction takes a 3d camera-frame **point** for every model, which
+is why it is called
+:meth:`~ncore.sensors.CameraModel.camera_points_to_image_points`. What each
+model does with that point's magnitude differs, however:
+
+* A **central** model's projection is **scale-invariant**: it divides by depth
+  (pinhole) or takes an angle about the projection centre (FTheta, fisheye), so
+  every point along a given ray projects to the same image point. Passing a
+  direction of any length is therefore equivalent to passing an actual point.
+* A **non-central** model's projection is **not** scale-invariant. An
+  orthographic camera drops the depth rather than dividing by it, so the
+  point's ``x`` and ``y`` *are* the quantity being projected.
+
+.. warning::
+
+   It follows that a normalized direction is **not** a valid input for a
+   non-central model: normalizing rescales ``x`` and ``y`` and silently moves
+   the projected location. Pass the actual camera-frame point. For central
+   models either works.
+
+.. note::
+
+   :meth:`~ncore.sensors.CameraModel.camera_points_to_image_points` and
+   :meth:`~ncore.sensors.CameraModel.camera_points_to_pixels` were previously
+   named ``camera_rays_to_image_points`` and ``camera_rays_to_pixels``. The old
+   names remain as deprecated aliases. They were renamed because the argument
+   was always a point; with only scale-invariant models the distinction was not
+   observable, and the first non-central model made it so.
+
 
 Sensor Models
 -------------
