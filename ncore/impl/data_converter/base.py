@@ -20,7 +20,7 @@ import sys
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Literal, Optional, Tuple
 
 from upath import UPath
 
@@ -45,6 +45,9 @@ class BaseDataConverterConfig:
     debug: bool
     debug_port: int
 
+    ## Output
+    zarr_format: Literal[2, 3]  # On-disk zarr format of written component stores (3 requires zarr-python>=3)
+
 
 class BaseDataConverter(ABC):
     """
@@ -61,6 +64,9 @@ class BaseDataConverter(ABC):
         self.logger = logging.getLogger(__name__)
 
         self.output_dir = UPath(config.output_dir)
+
+        # On-disk zarr format of written component stores
+        self.zarr_format: Literal[2, 3] = config.zarr_format
 
         # External sensor selection overwrites
         # Store `None`` for `_active_<sensor>_ids` in case all sensors should be used, as the

@@ -279,7 +279,9 @@ def compute_velodyne_timestamps_us(
     # Clamp to [0, 1] for safety
     fraction = np.clip(fraction, 0.0, 1.0)
 
-    timestamps = start_us + fraction * (end_us - start_us)
+    # Interpolate in float64: absolute epoch microseconds are not representable in float32, which
+    # numpy>=2 would otherwise promote to for a Python int combined with the float32 fraction (NEP 50)
+    timestamps = start_us + fraction.astype(np.float64) * (end_us - start_us)
     return timestamps.astype(np.uint64)
 
 

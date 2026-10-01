@@ -19,6 +19,8 @@ load("@rules_uv//uv:pip.bzl", "pip_compile")
 # Export lock files for use as constraints by other modules
 exports_files([
     "requirements_3_11.txt",
+    "requirements_3_12.txt",
+    "requirements_3_13.txt",
     "requirements_3_8.txt",
 ])
 
@@ -46,6 +48,7 @@ pip_compile(
     ],
     py3_runtime = "@python_3_11//:py3_runtime",
     requirements_in = "requirements_3_11.in",
+    requirements_overrides = "requirements_3_11_overrides.txt",
     requirements_txt = "requirements_3_11.txt",
 )
 
@@ -62,11 +65,39 @@ pip_compile(
     requirements_txt = "requirements_3_8.txt",
 )
 
+pip_compile(
+    name = "requirements_3_12",
+    size = "medium",
+    args = PIP_COMPILE_ARGS,
+    data = [
+        ":requirements_ncore.in",
+        ":requirements_tests.in",
+    ],
+    py3_runtime = "@python_3_12//:py3_runtime",
+    requirements_in = "requirements_3_12.in",
+    requirements_txt = "requirements_3_12.txt",
+)
+
+pip_compile(
+    name = "requirements_3_13",
+    size = "medium",
+    args = PIP_COMPILE_ARGS,
+    data = [
+        ":requirements_ncore.in",
+        ":requirements_tests.in",
+    ],
+    py3_runtime = "@python_3_13//:py3_runtime",
+    requirements_in = "requirements_3_13.in",
+    requirements_txt = "requirements_3_13.txt",
+)
+
 # Single command to update all requirements files (no order dependency)
 multirun(
     name = "update_all_requirements",
     commands = [
         ":requirements_3_11",
+        ":requirements_3_12",
+        ":requirements_3_13",
         ":requirements_3_8",
     ],
     keep_going = False,  # Fail on error

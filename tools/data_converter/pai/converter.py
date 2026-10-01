@@ -175,6 +175,7 @@ class _PaiConversionMixin:
         self.seek_sec: float | None = config.seek_sec
         self.duration_sec: float | None = config.duration_sec
         self.store_type: Literal["itar", "directory"] = config.store_type
+        self.zarr_format: Literal[2, 3] = config.zarr_format
         self.component_group_profile: Literal["default", "separate-sensors", "separate-all"] = (
             config.component_group_profile
         )
@@ -286,6 +287,7 @@ class _PaiConversionMixin:
             sequence_id=sequence_id,
             sequence_timestamp_interval_us=self.sequence_timestamp_interval_us,
             store_type=self.store_type,  # can also be "directory"
+            zarr_format=self.zarr_format,
             generic_meta_data={**source_generic_meta_data, **generic_meta_data},
         )
 

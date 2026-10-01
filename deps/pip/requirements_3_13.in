@@ -13,7 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-exports_files([
-    "fix-numpy2-uint64.patch",
-    "fix-python3-map.patch",
-])
+# Import common dependencies
+-r requirements_tests.in
+-r requirements_ncore.in
+
+# Public API restrictions for 3.13: most recent zarr-python 3
+zarr>=3.4.0 # most recent zarr-python 3 (python>=3.12)
+
+--find-links https://download.pytorch.org/whl/cpu/torch
+torch==2.7.0+cpu

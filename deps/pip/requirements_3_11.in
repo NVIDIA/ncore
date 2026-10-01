@@ -26,6 +26,7 @@
 
 # Public API restrictions for 3.11
 # torch 2.7+ supports numpy 2.x natively, no constraint needed
+zarr==3.1.4 # oldest supported zarr-python 3 (most recent zarr-python 3 is covered by python 3.13)
 
 --find-links https://download.pytorch.org/whl/cu128/torch
 torch==2.7.0+cu128
