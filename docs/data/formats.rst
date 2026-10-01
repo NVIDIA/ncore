@@ -486,7 +486,7 @@ A minimal custom component looks like:
                ...  # collect data
 
            def finalize(self):
-               ...  # write zarr datasets to self._group
+               ...  # write arrays to self._group, e.g. self._group.create_array("velocities", ...)
 
        class Reader(ComponentReader):
            @staticmethod
@@ -498,7 +498,10 @@ A minimal custom component looks like:
                return version == "v1"
 
            def get_velocities(self):
-               return self._group["velocities"][:], self._group["timestamps_us"][:]
+               return (
+                   self._group.array("velocities").read(),
+                   self._group.array("timestamps_us").read(),
+               )
 
 Writers must ensure that all stored timestamps fall within the sequence's
 ``sequence_timestamp_interval_us`` time range. Existing datasets can be extended

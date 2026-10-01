@@ -1,0 +1,18 @@
+# fix-numpy2-uint64.patch
+#
+# numpy 2 no longer wraps out-of-bound python integers when constructing unsigned integer scalars
+# (np.uint64(-1) raises "OverflowError: Python integer -1 out of bounds for uint64").
+#
+# This patch constructs the invalid point marker via np.iinfo, which is identical to the numpy 1 wrap-around value.
+diff -ruN a/pycolmap/scene_manager.py b/pycolmap/scene_manager.py
+--- a/pycolmap/scene_manager.py
++++ b/pycolmap/scene_manager.py
+@@ -19,7 +19,7 @@
+ #-------------------------------------------------------------------------------
+ 
+ class SceneManager:
+-    INVALID_POINT3D = np.uint64(-1)
++    INVALID_POINT3D = np.uint64(np.iinfo(np.uint64).max)
+ 
+     def __init__(self, colmap_results_folder, image_path=None):
+         self.folder = colmap_results_folder

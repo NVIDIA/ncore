@@ -280,6 +280,7 @@ class NuScenesConverter4(FileBasedDataConverter):
             sequence_id=sequence_output_name,
             sequence_timestamp_interval_us=sequence_timestamp_interval_us,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={
                 "source_dataset": "nuscenes",
                 "nuscenes_version": self._version,

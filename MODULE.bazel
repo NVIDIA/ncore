@@ -60,7 +60,13 @@ python.toolchain(
 python.toolchain(
     python_version = "3.8",
 )
-use_repo(python, "python_3_11", "python_3_8", "python_versions")
+python.toolchain(
+    python_version = "3.12",
+)
+python.toolchain(
+    python_version = "3.13",
+)
+use_repo(python, "python_3_11", "python_3_12", "python_3_13", "python_3_8", "python_versions")
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
@@ -75,6 +81,20 @@ pip.parse(
     hub_name = "ncore_pip_deps",
     python_version = "3.8",
     requirements_lock = "//deps/pip:requirements_3_8.txt",
+)
+pip.parse(
+    experimental_extra_index_urls = ["https://download.pytorch.org/whl/cpu"],  # PyTorch CPU wheels
+    experimental_index_url = "https://pypi.org/simple",  # download wheels via bazel downloader instead of pip
+    hub_name = "ncore_pip_deps",
+    python_version = "3.12",
+    requirements_lock = "//deps/pip:requirements_3_12.txt",
+)
+pip.parse(
+    experimental_extra_index_urls = ["https://download.pytorch.org/whl/cpu"],  # PyTorch CPU wheels
+    experimental_index_url = "https://pypi.org/simple",  # download wheels via bazel downloader instead of pip
+    hub_name = "ncore_pip_deps",
+    python_version = "3.13",
+    requirements_lock = "//deps/pip:requirements_3_13.txt",
 )
 
 # Patch torch to preload CUDA dependencies from nvidia pip packages before loading
@@ -106,6 +126,13 @@ http_archive(
     urls = ["https://maven.pkg.github.com/NVIDIA/ncore/com/nvidia/ncore/test-data-v4/0.2/test-data-v4-0.2.tar.gz"],
 )
 
+# time-trimmed zarr format v2 / v3 serializations of the test-data-v4 sequence
+http_archive(
+    name = "test-data-v4-trimmed",
+    sha256 = "a4a3457829431e30cdc5bb55cc00a8e6d5dfdc5d52db2221594807b4c9fff81d",
+    urls = ["https://maven.pkg.github.com/NVIDIA/ncore/com/nvidia/ncore/test-data-v4-trimmed/0.2/test-data-v4-trimmed-0.2.tar.gz"],
+)
+
 # documentation binary data
 http_archive(
     name = "ncore_docs_data",
@@ -134,7 +161,10 @@ http_archive(
     build_file = "//deps/pycolmap:pycolmap.BUILD",
     integrity = "sha256-cOv2KrC75S1ABt9zdcoLE+TP7lnM4o6QZM9RxN1TdPA=",
     patch_strip = 1,
-    patches = ["//deps/pycolmap:fix-python3-map.patch"],
+    patches = [
+        "//deps/pycolmap:fix-python3-map.patch",
+        "//deps/pycolmap:fix-numpy2-uint64.patch",
+    ],
     strip_prefix = "pycolmap-fe7a7c45df803b6c391777e349f0d8d65d39d777",
     urls = ["https://github.com/trueprice/pycolmap/archive/fe7a7c45df803b6c391777e349f0d8d65d39d777.tar.gz"],
 )

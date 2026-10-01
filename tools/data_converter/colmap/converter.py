@@ -265,6 +265,7 @@ class ColmapDataConverter(FileBasedDataConverter):
             sequence_id=self.sequence_name,
             sequence_timestamp_interval_us=sequence_timestamp_interval_us,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data=self.generic_meta_data,
         )
 
@@ -768,6 +769,7 @@ def scannetpp_v4(ctx, **kwargs):
             lidar_ids=base.lidar_ids,
             no_radars=base.no_radars,
             radar_ids=base.radar_ids,
+            zarr_format=base.zarr_format,
             colmap_dir="dslr/colmap",
             images_dir=images_dir,
             masks_dir=masks_dir,

@@ -20,11 +20,19 @@ load("//bazel/pytest:defs.bzl", "pytest_test")
 package(default_visibility = ["//:code_package_group"])
 
 py_library(
+    name = "pylib_json",
+    srcs = [
+        "_json.py",
+    ],
+)
+
+py_library(
     name = "pylib_types",
     srcs = [
         "types.py",
     ],
     deps = [
+        ":pylib_json",
         ":pylib_util",
         "//ncore/impl/common:pylib_transformations",
         requirement("dataclasses_json"),
@@ -36,10 +44,20 @@ py_library(
 py_library(
     name = "pylib_stores",
     srcs = [
+        "_itar.py",
+        "_zarr2.py",
+        "_zarr3.py",
+        "_zarr_api.py",
+        "nodes.py",
         "stores.py",
     ],
     deps = [
+        ":pylib_json",
         requirement("cbor2"),
+        requirement("fsspec"),
+        requirement("numcodecs"),
+        requirement("numpy"),
+        requirement("typing_extensions"),
         requirement("universal_pathlib"),
         requirement("zarr"),
     ],

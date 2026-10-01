@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-exports_files([
-    "fix-numpy2-uint64.patch",
-    "fix-python3-map.patch",
-])
+# Dependency overrides for python 3.11 (replace the requirements of all packages for the listed dependencies)
+
+# zarr-python 3 requires numpy>=2, but nuscenes-devkit 1.2.0 conservatively restricts numpy<2 (validated to work
+# with numpy 2 via //tools/data_converter/nuscenes:pytest_converter_3_11) - older nuscenes-devkit versions require
+# matplotlib<3.6, which has no python 3.11 wheels
+numpy>=2
+nuscenes-devkit>=1.2.0

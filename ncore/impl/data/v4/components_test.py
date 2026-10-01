@@ -13,15 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import dataclasses
 import io
 import tempfile
 import unittest
 
-from typing import Dict, Literal, Tuple, cast
+from typing import Any, Dict, List, Literal, Optional, Tuple, Type, cast
 
 import numpy as np
 import PIL.Image as PILImage
+import zarr
 
 from parameterized import parameterized, parameterized_class
 from scipy.spatial.transform import Rotation as R
@@ -29,6 +31,7 @@ from upath import UPath
 
 from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import unpack_optional
+from ncore.impl.data import nodes
 from ncore.impl.data.types import (
     BBox3,
     BivariateWindshieldModelParameters,
@@ -49,6 +52,7 @@ from ncore.impl.data.types import (
     ShutterType,
 )
 from ncore.impl.data.v4.components import (
+    BaseRayBundleSensorComponentReader,
     CameraLabelsComponent,
     CameraSensorComponent,
     ComponentReader,
@@ -65,17 +69,129 @@ from ncore.impl.data.v4.components import (
 )
 
 
+def _check_async_accessors(
+    test: unittest.TestCase, reader: SequenceComponentGroupsReader, require_data: bool = True
+) -> None:
+    """Checks that the asynchronous variants of all data accessors of all components return the same data as the
+    synchronous accessors, with all reads of all components awaited concurrently"""
+    checks: List[Tuple[str, Any, Any]] = []  # (context, expected value, awaitable)
+
+    def check(context: str, expected: Any, awaitable: Any) -> None:
+        checks.append((context, expected, awaitable))
+
+    for component in (PosesComponent, IntrinsicsComponent, MasksComponent, CuboidsComponent, PointCloudsComponent):
+        for name, component_reader in reader.open_component_readers(component.Reader).items():
+            for data_name in component_reader.get_generic_data_names():
+                check(
+                    f"{name}.generic[{data_name}]",
+                    component_reader.get_generic_data(data_name),
+                    component_reader.get_generic_data_async(data_name),
+                )
+
+    for name, masks in reader.open_component_readers(MasksComponent.Reader).items():
+        for camera_id in masks._group.group("cameras").members():
+            for mask_name in masks.get_camera_mask_names(camera_id):
+                check(
+                    f"{name}.mask[{camera_id}/{mask_name}]",
+                    np.asarray(masks.get_camera_mask_image(camera_id, mask_name)),
+                    masks.get_camera_mask_image_async(camera_id, mask_name),
+                )
+
+    for name, camera in reader.open_component_readers(CameraSensorComponent.Reader).items():
+        for ts in (int(ts) for ts in camera.frames_timestamps_us[:, 1]):
+            data = camera.get_frame_data(ts)
+            check(
+                f"{name}[{ts}].image",
+                (data.get_encoded_image_data(), data.get_encoded_image_format()),
+                camera.get_frame_data_async(ts),
+            )
+            check(f"{name}[{ts}].handle", data.get_encoded_image_data(), camera.get_frame_handle(ts).get_data_async())
+
+    sensors: Dict[str, Any] = {}
+    for component in (CameraSensorComponent, LidarSensorComponent, RadarSensorComponent):
+        sensors.update(reader.open_component_readers(component.Reader))
+    for name, sensor in sensors.items():
+        for ts in (int(ts) for ts in sensor.frames_timestamps_us[:, 1]):
+            for data_name in sensor.get_frame_generic_data_names(ts):
+                check(
+                    f"{name}[{ts}].generic[{data_name}]",
+                    sensor.get_frame_generic_data(ts, data_name),
+                    sensor.get_frame_generic_data_async(ts, data_name),
+                )
+            if not isinstance(sensor, BaseRayBundleSensorComponentReader):
+                continue
+            for data_name in sensor.get_frame_ray_bundle_data_names(ts):
+                check(
+                    f"{name}[{ts}].rays[{data_name}]",
+                    sensor.get_frame_ray_bundle_data(ts, data_name),
+                    sensor.get_frame_ray_bundle_data_async(ts, data_name),
+                )
+            check(
+                f"{name}[{ts}].valid",
+                sensor.get_frame_ray_bundle_return_valid_mask(ts),
+                sensor.get_frame_ray_bundle_return_valid_mask_async(ts),
+            )
+            for data_name in sensor.get_frame_ray_bundle_return_data_names(ts):
+                for return_index in [None] + list(range(sensor.get_frame_ray_bundle_return_count(ts))):
+                    check(
+                        f"{name}[{ts}].returns[{data_name}][{return_index}]",
+                        sensor.get_frame_ray_bundle_return_data(ts, data_name, return_index),
+                        sensor.get_frame_ray_bundle_return_data_async(ts, data_name, return_index),
+                    )
+
+    for name, pcs in reader.open_component_readers(PointCloudsComponent.Reader).items():
+        for index in range(pcs.pcs_count):
+            check(f"{name}[{index}].xyz", pcs.get_pc_xyz(index), pcs.get_pc_xyz_async(index))
+            for attribute in pcs.attribute_names:
+                check(
+                    f"{name}[{index}].{attribute}",
+                    pcs.get_pc_attribute(index, attribute),
+                    pcs.get_pc_attribute_async(index, attribute),
+                )
+            for data_name in pcs.get_pc_generic_data_names(index):
+                check(
+                    f"{name}[{index}].generic[{data_name}]",
+                    pcs.get_pc_generic_data(index, data_name),
+                    pcs.get_pc_generic_data_async(index, data_name),
+                )
+
+    for name, labels in reader.open_component_readers(CameraLabelsComponent.Reader).items():
+        for ts in (int(ts) for ts in labels.timestamps_us):
+            handle = labels.get_label(ts)
+            check(f"{name}[{ts}].data", handle.get_data(), handle.get_data_async())
+            check(f"{name}[{ts}].encoded", handle.get_encoded_data(), handle.get_encoded_data_async())
+
+    async def await_all() -> List[Any]:
+        return list(await asyncio.gather(*(awaitable for _, _, awaitable in checks)))
+
+    if require_data:
+        test.assertTrue(checks, "no data accessors checked")
+    for (context, expected, _), result in zip(checks, asyncio.run(await_all())):
+        actual: Any = result
+        if isinstance(expected, tuple):  # encoded image data
+            actual = (result.get_encoded_image_data(), result.get_encoded_image_format())
+        elif context.endswith(".handle"):
+            actual = result.get_encoded_image_data()
+        elif ".mask[" in context:
+            actual = np.asarray(result)
+        if isinstance(expected, np.ndarray):
+            test.assertIsInstance(actual, np.ndarray, context)
+            array = cast(np.ndarray, actual)
+            test.assertEqual((array.dtype, array.shape), (expected.dtype, expected.shape), context)
+            np.testing.assert_array_equal(array, expected, context)
+        else:
+            test.assertEqual(actual, expected, context)
+
+
 @parameterized_class(
-    ("store_type"),
-    [
-        ("itar",),
-        ("directory",),
-    ],
+    ("store_type", "zarr_format"),
+    [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in nodes.SUPPORTED_ZARR_FORMATS],
 )
 class TestData4Reload(unittest.TestCase):
     """Test to verify functionality of V4 data writer + loader"""
 
     store_type: Literal["itar", "directory"]
+    zarr_format: Literal[2, 3]
 
     def setUp(self):
         # Make printed errors more representable numerically
@@ -101,6 +217,7 @@ class TestData4Reload(unittest.TestCase):
                 ref_sequence_timestamp_interval_us := HalfClosedInterval(int(0 * 1e6), int(1 * 1e6) + 1)
             ),
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data=cast(Dict[str, JsonLike], ref_generic_sequence_meta_data := {"some": 1, "key": 1.2}),
         )
 
@@ -506,6 +623,7 @@ class TestData4Reload(unittest.TestCase):
             store_base_name=store_writer._store_base_name,
             sequence_reader=SequenceComponentGroupsReader(store_paths, open_consolidated=open_consolidated),
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
         )
 
         # Store cuboids with the new writer
@@ -1079,6 +1197,11 @@ class TestData4Reload(unittest.TestCase):
 
         self.assertEqual(list(cuboid_reader.get_observations()), ref_cuboid_observations)
 
+        # asynchronous variants of all data accessors return the same data (all reads awaited concurrently)
+        _check_async_accessors(self, store_reader)
+
+        tempdir.cleanup()
+
     # ------------------------------------------------------------------
     # Component-level generic_data tests
     # ------------------------------------------------------------------
@@ -1096,6 +1219,7 @@ class TestData4Reload(unittest.TestCase):
             sequence_id=seq_id,
             sequence_timestamp_interval_us=timestamp_interval,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={},
         )
 
@@ -1145,6 +1269,8 @@ class TestData4Reload(unittest.TestCase):
         expected_meta = {**init_meta, **ref_generic_meta}
         self.assertEqual(poses_reader.generic_meta_data, expected_meta)
 
+        _check_async_accessors(self, store_reader)
+
         tempdir.cleanup()
 
     def test_component_generic_data_backwards_compat(self) -> None:
@@ -1160,6 +1286,7 @@ class TestData4Reload(unittest.TestCase):
             sequence_id=seq_id,
             sequence_timestamp_interval_us=timestamp_interval,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={},
         )
 
@@ -1205,6 +1332,7 @@ class TestData4Reload(unittest.TestCase):
             sequence_id=seq_id,
             sequence_timestamp_interval_us=timestamp_interval,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={},
         )
 
@@ -1254,6 +1382,7 @@ class TestData4Reload(unittest.TestCase):
             sequence_id=seq_id,
             sequence_timestamp_interval_us=timestamp_interval,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={},
         )
 
@@ -1295,11 +1424,8 @@ class TestData4Reload(unittest.TestCase):
 
 
 @parameterized_class(
-    ("store_type"),
-    [
-        ("itar",),
-        ("directory",),
-    ],
+    ("store_type", "zarr_format"),
+    [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in nodes.SUPPORTED_ZARR_FORMATS],
 )
 class TestDataNewComponent(unittest.TestCase):
     """
@@ -1312,6 +1438,7 @@ class TestDataNewComponent(unittest.TestCase):
     """
 
     store_type: Literal["itar", "directory"]
+    zarr_format: Literal[2, 3]
 
     def setUp(self):
         np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
@@ -1342,6 +1469,7 @@ class TestDataNewComponent(unittest.TestCase):
             sequence_id=sequence_id,
             sequence_timestamp_interval_us=(timestamp_interval := HalfClosedInterval(int(0 * 1e6), int(10 * 1e6) + 1)),
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={"dataset": "test", "version": 1.0},
         )
 
@@ -1419,16 +1547,8 @@ class TestDataNewComponent(unittest.TestCase):
                         timestamps_array = np.array(self.timestamps, dtype=np.uint64)
 
                         # Store as zarr arrays
-                        self._group.create_dataset(
-                            "velocities",
-                            data=velocities_array,
-                            dtype=velocities_array.dtype,
-                        )
-                        self._group.create_dataset(
-                            "timestamps_us",
-                            data=timestamps_array,
-                            dtype=np.uint64,
-                        )
+                        self._group.create_array("velocities", velocities_array, dtype=velocities_array.dtype)
+                        self._group.create_array("timestamps_us", timestamps_array, dtype=np.uint64)
 
             class Reader(ComponentReader):
                 """Reader for velocity data - supports v1"""
@@ -1444,8 +1564,8 @@ class TestDataNewComponent(unittest.TestCase):
 
                 def get_velocities(self) -> Tuple[np.ndarray, np.ndarray]:
                     """Returns (velocities, timestamps_us) arrays"""
-                    velocities = np.array(self._group["velocities"][:])
-                    timestamps_us = np.array(self._group["timestamps_us"][:])
+                    velocities = self._group.array("velocities").read()
+                    timestamps_us = self._group.array("timestamps_us").read()
                     return velocities, timestamps_us
 
         # ============================================================================
@@ -1471,6 +1591,7 @@ class TestDataNewComponent(unittest.TestCase):
             output_dir_path=UPath(tempdir.name),  # Same directory as initial
             store_base_name=sequence_id + "-extension",
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
         )
 
         # Now add our custom velocity component to the extended dataset
@@ -1605,9 +1726,9 @@ class TestDataNewComponent(unittest.TestCase):
                         accelerations_array = np.stack(self.accelerations)
                         timestamps_array = np.array(self.timestamps, dtype=np.uint64)
 
-                        self._group.create_dataset("velocities", data=velocities_array)
-                        self._group.create_dataset("accelerations", data=accelerations_array)  # NEW
-                        self._group.create_dataset("timestamps_us", data=timestamps_array)
+                        self._group.create_array("velocities", velocities_array)
+                        self._group.create_array("accelerations", accelerations_array)  # NEW
+                        self._group.create_array("timestamps_us", timestamps_array)
 
         # Create a backward-compatible reader that can read both v1 and v2
         class VelocityComponentBackwardCompatibleReader(ComponentReader):
@@ -1624,15 +1745,15 @@ class TestDataNewComponent(unittest.TestCase):
 
             def get_velocities(self) -> Tuple[np.ndarray, np.ndarray]:
                 """Returns velocities (works for both v1 and v2)"""
-                velocities = np.array(self._group["velocities"][:])
-                timestamps_us = np.array(self._group["timestamps_us"][:])
+                velocities = self._group.array("velocities").read()
+                timestamps_us = self._group.array("timestamps_us").read()
                 return velocities, timestamps_us
 
             def get_accelerations(self) -> np.ndarray:
                 """Returns accelerations (only available in v2)"""
                 if self.component_version == "v1":
                     raise ValueError("Acceleration data not available in v1")
-                return np.array(self._group["accelerations"][:])
+                return self._group.array("accelerations").read()
 
         # Test that v1 reader cannot read v2 data
         v2_store_writer = SequenceComponentGroupsWriter(
@@ -1641,6 +1762,7 @@ class TestDataNewComponent(unittest.TestCase):
             sequence_id="test_v2",
             sequence_timestamp_interval_us=timestamp_interval,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={"version": "v2_test"},
         )
 
@@ -1704,17 +1826,142 @@ class TestDataNewComponent(unittest.TestCase):
         # Version compatibility tests passed - all tests completed successfully
 
 
+class _CustomComponent:
+    """A custom (user-defined) component with readers / writers using ncore nodes or the wrapped zarr-python objects"""
+
+    COMPONENT_NAME: str = "com.myorg.custom"
+
+    class _Writer(ComponentWriter):
+        @staticmethod
+        def get_component_name() -> str:
+            return _CustomComponent.COMPONENT_NAME
+
+        @staticmethod
+        def get_component_version() -> str:
+            return "v1"
+
+        def store(self, values: np.ndarray, blob: bytes, meta: Dict[str, JsonLike]) -> None:
+            raise NotImplementedError
+
+    class HelperWriter(_Writer):
+        """Writer using the zarr-python version-independent ncore nodes"""
+
+        def store(self, values: np.ndarray, blob: bytes, meta: Dict[str, JsonLike]) -> None:
+            frame = self._group.create_group("frames/0", attributes=meta)
+            frame.create_array("values", values, compression=nodes.BloscCompression(cname="zstd"))
+            frame.create_bytes_array("blob", blob, attributes={"format": "bin"})
+
+    class RawWriter(_Writer):
+        """Writer using the zarr-python API of the installed version directly (``Group.zarr``)"""
+
+        def store(self, values: np.ndarray, blob: bytes, meta: Dict[str, JsonLike]) -> None:
+            frame = self._group.zarr.create_group("frames").create_group("0")
+            frame.attrs.update(meta)
+            raw_bytes = np.frombuffer(blob, dtype=np.uint8)
+            if nodes.ZARR_PYTHON_3:
+                frame.create_array("values", data=values)
+                frame.create_array("blob", data=raw_bytes, compressors=None).attrs.update({"format": "bin"})
+            else:
+                zarr2_frame: Any = frame
+                zarr2_frame.create_dataset("values", data=values)
+                zarr2_frame.create_dataset("blob", data=raw_bytes, compressor=None).attrs.update({"format": "bin"})
+
+    class _Reader(ComponentReader):
+        @staticmethod
+        def get_component_name() -> str:
+            return _CustomComponent.COMPONENT_NAME
+
+        @staticmethod
+        def supports_component_version(version: str) -> bool:
+            return version == "v1"
+
+        def load(self) -> Tuple[np.ndarray, bytes, Dict[str, JsonLike]]:
+            raise NotImplementedError
+
+    class HelperReader(_Reader):
+        """Reader using the zarr-python version-independent ncore nodes"""
+
+        def load(self) -> Tuple[np.ndarray, bytes, Dict[str, JsonLike]]:
+            frame = self._group.group("frames/0")
+            blob = frame.array("blob")
+            assert blob.attrs == {"format": "bin"}
+            return frame.array("values").read(), blob.read_bytes(), frame.attrs
+
+    class RawReader(_Reader):
+        """Reader using the zarr-python API of the installed version directly (``Group.zarr``)"""
+
+        def load(self) -> Tuple[np.ndarray, bytes, Dict[str, JsonLike]]:
+            frame = self._group.zarr["frames/0"]
+            assert isinstance(frame, zarr.Group)
+            values, blob = frame["values"], frame["blob"]
+            assert isinstance(values, zarr.Array) and isinstance(blob, zarr.Array)
+            assert dict(blob.attrs) == {"format": "bin"}
+            meta = cast(Dict[str, JsonLike], dict(frame.attrs))
+            return np.asarray(values[...]), np.asarray(blob[...]).tobytes(), meta
+
+
 @parameterized_class(
-    ("store_type"),
-    [
-        ("itar",),
-        ("directory",),
-    ],
+    ("store_type", "zarr_format"),
+    [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in nodes.SUPPORTED_ZARR_FORMATS],
+)
+class TestCustomComponent(unittest.TestCase):
+    """Custom components can be implemented with ncore nodes or the wrapped zarr-python objects (in any combination)"""
+
+    store_type: Literal["itar", "directory"]
+    zarr_format: Literal[2, 3]
+
+    @parameterized.expand(
+        [
+            (writer.__name__, reader.__name__, node_cache_size)
+            for writer in (_CustomComponent.HelperWriter, _CustomComponent.RawWriter)
+            for reader in (_CustomComponent.HelperReader, _CustomComponent.RawReader)
+            for node_cache_size in (None, 0, 1)
+        ]
+    )
+    def test_round_trip(self, writer_name: str, reader_name: str, node_cache_size: Optional[int]):
+        writer_type = cast(Type[_CustomComponent._Writer], getattr(_CustomComponent, writer_name))
+        reader_type = cast(Type[_CustomComponent._Reader], getattr(_CustomComponent, reader_name))
+        values = np.arange(12, dtype=np.float32).reshape(3, 4)
+        blob = b"\x00\x01some binary payload\xff"
+        meta: Dict[str, JsonLike] = {"units": "m", "frame": [1, 2]}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store_writer = SequenceComponentGroupsWriter(
+                output_dir_path=UPath(tmp),
+                store_base_name="custom",
+                sequence_id="custom",
+                sequence_timestamp_interval_us=HalfClosedInterval(0, 10),
+                generic_meta_data={},
+                store_type=self.store_type,
+                zarr_format=self.zarr_format,
+            )
+            store_writer.register_component_writer(writer_type, "instance", group_name="custom").store(
+                values, blob, meta
+            )
+            store_paths = store_writer.finalize()
+
+            for open_consolidated in (True, False):
+                reader = SequenceComponentGroupsReader(
+                    store_paths, open_consolidated=open_consolidated, node_cache_size=node_cache_size
+                )
+                custom_reader = reader.open_component_readers(reader_type)["instance"]
+                self.assertEqual(custom_reader.component_version, "v1")
+                for _ in range(2):  # repeated accesses (cached nodes)
+                    actual_values, actual_blob, actual_meta = custom_reader.load()
+                    np.testing.assert_array_equal(actual_values, values)
+                    self.assertEqual(actual_blob, blob)
+                    self.assertEqual(actual_meta, meta)
+
+
+@parameterized_class(
+    ("store_type", "zarr_format"),
+    [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in nodes.SUPPORTED_ZARR_FORMATS],
 )
 class TestPointCloudsComponent(unittest.TestCase):
     """Round-trip tests for the PointCloudsComponent Writer/Reader."""
 
     store_type: Literal["itar", "directory"]
+    zarr_format: Literal[2, 3]
 
     def setUp(self):
         np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
@@ -1735,6 +1982,7 @@ class TestPointCloudsComponent(unittest.TestCase):
             sequence_id=seq_id,
             sequence_timestamp_interval_us=timestamp_interval,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={},
         )
 
@@ -1750,6 +1998,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         """Finalize the writer, open a reader, and return the PointCloudsComponent.Reader."""
         store_paths = store_writer.finalize()
         reader = SequenceComponentGroupsReader(component_group_paths=store_paths)
+        _check_async_accessors(self, reader, require_data=False)  # (may contain empty point clouds only)
         pc_readers = reader.open_component_readers(PointCloudsComponent.Reader)
         self.assertIn("test_pc", pc_readers)
         return pc_readers["test_pc"]
@@ -1946,7 +2195,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         pc_writer, _, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas)
 
         N = 10
-        xyz = np.random.default_rng().random((N, 3), dtype=np.float32)
+        xyz = np.random.default_rng().random((N, 3)).astype(np.float32)
         # Wrong shape: (N, 4) instead of (N, 3)
         rgb_wrong = np.random.default_rng().integers(0, 256, size=(N, 4), dtype=np.uint8)
 
@@ -2060,16 +2309,14 @@ class TestPointCloudsComponent(unittest.TestCase):
 
 
 @parameterized_class(
-    ("store_type"),
-    [
-        ("itar",),
-        ("directory",),
-    ],
+    ("store_type", "zarr_format"),
+    [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in nodes.SUPPORTED_ZARR_FORMATS],
 )
 class TestCameraLabelsComponent(unittest.TestCase):
     """Round-trip tests for the CameraLabelsComponent Writer/Reader."""
 
     store_type: Literal["itar", "directory"]
+    zarr_format: Literal[2, 3]
 
     def setUp(self):
         np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
@@ -2095,6 +2342,7 @@ class TestCameraLabelsComponent(unittest.TestCase):
             sequence_id=seq_id,
             sequence_timestamp_interval_us=timestamp_interval,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={},
         )
 
@@ -2115,6 +2363,7 @@ class TestCameraLabelsComponent(unittest.TestCase):
         store_paths = store_writer.finalize()
 
         reader = SequenceComponentGroupsReader(component_group_paths=store_paths)
+        _check_async_accessors(self, reader, require_data=False)
 
         return reader.open_component_readers(CameraLabelsComponent.Reader)
 
@@ -2419,7 +2668,8 @@ class TestCameraLabelsComponent(unittest.TestCase):
             store_base_name=(seq_id := "multi-label-seq"),
             sequence_id=seq_id,
             sequence_timestamp_interval_us=timestamp_interval,
-            store_type="directory",
+            store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={},
         )
 
@@ -2582,6 +2832,7 @@ class TestCameraLabelsComponent(unittest.TestCase):
             sequence_id=seq_id,
             sequence_timestamp_interval_us=timestamp_interval,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={},
         )
 
@@ -2754,16 +3005,14 @@ class TestCameraLabelsComponent(unittest.TestCase):
 
 
 @parameterized_class(
-    ("store_type"),
-    [
-        ("itar",),
-        ("directory",),
-    ],
+    ("store_type", "zarr_format"),
+    [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in nodes.SUPPORTED_ZARR_FORMATS],
 )
 class TestZeroDimArraySupport(unittest.TestCase):
     """Tests that arrays with zero-length dimensions can be stored and read back correctly."""
 
     store_type: Literal["itar", "directory"]
+    zarr_format: Literal[2, 3]
 
     def setUp(self):
         np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
@@ -2782,6 +3031,7 @@ class TestZeroDimArraySupport(unittest.TestCase):
             sequence_id=seq_id,
             sequence_timestamp_interval_us=timestamp_interval,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={},
         )
 
@@ -2845,6 +3095,7 @@ class TestZeroDimArraySupport(unittest.TestCase):
             sequence_id=seq_id,
             sequence_timestamp_interval_us=timestamp_interval,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={},
         )
 
@@ -2887,6 +3138,7 @@ class TestZeroDimArraySupport(unittest.TestCase):
             sequence_id=seq_id,
             sequence_timestamp_interval_us=timestamp_interval,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={},
         )
 
@@ -2953,6 +3205,7 @@ class TestZeroDimArraySupport(unittest.TestCase):
             sequence_id=seq_id,
             sequence_timestamp_interval_us=timestamp_interval,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={},
         )
 
@@ -3009,6 +3262,7 @@ class TestZeroDimArraySupport(unittest.TestCase):
             sequence_id=seq_id,
             sequence_timestamp_interval_us=timestamp_interval,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={},
         )
 
@@ -3062,6 +3316,7 @@ class TestZeroDimArraySupport(unittest.TestCase):
             sequence_id=seq_id,
             sequence_timestamp_interval_us=timestamp_interval,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={},
         )
 
@@ -3136,6 +3391,7 @@ class TestZeroDimArraySupport(unittest.TestCase):
             sequence_id=seq_id,
             sequence_timestamp_interval_us=timestamp_interval,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={},
         )
 

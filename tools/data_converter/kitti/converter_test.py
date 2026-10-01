@@ -26,6 +26,7 @@ import numpy as np
 from parameterized import parameterized_class
 from upath import UPath
 
+from ncore.impl.data import nodes
 from ncore.impl.data.types import OpenCVPinholeCameraModelParameters
 from ncore.impl.data.v4.components import (
     CameraSensorComponent,
@@ -39,11 +40,8 @@ from tools.data_converter.kitti.converter import KittiConverter4, KittiConverter
 
 
 @parameterized_class(
-    ("store_type"),
-    [
-        ("itar",),
-        ("directory",),
-    ],
+    ("store_type", "zarr_format"),
+    [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in nodes.SUPPORTED_ZARR_FORMATS],
 )
 class TestKittiConverter(unittest.TestCase):
     """Integration tests for KITTI raw data converter.
@@ -54,6 +52,7 @@ class TestKittiConverter(unittest.TestCase):
     """
 
     store_type: Literal["itar", "directory"]
+    zarr_format: Literal[2, 3]
 
     @classmethod
     def setUpClass(cls):
@@ -78,6 +77,7 @@ class TestKittiConverter(unittest.TestCase):
             debug=False,
             debug_port=5678,
             store_type=cls.store_type,
+            zarr_format=cls.zarr_format,
             component_group_profile="separate-sensors",
             store_sequence_meta=True,
         )
