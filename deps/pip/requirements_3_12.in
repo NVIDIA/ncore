@@ -13,7 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-exports_files([
-    "fix-numpy2-uint64.patch",
-    "fix-python3-map.patch",
-])
+# Import common dependencies
+-r requirements_tests.in
+-r requirements_ncore.in
+
+# Public API restrictions for 3.12: most recent zarr-python 2
+zarr>=2.18.7,<3.0.0 # zarr-python 2.18.7 is the first version with the correct numcodecs<0.16 restriction
+
+--find-links https://download.pytorch.org/whl/cpu/torch
+torch==2.7.0+cpu

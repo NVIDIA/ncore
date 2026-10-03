@@ -13,7 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-exports_files([
-    "fix-numpy2-uint64.patch",
-    "fix-python3-map.patch",
-])
+"""JSON-like structure types (dependency-free, shared by data types and stores)"""
+
+from typing import Dict, List, Union
+
+
+#: A JSON-like structure
+JsonLike = Union[
+    Dict[str, "JsonLike"],
+    List["JsonLike"],
+    str,
+    int,
+    float,
+    bool,
+    None,
+]
