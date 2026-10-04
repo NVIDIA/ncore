@@ -26,7 +26,7 @@ import numpy as np
 from parameterized import parameterized_class
 from upath import UPath
 
-from ncore.impl.data.types import OpenCVPinholeCameraModelParameters
+from ncore.impl.data.types import IdealPinholeCameraModelParameters
 from ncore.impl.data.v4.components import (
     CameraSensorComponent,
     CuboidsComponent,
@@ -160,19 +160,17 @@ class TestKittiConverter(unittest.TestCase):
         for cam_id, cam_reader in camera_readers.items():
             self.assertGreater(cam_reader.frames_count, 0, f"{cam_id} should have frames")
 
-    def test_camera_intrinsics_zero_distortion(self):
-        """Verify camera intrinsics have zero distortion (rectified images)."""
+    def test_camera_intrinsics_ideal_pinhole(self):
+        """Verify camera intrinsics are distortion-free ideal pinholes (rectified images)."""
         intrinsics_readers = self.reader.open_component_readers(IntrinsicsComponent.Reader)
         self.assertEqual(len(intrinsics_readers), 1)
         intrinsics_reader = list(intrinsics_readers.values())[0]
 
         for cam_id in ["camera_gray_left", "camera_gray_right", "camera_color_left", "camera_color_right"]:
             params = intrinsics_reader.get_camera_model_parameters(cam_id)
-            self.assertIsInstance(params, OpenCVPinholeCameraModelParameters)
-            params = cast(OpenCVPinholeCameraModelParameters, params)
-            # Distortion should be zero for rectified images
-            np.testing.assert_array_equal(params.radial_coeffs, np.zeros(6, dtype=np.float32))
-            np.testing.assert_array_equal(params.tangential_coeffs, np.zeros(2, dtype=np.float32))
+            self.assertIsInstance(params, IdealPinholeCameraModelParameters)
+            params = cast(IdealPinholeCameraModelParameters, params)
+            self.assertIsNone(params.external_distortion_parameters)
             # Focal length should be positive
             self.assertTrue(np.all(params.focal_length > 0))
 
