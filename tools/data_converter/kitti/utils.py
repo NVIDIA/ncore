@@ -279,8 +279,12 @@ def compute_velodyne_timestamps_us(
     # Clamp to [0, 1] for safety
     fraction = np.clip(fraction, 0.0, 1.0)
 
-    timestamps = start_us + fraction * (end_us - start_us)
-    return timestamps.astype(np.uint64)
+    # Only the in-spin offset is derived from the (float32) azimuth fraction; absolute timestamps stay
+    # integer, as epoch microseconds are not representable in float32. The duration is cast explicitly
+    # so the offset precision does not depend on numpy's scalar promotion rules (changed in numpy 2).
+    duration_us = end_us - start_us
+    offsets_us = (fraction * fraction.dtype.type(duration_us)).astype(np.uint64)
+    return np.uint64(start_us) + offsets_us
 
 
 # -----------------------------------------------------------------------------

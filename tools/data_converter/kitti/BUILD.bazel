@@ -70,3 +70,14 @@ pytest_test(
         "//ncore:pylib",
     ],
 )
+
+# Data-free unit tests for the KITTI utilities (runs in CI)
+pytest_test(
+    name = "pytest_utils",
+    srcs = ["utils_test.py"],
+    python_versions = ["3.11"],
+    deps = [
+        ":pylib_utils",
+        requirement("numpy"),
+    ],
+)
