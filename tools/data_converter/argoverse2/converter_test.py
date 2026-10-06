@@ -33,6 +33,7 @@ import numpy as np
 from parameterized import parameterized_class
 from upath import UPath
 
+from ncore.impl.data import nodes
 from ncore.impl.data.types import (
     IdealPinholeCameraModelParameters,
     RowOffsetStructuredSpinningLidarModelParameters,
@@ -52,11 +53,8 @@ from tools.data_converter.argoverse2.utils import CAMERA_NAMES, LIDAR_NAMES, lis
 
 
 @parameterized_class(
-    ("store_type",),
-    [
-        ("itar",),
-        ("directory",),
-    ],
+    ("store_type", "zarr_format"),
+    [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in nodes.SUPPORTED_ZARR_FORMATS],
 )
 class TestArgoverse2Converter(unittest.TestCase):
     """Integration tests for the Argoverse 2 data converter.
@@ -66,6 +64,7 @@ class TestArgoverse2Converter(unittest.TestCase):
     """
 
     store_type: Literal["itar", "directory"]
+    zarr_format: Literal[2, 3]
 
     @classmethod
     def setUpClass(cls):
@@ -97,6 +96,7 @@ class TestArgoverse2Converter(unittest.TestCase):
             split=cls.split,
             log_id=cls.log_id,
             store_type=cls.store_type,
+            zarr_format=cls.zarr_format,
             component_group_profile="separate-sensors",
             store_sequence_meta=True,
         )
@@ -166,6 +166,7 @@ class TestArgoverse2Converter(unittest.TestCase):
             meta = cam_reader.generic_meta_data
             self.assertIn("av2_original_distortion", meta, f"{cam_id} missing distortion provenance")
             distortion = meta["av2_original_distortion"]
+            assert isinstance(distortion, dict), f"{cam_id} distortion provenance should be a dict"
             self.assertEqual(set(distortion), {"k1", "k2", "k3"}, f"{cam_id} distortion keys")
             for key, value in distortion.items():
                 self.assertIsInstance(value, float, f"{cam_id} {key} should be a float")
@@ -284,7 +285,7 @@ class TestArgoverse2Converter(unittest.TestCase):
             ts = int(reader.frames_timestamps_us[0, 1])
             direction = reader.get_frame_ray_bundle_data(ts, "direction")
             elem = reader.get_frame_ray_bundle_data(ts, "model_element")
-            distance = np.asarray(reader._get_ray_bundle_returns_group(ts)["distance_m"])[0]
+            distance = np.asarray(reader._get_ray_bundle_returns_group(ts).array("distance_m").read())[0]
 
             far = np.isfinite(distance) & (distance > 20.0) & (np.linalg.norm(direction, axis=1) > 0)
             self.assertGreater(int(far.sum()), 100, f"{unit}: too few far returns to validate")
@@ -352,7 +353,7 @@ class TestArgoverse2Converter(unittest.TestCase):
         rig_poses, pose_ts = poses_reader.get_dynamic_pose("rig", "world")
 
         direction = lidar_reader.get_frame_ray_bundle_data(ts, "direction")
-        distance = np.asarray(lidar_reader._get_ray_bundle_returns_group(ts)["distance_m"])[0]
+        distance = np.asarray(lidar_reader._get_ray_bundle_returns_group(ts).array("distance_m").read())[0]
         point_ts = lidar_reader.get_frame_ray_bundle_data(ts, "timestamp_us").astype(np.int64)
         valid = np.isfinite(distance) & (distance > 0)
         pts_sensor = direction[valid] * distance[valid, None]

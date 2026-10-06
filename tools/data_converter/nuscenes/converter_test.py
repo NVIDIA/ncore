@@ -33,6 +33,7 @@ import numpy as np
 from parameterized import parameterized_class
 from upath import UPath
 
+from ncore.impl.data import nodes
 from ncore.impl.data.types import IdealPinholeCameraModelParameters, RowOffsetStructuredSpinningLidarModelParameters
 from ncore.impl.data.v4.components import (
     CameraSensorComponent,
@@ -49,11 +50,8 @@ from tools.data_converter.nuscenes.utils import get_nuscenes
 
 
 @parameterized_class(
-    ("store_type",),
-    [
-        ("itar",),
-        ("directory",),
-    ],
+    ("store_type", "zarr_format"),
+    [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in nodes.SUPPORTED_ZARR_FORMATS],
 )
 class TestNuScenesConverter(unittest.TestCase):
     """Integration tests for nuScenes data converter.
@@ -63,6 +61,7 @@ class TestNuScenesConverter(unittest.TestCase):
     """
 
     store_type: Literal["itar", "directory"]
+    zarr_format: Literal[2, 3]
 
     @classmethod
     def setUpClass(cls):
@@ -97,6 +96,7 @@ class TestNuScenesConverter(unittest.TestCase):
             scene_token=cls.scene_token,
             scene_name=None,
             store_type=cls.store_type,
+            zarr_format=cls.zarr_format,
             component_group_profile="separate-sensors",
             store_sequence_meta=True,
         )
@@ -294,7 +294,7 @@ class TestNuScenesConverter(unittest.TestCase):
 
             # Native: direction * distance
             direction = lidar_reader.get_frame_ray_bundle_data(ts, "direction")
-            distance_2d = np.array(lidar_reader._get_ray_bundle_returns_group(ts)["distance_m"])  # [R, N]
+            distance_2d = np.array(lidar_reader._get_ray_bundle_returns_group(ts).array("distance_m").read())  # [R, N]
             distance = distance_2d[0]  # first return
 
             # Model element

@@ -44,6 +44,13 @@ except ImportError:
 @click.option(
     "--debug-port", type=int, default=5678, help="The port on which debugpy will wait for a client to connect"
 )
+@click.option(
+    "--zarr-format",
+    type=click.Choice(["2", "3"]),
+    default="2",
+    callback=lambda _ctx, _param, value: int(value),
+    help="On-disk zarr format of written component stores (format 3 requires zarr-python>=3 for reading)",
+)
 @click.option("--no-cameras", is_flag=True, default=False, help="Disable exporting any camera sensor")
 @click.option(
     "--camera-id",

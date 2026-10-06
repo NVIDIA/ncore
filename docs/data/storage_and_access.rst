@@ -137,6 +137,87 @@ random access without any index.
 .. |times| unicode:: U+00D7
 .. |rarr| unicode:: U+2192
 
+.. _zarr_versions:
+
+zarr Versions and Formats
+-------------------------
+
+NCore supports both major versions of the `zarr-python <https://zarr.readthedocs.io/>`_
+library, as well as both versions of the zarr on-disk format specification:
+
+* **zarr-python** (the installed library): ``2.x`` (Python |ge| 3.8) or ``3.x``
+  (Python |ge| 3.11, version |ge| 3.1.4). The matching implementation is selected
+  automatically at import time.
+* **zarr format** (the on-disk layout of component stores): format v2 (``.zgroup`` /
+  ``.zarray`` / ``.zattrs`` node metadata) or format v3 (``zarr.json`` node metadata).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 35 35
+
+   * -
+     - zarr-python 2
+     - zarr-python 3
+   * - read zarr format v2
+     - |check|
+     - |check|
+   * - read zarr format v3
+     - |mdash|
+     - |check|
+   * - write zarr format v2 (default)
+     - |check|
+     - |check|
+   * - write zarr format v3
+     - |mdash|
+     - |check| (opt-in)
+
+zarr format v2 data is identical on disk independent of the zarr-python version that
+wrote it, so it can be read by all NCore V4 versions (NCore |le| 19.8 support
+zarr-python 2 and zarr format v2 only, zarr-python 3 and zarr format v3 are supported
+since NCore 20.0). Data is therefore written in zarr format v2 by default. zarr format
+v3 can be selected explicitly when writing, e.g.
+
+.. code-block:: python
+
+   writer = SequenceComponentGroupsWriter(..., zarr_format=3)
+
+or via ``--zarr-format 3`` in the data converter CLIs.
+
+Both formats store the consolidated metadata of each component group as a single
+compressed record in ``.itar`` archives (``.zmetadata.cbor.xz`` for zarr format v2,
+``zarr.json.cbor.zlib`` for zarr format v3). Hierarchies opened with consolidated metadata
+(the default of NCore readers) resolve all zarr nodes from it, without reading node
+metadata records. With zarr-python 3, NCore readers execute zarr's asynchronous I/O on
+the calling thread, avoiding per-access thread hand-offs to zarr-python's global I/O
+thread.
+
+With zarr-python 3, numeric arrays of ``.itar`` archives (blosc compressed or
+uncompressed, as written by NCore) are read by decompressing their chunks directly into
+the output array (zarr-python's indexing determines the chunks), and large chunks of an
+array are fetched and decoded concurrently. All other arrays and selections are read via
+zarr-python's codec pipeline. Setting the environment variable
+``NCORE_ZARR3_DIRECT_READS=0`` reads all arrays via zarr-python's codec pipeline.
+
+Records of ``.itar`` archives are write-once (archives are append-only): rewriting a
+record fails. With zarr-python 3, which rewrites node metadata on every attribute
+update, node metadata is kept in memory until the store is closed and only its final
+version is written, so each record is stored exactly once in both zarr formats.
+
+.. note::
+
+   The groups of component readers / writers (``self._group``) are
+   ``ncore.impl.data.nodes.Group`` instances, which support both zarr-python
+   versions with a restricted, typed API (e.g. ``create_array``, ``array(path).read()``,
+   ``attrs``). The wrapped zarr-python objects are accessible via ``.zarr`` for
+   components implemented with the zarr-python API of the installed version
+   directly, and both implementations read each other's data (see
+   ``TestCustomComponent`` in
+   `components_test.py <https://github.com/NVIDIA/ncore/blob/main/ncore/impl/data/v4/components_test.py>`_).
+
+.. |check| unicode:: U+2713
+.. |ge| unicode:: U+2265
+.. |le| unicode:: U+2264
+
 Loading V4 Data
 ---------------
 
@@ -156,6 +237,33 @@ V4 sequences are loaded by specifying one or more component store paths:
    # Access specific components
    poses_readers = reader.open_component_readers(PosesComponent.Reader)
    camera_readers = reader.open_component_readers(CameraSensorComponent.Reader)
+
+Asynchronous Reads
+~~~~~~~~~~~~~~~~~~
+
+All component reader methods reading array data have asynchronous variants
+(``*_async``, e.g. ``get_frame_data_async``, ``get_frame_ray_bundle_data_async``,
+``get_generic_data_async``), returning the same data. Awaiting multiple reads
+concurrently overlaps their I/O and decompression (e.g., range requests to remote
+storage), and the running event loop isn't blocked (blocking work, such as
+decompression, runs on worker threads):
+
+.. code-block:: python
+
+   import asyncio
+
+   lidar = reader.open_component_readers(LidarSensorComponent.Reader)["lidar"]
+
+   async def load_frames(timestamps_us):
+       return await asyncio.gather(
+           *(lidar.get_frame_ray_bundle_data_async(ts, "direction") for ts in timestamps_us)
+       )
+
+   directions = asyncio.run(load_frames(lidar.frames_timestamps_us[:, 1].tolist()))
+
+Metadata (attributes, names, timestamps) is held in memory and only provided
+synchronously. Custom components can implement asynchronous accessors via
+``self._group.array(path).read_async()``.
 
 .. _cloud_storage_access:
 
@@ -360,6 +468,18 @@ Performance Recommendations
   ``True`` by default, which pre-loads all zarr metadata in a single read.
   This is especially important for remote stores where each metadata
   lookup would otherwise be a separate round-trip.
+
+* **Size the node cache** for your access pattern. With consolidated metadata,
+  opening zarr nodes requires no I/O, but zarr-python still constructs node
+  objects (with their codec pipelines) on every access. Component readers
+  therefore cache the opened zarr nodes (groups / arrays, not their data,
+  typically a few kB per node) of repeatedly accessed frames. The
+  ``node_cache_size`` parameter on
+  :class:`~ncore.data.v4.SequenceComponentGroupsReader` selects the caching:
+  ``None`` (the default) caches all accessed nodes for the lifetime of the
+  readers, a positive number caches the most recently used nodes per reader
+  only, and ``0`` disables caching. Caches are owned by their component reader
+  and released with it.
 
 * **Tune the block size and cache type** for your workload.  The
   ``default_block_size`` and ``default_cache_type`` parameters on ``UPath``

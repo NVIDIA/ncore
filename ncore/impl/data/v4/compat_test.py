@@ -27,6 +27,7 @@ from upath import UPath
 
 from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import unpack_optional
+from ncore.impl.data import nodes
 from ncore.impl.data.compat import SensorProtocol
 from ncore.impl.data.types import (
     CameraLabelDescriptor,
@@ -642,11 +643,8 @@ class TestCompatV4ReferenceValues(unittest.TestCase):
 
 
 @parameterized_class(
-    ("store_type"),
-    [
-        ("itar",),
-        ("directory",),
-    ],
+    ("store_type", "zarr_format"),
+    [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in nodes.SUPPORTED_ZARR_FORMATS],
 )
 class TestPointCloudsSourceIntegration(unittest.TestCase):
     """Integration tests for PointCloudsSourceProtocol via SequenceLoaderV4.
@@ -657,6 +655,7 @@ class TestPointCloudsSourceIntegration(unittest.TestCase):
     """
 
     store_type: Literal["itar", "directory"]
+    zarr_format: Literal[2, 3]
 
     # helpers
 
@@ -682,6 +681,7 @@ class TestPointCloudsSourceIntegration(unittest.TestCase):
             sequence_id=ref_sequence_id,
             sequence_timestamp_interval_us=ref_ts_interval,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={},
         )
 
@@ -1003,11 +1003,8 @@ class TestPointCloudsSourceIntegration(unittest.TestCase):
 
 
 @parameterized_class(
-    ("store_type"),
-    [
-        ("itar",),
-        ("directory",),
-    ],
+    ("store_type", "zarr_format"),
+    [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in nodes.SUPPORTED_ZARR_FORMATS],
 )
 class TestCameraLabelsCompatIntegration(unittest.TestCase):
     """Integration tests for camera labels compat API via SequenceLoaderV4.
@@ -1018,6 +1015,7 @@ class TestCameraLabelsCompatIntegration(unittest.TestCase):
     """
 
     store_type: Literal["itar", "directory"]
+    zarr_format: Literal[2, 3]
 
     def setUp(self) -> None:
         np.set_printoptions(floatmode="unique", linewidth=200, suppress=True)
@@ -1033,6 +1031,7 @@ class TestCameraLabelsCompatIntegration(unittest.TestCase):
             sequence_id=ref_sequence_id,
             sequence_timestamp_interval_us=ref_ts_interval,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={},
         )
 

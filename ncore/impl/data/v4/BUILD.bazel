@@ -59,6 +59,7 @@ pytest_test(
         requirement("pillow"),
         requirement("scipy"),
         requirement("universal_pathlib"),
+        requirement("zarr"),
     ],
 )
 
@@ -96,6 +97,23 @@ pytest_test(
         requirement("scipy"),
         requirement("universal_pathlib"),
         requirement("parameterized"),
+        "@rules_python//python/runfiles",
+    ],
+)
+
+pytest_test(
+    name = "pytest_formats",
+    srcs = ["formats_test.py"],
+    data = [
+        "@test-data-v4-trimmed//:zarr_v2",
+        "@test-data-v4-trimmed//:zarr_v3",
+    ],
+    deps = [
+        ":pylib_components",
+        "//ncore/impl/data:pylib_stores",
+        requirement("numpy"),
+        requirement("parameterized"),
+        requirement("universal_pathlib"),
         "@rules_python//python/runfiles",
     ],
 )
