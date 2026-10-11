@@ -13,23 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
+import concurrent.futures
 import gc
 import hashlib
+import json
 import os
 import struct
 import tarfile
 import tempfile
+import threading
 import unittest
 
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, Optional, Tuple, cast
 from unittest import mock
 
 import numpy as np
 import parameterized
+import zarr
 
 from ncore.impl.data import nodes
 from ncore.impl.data.encoding import decode_cbor_xz
+from ncore.impl.data.itar import is_node_metadata_key
 from ncore.impl.data.stores import (
     V2_CONSOLIDATED_METADATA_KEY,
     IndexedTarStore,
@@ -47,6 +53,8 @@ from ncore.impl.data.stores import (
 INDEX_TAIL_READ_SIZES = [None, 1, 512, 513, 1 << 10, 1 << 20]
 
 _ROOT_ATTRIBUTES = {"some": "thing"}
+
+ZARR_PYTHON_3 = int(zarr.__version__.split(".", 1)[0]) >= 3
 
 
 def _fill_reference(root: nodes.Group) -> None:
@@ -216,6 +224,35 @@ class TestIndexedTarStore(unittest.TestCase):
             pass
         self.assertEqual(IndexedTarStore(self.path).keys(), [])
 
+    def test_node_metadata_records(self):
+        """Node metadata records can be rewritten while writing, they are appended when closing (parents first)"""
+        with IndexedTarStore(self.path, mode="w") as store:
+            store["g/a/zarr.json"] = b"a v1"
+            store["g/a/c/0"] = b"chunk"
+            store["zarr.json"] = b"root v1"
+            store["g/a/zarr.json"] = b"a v2"  # rewritten
+            store[".zattrs"] = b"attrs"
+            self.assertEqual(store["g/a/zarr.json"], b"a v2")  # readable while writing
+            self.assertEqual(len(store), 4)
+            self.assertIn("zarr.json", store)
+            with self.assertRaises(ValueError):  # other records are write-once
+                store["g/a/c/0"] = b"again"
+        with self.assertRaises(ValueError):  # closed
+            store["zarr.json"] = b"root v2"
+
+        store = IndexedTarStore(self.path)
+        self.assertEqual(store.keys(), ["g/a/c/0", ".zattrs", "zarr.json", "g/a/zarr.json"])
+        self.assertEqual(store["g/a/zarr.json"], b"a v2")
+        self.assertEqual(store["zarr.json"], b"root v1")
+        with tarfile.open(self.path) as tar:  # (written once each)
+            self.assertEqual([m.name for m in tar.getmembers()], store.keys())
+
+    def test_node_metadata_keys(self):
+        for key in (".zarray", ".zgroup", ".zattrs", "zarr.json", "a/b/.zarray", "a/zarr.json"):
+            self.assertTrue(is_node_metadata_key(key), key)
+        for key in ("zarr.json.cbor.zlib", ".zmetadata.cbor.xz", "a/0.0", "a/c/0/0", "a/x.zarray", "a/zarr.json/0"):
+            self.assertFalse(is_node_metadata_key(key), key)
+
 
 class TestStores(unittest.TestCase):
     """zarr hierarchies in indexed tar archives and directories"""
@@ -293,9 +330,23 @@ class TestStores(unittest.TestCase):
         _write(self._store("directory", "w"))
         self.assertEqual((Path(self.directory_path) / "other").read_bytes(), b"other")
 
-    def test_archives_of_ncore_19_8(self):
-        """Archives are byte-identical to archives written by ncore 19.8 (sha256 of a fixed hierarchy written by
-        ncore 19.8)"""
+    #: sha256 of the records of the hierarchy of :meth:`_write_golden` written by ncore 19.8 (zarr-python 2)
+    GOLDEN_RECORDS = {
+        ".zattrs": "0e326aaa71db8ecc9051e106a4a70695515ad95a95ff348445699fd79f907623",
+        ".zgroup": "2383746e67b4bcc2762b3f100f06c3fa2d5f149ab5a8e5da5d33521464a01959",
+        ".zmetadata.cbor.xz": "245a85421d308c67ea2e452746f0628fe0b3bb3a337af3fec3b46e75b044a4cc",
+        "foo/.zarray": "28db182434d2702c2ccc384e0c1d386359f308bd275821655377b09a40c610fa",
+        "foo/0.0.0": "e9361a616760d41ac367d54b2349f18184e8a226563ca34047e691cf393a9610",
+        "foo/1.0.0": "8611647425ac52bdfd586f7342bdb768d363ae139aadafa7130c7a4368015614",
+        "subgroup/.zattrs": "b638e55387a56bef81862ccd44889e0068a67b04cf00a4c4e90783cf2940e160",
+        "subgroup/.zgroup": "2383746e67b4bcc2762b3f100f06c3fa2d5f149ab5a8e5da5d33521464a01959",
+        "subgroup/bar/.zarray": "6c83cd89670edfe4f9f12cf48f7de5f55ed9cefbfa38b168f1ab14dfb082c449",
+        "subgroup/bar/0": "3c7acfa845b57df9e3a46779d4f17c7eb9d697d63dd8b2c30c176c6fec90051b",
+        "subgroup/blob/.zarray": "dcb9ebabd3bb2d803fd59453b16ba414f6d55d4451ba597170b4a90fae4e749b",
+        "subgroup/blob/0": "5399a4c8461dd3fd590854ff73ec4e88db9462165e9160375113dfec0c741e0c",
+    }
+
+    def _write_golden(self) -> IndexedTarStore:
         store = IndexedTarStore(self.itar_path, mode="w")
         root = create_root_group(store, {"some": "thing", "nested": {"a": [1, 2.5, None]}})
         root.create_array(
@@ -309,16 +360,91 @@ class TestStores(unittest.TestCase):
         sub.create_bytes_array("blob", b"\x89PNG\x00data")
         consolidate_store(store)
         close_store(store)
+        return IndexedTarStore(self.itar_path)
 
+    @unittest.skipIf(ZARR_PYTHON_3, "zarr-python 2 metadata serialization")
+    def test_archives_of_ncore_19_8(self):
+        """Records are byte-identical to records written by ncore 19.8, archives are deterministic (node metadata
+        records are appended when closing archives)"""
+        store = self._write_golden()
+        self.assertEqual({key: hashlib.sha256(store[key]).hexdigest() for key in store}, self.GOLDEN_RECORDS)
+        # data records in creation order, followed by node metadata records (parents first)
+        self.assertEqual(
+            store.keys(),
+            [
+                "foo/0.0.0",
+                "foo/1.0.0",
+                "subgroup/bar/0",
+                "subgroup/blob/0",
+                ".zmetadata.cbor.xz",
+                ".zattrs",
+                ".zgroup",
+                "foo/.zarray",
+                "subgroup/.zattrs",
+                "subgroup/.zgroup",
+                "subgroup/bar/.zarray",
+                "subgroup/blob/.zarray",
+            ],
+        )
         digest = hashlib.sha256(Path(self.itar_path).read_bytes()).hexdigest()
         self.assertIn(
             digest,
             {
                 # (python's tarfile module encodes the device numbers of tar headers differently before python 3.9)
-                "98852fe2314dc3c9680cd0997d6f914785f5f7d2e552c102ed71c9b400340226",  # python 3.8
-                "016af4d3f0d4964c025832a4864b45ffe13cd68e74436da331086d255592a7de",  # python >= 3.9
+                "f2f98df32a018a2f178f3561e21bb14eb3bba9da51e00956bb09ed53177000ea",  # python 3.8
+                "10c02f6fdbaad3c048af23c47eb50fcb539d660d1487df6c42c6e14c14b98a13",  # python >= 3.9
             },
         )
+
+    def test_archives_equivalent_to_ncore_19_8(self):
+        """Chunk records are byte-identical to chunk records written by ncore 19.8, node metadata documents are
+        equivalent (zarr-python 3 serializes them differently, and stores empty attributes of arrays)"""
+        store = self._write_golden()
+        # (zarr-python 3 writes the chunks of an array concurrently, in any order)
+        chunks = sorted(key for key in store if not is_node_metadata_key(key) and key != ".zmetadata.cbor.xz")
+        self.assertEqual(chunks, ["foo/0.0.0", "foo/1.0.0", "subgroup/bar/0", "subgroup/blob/0"])
+        self.assertEqual(
+            {key: hashlib.sha256(store[key]).hexdigest() for key in chunks},
+            {key: self.GOLDEN_RECORDS[key] for key in chunks},
+        )
+
+        metadata = decode_cbor_xz(store[".zmetadata.cbor.xz"])["metadata"]
+        self.assertEqual(metadata, {key: json.loads(store[key]) for key in store if is_node_metadata_key(key)})
+        self.assertEqual(metadata[".zattrs"], {"some": "thing", "nested": {"a": [1, 2.5, None]}})
+        self.assertEqual(metadata["subgroup/.zattrs"], {"other": [1, 2, 3]})
+        self.assertEqual(metadata.get("foo/.zattrs", {}), {})
+        self.assertEqual(
+            {key: value for key, value in metadata["foo/.zarray"].items() if key != "dimension_separator"},
+            {
+                "shape": [3, 3, 3],
+                "chunks": [2, 3, 3],
+                "dtype": "<f8",
+                "fill_value": 0.0,
+                "order": "C",
+                "filters": None,
+                "compressor": {"id": "blosc", "cname": "lz4", "clevel": 5, "shuffle": 1, "blocksize": 0},
+                "zarr_format": 2,
+            },
+        )
+        self.assertEqual(metadata["subgroup/blob/.zarray"]["dtype"], "|S9")
+        self.assertEqual(metadata["subgroup/blob/.zarray"]["shape"], [])
+
+    @parameterized.parameterized.expand([("itar",), ("directory",)])
+    def test_chunks_of_fill_values_are_stored(self, store_type: str):
+        """Chunks equal to the fill value are stored (zarr-python 3 omits them by default, zarr-python 2 doesn't)"""
+        root = create_root_group(store := self._store(store_type, "w"), {})
+        root.create_array("zeros", np.zeros((4, 3), dtype=np.float32), chunks=(2, 3))
+        root.create_bytes_array("blob", b"\x00\x00")
+        consolidate_store(store)
+        close_store(store)
+
+        if store_type == "itar":
+            keys = set(IndexedTarStore(self.itar_path).keys())
+        else:
+            keys = {
+                str(p.relative_to(self.directory_path)) for p in Path(self.directory_path).rglob("*") if p.is_file()
+            }
+        self.assertLessEqual({"zeros/0.0", "zeros/1.0", "blob/0"}, keys)
 
     def test_empty(self):
         """Stores without a root group can be consolidated, but not opened"""
@@ -333,6 +459,132 @@ class TestStores(unittest.TestCase):
         root = open_store(IndexedTarStore(self.itar_path))
         with self.assertRaises(Exception):
             root.create_group("new")
+
+
+class TestHierarchies(unittest.TestCase):
+    """Hierarchies created in arbitrary order (e.g., by multiple component writers)"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self._tmp.name, "store.itar")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    @parameterized.parameterized.expand([(True,), (False,)])
+    def test_interleaved_hierarchy(self, consolidated: bool):
+        store = IndexedTarStore(self.path, mode="w")
+        root = create_root_group(store, {})
+        a, b = root.create_group("a"), root.create_group("b")
+        for i in range(3):  # members of a and b created alternately
+            a.create_array(f"x{i}", np.full(2, i))
+            b.create_group(f"g{i}").create_array("y", np.full(2, 10 + i))
+        root.create_array("z", np.zeros(1))
+        consolidate_store(store)
+        close_store(store)
+
+        root = open_store(IndexedTarStore(self.path), consolidated=consolidated)
+        self.assertEqual(sorted(root.members()), ["a", "b", "z"])
+        self.assertEqual(sorted(root.group("a").members()), ["x0", "x1", "x2"])
+        self.assertEqual(sorted(root.group("b").members()), ["g0", "g1", "g2"])
+        for i in range(3):
+            np.testing.assert_array_equal(root.array(f"a/x{i}").read(), [i, i])
+            np.testing.assert_array_equal(root.group("b").group(f"g{i}").array("y").read(), [10 + i] * 2)
+
+
+@unittest.skipUnless(ZARR_PYTHON_3, "zarr-python 3 backend")
+class TestZarr3Backend(unittest.TestCase):
+    """Execution of zarr-python 3 coroutines, and the zarr-python 3 store of indexed tar archives"""
+
+    def test_coroutines_run_on_the_calling_thread(self):
+        from ncore.impl.data import _zarr3
+
+        async def thread() -> int:
+            return threading.get_ident()
+
+        def run_in_thread() -> int:
+            return _zarr3.run(thread())
+
+        self.assertEqual(_zarr3.run(thread()), threading.get_ident())
+        with concurrent.futures.ThreadPoolExecutor(2) as pool:
+            for future in [pool.submit(run_in_thread) for _ in range(4)]:
+                self.assertNotEqual(future.result(), threading.get_ident())
+
+        # offloaded work (e.g., of codecs) runs inline
+        async def offloaded() -> int:
+            return await asyncio.get_running_loop().run_in_executor(None, threading.get_ident)
+
+        self.assertEqual(_zarr3.run(offloaded()), threading.get_ident())
+
+    def test_coroutines_within_event_loops(self):
+        from ncore.impl.data import _zarr3
+
+        async def value() -> int:
+            return 42
+
+        async def main() -> int:
+            return _zarr3.run(value())  # (runs on zarr-python's I/O loop)
+
+        self.assertEqual(asyncio.run(main()), 42)
+
+    @unittest.skipUnless(hasattr(os, "fork"), "requires fork")
+    def test_forked_processes(self):
+        """Forked processes don't reuse the event loop of the forking thread (its selector is shared with the parent)"""
+        from ncore.impl.data import _zarr3
+
+        async def loop_and_pid() -> Tuple[int, int]:
+            return id(asyncio.get_running_loop()), os.getpid()
+
+        parent_loop, _ = _zarr3.run(loop_and_pid())  # (creates the loop of this thread)
+        read_fd, write_fd = os.pipe()
+        if (pid := os.fork()) == 0:  # child (continues on this thread)
+            try:
+                child_loop, child_pid = _zarr3.run(loop_and_pid())
+                os.write(write_fd, b"ok" if child_loop != parent_loop and child_pid == os.getpid() else b"reused")
+            finally:
+                os._exit(0)
+        os.close(write_fd)
+        result = os.read(read_fd, 16)
+        os.close(read_fd)
+        os.waitpid(pid, 0)
+        self.assertEqual(result, b"ok")
+        self.assertEqual(_zarr3.run(loop_and_pid())[0], parent_loop)  # (the parent keeps its loop)
+
+        # the parent's loop is still woken by other threads (children don't close the selector shared with the parent)
+        async def woken_by_thread() -> int:
+            loop, future = asyncio.get_running_loop(), asyncio.get_running_loop().create_future()
+            timer = threading.Timer(0.05, lambda: loop.call_soon_threadsafe(future.set_result, 42))
+            timer.start()
+            return await asyncio.wait_for(future, timeout=5)
+
+        self.assertEqual(_zarr3.run(woken_by_thread()), 42)
+
+    def test_byte_ranges(self):
+        from ncore.impl.data import _zarr3
+        from ncore.impl.data._zarr3 import (
+            OffsetByteRequest,
+            RangeByteRequest,
+            SuffixByteRequest,
+            default_buffer_prototype,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "store.itar")
+            with IndexedTarStore(path, mode="w") as store:
+                store["r"] = b"0123456789"
+            tar_store = _zarr3._TarStore(IndexedTarStore(path))
+
+            def get(byte_range: Any) -> Optional[bytes]:
+                value = _zarr3.run(tar_store.get("r", default_buffer_prototype(), byte_range))
+                return None if value is None else value.to_bytes()
+
+            self.assertEqual(get(None), b"0123456789")
+            self.assertEqual(get(RangeByteRequest(2, 5)), b"234")
+            self.assertEqual(get(RangeByteRequest(8, 20)), b"89")
+            self.assertEqual(get(OffsetByteRequest(7)), b"789")
+            self.assertEqual(get(SuffixByteRequest(3)), b"789")
+            self.assertEqual(get(SuffixByteRequest(30)), b"0123456789")
+            self.assertIsNone(_zarr3.run(tar_store.get("missing", default_buffer_prototype())))
 
 
 class TestNodes(unittest.TestCase):

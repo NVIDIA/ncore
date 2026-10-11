@@ -46,6 +46,7 @@ py_library(
     srcs = [
         "_backend.py",
         "_zarr2.py",
+        "_zarr3.py",
         "encoding.py",
         "itar.py",
         "nodes.py",
