@@ -1935,8 +1935,7 @@ class TestOpenCVFisheyeMaxAngleMonotonicity(unittest.TestCase):
         d_poly = Polynomial(dfw_coeffs)
 
         # Verify derivative is non-negative at the returned angle (tolerance for floating point)
-        dr = d_poly(max_angle)
-        self.assertGreaterEqual(dr, -1e-10)
+        self.assertGreaterEqual(float(d_poly(max_angle)), -1e-10)
 
     def test_well_behaved_polynomial_still_works(self):
         """ScanNet++ intrinsics (well-behaved) should still give a plausible angle."""
@@ -1982,8 +1981,9 @@ class TestOpenCVFisheyeMaxAngleMonotonicity(unittest.TestCase):
             # Sample derivative at many points up to max_angle
             thetas = np.linspace(0, max_angle, 200)
             for t in thetas:
-                dr = d_poly(t)
-                self.assertGreaterEqual(dr, -1e-10, f"Derivative negative at theta={t:.4f} for radial={radial}")
+                self.assertGreaterEqual(
+                    float(d_poly(t)), -1e-10, f"Derivative negative at theta={t:.4f} for radial={radial}"
+                )
 
 
 @parameterized.parameterized_class(

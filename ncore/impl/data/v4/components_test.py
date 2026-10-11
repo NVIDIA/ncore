@@ -1946,7 +1946,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         pc_writer, _, tmpdir, _ = self._make_writer_reader(attribute_schemas=schemas)
 
         N = 10
-        xyz = np.random.default_rng().random((N, 3), dtype=np.float32)
+        xyz = np.random.default_rng().random((N, 3)).astype(np.float32)
         # Wrong shape: (N, 4) instead of (N, 3)
         rgb_wrong = np.random.default_rng().integers(0, 256, size=(N, 4), dtype=np.uint8)
 

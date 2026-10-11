@@ -38,6 +38,13 @@ from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 _RUNFILES: Runfiles = unpack_optional(Runfiles.Create())
 
 
+def _angle_between(a: R, b: R) -> float:
+    """Returns the rotation angle between two rotations (radians)"""
+    # Composes the rotation matrices instead of using `Rotation.__mul__`, whose return type annotation differs between
+    # scipy versions (scipy 1.10: `Rotation`, scipy 1.18: `Rotation | NotImplementedType`)
+    return float(R.from_matrix(a.as_matrix() @ b.inv().as_matrix()).magnitude())
+
+
 class TestIsWithin3DBBox(unittest.TestCase):
     def setUp(self):
         # Set the random seed
@@ -777,7 +784,7 @@ class TestPoseInterpolatorExtrapolation(unittest.TestCase):
         for i, expected_rot in enumerate(expected_rotations):
             result_rot = R.from_matrix(result[i, :3, :3])
             # Compare using rotation vectors (more stable for comparison)
-            angle_diff = (result_rot * expected_rot.inv()).magnitude()
+            angle_diff = _angle_between(result_rot, expected_rot)
             self.assertLess(angle_diff, 1e-4, f"Rotation mismatch at index {i}")
 
     def test_extrapolate_circular_rotation_backward(self):
@@ -809,7 +816,7 @@ class TestPoseInterpolatorExtrapolation(unittest.TestCase):
 
         for i, expected_rot in enumerate(expected_rotations):
             result_rot = R.from_matrix(result[i, :3, :3])
-            angle_diff = (result_rot * expected_rot.inv()).magnitude()
+            angle_diff = _angle_between(result_rot, expected_rot)
             self.assertLess(angle_diff, 1e-4, f"Rotation mismatch at index {i}")
 
     def test_extrapolate_combined_motion(self):
@@ -839,7 +846,7 @@ class TestPoseInterpolatorExtrapolation(unittest.TestCase):
 
         np.testing.assert_array_almost_equal(result[0, :3, 3], expected_position, decimal=4)
         result_rot = R.from_matrix(result[0, :3, :3])
-        angle_diff = (result_rot * expected_rotation.inv()).magnitude()
+        angle_diff = _angle_between(result_rot, expected_rotation)
         self.assertLess(angle_diff, 1e-4)
 
     def test_extrapolate_within_range_delegates_to_interpolate(self):
@@ -989,7 +996,7 @@ class TestPoseInterpolatorExtrapolation(unittest.TestCase):
 
                 expected_rot = R.from_euler("z", 270, degrees=True)
                 result_rot = R.from_matrix(result[0, :3, :3])
-                angle_diff = (result_rot * expected_rot.inv()).magnitude()
+                angle_diff = _angle_between(result_rot, expected_rot)
 
                 tolerance = 1e-4 if test_dtype == np.float32 else 1e-10
                 self.assertLess(angle_diff, tolerance, f"Rotation mismatch for dtype {test_dtype}")
