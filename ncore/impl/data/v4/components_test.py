@@ -31,7 +31,7 @@ from upath import UPath
 
 from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import unpack_optional
-from ncore.impl.data import stores
+from ncore.impl.data.itar import IndexedTarArchive
 from ncore.impl.data.types import (
     BBox3,
     BivariateWindshieldModelParameters,
@@ -70,7 +70,7 @@ from ncore.impl.data.v4.components import (
 
 def _record_store_reads(store_type: Literal["itar", "directory"], read_keys: List[str]) -> mock._patch:
     """Patch the store type's item access to append each read key to `read_keys`."""
-    store_cls = stores.IndexedTarStore if store_type == "itar" else zarr.storage.DirectoryStore
+    store_cls = IndexedTarArchive if store_type == "itar" else zarr.storage.DirectoryStore
     original_getitem = store_cls.__getitem__
 
     def recording_getitem(store, key):
