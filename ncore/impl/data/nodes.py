@@ -22,6 +22,9 @@ are accessible via the ``zarr`` properties (for APIs of the installed zarr-pytho
 
 from __future__ import annotations
 
+import collections
+import threading
+
 from typing import TYPE_CHECKING, Any, Iterator, List, Literal, Optional, Tuple, Type, TypeVar, Union, cast
 
 import numpy as np
@@ -46,6 +49,53 @@ _backend: Backend[ZarrStore] = _zarr2_backend
 SUPPORTED_ZARR_FORMATS: Tuple[int, ...] = _backend.supported_zarr_formats
 
 T = TypeVar("T")
+
+
+class NodeCache:
+    """Cache of the opened nodes of a hierarchy opened for reading, by node path.
+
+    Opening a node constructs its zarr-python object (decoding its metadata), which dominates repeated reads of small
+    arrays (e.g., of frames). Cached nodes reference their metadata only, never array data. ``max_entries=None`` caches
+    all opened nodes, ``max_entries=N`` the N most recently used nodes (evicted nodes are re-opened on access).
+
+    All methods are thread-safe.
+    """
+
+    def __init__(self, max_entries: Optional[int] = None) -> None:
+        if max_entries is not None and max_entries < 1:
+            raise ValueError(f"max_entries needs to be positive or None (unbounded), got {max_entries}")
+        self._max_entries = max_entries
+        self._nodes: collections.OrderedDict[str, ZarrNode] = collections.OrderedDict()
+        self._lock = threading.Lock()
+
+    @property
+    def max_entries(self) -> Optional[int]:
+        return self._max_entries
+
+    def __len__(self) -> int:
+        return len(self._nodes)
+
+    def keys(self) -> List[str]:
+        """The paths of the cached nodes, from least to most recently used"""
+        with self._lock:
+            return list(self._nodes)
+
+    def _open(self, group: ZarrGroup, path: str) -> ZarrNode:
+        key = _Node._join(group.path, path)
+        with self._lock:
+            if (node := self._nodes.get(key)) is not None:
+                self._nodes.move_to_end(key)
+                return node
+
+        # (concurrent first accesses open nodes redundantly, which is cheaper than serializing all accesses)
+        node = _backend.open_member(group, path)
+
+        with self._lock:
+            self._nodes[key] = node
+            # (at most one entry is added per call, so at most the least recently used node is evicted)
+            if self._max_entries is not None and len(self._nodes) > self._max_entries:
+                self._nodes.popitem(last=False)
+        return node
 
 
 class _Node:
@@ -100,9 +150,10 @@ class _Node:
             raise TypeError(f"Attribute {name!r} of {self.path!r} is not of type {expected.__name__}: {value!r}")
         return cast(T, value)
 
-    def _member_path(self, path: str) -> str:
-        """The path of a (nested) member of the node within its store"""
-        return f"{self.path}/{path}" if self.path else path
+    @staticmethod
+    def _join(parent: str, path: str) -> str:
+        """The path of a (nested) member of a node within its store"""
+        return f"{parent}/{path}" if parent else path
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.path!r}, zarr_format={self.zarr_format})"
@@ -159,11 +210,15 @@ class Array(_Node):
 
 
 class Group(_Node):
-    """A group of an NCore data store"""
+    """A group of an NCore data store.
 
-    def __init__(self, group: ZarrGroup, store: Optional[Store] = None) -> None:
+    Members of groups using a :class:`NodeCache` are opened via the cache (also members of member groups).
+    """
+
+    def __init__(self, group: ZarrGroup, cache: Optional[NodeCache] = None, store: Optional[Store] = None) -> None:
         super().__init__(group)
         self._group = group
+        self._cache = cache
         self._store = store
 
     @property
@@ -176,23 +231,37 @@ class Group(_Node):
         """The store of the group (None for groups not opened / created via a :class:`~ncore.impl.data.stores.Store`)"""
         return self._store
 
+    @property
+    def cache(self) -> Optional[NodeCache]:
+        """The node cache used to open members (None if not cached)"""
+        return self._cache
+
+    def with_cache(self, cache: Optional[NodeCache]) -> Group:
+        """Returns the group, using the given node cache to open its members"""
+        return Group(self._group, cache, self._store)
+
     # -- reading ---------------------------------------------------------------
+
+    def _open(self, path: str) -> ZarrNode:
+        if self._cache is not None:
+            return self._cache._open(self._group, path)
+        return _backend.open_member(self._group, path)
 
     def node(self, path: str) -> Union[Group, Array]:
         """Returns a (nested) member group or array (raises KeyError if it doesn't exist)"""
-        node = _backend.open_member(self._group, path)
-        return Group(node, self._store) if isinstance(node, ZarrGroup) else Array(node)
+        node = self._open(path)
+        return Group(node, self._cache, self._store) if isinstance(node, ZarrGroup) else Array(node)
 
     def group(self, path: str) -> Group:
         """Returns a (nested) member group (raises KeyError if it doesn't exist or isn't a group)"""
-        if not isinstance(node := _backend.open_member(self._group, path), ZarrGroup):
-            raise KeyError(f"{self._member_path(path)} is not a group")
-        return Group(node, self._store)
+        if not isinstance(node := self._open(path), ZarrGroup):
+            raise KeyError(f"{_Node._join(self.path, path)} is not a group")
+        return Group(node, self._cache, self._store)
 
     def array(self, path: str) -> Array:
         """Returns a (nested) member array (raises KeyError if it doesn't exist or isn't an array)"""
-        if not isinstance(node := _backend.open_member(self._group, path), ZarrArray):
-            raise KeyError(f"{self._member_path(path)} is not an array")
+        if not isinstance(node := self._open(path), ZarrArray):
+            raise KeyError(f"{_Node._join(self.path, path)} is not an array")
         return Array(node)
 
     def members(self) -> List[str]:
@@ -206,7 +275,7 @@ class Group(_Node):
     def groups(self) -> Iterator[Tuple[str, Group]]:
         """Iterates over the direct member groups (ordered by name)"""
         for name, group in sorted(_backend.member_groups(self._group), key=lambda member: member[0]):
-            yield name, Group(group, self._store)
+            yield name, Group(group, self._cache, self._store)
 
     # (zarr-python style read access, without the equality semantics of mappings: groups compare by identity)
 
@@ -242,11 +311,11 @@ class Group(_Node):
 
     def create_group(self, name: str, *, attributes: Optional[Attributes] = None) -> Group:
         """Creates a member group (raises if a member with the name exists already)"""
-        return Group(_backend.create_group(self._group, name, attributes), self._store)
+        return Group(_backend.create_group(self._group, name, attributes), store=self._store)
 
     def require_group(self, name: str) -> Group:
         """Returns a member group, creating it if it doesn't exist yet"""
-        return Group(_backend.require_group(self._group, name), self._store)
+        return Group(_backend.require_group(self._group, name), store=self._store)
 
     def create_array(
         self,

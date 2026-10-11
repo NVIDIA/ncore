@@ -16,10 +16,11 @@
 import dataclasses
 import io
 import tempfile
+import threading
 import types
 import unittest
 
-from typing import Any, Dict, List, Literal, Tuple, cast
+from typing import Any, Dict, List, Literal, Optional, Tuple, cast
 from unittest import mock
 
 import numpy as np
@@ -31,7 +32,7 @@ from upath import UPath
 
 from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import unpack_optional
-from ncore.impl.data import stores
+from ncore.impl.data import nodes, stores
 from ncore.impl.data.itar import IndexedTarArchive
 from ncore.impl.data.json_types import JsonDocument
 from ncore.impl.data.nodes import BloscCompression
@@ -120,11 +121,13 @@ class TestData4Reload(unittest.TestCase):
 
     @parameterized.expand(
         [
-            (False,),
-            (True,),
+            (False, None),
+            (True, None),
+            (True, 0),  # uncached nodes
+            (True, 1),  # nodes evicted on most accesses
         ]
     )
-    def test_reload(self, open_consolidated: bool):
+    def test_reload(self, open_consolidated: bool, node_cache_size: Optional[int]):
         """Test to make sure serialized data is faithfully reloaded"""
 
         tempdir = tempfile.TemporaryDirectory()
@@ -606,7 +609,9 @@ class TestData4Reload(unittest.TestCase):
         store_paths += store_writer.finalize()
 
         ## Reload sequence and verify consistency
-        store_reader = SequenceComponentGroupsReader(store_paths, open_consolidated=open_consolidated)
+        store_reader = SequenceComponentGroupsReader(
+            store_paths, open_consolidated=open_consolidated, node_cache_size=node_cache_size
+        )
 
         # check sequence data
         self.assertEqual(store_reader.sequence_id, ref_sequence_id)
@@ -2927,6 +2932,129 @@ class TestCameraLabelsComponent(unittest.TestCase):
         self.assertEqual(rt.dtype, np.dtype("uint8"))
         self.assertEqual(rt.encoding, LabelEncoding.IMAGE_ENCODED)
         self.assertIsNone(rt.quantization)
+
+
+class TestReaderOpening(unittest.TestCase):
+    """Component stores are opened concurrently, their hierarchies sequentially on the calling thread"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(self._tmp.name),
+            store_base_name="seq",
+            sequence_id="seq",
+            sequence_timestamp_interval_us=HalfClosedInterval(0, 10_000_001),
+            generic_meta_data={},
+        )
+        for name in ("a", "b", "c"):
+            writer.register_component_writer(PosesComponent.Writer, name, f"poses_{name}").store_static_pose(
+                "x", "y", np.eye(4, dtype=np.float32)
+            )
+        self.store_paths = writer.finalize()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_hierarchies_are_opened_on_the_calling_thread(self):
+        threads = []
+        open_root_group = stores.Store.open_root_group
+
+        def recording_open_root_group(store: stores.Store, consolidated: bool = True) -> nodes.Group:
+            threads.append(threading.current_thread())
+            return open_root_group(store, consolidated)
+
+        with mock.patch.object(stores.Store, "open_root_group", autospec=True, side_effect=recording_open_root_group):
+            reader = SequenceComponentGroupsReader(self.store_paths, max_threads=4)
+        self.assertEqual(len(threads), len(self.store_paths))
+        self.assertEqual(set(threads), {threading.current_thread()})
+        self.assertEqual(sorted(reader.open_component_readers(PosesComponent.Reader)), ["a", "b", "c"])
+
+    def test_hierarchies_are_opened_while_stores_are_opened(self):
+        """The hierarchy of an opened store is opened while the remaining stores are still being opened"""
+        events: List[str] = []
+        opened = threading.Event()
+        open_root_group = stores.Store.open_root_group
+        init = stores.IndexedTarZarrStore.__init__
+
+        def recording_init(store: stores.IndexedTarZarrStore, path: Any, *args: Any, **kwargs: Any) -> None:
+            if str(path).endswith(self.store_paths[-1].name):
+                # (the last store waits for the hierarchy of the first store to be opened)
+                self.assertTrue(opened.wait(timeout=10))
+            init(store, path, *args, **kwargs)
+            events.append(f"store {UPath(path).name}")
+
+        def recording_open_root_group(store: stores.Store, consolidated: bool = True) -> nodes.Group:
+            events.append("hierarchy")
+            opened.set()
+            return open_root_group(store, consolidated)
+
+        with mock.patch.object(stores.IndexedTarZarrStore, "__init__", autospec=True, side_effect=recording_init):
+            with mock.patch.object(
+                stores.Store, "open_root_group", autospec=True, side_effect=recording_open_root_group
+            ):
+                SequenceComponentGroupsReader(self.store_paths, max_threads=len(self.store_paths))
+        last = events.index(f"store {self.store_paths[-1].name}")
+        self.assertIn("hierarchy", events[:last])
+
+
+class TestReaderNodeCaches(unittest.TestCase):
+    """Component readers cache the opened nodes of their component (sized by node_cache_size)"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(self._tmp.name),
+            store_base_name="seq",
+            sequence_id="seq",
+            sequence_timestamp_interval_us=HalfClosedInterval(0, 10_000_001),
+            generic_meta_data={},
+        )
+        lidar_writer = writer.register_component_writer(LidarSensorComponent.Writer, "lidar", "lidar")
+        for i in range(4):
+            direction = np.tile(np.array([1.0, 0.0, 0.0], dtype=np.float32), (5, 1))
+            lidar_writer.store_frame(
+                direction=direction,
+                timestamp_us=np.full(5, 10 + i * 1_000_000, dtype=np.uint64),
+                model_element=None,
+                distance_m=np.full((1, 5), i, dtype=np.float32),
+                intensity=np.ones((1, 5), dtype=np.float32),
+                frame_timestamps_us=np.array([10 + i * 1_000_000, 20 + i * 1_000_000], dtype=np.uint64),
+                generic_data={},
+                generic_meta_data={},
+            )
+        self.store_paths = writer.finalize()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    @parameterized.expand([(None,), (0,), (1,), (3,)])
+    def test_node_cache_sizes(self, node_cache_size: Optional[int]):
+        reader = SequenceComponentGroupsReader(self.store_paths, node_cache_size=node_cache_size)
+        lidar = reader.open_component_readers(LidarSensorComponent.Reader)["lidar"]
+        frames = [int(ts) for ts in lidar.frames_timestamps_us[:, 1]]
+        for _ in range(2):
+            for i, ts in enumerate(frames):
+                np.testing.assert_array_equal(lidar.get_frame_ray_bundle_return_data(ts, "distance_m", 0), [i] * 5)
+
+        cache = lidar._group.cache
+        if node_cache_size == 0:
+            self.assertIsNone(cache)
+            return
+        assert cache is not None
+        self.assertEqual(cache.max_entries, node_cache_size)
+        # every frame read opens the frame's returns group and its distance_m array
+        accessed = ["lidars/lidar/frames"] + [
+            f"lidars/lidar/frames/{ts}/ray_bundle_returns{suffix}" for ts in frames for suffix in ("", "/distance_m")
+        ]
+        if node_cache_size is None:
+            self.assertEqual(sorted(cache.keys()), sorted(accessed))
+        else:
+            # the most recently used nodes only
+            self.assertEqual(cache.keys(), accessed[-node_cache_size:])
+
+    def test_invalid_node_cache_size(self):
+        with self.assertRaises(ValueError):
+            SequenceComponentGroupsReader(self.store_paths, node_cache_size=-1)
 
 
 # ==============================================================================

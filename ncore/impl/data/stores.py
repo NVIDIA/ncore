@@ -54,12 +54,12 @@ class Store(ABC):
 
     def create_root_group(self, attributes: Attributes) -> Group:
         """Creates the root group of the hierarchy of the store"""
-        return Group(_backend.create_root_group(self._zarr_store, 2, attributes), self)
+        return Group(_backend.create_root_group(self._zarr_store, 2, attributes), store=self)
 
     def open_root_group(self, consolidated: bool = True) -> Group:
         """Opens the root group of the hierarchy of the store for reading, via its compressed consolidated metadata if
         consolidated (raises KeyError if the store has no compressed consolidated metadata)"""
-        return Group(_backend.open_root_group(self._zarr_store, consolidated), self)
+        return Group(_backend.open_root_group(self._zarr_store, consolidated), store=self)
 
     def consolidate(self) -> None:
         """Stores the compressed consolidated metadata of the hierarchy of the store (after writing all nodes)"""
