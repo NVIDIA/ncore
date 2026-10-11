@@ -374,6 +374,7 @@ class SequenceComponentGroupsReader:
         open_consolidated: bool = True,
         itar_index_tail_read_size: int = 1 << 20,  # 1 MiB default
         max_threads: int | None = None,
+        node_cache_size: int | None = None,
     ):
         """Initialize a SequenceComponentReader for a virtual sequence represented by a list of components.
 
@@ -389,9 +390,17 @@ class SequenceComponentGroupsReader:
                                single I/O call to initialize the tar file index to minimize reads.
                                Default 1 MiB size fits typical use cases, but may be increased if the compressed
                                index size is expected to be larger or decreased if remote access chunk sizes are smaller.
-            max_threads:       The maximum number of threads used to load the different components (if None,
-                               use interpreter-default number of threads for a ThreadPoolExecutor)
+            max_threads:       The maximum number of threads used to open the component stores concurrently (if
+                               None, use interpreter-default number of threads for a ThreadPoolExecutor)
+            node_cache_size:   Number of opened groups / arrays (with their decoded meta-data, but not their data)
+                               each component reader caches for repeated accesses (e.g., of frames). None caches
+                               all accessed nodes for the lifetime of the reader, a positive number the most recently
+                               used nodes only, and 0 disables caching.
         """
+
+        if node_cache_size is not None and node_cache_size < 0:
+            raise ValueError(f"node_cache_size needs to be None or non-negative, got {node_cache_size}")
+        self._node_cache_size = node_cache_size
 
         component_group_upaths: List[UPath] = self.expand_component_group_paths(component_group_paths)
 
@@ -400,10 +409,13 @@ class SequenceComponentGroupsReader:
         # Load component stores concurrently (to hide latency) and check for sequence consistency
         self._component_stores: Dict[str, Tuple[nodes.Group, UPath]] = {}  # use str as the generic path / URL type
 
+        # Component stores are opened concurrently (hiding the latency of remote archive index reads), their
+        # hierarchies are opened from their consolidated metadata sequentially (pure-Python CPU work that threads
+        # only slow down)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
 
-            def thread_load_component_store(component_store_upath: UPath) -> Tuple[nodes.Group, UPath]:
-                """Thread-executed shard opening"""
+            def thread_open_component_store(component_store_upath: UPath) -> Tuple[stores.StoreLike, UPath]:
+                """Thread-executed component store opening"""
 
                 # Make sure paths are absolute at this point
                 component_store_upath = component_store_upath.absolute()
@@ -424,52 +436,48 @@ class SequenceComponentGroupsReader:
                 else:
                     component_store = stores.open_directory_store(component_store_upath)
 
-                return stores.open_store(component_store, open_consolidated), component_store_upath
+                return component_store, component_store_upath
 
-            for future in concurrent.futures.as_completed(
-                [
-                    executor.submit(thread_load_component_store, component_store_upath)
-                    for component_store_upath in component_group_upaths
-                ]
-            ):
-                # Note: thread completion order is not relevant here
-                component_root, component_store_path = future.result()
+            opened_component_stores = list(executor.map(thread_open_component_store, component_group_upaths))
 
-                # Check sequence compatibility
-                component_root_version = component_root.attr_str("version")
-                if component_root_version not in [VERSION]:
-                    raise RuntimeError(
-                        f"Can't load V4 component store {component_store_path} with incompatible data version {component_root_version}"
-                    )
+        for component_store, component_store_path in opened_component_stores:
+            component_root = stores.open_store(component_store, open_consolidated)
 
-                component_store_sequence_id = component_root.attr_str("sequence_id")
-                sequence_timestamp_interval_us = component_root.attr_dict("sequence_timestamp_interval_us")
-                component_store_sequence_timestamp_interval_us = HalfClosedInterval(
-                    cast(int, sequence_timestamp_interval_us["start"]),
-                    cast(int, sequence_timestamp_interval_us["stop"]),
+            # Check sequence compatibility
+            component_root_version = component_root.attr_str("version")
+            if component_root_version not in [VERSION]:
+                raise RuntimeError(
+                    f"Can't load V4 component store {component_store_path} with incompatible data version {component_root_version}"
                 )
-                component_store_generic_meta_data = component_root.attr_dict("generic_meta_data")
 
-                if not self._component_stores:
-                    self._sequence_id: str = component_store_sequence_id
-                    self._sequence_timestamp_interval_us = component_store_sequence_timestamp_interval_us
-                    self._generic_meta_data: Dict[str, types.JsonLike] = component_store_generic_meta_data
-                    self._version: str = component_root_version
+            component_store_sequence_id = component_root.attr_str("sequence_id")
+            sequence_timestamp_interval_us = component_root.attr_dict("sequence_timestamp_interval_us")
+            component_store_sequence_timestamp_interval_us = HalfClosedInterval(
+                cast(int, sequence_timestamp_interval_us["start"]),
+                cast(int, sequence_timestamp_interval_us["stop"]),
+            )
+            component_store_generic_meta_data = component_root.attr_dict("generic_meta_data")
 
-                if not self._sequence_id == component_store_sequence_id:
-                    raise RuntimeError("Can't load component store from different sequences")
-                if not self._sequence_timestamp_interval_us == component_store_sequence_timestamp_interval_us:
-                    raise RuntimeError("Can't load component store with different sequence timestamp intervals")
-                if not self._generic_meta_data == component_store_generic_meta_data:
-                    raise RuntimeError("Can't load component store with different generic meta-data")
-                if not self._version == component_root_version:
-                    raise RuntimeError("Can't load shards from different data versions")
+            if not self._component_stores:
+                self._sequence_id: str = component_store_sequence_id
+                self._sequence_timestamp_interval_us = component_store_sequence_timestamp_interval_us
+                self._generic_meta_data: Dict[str, types.JsonLike] = component_store_generic_meta_data
+                self._version: str = component_root_version
 
-                component_group_name = component_root.attr_str("component_group_name")
-                if component_group_name in self._component_stores:
-                    raise RuntimeError(f"Component group {component_group_name} loaded multiple times")
+            if not self._sequence_id == component_store_sequence_id:
+                raise RuntimeError("Can't load component store from different sequences")
+            if not self._sequence_timestamp_interval_us == component_store_sequence_timestamp_interval_us:
+                raise RuntimeError("Can't load component store with different sequence timestamp intervals")
+            if not self._generic_meta_data == component_store_generic_meta_data:
+                raise RuntimeError("Can't load component store with different generic meta-data")
+            if not self._version == component_root_version:
+                raise RuntimeError("Can't load shards from different data versions")
 
-                self._component_stores[component_group_name] = (component_root, component_store_path)
+            component_group_name = component_root.attr_str("component_group_name")
+            if component_group_name in self._component_stores:
+                raise RuntimeError(f"Component group {component_group_name} loaded multiple times")
+
+            self._component_stores[component_group_name] = (component_root, component_store_path)
 
         # Check version-compatibility
         if self._version != VERSION:
@@ -519,7 +527,11 @@ class SequenceComponentGroupsReader:
                 if not component_reader_type.supports_component_version(component_group.attr_str("component_version")):
                     continue
 
-                ret[component_instance_name] = component_reader_type(component_instance_name, component_group)
+                # each reader caches the nodes of its component
+                cache = None if self._node_cache_size == 0 else nodes.NodeCache(self._node_cache_size)
+                ret[component_instance_name] = component_reader_type(
+                    component_instance_name, component_group.with_cache(cache)
+                )
 
         return ret
 
