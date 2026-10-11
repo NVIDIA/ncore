@@ -361,6 +361,14 @@ Performance Recommendations
   This is especially important for remote stores where each metadata
   lookup would otherwise be a separate round-trip.
 
+* **Keep the node cache enabled** (the default). Component readers cache the
+  groups / arrays they open (including their decoded metadata, but not their
+  data), so repeated accesses (e.g., of frames) skip re-opening them. The
+  ``node_cache_size`` parameter on
+  :class:`~ncore.data.v4.SequenceComponentGroupsReader` bounds the number of
+  cached nodes per component reader for very long sequences (``None`` caches
+  all accessed nodes, ``0`` disables caching).
+
 * **Tune the block size and cache type** for your workload.  The
   ``default_block_size`` and ``default_cache_type`` parameters on ``UPath``
   control how much data is fetched per HTTP request and how it is cached
