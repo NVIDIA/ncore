@@ -13,113 +13,103 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""zarr stores of NCore data: indexed tar archives (``.itar``) and their compressed consolidated metadata"""
+"""Stores of NCore data: zarr hierarchies in indexed tar archives (:class:`IndexedTarZarrStore`), or in other
+zarr-python stores such as directories (:class:`ZarrStoreAdapter`), with compressed consolidated metadata"""
 
 from __future__ import annotations
 
-from typing import Iterator, Mapping, Union
+from abc import ABC
+from pathlib import Path
+from typing import Literal, Optional, Union
 
-import zarr
+from upath import UPath
 
-from numcodecs import compat
-from zarr._storage.store import Store
-from zarr.util import json_loads
-
-from ncore.impl.data.encoding import decode_cbor_xz, encode_cbor_xz
+from ncore.impl.data.backend import Attributes, ZarrStore
 from ncore.impl.data.itar import IndexedTarArchive
+from ncore.impl.data.nodes import Group, _backend
 
 
-#: Default key of the compressed consolidated metadata of zarr hierarchies (CBOR + LZMA encoded ``.zmetadata``)
-CONSOLIDATED_METADATA_KEY = ".zmetadata.cbor.xz"
+class Store(ABC):
+    """A store of a zarr hierarchy.
 
+    Stores wrap a zarr-python store of the installed zarr-python version (:attr:`zarr`), and are context managers
+    (closing them on exit). Other zarr-python stores (e.g., in-memory stores) can be used via :class:`ZarrStoreAdapter`.
+    """
 
-class ZarrIndexedTarStore(Store):
-    """zarr-python store of the records of an :class:`IndexedTarArchive`"""
+    def __init__(self, zarr_store: ZarrStore) -> None:
+        # (also validated at runtime: e.g. stores of other zarr-python versions)
+        self._zarr_store: ZarrStore = _backend.zarr_store(zarr_store)
 
-    _erasable = False
+    @property
+    def zarr(self) -> ZarrStore:
+        """The wrapped zarr-python store (of the installed zarr-python version)"""
+        return self._zarr_store
 
-    def __init__(self, archive: IndexedTarArchive) -> None:
-        self.archive = archive
+    def create_root_group(self, attributes: Attributes) -> Group:
+        """Creates the root group of the hierarchy of the store"""
+        return Group(_backend.create_root_group(self._zarr_store, 2, attributes), self)
 
-    def __getitem__(self, key: str) -> bytes:
-        return self.archive[key]
+    def open_root_group(self, consolidated: bool = True) -> Group:
+        """Opens the root group of the hierarchy of the store for reading, via its compressed consolidated metadata if
+        consolidated (raises KeyError if the store has no compressed consolidated metadata)"""
+        return Group(_backend.open_root_group(self._zarr_store, consolidated), self)
 
-    def __setitem__(self, key: str, value: object) -> None:
-        if self.archive.mode != "w":
-            raise zarr.errors.ReadOnlyError()
-        self.archive[key] = compat.ensure_bytes(value)
+    def consolidate(self) -> None:
+        """Stores the compressed consolidated metadata of the hierarchy of the store (after writing all nodes)"""
+        _backend.consolidate(self._zarr_store)
 
-    def __delitem__(self, key: str) -> None:
-        raise NotImplementedError("IndexedTarArchive: records can't be deleted")
-
-    def __contains__(self, key: object) -> bool:
-        return key in self.archive
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.archive.keys())
-
-    def __len__(self) -> int:
-        return len(self.archive)
-
-    def __eq__(self, value: object) -> bool:
-        return isinstance(value, ZarrIndexedTarStore) and self.archive == value.archive
-
-    def __hash__(self) -> int:
-        return hash(self.archive)
+    def reload_resources(self) -> None:
+        """Re-initializes the resources of the store (e.g., file objects in forked processes), no-op by default"""
 
     def close(self) -> None:
-        self.archive.close()
+        """Closes the store (finishes writing, no-op by default)"""
+
+    def __enter__(self) -> Store:
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
 
 
-StoreLike = Union[IndexedTarArchive, zarr.storage.BaseStore]
+class IndexedTarZarrStore(Store):
+    """A zarr hierarchy in an indexed tar archive (local or remote, see :class:`IndexedTarArchive`)"""
+
+    def __init__(
+        self,
+        itar_path: Union[str, Path, UPath],
+        mode: Literal["r", "w"] = "r",
+        index_tail_read_size: Optional[int] = 1 << 20,
+    ) -> None:
+        self._archive = IndexedTarArchive(itar_path, mode=mode, index_tail_read_size=index_tail_read_size)
+        super().__init__(_backend.indexed_tar_store(self._archive))
+
+    @property
+    def archive(self) -> IndexedTarArchive:
+        """The records of the archive"""
+        return self._archive
+
+    def reload_resources(self) -> None:
+        self._archive.reload_resources()
+
+    def close(self) -> None:
+        self._archive.close()
+
+    def __repr__(self) -> str:
+        return f"IndexedTarZarrStore({self._archive.itar_upath!r}, mode={self._archive.mode!r})"
 
 
-def _zarr_store(store: StoreLike) -> zarr.storage.BaseStore:
-    """The zarr-python store of a store (wraps indexed tar stores)"""
-    return ZarrIndexedTarStore(store) if isinstance(store, IndexedTarArchive) else store
+class ZarrStoreAdapter(Store):
+    """A zarr hierarchy in any other zarr-python store of the installed zarr-python version (e.g., an in-memory store,
+    or a local directory, see :meth:`directory`)"""
 
+    @classmethod
+    def directory(cls, path: Union[str, Path, UPath]) -> ZarrStoreAdapter:
+        """A zarr hierarchy in a local directory (a directory per group / array, a file per record, e.g., for
+        debugging). Existing files of the directory are kept when writing."""
+        upath = UPath(path)
+        if upath.protocol not in ("", "file", "local"):
+            raise ValueError(f"Directory stores need to be local directories, got {upath}")
+        return cls(_backend.directory_store(upath))
 
-def consolidate_compressed_metadata(store: StoreLike, metadata_key: str = CONSOLIDATED_METADATA_KEY) -> None:
-    """Consolidates the metadata of all groups and arrays of a store into a single compressed record (CBOR + LZMA
-    encoded zarr consolidated metadata)
-
-    See Also
-    --------
-    zarr.consolidate_metadata
-    """
-    store = zarr.storage.normalize_store_arg(_zarr_store(store), mode="w")
-    if store._store_version != 2:
-        raise NotImplementedError("Only supporting V2 stores")
-
-    metadata = {key: json_loads(store[key]) for key in store if key.endswith((".zarray", ".zgroup", ".zattrs"))}
-    store[metadata_key] = encode_cbor_xz({"zarr_consolidated_format": 1, "metadata": metadata})
-
-
-class ConsolidatedCompressedMetadataStore(zarr.storage.ConsolidatedMetadataStore):
-    """A layer over a store, where the metadata of all nodes is read from the compressed consolidated metadata"""
-
-    def __init__(self, store: StoreLike, metadata_key: str = CONSOLIDATED_METADATA_KEY) -> None:
-        self.store: Store = Store._ensure_store(_zarr_store(store))
-
-        consolidated = decode_cbor_xz(self.store[metadata_key])
-        if (consolidated_format := consolidated.get("zarr_consolidated_format")) != 1:
-            raise zarr.MetadataError(f"unsupported zarr consolidated metadata format: {consolidated_format}")
-
-        self.meta_store: Mapping[str, object] = zarr.KVStore(consolidated["metadata"])
-
-
-def open_compressed_consolidated(
-    store: StoreLike, metadata_key: str = CONSOLIDATED_METADATA_KEY, mode: str = "r+", **kwargs
-) -> zarr.Group:
-    """Opens a group of a store via its compressed consolidated metadata
-
-    See Also
-    --------
-    consolidate_compressed_metadata
-    zarr.open_consolidated
-    """
-    if mode not in {"r", "r+"}:
-        raise ValueError(f"invalid mode, expected either 'r' or 'r+'; found {mode!r}")
-    meta_store = ConsolidatedCompressedMetadataStore(store, metadata_key=metadata_key)
-    chunk_store = kwargs.pop("chunk_store", None) or meta_store.store
-    return zarr.open(store=meta_store, chunk_store=chunk_store, mode=mode, **kwargs)
+    def __repr__(self) -> str:
+        return f"ZarrStoreAdapter({self._zarr_store!r})"

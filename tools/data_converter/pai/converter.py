@@ -38,7 +38,7 @@ import tempfile
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, Literal, cast
+from typing import Callable, Literal, cast
 
 import click
 import DracoPy  # ty:ignore[unresolved-import]
@@ -68,11 +68,11 @@ from ncore.data_converter import (
     FileBasedDataConverterConfig,
 )
 from ncore.impl.common.transformations import HalfClosedInterval, se3_inverse, time_bounds
+from ncore.impl.data.json_types import JsonDocument
 from ncore.impl.data.types import (
     BBox3,
     CuboidTrackObservation,
     FThetaCameraModelParameters,
-    JsonLike,
     LabelSource,
     OpenCVFisheyeCameraModelParameters,
     OpenCVPinholeCameraModelParameters,
@@ -264,12 +264,12 @@ class _PaiConversionMixin:
             ),
             rot=(0.0, 0.0, 0.0),
         )
-        generic_meta_data: Dict[str, JsonLike] = {
-            "vehicle-bbox": cast(Dict[str, JsonLike], ego_bbox.to_dict()),
+        generic_meta_data: JsonDocument = {
+            "vehicle-bbox": cast(JsonDocument, ego_bbox.to_dict()),
             "platform_class": self.platform_class,
         }
         source_meta = self.provider.get_source_metadata()
-        source_generic_meta_data: Dict[str, JsonLike] = {
+        source_generic_meta_data: JsonDocument = {
             "calibration_type": "pai-calibration",
             "egomotion_type": "pai-egomotion",
             "converter_version": CONVERTER_VERSION,
@@ -673,7 +673,7 @@ class _PaiConversionMixin:
                     )
 
                 # Generic metadata: scan-level scalars
-                generic_meta_data: dict[str, JsonLike] = {
+                generic_meta_data: JsonDocument = {
                     "scan_index": cast(int, scan_index),
                 }
                 for col, meta_key, conv in [

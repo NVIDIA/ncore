@@ -1,0 +1,252 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Groups and arrays of NCore data stores.
+
+:class:`Group` and :class:`Array` wrap zarr-python groups and arrays with a restricted, typed API, implemented by a
+backend of the installed zarr-python version (see :mod:`ncore.impl.data.backend`). The wrapped zarr-python objects
+are accessible via the ``zarr`` properties (for APIs of the installed zarr-python version not exposed by NCore).
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Iterator, List, Literal, Optional, Tuple, Type, TypeVar, Union, cast
+
+import numpy as np
+
+from zarr import Array as ZarrArray
+from zarr import Group as ZarrGroup
+
+from ncore.impl.data.backend import Attributes, Backend, BloscCompression, Selection, ZarrNode, ZarrStore
+from ncore.impl.data.backend_zarr2 import backend as _zarr2_backend
+from ncore.impl.data.json_types import JsonDocument, JsonLike
+
+
+if TYPE_CHECKING:
+    import numpy.typing as npt
+
+    from ncore.impl.data.stores import Store
+
+
+_backend: Backend[ZarrStore] = _zarr2_backend
+
+#: zarr formats supported by the installed zarr-python version
+SUPPORTED_ZARR_FORMATS: Tuple[int, ...] = _backend.supported_zarr_formats
+
+T = TypeVar("T")
+
+
+class _Node:
+    """Common functionality of groups and arrays"""
+
+    def __init__(self, node: ZarrNode) -> None:
+        self._node = node
+
+    @property
+    def path(self) -> str:
+        """The path of the node within its store ("" for root groups)"""
+        return self._node.path
+
+    @property
+    def zarr_format(self) -> int:
+        """The zarr format of the node"""
+        return _backend.zarr_format(self._node)
+
+    @property
+    def attrs(self) -> JsonDocument:
+        """A copy of the attributes of the node"""
+        return dict(self._node.attrs.asdict())
+
+    def attr_str(self, name: str) -> str:
+        """Returns a string attribute (raises KeyError if missing, TypeError for other types)"""
+        return self._typed_attr(name, str)
+
+    def attr_int(self, name: str) -> int:
+        """Returns an integer attribute (raises KeyError if missing, TypeError for other types)"""
+        return self._typed_attr(name, int)
+
+    def attr_dict(self, name: str) -> JsonDocument:
+        """Returns a dictionary attribute (raises KeyError if missing, TypeError for other types)"""
+        return self._typed_attr(name, dict)
+
+    def attr_list(self, name: str) -> List[JsonLike]:
+        """Returns a list attribute (raises KeyError if missing, TypeError for other types)"""
+        return self._typed_attr(name, list)
+
+    def update_attrs(self, attributes: Attributes) -> None:
+        """Updates (merges) attributes of the node"""
+        _backend.update_attributes(self._node, attributes)
+
+    def _typed_attr(self, name: str, expected: Type[T]) -> T:
+        value = self._node.attrs[name]
+        if not isinstance(value, expected) or (isinstance(value, bool) and expected is int):
+            raise TypeError(f"Attribute {name!r} of {self.path!r} is not of type {expected.__name__}: {value!r}")
+        return cast(T, value)
+
+    def _member_path(self, path: str) -> str:
+        """The path of a (nested) member of the node within its store"""
+        return f"{self.path}/{path}" if self.path else path
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self.path!r}, zarr_format={self.zarr_format})"
+
+
+class Array(_Node):
+    """An array of an NCore data store"""
+
+    def __init__(self, array: ZarrArray) -> None:
+        super().__init__(array)
+        self._array = array
+
+    @property
+    def zarr(self) -> ZarrArray:
+        """The wrapped zarr-python array"""
+        return self._array
+
+    @property
+    def shape(self) -> Tuple[int, ...]:
+        return tuple(self._array.shape)
+
+    @property
+    def dtype(self) -> np.dtype:
+        return np.dtype(self._array.dtype)
+
+    @property
+    def compression(self) -> Optional[BloscCompression]:
+        """The blosc compression of the array (None if uncompressed, raises ValueError for other compressors)"""
+        return _backend.compression(self._array)
+
+    def read(self, selection: Selection = Ellipsis) -> npt.NDArray[Any]:
+        """Reads (a selection of) the data of the array.
+
+        Returns a read-only array of the array's dtype with the shape of the selection (0-dimensional for selections of
+        single elements). Complete reads of arrays stored as a single uncompressed chunk (e.g., encoded images) are
+        views of the chunk record (no copies), all other reads are decoded by the backend (see
+        :meth:`ncore.impl.data.backend.Backend.read`).
+        """
+        array = np.asarray(_backend.read(self._array, selection))
+        array.setflags(write=False)  # (numpy scalars are converted to new 0-dimensional arrays)
+        return array
+
+    def read_bytes(self) -> bytes:
+        """Reads a binary blob stored by :meth:`Group.create_bytes_array`.
+
+        Blobs stored as a single uncompressed chunk (all blobs written by ncore, e.g. of indexed tar archives) are their
+        chunk record (no copies), other blobs (e.g., of multiple chunks) are copied once from the read array. Raises
+        TypeError for arrays that don't store a binary blob (see :meth:`ncore.impl.data.backend.Backend.blob`).
+        """
+        try:
+            return _backend.blob(_backend.read(self._array, ()))
+        except TypeError:
+            raise TypeError(f"Array {self.path!r} doesn't store a binary blob ({self.dtype})") from None
+
+
+class Group(_Node):
+    """A group of an NCore data store"""
+
+    def __init__(self, group: ZarrGroup, store: Optional[Store] = None) -> None:
+        super().__init__(group)
+        self._group = group
+        self._store = store
+
+    @property
+    def zarr(self) -> ZarrGroup:
+        """The wrapped zarr-python group"""
+        return self._group
+
+    @property
+    def store(self) -> Optional[Store]:
+        """The store of the group (None for groups not opened / created via a :class:`~ncore.impl.data.stores.Store`)"""
+        return self._store
+
+    # -- reading ---------------------------------------------------------------
+
+    def node(self, path: str) -> Union[Group, Array]:
+        """Returns a (nested) member group or array (raises KeyError if it doesn't exist)"""
+        node = _backend.open_member(self._group, path)
+        return Group(node, self._store) if isinstance(node, ZarrGroup) else Array(node)
+
+    def group(self, path: str) -> Group:
+        """Returns a (nested) member group (raises KeyError if it doesn't exist or isn't a group)"""
+        if not isinstance(node := _backend.open_member(self._group, path), ZarrGroup):
+            raise KeyError(f"{self._member_path(path)} is not a group")
+        return Group(node, self._store)
+
+    def array(self, path: str) -> Array:
+        """Returns a (nested) member array (raises KeyError if it doesn't exist or isn't an array)"""
+        if not isinstance(node := _backend.open_member(self._group, path), ZarrArray):
+            raise KeyError(f"{self._member_path(path)} is not an array")
+        return Array(node)
+
+    def members(self) -> List[str]:
+        """Names of all direct members"""
+        return _backend.member_names(self._group)
+
+    def __contains__(self, name: str) -> bool:
+        """True if the group has a direct member with the given name"""
+        return _backend.has_member(self._group, name)
+
+    def groups(self) -> Iterator[Tuple[str, Group]]:
+        """Iterates over the direct member groups (ordered by name)"""
+        for name, group in sorted(_backend.member_groups(self._group), key=lambda member: member[0]):
+            yield name, Group(group, self._store)
+
+    # -- writing ---------------------------------------------------------------
+
+    def create_group(self, name: str, *, attributes: Optional[Attributes] = None) -> Group:
+        """Creates a member group (raises if a member with the name exists already)"""
+        return Group(_backend.create_group(self._group, name, attributes), self._store)
+
+    def require_group(self, name: str) -> Group:
+        """Returns a member group, creating it if it doesn't exist yet"""
+        return Group(_backend.require_group(self._group, name), self._store)
+
+    def create_array(
+        self,
+        name: str,
+        data: npt.ArrayLike,
+        *,
+        dtype: Optional[npt.DTypeLike] = None,
+        chunks: Union[Tuple[int, ...], Literal["single", "auto"]] = "single",
+        compression: Optional[BloscCompression] = BloscCompression(),
+        attributes: Optional[Attributes] = None,
+    ) -> Array:
+        """Creates a member array initialized with data.
+
+        Parameters
+        ----------
+        name
+            Name of the array within the group.
+        data
+            Data of the array (defines the shape of the array, and its dtype if ``dtype`` isn't given).
+        dtype
+            Optional dtype of the array (the data is converted to it).
+        chunks
+            Chunk shape (zero-sized dimensions are clamped to 1, as zarr requires positive chunk sizes): "single"
+            stores the array as a single chunk (default), "auto" uses the chunk shape heuristic of zarr-python.
+        compression
+            Blosc compression of the chunks (default: lz4, level 5, bit-shuffle), or None for uncompressed chunks.
+        attributes
+            Optional attributes of the array.
+        """
+        values = np.asarray(data, dtype=dtype)
+        if chunks != "auto":
+            chunks = tuple(max(1, int(size)) for size in (values.shape if chunks == "single" else chunks))
+        return Array(_backend.create_array(self._group, name, values, chunks, compression, attributes))
+
+    def create_bytes_array(self, name: str, data: bytes, *, attributes: Optional[Attributes] = None) -> Array:
+        """Stores a binary blob (e.g., an encoded image) as uncompressed member array (0-dimensional fixed-length
+        bytes array for zarr format v2)"""
+        return self.create_array(name, np.asarray(data), compression=None, attributes=attributes)

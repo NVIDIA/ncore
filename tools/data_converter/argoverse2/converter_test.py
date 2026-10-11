@@ -285,7 +285,7 @@ class TestArgoverse2Converter(unittest.TestCase):
             ts = int(reader.frames_timestamps_us[0, 1])
             direction = reader.get_frame_ray_bundle_data(ts, "direction")
             elem = reader.get_frame_ray_bundle_data(ts, "model_element")
-            distance = np.asarray(reader._get_ray_bundle_returns_group(ts)["distance_m"])[0]
+            distance = reader._get_ray_bundle_returns_group(ts).array("distance_m").read()[0]
 
             far = np.isfinite(distance) & (distance > 20.0) & (np.linalg.norm(direction, axis=1) > 0)
             self.assertGreater(int(far.sum()), 100, f"{unit}: too few far returns to validate")
@@ -353,7 +353,7 @@ class TestArgoverse2Converter(unittest.TestCase):
         rig_poses, pose_ts = poses_reader.get_dynamic_pose("rig", "world")
 
         direction = lidar_reader.get_frame_ray_bundle_data(ts, "direction")
-        distance = np.asarray(lidar_reader._get_ray_bundle_returns_group(ts)["distance_m"])[0]
+        distance = lidar_reader._get_ray_bundle_returns_group(ts).array("distance_m").read()[0]
         point_ts = lidar_reader.get_frame_ray_bundle_data(ts, "timestamp_us").astype(np.int64)
         valid = np.isfinite(distance) & (distance > 0)
         pts_sensor = direction[valid] * distance[valid, None]
