@@ -225,7 +225,7 @@ class SequenceComponentGroupsWriter:
         if self._store_type == "itar":
             # container-based zarr stores <base-name>.<store_name>.zarr.itar
             store_path = self._output_dir_path / f"{self._store_base_name}.{store_name}.zarr.itar"
-            store = stores.IndexedTarStore(store_path, mode="w")
+            store = stores.ZarrIndexedTarStore(stores.IndexedTarStore(store_path, mode="w"))
         elif self._store_type == "directory":
             # directory-based zarr stores <base-name>.<store_name>.zarr.zarr
             store_path = self._output_dir_path / f"{self._store_base_name}.{store_name}.zarr"
@@ -431,8 +431,10 @@ class SequenceComponentGroupsReader:
                             f"Unsupported file-based store format {component_store_upath}, expected .zarr.itar"
                         )
 
-                    component_store = stores.IndexedTarStore(
-                        component_store_upath, mode="r", index_tail_read_size=itar_index_tail_read_size
+                    component_store = stores.ZarrIndexedTarStore(
+                        stores.IndexedTarStore(
+                            component_store_upath, mode="r", index_tail_read_size=itar_index_tail_read_size
+                        )
                     )
                 else:
                     component_store = zarr.storage.DirectoryStore(component_store_upath)
@@ -497,15 +499,8 @@ class SequenceComponentGroupsReader:
 
     def reload_resources(self) -> None:
         """Trigger a reload of each itar store - useful to re-initialize file objects in multi-process settings"""
-        component_store: Union[zarr.Group, stores.ConsolidatedCompressedMetadataStore]
-        for component_store, _ in self._component_stores.values():
-            # unwind one layer of possible consolidated metadata store
-            if isinstance(
-                compressed_consolidated_store := component_store.store, stores.ConsolidatedCompressedMetadataStore
-            ):
-                component_store = compressed_consolidated_store
-
-            if isinstance(store := component_store.store, stores.IndexedTarStore):
+        for component_root, _ in self._component_stores.values():
+            if (store := stores.get_indexed_tar_store(component_root)) is not None:
                 store.reload_resources()
 
     @property

@@ -36,10 +36,12 @@ py_library(
 py_library(
     name = "pylib_stores",
     srcs = [
+        "_itar.py",
         "stores.py",
     ],
     deps = [
         requirement("cbor2"),
+        requirement("numcodecs"),
         requirement("universal_pathlib"),
         requirement("zarr"),
     ],
