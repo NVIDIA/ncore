@@ -61,13 +61,13 @@ from typing_extensions import runtime_checkable
 from upath import UPath
 
 from ncore.impl.common.transformations import HalfClosedInterval, PoseGraphInterpolator
+from ncore.impl.data.json_types import JsonDocument
 from ncore.impl.data.types import (
     CameraLabelDescriptor,
     CameraModelParameters,
     CuboidTrackObservation,
     EncodedImageData,
     FrameTimepoint,
-    JsonLike,
     LabelCategory,
     LabelType,
     LidarModelParameters,
@@ -90,7 +90,7 @@ class SequenceLoaderProtocol(Protocol):
         ...
 
     @property
-    def generic_meta_data(self) -> Dict[str, JsonLike]:
+    def generic_meta_data(self) -> JsonDocument:
         """Generic meta-data associated with the sequence"""
         ...
 
@@ -108,7 +108,7 @@ class SequenceLoaderProtocol(Protocol):
         """Reloads any resources used by the internal sequence loader (potentially required for multi-process data loading)"""
         ...
 
-    def get_sequence_meta(self) -> Dict[str, JsonLike]:
+    def get_sequence_meta(self) -> JsonDocument:
         """Returns sequence-wide meta-data summary (format is instance-dependent)"""
         ...
 
@@ -365,7 +365,7 @@ class SensorProtocol(Protocol):
         """Returns generic frame-data for a specific frame and name"""
         ...
 
-    def get_frame_generic_meta_data(self, frame_index: int) -> Dict[str, JsonLike]:
+    def get_frame_generic_meta_data(self, frame_index: int) -> JsonDocument:
         """Returns generic frame meta-data for a specific frame"""
         ...
 
@@ -641,7 +641,7 @@ class PointCloudsSourceProtocol(Protocol):
         """
         ...
 
-    def get_pc_generic_meta_data(self, pc_index: int) -> Dict[str, JsonLike]:
+    def get_pc_generic_meta_data(self, pc_index: int) -> JsonDocument:
         """Returns generic point cloud meta-data for a specific point-cloud."""
         ...
 
@@ -837,7 +837,7 @@ class RayBundleSensorPointCloudsSourceAdapter:
     def get_pc_generic_data(self, pc_index: int, name: str) -> "npt.NDArray":
         return self._sensor.get_frame_generic_data(pc_index, name)
 
-    def get_pc_generic_meta_data(self, pc_index: int) -> Dict[str, JsonLike]:
+    def get_pc_generic_meta_data(self, pc_index: int) -> JsonDocument:
         return self._sensor.get_frame_generic_meta_data(pc_index)
 
     def get_pc_index_range(
@@ -872,7 +872,7 @@ class CameraLabelsProtocol(Protocol):
         ...
 
     @property
-    def labels_generic_meta_data(self) -> Dict[str, JsonLike]:
+    def labels_generic_meta_data(self) -> JsonDocument:
         """Generic metadata associated with all labels."""
         ...
 
@@ -890,7 +890,7 @@ class CameraLabelsProtocol(Protocol):
             ...
 
         @property
-        def generic_meta_data(self) -> Dict[str, JsonLike]:
+        def generic_meta_data(self) -> JsonDocument:
             """Per-label generic metadata."""
             ...
 

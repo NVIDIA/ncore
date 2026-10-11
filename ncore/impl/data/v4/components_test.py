@@ -16,14 +16,14 @@
 import dataclasses
 import io
 import tempfile
+import types
 import unittest
 
-from typing import Dict, List, Literal, Tuple, cast
+from typing import Any, Dict, List, Literal, Tuple, cast
 from unittest import mock
 
 import numpy as np
 import PIL.Image as PILImage
-import zarr
 
 from parameterized import parameterized, parameterized_class
 from scipy.spatial.transform import Rotation as R
@@ -31,13 +31,15 @@ from upath import UPath
 
 from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import unpack_optional
+from ncore.impl.data import stores
 from ncore.impl.data.itar import IndexedTarArchive
+from ncore.impl.data.json_types import JsonDocument
+from ncore.impl.data.nodes import BloscCompression
 from ncore.impl.data.types import (
     BBox3,
     BivariateWindshieldModelParameters,
     CameraLabelDescriptor,
     CuboidTrackObservation,
-    JsonLike,
     LabelCategory,
     LabelEncoding,
     LabelSchema,
@@ -69,15 +71,35 @@ from ncore.impl.data.v4.components import (
 
 
 def _record_store_reads(store_type: Literal["itar", "directory"], read_keys: List[str]) -> mock._patch:
-    """Patch the store type's item access to append each read key to `read_keys`."""
-    store_cls = IndexedTarArchive if store_type == "itar" else zarr.storage.DirectoryStore
-    original_getitem = store_cls.__getitem__
+    """Patch the record reads of the store type to append each read key to `read_keys`."""
+    if store_type == "itar":
+        getitem = IndexedTarArchive.read
 
-    def recording_getitem(store, key):
+        def recording_getitem(archive: IndexedTarArchive, key: str) -> bytes:
+            read_keys.append(key)
+            return getitem(archive, key)
+
+        return mock.patch.object(IndexedTarArchive, "read", recording_getitem)
+
+    # (the zarr-python store of directories: zarr-python 2's DirectoryStore is a synchronous mapping, zarr-python 3's
+    # LocalStore reads asynchronously)
+    store_cls: Any = type(stores.ZarrStoreAdapter.directory(tempfile.gettempdir()).zarr)
+    if hasattr(store_cls, "__getitem__"):
+        directory_getitem = store_cls.__getitem__
+
+        def recording_directory_getitem(store: Any, key: str) -> Any:
+            read_keys.append(key)
+            return directory_getitem(store, key)
+
+        return mock.patch.object(store_cls, "__getitem__", recording_directory_getitem)
+
+    get = store_cls.get
+
+    async def recording_get(store: Any, key: str, *args: Any, **kwargs: Any) -> Any:
         read_keys.append(key)
-        return original_getitem(store, key)
+        return await get(store, key, *args, **kwargs)
 
-    return mock.patch.object(store_cls, "__getitem__", recording_getitem)
+    return mock.patch.object(store_cls, "get", recording_get)
 
 
 @parameterized_class(
@@ -116,7 +138,7 @@ class TestData4Reload(unittest.TestCase):
                 ref_sequence_timestamp_interval_us := HalfClosedInterval(int(0 * 1e6), int(1 * 1e6) + 1)
             ),
             store_type=self.store_type,
-            generic_meta_data=cast(Dict[str, JsonLike], ref_generic_sequence_meta_data := {"some": 1, "key": 1.2}),
+            generic_meta_data=cast(JsonDocument, ref_generic_sequence_meta_data := {"some": 1, "key": 1.2}),
         )
 
         # Store pose / extrinsics
@@ -195,7 +217,7 @@ class TestData4Reload(unittest.TestCase):
             PosesComponent.Writer,
             ref_poses_id := "some_poses_type",
             group_name=None,  # use default component group
-            generic_meta_data=cast(Dict[str, JsonLike], ref_pose_generic_meta_data := {"some": "thing"}),
+            generic_meta_data=cast(JsonDocument, ref_pose_generic_meta_data := {"some": "thing"}),
         ).store_dynamic_pose(
             source_frame_id="rig",
             target_frame_id="world",
@@ -396,7 +418,7 @@ class TestData4Reload(unittest.TestCase):
                 ref_camera_timestamps_us0 := np.array([0 * 1e6, 0.1 * 1e6], dtype=np.uint64),
                 ref_camera_generic_data0 := {"some-frame-data": np.random.default_rng().random((6, 2))},
                 ref_camera_generic_metadata0 := cast(
-                    Dict[str, JsonLike], {"some-frame-meta-data": {"something": 1, "else": 2}}
+                    JsonDocument, {"some-frame-meta-data": {"something": 1, "else": 2}}
                 ),
             )
 
@@ -411,7 +433,7 @@ class TestData4Reload(unittest.TestCase):
                 ref_camera_timestamps_us1 := np.array([0.1 * 1e6, 0.2 * 1e6], dtype=np.uint64),
                 ref_camera_generic_data1 := {"some-frame-data": np.random.default_rng().random((6, 2))},
                 ref_camera_generic_metadata1 := cast(
-                    Dict[str, JsonLike], {"some-more-frame-meta-data": {"even": True, "more": None}}
+                    JsonDocument, {"some-more-frame-meta-data": {"even": True, "more": None}}
                 ),
             )
 
@@ -439,9 +461,7 @@ class TestData4Reload(unittest.TestCase):
             ref_lidar_intensity0 := np.random.default_rng().random((1, 5)).astype(np.float32),
             ref_lidar_timestamps_us0 := np.array([0 * 1e6, 0.5 * 1e6], dtype=np.uint64),
             ref_lidar_generic_data0 := {"some-other-frame-data": np.random.default_rng().random((6, 2))},
-            ref_lidar_generic_metadata0 := cast(
-                Dict[str, JsonLike], {"some-more-meta-data": {"yes": None, "no": True}}
-            ),
+            ref_lidar_generic_metadata0 := cast(JsonDocument, {"some-more-meta-data": {"yes": None, "no": True}}),
         )
 
         ref_lidar_valid_mask0 = np.ones((1, 5), dtype=bool)
@@ -473,7 +493,7 @@ class TestData4Reload(unittest.TestCase):
             ref_lidar_intensity1,
             ref_lidar_timestamps_us1 := np.array([0.5 * 1e6, 1 * 1e6], dtype=np.uint64),
             ref_lidar_generic_data1 := {"some-other-frame-data": np.random.default_rng().random((2, 2))},
-            ref_lidar_generic_metadata1 := cast(Dict[str, JsonLike], {"even-more-meta-data": {"yesno": None}}),
+            ref_lidar_generic_metadata1 := cast(JsonDocument, {"even-more-meta-data": {"yesno": None}}),
         )
 
         # Store radar data
@@ -494,9 +514,7 @@ class TestData4Reload(unittest.TestCase):
             ref_radar_distance_m0 := radar_distance_m0[np.newaxis, :],
             ref_radar_timestamps_us0 := np.array([0.1 * 1e6, 0.1 * 1e6], dtype=np.uint64),
             ref_radar_generic_data0 := {"some-other-frame-data": np.random.default_rng().random((6, 2))},
-            ref_radar_generic_metadata0 := cast(
-                Dict[str, JsonLike], {"some-more-meta-data": {"funny": "yes", "no": True}}
-            ),
+            ref_radar_generic_metadata0 := cast(JsonDocument, {"some-more-meta-data": {"funny": "yes", "no": True}}),
         )
 
         ref_radar_direction_m1, radar_distance_m1 = normalize_points(
@@ -509,7 +527,7 @@ class TestData4Reload(unittest.TestCase):
             ref_radar_distance_m1 := np.stack((radar_distance_m1, radar_distance_m1 + 0.2)),
             ref_radar_timestamps_us1 := np.array([0.2 * 1e6, 0.2 * 1e6], dtype=np.uint64),
             ref_radar_generic_data1 := {"some-radar-frame-data": np.random.default_rng().random((6, 2))},
-            ref_radar_generic_metadata1 := cast(Dict[str, JsonLike], {"some-more-meta-data": {"funny": ":("}}),
+            ref_radar_generic_metadata1 := cast(JsonDocument, {"some-more-meta-data": {"funny": ":("}}),
         )
 
         ## Finalize writers up to here
@@ -528,7 +546,7 @@ class TestData4Reload(unittest.TestCase):
             CuboidsComponent.Writer,
             ref_cuboids_id := "default",
             "cuboids",
-            ref_cuboids_generic_meta_data := cast(Dict[str, JsonLike], {"track-set-meta-data": "some-value"}),
+            ref_cuboids_generic_meta_data := cast(JsonDocument, {"track-set-meta-data": "some-value"}),
         )
 
         ref_observation = CuboidTrackObservation(
@@ -1114,7 +1132,7 @@ class TestData4Reload(unittest.TestCase):
             generic_meta_data={},
         )
 
-        init_meta: Dict[str, JsonLike] = {"description": "poses with generic data"}
+        init_meta: JsonDocument = {"description": "poses with generic data"}
         poses_writer = store_writer.register_component_writer(
             PosesComponent.Writer,
             "test_poses",
@@ -1133,7 +1151,7 @@ class TestData4Reload(unittest.TestCase):
         ref_weights = rng.random((10,), dtype=np.float32)
         ref_offsets = rng.integers(0, 100, size=(5, 3), dtype=np.int32)
 
-        ref_generic_meta: Dict[str, JsonLike] = {"source": "test", "version": 2}
+        ref_generic_meta: JsonDocument = {"source": "test", "version": 2}
 
         poses_writer.set_generic_data(
             data={"weights": ref_weights, "offsets": ref_offsets},
@@ -1162,6 +1180,44 @@ class TestData4Reload(unittest.TestCase):
 
         tempdir.cleanup()
 
+    def test_generic_meta_data_of_abstract_collections(self) -> None:
+        """Generic meta data of writers may be any mappings / sequences of JSON-like values (e.g., read-only mappings,
+        tuples), and is read back as plain JSON documents"""
+
+        tempdir = tempfile.TemporaryDirectory()
+
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(tempdir.name),
+            store_base_name=(seq_id := "json-like-test"),
+            sequence_id=seq_id,
+            sequence_timestamp_interval_us=HalfClosedInterval(0, 10_000_001),
+            store_type=self.store_type,
+            generic_meta_data=types.MappingProxyType({"sequence": ("a", 1)}),
+        )
+        poses_writer = store_writer.register_component_writer(
+            PosesComponent.Writer,
+            "test_poses",
+            generic_meta_data=types.MappingProxyType({"init": types.MappingProxyType({"nested": (1.5,)})}),
+        )
+        poses_writer.store_static_pose(
+            source_frame_id="sensor", target_frame_id="rig", pose=np.eye(4, dtype=np.float32)
+        )
+        poses_writer.set_generic_data(data={}, meta_data=types.MappingProxyType({"set": (True, None)}))
+        self.assertEqual(poses_writer._generic_meta_data, {"init": {"nested": [1.5]}, "set": [True, None]})
+
+        # (the writers' state is JSON documents, as read back)
+        self.assertEqual(store_writer.generic_meta_data, {"sequence": ["a", 1]})
+        self.assertIs(type(store_writer.generic_meta_data), dict)
+
+        store_reader = SequenceComponentGroupsReader(component_group_paths=store_writer.finalize())
+        self.assertEqual(store_reader.generic_meta_data, {"sequence": ["a", 1]})
+        self.assertEqual(
+            store_reader.open_component_readers(PosesComponent.Reader)["test_poses"].generic_meta_data,
+            {"init": {"nested": [1.5]}, "set": [True, None]},
+        )
+
+        tempdir.cleanup()
+
     def test_component_generic_data_backwards_compat(self) -> None:
         """Write without calling set_generic_data() (old behavior), verify readers handle missing generic_data/ gracefully."""
 
@@ -1178,7 +1234,7 @@ class TestData4Reload(unittest.TestCase):
             generic_meta_data={},
         )
 
-        init_meta: Dict[str, JsonLike] = {"old_key": "old_value"}
+        init_meta: JsonDocument = {"old_key": "old_value"}
         poses_writer = store_writer.register_component_writer(
             PosesComponent.Writer,
             "test_poses",
@@ -1224,7 +1280,7 @@ class TestData4Reload(unittest.TestCase):
         )
 
         # Init-time metadata has a key "version" that we will overwrite
-        init_meta: Dict[str, JsonLike] = {"version": 1, "author": "original"}
+        init_meta: JsonDocument = {"version": 1, "author": "original"}
         poses_writer = store_writer.register_component_writer(
             PosesComponent.Writer,
             "test_poses",
@@ -1238,7 +1294,7 @@ class TestData4Reload(unittest.TestCase):
         )
 
         # Overwrite "version" and add a new key
-        overwrite_meta: Dict[str, JsonLike] = {"version": 99, "extra": "new_value"}
+        overwrite_meta: JsonDocument = {"version": 99, "extra": "new_value"}
         poses_writer.set_generic_data(
             data={"dummy": np.array([1.0, 2.0, 3.0], dtype=np.float32)},
             meta_data=overwrite_meta,
@@ -1251,7 +1307,7 @@ class TestData4Reload(unittest.TestCase):
         poses_reader = poses_readers["test_poses"]
 
         # "version" should be overwritten to 99, "author" preserved, "extra" added
-        expected_meta: Dict[str, JsonLike] = {"version": 99, "author": "original", "extra": "new_value"}
+        expected_meta: JsonDocument = {"version": 99, "author": "original", "extra": "new_value"}
         self.assertEqual(poses_reader.generic_meta_data, expected_meta)
 
         tempdir.cleanup()
@@ -1272,7 +1328,7 @@ class TestData4Reload(unittest.TestCase):
             generic_meta_data={},
         )
 
-        init_meta: Dict[str, JsonLike] = {"base": "info"}
+        init_meta: JsonDocument = {"base": "info"}
         poses_writer = store_writer.register_component_writer(
             PosesComponent.Writer,
             "test_poses",
@@ -1286,7 +1342,7 @@ class TestData4Reload(unittest.TestCase):
         )
 
         # Call set_generic_data with empty data dict but meta_data provided
-        meta_only: Dict[str, JsonLike] = {"added_key": "added_value"}
+        meta_only: JsonDocument = {"added_key": "added_value"}
         poses_writer.set_generic_data(
             data={},
             meta_data=meta_only,
@@ -1303,7 +1359,7 @@ class TestData4Reload(unittest.TestCase):
         self.assertFalse(poses_reader.has_generic_data("anything"))
 
         # Metadata should be merged: init_meta + meta_only
-        expected_meta: Dict[str, JsonLike] = {"base": "info", "added_key": "added_value"}
+        expected_meta: JsonDocument = {"base": "info", "added_key": "added_value"}
         self.assertEqual(poses_reader.generic_meta_data, expected_meta)
 
         tempdir.cleanup()
@@ -1428,21 +1484,23 @@ class TestDataNewComponent(unittest.TestCase):
                     return self
 
                 def finalize(self):
-                    """Write all velocity data to zarr storage"""
+                    """Write all velocity data to the component group"""
                     if self.velocities:
                         velocities_array = np.stack(self.velocities)
                         timestamps_array = np.array(self.timestamps, dtype=np.uint64)
 
-                        # Store as zarr arrays
-                        self._group.create_dataset(
+                        # Store as arrays
+                        self._group.create_array(
                             "velocities",
-                            data=velocities_array,
+                            velocities_array,
                             dtype=velocities_array.dtype,
+                            compression=BloscCompression(shuffle="shuffle"),
                         )
-                        self._group.create_dataset(
+                        self._group.create_array(
                             "timestamps_us",
-                            data=timestamps_array,
+                            timestamps_array,
                             dtype=np.uint64,
+                            compression=BloscCompression(shuffle="shuffle"),
                         )
 
             class Reader(ComponentReader):
@@ -1459,8 +1517,8 @@ class TestDataNewComponent(unittest.TestCase):
 
                 def get_velocities(self) -> Tuple[np.ndarray, np.ndarray]:
                     """Returns (velocities, timestamps_us) arrays"""
-                    velocities = np.array(self._group["velocities"][:])
-                    timestamps_us = np.array(self._group["timestamps_us"][:])
+                    velocities = self._group.array("velocities").read()
+                    timestamps_us = self._group.array("timestamps_us").read()
                     return velocities, timestamps_us
 
         # ============================================================================
@@ -1620,9 +1678,10 @@ class TestDataNewComponent(unittest.TestCase):
                         accelerations_array = np.stack(self.accelerations)
                         timestamps_array = np.array(self.timestamps, dtype=np.uint64)
 
-                        self._group.create_dataset("velocities", data=velocities_array)
-                        self._group.create_dataset("accelerations", data=accelerations_array)  # NEW
-                        self._group.create_dataset("timestamps_us", data=timestamps_array)
+                        compression = BloscCompression(shuffle="shuffle")
+                        self._group.create_array("velocities", velocities_array, compression=compression)
+                        self._group.create_array("accelerations", accelerations_array, compression=compression)  # NEW
+                        self._group.create_array("timestamps_us", timestamps_array, compression=compression)
 
         # Create a backward-compatible reader that can read both v1 and v2
         class VelocityComponentBackwardCompatibleReader(ComponentReader):
@@ -1639,15 +1698,15 @@ class TestDataNewComponent(unittest.TestCase):
 
             def get_velocities(self) -> Tuple[np.ndarray, np.ndarray]:
                 """Returns velocities (works for both v1 and v2)"""
-                velocities = np.array(self._group["velocities"][:])
-                timestamps_us = np.array(self._group["timestamps_us"][:])
+                velocities = self._group.array("velocities").read()
+                timestamps_us = self._group.array("timestamps_us").read()
                 return velocities, timestamps_us
 
             def get_accelerations(self) -> np.ndarray:
                 """Returns accelerations (only available in v2)"""
                 if self.component_version == "v1":
                     raise ValueError("Acceleration data not available in v1")
-                return np.array(self._group["accelerations"][:])
+                return self._group.array("accelerations").read()
 
         # Test that v1 reader cannot read v2 data
         v2_store_writer = SequenceComponentGroupsWriter(
@@ -2101,7 +2160,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         xyz = np.array([[0.0, 0.0, 0.0]], dtype=np.float32)
         gd_labels = np.array([42], dtype=np.int32)
         gd_weights = np.array([0.95], dtype=np.float64)
-        gmd: Dict[str, JsonLike] = {"source": "lidar_top", "quality": 0.99, "tags": ["outdoor", "sunny"]}
+        gmd: JsonDocument = {"source": "lidar_top", "quality": 0.99, "tags": ["outdoor", "sunny"]}
 
         pc_writer.store_pc(
             xyz=xyz,
@@ -2148,7 +2207,7 @@ class TestCameraLabelsComponent(unittest.TestCase):
         self,
         descriptor: CameraLabelDescriptor,
         instance_name=None,
-        generic_meta_data: Dict[str, JsonLike] = {},
+        generic_meta_data: JsonDocument = {},
     ) -> Tuple[CameraLabelsComponent.Writer, SequenceComponentGroupsWriter, tempfile.TemporaryDirectory]:
         """Create SequenceComponentGroupsWriter, register CameraLabelsComponent.Writer,
         and return (writer, store_writer, tmpdir)."""
@@ -2678,7 +2737,7 @@ class TestCameraLabelsComponent(unittest.TestCase):
     def test_per_label_generic_meta_data(self) -> None:
         """Store labels with per-label and component-level generic metadata, verify round-trip."""
 
-        component_meta: Dict[str, JsonLike] = {"source": "ground_truth", "version": 2}
+        component_meta: JsonDocument = {"source": "ground_truth", "version": 2}
         writer, store_writer, tmpdir = self._make_writer(
             CameraLabelDescriptor(
                 camera_id="front",
@@ -2692,7 +2751,7 @@ class TestCameraLabelsComponent(unittest.TestCase):
             generic_meta_data=component_meta,
         )
 
-        per_label_meta: Dict[str, JsonLike] = {"quality": 0.95, "annotator": "auto"}
+        per_label_meta: JsonDocument = {"quality": 0.95, "annotator": "auto"}
         writer.store_label(
             data=np.ones((8, 8), dtype=np.float32),
             timestamp_us=1_000_000,
@@ -2730,7 +2789,7 @@ class TestCameraLabelsComponent(unittest.TestCase):
         )
 
         depth = np.random.default_rng().random((16, 16), dtype=np.float32)
-        generic_meta_data: Dict[str, JsonLike] = {"info": "test label"}
+        generic_meta_data: JsonDocument = {"info": "test label"}
         writer.store_label(data=depth, timestamp_us=1_000_000, generic_meta_data=generic_meta_data)
 
         readers = self._finalize_and_open_readers(store_writer)
@@ -2871,7 +2930,7 @@ class TestCameraLabelsComponent(unittest.TestCase):
 
 
 # ==============================================================================
-# Tests for zero-dimension array support (_normalize_chunks)
+# Tests for zero-dimension array support
 # ==============================================================================
 
 
