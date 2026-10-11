@@ -63,19 +63,6 @@ if sys.version_info >= (3, 11):
     from typing import Self
 
 
-## JSON-like structures
-
-JsonLike = Union[
-    Dict[str, "JsonLike"],
-    List["JsonLike"],
-    str,
-    int,
-    float,
-    bool,
-    None,
-]
-
-
 ## Data classes representing stored data types
 @unique
 class ShutterType(IntEnum):

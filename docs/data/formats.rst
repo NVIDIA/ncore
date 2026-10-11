@@ -107,7 +107,7 @@ might attach raw GPS/IMU measurements to the poses component:
        ├── {component_specific_data}...
        │
        └── generic_data/           (optional, only if generic data was set)
-           ├── {dataset_name}      [shape] dtype  (lz4-compressed zarr dataset)
+           ├── {array_name}        [shape] dtype  (lz4-compressed array)
            └── ...
 
 Writers use :meth:`~ncore.impl.data.v4.components.ComponentWriter.set_generic_data`
@@ -414,12 +414,12 @@ Supported categories:
 Encoding
 ^^^^^^^^
 
-* ``RAW`` -- Numpy array stored as a zarr dataset regular compression. Shape
+* ``RAW`` -- Numpy array stored as an array with regular compression. Shape
   is ``[H, W] + shape_suffix`` (e.g., ``[H, W, 2]`` for optical flow).
   Transparent quantization of raw labels is supported optionally
   (e.g., float32 depth quantized to uint16 with scale/offset).
 * ``IMAGE_ENCODED`` -- Pre-encoded image bytes (PNG, JPEG) stored as a 1-D
-  zarr uint8 dataset with no compression. Consumers can call ``get_encoded_data()`` for raw
+  uint8 array with no compression. Consumers can call ``get_encoded_data()`` for raw
   bytes (GPU-based decoding) or ``get_data()`` for Pillow-decoded numpy arrays.
 
 Instance naming convention
@@ -486,7 +486,7 @@ A minimal custom component looks like:
                ...  # collect data
 
            def finalize(self):
-               ...  # write zarr datasets to self._group
+               ...  # write arrays to self._group, e.g. self._group.create_array("velocities", ...)
 
        class Reader(ComponentReader):
            @staticmethod
@@ -498,7 +498,16 @@ A minimal custom component looks like:
                return version == "v1"
 
            def get_velocities(self):
-               return self._group["velocities"][:], self._group["timestamps_us"][:]
+               return (
+                   self._group.array("velocities").read(),
+                   self._group.array("timestamps_us").read(),
+               )
+
+The groups of component writers / readers (``self._group``) are
+``ncore.impl.data.nodes.Group`` instances with a typed API to create and read groups, arrays
+(``create_array`` / ``array(path).read()``), binary blobs (``create_bytes_array`` /
+``read_bytes``), and attributes. The wrapped zarr-python group is accessible via
+``self._group.zarr``.
 
 Writers must ensure that all stored timestamps fall within the sequence's
 ``sequence_timestamp_interval_us`` time range. Existing datasets can be extended
