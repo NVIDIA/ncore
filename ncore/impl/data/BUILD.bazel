@@ -36,10 +36,14 @@ py_library(
 py_library(
     name = "pylib_stores",
     srcs = [
+        "encoding.py",
+        "itar.py",
         "stores.py",
     ],
     deps = [
         requirement("cbor2"),
+        requirement("numcodecs"),
+        requirement("typing_extensions"),
         requirement("universal_pathlib"),
         requirement("zarr"),
     ],
