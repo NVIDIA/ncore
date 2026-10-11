@@ -13,124 +13,62 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""zarr stores of NCore data: indexed tar archives (``.itar``) and their compressed consolidated metadata"""
+"""Stores of NCore data: zarr hierarchies in indexed tar archives (:class:`IndexedTarStore`) or directories, with
+compressed consolidated metadata"""
 
 from __future__ import annotations
 
-from typing import Iterator, List, Mapping, Union
+from pathlib import Path
+from typing import Union
 
-import zarr
+from upath import UPath
 
-from numcodecs import compat
-from zarr._storage.store import Store
-from zarr.util import json_loads
-
-from ncore.impl.data.encoding import decode_cbor_xz, encode_cbor_xz
+from ncore.impl.data._backend import V2_CONSOLIDATED_METADATA_KEY, Attributes, StoreLike, ZarrStore
 from ncore.impl.data.itar import IndexedTarStore
+from ncore.impl.data.nodes import Group, _backend
 
 
-#: Default key of the compressed consolidated metadata of zarr hierarchies (CBOR + LZMA encoded ``.zmetadata``)
-CONSOLIDATED_METADATA_KEY = ".zmetadata.cbor.xz"
+def open_directory_store(path: Union[str, Path, UPath]) -> ZarrStore:
+    """Opens a directory store (a directory per group / array, a file per record) for reading or writing"""
+    return _backend.open_directory_store(str(path))
 
 
-class ZarrIndexedTarStore(Store):
-    """zarr-python store of the records of an :class:`IndexedTarStore`"""
-
-    _erasable = False
-
-    def __init__(self, store: IndexedTarStore) -> None:
-        self.store = store
-
-    def __getitem__(self, key: str) -> bytes:
-        return self.store[key]
-
-    def __setitem__(self, key: str, value: object) -> None:
-        if self.store.mode != "w":
-            raise zarr.errors.ReadOnlyError()
-        self.store[key] = compat.ensure_bytes(value)
-
-    def __delitem__(self, key: str) -> None:
-        raise NotImplementedError("IndexedTarStore: records can't be deleted")
-
-    def __contains__(self, key: object) -> bool:
-        return key in self.store
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.store.keys())
-
-    def __len__(self) -> int:
-        return len(self.store)
-
-    def __eq__(self, value: object) -> bool:
-        return isinstance(value, ZarrIndexedTarStore) and self.store == value.store
-
-    def __hash__(self) -> int:
-        return hash(self.store)
-
-    def close(self) -> None:
-        self.store.close()
+def create_root_group(store: StoreLike, attributes: Attributes) -> Group:
+    """Creates the root group of a hierarchy in a store"""
+    return Group(_backend.create_root_group(store, 2, attributes))
 
 
-StoreLike = Union[IndexedTarStore, zarr.storage.BaseStore]
+def open_store(store: StoreLike, consolidated: bool = True) -> Group:
+    """Opens the root group of the hierarchy of a store for reading, via its compressed consolidated metadata if
+    consolidated (raises KeyError if the store has no compressed consolidated metadata)"""
+    return Group(_backend.open_store(store, consolidated))
 
 
-def _zarr_store(store: StoreLike) -> zarr.storage.BaseStore:
-    """The zarr-python store of a store (wraps indexed tar stores)"""
-    return ZarrIndexedTarStore(store) if isinstance(store, IndexedTarStore) else store
+def consolidate_store(store: StoreLike) -> None:
+    """Stores the compressed consolidated metadata of the hierarchy of a store (after writing all nodes)"""
+    _backend.consolidate_store(store)
 
 
-def consolidate_compressed_metadata(store: StoreLike, metadata_key: str = CONSOLIDATED_METADATA_KEY) -> None:
-    """Consolidates the metadata of all groups and arrays of a store into a single compressed record (CBOR + LZMA
-    encoded zarr consolidated metadata)
-
-    See Also
-    --------
-    zarr.consolidate_metadata
-    """
-    store = zarr.storage.normalize_store_arg(_zarr_store(store), mode="w")
-    if store._store_version != 2:
-        raise NotImplementedError("Only supporting V2 stores")
-
-    metadata = {key: json_loads(store[key]) for key in store if key.endswith((".zarray", ".zgroup", ".zattrs"))}
-    store[metadata_key] = encode_cbor_xz({"zarr_consolidated_format": 1, "metadata": metadata})
+def close_store(store: StoreLike) -> None:
+    """Closes a store (required for indexed tar stores opened for writing)"""
+    if isinstance(store, IndexedTarStore):
+        store.close()
 
 
-class ConsolidatedCompressedMetadataStore(zarr.storage.ConsolidatedMetadataStore):
-    """A layer over a store, where the metadata of all nodes is read from the compressed consolidated metadata"""
-
-    def __init__(self, store: StoreLike, metadata_key: str = CONSOLIDATED_METADATA_KEY) -> None:
-        self.store = Store._ensure_store(_zarr_store(store))
-
-        consolidated = decode_cbor_xz(self.store[metadata_key])
-        if (consolidated_format := consolidated.get("zarr_consolidated_format")) != 1:
-            raise zarr.MetadataError(f"unsupported zarr consolidated metadata format: {consolidated_format}")
-
-        self.meta_store: Mapping[str, object] = zarr.KVStore(consolidated["metadata"])
+def group_store(group: Group) -> StoreLike:
+    """The store of a group (the :class:`IndexedTarStore` of groups of indexed tar archives)"""
+    return _backend.group_store(group.zarr)
 
 
-def open_compressed_consolidated(
-    store: StoreLike, metadata_key: str = CONSOLIDATED_METADATA_KEY, mode: str = "r+", **kwargs
-) -> zarr.Group:
-    """Opens a group of a store via its compressed consolidated metadata
-
-    See Also
-    --------
-    consolidate_compressed_metadata
-    zarr.open_consolidated
-    """
-    if mode not in {"r", "r+"}:
-        raise ValueError(f"invalid mode, expected either 'r' or 'r+'; found {mode!r}")
-    meta_store = ConsolidatedCompressedMetadataStore(store, metadata_key=metadata_key)
-    chunk_store = kwargs.pop("chunk_store", None) or meta_store.store
-    return zarr.open(store=meta_store, chunk_store=chunk_store, mode=mode, **kwargs)
-
-
-__all__: List[str] = [
-    "CONSOLIDATED_METADATA_KEY",
-    "ConsolidatedCompressedMetadataStore",
+__all__ = [
     "IndexedTarStore",
     "StoreLike",
-    "ZarrIndexedTarStore",
-    "consolidate_compressed_metadata",
-    "open_compressed_consolidated",
+    "V2_CONSOLIDATED_METADATA_KEY",
+    "ZarrStore",
+    "close_store",
+    "consolidate_store",
+    "create_root_group",
+    "group_store",
+    "open_directory_store",
+    "open_store",
 ]

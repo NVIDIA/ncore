@@ -294,7 +294,7 @@ class TestNuScenesConverter(unittest.TestCase):
 
             # Native: direction * distance
             direction = lidar_reader.get_frame_ray_bundle_data(ts, "direction")
-            distance_2d = np.array(lidar_reader._get_ray_bundle_returns_group(ts)["distance_m"])  # [R, N]
+            distance_2d = lidar_reader._get_ray_bundle_returns_group(ts).array("distance_m").read()  # [R, N]
             distance = distance_2d[0]  # first return
 
             # Model element

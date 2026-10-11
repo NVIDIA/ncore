@@ -29,6 +29,7 @@ from upath import UPath
 
 from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import unpack_optional
+from ncore.impl.data.nodes import BloscCompression
 from ncore.impl.data.types import (
     BBox3,
     BivariateWindshieldModelParameters,
@@ -1413,21 +1414,23 @@ class TestDataNewComponent(unittest.TestCase):
                     return self
 
                 def finalize(self):
-                    """Write all velocity data to zarr storage"""
+                    """Write all velocity data to the component group"""
                     if self.velocities:
                         velocities_array = np.stack(self.velocities)
                         timestamps_array = np.array(self.timestamps, dtype=np.uint64)
 
-                        # Store as zarr arrays
-                        self._group.create_dataset(
+                        # Store as arrays
+                        self._group.create_array(
                             "velocities",
-                            data=velocities_array,
+                            velocities_array,
                             dtype=velocities_array.dtype,
+                            compression=BloscCompression(shuffle="shuffle"),
                         )
-                        self._group.create_dataset(
+                        self._group.create_array(
                             "timestamps_us",
-                            data=timestamps_array,
+                            timestamps_array,
                             dtype=np.uint64,
+                            compression=BloscCompression(shuffle="shuffle"),
                         )
 
             class Reader(ComponentReader):
@@ -1444,8 +1447,8 @@ class TestDataNewComponent(unittest.TestCase):
 
                 def get_velocities(self) -> Tuple[np.ndarray, np.ndarray]:
                     """Returns (velocities, timestamps_us) arrays"""
-                    velocities = np.array(self._group["velocities"][:])
-                    timestamps_us = np.array(self._group["timestamps_us"][:])
+                    velocities = self._group.array("velocities").read()
+                    timestamps_us = self._group.array("timestamps_us").read()
                     return velocities, timestamps_us
 
         # ============================================================================
@@ -1605,9 +1608,10 @@ class TestDataNewComponent(unittest.TestCase):
                         accelerations_array = np.stack(self.accelerations)
                         timestamps_array = np.array(self.timestamps, dtype=np.uint64)
 
-                        self._group.create_dataset("velocities", data=velocities_array)
-                        self._group.create_dataset("accelerations", data=accelerations_array)  # NEW
-                        self._group.create_dataset("timestamps_us", data=timestamps_array)
+                        compression = BloscCompression(shuffle="shuffle")
+                        self._group.create_array("velocities", velocities_array, compression=compression)
+                        self._group.create_array("accelerations", accelerations_array, compression=compression)  # NEW
+                        self._group.create_array("timestamps_us", timestamps_array, compression=compression)
 
         # Create a backward-compatible reader that can read both v1 and v2
         class VelocityComponentBackwardCompatibleReader(ComponentReader):
@@ -1624,15 +1628,15 @@ class TestDataNewComponent(unittest.TestCase):
 
             def get_velocities(self) -> Tuple[np.ndarray, np.ndarray]:
                 """Returns velocities (works for both v1 and v2)"""
-                velocities = np.array(self._group["velocities"][:])
-                timestamps_us = np.array(self._group["timestamps_us"][:])
+                velocities = self._group.array("velocities").read()
+                timestamps_us = self._group.array("timestamps_us").read()
                 return velocities, timestamps_us
 
             def get_accelerations(self) -> np.ndarray:
                 """Returns accelerations (only available in v2)"""
                 if self.component_version == "v1":
                     raise ValueError("Acceleration data not available in v1")
-                return np.array(self._group["accelerations"][:])
+                return self._group.array("accelerations").read()
 
         # Test that v1 reader cannot read v2 data
         v2_store_writer = SequenceComponentGroupsWriter(
@@ -2749,7 +2753,7 @@ class TestCameraLabelsComponent(unittest.TestCase):
 
 
 # ==============================================================================
-# Tests for zero-dimension array support (_normalize_chunks)
+# Tests for zero-dimension array support
 # ==============================================================================
 
 

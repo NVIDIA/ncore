@@ -27,48 +27,64 @@ from unittest import mock
 
 import numpy as np
 import parameterized
-import zarr
 
+from ncore.impl.data import nodes
 from ncore.impl.data.encoding import decode_cbor_xz
 from ncore.impl.data.stores import (
-    CONSOLIDATED_METADATA_KEY,
-    ConsolidatedCompressedMetadataStore,
+    V2_CONSOLIDATED_METADATA_KEY,
     IndexedTarStore,
-    ZarrIndexedTarStore,
-    consolidate_compressed_metadata,
-    open_compressed_consolidated,
+    StoreLike,
+    close_store,
+    consolidate_store,
+    create_root_group,
+    group_store,
+    open_directory_store,
+    open_store,
 )
 
 
 #: None / values < 512 (separate reads of index header and index), 1 KiB, 1 MiB (default), edge cases around 512
 INDEX_TAIL_READ_SIZES = [None, 1, 512, 513, 1 << 10, 1 << 20]
 
+_ROOT_ATTRIBUTES = {"some": "thing"}
 
-def _fill_reference(root: zarr.Group) -> None:
+
+def _fill_reference(root: nodes.Group) -> None:
     rng = np.random.default_rng(0)
-    root.attrs.put({"some": "thing"})
-    root.create_dataset("foo", data=rng.random((3, 3, 3)), chunks=(2, 3, 3))
-    sub = root.create_group("subgroup")
-    sub.attrs.put({"other": [1, 2, 3]})
-    sub.create_dataset("foo", data=rng.random((5, 5, 5)))
-    sub.create_dataset("blob", data=np.asarray(b"\x89PNG\x00some binary data"), compressor=None)
+    root.create_array("foo", rng.random((3, 3, 3)), chunks=(2, 3, 3))
+    sub = root.create_group("subgroup", attributes={"other": [1, 2, 3]})
+    sub.create_array("foo", rng.random((5, 5, 5)), attributes={"unit": "m"})
+    sub.create_array("empty", np.zeros((0, 3), dtype=np.float32))
+    sub.create_bytes_array("blob", b"\x89PNG\x00some binary data", attributes={"format": "png"})
 
 
-def _check_reference(test: unittest.TestCase, root: zarr.Group) -> None:
+def _check_reference(test: unittest.TestCase, root: nodes.Group) -> None:
     rng = np.random.default_rng(0)
-    np.testing.assert_array_equal(root["foo"][...], rng.random((3, 3, 3)))
-    np.testing.assert_array_equal(root["subgroup/foo"][...], rng.random((5, 5, 5)))
-    test.assertEqual(bytes(root["subgroup/blob"][()]), b"\x89PNG\x00some binary data")
-    test.assertEqual(root.attrs.asdict(), {"some": "thing"})
-    test.assertEqual(root["subgroup"].attrs.asdict(), {"other": [1, 2, 3]})
+    np.testing.assert_array_equal(root.array("foo").read(), rng.random((3, 3, 3)))
+    np.testing.assert_array_equal(root.array("subgroup/foo").read(), rng.random((5, 5, 5)))
+    test.assertEqual(root.array("subgroup/empty").shape, (0, 3))
+    test.assertEqual(root.array("subgroup/blob").read_bytes(), b"\x89PNG\x00some binary data")
+    test.assertEqual(root.attrs, _ROOT_ATTRIBUTES)
+    test.assertEqual(root.group("subgroup").attrs, {"other": [1, 2, 3]})
+    test.assertEqual(root.array("subgroup/foo").attrs, {"unit": "m"})
+    test.assertEqual(sorted(root.members()), ["foo", "subgroup"])
+    test.assertEqual(sorted(root.group("subgroup").members()), ["blob", "empty", "foo"])
+    test.assertEqual([name for name, _ in root.groups()], ["subgroup"])
+    test.assertIn("blob", root.group("subgroup"))
+    test.assertNotIn("missing", root.group("subgroup"))
+    with test.assertRaises(KeyError):
+        root.group("foo")
+    with test.assertRaises(KeyError):
+        root.array("subgroup")
+    with test.assertRaises(KeyError):
+        root.array("missing")
 
 
-def _write_itar(path: str, consolidate: bool = True) -> None:
-    with IndexedTarStore(path, mode="w") as store:
-        zarr_store = ZarrIndexedTarStore(store)
-        _fill_reference(zarr.group(store=zarr_store))
-        if consolidate:
-            consolidate_compressed_metadata(zarr_store)
+def _write(store: StoreLike, consolidate: bool = True) -> None:
+    _fill_reference(create_root_group(store, _ROOT_ATTRIBUTES))
+    if consolidate:
+        consolidate_store(store)
+    close_store(store)
 
 
 class TestIndexedTarStore(unittest.TestCase):
@@ -105,7 +121,7 @@ class TestIndexedTarStore(unittest.TestCase):
 
         # archives are regular tar archives
         with tarfile.open(self.path) as tar:
-            self.assertEqual({m.name: unpack(tar.extractfile(m)) for m in tar.getmembers()}, records)
+            self.assertEqual({m.name: _read_member(tar, m) for m in tar.getmembers()}, records)
 
     @parameterized.parameterized.expand([(size,) for size in INDEX_TAIL_READ_SIZES])
     def test_index_tail_read_sizes(self, index_tail_read_size: Optional[int]):
@@ -201,82 +217,100 @@ class TestIndexedTarStore(unittest.TestCase):
         self.assertEqual(IndexedTarStore(self.path).keys(), [])
 
 
-class TestZarrIndexedTarStore(unittest.TestCase):
-    """zarr hierarchies in indexed tar archives"""
+class TestStores(unittest.TestCase):
+    """zarr hierarchies in indexed tar archives and directories"""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
-        self.path = os.path.join(self._tmp.name, "store.itar")
+        self.itar_path = os.path.join(self._tmp.name, "store.itar")
+        self.directory_path = os.path.join(self._tmp.name, "store.zarr")
 
     def tearDown(self):
         self._tmp.cleanup()
 
-    @parameterized.parameterized.expand([(size,) for size in INDEX_TAIL_READ_SIZES])
-    def test_reserialization(self, index_tail_read_size: Optional[int]):
-        _write_itar(self.path, consolidate=False)
+    def _store(self, store_type: str, mode: str) -> StoreLike:
+        if store_type == "itar":
+            return IndexedTarStore(self.itar_path, mode="w" if mode == "w" else "r")
+        return open_directory_store(self.directory_path)
 
-        store = IndexedTarStore(self.path, index_tail_read_size=index_tail_read_size)
-        root = zarr.open_group(store=ZarrIndexedTarStore(store), mode="r")
+    @parameterized.parameterized.expand(
+        [(store_type, consolidated) for store_type in ("itar", "directory") for consolidated in (True, False)]
+    )
+    def test_reserialization(self, store_type: str, consolidated: bool):
+        _write(self._store(store_type, "w"))
+
+        store = self._store(store_type, "r")
+        root = open_store(store, consolidated)
         _check_reference(self, root)
 
-        store.reload_resources()
-        _check_reference(self, root)
+        if isinstance(store, IndexedTarStore):
+            self.assertIs(group_store(root), store)
+            self.assertIs(group_store(root.group("subgroup")), store)
+            store.reload_resources()
+            _check_reference(self, root)
 
     @parameterized.parameterized.expand([(size,) for size in INDEX_TAIL_READ_SIZES])
-    def test_compressed_consolidated(self, index_tail_read_size: Optional[int]):
-        _write_itar(self.path)
+    def test_consolidated_open_reads_no_node_metadata(self, index_tail_read_size: Optional[int]):
+        _write(self._store("itar", "w"))
 
-        store = IndexedTarStore(self.path, index_tail_read_size=index_tail_read_size)
+        store = IndexedTarStore(self.itar_path, index_tail_read_size=index_tail_read_size)
         with mock.patch.object(
             IndexedTarStore, "__getitem__", autospec=True, side_effect=IndexedTarStore.__getitem__
         ) as getitem:
-            root = open_compressed_consolidated(store, mode="r")
-            _check_reference(self, root)
-        # node metadata is read from the compressed consolidated metadata only
+            _check_reference(self, open_store(store, consolidated=True))
         read_keys = [call.args[1] for call in getitem.call_args_list]
-        self.assertIn(CONSOLIDATED_METADATA_KEY, read_keys)
+        self.assertIn(V2_CONSOLIDATED_METADATA_KEY, read_keys)
         self.assertEqual([key for key in read_keys if key.endswith((".zarray", ".zgroup", ".zattrs"))], [])
-        # (zarr group -> compressed consolidated metadata layer -> zarr-python adapter -> indexed tar store)
-        consolidated_store = root.store
-        assert isinstance(consolidated_store, ConsolidatedCompressedMetadataStore)
-        assert isinstance(zarr_store := consolidated_store.store, ZarrIndexedTarStore)
-        self.assertIs(zarr_store.store, store)
 
-        store.reload_resources()
-        _check_reference(self, root)
+    @parameterized.parameterized.expand([("itar",), ("directory",)])
+    def test_missing_consolidated_metadata(self, store_type: str):
+        _write(self._store(store_type, "w"), consolidate=False)
+        with self.assertRaises(KeyError):
+            open_store(self._store(store_type, "r"), consolidated=True)
+        _check_reference(self, open_store(self._store(store_type, "r"), consolidated=False))
 
-    def test_records_match_zarr_directory_stores(self):
-        """Archives store the same records as zarr's directory stores (byte-identical)"""
-        _write_itar(self.path)
+    def test_stores_are_identical(self):
+        """Indexed tar archives and directories store the same records"""
+        _write(self._store("itar", "w"))
+        _write(self._store("directory", "w"))
 
-        directory = os.path.join(self._tmp.name, "store.zarr")
-        directory_store = zarr.storage.DirectoryStore(directory)
-        _fill_reference(zarr.group(store=directory_store))
-        consolidate_compressed_metadata(directory_store)
-
-        store = IndexedTarStore(self.path)
-        self.assertEqual(sorted(store.keys()), sorted(directory_store.keys()))
-        for key in store.keys():
-            if key == CONSOLIDATED_METADATA_KEY:  # (documents ordered by the key order of the stores)
-                self.assertEqual(decode_cbor_xz(store[key]), decode_cbor_xz(directory_store[key]))
+        archive = IndexedTarStore(self.itar_path)
+        files = {
+            str(path.relative_to(self.directory_path)): path.read_bytes()
+            for path in Path(self.directory_path).rglob("*")
+            if path.is_file()
+        }
+        self.assertEqual(sorted(archive.keys()), sorted(files))
+        for key in archive.keys():
+            if key == V2_CONSOLIDATED_METADATA_KEY:  # (ordered by the record order of the stores)
+                self.assertEqual(decode_cbor_xz(archive[key]), decode_cbor_xz(files[key]))
             else:
-                self.assertEqual(store[key], directory_store[key], key)
+                self.assertEqual(archive[key], files[key], key)
+
+    def test_directory_stores_are_not_truncated(self):
+        Path(self.directory_path).mkdir()
+        (Path(self.directory_path) / "other").write_bytes(b"other")
+        _write(self._store("directory", "w"))
+        self.assertEqual((Path(self.directory_path) / "other").read_bytes(), b"other")
 
     def test_archives_of_ncore_19_8(self):
         """Archives are byte-identical to archives written by ncore 19.8 (sha256 of a fixed hierarchy written by
         ncore 19.8)"""
-        with IndexedTarStore(self.path, mode="w") as store:
-            zarr_store = ZarrIndexedTarStore(store)
-            root = zarr.group(store=zarr_store)
-            root.attrs.put({"some": "thing", "nested": {"a": [1, 2.5, None]}})
-            root.create_dataset("foo", data=np.arange(27, dtype=np.float64).reshape(3, 3, 3), chunks=(2, 3, 3))
-            sub = root.create_group("subgroup")
-            sub.attrs.put({"other": [1, 2, 3]})
-            sub.create_dataset("bar", data=np.arange(10, dtype=np.uint16), compressor=None)
-            sub.create_dataset("blob", data=np.asarray(b"\x89PNG\x00data"), compressor=None)
-            consolidate_compressed_metadata(zarr_store)
+        store = IndexedTarStore(self.itar_path, mode="w")
+        root = create_root_group(store, {"some": "thing", "nested": {"a": [1, 2.5, None]}})
+        root.create_array(
+            "foo",
+            np.arange(27, dtype=np.float64).reshape(3, 3, 3),
+            chunks=(2, 3, 3),
+            compression=nodes.BloscCompression(shuffle="shuffle"),
+        )
+        sub = root.create_group("subgroup", attributes={"other": [1, 2, 3]})
+        sub.create_array("bar", np.arange(10, dtype=np.uint16), compression=None)
+        sub.create_bytes_array("blob", b"\x89PNG\x00data")
+        consolidate_store(store)
+        close_store(store)
 
-        digest = hashlib.sha256(Path(self.path).read_bytes()).hexdigest()
+        digest = hashlib.sha256(Path(self.itar_path).read_bytes()).hexdigest()
         self.assertIn(
             digest,
             {
@@ -287,21 +321,94 @@ class TestZarrIndexedTarStore(unittest.TestCase):
         )
 
     def test_empty(self):
-        with IndexedTarStore(self.path, mode="w") as store:
-            consolidate_compressed_metadata(ZarrIndexedTarStore(store))
-
-        with self.assertRaises(zarr.errors.PathNotFoundError):
-            open_compressed_consolidated(IndexedTarStore(self.path), mode="r")
-        with self.assertRaises(zarr.errors.PathNotFoundError):
-            zarr.open(store=ZarrIndexedTarStore(IndexedTarStore(self.path)), mode="r")
+        """Stores without a root group can be consolidated, but not opened"""
+        store = IndexedTarStore(self.itar_path, mode="w")
+        consolidate_store(store)
+        close_store(store)
+        with self.assertRaises(Exception):  # (zarr-python's error of missing groups)
+            open_store(IndexedTarStore(self.itar_path), consolidated=True)
 
     def test_read_only(self):
-        _write_itar(self.path)
-        root = zarr.open_group(store=ZarrIndexedTarStore(IndexedTarStore(self.path)), mode="r")
-        with self.assertRaises(zarr.errors.ReadOnlyError):
+        _write(self._store("itar", "w"))
+        root = open_store(IndexedTarStore(self.itar_path))
+        with self.assertRaises(Exception):
             root.create_group("new")
 
 
-def unpack(file: Optional[Any]) -> bytes:
+class TestNodes(unittest.TestCase):
+    """Typed node API"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = create_root_group(
+            open_directory_store(self._tmp.name), {"s": "x", "i": 3, "b": True, "l": [1], "d": {"k": 1}}
+        )
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_typed_attributes(self):
+        self.assertEqual(self.root.attr_str("s"), "x")
+        self.assertEqual(self.root.attr_int("i"), 3)
+        self.assertEqual(self.root.attr_list("l"), [1])
+        self.assertEqual(self.root.attr_dict("d"), {"k": 1})
+        with self.assertRaises(TypeError):
+            self.root.attr_int("b")  # (booleans aren't integers)
+        with self.assertRaises(TypeError):
+            self.root.attr_str("i")
+        with self.assertRaises(KeyError):
+            self.root.attr_str("missing")
+
+        self.root.update_attrs({"i": 4, "new": None})
+        self.assertEqual(self.root.attrs, {"s": "x", "i": 4, "b": True, "l": [1], "d": {"k": 1}, "new": None})
+
+    def test_arrays(self):
+        array = self.root.create_array("a", [1.5, 2.5], dtype=np.float32, attributes={"unit": "m"})
+        self.assertEqual((array.shape, array.dtype, array.attrs), ((2,), np.dtype(np.float32), {"unit": "m"}))
+        self.assertEqual(array.compression, nodes.BloscCompression())
+        np.testing.assert_array_equal(array.read((slice(1, 2),)), [2.5])
+        self.assertEqual(array.read((0,)).shape, ())  # 0-d arrays for scalar selections
+
+        self.assertIsNone(self.root.create_array("u", np.arange(3), compression=None).compression)
+        self.assertEqual(self.root.create_array("c", np.zeros((10, 0)), chunks=(4, 0)).zarr.chunks, (4, 1))
+        with self.assertRaises(TypeError):
+            array.read_bytes()
+
+    def test_groups(self):
+        self.root.create_group("b")
+        self.root.create_group("a").create_group("nested")
+        self.assertEqual([name for name, _ in self.root.groups()], ["a", "b"])
+        self.assertEqual(self.root.require_group("a").group("nested").path, "a/nested")
+        self.assertEqual(self.root.group("a/nested").path, "a/nested")
+        with self.assertRaises(Exception):
+            self.root.create_group("a")
+
+    def test_nodes(self):
+        """Members of unknown kind (groups or arrays)"""
+        self.root.create_group("g").create_array("a", np.arange(3))
+        assert isinstance(group := self.root.node("g"), nodes.Group)
+        self.assertEqual(group.path, "g")
+        assert isinstance(array := self.root.node("g/a"), nodes.Array)
+        np.testing.assert_array_equal(array.read(), np.arange(3))
+        with self.assertRaises(KeyError):
+            self.root.node("g/missing")
+
+
+class TestBloscCompression(unittest.TestCase):
+    @parameterized.parameterized.expand(
+        [({"cname": "snappy"},), ({"clevel": 10},), ({"clevel": -1},), ({"shuffle": "byte"},), ({"blocksize": -1},)]
+    )
+    def test_invalid_parameters(self, kwargs: Any):
+        with self.assertRaises(ValueError):
+            nodes.BloscCompression(**kwargs)
+
+    @parameterized.parameterized.expand([(shuffle,) for shuffle in ("noshuffle", "shuffle", "bitshuffle")])
+    def test_numcodecs(self, shuffle: Any):
+        compression = nodes.BloscCompression(cname="zstd", clevel=3, shuffle=shuffle, blocksize=1024)
+        self.assertEqual(nodes.BloscCompression.from_numcodecs(compression.to_numcodecs()), compression)
+
+
+def _read_member(tar: tarfile.TarFile, member: tarfile.TarInfo) -> bytes:
+    file = tar.extractfile(member)
     assert file is not None
     return file.read()

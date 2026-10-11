@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt  # type: ignore[import-not-found]
 
 from ncore.impl.common.transformations import PoseGraphInterpolator, transform_bbox, transform_point_cloud
-from ncore.impl.data import util
+from ncore.impl.data import _json, util
 
 
 if sys.version_info >= (3, 11):
@@ -61,15 +61,7 @@ if sys.version_info >= (3, 11):
 
 ## JSON-like structures
 
-JsonLike = Union[
-    Dict[str, "JsonLike"],
-    List["JsonLike"],
-    str,
-    int,
-    float,
-    bool,
-    None,
-]
+JsonLike = _json.JsonLike
 
 
 ## Data classes representing stored data types
