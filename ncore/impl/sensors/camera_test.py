@@ -28,6 +28,7 @@ import parameterized
 import scipy
 import scipy.linalg
 import torch
+import torch.version
 
 from numpy.polynomial.polynomial import Polynomial
 from typing_extensions import Self
@@ -82,7 +83,7 @@ def _get_test_devices() -> Tuple[torch.device, ...]:
     """Return the devices to test based on NCORE_NO_GPU_TESTS environment variable - will always contain CPU and conditionally GPU."""
     if os.environ.get("NCORE_NO_GPU_TESTS", "0") in ("1", "true", "True", "TRUE"):
         return (torch.device("cpu"),)
-    if torch.version.cuda is None:  # ty: ignore[possibly-missing-submodule]
+    if torch.version.cuda is None:
         # CPU-only torch build (e.g., Python 3.8 with torch+cpu)
         return (torch.device("cpu"),)
     return (torch.device("cpu"), torch.device("cuda"))

@@ -60,7 +60,13 @@ python.toolchain(
 python.toolchain(
     python_version = "3.8",
 )
-use_repo(python, "python_3_11", "python_3_8", "python_versions")
+python.toolchain(
+    python_version = "3.12",
+)
+python.toolchain(
+    python_version = "3.13",
+)
+use_repo(python, "python_3_11", "python_3_12", "python_3_13", "python_3_8", "python_versions")
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
@@ -75,6 +81,20 @@ pip.parse(
     hub_name = "ncore_pip_deps",
     python_version = "3.8",
     requirements_lock = "//deps/pip:requirements_3_8.txt",
+)
+pip.parse(
+    experimental_extra_index_urls = ["https://download.pytorch.org/whl/cpu"],  # PyTorch CPU wheels
+    experimental_index_url = "https://pypi.org/simple",  # download wheels via bazel downloader instead of pip
+    hub_name = "ncore_pip_deps",
+    python_version = "3.12",
+    requirements_lock = "//deps/pip:requirements_3_12.txt",
+)
+pip.parse(
+    experimental_extra_index_urls = ["https://download.pytorch.org/whl/cpu"],  # PyTorch CPU wheels
+    experimental_index_url = "https://pypi.org/simple",  # download wheels via bazel downloader instead of pip
+    hub_name = "ncore_pip_deps",
+    python_version = "3.13",
+    requirements_lock = "//deps/pip:requirements_3_13.txt",
 )
 
 # Patch torch to preload CUDA dependencies from nvidia pip packages before loading
