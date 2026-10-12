@@ -27,6 +27,7 @@ update of a node: they are kept in memory while writing and are appended (top-do
 
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import os
@@ -209,6 +210,37 @@ class IndexedTarStore:
             value = self._file.read(record.size)
             self._file.seek(position)
             return value
+
+    @property
+    def is_remote(self) -> bool:
+        """True for archives opened for reading on asynchronous fsspec filesystems (e.g., s3fs, gcsfs, http), whose
+        records are read via asynchronous range requests by :meth:`read_async`"""
+        return self._async_fs() is not None
+
+    async def read_async(self, key: str) -> bytes:
+        """Reads the payload of a record asynchronously (raises KeyError if it doesn't exist).
+
+        Records of remote archives (see :attr:`is_remote`) are read via asynchronous range requests (concurrent reads
+        overlap), all other records synchronously (see :meth:`__getitem__`).
+        """
+        if (fs := self._async_fs()) is None or key in self._node_metadata:
+            return self[key]
+        record = self._records[key]
+        if ((tail := self._tail) is not None and record.offset >= tail.start) or record.size == 0:
+            return self[key]
+
+        request = fs._cat_file(self._itar_upath.path, start=record.offset, end=record.offset + record.size)
+        if (fs_loop := getattr(fs, "loop", None)) is None or fs_loop is asyncio.get_running_loop():
+            return await request
+        # (filesystems are bound to fsspec's I/O event loop, their sessions can't be used on other event loops)
+        return await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(request, fs_loop))
+
+    def _async_fs(self) -> Any:
+        """The asynchronous fsspec filesystem of remote archives opened for reading (None otherwise)"""
+        if self._mode != "r" or self._pread_fd is not None:
+            return None
+        fs = self._itar_upath.fs
+        return fs if getattr(fs, "async_impl", False) and hasattr(fs, "_cat_file") else None
 
     def __setitem__(self, key: str, value: Union[bytes, bytearray, memoryview]) -> None:
         """Appends a record (requires write mode, raises ValueError if the record exists already). Node metadata

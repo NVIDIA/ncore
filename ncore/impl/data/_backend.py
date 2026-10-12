@@ -198,6 +198,10 @@ class Backend(Protocol):
         """Reads (a selection of) the data of an array (0-dimensional selections may result in numpy scalars)"""
         ...
 
+    async def read_async(self, array: zarr.Array, selection: Selection) -> object:
+        """Reads (a selection of) the data of an array asynchronously, without blocking the running event loop"""
+        ...
+
     def compression(self, array: zarr.Array) -> Optional[BloscCompression]:
         """The blosc compression of an array (None if uncompressed, raises ValueError for other compressors)"""
         ...

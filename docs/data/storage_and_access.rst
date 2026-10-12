@@ -238,6 +238,50 @@ V4 sequences are loaded by specifying one or more component store paths:
    poses_readers = reader.open_component_readers(PosesComponent.Reader)
    camera_readers = reader.open_component_readers(CameraSensorComponent.Reader)
 
+Asynchronous Reads
+~~~~~~~~~~~~~~~~~~
+
+All component reader methods reading array data have asynchronous variants
+(``*_async``, e.g. ``get_frame_data_async``, ``get_frame_ray_bundle_data_async``,
+``get_generic_data_async``), returning the same data. Awaiting multiple reads
+concurrently overlaps their I/O and decompression (e.g., range requests to remote
+storage), and the running event loop isn't blocked (blocking work, such as
+decompression, runs on worker threads):
+
+.. code-block:: python
+
+   import asyncio
+
+   lidar = reader.open_component_readers(LidarSensorComponent.Reader)["lidar"]
+
+   async def load_frames(timestamps_us):
+       return await asyncio.gather(
+           *(lidar.get_frame_ray_bundle_data_async(ts, "direction") for ts in timestamps_us)
+       )
+
+   directions = asyncio.run(load_frames(lidar.frames_timestamps_us[:, 1].tolist()))
+
+Metadata (attributes, names, timestamps) is held in memory and only provided
+synchronously. Custom components can implement asynchronous accessors via
+``self._group.array(path).read_async()``.
+
+.. note::
+
+   Each in-flight read holds its decompressed data in memory. When reading many large
+   frames, bound the number of concurrent reads (e.g., to the number of CPU cores, or
+   higher for high-latency remote storage) instead of gathering all of them at once:
+
+   .. code-block:: python
+
+      async def load_frames(timestamps_us, max_concurrent_reads=16):
+          semaphore = asyncio.Semaphore(max_concurrent_reads)
+
+          async def load(ts):
+              async with semaphore:
+                  return await lidar.get_frame_ray_bundle_data_async(ts, "direction")
+
+          return await asyncio.gather(*(load(ts) for ts in timestamps_us))
+
 .. _cloud_storage_access:
 
 Cloud and Remote Storage Access

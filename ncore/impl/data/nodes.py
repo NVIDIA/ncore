@@ -193,9 +193,23 @@ class Array(_Node):
         """Reads (a selection of) the data of the array (0-dimensional selections result in 0-d arrays)"""
         return np.asarray(_backend.read(self._array, selection))
 
+    async def read_async(self, selection: Selection = Ellipsis) -> npt.NDArray[Any]:
+        """Reads (a selection of) the data of the array asynchronously, see :meth:`read`.
+
+        Concurrent reads (e.g., via ``asyncio.gather``) overlap their I/O (e.g., range requests of remote archives) and
+        decompression, the running event loop isn't blocked (blocking work runs on worker threads).
+        """
+        return np.asarray(await _backend.read_async(self._array, selection))
+
     def read_bytes(self) -> bytes:
         """Reads a binary blob stored by :meth:`Group.create_bytes_array`"""
-        value = _backend.read(self._array, ())
+        return self._blob(_backend.read(self._array, ()))
+
+    async def read_bytes_async(self) -> bytes:
+        """Reads a binary blob asynchronously, see :meth:`read_bytes` and :meth:`read_async`"""
+        return self._blob(await _backend.read_async(self._array, ()))
+
+    def _blob(self, value: object) -> bytes:
         if isinstance(value, bytes):  # fixed-length bytes scalar (trailing NUL bytes are stripped)
             return bytes(value)
         if isinstance(value, np.ndarray) and value.dtype.kind == "S" and value.ndim == 0:

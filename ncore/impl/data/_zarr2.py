@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 from typing import TYPE_CHECKING, Any, Iterator, List, Literal, Optional, Tuple, Union
@@ -166,6 +167,10 @@ class Backend:
 
     def read(self, array: zarr.Array, selection: Selection) -> object:
         return _z(array)[selection]
+
+    async def read_async(self, array: zarr.Array, selection: Selection) -> object:
+        # (zarr-python 2 is synchronous: reads run on worker threads, to not block the running event loop)
+        return await asyncio.get_running_loop().run_in_executor(None, self.read, array, selection)
 
     def compression(self, array: zarr.Array) -> Optional[BloscCompression]:
         if (compressor := _z(array).compressor) is None:

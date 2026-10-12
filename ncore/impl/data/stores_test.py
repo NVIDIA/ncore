@@ -894,6 +894,140 @@ class TestDirectReads(unittest.TestCase):
         self.assertIs(_zarr3._parallel(), parent)
 
 
+class TestAsyncReads(unittest.TestCase):
+    """Asynchronous reads return the same data as synchronous reads, without blocking the running event loop"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.zarr_format = max(nodes.SUPPORTED_ZARR_FORMATS)
+        self.path = os.path.join(self._tmp.name, "store.itar")
+        _write(IndexedTarStore(self.path, mode="w"), zarr_format=self.zarr_format)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _reads(self, root: nodes.Group) -> List[Any]:
+        return [
+            root.array("foo").read(),
+            root.array("subgroup/foo").read((slice(1, 3),)),
+            root.array("subgroup/foo").read((2, slice(None), 0)),
+            root.array("subgroup/empty").read(),
+            root.array("subgroup/blob").read_bytes(),
+        ]
+
+    async def _reads_async(self, root: nodes.Group) -> List[Any]:
+        return list(
+            await asyncio.gather(
+                root.array("foo").read_async(),
+                root.array("subgroup/foo").read_async((slice(1, 3),)),
+                root.array("subgroup/foo").read_async((2, slice(None), 0)),
+                root.array("subgroup/empty").read_async(),
+                root.array("subgroup/blob").read_bytes_async(),
+            )
+        )
+
+    def _assert_equal(self, actual: List[Any], expected: List[Any]) -> None:
+        self.assertEqual(len(actual), len(expected))
+        for a, e in zip(actual, expected):
+            if isinstance(e, bytes):
+                self.assertEqual(a, e)
+            else:
+                self.assertEqual((a.dtype, a.shape), (e.dtype, e.shape))
+                np.testing.assert_array_equal(a, e)
+
+    @parameterized.parameterized.expand([("direct",), ("zarr",)])
+    def test_async_reads(self, mode: str):
+        root = open_store(IndexedTarStore(self.path))
+        expected = self._reads(root)
+        with mock.patch.dict(os.environ, {"NCORE_ZARR3_DIRECT_READS": "1" if mode == "direct" else "0"}):
+            self._assert_equal(asyncio.run(self._reads_async(root)), expected)  # (an application's event loop)
+            if ZARR_PYTHON_3:
+                from ncore.impl.data import _zarr3
+
+                self._assert_equal(_zarr3.run(self._reads_async(root)), expected)  # (the loop of the calling thread)
+
+    @parameterized.parameterized.expand([("direct",), ("zarr",)])
+    def test_async_reads_dont_block_event_loops(self, mode: str):
+        """Blocking parts of reads awaited on event loops of applications (record reads, decompression) run on
+        worker threads"""
+        root = open_store(IndexedTarStore(self.path))
+        expected = self._reads(root)
+        threads = set()
+        getitem = IndexedTarStore.__getitem__
+
+        def recording_getitem(store: IndexedTarStore, key: str) -> bytes:
+            threads.add(threading.current_thread().name)
+            return getitem(store, key)
+
+        with mock.patch.dict(os.environ, {"NCORE_ZARR3_DIRECT_READS": "1" if mode == "direct" else "0"}):
+            with mock.patch.object(IndexedTarStore, "__getitem__", recording_getitem):
+                self._assert_equal(asyncio.run(self._reads_async(root)), expected)
+        self.assertTrue(threads, "no record reads")
+        self.assertNotIn(threading.current_thread().name, threads)
+
+    @parameterized.parameterized.expand([("direct",), ("zarr",)])
+    def test_async_reads_on_the_loop_of_the_calling_thread_run_inline(self, mode: str):
+        """Reads awaited on the event loop of the calling thread (see _zarr3.run) don't hand off to threads"""
+        if not ZARR_PYTHON_3:
+            self.skipTest("event loops of the calling threads (zarr-python 3)")
+        from ncore.impl.data import _zarr3
+
+        root = open_store(IndexedTarStore(self.path))
+        expected = self._reads(root)
+        threads = set()
+        getitem = IndexedTarStore.__getitem__
+
+        def recording_getitem(store: IndexedTarStore, key: str) -> bytes:
+            threads.add(threading.current_thread().name)
+            return getitem(store, key)
+
+        with mock.patch.dict(os.environ, {"NCORE_ZARR3_DIRECT_READS": "1" if mode == "direct" else "0"}):
+            with mock.patch.object(IndexedTarStore, "__getitem__", recording_getitem):
+                self._assert_equal(_zarr3.run(self._reads_async(root)), expected)
+        self.assertEqual(threads, {threading.current_thread().name})
+
+    def test_sync_reads_within_event_loops(self):
+        """Synchronous reads also work within running event loops"""
+        root = open_store(IndexedTarStore(self.path))
+        expected = self._reads(root)
+
+        async def main() -> List[Any]:
+            return self._reads(open_store(IndexedTarStore(self.path)))
+
+        self._assert_equal(asyncio.run(main()), expected)
+
+    @unittest.skipUnless(ZARR_PYTHON_3, "range requests of remote archives (zarr-python 3)")
+    def test_remote_range_requests(self):
+        """Chunks of remote archives are read via asynchronous range requests on the event loop of their filesystem,
+        also when awaited on other event loops (e.g., fsspec's http filesystem binds its sessions to fsspec's I/O
+        loop)"""
+        import fsspec.asyn
+
+        class LoopBoundFileSystem(fsspec.asyn.AsyncFileSystem):
+            """A filesystem whose coroutines only work on its own event loop (as fsspec's http filesystem)"""
+
+            async_impl = True
+
+            async def _cat_file(self, path: str, start: Optional[int] = None, end: Optional[int] = None, **_: Any):
+                if asyncio.get_running_loop() is not self.loop:
+                    raise RuntimeError("Timeout context manager should be used inside a task")
+                requests.append((start, end))
+                with open(path, "rb") as f:
+                    f.seek(start or 0)
+                    return f.read(None if end is None else end - (start or 0))
+
+        requests: List[Tuple[Optional[int], Optional[int]]] = []
+        fs = LoopBoundFileSystem(loop=fsspec.asyn.get_loop())
+        store = IndexedTarStore(self.path, index_tail_read_size=None)  # (chunks aren't read with the index)
+        root = open_store(store)
+        expected = self._reads(root)
+        with mock.patch.object(IndexedTarStore, "_async_fs", lambda self: fs):
+            self.assertTrue(store.is_remote)
+            self._assert_equal(asyncio.run(self._reads_async(root)), expected)
+        self.assertGreaterEqual(len(requests), 4)  # (range requests of the chunks)
+        self.assertFalse(IndexedTarStore(self.path).is_remote)  # (local archives use positional reads)
+
+
 @parameterized.parameterized_class(("zarr_format",), [(zarr_format,) for zarr_format in ZARR_FORMATS])
 class TestNodes(unittest.TestCase):
     """Typed node API"""
