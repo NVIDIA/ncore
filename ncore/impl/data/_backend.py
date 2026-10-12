@@ -22,7 +22,7 @@ import dataclasses
 import sys
 import typing
 
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Mapping, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Mapping, Optional, Tuple, Union, cast
 
 import numcodecs
 import zarr
@@ -46,6 +46,11 @@ else:
 
 #: Key of the compressed consolidated metadata of zarr format v2 hierarchies (CBOR + LZMA encoded ``.zmetadata``)
 V2_CONSOLIDATED_METADATA_KEY = ".zmetadata.cbor.xz"
+
+#: Key of the compressed consolidated metadata of zarr format v3 hierarchies (CBOR + zlib encoded root ``zarr.json``
+#: including the consolidated metadata of the hierarchy, which decodes several times faster than CBOR + LZMA). The root
+#: ``zarr.json`` of such hierarchies is only stored in this compressed form.
+V3_CONSOLIDATED_METADATA_KEY = "zarr.json.cbor.zlib"
 
 #: Basic selections of array data (integers, slices and Ellipsis)
 Selection = Union[int, slice, EllipsisType, Tuple[Union[int, slice, EllipsisType], ...]]
@@ -104,6 +109,20 @@ class BloscCompression:
             raise ValueError(f"Unsupported blosc shuffle {self.shuffle!r}, supported: {_BLOSC_SHUFFLES}")
         if self.blocksize < 0:
             raise ValueError(f"Blosc block size needs to be non-negative, got {self.blocksize}")
+
+    def to_config(self) -> Dict[str, object]:
+        """The configuration of the zarr format v3 ``blosc`` codec"""
+        return {"cname": self.cname, "clevel": self.clevel, "shuffle": self.shuffle, "blocksize": self.blocksize}
+
+    @staticmethod
+    def from_config(config: Mapping[str, object]) -> BloscCompression:
+        """From the configuration of a zarr format v3 ``blosc`` codec"""
+        return BloscCompression(
+            cname=cast(BloscCname, config["cname"]),
+            clevel=cast(int, config["clevel"]),
+            shuffle=cast(BloscShuffle, config["shuffle"]),
+            blocksize=cast(int, config.get("blocksize", 0)),
+        )
 
     def to_numcodecs(self) -> numcodecs.Blosc:
         return numcodecs.Blosc(
@@ -215,6 +234,7 @@ __all__ = [
     "Selection",
     "StoreLike",
     "V2_CONSOLIDATED_METADATA_KEY",
+    "V3_CONSOLIDATED_METADATA_KEY",
     "ZarrStore",
     "is_v2_metadata_key",
 ]

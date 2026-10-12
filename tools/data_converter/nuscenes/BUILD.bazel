@@ -65,6 +65,7 @@ alias(
 # Integration test for the nuScenes converter (requires NUSCENES_DIR env var)
 pytest_test(
     name = "pytest_converter",
+    size = "large",  # converts the test sequence for all store types / zarr formats
     srcs = ["converter_test.py"],
     python_versions = ["3.11"],
     tags = ["manual"],  # Only run when explicitly requested (needs external data)

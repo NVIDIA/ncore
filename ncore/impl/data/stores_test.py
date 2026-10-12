@@ -24,11 +24,13 @@ import tarfile
 import tempfile
 import threading
 import unittest
+import zlib
 
 from pathlib import Path
 from typing import Any, Optional, Tuple, cast
 from unittest import mock
 
+import cbor2
 import numpy as np
 import parameterized
 import zarr
@@ -38,6 +40,7 @@ from ncore.impl.data.encoding import decode_cbor_xz
 from ncore.impl.data.itar import is_node_metadata_key
 from ncore.impl.data.stores import (
     V2_CONSOLIDATED_METADATA_KEY,
+    V3_CONSOLIDATED_METADATA_KEY,
     IndexedTarStore,
     StoreLike,
     close_store,
@@ -55,6 +58,14 @@ INDEX_TAIL_READ_SIZES = [None, 1, 512, 513, 1 << 10, 1 << 20]
 _ROOT_ATTRIBUTES = {"some": "thing"}
 
 ZARR_PYTHON_3 = int(zarr.__version__.split(".", 1)[0]) >= 3
+
+#: All zarr formats (tests of zarr formats unsupported by the installed zarr-python version are skipped)
+ZARR_FORMATS = (2, 3)
+
+
+def _require(test: unittest.TestCase, zarr_format: int) -> None:
+    if zarr_format not in nodes.SUPPORTED_ZARR_FORMATS:
+        test.skipTest(f"zarr format v{zarr_format} requires zarr-python 3")
 
 
 def _fill_reference(root: nodes.Group) -> None:
@@ -88,8 +99,12 @@ def _check_reference(test: unittest.TestCase, root: nodes.Group) -> None:
         root.array("missing")
 
 
-def _write(store: StoreLike, consolidate: bool = True) -> None:
-    _fill_reference(create_root_group(store, _ROOT_ATTRIBUTES))
+def _decode_v3_root(value: bytes) -> Any:
+    return cbor2.loads(zlib.decompress(value))
+
+
+def _write(store: StoreLike, consolidate: bool = True, zarr_format: int = 2) -> None:
+    _fill_reference(create_root_group(store, _ROOT_ATTRIBUTES, zarr_format=zarr_format))
     if consolidate:
         consolidate_store(store)
     close_store(store)
@@ -271,14 +286,22 @@ class TestStores(unittest.TestCase):
         return open_directory_store(self.directory_path)
 
     @parameterized.parameterized.expand(
-        [(store_type, consolidated) for store_type in ("itar", "directory") for consolidated in (True, False)]
+        [
+            (store_type, consolidated, zarr_format)
+            for store_type in ("itar", "directory")
+            for consolidated in (True, False)
+            for zarr_format in ZARR_FORMATS
+        ]
     )
-    def test_reserialization(self, store_type: str, consolidated: bool):
-        _write(self._store(store_type, "w"))
+    def test_reserialization(self, store_type: str, consolidated: bool, zarr_format: int):
+        _require(self, zarr_format)
+        _write(self._store(store_type, "w"), zarr_format=zarr_format)
 
         store = self._store(store_type, "r")
         root = open_store(store, consolidated)
         _check_reference(self, root)
+        self.assertEqual(root.zarr_format, zarr_format)
+        self.assertEqual(root.array("subgroup/foo").zarr_format, zarr_format)
 
         if isinstance(store, IndexedTarStore):
             self.assertIs(group_store(root), store)
@@ -286,9 +309,12 @@ class TestStores(unittest.TestCase):
             store.reload_resources()
             _check_reference(self, root)
 
-    @parameterized.parameterized.expand([(size,) for size in INDEX_TAIL_READ_SIZES])
-    def test_consolidated_open_reads_no_node_metadata(self, index_tail_read_size: Optional[int]):
-        _write(self._store("itar", "w"))
+    @parameterized.parameterized.expand(
+        [(size, zarr_format) for size in INDEX_TAIL_READ_SIZES for zarr_format in ZARR_FORMATS]
+    )
+    def test_consolidated_open_reads_no_node_metadata(self, index_tail_read_size: Optional[int], zarr_format: int):
+        _require(self, zarr_format)
+        _write(self._store("itar", "w"), zarr_format=zarr_format)
 
         store = IndexedTarStore(self.itar_path, index_tail_read_size=index_tail_read_size)
         with mock.patch.object(
@@ -296,20 +322,40 @@ class TestStores(unittest.TestCase):
         ) as getitem:
             _check_reference(self, open_store(store, consolidated=True))
         read_keys = [call.args[1] for call in getitem.call_args_list]
-        self.assertIn(V2_CONSOLIDATED_METADATA_KEY, read_keys)
-        self.assertEqual([key for key in read_keys if key.endswith((".zarray", ".zgroup", ".zattrs"))], [])
+        self.assertIn(V2_CONSOLIDATED_METADATA_KEY if zarr_format == 2 else V3_CONSOLIDATED_METADATA_KEY, read_keys)
+        self.assertEqual([key for key in read_keys if is_node_metadata_key(key)], [])
 
-    @parameterized.parameterized.expand([("itar",), ("directory",)])
-    def test_missing_consolidated_metadata(self, store_type: str):
-        _write(self._store(store_type, "w"), consolidate=False)
+    @parameterized.parameterized.expand(
+        [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in ZARR_FORMATS]
+    )
+    def test_missing_consolidated_metadata(self, store_type: str, zarr_format: int):
+        _require(self, zarr_format)
+        _write(self._store(store_type, "w"), consolidate=False, zarr_format=zarr_format)
         with self.assertRaises(KeyError):
             open_store(self._store(store_type, "r"), consolidated=True)
         _check_reference(self, open_store(self._store(store_type, "r"), consolidated=False))
 
-    def test_stores_are_identical(self):
+    @parameterized.parameterized.expand([(zarr_format,) for zarr_format in ZARR_FORMATS])
+    def test_unconsolidated_open_reads_node_metadata(self, zarr_format: int):
+        """Hierarchies opened without consolidated metadata are resolved from their node metadata records (e.g., nodes
+        added after consolidating, as component writers extending existing directory stores)"""
+        _require(self, zarr_format)
+        root = create_root_group(store := self._store("directory", "w"), _ROOT_ATTRIBUTES, zarr_format=zarr_format)
+        root.create_array("before", np.zeros(2))
+        consolidate_store(store)
+        root.create_array("after", np.ones(2))
+
+        self.assertEqual(
+            sorted(open_store(self._store("directory", "r"), consolidated=False).members()), ["after", "before"]
+        )
+        self.assertEqual(sorted(open_store(self._store("directory", "r"), consolidated=True).members()), ["before"])
+
+    @parameterized.parameterized.expand([(zarr_format,) for zarr_format in ZARR_FORMATS])
+    def test_stores_are_identical(self, zarr_format: int):
         """Indexed tar archives and directories store the same records"""
-        _write(self._store("itar", "w"))
-        _write(self._store("directory", "w"))
+        _require(self, zarr_format)
+        _write(self._store("itar", "w"), zarr_format=zarr_format)
+        _write(self._store("directory", "w"), zarr_format=zarr_format)
 
         archive = IndexedTarStore(self.itar_path)
         files = {
@@ -321,6 +367,8 @@ class TestStores(unittest.TestCase):
         for key in archive.keys():
             if key == V2_CONSOLIDATED_METADATA_KEY:  # (ordered by the record order of the stores)
                 self.assertEqual(decode_cbor_xz(archive[key]), decode_cbor_xz(files[key]))
+            elif key == V3_CONSOLIDATED_METADATA_KEY:
+                self.assertEqual(_decode_v3_root(archive[key]), _decode_v3_root(files[key]))
             else:
                 self.assertEqual(archive[key], files[key], key)
 
@@ -446,6 +494,52 @@ class TestStores(unittest.TestCase):
             }
         self.assertLessEqual({"zeros/0.0", "zeros/1.0", "blob/0"}, keys)
 
+    @parameterized.parameterized.expand([("itar",), ("directory",)])
+    def test_zarr_format_v3_layout(self, store_type: str):
+        """The root zarr.json of consolidated zarr format v3 hierarchies is stored compressed only (CBOR + zlib, including
+        the consolidated metadata), all other node metadata records as written by zarr-python"""
+        _require(self, 3)
+        _write(self._store(store_type, "w"), zarr_format=3)
+        if store_type == "itar":
+            records = {key: IndexedTarStore(self.itar_path)[key] for key in IndexedTarStore(self.itar_path)}
+        else:
+            root_path = Path(self.directory_path)
+            records = {str(p.relative_to(root_path)): p.read_bytes() for p in root_path.rglob("*") if p.is_file()}
+
+        self.assertIn(V3_CONSOLIDATED_METADATA_KEY, records)
+        self.assertNotIn(V2_CONSOLIDATED_METADATA_KEY, records)
+        self.assertFalse(any(key.endswith((".zarray", ".zgroup", ".zattrs")) for key in records))
+        node_documents = {
+            key[: -len("/zarr.json")]: json.loads(value) for key, value in records.items() if key.endswith("/zarr.json")
+        }
+        self.assertEqual(sorted(node_documents), ["foo", "subgroup", "subgroup/blob", "subgroup/empty", "subgroup/foo"])
+
+        root = _decode_v3_root(records[V3_CONSOLIDATED_METADATA_KEY])
+        self.assertEqual((root["zarr_format"], root["node_type"], root["attributes"]), (3, "group", _ROOT_ATTRIBUTES))
+        consolidated = root["consolidated_metadata"]
+        self.assertEqual((consolidated["kind"], consolidated["must_understand"]), ("inline", False))
+        self.assertEqual(consolidated["metadata"], node_documents)
+
+        # binary blobs are uint8 arrays, compression is the blosc codec of zarr format v3
+        self.assertEqual(
+            (node_documents["subgroup/blob"]["data_type"], node_documents["subgroup/blob"]["shape"]), ("uint8", [21])
+        )
+        self.assertEqual([codec["name"] for codec in node_documents["subgroup/foo"]["codecs"]], ["bytes", "blosc"])
+        self.assertEqual(
+            {k: v for k, v in node_documents["subgroup/foo"]["codecs"][1]["configuration"].items() if k != "typesize"},
+            {"cname": "lz4", "clevel": 5, "shuffle": "bitshuffle", "blocksize": 0},
+        )
+
+    def test_zarr_format_v3_requires_zarr_python_3(self):
+        if ZARR_PYTHON_3:
+            self.skipTest("zarr-python 2 only")
+        with self.assertRaisesRegex(ValueError, "zarr format v3 is not supported"):
+            create_root_group(self._store("itar", "w"), {}, zarr_format=3)
+
+    def test_unsupported_zarr_formats(self):
+        with self.assertRaisesRegex(ValueError, "zarr format v4 is not supported"):
+            create_root_group(self._store("directory", "w"), {}, zarr_format=4)
+
     def test_empty(self):
         """Stores without a root group can be consolidated, but not opened"""
         store = IndexedTarStore(self.itar_path, mode="w")
@@ -454,8 +548,10 @@ class TestStores(unittest.TestCase):
         with self.assertRaises(Exception):  # (zarr-python's error of missing groups)
             open_store(IndexedTarStore(self.itar_path), consolidated=True)
 
-    def test_read_only(self):
-        _write(self._store("itar", "w"))
+    @parameterized.parameterized.expand([(zarr_format,) for zarr_format in ZARR_FORMATS])
+    def test_read_only(self, zarr_format: int):
+        _require(self, zarr_format)
+        _write(self._store("itar", "w"), zarr_format=zarr_format)
         root = open_store(IndexedTarStore(self.itar_path))
         with self.assertRaises(Exception):
             root.create_group("new")
@@ -471,10 +567,13 @@ class TestHierarchies(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    @parameterized.parameterized.expand([(True,), (False,)])
-    def test_interleaved_hierarchy(self, consolidated: bool):
+    @parameterized.parameterized.expand(
+        [(consolidated, zarr_format) for consolidated in (True, False) for zarr_format in ZARR_FORMATS]
+    )
+    def test_interleaved_hierarchy(self, consolidated: bool, zarr_format: int):
+        _require(self, zarr_format)
         store = IndexedTarStore(self.path, mode="w")
-        root = create_root_group(store, {})
+        root = create_root_group(store, {}, zarr_format=zarr_format)
         a, b = root.create_group("a"), root.create_group("b")
         for i in range(3):  # members of a and b created alternately
             a.create_array(f"x{i}", np.full(2, i))
@@ -587,13 +686,19 @@ class TestZarr3Backend(unittest.TestCase):
             self.assertIsNone(_zarr3.run(tar_store.get("missing", default_buffer_prototype())))
 
 
+@parameterized.parameterized_class(("zarr_format",), [(zarr_format,) for zarr_format in ZARR_FORMATS])
 class TestNodes(unittest.TestCase):
     """Typed node API"""
 
+    zarr_format: int
+
     def setUp(self):
+        _require(self, self.zarr_format)
         self._tmp = tempfile.TemporaryDirectory()
         self.root = create_root_group(
-            open_directory_store(self._tmp.name), {"s": "x", "i": 3, "b": True, "l": [1], "d": {"k": 1}}
+            open_directory_store(self._tmp.name),
+            {"s": "x", "i": 3, "b": True, "l": [1], "d": {"k": 1}},
+            zarr_format=self.zarr_format,
         )
 
     def tearDown(self):
@@ -625,6 +730,24 @@ class TestNodes(unittest.TestCase):
         self.assertEqual(self.root.create_array("c", np.zeros((10, 0)), chunks=(4, 0)).zarr.chunks, (4, 1))
         with self.assertRaises(TypeError):
             array.read_bytes()
+
+    def test_bytes_arrays(self):
+        for data in (b"\x89PNG\x00binary", b"", b"\x00"):
+            array = self.root.create_bytes_array(f"blob{len(data)}", data, attributes={"format": "png"})
+            self.assertEqual(array.zarr_format, self.zarr_format)
+            self.assertEqual(array.read_bytes(), data.rstrip(b"\x00") if self.zarr_format == 2 else data)
+            self.assertEqual(array.attrs, {"format": "png"})
+            self.assertIsNone(array.compression)
+        # (zarr format v2: fixed-length bytes, as ncore <= 19.8, which strip trailing NUL bytes)
+        self.assertEqual(self.root.array("blob11").dtype, np.dtype("S11") if self.zarr_format == 2 else np.uint8)
+
+    @parameterized.parameterized.expand(
+        [(None,), (nodes.BloscCompression(),), (nodes.BloscCompression("zstd", 3, "shuffle", 256),)]
+    )
+    def test_compression(self, compression: Optional[nodes.BloscCompression]):
+        array = self.root.create_array("a", np.arange(1000, dtype=np.int32), compression=compression)
+        self.assertEqual(array.compression, compression)
+        np.testing.assert_array_equal(array.read(), np.arange(1000))
 
     def test_groups(self):
         self.root.create_group("b")

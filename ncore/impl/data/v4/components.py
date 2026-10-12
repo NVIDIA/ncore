@@ -136,6 +136,7 @@ class SequenceComponentGroupsWriter:
         store_base_name: str,
         sequence_reader: SequenceComponentGroupsReader,
         store_type: Literal["itar", "directory"] = "itar",  # valid values: ['itar', 'directory']
+        zarr_format: Literal[2, 3] = 2,
     ) -> SequenceComponentGroupsWriter:
         """Creates a SequenceComponentGroupsWriter from an existing SequenceComponentGroupsReader instance to share consistent per-sequence meta-data"""
 
@@ -146,6 +147,7 @@ class SequenceComponentGroupsWriter:
             sequence_timestamp_interval_us=sequence_reader.sequence_timestamp_interval_us,
             generic_meta_data=sequence_reader.generic_meta_data,
             store_type=store_type,
+            zarr_format=zarr_format,
         )
 
     def __init__(
@@ -160,6 +162,9 @@ class SequenceComponentGroupsWriter:
         generic_meta_data: Dict[str, types.JsonLike],
         # Zarr store type: either serialize as .itar archive store (default / production) or plain "directory" store (simpler for introspection / asynchronous / external setup)
         store_type: Literal["itar", "directory"] = "itar",  # valid values: ['itar', 'directory']
+        # On-disk zarr format of the component stores: format v2 (default) is readable with all zarr-python versions
+        # (and all ncore versions), format v3 requires zarr-python 3 for writing *and* reading
+        zarr_format: Literal[2, 3] = 2,
     ):
         """
         Instantiate sequence component groups writer and initialize the default data groups and file stores for a given sequence and sensor IDs
@@ -177,6 +182,7 @@ class SequenceComponentGroupsWriter:
             str, Tuple[nodes.Group, UPath]
         ] = {}  # maps component group names to stores, store path, and base groups
         self._store_type = store_type
+        self._zarr_format = nodes.check_zarr_format(zarr_format)
 
         # registered component writers
         self._component_writers: dict[
@@ -194,6 +200,11 @@ class SequenceComponentGroupsWriter:
     @property
     def generic_meta_data(self) -> Dict[str, types.JsonLike]:
         return self._generic_meta_data
+
+    @property
+    def zarr_format(self) -> int:
+        """The on-disk zarr format of the written component stores"""
+        return self._zarr_format
 
     def get_base_group(self, component_group_name: Optional[str]) -> nodes.Group:
         """Lazily initializes ncore base-groups and underlying stores on demand"""
@@ -240,6 +251,7 @@ class SequenceComponentGroupsWriter:
                 "version": VERSION,
                 "component_group_name": component_group_name,
             },
+            zarr_format=self._zarr_format,
         )
 
         # Create store / base-group mapping

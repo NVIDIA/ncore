@@ -23,9 +23,15 @@ from typing import Union
 
 from upath import UPath
 
-from ncore.impl.data._backend import V2_CONSOLIDATED_METADATA_KEY, Attributes, StoreLike, ZarrStore
+from ncore.impl.data._backend import (
+    V2_CONSOLIDATED_METADATA_KEY,
+    V3_CONSOLIDATED_METADATA_KEY,
+    Attributes,
+    StoreLike,
+    ZarrStore,
+)
 from ncore.impl.data.itar import IndexedTarStore
-from ncore.impl.data.nodes import Group, _backend
+from ncore.impl.data.nodes import Group, _backend, check_zarr_format
 
 
 def open_directory_store(path: Union[str, Path, UPath]) -> ZarrStore:
@@ -33,9 +39,10 @@ def open_directory_store(path: Union[str, Path, UPath]) -> ZarrStore:
     return _backend.open_directory_store(str(path))
 
 
-def create_root_group(store: StoreLike, attributes: Attributes) -> Group:
-    """Creates the root group of a hierarchy in a store"""
-    return Group(_backend.create_root_group(store, 2, attributes))
+def create_root_group(store: StoreLike, attributes: Attributes, *, zarr_format: int = 2) -> Group:
+    """Creates the root group of a hierarchy in a store, in zarr format v2 (default, readable with all zarr-python
+    versions) or v3 (requires zarr-python 3 for writing and reading)"""
+    return Group(_backend.create_root_group(store, check_zarr_format(zarr_format), attributes))
 
 
 def open_store(store: StoreLike, consolidated: bool = True) -> Group:
@@ -64,6 +71,7 @@ __all__ = [
     "IndexedTarStore",
     "StoreLike",
     "V2_CONSOLIDATED_METADATA_KEY",
+    "V3_CONSOLIDATED_METADATA_KEY",
     "ZarrStore",
     "close_store",
     "consolidate_store",
