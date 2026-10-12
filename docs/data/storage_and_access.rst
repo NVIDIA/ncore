@@ -170,6 +170,12 @@ read it. Write zarr format v3 only if all consumers of the data use zarr-python 
 or ``--zarr-format 3`` in the data converter CLIs. Readers detect the format
 automatically.
 
+With zarr-python 3, arrays of ``.itar`` archives written by NCore are read with a faster
+direct path (chunks are decompressed directly into the output array, concurrently for
+large arrays). Set ``NCORE_ZARR3_DIRECT_READS=0`` to read all arrays via zarr-python
+instead, e.g. to rule out the direct path when debugging.
+
+
 .. note::
 
    Custom components should access their data via ``self._group``, an
