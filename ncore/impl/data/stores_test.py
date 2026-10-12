@@ -27,7 +27,7 @@ import unittest
 import zlib
 
 from pathlib import Path
-from typing import Any, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 from unittest import mock
 
 import cbor2
@@ -684,6 +684,214 @@ class TestZarr3Backend(unittest.TestCase):
             self.assertEqual(get(SuffixByteRequest(3)), b"789")
             self.assertEqual(get(SuffixByteRequest(30)), b"0123456789")
             self.assertIsNone(_zarr3.run(tar_store.get("missing", default_buffer_prototype())))
+
+
+@unittest.skipUnless(ZARR_PYTHON_3, "zarr-python 3 backend")
+class TestDirectReads(unittest.TestCase):
+    """Direct chunk reads of arrays of indexed tar archives (zarr-python 3) are identical to zarr-python's reads"""
+
+    #: Arrays (dtype, shape, chunks, compression, missing chunks) of all supported kinds
+    ARRAYS = {
+        "f4_multi": (np.float32, (7, 5, 3), (3, 2, 3), nodes.BloscCompression(), ()),
+        "u2_single_uncompressed": (np.uint16, (11,), (11,), None, ()),
+        "i8_multi_uncompressed": (np.int64, (9, 4), (4, 3), None, ()),
+        "bool": (np.bool_, (6, 6), (4, 4), nodes.BloscCompression(cname="zstd", shuffle="noshuffle"), ()),
+        "u1_partial_last": (np.uint8, (13,), (5,), nodes.BloscCompression(shuffle="shuffle"), ()),
+        "f8_missing": (np.float64, (6, 2), (2, 2), nodes.BloscCompression(), ("1.0", "c/1/0")),
+        "f4_empty": (np.float32, (0, 3), (1, 3), nodes.BloscCompression(), ()),
+    }
+
+    SELECTIONS = [
+        Ellipsis,
+        (),
+        0,
+        -1,
+        (slice(1, 4),),
+        (slice(None), 1),
+        (2, slice(0, 2)),
+        (slice(2, 2),),
+        (Ellipsis, 0),
+        (slice(-3, None),),
+        (0, slice(None), slice(1, 2)),  # (dropped axes next to selected single elements)
+        (slice(0, 3), slice(0, 2), 1),  # (complete chunks, not complete arrays)
+    ]
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _write(self, zarr_format: int, skip_records: Tuple[str, ...] = ()) -> str:
+        """Writes all arrays (chunks of `missing chunks` dropped from the archive) and returns the archive path"""
+        rng = np.random.default_rng(1)
+        path = os.path.join(self._tmp.name, f"v{zarr_format}.itar")
+        full = os.path.join(self._tmp.name, f"v{zarr_format}.full.itar")
+        root = create_root_group(store := IndexedTarStore(full, mode="w"), {}, zarr_format=zarr_format)
+        for name, (dtype, shape, chunks, compression, _) in self.ARRAYS.items():
+            data = rng.random(shape) > 0.5 if dtype == np.bool_ else (rng.random(shape) * 1000).astype(dtype)
+            root.create_array(name, data, chunks=chunks, compression=compression)
+        root.create_bytes_array("blob", b"\x89PNG\x00binary")
+        root.create_bytes_array("blob_missing", b"some bytes")
+        consolidate_store(store)
+        close_store(store)
+
+        # copy without the missing chunks (stores of hierarchies written partially, e.g. by other writers)
+        source = IndexedTarStore(full)
+        missing = {f"{name}/{key}" for name, spec in self.ARRAYS.items() for key in spec[4]}
+        missing |= {"blob_missing/0", "blob_missing/c/0"}
+        with IndexedTarStore(path, mode="w") as copy:
+            for key in source.keys():
+                if key not in missing:
+                    copy[key] = source[key]
+        return path
+
+    def _reads(self, path: str) -> Dict[str, Any]:
+        root = open_store(IndexedTarStore(path))
+        out: Dict[str, Any] = {}
+        for name, (_, shape, *_rest) in self.ARRAYS.items():
+            array = root.array(name)
+            for selection in self.SELECTIONS:
+                try:
+                    out[f"{name}[{selection!r}]"] = array.read(selection)
+                except IndexError as e:  # (e.g., integer selections of empty arrays)
+                    out[f"{name}[{selection!r}]"] = type(e)
+        out["blob"] = root.array("blob").read_bytes()
+        # (fill value of missing chunks; zarr-python returns empty fixed-length bytes of dtype |S0)
+        out["blob_missing"] = root.array("blob_missing").read_bytes()
+        return out
+
+    @parameterized.parameterized.expand([(zarr_format,) for zarr_format in ZARR_FORMATS])
+    def test_direct_reads_match_zarr(self, zarr_format: int):
+        from ncore.impl.data import _zarr3
+
+        path = self._write(zarr_format)
+        with mock.patch.object(_zarr3, "_read_direct", wraps=_zarr3._read_direct) as direct:
+            actual = self._reads(path)
+        self.assertGreater(direct.call_count, len(actual) - 10)  # (direct reads were used)
+        with mock.patch.dict(os.environ, {_zarr3.DIRECT_READS_ENV: "0"}):
+            with mock.patch.object(_zarr3, "_read_direct", side_effect=AssertionError("direct read")):
+                expected = self._reads(path)
+
+        self.assertEqual(sorted(actual), sorted(expected))
+        for key, value in expected.items():
+            if isinstance(value, type):
+                self.assertIs(actual[key], value, key)
+                continue
+            actual_value = actual[key]
+            if isinstance(value, bytes):
+                self.assertEqual(actual_value, value, key)
+                continue
+            value = np.asarray(value)
+            self.assertEqual((actual_value.dtype, actual_value.shape), (value.dtype, value.shape), key)
+            np.testing.assert_array_equal(actual_value, value, key)
+            self.assertTrue(actual_value.flags.writeable, key)
+
+    def test_missing_chunks_of_fixed_length_bytes(self):
+        """Missing chunks of fixed-length bytes read as the fill value (empty bytes), as with zarr-python"""
+        root = open_store(IndexedTarStore(self._write(2)))
+        self.assertEqual(root.array("blob_missing").read_bytes(), b"")
+
+    def test_unsupported_selections_use_zarr(self):
+        from ncore.impl.data import _zarr3
+
+        root = open_store(IndexedTarStore(self._write(3)))
+        array = root.array("f4_multi")
+        with mock.patch.object(_zarr3, "_read_direct", side_effect=AssertionError("direct read")):
+            expected = array.read((slice(0, 6, 2),))  # (non-unit step)
+        np.testing.assert_array_equal(expected, array.read()[0:6:2])
+
+    def test_partial_chunk_selections(self):
+        """Selections of parts of compressed chunks of the output array (no in-place decompression)"""
+        root = open_store(IndexedTarStore(self._write(2)))
+        data = root.array("f4_multi").read()
+        for selection in [(slice(1, 3), slice(0, 2)), (slice(0, 3), slice(0, 2), slice(0, 2)), (slice(3, 7),)]:
+            np.testing.assert_array_equal(root.array("f4_multi").read(selection), data[selection], str(selection))
+
+    def test_stores_opened_for_writing_use_zarr(self):
+        """(node metadata of archives opened for writing is not final)"""
+        from ncore.impl.data import _zarr3
+
+        root = create_root_group(IndexedTarStore(os.path.join(self._tmp.name, "w.itar"), mode="w"), {})
+        self.assertIsNone(_zarr3._direct_read(root.create_array("a", np.arange(4)).zarr))
+
+    def test_non_native_byte_order_uses_zarr(self):
+        from ncore.impl.data import _zarr3
+
+        path = os.path.join(self._tmp.name, "be.itar")
+        data = np.arange(6, dtype=">u4")
+        root = create_root_group(store := IndexedTarStore(path, mode="w"), {})
+        root.create_array("a", data)
+        consolidate_store(store)
+        close_store(store)
+        array = open_store(IndexedTarStore(path)).array("a")
+        self.assertIsNone(_zarr3._direct_read(array.zarr))
+        np.testing.assert_array_equal(array.read(), data)
+
+    def test_directory_stores_use_zarr(self):
+        from ncore.impl.data import _zarr3
+
+        root = create_root_group(store := open_directory_store(os.path.join(self._tmp.name, "dir")), {})
+        root.create_array("a", np.arange(4))
+        consolidate_store(store)
+        self.assertIsNone(
+            _zarr3._direct_read(open_store(open_directory_store(os.path.join(self._tmp.name, "dir"))).array("a").zarr)
+        )
+
+    def test_large_chunks_are_decoded_concurrently(self):
+        from ncore.impl.data import _zarr3
+
+        path = os.path.join(self._tmp.name, "large.itar")
+        data = np.arange(4 * (1 << 20), dtype=np.float32).reshape(4, -1)  # (4 chunks of 4 MiB)
+        root = create_root_group(store := IndexedTarStore(path, mode="w"), {})
+        root.create_array("a", data, chunks=(1, data.shape[1]))
+        consolidate_store(store)
+        close_store(store)
+
+        array = open_store(IndexedTarStore(path)).array("a")
+        threads: List[str] = []
+        decode = np.frombuffer
+
+        def record(*args: Any, **kwargs: Any) -> Any:
+            threads.append(threading.current_thread().name)
+            return decode(*args, **kwargs)
+
+        with mock.patch.object(_zarr3.np, "frombuffer", side_effect=record):
+            np.testing.assert_array_equal(array.read((slice(None), slice(0, 10))), data[:, :10])
+        self.assertEqual(len(threads), 4)
+        self.assertTrue(all(name.startswith("ncore_zarr3_chunks") for name in threads), threads)
+
+        # reads beyond the bound decode their chunks on the calling thread
+        threads.clear()
+        parallel = _zarr3._parallel()
+        for _ in range(_zarr3._PARALLEL_READS):
+            parallel.semaphore.acquire()
+        try:
+            with mock.patch.object(_zarr3.np, "frombuffer", side_effect=record):
+                array.read((slice(None), slice(0, 10)))
+        finally:
+            for _ in range(_zarr3._PARALLEL_READS):
+                parallel.semaphore.release()
+        self.assertEqual(threads, [threading.current_thread().name] * 4)
+
+    @unittest.skipUnless(hasattr(os, "fork"), "requires fork")
+    def test_forked_processes(self):
+        """Forked processes don't inherit the parallel reads state (its locks / threads are unusable in children)"""
+        from ncore.impl.data import _zarr3
+
+        parent = _zarr3._parallel()
+        read_fd, write_fd = os.pipe()
+        if (pid := os.fork()) == 0:
+            try:
+                os.write(write_fd, b"ok" if _zarr3._parallel() is not parent else b"inherited")
+            finally:
+                os._exit(0)
+        os.close(write_fd)
+        result = os.read(read_fd, 16)
+        os.close(read_fd)
+        os.waitpid(pid, 0)
+        self.assertEqual(result, b"ok")
+        self.assertIs(_zarr3._parallel(), parent)
 
 
 @parameterized.parameterized_class(("zarr_format",), [(zarr_format,) for zarr_format in ZARR_FORMATS])
