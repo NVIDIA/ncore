@@ -13,20 +13,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Compressed binary encodings of JSON-like documents (record indices of indexed tar archives, compressed consolidated
-zarr metadata)"""
+"""Compressed binary encodings of JSON documents (record indices of indexed tar archives, compressed consolidated zarr
+metadata)"""
 
 from __future__ import annotations
 
 import io
 import lzma
+import zlib
 
-from typing import Any
+from typing import cast
 
 import cbor2
 
+from ncore.impl.data.json_types import JsonDocument
 
-def encode_cbor_xz(document: Any) -> bytes:
+
+def encode_cbor_xz(document: JsonDocument) -> bytes:
     """Encodes a document as CBOR + LZMA (xz container format)"""
     with io.BytesIO() as buffer:
         with lzma.open(buffer, "wb", format=lzma.FORMAT_XZ) as lzma_file:
@@ -34,6 +37,22 @@ def encode_cbor_xz(document: Any) -> bytes:
         return buffer.getvalue()
 
 
-def decode_cbor_xz(data: bytes) -> Any:
+def decode_cbor_xz(data: bytes) -> JsonDocument:
     """Decodes a CBOR + LZMA (xz container format) encoded document"""
-    return cbor2.loads(lzma.LZMADecompressor().decompress(data))
+    return _document(cbor2.loads(lzma.LZMADecompressor().decompress(data)))
+
+
+def encode_cbor_zlib(document: JsonDocument) -> bytes:
+    """Encodes a document as CBOR + zlib (decodes several times faster than CBOR + LZMA)"""
+    return zlib.compress(cbor2.dumps(document), 9)
+
+
+def decode_cbor_zlib(data: bytes) -> JsonDocument:
+    """Decodes a CBOR + zlib encoded document"""
+    return _document(cbor2.loads(zlib.decompress(data)))
+
+
+def _document(value: object) -> JsonDocument:
+    if not isinstance(value, dict):
+        raise ValueError(f"Not an encoded JSON document: {type(value).__name__}")
+    return cast(JsonDocument, value)

@@ -39,6 +39,7 @@ from ncore.impl.data.backend import (
     BloscCompression,
     ReadResult,
     Selection,
+    ZarrFormat,
     ZarrNode,
 )
 from ncore.impl.data.encoding import decode_cbor_xz, encode_cbor_xz
@@ -110,12 +111,12 @@ class _CompressedConsolidatedStore(zarr.storage.ConsolidatedMetadataStore):
 class Zarr2Backend(Backend[BaseStore]):
     """zarr-python 2 implementation of the version specific operations of nodes and stores"""
 
-    supported_zarr_formats: Tuple[int, ...] = (2,)
+    supported_zarr_formats: Tuple[ZarrFormat, ...] = (2,)
 
     # -- nodes -----------------------------------------------------------------
 
     @override
-    def zarr_format(self, node: ZarrNode) -> int:
+    def zarr_format(self, node: ZarrNode) -> ZarrFormat:
         return 2
 
     @override
@@ -221,7 +222,7 @@ class Zarr2Backend(Backend[BaseStore]):
         return zarr.storage.DirectoryStore(path.path)
 
     @override
-    def create_root_group(self, store: BaseStore, zarr_format: Literal[2, 3], attributes: Attributes) -> zarr.Group:
+    def create_root_group(self, store: BaseStore, zarr_format: ZarrFormat, attributes: Attributes) -> zarr.Group:
         if zarr_format != 2:
             raise ValueError(f"zarr-python 2 only supports zarr format v2, got v{zarr_format}")
         root = zarr.group(store=store)

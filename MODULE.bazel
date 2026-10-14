@@ -129,6 +129,13 @@ http_archive(
     urls = ["https://maven.pkg.github.com/NVIDIA/ncore/com/nvidia/ncore/test-data-v4/0.2/test-data-v4-0.2.tar.gz"],
 )
 
+# time-trimmed zarr format v2 / v3 serializations of the test-data-v4 sequence
+http_archive(
+    name = "test-data-v4-trimmed",
+    sha256 = "a4a3457829431e30cdc5bb55cc00a8e6d5dfdc5d52db2221594807b4c9fff81d",
+    urls = ["https://maven.pkg.github.com/NVIDIA/ncore/com/nvidia/ncore/test-data-v4-trimmed/0.2/test-data-v4-trimmed-0.2.tar.gz"],
+)
+
 # documentation binary data
 http_archive(
     name = "ncore_docs_data",
