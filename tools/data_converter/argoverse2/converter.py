@@ -245,6 +245,7 @@ class Argoverse2Converter4(FileBasedDataConverter):
             sequence_id=log_id,
             sequence_timestamp_interval_us=sequence_timestamp_interval_us,
             store_type=self.store_type,
+            zarr_format=self.zarr_format,
             generic_meta_data={
                 "source_dataset": "argoverse2",
                 "argoverse2_split": self._split,

@@ -60,6 +60,17 @@ _backend: Backend[ZarrStore] = _installed_backend()
 #: zarr formats supported by the installed zarr-python version
 SUPPORTED_ZARR_FORMATS: Tuple[int, ...] = _backend.supported_zarr_formats
 
+
+def check_zarr_format(zarr_format: int) -> Literal[2, 3]:
+    """Validates that a zarr format is supported by the installed zarr-python version (raises ValueError otherwise)"""
+    if zarr_format not in SUPPORTED_ZARR_FORMATS:
+        raise ValueError(
+            f"zarr format v{zarr_format} is not supported by zarr-python {zarr.__version__} "
+            f"(supported: {', '.join(f'v{f}' for f in SUPPORTED_ZARR_FORMATS)})"
+        )
+    return 2 if zarr_format == 2 else 3
+
+
 T = TypeVar("T")
 
 
@@ -328,6 +339,10 @@ class Group(_Node):
         return Array(_backend.create_array(self._group, name, values, chunks, compression, attributes))
 
     def create_bytes_array(self, name: str, data: bytes, *, attributes: Optional[Attributes] = None) -> Array:
-        """Stores a binary blob (e.g., an encoded image) as uncompressed member array (0-dimensional fixed-length
-        bytes array for zarr format v2)"""
-        return self.create_array(name, np.asarray(data), compression=None, attributes=attributes)
+        """Stores a binary blob (e.g., an encoded image) as uncompressed member array.
+
+        zarr format v2: 0-dimensional fixed-length bytes array (``|S<N>``, the layout of ncore <= 19.8). zarr format v3:
+        1-dimensional ``uint8`` array (fixed-length bytes are not part of the zarr format v3 specification).
+        """
+        value = np.asarray(data) if self.zarr_format == 2 else np.frombuffer(data, dtype=np.uint8)
+        return self.create_array(name, value, compression=None, attributes=attributes)

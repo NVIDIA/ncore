@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import io
 import lzma
+import zlib
 
 from typing import Any
 
@@ -37,3 +38,13 @@ def encode_cbor_xz(document: Any) -> bytes:
 def decode_cbor_xz(data: bytes) -> Any:
     """Decodes a CBOR + LZMA (xz container format) encoded document"""
     return cbor2.loads(lzma.LZMADecompressor().decompress(data))
+
+
+def encode_cbor_zlib(document: Any) -> bytes:
+    """Encodes a document as CBOR + zlib (decodes several times faster than CBOR + LZMA)"""
+    return zlib.compress(cbor2.dumps(document), 9)
+
+
+def decode_cbor_zlib(data: bytes) -> Any:
+    """Decodes a CBOR + zlib encoded document"""
+    return cbor2.loads(zlib.decompress(data))

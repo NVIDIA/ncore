@@ -24,7 +24,7 @@ import sys
 import typing
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Generic, List, Literal, Mapping, Optional, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Generic, List, Literal, Mapping, Optional, Tuple, TypeVar, Union, cast
 
 import numcodecs
 import numpy as np
@@ -51,6 +51,11 @@ else:
 
 #: Key of the compressed consolidated metadata of zarr format v2 hierarchies (CBOR + LZMA encoded ``.zmetadata``)
 V2_CONSOLIDATED_METADATA_KEY = ".zmetadata.cbor.xz"
+
+#: Key of the compressed consolidated metadata of zarr format v3 hierarchies (CBOR + zlib encoded root ``zarr.json``
+#: including the consolidated metadata of the hierarchy, which decodes several times faster than CBOR + LZMA). The root
+#: ``zarr.json`` of such hierarchies is only stored in this compressed form.
+V3_CONSOLIDATED_METADATA_KEY = "zarr.json.cbor.zlib"
 
 #: Basic selections of array data (integers, slices and Ellipsis)
 Selection = Union[int, slice, EllipsisType, Tuple[Union[int, slice, EllipsisType], ...]]
@@ -119,6 +124,16 @@ class BloscCompression:
             clevel=config["clevel"],
             shuffle=_BLOSC_SHUFFLES[config["shuffle"]],
             blocksize=config["blocksize"],
+        )
+
+    @staticmethod
+    def from_config(config: Mapping[str, object]) -> BloscCompression:
+        """From the configuration of a zarr format v3 ``blosc`` codec"""
+        return BloscCompression(
+            cname=cast(BloscCname, config["cname"]),
+            clevel=cast(int, config["clevel"]),
+            shuffle=cast(BloscShuffle, config["shuffle"]),
+            blocksize=cast(int, config.get("blocksize", 0)),
         )
 
 

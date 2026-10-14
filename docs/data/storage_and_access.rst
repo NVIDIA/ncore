@@ -139,22 +139,59 @@ random access without any index.
 
 .. _zarr_versions:
 
-zarr-python Versions
---------------------
+zarr Versions and Formats
+-------------------------
 
 NCore supports both major versions of the `zarr-python <https://zarr.readthedocs.io/>`_
-library: ``2.x`` (Python |ge| 3.8) and ``3.x`` (Python |ge| 3.11, version |ge| 3.1.4).
-The matching implementation is selected automatically at import time.
+library, as well as both versions of the zarr on-disk format specification:
 
-Data written with either version is equivalent (chunk records are byte-identical,
-node metadata documents are equivalent JSON) and can be read with either version,
-including data written by NCore |le| 19.8.
+* **zarr-python** (the installed library): ``2.x`` (Python |ge| 3.8) or ``3.x``
+  (Python |ge| 3.11, version |ge| 3.1.4). The matching implementation is selected
+  automatically at import time.
+* **zarr format** (the on-disk layout of component stores): format v2 (``.zgroup`` /
+  ``.zarray`` / ``.zattrs`` node metadata) or format v3 (``zarr.json`` node metadata).
 
-Hierarchies opened with consolidated metadata (the default of NCore readers) resolve
-all zarr nodes from the compressed consolidated metadata record of each component group,
-without reading node metadata records. With zarr-python 3, NCore executes zarr's
-asynchronous I/O on the calling thread, avoiding per-access thread hand-offs to
-zarr-python's global I/O thread.
+.. list-table::
+   :header-rows: 1
+   :widths: 30 35 35
+
+   * -
+     - zarr-python 2
+     - zarr-python 3
+   * - read zarr format v2
+     - |check|
+     - |check|
+   * - read zarr format v3
+     - |mdash|
+     - |check|
+   * - write zarr format v2 (default)
+     - |check|
+     - |check|
+   * - write zarr format v3
+     - |mdash|
+     - |check| (opt-in)
+
+zarr format v2 data written with either zarr-python version is equivalent (chunk records
+are byte-identical, node metadata documents are equivalent JSON) and can be read by all
+NCore V4 versions (NCore |le| 19.8 supports zarr-python 2 and zarr format v2 only). Data is
+therefore written in zarr format v2 by default. zarr format v3 can be selected explicitly
+when writing, e.g.
+
+.. code-block:: python
+
+   writer = SequenceComponentGroupsWriter(..., zarr_format=3)
+
+or via ``--zarr-format 3`` in the data converter CLIs. In zarr format v3, binary blobs
+(e.g., encoded images) are stored as ``uint8`` arrays (zarr format v2: fixed-length bytes).
+
+Both formats store the consolidated metadata of each component group as a single
+compressed record (``.zmetadata.cbor.xz`` for zarr format v2, CBOR + LZMA encoded;
+``zarr.json.cbor.zlib`` for zarr format v3, the CBOR + zlib encoded root ``zarr.json``
+including the consolidated metadata of the hierarchy, which is only stored in this
+compressed form). Hierarchies opened with consolidated metadata (the default of NCore
+readers) resolve all zarr nodes from it, without reading node metadata records. With
+zarr-python 3, NCore executes zarr's asynchronous I/O on the calling thread, avoiding
+per-access thread hand-offs to zarr-python's global I/O thread.
 
 Records of ``.itar`` archives are write-once (archives are append-only): rewriting a
 record fails. zarr-python 3 rewrites node metadata on every attribute update, so node
@@ -165,11 +202,12 @@ versions are appended (parents before children).
 
    The groups of component readers / writers (``self._group``) are
    ``ncore.impl.data.nodes.Group`` instances, which support both zarr-python
-   versions with a typed API (e.g. ``create_array``, ``array(path).read()``,
-   ``attrs``). The wrapped zarr-python objects are accessible via ``.zarr`` for
-   components implemented with the zarr-python API of the installed version
-   directly.
+   versions and zarr formats with a typed API (e.g. ``create_array``,
+   ``array(path).read()``, ``create_bytes_array`` / ``read_bytes``, ``attrs``). The
+   wrapped zarr-python objects are accessible via ``.zarr`` for components implemented
+   with the zarr-python API of the installed version directly.
 
+.. |check| unicode:: U+2713
 .. |ge| unicode:: U+2265
 .. |le| unicode:: U+2264
 
