@@ -21,6 +21,7 @@ re-serializations performed by the zarr-python version under test.
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import tempfile
 import unittest
@@ -196,6 +197,67 @@ def _summary(reader: SequenceComponentGroupsReader, subsampled: bool = False, fr
     return out
 
 
+async def _summary_async(reader: SequenceComponentGroupsReader) -> SequenceSummary:
+    """:func:`_summary` via the asynchronous reader APIs, all frames of all sensors read concurrently"""
+    out = _summary(reader, subsampled=False, frames=False)
+
+    async def masks(masks: MasksComponent.Reader) -> Dict[str, Dict[str, bytes]]:
+        images: Dict[str, Dict[str, bytes]] = {}
+        for camera_id in masks._group.group("cameras").members():
+            images[camera_id] = {}
+            for mask_name in masks.get_camera_mask_names(camera_id):
+                image = await masks.get_camera_mask_image_async(camera_id, mask_name)
+                images[camera_id][mask_name] = np.asarray(image).tobytes()
+        return images
+
+    async def camera_frame(cameras: CameraSensorComponent.Reader, ts: int) -> CameraFrame:
+        names = sorted(cameras.get_frame_generic_data_names(ts))
+        data, generic = await asyncio.gather(
+            cameras.get_frame_data_async(ts),
+            asyncio.gather(*(cameras.get_frame_generic_data_async(ts, n) for n in names)),
+        )
+        return CameraFrame(
+            ts,
+            data.get_encoded_image_format(),
+            data.get_encoded_image_data(),
+            {n: value.tobytes() for n, value in zip(names, generic)},
+            cameras.get_frame_generic_meta_data(ts),
+        )
+
+    async def sensor_frame(
+        sensor: Union[LidarSensorComponent.Reader, RadarSensorComponent.Reader], ts: int
+    ) -> SensorFrame:
+        ray_names = sorted(sensor.get_frame_ray_bundle_data_names(ts))
+        return_names = sorted(sensor.get_frame_ray_bundle_return_data_names(ts))
+        generic_names = sorted(sensor.get_frame_generic_data_names(ts))
+        rays, returns, mask, generic = await asyncio.gather(
+            asyncio.gather(*(sensor.get_frame_ray_bundle_data_async(ts, n) for n in ray_names)),
+            asyncio.gather(*(sensor.get_frame_ray_bundle_return_data_async(ts, n, None) for n in return_names)),
+            sensor.get_frame_ray_bundle_return_valid_mask_async(ts),
+            asyncio.gather(*(sensor.get_frame_generic_data_async(ts, n) for n in generic_names)),
+        )
+        return SensorFrame(
+            ts,
+            {n: v.tobytes() for n, v in zip(ray_names, rays)},
+            {n: v.tobytes() for n, v in zip(return_names, returns)},
+            mask.tobytes(),
+            {n: v.tobytes() for n, v in zip(generic_names, generic)},
+            sensor.get_frame_generic_meta_data(ts),
+        )
+
+    for name, masks_reader in sorted(reader.open_component_readers(MasksComponent.Reader).items()):
+        out.masks[name] = await masks(masks_reader)
+    for name, cameras in sorted(reader.open_component_readers(CameraSensorComponent.Reader).items()):
+        out.cameras[name] = list(
+            await asyncio.gather(*(camera_frame(cameras, int(ts)) for ts in cameras.frames_timestamps_us[:, 1]))
+        )
+    for name, sensor in _sensor_readers(reader):
+        out.sensors[name] = list(
+            await asyncio.gather(*(sensor_frame(sensor, int(ts)) for ts in sensor.frames_timestamps_us[:, 1]))
+        )
+    return out
+
+
 class TestZarrFormats(unittest.TestCase):
     """zarr format v2 and v3 serializations of a sequence need to be identical in content"""
 
@@ -235,6 +297,14 @@ class TestZarrFormats(unittest.TestCase):
             self.assertLessEqual(len(cache), node_cache_size or len(cache))
             frame_entries = [key for key in cache.keys() if key.endswith("/ray_bundle/direction")]
             self.assertEqual(len(frame_entries), min(len(frames), node_cache_size or len(frames)))
+
+    @parameterized.parameterized.expand([("v2",), ("v3",)])
+    def test_async_reads(self, data: str):
+        """Asynchronous reader APIs (all frames read concurrently) return the same data as the synchronous APIs"""
+        if data == "v3" and 3 not in nodes.SUPPORTED_ZARR_FORMATS:
+            self.skipTest("zarr format v3 data requires zarr-python 3")
+        reader = SequenceComponentGroupsReader([_TRIMMED_V2 if data == "v2" else _TRIMMED_V3])
+        _assert_summaries_equal(self, self.reference, asyncio.run(_summary_async(reader)))
 
     def test_invalid_node_cache_size(self):
         with self.assertRaises(ValueError):

@@ -54,7 +54,9 @@ py_library(
     ],
     deps = [
         ":pylib_json_types",
+        "//ncore/impl/common:pylib_async_util",
         requirement("cbor2"),
+        requirement("fsspec"),
         requirement("numcodecs"),
         requirement("numpy"),
         requirement("typing_extensions"),
