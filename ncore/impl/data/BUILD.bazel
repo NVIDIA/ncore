@@ -46,6 +46,7 @@ py_library(
     srcs = [
         "backend.py",
         "backend_zarr2.py",
+        "backend_zarr3.py",
         "encoding.py",
         "itar.py",
         "nodes.py",
@@ -56,6 +57,7 @@ py_library(
         requirement("cbor2"),
         requirement("numcodecs"),
         requirement("numpy"),
+        requirement("typing_extensions"),
         requirement("universal_pathlib"),
         requirement("zarr"),
     ],

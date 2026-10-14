@@ -137,6 +137,42 @@ random access without any index.
 .. |times| unicode:: U+00D7
 .. |rarr| unicode:: U+2192
 
+.. _zarr_versions:
+
+zarr-python Versions
+--------------------
+
+NCore supports both major versions of the `zarr-python <https://zarr.readthedocs.io/>`_
+library: ``2.x`` (Python |ge| 3.8) and ``3.x`` (Python |ge| 3.11, version |ge| 3.1.4).
+The matching implementation is selected automatically at import time.
+
+Data written with either version is equivalent (chunk records are byte-identical,
+node metadata documents are equivalent JSON) and can be read with either version,
+including data written by NCore |le| 19.8.
+
+Hierarchies opened with consolidated metadata (the default of NCore readers) resolve
+all zarr nodes from the compressed consolidated metadata record of each component group,
+without reading node metadata records. With zarr-python 3, NCore executes zarr's
+asynchronous I/O on the calling thread, avoiding per-access thread hand-offs to
+zarr-python's global I/O thread.
+
+Records of ``.itar`` archives are write-once (archives are append-only): rewriting a
+record fails. zarr-python 3 rewrites node metadata on every attribute update, so node
+metadata records are kept in memory until the archive is closed, and only their final
+versions are appended (parents before children).
+
+.. note::
+
+   The groups of component readers / writers (``self._group``) are
+   ``ncore.impl.data.nodes.Group`` instances, which support both zarr-python
+   versions with a typed API (e.g. ``create_array``, ``array(path).read()``,
+   ``attrs``). The wrapped zarr-python objects are accessible via ``.zarr`` for
+   components implemented with the zarr-python API of the installed version
+   directly.
+
+.. |ge| unicode:: U+2265
+.. |le| unicode:: U+2264
+
 Loading V4 Data
 ---------------
 

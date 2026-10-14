@@ -46,3 +46,13 @@ python-version = "3.11"
 
 [tool.ty.terminal]
 error-on-warning = true
+
+# type checking runs against zarr-python 3: the zarr-python 2 backend references zarr-python 2 APIs, which are only
+# checked when type checking against zarr-python 2
+[[tool.ty.overrides]]
+include = ["ncore/impl/data/backend_zarr2.py"]
+
+[tool.ty.overrides.rules]
+unresolved-import = "ignore"
+unresolved-attribute = "ignore"
+deprecated = "ignore"

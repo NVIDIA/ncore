@@ -3351,3 +3351,15 @@ class TestZeroDimArraySupport(unittest.TestCase):
         self.assertEqual(gd.shape, (0, 3))
 
         tmpdir.cleanup()
+
+
+class TestMissingComponentStores(unittest.TestCase):
+    """Readers of missing component stores fail without creating them"""
+
+    @parameterized.expand([("ncore4.zarr.itar",), ("ncore4.zarr",), ("ncore4.json",)])
+    def test_missing(self, name: str):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = UPath(tmp) / "missing" / name
+            with self.assertRaises(FileNotFoundError):
+                SequenceComponentGroupsReader([path])
+            self.assertFalse((UPath(tmp) / "missing").exists())
