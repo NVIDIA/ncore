@@ -166,6 +166,7 @@ class TestArgoverse2Converter(unittest.TestCase):
             meta = cam_reader.generic_meta_data
             self.assertIn("av2_original_distortion", meta, f"{cam_id} missing distortion provenance")
             distortion = meta["av2_original_distortion"]
+            assert isinstance(distortion, dict), f"{cam_id} distortion provenance should be a dict"
             self.assertEqual(set(distortion), {"k1", "k2", "k3"}, f"{cam_id} distortion keys")
             for key, value in distortion.items():
                 self.assertIsInstance(value, float, f"{cam_id} {key} should be a float")

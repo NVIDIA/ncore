@@ -260,7 +260,9 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
                 T_sensor_target = unpack_optional(lidar_sensor.T_sensor_rig)
             elif params.frame == "world":
                 T_sensor_target = lidar_sensor.get_frames_T_sensor_target("world", pc_index)
-            tm.vertex_data.custom_attributes["xyz_s"] = transform_point_cloud(pc_return.xyz_m_start, T_sensor_target)
+            tm.vertex_data.custom_attributes["xyz_s"] = transform_point_cloud(
+                unpack_optional(pc_return.xyz_m_start), T_sensor_target
+            )
 
             # intensity N x 1
             if point_cloud.has_attribute("intensity"):
