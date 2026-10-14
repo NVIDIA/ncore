@@ -23,6 +23,16 @@ load(
 package(default_visibility = ["//:code_package_group"])
 
 py_library(
+    name = "pylib_async_util",
+    srcs = [
+        "async_util.py",
+    ],
+    deps = [
+        requirement("typing_extensions"),
+    ],
+)
+
+py_library(
     name = "pylib_util",
     srcs = [
         "util.py",
@@ -51,6 +61,7 @@ pytest_test(
         "@test-data-v4//:dataset0",
     ],
     deps = [
+        ":pylib_async_util",
         ":pylib_transformations",
         ":pylib_util",
         "//ncore/impl/data:pylib_types",

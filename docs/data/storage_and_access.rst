@@ -207,6 +207,69 @@ V4 sequences are loaded by specifying one or more component store paths:
    poses_readers = reader.open_component_readers(PosesComponent.Reader)
    camera_readers = reader.open_component_readers(CameraSensorComponent.Reader)
 
+.. _async_reads:
+
+Asynchronous Reads
+~~~~~~~~~~~~~~~~~~
+
+All component reader methods reading array data have asynchronous variants
+(``*_async``, e.g. ``get_frame_data_async``, ``get_frame_ray_bundle_data_async``,
+``get_generic_data_async``), returning the same data. Awaiting multiple reads
+concurrently overlaps their I/O and decompression (e.g., range requests to remote
+storage), and the running event loop isn't blocked (blocking work, such as
+decompression, runs on worker threads):
+
+.. code-block:: python
+
+   import asyncio
+
+   lidar = reader.open_component_readers(LidarSensorComponent.Reader)["lidar"]
+
+   async def load_frames(timestamps_us):
+       return await asyncio.gather(
+           *(lidar.get_frame_ray_bundle_data_async(ts, "direction") for ts in timestamps_us)
+       )
+
+   directions = asyncio.run(load_frames(lidar.frames_timestamps_us[:, 1].tolist()))
+
+Metadata (attributes, names, timestamps) is held in memory and only provided
+synchronously. Custom components can implement asynchronous accessors via
+``self._group.array(path).read_async()``.
+
+.. note::
+
+   Each in-flight read holds its decompressed data in memory. When reading many large
+   frames, bound the number of concurrent reads (e.g., to the number of CPU cores, or
+   higher for high-latency remote storage) instead of gathering all of them at once:
+
+   .. code-block:: python
+
+      async def load_frames(timestamps_us, max_concurrent_reads=16):
+          semaphore = asyncio.Semaphore(max_concurrent_reads)
+
+          async def load(ts):
+              async with semaphore:
+                  return await lidar.get_frame_ray_bundle_data_async(ts, "direction")
+
+          return await asyncio.gather(*(load(ts) for ts in timestamps_us))
+
+.. note::
+
+   On remote storage (e.g., ``s3://`` archives), the synchronous and the asynchronous
+   (``*_async``) reader APIs fetch data differently:
+
+   * **Synchronous APIs** (e.g. ``get_frame_data``, ``get_frame_ray_bundle_data``) read
+     through a buffered file object, one request at a time: each request fetches a block
+     of ``default_block_size`` bytes, cached per ``default_cache_type`` (see
+     :ref:`cloud_storage_access`). Reads of nearby data are served from cached blocks.
+   * **Asynchronous APIs** (``*_async``) fetch each chunk with its own byte-range request,
+     independent of ``default_block_size`` / ``default_cache_type``, and the requests of
+     concurrent reads are in flight at once (no per-request latency for each read).
+
+   Remote storage is supported by both: the synchronous APIs suit sequential access (few,
+   large requests), the asynchronous APIs random access and high-latency storage (exact,
+   concurrent requests).
+
 .. _cloud_storage_access:
 
 Cloud and Remote Storage Access
@@ -425,7 +488,9 @@ Performance Recommendations
   in memory.  For mixed sequential/random workloads, **5 MB** with
   ``blockcache`` provides the best balance (~50 MB/s sequential,
   ~16 MB/s random on ``.itar``).  Larger block sizes (16--64 MB) improve
-  sequential throughput at the cost of random access performance.
+  sequential throughput at the cost of random access performance.  This
+  applies to the synchronous reader APIs only: the asynchronous ``*_async``
+  APIs fetch exact byte ranges concurrently (see :ref:`async_reads`).
 
 * **Consider local caching** for repeated access to the same data. fsspec
   supports transparent caching via the ``simplecache`` or ``filecache``

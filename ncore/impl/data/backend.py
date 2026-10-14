@@ -277,6 +277,12 @@ class Backend(ABC, Generic[StoreT]):
         ...
 
     @abstractmethod
+    async def read_async(self, array: zarr.Array, selection: Selection) -> ReadResult:
+        """Reads (a selection of) the data of an array asynchronously (see :data:`ReadResult`), without blocking the
+        running event loop"""
+        ...
+
+    @abstractmethod
     def compression(self, array: zarr.Array) -> Optional[BloscCompression]:
         """The blosc compression of an array (None if uncompressed, raises ValueError for other compressors)"""
         ...

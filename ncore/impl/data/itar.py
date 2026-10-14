@@ -27,6 +27,7 @@ update of a node: they are kept in memory while writing and are appended (top-do
 
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import os
@@ -39,9 +40,11 @@ from enum import IntEnum, unique
 from pathlib import Path
 from typing import IO, Any, Callable, ClassVar, Dict, Iterator, List, Literal, NamedTuple, Optional, Tuple, Union, cast
 
+from fsspec.asyn import AsyncFileSystem
 from typing_extensions import Self
 from upath import UPath
 
+from ncore.impl.common.async_util import run_in_thread
 from ncore.impl.data.encoding import decode_cbor_xz, encode_cbor_xz
 
 
@@ -235,6 +238,43 @@ class IndexedTarArchive:
             start = record.offset - tail.start
             return tail.data[start : start + record.size]
         return None
+
+    @property
+    def is_remote(self) -> bool:
+        """True for archives opened for reading on asynchronous fsspec filesystems (e.g., s3fs, gcsfs, http), whose
+        records are read via asynchronous range requests by :meth:`read_async`"""
+        return self._async_fs() is not None
+
+    async def read_async(self, key: str) -> bytes:
+        """Reads the payload of a record asynchronously, without blocking the running event loop (raises KeyError if it
+        doesn't exist).
+
+        Records held in memory are returned directly (see :meth:`read`). Records of remote archives (see
+        :attr:`is_remote`) are read via asynchronous range requests (concurrent reads overlap), records of all other
+        archives (e.g., local) by :meth:`read` on a worker thread.
+        """
+        if (value := self._node_metadata_record(key)) is not None:
+            return value
+        record = self._records[key]
+        if (value := self._in_memory(record)) is not None:
+            return value
+        if (fs := self._async_fs()) is None:
+            return await run_in_thread(self.read, key)
+
+        # (`_cat_file` is the coroutine asynchronous fsspec filesystems implement, `cat_file` its synchronous wrapper)
+        request = fs._cat_file(self._itar_upath.path, start=record.offset, end=record.offset + record.size)
+        if (fs_loop := fs.loop) is None or fs_loop is asyncio.get_running_loop():
+            return await request
+        # (filesystems are bound to fsspec's I/O event loop, their sessions can't be used on other event loops)
+        return await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(request, fs_loop))
+
+    def _async_fs(self) -> Optional[AsyncFileSystem]:
+        """The asynchronous fsspec filesystem of remote archives opened for reading (None otherwise, e.g. for local
+        archives)"""
+        if self._mode != "r" or self._pread_fd is not None:
+            return None
+        fs = self._itar_upath.fs
+        return fs if isinstance(fs, AsyncFileSystem) else None
 
     def __setitem__(self, key: str, value: Union[bytes, bytearray, memoryview]) -> None:
         """Appends a record (requires write mode, raises ValueError if the record exists already). Node metadata
