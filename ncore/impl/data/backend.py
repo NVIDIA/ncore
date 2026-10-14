@@ -30,6 +30,7 @@ import numcodecs
 import numpy as np
 import zarr
 
+from typing_extensions import TypedDict
 from upath import UPath
 
 from ncore.impl.data.itar import IndexedTarArchive
@@ -49,8 +50,22 @@ else:
     ZarrStore = object
 
 
-#: Key of the compressed consolidated metadata of zarr format v2 hierarchies (CBOR + LZMA encoded ``.zmetadata``)
+# Consolidation: after writing all nodes of a hierarchy, ncore stores the node metadata of all its members in a single
+# compressed record (its consolidated metadata, written by Backend.consolidate), from which the hierarchy is opened
+# without reading individual node metadata records. The records have ncore specific keys: zarr-python itself can open
+# such hierarchies only as unconsolidated hierarchies (from their node metadata records, which are complete as well).
+
+#: Key of the consolidated metadata of ncore zarr format v2 hierarchies (the ``.zmetadata`` document of zarr-python 2's
+#: ``consolidate_metadata``, CBOR + LZMA encoded)
 V2_CONSOLIDATED_METADATA_KEY = ".zmetadata.cbor.xz"
+
+#: Key of the consolidated metadata of ncore zarr format v3 hierarchies (the root ``zarr.json`` document with the inline
+#: consolidated metadata of all members, as written by zarr-python 3's ``consolidate_metadata``, CBOR + zlib encoded;
+#: zlib decodes several times faster than LZMA)
+V3_CONSOLIDATED_METADATA_KEY = "zarr.json.cbor.zlib"
+
+#: zarr formats (on-disk format versions of zarr hierarchies)
+ZarrFormat = Literal[2, 3]
 
 #: Basic selections of array data (integers, slices and Ellipsis)
 Selection = Union[int, slice, EllipsisType, Tuple[Union[int, slice, EllipsisType], ...]]
@@ -79,6 +94,15 @@ BloscCname = Literal["blosclz", "lz4", "lz4hc", "zlib", "zstd"]
 BloscShuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
 
 _BLOSC_SHUFFLES: List[BloscShuffle] = ["noshuffle", "shuffle", "bitshuffle"]
+
+
+class BloscConfigV3(TypedDict):
+    """Configuration of the ``blosc`` codec of zarr format v3 (as in zarr-python 3's ``BloscCodec.to_dict()``)"""
+
+    cname: BloscCname
+    clevel: int
+    shuffle: BloscShuffle
+    blocksize: int
 
 
 @dataclasses.dataclass(frozen=True)
@@ -122,6 +146,13 @@ class BloscCompression:
             blocksize=config["blocksize"],
         )
 
+    @staticmethod
+    def from_config_v3(config: BloscConfigV3) -> BloscCompression:
+        """From the configuration of a zarr format v3 ``blosc`` codec"""
+        return BloscCompression(
+            cname=config["cname"], clevel=config["clevel"], shuffle=config["shuffle"], blocksize=config["blocksize"]
+        )
+
 
 ZarrNode = Union[zarr.Group, zarr.Array]
 
@@ -131,12 +162,12 @@ class Backend(ABC, Generic[StoreT]):
     version, for the store type of its zarr-python version)"""
 
     #: zarr formats supported by the zarr-python version
-    supported_zarr_formats: Tuple[int, ...]
+    supported_zarr_formats: Tuple[ZarrFormat, ...]
 
     # -- nodes -----------------------------------------------------------------
 
     @abstractmethod
-    def zarr_format(self, node: ZarrNode) -> int:
+    def zarr_format(self, node: ZarrNode) -> ZarrFormat:
         """The zarr format of a node"""
         ...
 
@@ -269,17 +300,17 @@ class Backend(ABC, Generic[StoreT]):
         ...
 
     @abstractmethod
-    def create_root_group(self, store: StoreT, zarr_format: Literal[2, 3], attributes: Attributes) -> zarr.Group:
+    def create_root_group(self, store: StoreT, zarr_format: ZarrFormat, attributes: Attributes) -> zarr.Group:
         """Creates the root group of a hierarchy in a store"""
         ...
 
     @abstractmethod
     def open_root_group(self, store: StoreT, consolidated: bool) -> zarr.Group:
-        """Opens the root group of a hierarchy for reading, via its compressed consolidated metadata if consolidated
-        (raises KeyError if there is no compressed consolidated metadata)"""
+        """Opens the root group of a hierarchy for reading: from its consolidated metadata record if consolidated
+        (raises KeyError if the hierarchy has none), otherwise from its node metadata records"""
         ...
 
     @abstractmethod
     def consolidate(self, store: StoreT) -> None:
-        """Stores the compressed consolidated metadata of the hierarchy of a store"""
+        """Stores the consolidated metadata record of the hierarchy of a store (after writing all nodes)"""
         ...
