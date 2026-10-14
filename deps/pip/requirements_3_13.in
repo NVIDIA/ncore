@@ -17,8 +17,8 @@
 -r requirements_tests.in
 -r requirements_ncore.in
 
-# Public API restrictions for 3.13
-zarr>=2.18.7,<3.0.0 # zarr-python 2.18.7 is the first version with the correct numcodecs<0.16 restriction
+# Public API restrictions for 3.13: most recent zarr-python 3
+zarr>=3.4.0 # most recent zarr-python 3 (python>=3.12)
 
 # torch: most recent version
 # CPU-only on purpose: python 3.12 / 3.13 cover the CPU code paths, CUDA is tested with python 3.11

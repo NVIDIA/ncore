@@ -44,7 +44,7 @@ else:  # pragma: no cover
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-    from zarr._storage.store import BaseStore as ZarrStore  # (type checking runs against zarr-python 2)
+    from zarr.abc.store import Store as ZarrStore  # (type checking runs against zarr-python 3)
 else:
     ZarrStore = object
 
@@ -283,8 +283,3 @@ class Backend(ABC, Generic[StoreT]):
     def consolidate(self, store: StoreT) -> None:
         """Stores the compressed consolidated metadata of the hierarchy of a store"""
         ...
-
-    @staticmethod
-    def is_v2_metadata_key(key: str) -> bool:
-        """True for keys of zarr format v2 node metadata"""
-        return key.endswith((".zarray", ".zgroup", ".zattrs"))

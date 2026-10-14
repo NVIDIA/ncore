@@ -395,6 +395,8 @@ class SequenceComponentGroupsReader:
                 _logger.info(f"SequenceStoreReader: Loading component store {component_store_upath}")
 
                 component_store: stores.Store
+                if not component_store_upath.exists():
+                    raise FileNotFoundError(f"Component store {component_store_upath} doesn't exist")
                 if component_store_upath.is_file():
                     if not component_store_upath.name.endswith(".zarr.itar"):
                         # not a supported file-based store format

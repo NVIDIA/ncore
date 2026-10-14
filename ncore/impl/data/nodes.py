@@ -28,12 +28,12 @@ import threading
 from typing import TYPE_CHECKING, Any, Iterator, List, Literal, Optional, Tuple, Type, TypeVar, Union, cast
 
 import numpy as np
+import zarr
 
 from zarr import Array as ZarrArray
 from zarr import Group as ZarrGroup
 
 from ncore.impl.data.backend import Attributes, Backend, BloscCompression, Selection, ZarrNode, ZarrStore
-from ncore.impl.data.backend_zarr2 import backend as _zarr2_backend
 from ncore.impl.data.json_types import Json, JsonDocument
 
 
@@ -43,7 +43,19 @@ if TYPE_CHECKING:
     from ncore.impl.data.stores import Store
 
 
-_backend: Backend[ZarrStore] = _zarr2_backend
+def _installed_backend() -> Backend[ZarrStore]:
+    """The backend of the installed zarr-python version"""
+    if int(zarr.__version__.split(".", 1)[0]) >= 3:
+        from ncore.impl.data.backend_zarr3 import backend as zarr3_backend
+
+        return zarr3_backend
+
+    from ncore.impl.data.backend_zarr2 import backend as zarr2_backend
+
+    return zarr2_backend
+
+
+_backend: Backend[ZarrStore] = _installed_backend()
 
 #: zarr formats supported by the installed zarr-python version
 SUPPORTED_ZARR_FORMATS: Tuple[int, ...] = _backend.supported_zarr_formats
@@ -122,7 +134,7 @@ class _Node:
     @property
     def attrs(self) -> JsonDocument:
         """A copy of the attributes of the node"""
-        return dict(self._node.attrs.asdict())
+        return cast(JsonDocument, dict(self._node.attrs.asdict()))
 
     def attr_str(self, name: str) -> str:
         """Returns a string attribute (raises KeyError if missing, TypeError for other types)"""
