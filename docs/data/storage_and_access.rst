@@ -139,39 +139,47 @@ random access without any index.
 
 .. _zarr_versions:
 
-zarr-python Versions
---------------------
+zarr Versions and Formats
+-------------------------
 
-NCore supports both major versions of the `zarr-python <https://zarr.readthedocs.io/>`_
-library: ``2.x`` (Python |ge| 3.8) and ``3.x`` (Python |ge| 3.11, version |ge| 3.1.4).
-The matching implementation is selected automatically at import time.
+NCore works with both major versions of the `zarr-python <https://zarr.readthedocs.io/>`_
+library (``2.x``, or ``3.x`` |ge| 3.1.4 on Python |ge| 3.11, selected automatically), and
+can write component stores in zarr format v2 or v3:
 
-Data written with either version is equivalent (chunk records are byte-identical,
-node metadata documents are equivalent JSON) and can be read with either version,
-including data written by NCore |le| 19.8.
+.. list-table::
+   :header-rows: 1
+   :widths: 30 35 35
 
-Hierarchies opened with consolidated metadata (the default of NCore readers) resolve
-all zarr nodes from the compressed consolidated metadata record of each component group,
-without reading node metadata records. With zarr-python 3, NCore executes zarr's
-asynchronous I/O on the calling thread, avoiding per-access thread hand-offs to
-zarr-python's global I/O thread.
+   * -
+     - zarr-python 2
+     - zarr-python 3
+   * - read / write zarr format v2 (default)
+     - |check|
+     - |check|
+   * - read / write zarr format v3
+     - |mdash|
+     - |check|
 
-Records of ``.itar`` archives are write-once (archives are append-only): rewriting a
-record fails. zarr-python 3 rewrites node metadata on every attribute update, so node
-metadata records are kept in memory until the archive is closed, and only their final
-versions are appended (parents before children).
+zarr format v2 is the default, since all NCore versions and zarr-python versions can
+read it. Write zarr format v3 only if all consumers of the data use zarr-python 3:
+
+.. code-block:: python
+
+   writer = SequenceComponentGroupsWriter(..., zarr_format=3)
+
+or ``--zarr-format 3`` in the data converter CLIs. Readers detect the format
+automatically.
 
 .. note::
 
-   The groups of component readers / writers (``self._group``) are
-   ``ncore.impl.data.nodes.Group`` instances, which support both zarr-python
-   versions with a typed API (e.g. ``create_array``, ``array(path).read()``,
-   ``attrs``). The wrapped zarr-python objects are accessible via ``.zarr`` for
-   components implemented with the zarr-python API of the installed version
-   directly.
+   Custom components should access their data via ``self._group``, an
+   ``ncore.impl.data.nodes.Group`` (e.g. ``create_array``, ``array(path).read()``,
+   ``create_bytes_array`` / ``read_bytes``, ``attrs``), which works with both zarr-python
+   versions and zarr formats. Records of ``.itar`` archives are write-once: write each
+   array once, attributes can be updated until the store is closed.
 
+.. |check| unicode:: U+2713
 .. |ge| unicode:: U+2265
-.. |le| unicode:: U+2264
 
 Loading V4 Data
 ---------------

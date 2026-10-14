@@ -24,7 +24,7 @@ import sys
 import typing
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Generic, List, Literal, Mapping, Optional, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Generic, List, Literal, Mapping, Optional, Tuple, TypeVar, Union, cast
 
 import numcodecs
 import numpy as np
@@ -49,8 +49,19 @@ else:
     ZarrStore = object
 
 
-#: Key of the compressed consolidated metadata of zarr format v2 hierarchies (CBOR + LZMA encoded ``.zmetadata``)
+# Consolidated metadata: ncore stores the node metadata of all members of a hierarchy in a single compressed record
+# (written by Backend.consolidate after all nodes), from which hierarchies are opened without reading node metadata
+# records. The records have ncore specific keys, so zarr-python itself opens such hierarchies from their node metadata
+# records (which are complete as well), as unconsolidated hierarchies.
+
+#: Key of the consolidated metadata of zarr format v2 hierarchies (CBOR + LZMA encoded ``.zmetadata`` document, as
+#: written by zarr-python 2's ``consolidate_metadata``)
 V2_CONSOLIDATED_METADATA_KEY = ".zmetadata.cbor.xz"
+
+#: Key of the consolidated metadata of zarr format v3 hierarchies (CBOR + zlib encoded root ``zarr.json`` document with
+#: the inline consolidated metadata of all members, as written by zarr-python 3's ``consolidate_metadata``; zlib decodes
+#: several times faster than LZMA)
+V3_CONSOLIDATED_METADATA_KEY = "zarr.json.cbor.zlib"
 
 #: Basic selections of array data (integers, slices and Ellipsis)
 Selection = Union[int, slice, EllipsisType, Tuple[Union[int, slice, EllipsisType], ...]]
@@ -119,6 +130,16 @@ class BloscCompression:
             clevel=config["clevel"],
             shuffle=_BLOSC_SHUFFLES[config["shuffle"]],
             blocksize=config["blocksize"],
+        )
+
+    @staticmethod
+    def from_config(config: Mapping[str, object]) -> BloscCompression:
+        """From the configuration of a zarr format v3 ``blosc`` codec"""
+        return BloscCompression(
+            cname=cast(BloscCname, config["cname"]),
+            clevel=cast(int, config["clevel"]),
+            shuffle=cast(BloscShuffle, config["shuffle"]),
+            blocksize=cast(int, config.get("blocksize", 0)),
         )
 
 
@@ -274,11 +295,11 @@ class Backend(ABC, Generic[StoreT]):
 
     @abstractmethod
     def open_root_group(self, store: StoreT, consolidated: bool) -> zarr.Group:
-        """Opens the root group of a hierarchy for reading, via its compressed consolidated metadata if consolidated
-        (raises KeyError if there is no compressed consolidated metadata)"""
+        """Opens the root group of a hierarchy for reading: from its consolidated metadata record if consolidated
+        (raises KeyError if the hierarchy has none), otherwise from its node metadata records"""
         ...
 
     @abstractmethod
     def consolidate(self, store: StoreT) -> None:
-        """Stores the compressed consolidated metadata of the hierarchy of a store"""
+        """Stores the consolidated metadata record of the hierarchy of a store (after writing all nodes)"""
         ...

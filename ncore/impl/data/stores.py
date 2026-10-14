@@ -27,7 +27,7 @@ from upath import UPath
 
 from ncore.impl.data.backend import Attributes, ZarrStore
 from ncore.impl.data.itar import IndexedTarArchive
-from ncore.impl.data.nodes import Group, _backend
+from ncore.impl.data.nodes import Group, _backend, check_zarr_format
 
 
 class Store(ABC):
@@ -46,17 +46,25 @@ class Store(ABC):
         """The wrapped zarr-python store (of the installed zarr-python version)"""
         return self._zarr_store
 
-    def create_root_group(self, attributes: Attributes) -> Group:
-        """Creates the root group of the hierarchy of the store"""
-        return Group(_backend.create_root_group(self._zarr_store, 2, attributes), store=self)
+    def create_root_group(self, attributes: Attributes, *, zarr_format: int = 2) -> Group:
+        """Creates the root group of the hierarchy of the store, in zarr format v2 (default, readable with all
+        zarr-python versions) or v3 (requires zarr-python 3 for writing and reading)"""
+        return Group(
+            _backend.create_root_group(self._zarr_store, check_zarr_format(zarr_format), attributes), store=self
+        )
 
     def open_root_group(self, consolidated: bool = True) -> Group:
-        """Opens the root group of the hierarchy of the store for reading, via its compressed consolidated metadata if
-        consolidated (raises KeyError if the store has no compressed consolidated metadata)"""
+        """Opens the root group of the hierarchy of the store for reading: from its consolidated metadata record if
+        consolidated (raises KeyError if the store has none, see :meth:`consolidate`), otherwise from its node metadata
+        records"""
         return Group(_backend.open_root_group(self._zarr_store, consolidated), store=self)
 
     def consolidate(self) -> None:
-        """Stores the compressed consolidated metadata of the hierarchy of the store (after writing all nodes)"""
+        """Stores the consolidated metadata of the hierarchy of the store (after writing all nodes): a single compressed
+        record with the node metadata of all members (zarr format v2: ``.zmetadata.cbor.xz``, v3:
+        ``zarr.json.cbor.zlib``), from which :meth:`open_root_group` opens the hierarchy without reading node metadata
+        records. Node metadata records are complete as well (e.g., for zarr-python, which opens such hierarchies as
+        unconsolidated)."""
         _backend.consolidate(self._zarr_store)
 
     def reload_resources(self) -> None:
