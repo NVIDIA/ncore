@@ -33,7 +33,7 @@ import zarr
 from zarr import Array as ZarrArray
 from zarr import Group as ZarrGroup
 
-from ncore.impl.data.backend import Attributes, Backend, BloscCompression, Selection, ZarrNode, ZarrStore
+from ncore.impl.data.backend import Attributes, Backend, BloscCompression, ReadResult, Selection, ZarrNode, ZarrStore
 from ncore.impl.data.json_types import JsonDocument, JsonLike
 
 
@@ -214,6 +214,16 @@ class Array(_Node):
         array.setflags(write=False)  # (numpy scalars are converted to new 0-dimensional arrays)
         return array
 
+    async def read_async(self, selection: Selection = Ellipsis) -> npt.NDArray[Any]:
+        """Reads (a selection of) the data of the array asynchronously, see :meth:`read`.
+
+        Concurrent reads (e.g., via ``asyncio.gather``) overlap their I/O (e.g., range requests of remote archives) and
+        decompression, the running event loop isn't blocked (blocking work runs on worker threads).
+        """
+        array = np.asarray(await _backend.read_async(self._array, selection))
+        array.setflags(write=False)  # (numpy scalars are converted to new 0-dimensional arrays)
+        return array
+
     def read_bytes(self) -> bytes:
         """Reads a binary blob stored by :meth:`Group.create_bytes_array`.
 
@@ -221,8 +231,15 @@ class Array(_Node):
         chunk record (no copies), other blobs (e.g., of multiple chunks) are copied once from the read array. Raises
         TypeError for arrays that don't store a binary blob (see :meth:`ncore.impl.data.backend.Backend.blob`).
         """
+        return self._blob(_backend.read(self._array, ()))
+
+    async def read_bytes_async(self) -> bytes:
+        """Reads a binary blob asynchronously, see :meth:`read_bytes` and :meth:`read_async`"""
+        return self._blob(await _backend.read_async(self._array, ()))
+
+    def _blob(self, value: ReadResult) -> bytes:
         try:
-            return _backend.blob(_backend.read(self._array, ()))
+            return _backend.blob(value)
         except TypeError:
             raise TypeError(f"Array {self.path!r} doesn't store a binary blob ({self.dtype})") from None
 

@@ -701,10 +701,17 @@ class ComponentReader(ABC):
 
         Raises KeyError if the name does not exist.
         """
+        return self._generic_data_array(name).read()
+
+    async def get_generic_data_async(self, name: str) -> np.ndarray:
+        """Asynchronous :meth:`get_generic_data`"""
+        return await self._generic_data_array(name).read_async()
+
+    def _generic_data_array(self, name: str) -> nodes.Array:
         if self._generic_data_group is None:
             raise KeyError("Component has no generic_data")
         if name in self._generic_data_group:
-            return self._generic_data_group.array(name).read()
+            return self._generic_data_group.array(name)
         raise KeyError(f"Generic data '{name}' not found. Available: {self.get_generic_data_names()}")
 
 
@@ -1072,6 +1079,15 @@ class MasksComponent:
 
             return PILImage.open(io.BytesIO(mask_array.read_bytes()), formats=[mask_array.attr_str("format")])
 
+        async def get_camera_mask_image_async(self, camera_id: str, mask_name: str) -> PILImage.Image:
+            """Asynchronous :meth:`get_camera_mask_image`"""
+
+            mask_array = self._group.array(f"cameras/{camera_id}/{mask_name}")
+
+            return PILImage.open(
+                io.BytesIO(await mask_array.read_bytes_async()), formats=[mask_array.attr_str("format")]
+            )
+
         def get_camera_mask_images(self, camera_id: str) -> Generator[Tuple[str, PILImage.Image]]:
             """Returns all constant named camera mask images"""
 
@@ -1245,6 +1261,11 @@ class BaseSensorComponentReader(ComponentReader):
 
         return self._get_frame_generic_data_group(timestamp_us).array(name).read()
 
+    async def get_frame_generic_data_async(self, timestamp_us: int, name: str) -> npt.NDArray[Any]:
+        """Asynchronous :meth:`get_frame_generic_data`"""
+
+        return await self._get_frame_generic_data_group(timestamp_us).array(name).read_async()
+
     def get_frame_generic_meta_data(self, timestamp_us: int) -> JsonDocument:
         """Returns generic frame meta-data for a specific frame"""
 
@@ -1356,6 +1377,11 @@ class BaseRayBundleSensorComponentReader(BaseSensorComponentReader):
 
         return self._get_ray_bundle_group(timestamp_us).array(name).read()
 
+    async def get_frame_ray_bundle_data_async(self, timestamp_us: int, name: str) -> npt.NDArray[Any]:
+        """Asynchronous :meth:`get_frame_ray_bundle_data`"""
+
+        return await self._get_ray_bundle_group(timestamp_us).array(name).read_async()
+
     # per-ray return data
     def _get_ray_bundle_returns_group(self, timestamp_us: int) -> nodes.Group:
         """Returns the ray bundle returns group of a frame"""
@@ -1380,15 +1406,22 @@ class BaseRayBundleSensorComponentReader(BaseSensorComponentReader):
     def get_frame_ray_bundle_return_valid_mask(self, timestamp_us: int) -> npt.NDArray[np.bool_]:
         """Returns the per-ray return valid mask for a frame"""
 
-        valid_mask_packed = self._group.array(self._frame_path(timestamp_us, "ray_bundle_returns_valid_mask_packed"))
+        valid_mask_packed = self._valid_mask_packed_array(timestamp_us)
+        return self._unpack_valid_mask(valid_mask_packed, valid_mask_packed.read())
 
+    async def get_frame_ray_bundle_return_valid_mask_async(self, timestamp_us: int) -> npt.NDArray[np.bool_]:
+        """Asynchronous :meth:`get_frame_ray_bundle_return_valid_mask`"""
+
+        valid_mask_packed = self._valid_mask_packed_array(timestamp_us)
+        return self._unpack_valid_mask(valid_mask_packed, await valid_mask_packed.read_async())
+
+    def _valid_mask_packed_array(self, timestamp_us: int) -> nodes.Array:
+        return self._group.array(self._frame_path(timestamp_us, "ray_bundle_returns_valid_mask_packed"))
+
+    @staticmethod
+    def _unpack_valid_mask(valid_mask_packed: nodes.Array, packed: npt.NDArray[np.uint8]) -> npt.NDArray[np.bool_]:
         n_returns, n_rays = valid_mask_packed.attr_int("n_returns"), valid_mask_packed.attr_int("n_rays")
-
-        return (
-            np.unpackbits(valid_mask_packed.read(), count=n_returns * n_rays)
-            .astype(np.bool_)
-            .reshape((n_returns, n_rays))
-        )
+        return np.unpackbits(packed, count=n_returns * n_rays).astype(np.bool_).reshape((n_returns, n_rays))
 
     def get_frame_ray_bundle_return_data(
         self, timestamp_us: int, name: str, return_index: Optional[int]
@@ -1402,6 +1435,16 @@ class BaseRayBundleSensorComponentReader(BaseSensorComponentReader):
             return return_array.read()  # load all returns
         else:
             return return_array.read((return_index, Ellipsis))  # load specific return only
+
+    async def get_frame_ray_bundle_return_data_async(
+        self, timestamp_us: int, name: str, return_index: Optional[int]
+    ) -> npt.NDArray[np.float32]:
+        """Asynchronous :meth:`get_frame_ray_bundle_return_data`"""
+
+        return_array = self._get_ray_bundle_returns_group(timestamp_us).array(name)
+        if return_index is None:
+            return await return_array.read_async()
+        return await return_array.read_async((return_index, Ellipsis))
 
 
 class CameraSensorComponent:
@@ -1464,6 +1507,12 @@ class CameraSensorComponent:
                 """Loads the referenced encoded image data to memory"""
                 return types.EncodedImageData(self._image_array.read_bytes(), self._image_array.attr_str("format"))
 
+            async def get_data_async(self) -> types.EncodedImageData:
+                """Asynchronous :meth:`get_data`"""
+                return types.EncodedImageData(
+                    await self._image_array.read_bytes_async(), self._image_array.attr_str("format")
+                )
+
         def get_frame_handle(self, timestamp_us: int) -> EncodedImageDataHandle:
             """Returns the frame's encoded image data"""
             return self.EncodedImageDataHandle(self._group.array(self._frame_path(timestamp_us, "image")))
@@ -1471,6 +1520,10 @@ class CameraSensorComponent:
         def get_frame_data(self, timestamp_us: int) -> types.EncodedImageData:
             """Returns the frame's encoded image data"""
             return self.get_frame_handle(timestamp_us).get_data()
+
+        async def get_frame_data_async(self, timestamp_us: int) -> types.EncodedImageData:
+            """Asynchronous :meth:`get_frame_data`"""
+            return await self.get_frame_handle(timestamp_us).get_data_async()
 
         def get_frame_image(self, timestamp_us: int) -> PILImage.Image:
             """Returns the frame's decoded image data"""
@@ -1943,8 +1996,16 @@ class PointCloudsComponent:
         def get_pc_xyz(self, pc_index: int) -> npt.NDArray[np.float32]:
             return self._pc_array(pc_index, "xyz").read()
 
+        async def get_pc_xyz_async(self, pc_index: int) -> npt.NDArray[np.float32]:
+            """Asynchronous :meth:`get_pc_xyz`"""
+            return await self._pc_array(pc_index, "xyz").read_async()
+
         def get_pc_attribute(self, pc_index: int, name: str) -> npt.NDArray[Any]:
             return self._pc_array(pc_index, name).read()
+
+        async def get_pc_attribute_async(self, pc_index: int, name: str) -> npt.NDArray[Any]:
+            """Asynchronous :meth:`get_pc_attribute`"""
+            return await self._pc_array(pc_index, name).read_async()
 
         def get_pc_reference_frame_id(self, pc_index: int) -> str:
             return self._pc_group(pc_index).attr_str("reference_frame_id")
@@ -1960,6 +2021,10 @@ class PointCloudsComponent:
 
         def get_pc_generic_data(self, pc_index: int, name: str) -> npt.NDArray[Any]:
             return self._pc_array(pc_index, f"generic_data/{name}").read()
+
+        async def get_pc_generic_data_async(self, pc_index: int, name: str) -> npt.NDArray[Any]:
+            """Asynchronous :meth:`get_pc_generic_data`"""
+            return await self._pc_array(pc_index, f"generic_data/{name}").read_async()
 
         def get_pc_generic_meta_data(self, pc_index: int) -> JsonDocument:
             return cast(JsonDocument, self._pc_group(pc_index).attrs.get("generic_meta_data", {}))
@@ -2173,30 +2238,45 @@ class CameraLabelsComponent:
                 For RAW encoding, applies de-quantization if specified in the schema.
                 For IMAGE_ENCODED encoding, decodes the image bytes via PIL.
                 """
+                data = self._label_group.array("data")
                 if self._descriptor.label_schema.encoding == types.LabelEncoding.RAW:
-                    arr = self._label_group.array("data").read()
-
-                    # De-quantize if configured
-                    if (q := self._descriptor.label_schema.quantization) is not None:
-                        arr = (arr.astype(q.intermediate_dtype) * q.scale + q.offset).astype(
-                            self._descriptor.label_schema.dtype
-                        )
-
-                    return arr
-
+                    return self._decode_raw(data.read())
                 elif self._descriptor.label_schema.encoding == types.LabelEncoding.IMAGE_ENCODED:
-                    raw_bytes = self._label_group.array("data").read_bytes()
-                    image = PILImage.open(io.BytesIO(raw_bytes))
-
-                    return np.asarray(image, dtype=self._descriptor.label_schema.dtype)
-
+                    return self._decode_image(data.read_bytes())
                 else:
                     raise ValueError(f"Unsupported label encoding: {self._descriptor.label_schema.encoding}")
+
+            async def get_data_async(self) -> npt.NDArray[Any]:
+                """Asynchronous :meth:`get_data`"""
+                data = self._label_group.array("data")
+                if self._descriptor.label_schema.encoding == types.LabelEncoding.RAW:
+                    return self._decode_raw(await data.read_async())
+                elif self._descriptor.label_schema.encoding == types.LabelEncoding.IMAGE_ENCODED:
+                    return self._decode_image(await data.read_bytes_async())
+                else:
+                    raise ValueError(f"Unsupported label encoding: {self._descriptor.label_schema.encoding}")
+
+            def _decode_raw(self, arr: npt.NDArray[Any]) -> npt.NDArray[Any]:
+                # De-quantize if configured
+                if (q := self._descriptor.label_schema.quantization) is not None:
+                    arr = (arr.astype(q.intermediate_dtype) * q.scale + q.offset).astype(
+                        self._descriptor.label_schema.dtype
+                    )
+                return arr
+
+            def _decode_image(self, raw_bytes: bytes) -> npt.NDArray[Any]:
+                return np.asarray(PILImage.open(io.BytesIO(raw_bytes)), dtype=self._descriptor.label_schema.dtype)
 
             def get_encoded_data(self) -> Optional[bytes]:
                 """Return the raw encoded bytes for IMAGE_ENCODED labels, or None for RAW."""
                 if self._descriptor.label_schema.encoding == types.LabelEncoding.IMAGE_ENCODED:
                     return self._label_group.array("data").read_bytes()
+                return None
+
+            async def get_encoded_data_async(self) -> Optional[bytes]:
+                """Asynchronous :meth:`get_encoded_data`"""
+                if self._descriptor.label_schema.encoding == types.LabelEncoding.IMAGE_ENCODED:
+                    return await self._label_group.array("data").read_bytes_async()
                 return None
 
         def get_label(self, timestamp_us: int) -> CameraLabelHandle:
