@@ -20,7 +20,9 @@ blocks, enabling O(1) lookups of record payloads. :class:`IndexedTarArchive` pro
 archives; zarr-python version specific store adapters (see :mod:`ncore.impl.data.stores`) store zarr hierarchies in
 them.
 
-Records are *write-once*: archives are append-only, and writing a record twice raises a ``ValueError``.
+Records are *write-once*: archives are append-only, and writing a record twice raises a ``ValueError``. The only
+exception are zarr node metadata records (see :func:`is_node_metadata_key`), which zarr-python 3 rewrites on every
+update of a node: they are kept in memory while writing and are appended (top-down) when closing the archive.
 """
 
 from __future__ import annotations
@@ -46,6 +48,15 @@ from ncore.impl.data.encoding import decode_cbor_xz, encode_cbor_xz
 _logger = logging.getLogger(__name__)
 
 
+#: Names of the records of zarr node metadata (zarr format v2 and v3)
+NODE_METADATA_NAMES = (".zarray", ".zgroup", ".zattrs", "zarr.json")
+
+
+def is_node_metadata_key(key: str) -> bool:
+    """True for keys of zarr node metadata records (zarr format v2 and v3)"""
+    return key.rsplit("/", 1)[-1] in NODE_METADATA_NAMES
+
+
 class IndexedTarArchive:
     """The records of an indexed tar archive, opened for reading or (truncating) writing.
 
@@ -66,7 +77,8 @@ class IndexedTarArchive:
     which don't serialize reads of multiple threads.
 
     Archives opened for writing need to be closed (``close()``, or by using the archive as context manager), which
-    appends the record index.
+    appends the node metadata records and the record index. Until then, node metadata records can be rewritten (see
+    the module documentation), and are served from memory.
 
     All methods are thread-safe.
     """
@@ -122,6 +134,7 @@ class IndexedTarArchive:
         self._lock = threading.RLock()
 
         self._records: Dict[str, IndexedTarArchive.Record] = {}
+        self._node_metadata: Dict[str, bytes] = {}  # (write mode, written when closing)
         self._tail: Optional[IndexedTarArchive.TailBuffer] = None
         self._tar_file: Optional[tarfile.TarFile] = None
         self._file: IO[bytes] = self._open_file(truncate=True)
@@ -161,18 +174,21 @@ class IndexedTarArchive:
     # -------------------------------------------------------------------------
 
     def keys(self) -> List[str]:
-        """Returns the keys of all records (in archive order)"""
+        """Returns the keys of all records (in archive order, followed by node metadata records that are written when
+        closing the archive)"""
         with self._lock:
-            return list(self._records)
+            return list(self._records) + list(self._node_metadata)
 
     def __iter__(self) -> Iterator[str]:
         return iter(self.keys())
 
     def __len__(self) -> int:
-        return len(self._records)
+        with self._lock:
+            return len(self._records) + len(self._node_metadata)
 
     def __contains__(self, key: object) -> bool:
-        return key in self._records
+        with self._lock:
+            return key in self._records or key in self._node_metadata
 
     def __getitem__(self, key: str) -> bytes:
         """The payload of a record (raises KeyError if it doesn't exist), see :meth:`read`"""
@@ -181,9 +197,12 @@ class IndexedTarArchive:
     def read(self, key: str) -> bytes:
         """Reads the payload of a record synchronously (raises KeyError if it doesn't exist).
 
-        Records held in memory (records of the index tail read) are returned directly, records of local archives are
-        read via positional reads, all other records via the archive's buffered file object.
+        Records held in memory (node metadata records of archives opened for writing, records of the index tail read)
+        are returned directly, records of local archives are read via positional reads, all other records via the
+        archive's buffered file object.
         """
+        if (value := self._node_metadata_record(key)) is not None:
+            return value
         record = self._records[key]
         if (value := self._in_memory(record)) is not None:
             return value
@@ -199,6 +218,14 @@ class IndexedTarArchive:
             self._file.seek(position)
             return value
 
+    def _node_metadata_record(self, key: str) -> Optional[bytes]:
+        """The payload of a node metadata record of an archive opened for writing (held in memory until the archive is
+        closed, not in the record index yet), None otherwise"""
+        if not self._node_metadata:
+            return None
+        with self._lock:
+            return self._node_metadata.get(key)
+
     def _in_memory(self, record: IndexedTarArchive.Record) -> Optional[bytes]:
         """The payload of a record held in memory (records of the index tail read, empty records), None otherwise"""
         if record.size == 0:
@@ -210,21 +237,30 @@ class IndexedTarArchive:
         return None
 
     def __setitem__(self, key: str, value: Union[bytes, bytearray, memoryview]) -> None:
-        """Appends a record (requires write mode, raises ValueError if the record exists already)"""
+        """Appends a record (requires write mode, raises ValueError if the record exists already). Node metadata
+        records are appended when closing the archive (and can be rewritten until then)."""
         if self._mode != "w":
             raise ValueError("IndexedTarArchive: archive is opened for reading and doesn't support writing")
         payload = bytes(value)
 
         with self._lock:
+            if self._file.closed:
+                raise ValueError("IndexedTarArchive: archive is closed")
+            if is_node_metadata_key(key):
+                self._node_metadata[key] = payload
+                return
             if key in self._records:
                 raise ValueError(f"IndexedTarArchive: record {key} already exists, records are write-once")
+            self._append(key, payload)
 
-            # the header of a record can span multiple tar blocks (long keys), the payload is padded to full blocks
-            info = tarfile.TarInfo(key)
-            info.size = len(payload)
-            cast(tarfile.TarFile, self._tar_file).addfile(info, fileobj=io.BytesIO(payload))
-            padded_size = -(-len(payload) // tarfile.BLOCKSIZE) * tarfile.BLOCKSIZE
-            self._records[key] = self.Record(self._file.tell() - padded_size, len(payload))
+    def _append(self, key: str, payload: bytes) -> None:
+        """Appends a record to the archive (called with the lock held)"""
+        # the header of a record can span multiple tar blocks (long keys), the payload is padded to full blocks
+        info = tarfile.TarInfo(key)
+        info.size = len(payload)
+        cast(tarfile.TarFile, self._tar_file).addfile(info, fileobj=io.BytesIO(payload))
+        padded_size = -(-len(payload) // tarfile.BLOCKSIZE) * tarfile.BLOCKSIZE
+        self._records[key] = self.Record(self._file.tell() - padded_size, len(payload))
 
     def __delitem__(self, key: str) -> None:
         raise NotImplementedError("IndexedTarArchive: records can't be deleted")
@@ -245,6 +281,10 @@ class IndexedTarArchive:
             if self._file.closed:
                 return
             if self._mode == "w":
+                # (deterministic order independent of the order of node updates: parents before children)
+                node_metadata, self._node_metadata = self._node_metadata, {}
+                for key in sorted(node_metadata, key=lambda key: (key.count("/"), key)):
+                    self._append(key, node_metadata[key])
                 # closing the tar file appends the end-of-archive blocks, but keeps the file object open
                 cast(tarfile.TarFile, self._tar_file).close()
                 self._save_index(self._file, self._records)
