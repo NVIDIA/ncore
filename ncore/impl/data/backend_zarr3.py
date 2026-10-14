@@ -137,6 +137,29 @@ class _Loop:
     #: the loop of each thread
     _thread = _ThreadState()
 
+    @classmethod
+    def is_current(cls) -> bool:
+        """True if running on the event loop of :func:`run` of the calling thread (blocking work runs inline), False
+        on other event loops (blocking work is offloaded to threads, to not block them)"""
+        state = cls._thread.loop
+        return state is not None and state.pid == os.getpid() and asyncio.get_running_loop() is state.loop
+
+    #: executor of blocking parts of reads awaited on event loops other than the one of :func:`run` (per process)
+    _executor: Optional[Tuple[int, concurrent.futures.ThreadPoolExecutor]] = None
+
+    @classmethod
+    def executor(cls) -> concurrent.futures.ThreadPoolExecutor:
+        """The executor of blocking parts of reads awaited on event loops other than the one of :func:`run` (re-created
+        in forked processes)"""
+        if cls._executor is None or cls._executor[0] != os.getpid():
+            cls._executor = (
+                os.getpid(),
+                concurrent.futures.ThreadPoolExecutor(
+                    max_workers=min(32, (os.cpu_count() or 1) + 4), thread_name_prefix="ncore_zarr3_reads"
+                ),
+            )
+        return cls._executor[1]
+
 
 def run(coroutine: Coroutine[Any, Any, T]) -> T:
     """Runs a zarr-python coroutine to completion on an event loop owned by the calling thread.
@@ -410,61 +433,115 @@ class _DirectRead(NamedTuple):
         on a thread pool (positional reads and blosc decompression release the GIL), unless :data:`_PARALLEL_READS`
         reads do so already. All other reads run on the calling thread.
         """
-        shape = tuple(array.metadata.shape)
-        indexer = BasicIndexer(selection, shape, self.chunk_grid(array))
-        projections = list(indexer) if all(indexer.shape) else []
+        op = _DirectReadOp(self, array, selection)
+        return op.decode([], fetch=self.get_record)
 
-        if (
-            self.compressor is None
-            and len(projections) == 1
-            and projections[0].is_complete_chunk
-            and self.chunks == shape == tuple(indexer.shape)
-        ):
-            # an uncompressed chunk with the complete array (e.g., an encoded image): use its bytes without copies
-            key = self.chunk_key(projections[0].chunk_coords)
-            try:
-                raw = self.archive[f"{self.path}/{key}" if self.path else key]
-            except KeyError:
-                pass  # (chunk not stored: fill value, see below)
-            else:
-                # (a read-only view of the record, no copies)
-                if (view := Zarr3Backend.chunk_view(raw, self.dtype, shape)) is None:
-                    raise ValueError(f"Chunk {key} doesn't match its array ({len(raw)} bytes)")
-                return view
+    async def read_async(self, array: zarr.Array, selection: Selection) -> npt.NDArray[Any]:
+        """Asynchronous :meth:`read`: chunks of remote archives are read via concurrent asynchronous range requests.
+        Blocking work (local reads, decompression) runs on the calling thread on the event loop of :func:`run`, on
+        worker threads on other event loops (e.g., of asynchronous applications), so they aren't blocked."""
+        op = _DirectReadOp(self, array, selection)
+        if self.archive.is_remote:
+            raws = list(await asyncio.gather(*(self.get_record_async(key) for key in op.keys)))
+            if _Loop.is_current():
+                return op.decode(raws)
+            return await asyncio.get_running_loop().run_in_executor(_Loop.executor(), op.decode, raws)
+        if _Loop.is_current():
+            return op.decode([], fetch=self.get_record)
+        return await asyncio.get_running_loop().run_in_executor(
+            _Loop.executor(), lambda: op.decode([], fetch=self.get_record)
+        )
 
-        out = np.empty(indexer.shape, dtype=self.dtype)
+    def get_record(self, key: str) -> Optional[bytes]:
+        try:
+            return self.archive[key]
+        except KeyError:
+            return None
 
-        def read_chunk(projection: ChunkProjection) -> None:
-            key = self.chunk_key(projection.chunk_coords)
+    async def get_record_async(self, key: str) -> Optional[bytes]:
+        try:
+            return await self.archive.read_async(key)
+        except KeyError:
+            return None
+
+
+class _DirectReadOp:
+    """A direct read of a basic selection of an array: the chunks to read (see :attr:`keys`), and their decoding into
+    the output array (see :meth:`decode`)"""
+
+    def __init__(self, plan: _DirectRead, array: zarr.Array, selection: Selection) -> None:
+        self.plan = plan
+        self.shape = tuple(array.metadata.shape)
+        indexer = BasicIndexer(selection, self.shape, plan.chunk_grid(array))
+        self.out_shape = tuple(indexer.shape)
+        self.projections: List[ChunkProjection] = list(indexer) if all(indexer.shape) else []
+        self.keys = [self._key(projection) for projection in self.projections]
+
+    def _key(self, projection: ChunkProjection) -> str:
+        key = self.plan.chunk_key(projection.chunk_coords)
+        return f"{self.plan.path}/{key}" if self.plan.path else key
+
+    @property
+    def is_single_raw_chunk(self) -> bool:
+        """True for selections of complete uncompressed single-chunk arrays (e.g., encoded images), whose chunk bytes
+        are the result"""
+        plan = self.plan
+        return (
+            plan.compressor is None
+            and len(self.projections) == 1
+            and self.projections[0].is_complete_chunk
+            and plan.chunks == self.shape == self.out_shape
+        )
+
+    @property
+    def decodes_concurrently(self) -> bool:
+        """True for reads of multiple large chunks (see :data:`_PARALLEL_CHUNK_BYTES`)"""
+        chunk_bytes = self.plan.dtype.itemsize * int(np.prod(self.plan.chunks))
+        return len(self.projections) > 1 and chunk_bytes >= _PARALLEL_CHUNK_BYTES
+
+    def decode(
+        self, raws: List[Optional[bytes]], fetch: Optional[Callable[[str], Optional[bytes]]] = None
+    ) -> npt.NDArray[Any]:
+        """Decodes the chunks (None: not stored, read as the fill value) into the output array. With ``fetch``, chunks
+        are read by the decoding threads (raws are ignored)"""
+        plan = self.plan
+        if self.is_single_raw_chunk and (raw := raws[0] if fetch is None else fetch(self.keys[0])) is not None:
+            # (a read-only view of the record, no copies)
+            if (view := Zarr3Backend.chunk_view(raw, plan.dtype, self.shape)) is None:
+                raise ValueError(f"Chunk {self.keys[0]} doesn't match its array ({len(raw)} bytes)")
+            return view
+
+        out = np.empty(self.out_shape, dtype=plan.dtype)
+
+        def decode_chunk(index: int) -> None:
+            projection = self.projections[index]
+            raw = raws[index] if fetch is None else fetch(self.keys[index])
             target = out[projection.out_selection] if projection.out_selection != () else out
-            try:
-                raw = self.archive[f"{self.path}/{key}" if self.path else key]
-            except KeyError:  # chunk not stored (fill value)
-                target[...] = np.asarray(self.fill_value, dtype=self.dtype) if self.fill_value is not None else 0
+            if raw is None:  # chunk not stored (fill value)
+                target[...] = np.asarray(plan.fill_value, dtype=plan.dtype) if plan.fill_value is not None else 0
                 return
             if (
-                self.compressor is not None
+                plan.compressor is not None
                 and projection.is_complete_chunk
-                and target.shape == self.chunks
+                and target.shape == plan.chunks
                 and target.flags.c_contiguous
             ):
-                self.compressor.decode(raw, out=target)
+                plan.compressor.decode(raw, out=target)
                 return
-            decoded = self.compressor.decode(raw) if self.compressor is not None else raw
-            selected = np.frombuffer(decoded, dtype=self.dtype).reshape(self.chunks)[projection.chunk_selection]
+            decoded = plan.compressor.decode(raw) if plan.compressor is not None else raw
+            selected = np.frombuffer(decoded, dtype=plan.dtype).reshape(plan.chunks)[projection.chunk_selection]
             target[...] = selected.reshape(target.shape)  # (integer selections drop axes)
 
-        chunk_bytes = self.dtype.itemsize * int(np.prod(self.chunks))
         parallel = _ParallelReads.get()
-        if len(projections) > 1 and chunk_bytes >= _PARALLEL_CHUNK_BYTES and parallel.semaphore.acquire(blocking=False):
+        if self.decodes_concurrently and parallel.semaphore.acquire(blocking=False):
             try:
-                for future in [parallel.pool().submit(read_chunk, projection) for projection in projections]:
+                for future in [parallel.pool().submit(decode_chunk, i) for i in range(len(self.projections))]:
                     future.result()
             finally:
                 parallel.semaphore.release()
         else:
-            for projection in projections:
-                read_chunk(projection)
+            for index in range(len(self.projections)):
+                decode_chunk(index)
         return out  # (0-d arrays for 0-d results, see nodes.Array.read)
 
 
@@ -570,6 +647,15 @@ class Zarr3Backend(Backend[Store]):
         if _DirectRead.enabled() and _DirectRead.is_basic_selection(selection) and (plan := _DirectRead.plan(array)):
             return self.read_result(plan.read(array, selection))
         return self.read_result(run(array.async_array.getitem(selection)))
+
+    @override
+    async def read_async(self, array: zarr.Array, selection: Selection) -> ReadResult:
+        if _DirectRead.enabled() and _DirectRead.is_basic_selection(selection) and (plan := _DirectRead.plan(array)):
+            return self.read_result(await plan.read_async(array, selection))
+        if _Loop.is_current():
+            return self.read_result(await array.async_array.getitem(selection))
+        # (zarr-python's codec pipeline decodes on the calling event loop: run it on a worker thread's own loop)
+        return await asyncio.get_running_loop().run_in_executor(_Loop.executor(), self.read, array, selection)
 
     @override
     def compression(self, array: zarr.Array) -> Optional[BloscCompression]:
