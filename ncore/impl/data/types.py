@@ -46,7 +46,7 @@ import PIL.Image as PILImage
 
 
 if TYPE_CHECKING:
-    import numpy.typing as npt  # type: ignore[import-not-found]
+    import numpy.typing as npt
 
 from ncore.impl.common.transformations import PoseGraphInterpolator, transform_bbox, transform_point_cloud
 from ncore.impl.data import util

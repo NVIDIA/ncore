@@ -612,7 +612,7 @@ class CameraComponent(VisualizationComponent):
             self._refresh_all_cameras()
 
         @source_dropdown.on_update
-        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+        def _(_: viser.GuiEvent) -> None:
             self._cuboid_label_source_name = source_dropdown.value
             self._refresh_all_cameras()
 
@@ -632,22 +632,22 @@ class CameraComponent(VisualizationComponent):
             self._refresh_all_cameras()
 
         @proj_lidar_dropdown.on_update
-        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+        def _(_: viser.GuiEvent) -> None:
             self._project_lidar_id = proj_lidar_dropdown.value
             self._refresh_all_cameras()
 
         @proj_mode_dropdown.on_update
-        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+        def _(_: viser.GuiEvent) -> None:
             self._project_mode = proj_mode_dropdown.value
             self._refresh_all_cameras()
 
         @proj_point_size_slider.on_update
-        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+        def _(_: viser.GuiEvent) -> None:
             self._project_point_size = proj_point_size_slider.value
             self._refresh_all_cameras()
 
         @proj_range_cycle_slider.on_update
-        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+        def _(_: viser.GuiEvent) -> None:
             self._project_range_cycle = proj_range_cycle_slider.value
             self._refresh_all_cameras()
 
@@ -664,7 +664,7 @@ class CameraComponent(VisualizationComponent):
             self._refresh_all_cameras()
 
         @proj_radar_dropdown.on_update
-        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+        def _(_: viser.GuiEvent) -> None:
             self._project_radar_id = proj_radar_dropdown.value
             self._refresh_all_cameras()
 
@@ -684,22 +684,22 @@ class CameraComponent(VisualizationComponent):
             self._refresh_all_cameras()
 
         @proj_pc_dropdown.on_update
-        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+        def _(_: viser.GuiEvent) -> None:
             self._project_point_clouds_id = proj_pc_dropdown.value
             self._refresh_all_cameras()
 
         @proj_pc_color_dropdown.on_update
-        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+        def _(_: viser.GuiEvent) -> None:
             self._project_pc_color_mode = proj_pc_color_dropdown.value
             self._refresh_all_cameras()
 
         @proj_pc_point_size_slider.on_update
-        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+        def _(_: viser.GuiEvent) -> None:
             self._project_pc_point_size = proj_pc_point_size_slider.value
             self._refresh_all_cameras()
 
         @proj_pc_range_cycle_slider.on_update
-        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+        def _(_: viser.GuiEvent) -> None:
             self._project_pc_range_cycle = proj_pc_range_cycle_slider.value
             self._refresh_all_cameras()
 
@@ -717,12 +717,12 @@ class CameraComponent(VisualizationComponent):
             self._refresh_all_cameras()
 
         @mask_dropdown.on_update
-        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+        def _(_: viser.GuiEvent) -> None:
             self._mask_name = mask_dropdown.value
             self._refresh_all_cameras()
 
         @mask_opacity_slider.on_update
-        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+        def _(_: viser.GuiEvent) -> None:
             self._mask_opacity = mask_opacity_slider.value
             self._refresh_all_cameras()
 
@@ -740,12 +740,12 @@ class CameraComponent(VisualizationComponent):
             self._refresh_all_cameras()
 
         @camera_label_matching.on_update
-        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+        def _(_: viser.GuiEvent) -> None:
             self._camera_label_matching = camera_label_matching.value
             self._refresh_all_cameras()
 
         @camera_label_opacity.on_update
-        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+        def _(_: viser.GuiEvent) -> None:
             self._camera_label_opacity_value = camera_label_opacity.value
             self._refresh_all_cameras()
 
@@ -800,7 +800,7 @@ class CameraComponent(VisualizationComponent):
             self._refresh_all_cameras()
 
         @rectify_fov_slider.on_update
-        def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+        def _(_: viser.GuiEvent) -> None:
             self._rectify_fov_factor = rectify_fov_slider.value
             if self._rectify:
                 self._build_camera_models()

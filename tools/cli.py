@@ -20,7 +20,7 @@ import numpy as np
 
 
 if TYPE_CHECKING:
-    import numpy.typing as npt  # type: ignore[import-not-found]
+    import numpy.typing as npt
 
 
 class OptionalStrParamType(click.ParamType):
