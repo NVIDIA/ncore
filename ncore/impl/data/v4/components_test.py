@@ -2753,6 +2753,44 @@ class TestCameraLabelsComponent(unittest.TestCase):
 # ==============================================================================
 
 
+@parameterized_class(("store_type",), [("itar",), ("directory",)])
+class TestPosesDtypes(unittest.TestCase):
+    """Poses are read with the dtype they were stored with"""
+
+    store_type: Literal["itar", "directory"]
+
+    @parameterized.expand([(np.float32,), (np.float64,)])
+    def test_pose_dtypes(self, dtype: type) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            writer = SequenceComponentGroupsWriter(
+                output_dir_path=UPath(tmpdir),
+                store_base_name="poses-dtypes",
+                sequence_id="poses-dtypes",
+                sequence_timestamp_interval_us=HalfClosedInterval(0, 2),
+                store_type=self.store_type,
+                generic_meta_data={},
+            )
+            T = np.eye(4, dtype=dtype)
+            T[0, 3] = 0.1  # (not exactly representable: float32 / float64 values differ)
+            writer.register_component_writer(PosesComponent.Writer, "poses").store_static_pose(
+                "sensor", "rig", T
+            ).store_dynamic_pose("rig", "world", np.stack([T, T]), np.array([0, 1], dtype=np.uint64))
+            reader = SequenceComponentGroupsReader(writer.finalize()).open_component_readers(PosesComponent.Reader)[
+                "poses"
+            ]
+
+            static_pose = reader.get_static_pose("sensor", "rig")
+            dynamic_poses, timestamps_us = reader.get_dynamic_pose("rig", "world")
+            self.assertEqual(static_pose.dtype, np.dtype(dtype))
+            self.assertEqual(dynamic_poses.dtype, np.dtype(dtype))
+            self.assertEqual(timestamps_us.dtype, np.dtype(np.uint64))
+            np.testing.assert_array_equal(static_pose, T)
+            np.testing.assert_array_equal(dynamic_poses, np.stack([T, T]))
+            # (consistent with the getters of all poses)
+            self.assertEqual(dict(reader.get_static_poses())[("sensor", "rig")].dtype, np.dtype(dtype))
+            self.assertEqual(dict(reader.get_dynamic_poses())[("rig", "world")][0].dtype, np.dtype(dtype))
+
+
 @parameterized_class(
     ("store_type"),
     [
