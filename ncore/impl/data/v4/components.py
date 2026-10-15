@@ -880,7 +880,8 @@ class PosesComponent:
                 )
 
         def get_static_pose(self, source_frame_id: str, target_frame_id: str) -> npt.NDArray[np.floating]:
-            """Returns static pose (rigid transformation) between two named coordinate frames, if available"""
+            """Returns static pose (rigid transformation) between two named coordinate frames, if available (of the
+            stored dtype, float32 / float64)"""
 
             if (
                 static_pose := self._group["static_poses"].attrs.get(
@@ -889,12 +890,13 @@ class PosesComponent:
             ) is None:
                 raise KeyError(f"Static pose {key} not found")
 
-            return np.array(static_pose["pose"], dtype=np.float64)
+            return np.array(static_pose["pose"], dtype=static_pose["dtype"])
 
         def get_dynamic_pose(
             self, source_frame_id: str, target_frame_id: str
         ) -> Tuple[npt.NDArray[np.floating], npt.NDArray[np.uint64]]:
-            """Returns dynamic poses (time-dependent rigid transformations) between two named coordinate frames, if available"""
+            """Returns dynamic poses (time-dependent rigid transformations) between two named coordinate frames, if
+            available (poses of the stored dtype, float32 / float64)"""
 
             if (
                 dynamic_poses := self._group["dynamic_poses"].attrs.get(
@@ -903,7 +905,7 @@ class PosesComponent:
             ) is None:
                 raise KeyError(f"Dynamic poses {key} not found")
 
-            return np.array(dynamic_poses["poses"], dtype=np.float64), np.array(
+            return np.array(dynamic_poses["poses"], dtype=dynamic_poses["dtype"]), np.array(
                 dynamic_poses["timestamps_us"], dtype=np.uint64
             )
 
