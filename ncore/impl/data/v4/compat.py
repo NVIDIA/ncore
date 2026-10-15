@@ -63,7 +63,7 @@ from ncore.impl.data.v4.components import (
 
 
 if TYPE_CHECKING:
-    import numpy.typing as npt  # type: ignore[import-not-found]
+    import numpy.typing as npt
 
 
 class SequenceLoaderV4(SequenceLoaderProtocol):

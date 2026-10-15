@@ -77,7 +77,7 @@ from ncore.impl.data.util import closest_index_sorted
 
 
 if TYPE_CHECKING:
-    import numpy.typing as npt  # type: ignore[import-not-found]
+    import numpy.typing as npt
 
 
 @runtime_checkable

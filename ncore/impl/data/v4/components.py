@@ -59,7 +59,7 @@ from ncore.impl.data.types import PointCloud
 
 
 if TYPE_CHECKING:
-    import numpy.typing as npt  # type: ignore[import-not-found]
+    import numpy.typing as npt
 
 if sys.version_info >= (3, 11):
     # Older python versions have issues with type-hints for nested types in

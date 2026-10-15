@@ -313,7 +313,7 @@ class DataLoader:
             poses = self.pose_graph.evaluate_poses(
                 self._rig_frame_id, self._world_frame_id, np.array([timestamp_us], dtype=np.uint64)
             )
-            return poses[0]  # type: ignore[return-value]
+            return poses[0]
         except KeyError:
             key = (self._rig_frame_id, self._world_frame_id, "rig_pose")
             if key not in self._warned_pose_paths:

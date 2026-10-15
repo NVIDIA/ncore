@@ -29,7 +29,7 @@ from ncore.impl.common.util import unpack_optional
 
 
 if TYPE_CHECKING:
-    import numpy.typing as npt  # type: ignore[import-not-found]  # noqa: F401
+    import numpy.typing as npt  # noqa: F401
 
     # torch is used for type annotations only - this module deliberately keeps its
     # runtime dependencies to numpy + scipy (see //ncore/impl/common:pylib_transformations),
@@ -332,7 +332,7 @@ class PoseInterpolator:
                 )
 
         # Convert dtype to floating type for internal use
-        float_type: type[np.floating] = np.dtype(dtype).type  # type: ignore[assignment]
+        float_type: type[np.floating] = np.dtype(dtype).type
 
         # Allocate output
         result = np.empty((len(ts_target), 4, 4), dtype=float_type)

@@ -26,7 +26,7 @@ from upath import UPath
 
 
 if TYPE_CHECKING:
-    import numpy.typing as npt  # type: ignore[import-not-found]
+    import numpy.typing as npt
 
 ## Constants
 INDEX_DIGITS = 6  # the number of integer digits to pad counters in output filenames

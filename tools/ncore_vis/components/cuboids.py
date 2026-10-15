@@ -77,7 +77,7 @@ class CuboidsComponent(VisualizationComponent):
                 self._update_cuboids()
 
             @cuboid_checkbox.on_update
-            def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+            def _(_: viser.GuiEvent) -> None:
                 self._enabled = cuboid_checkbox.value
                 for box in self._cuboid_boxes:
                     box.visible = cuboid_checkbox.value
@@ -85,7 +85,7 @@ class CuboidsComponent(VisualizationComponent):
                     label.visible = cuboid_checkbox.value
 
             @label_checkbox.on_update
-            def _(_: viser.GuiEvent) -> None:  # type: ignore[no-redef]
+            def _(_: viser.GuiEvent) -> None:
                 self._show_labels = label_checkbox.value
                 self._update_cuboids()
 

@@ -170,7 +170,7 @@ class LocalClipDataProvider(ClipDataProvider):
         sp_path = self._metadata_dir / "feature_presence.parquet"
         if sp_path.exists():
             df = pd.read_parquet(str(sp_path))
-            return df.loc[self._clip_id]  # type: ignore[return-value]
+            return df.loc[self._clip_id]
         # Fallback: infer from extrinsics
         logger.info("feature_presence.parquet not found, inferring from extrinsics")
         ext_df = self.load_parquet("sensor_extrinsics")
@@ -185,7 +185,7 @@ class LocalClipDataProvider(ClipDataProvider):
     def get_source_metadata(self) -> Dict[str, Any]:
         provenance_path = self._metadata_dir / "provenance.json"
         if provenance_path.exists():
-            return json.loads(provenance_path.read_text())  # type: ignore[no-any-return]
+            return json.loads(provenance_path.read_text())
         # Fallback for older downloads that lack provenance.json
         logger.info("provenance.json not found, returning minimal source metadata")
         return {"clip_id": self._clip_id}
