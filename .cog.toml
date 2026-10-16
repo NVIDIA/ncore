@@ -24,9 +24,11 @@ pre_bump_hooks = [
     """sed -i 's/embed_label=[^[:space:]]*/embed_label={{version}}/g' .bazelrc""",
 ]
 
-# Remove the local tag created by cog bump; CI creates the tag when the release commit lands
+# Remove the local tag created by cog bump (CI creates the tag when the release commit lands), and
+# draft the release notes in the body of the release commit
 post_bump_hooks = [
     "git tag --delete {{version_tag}}",
+    ".github/release/release-notes.sh draft {{version}}",
 ]
 
 # The bump commit only changes .bazelrc; release notes live on GitHub releases
@@ -38,6 +40,40 @@ template = "remote"
 remote = "github.com"
 owner = "NVIDIA"
 repository = "ncore"
+
+# GitHub usernames of commit authors, mentioned in the change list of the release notes (matched by
+# git author name, authors without an entry are listed by name)
+[[changelog.authors]]
+signature = "Alex Perec"
+username = "aperec-nvidia"
+
+[[changelog.authors]]
+signature = "Emmanuel Attia"
+username = "eattia-nvidia"
+
+[[changelog.authors]]
+signature = "Janick Martinez Esturo"
+username = "janickm"
+
+[[changelog.authors]]
+signature = "Michael Shelley"
+username = "michael-shelley"
+
+[[changelog.authors]]
+signature = "Minh Vu"
+username = "fallintoplace"
+
+[[changelog.authors]]
+signature = "Sanchit Garg"
+username = "sanchitgarg"
+
+[[changelog.authors]]
+signature = "Wei Zhang"
+username = "Willyzw"
+
+[[changelog.authors]]
+signature = "Zan Gojcic"
+username = "zgojcic"
 
 # Commit types and their titles in the release notes.
 # Types not listed here use cocogitto defaults.
