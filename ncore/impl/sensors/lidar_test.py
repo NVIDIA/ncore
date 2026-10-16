@@ -264,33 +264,48 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
     dtype: torch.dtype
     param_file_mapresfactor: Tuple[str, int]
 
-    def setUp(self):
-        with open(f"ncore/impl/sensors/test_data/{self.param_file_mapresfactor[0]}", "r") as fp:
-            self.model_parameters = RowOffsetStructuredSpinningLidarModelParameters.from_dict(json.load(fp))
+    model_parameters: RowOffsetStructuredSpinningLidarModelParameters
+    lidar_model: RowOffsetStructuredSpinningLidarModel
+    elements: np.ndarray
 
-        self.lidar_model = RowOffsetStructuredSpinningLidarModel(
-            self.model_parameters,
-            angles_to_columns_map_init=False,
-            angles_to_columns_map_resolution_factor=self.param_file_mapresfactor[1],
-            device=self.device,
-            dtype=self.dtype,
-        )
+    @classmethod
+    def setUpClass(cls):
+        with open(f"ncore/impl/sensors/test_data/{cls.param_file_mapresfactor[0]}", "r") as fp:
+            cls.model_parameters = RowOffsetStructuredSpinningLidarModelParameters.from_dict(json.load(fp))
+
+        # Shared by all tests of a parameterization: its angles to columns map (a KD-tree query over
+        # all elements, the most expensive part of these tests) is computed once, on first use.
+        # Tests must not modify it; create a dedicated model instead (see _create_lidar_model).
+        cls.lidar_model = cls._create_lidar_model()
 
         # create all element indices [relative to the static model]
         elements_grid = np.stack(
             np.meshgrid(
-                np.arange(self.model_parameters.n_rows, dtype=np.int64),
-                np.arange(self.model_parameters.n_columns, dtype=np.int64),
+                np.arange(cls.model_parameters.n_rows, dtype=np.int64),
+                np.arange(cls.model_parameters.n_columns, dtype=np.int64),
                 indexing="ij",
             ),
             axis=-1,
         )
 
-        self.elements = elements_grid.reshape(-1, 2)
+        cls.elements = elements_grid.reshape(-1, 2)
+
+    @classmethod
+    def _create_lidar_model(cls) -> RowOffsetStructuredSpinningLidarModel:
+        return RowOffsetStructuredSpinningLidarModel(
+            cls.model_parameters,
+            angles_to_columns_map_init=False,
+            angles_to_columns_map_resolution_factor=cls.param_file_mapresfactor[1],
+            device=cls.device,
+            dtype=cls.dtype,
+        )
 
     def test_model_parameters_roundtrip(self):
         """Validate model parameters obtained from torch model instances are correctly mapped back to the input versions
         between device transfers"""
+
+        # moves the model between devices, so don't modify the shared one
+        self.lidar_model = self._create_lidar_model()
 
         self.assertEqual(
             self.lidar_model.row_elevations_rad.device.type, self.device.type
@@ -361,7 +376,8 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
         The map is built by flooring a flat element index by the row count, so a
         rounding error there shows up as an out-of-range or off-by-one column.
         """
-        self.lidar_model._init_angles_to_columns_map()
+        if self.lidar_model.angles_to_columns_map is None:
+            self.lidar_model._init_angles_to_columns_map()
         angles_to_columns_map = unpack_optional(self.lidar_model.angles_to_columns_map)
 
         self.assertEqual(
