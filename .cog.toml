@@ -1,39 +1,46 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Cocogitto configuration for conventional commit-based versioning and changelog generation.
+# Cocogitto configuration for conventional commit-based versioning and release notes.
 #
 # Usage:
 #   cog --config .cog.toml check                  # Validate commit messages
 #   cog --config .cog.toml bump --auto --dry-run  # Preview next version
-#   cog --config .cog.toml changelog              # Generate changelog
+#   cog --config .cog.toml bump --auto            # Create the `chore(version): vX.Y.Z` release commit
+#
+# Release notes are not kept in the repository. CI creates them on the GitHub release, see
+# .github/release/release-notes.sh and the "Releases & Versioning" section of CONTRIBUTING.md.
 #
 # See https://docs.cocogitto.io/reference/config.html
 
 tag_prefix = "v"
 
 # "HEAD" allows usage from jj's detached HEAD mode
-branch_whitelist = ["main", "HEAD"]
+branch_whitelist = ["main", "release/*", "HEAD"]
 
 # Update the Python wheel version / embed_label in the bazel.rc file before the bump commit
+# (replaces the whole label, including pre-release parts like `-rc.1`)
 pre_bump_hooks = [
-    """sed -i 's/embed_label=[0-9]*\\.[0-9]*\\.[0-9]*/embed_label={{version}}/g' .bazelrc""",
+    """sed -i 's/embed_label=[^[:space:]]*/embed_label={{version}}/g' .bazelrc""",
 ]
 
-# Remove the local tag created by cog bump; tagging is handled by GH releases / CI
+# Remove the local tag created by cog bump; CI creates the tag when the release commit lands
 post_bump_hooks = [
     "git tag --delete {{version_tag}}",
 ]
 
+# The bump commit only changes .bazelrc; release notes live on GitHub releases
+disable_changelog = true
+
+# Used by `cog changelog` to render the change list of the release notes
 [changelog]
-path = "CHANGELOG.md"
 template = "remote"
 remote = "github.com"
 owner = "NVIDIA"
 repository = "ncore"
 
-# Commit types included in the changelog (user-facing changes only).
-# Types not listed here use cocogitto defaults (omitted from changelog).
+# Commit types and their titles in the release notes.
+# Types not listed here use cocogitto defaults.
 [commit_types]
 feat = { changelog_title = "➕ Added", order = 1 }
 fix = { changelog_title = "🪲 Fixed", order = 2 }
