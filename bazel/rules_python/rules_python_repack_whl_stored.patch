@@ -1,0 +1,30 @@
+Store (instead of deflate) the files of wheels repacked after patching
+
+pip.override() patches unpack a wheel, apply the patches and repack it, only
+for the repackaged wheel to be extracted right away in the same repository
+rule. Compressing it is wasted work: for the CUDA torch wheel (4 GB
+unpacked), deflating takes ~150s, storing ~5s, and this runs on every cold
+fetch (e.g. on ephemeral CI runners).
+
+--- a/python/private/pypi/repack_whl.py
++++ b/python/private/pypi/repack_whl.py
+@@ -28,6 +28,7 @@
+ import pathlib
+ import sys
+ import tempfile
++import zipfile
+ 
+ from tools.wheelmaker import _WhlFile
+ 
+@@ -154,7 +155,10 @@
+         distribution_prefix = distinfo_dir.with_suffix("").name
+ 
+         with _WhlFile(
+-            args.output, mode="w", distribution_prefix=distribution_prefix
++            args.output,
++            mode="w",
++            distribution_prefix=distribution_prefix,
++            compression=zipfile.ZIP_STORED,
+         ) as out:
+             for p in _files_to_pack(patched_wheel_dir, record_contents):
+                 rel_path = p.relative_to(patched_wheel_dir)
