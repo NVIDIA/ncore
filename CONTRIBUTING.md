@@ -163,66 +163,7 @@ Cocogitto is configured via `.cog.toml` in the repository root. All `cog` comman
 ```bash
 cog --config .cog.toml check                   # Validate commit messages
 cog --config .cog.toml bump --auto --dry-run   # Preview next version
-```
-
-### Branches
-
-- `main` carries the next major version. New features, including breaking changes, target `main`.
-- `release/<major>` (e.g. `release/19`) carries an earlier major version that still receives
-  releases. It is branched from `main` before the first breaking change of the next major version
-  lands. Bug fixes and non-breaking features for that version target the release branch.
-- A fix that is needed in both lines lands on `main` first. It is then cherry-picked with
-  `git cherry-pick -x` into a second PR against the release branch, adapted where the code has
-  diverged.
-
-Release branches follow the same rules as `main` (linear history, signed conventional commits,
-required CI checks), but are not gated by the merge queue.
-
-### Making a Release
-
-The version of the `nvidia-ncore` wheel is the `embed_label` in `.bazelrc`. A release is a reviewed
-PR with a single `chore(version): vX.Y.Z` commit that changes it, against `main` or the release
-branch of that version:
-
-```bash
-# On an up-to-date branch based on the target branch
-cog --config .cog.toml bump --auto             # or --patch / --minor / --major / --version X.Y.Z
-
-# Optionally add release highlights (markdown) to the body of the commit
-git commit --amend -S
-```
-
-`cog bump` computes the next version from the conventional commits since the previous release tag
-reachable from the current branch, updates `.bazelrc`, and creates the release commit. It does not
-create a tag.
-
-When the release commit lands on `main` or a `release/*` branch, CI builds and publishes the wheel
-to [PyPI](https://pypi.org/project/nvidia-ncore), then creates the `vX.Y.Z` tag on the release
-commit and the [GitHub release](https://github.com/NVIDIA/ncore/releases). Pushes whose version
-already has a tag do not release anything. If a release run fails, re-running it (or the CI run of
-the next push to the same branch) completes the release.
-
-### Pre-releases
-
-Release candidates use a SemVer pre-release version, e.g. `20.0.0-rc.1`, published to PyPI as
-`20.0.0rc1` and marked as a pre-release on GitHub. Pass the version explicitly:
-
-```bash
-cog --config .cog.toml bump --version 20.0.0-rc.1
-```
-
-pip only installs pre-releases with `--pre` or an exact version pin.
-
-### Release Notes
-
-Release notes live on the GitHub releases only; the repository does not keep a changelog file.
-They consist of the highlights from the body of the release commit, followed by the change list
-since the previous release tag reachable from the release commit, grouped by commit type. A final
-release lists everything since the previous final release, including the changes of its release
-candidates. Preview the notes of a release commit locally with:
-
-```bash
-.github/release/release-notes.sh <version> <release-commit>
+cog --config .cog.toml changelog               # Generate changelog
 ```
 
 ## Commit Signatures
