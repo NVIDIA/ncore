@@ -404,6 +404,68 @@ class TestNodes(unittest.TestCase):
             self.root.node("g/missing")
 
 
+class TestNodeCache(unittest.TestCase):
+    """Node caches of groups (disabled / unbounded / least recently used)"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        path = os.path.join(self._tmp.name, "store.itar")
+        with IndexedTarZarrStore(path, mode="w") as store:
+            sub = store.create_root_group({}).create_group("g")
+            for i in range(8):
+                sub.create_array(f"a{i}", np.full(3, i))
+            store.consolidate()
+        self.root = IndexedTarZarrStore(path).open_root_group()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_uncached(self):
+        self.assertIsNone(self.root.cache)
+        self.assertIsNot(self.root.array("g/a1").zarr, self.root.array("g/a1").zarr)
+
+    def test_unbounded(self):
+        root = self.root.with_cache(cache := nodes.NodeCache())
+        for i in range(8):
+            np.testing.assert_array_equal(root.array(f"g/a{i}").read(), [i] * 3)
+        self.assertEqual(len(cache), 8)
+        self.assertIs(root.array("g/a3").zarr, root.array("g/a3").zarr)
+
+    def test_member_groups_share_the_cache(self):
+        root = self.root.with_cache(cache := nodes.NodeCache())
+        group = root.group("g")
+        self.assertIs(group.cache, cache)
+        node = root.node("g")
+        assert isinstance(node, nodes.Group)
+        self.assertIs(node.cache, cache)
+        self.assertIs(cast(nodes.Array, root.node("g/a2")).zarr, root.array("g/a2").zarr)
+        self.assertIs(group.array("a3").zarr, root.array("g/a3").zarr)
+        self.assertIs(next(root.groups())[1].cache, cache)
+        self.assertEqual(cache.keys(), ["g", "g/a2", "g/a3"])
+
+    def test_least_recently_used(self):
+        root = self.root.with_cache(cache := nodes.NodeCache(max_entries=3))
+        a0 = root.array("g/a0").zarr
+        root.array("g/a1")
+        root.array("g/a2")
+        self.assertIs(root.array("g/a0").zarr, a0)  # (a1 is the least recently used node now)
+        root.array("g/a3")
+        self.assertEqual(cache.keys(), ["g/a2", "g/a0", "g/a3"])
+        for i in range(8):  # evicted nodes are re-opened
+            np.testing.assert_array_equal(root.array(f"g/a{i}").read(), [i] * 3)
+        self.assertEqual(len(cache), 3)
+
+    def test_missing_nodes_are_not_cached(self):
+        root = self.root.with_cache(cache := nodes.NodeCache())
+        with self.assertRaises(KeyError):
+            root.array("g/missing")
+        self.assertEqual(len(cache), 0)
+
+    def test_invalid_sizes(self):
+        with self.assertRaises(ValueError):
+            nodes.NodeCache(max_entries=0)
+
+
 class TestZeroCopyReads(unittest.TestCase):
     """Read results are read-only, arrays stored as a single uncompressed chunk are read as views of their records"""
 

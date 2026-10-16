@@ -345,6 +345,7 @@ class SequenceComponentGroupsReader:
         open_consolidated: bool = True,
         itar_index_tail_read_size: int = 1 << 20,  # 1 MiB default
         max_threads: int | None = None,
+        node_cache_size: int | None = None,
     ):
         """Initialize a SequenceComponentReader for a virtual sequence represented by a list of components.
 
@@ -360,9 +361,17 @@ class SequenceComponentGroupsReader:
                                single I/O call to initialize the tar file index to minimize reads.
                                Default 1 MiB size fits typical use cases, but may be increased if the compressed
                                index size is expected to be larger or decreased if remote access chunk sizes are smaller.
-            max_threads:       The maximum number of threads used to load the different components (if None,
-                               use interpreter-default number of threads for a ThreadPoolExecutor)
+            max_threads:       The maximum number of threads used to open the component stores concurrently (if
+                               None, use interpreter-default number of threads for a ThreadPoolExecutor)
+            node_cache_size:   Number of opened groups / arrays (with their decoded meta-data, but not their data)
+                               each component reader caches for repeated accesses (e.g., of frames). None caches
+                               all accessed nodes for the lifetime of the reader, a positive number the most recently
+                               used nodes only, and 0 disables caching.
         """
+
+        if node_cache_size is not None and node_cache_size < 0:
+            raise ValueError(f"node_cache_size needs to be None or non-negative, got {node_cache_size}")
+        self._node_cache_size = node_cache_size
 
         component_group_upaths: List[UPath] = self.expand_component_group_paths(component_group_paths)
 
@@ -371,10 +380,13 @@ class SequenceComponentGroupsReader:
         # Load component stores concurrently (to hide latency) and check for sequence consistency
         self._component_stores: Dict[str, Tuple[nodes.Group, UPath]] = {}  # use str as the generic path / URL type
 
+        # Component stores are opened concurrently (hiding the latency of remote archive index reads), their
+        # hierarchies are opened from their consolidated metadata sequentially on the calling thread (pure-Python CPU
+        # work that threads only slow down), each as soon as its store is opened
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
 
-            def thread_load_component_store(component_store_upath: UPath) -> Tuple[nodes.Group, UPath]:
-                """Thread-executed shard opening"""
+            def thread_open_component_store(component_store_upath: UPath) -> Tuple[stores.Store, UPath]:
+                """Thread-executed component store opening"""
 
                 # Make sure paths are absolute at this point
                 component_store_upath = component_store_upath.absolute()
@@ -395,16 +407,14 @@ class SequenceComponentGroupsReader:
                 else:
                     component_store = stores.ZarrStoreAdapter.directory(component_store_upath)
 
-                return component_store.open_root_group(open_consolidated), component_store_upath
+                return component_store, component_store_upath
 
-            for future in concurrent.futures.as_completed(
-                [
-                    executor.submit(thread_load_component_store, component_store_upath)
-                    for component_store_upath in component_group_upaths
-                ]
+            # (hierarchies are opened as soon as their stores are opened, in order, while the remaining stores
+            # are still being opened)
+            for component_store, component_store_path in executor.map(
+                thread_open_component_store, component_group_upaths
             ):
-                # Note: thread completion order is not relevant here
-                component_root, component_store_path = future.result()
+                component_root = component_store.open_root_group(open_consolidated)
 
                 # Check sequence compatibility
                 component_root_version = component_root.attr_str("version")
@@ -490,7 +500,11 @@ class SequenceComponentGroupsReader:
                 if not component_reader_type.supports_component_version(component_group.attr_str("component_version")):
                     continue
 
-                ret[component_instance_name] = component_reader_type(component_instance_name, component_group)
+                # each reader caches the nodes of its component
+                cache = None if self._node_cache_size == 0 else nodes.NodeCache(self._node_cache_size)
+                ret[component_instance_name] = component_reader_type(
+                    component_instance_name, component_group.with_cache(cache)
+                )
 
         return ret
 
