@@ -1,0 +1,23 @@
+{#
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+
+Cocogitto changelog template for GitHub release notes (see .github/release/release-notes.sh).
+Renders the change list grouped by commit type and omits the `chore(version)` release commits.
+-#}
+{% import "macros" as macros -%}
+{% for value in commits | group_by_type -%}
+{% set_global entries = [] -%}
+{% for commit in value.1 -%}
+{% if commit.scope == "version" and commit.summary is starting_with("v") -%}
+{% else -%}
+{% set_global entries = entries | concat(with=commit) -%}
+{% endif -%}
+{% endfor -%}
+{% if entries | length > 0 %}
+#### {{ value.0 | upper_first }}
+{% for commit in entries -%}
+{{ macros::remote(commit=commit) }}
+{% endfor -%}
+{% endif -%}
+{% endfor -%}

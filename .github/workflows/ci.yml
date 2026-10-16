@@ -16,11 +16,12 @@
 # Unified CI workflow that handles:
 # - Build and test (all branches)
 # - Documentation deployment to GitHub Pages (main branch only)
-# - Python package publishing to Test PyPI (main branch only)
+# - Releases (main and release/* branches): publishing to PyPI, tagging and creating the GitHub
+#   release whenever the version in .bazelrc (embed_label) has no release tag yet
 #
 # Setup required:
 # 1. GitHub Pages: Settings -> Pages -> Source: GitHub Actions
-# 2. Test PyPI token: Settings -> Secrets -> TEST_PYPI_API_TOKEN
+# 2. PyPI token: Settings -> Secrets -> PYPI_API_TOKEN
 
 name: CI
 
@@ -28,6 +29,7 @@ on:
   push:
     branches:
     - main
+    - 'release/*'
     - 'pull-request/[0-9]+'
   merge_group:
     branches: [main]
@@ -117,39 +119,123 @@ jobs:
         uses: actions/deploy-pages@v4
 
   # =============================================================================
-  # Publish to PyPI - runs only on main branch after build-and-test succeeds
+  # Release - runs on main and release/* pushes after build-and-test succeeds
+  #
+  # The version is the `embed_label` in .bazelrc, changed by a reviewed `chore(version): vX.Y.Z`
+  # commit (see CONTRIBUTING.md). If its tag `vX.Y.Z` does not exist yet, this job publishes the
+  # wheel built from the commit that last changed `embed_label` to PyPI, then creates the tag and the
+  # GitHub release on that commit. Every step is safe to re-run: the upload skips existing files, and
+  # a release whose run failed or was cancelled is completed by the next run on the same branch.
   # =============================================================================
-  publish-pypi:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && github.repository == 'NVIDIA/ncore'
+  release:
+    if: >-
+      github.event_name == 'push' && github.repository == 'NVIDIA/ncore' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
     needs: build-and-test
     runs-on: linux-amd64-cpu8
+    permissions:
+      contents: write  # create the release tag and the GitHub release
+      packages: read
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history and tags to find the release commit and previous release
+
+      - name: Determine release
+        id: release
+        run: |
+          version="$(sed -n 's/^build --embed_label=//p' .bazelrc)"
+          if ! [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Invalid embed_label '${version}' in .bazelrc"
+            exit 1
+          fi
+          tag="v${version}"
+
+          if git rev-parse --quiet --verify "refs/tags/${tag}" > /dev/null; then
+            echo "Tag ${tag} already exists, nothing to release"
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # The release commit is the commit that last changed the version
+          sha="$(git log -1 --format=%H -G '^build --embed_label=' HEAD -- .bazelrc)"
+
+          prerelease=false
+          [[ "${version}" == *-* ]] && prerelease=true
+
+          # Only mark a final release as latest if no higher final release exists (e.g. a 19.x patch
+          # release published after 20.0.0)
+          latest=false
+          if [[ "${prerelease}" == false ]]; then
+            highest="$( (git tag --list 'v[0-9]*' | grep -v -- '-'; echo "${tag}") | sort -V | tail -n 1)"
+            [[ "${highest}" == "${tag}" ]] && latest=true
+          fi
+
+          echo "Releasing ${tag} from $(git log -1 --format='%h %s' "${sha}") (prerelease: ${prerelease}, latest: ${latest})"
+          {
+            echo "needed=true"
+            echo "version=${version}"
+            echo "tag=${tag}"
+            echo "sha=${sha}"
+            echo "prerelease=${prerelease}"
+            echo "latest=${latest}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout release commit
+        if: steps.release.outputs.needed == 'true'
+        run: git checkout --quiet --detach "${{ steps.release.outputs.sha }}"
 
       - name: Setup Bazel environment
+        if: steps.release.outputs.needed == 'true'
         uses: ./.github/actions/setup-bazel
         with:
           install-pandoc: false
           free-disk-space: true
           github-token: ${{ secrets.NVIDIA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
+      - name: Install cocogitto
+        if: steps.release.outputs.needed == 'true'
+        uses: cocogitto/cocogitto-action@9a9fe03b31c47444290c0d7f9b1ee1b44ee13f20
+        with:
+          command: "--version"
+
+      - name: Generate release notes
+        if: steps.release.outputs.needed == 'true'
+        run: |
+          .github/release/release-notes.sh "${{ steps.release.outputs.version }}" HEAD > "${RUNNER_TEMP}/release-notes.md"
+          cat "${RUNNER_TEMP}/release-notes.md"
+
       - name: Publish to PyPI
+        if: steps.release.outputs.needed == 'true'
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: bazelisk run //ncore:ncore_wheel.publish --stamp -- --repository pypi --verbose --skip-existing --non-interactive
 
-      - name: Print installation instructions
-        run: |
-          echo "========================================"
-          echo "Python package published to PyPI!"
-          echo ""
-          echo "To install from PyPI:"
-          echo "  pip install nvidia-ncore"
-          echo ""
-          echo "Note: --extra-index-url is required for dependencies (numpy, torch, etc.)"
-          echo ""
-          echo "View package: https://pypi.org/project/nvidia-ncore"
-          echo "========================================"
+      - name: Create tag and GitHub release
+        if: steps.release.outputs.needed == 'true'
+        uses: actions/github-script@v7
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          SHA: ${{ steps.release.outputs.sha }}
+          PRERELEASE: ${{ steps.release.outputs.prerelease }}
+          LATEST: ${{ steps.release.outputs.latest }}
+        with:
+          script: |
+            const fs = require('fs');
+            const { TAG, SHA, PRERELEASE, LATEST, RUNNER_TEMP } = process.env;
+            // Creates the tag on the release commit together with the release
+            const { data: release } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: TAG,
+              target_commitish: SHA,
+              name: TAG,
+              body: fs.readFileSync(`${RUNNER_TEMP}/release-notes.md`, 'utf8'),
+              prerelease: PRERELEASE === 'true',
+              make_latest: LATEST === 'true' ? 'true' : 'false',
+            });
+            core.notice(`Released ${TAG}: ${release.html_url}`);
+            core.notice(`PyPI: https://pypi.org/project/nvidia-ncore/${TAG.slice(1)}/`);
