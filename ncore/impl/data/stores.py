@@ -22,6 +22,7 @@ from abc import ABC
 from pathlib import Path
 from typing import Literal, Optional, Union
 
+from typing_extensions import override
 from upath import UPath
 
 from ncore.impl.data.backend import Attributes, ZarrStore
@@ -88,9 +89,11 @@ class IndexedTarZarrStore(Store):
         """The records of the archive"""
         return self._archive
 
+    @override
     def reload_resources(self) -> None:
         self._archive.reload_resources()
 
+    @override
     def close(self) -> None:
         self._archive.close()
 

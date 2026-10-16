@@ -28,6 +28,7 @@ import zarr.errors
 import zarr.storage
 
 from numcodecs.compat import ensure_bytes
+from typing_extensions import override
 from upath import UPath
 from zarr._storage.store import BaseStore, Store
 
@@ -41,7 +42,7 @@ from ncore.impl.data.backend import (
     ZarrNode,
 )
 from ncore.impl.data.encoding import decode_cbor_xz, encode_cbor_xz
-from ncore.impl.data.itar import IndexedTarArchive
+from ncore.impl.data.itar import IndexedTarArchive, is_node_metadata_key
 
 
 if TYPE_CHECKING:
@@ -56,32 +57,40 @@ class _IndexedTarStore(Store):
     def __init__(self, archive: IndexedTarArchive) -> None:
         self.archive = archive
 
+    @override
     def __getitem__(self, key: str) -> bytes:
         return self.archive[key]
 
+    @override
     def __setitem__(self, key: str, value: object) -> None:
         if self.archive.mode != "w":
             raise zarr.errors.ReadOnlyError()
         self.archive[key] = ensure_bytes(value)
 
+    @override
     def __delitem__(self, key: str) -> None:
         raise NotImplementedError("IndexedTarArchive: records can't be deleted")
 
+    @override
     def __contains__(self, key: object) -> bool:
         return key in self.archive
 
+    @override
     def __iter__(self) -> Iterator[str]:
         return iter(self.archive.keys())
 
+    @override
     def __len__(self) -> int:
         return len(self.archive)
 
+    @override
     def __eq__(self, value: object) -> bool:
         return isinstance(value, _IndexedTarStore) and self.archive == value.archive
 
     def __hash__(self) -> int:
         return hash(self.archive)
 
+    @override
     def close(self) -> None:
         self.archive.close()
 
@@ -104,33 +113,42 @@ class Zarr2Backend(Backend[BaseStore]):
 
     # -- nodes -----------------------------------------------------------------
 
+    @override
     def zarr_format(self, node: ZarrNode) -> int:
         return 2
 
+    @override
     def open_member(self, group: zarr.Group, path: str) -> ZarrNode:
         return group[path]
 
+    @override
     def member_names(self, group: zarr.Group) -> List[str]:
         return list(group.keys())
 
+    @override
     def has_member(self, group: zarr.Group, name: str) -> bool:
         return name in group
 
+    @override
     def member_groups(self, group: zarr.Group) -> List[Tuple[str, zarr.Group]]:
         return list(group.groups())
 
+    @override
     def create_group(self, group: zarr.Group, name: str, attributes: Optional[Attributes]) -> zarr.Group:
         child = group.create_group(name)
         if attributes is not None:
             child.attrs.update(attributes)  # (writes .zattrs once)
         return child
 
+    @override
     def update_attributes(self, node: ZarrNode, attributes: Attributes) -> None:
         node.attrs.update(attributes)
 
+    @override
     def require_group(self, group: zarr.Group, name: str) -> zarr.Group:
         return group.require_group(name)
 
+    @override
     def create_array(
         self,
         group: zarr.Group,
@@ -150,6 +168,7 @@ class Zarr2Backend(Backend[BaseStore]):
             array.attrs.update(attributes)
         return array
 
+    @override
     def read(self, array: zarr.Array, selection: Selection) -> ReadResult:
         """Fast path: complete reads of arrays stored as a single uncompressed chunk are views of the chunk record (no
         copies, see :meth:`_single_chunk_record`). Fallback: zarr-python's read (e.g., of compressed or multi-chunk
@@ -176,6 +195,7 @@ class Zarr2Backend(Backend[BaseStore]):
             return None
         return record if isinstance(record, bytes) else None
 
+    @override
     def compression(self, array: zarr.Array) -> Optional[BloscCompression]:
         if (compressor := array.compressor) is None:
             return None
@@ -185,17 +205,21 @@ class Zarr2Backend(Backend[BaseStore]):
 
     # -- stores ----------------------------------------------------------------
 
+    @override
     def zarr_store(self, store: object) -> BaseStore:
         if not isinstance(store, BaseStore):
             raise TypeError(f"Not a zarr-python 2 store: {store!r}")
         return store
 
+    @override
     def indexed_tar_store(self, archive: IndexedTarArchive) -> BaseStore:
         return _IndexedTarStore(archive)
 
+    @override
     def directory_store(self, path: UPath) -> BaseStore:
         return zarr.storage.DirectoryStore(path.path)
 
+    @override
     def create_root_group(self, store: BaseStore, zarr_format: Literal[2, 3], attributes: Attributes) -> zarr.Group:
         if zarr_format != 2:
             raise ValueError(f"zarr-python 2 only supports zarr format v2, got v{zarr_format}")
@@ -203,13 +227,15 @@ class Zarr2Backend(Backend[BaseStore]):
         root.attrs.put(dict(attributes))
         return root
 
+    @override
     def open_root_group(self, store: BaseStore, consolidated: bool) -> zarr.Group:
         if consolidated:
             return zarr.open_group(store=_CompressedConsolidatedStore(store), chunk_store=store, mode="r")
         return zarr.open_group(store=store, mode="r")
 
+    @override
     def consolidate(self, store: BaseStore) -> None:
-        metadata = {key: json.loads(store[key]) for key in store if self.is_v2_metadata_key(key)}
+        metadata = {key: json.loads(store[key]) for key in store if is_node_metadata_key(key)}
         store[V2_CONSOLIDATED_METADATA_KEY] = encode_cbor_xz({"zarr_consolidated_format": 1, "metadata": metadata})
 
 

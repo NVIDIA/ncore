@@ -17,7 +17,7 @@
 -r requirements_tests.in
 -r requirements_ncore.in
 
-# Public API restrictions for 3.12
+# Public API restrictions for 3.12: most recent zarr-python 2
 zarr>=2.18.7,<3.0.0 # zarr-python 2.18.7 is the first version with the correct numcodecs<0.16 restriction
 
 # torch: same version as the python 3.11 environment
