@@ -193,6 +193,13 @@ readers) resolve all zarr nodes from it, without reading node metadata records. 
 zarr-python 3, NCore executes zarr's asynchronous I/O on the calling thread, avoiding
 per-access thread hand-offs to zarr-python's global I/O thread.
 
+With zarr-python 3, numeric arrays of ``.itar`` archives (blosc compressed or
+uncompressed, as written by NCore) are read by decompressing their chunks directly into
+the output array (zarr-python's indexing determines the chunks), and large chunks of an
+array are decoded concurrently. All other arrays and selections are read via
+zarr-python's codec pipeline. Setting the environment variable
+``NCORE_ZARR3_DIRECT_READS=0`` reads all arrays via zarr-python's codec pipeline.
+
 Records of ``.itar`` archives are write-once (archives are append-only): rewriting a
 record fails. zarr-python 3 rewrites node metadata on every attribute update, so node
 metadata records are kept in memory until the archive is closed, and only their final

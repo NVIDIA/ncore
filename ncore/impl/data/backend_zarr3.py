@@ -21,6 +21,9 @@ a dedicated I/O thread, and codecs additionally hand off (de)compression to work
 (as typical for reading individual frames) these thread hand-offs dominate. The backend instead runs zarr-python's
 coroutines on an event loop owned by the *calling* thread (see :func:`run`), which executes the same zarr-python code
 paths without thread hand-offs, and lets multiple reader threads decode data concurrently.
+
+Arrays of indexed tar archives are read by decompressing their chunks directly into the output array (see
+:meth:`_DirectRead.plan`).
 """
 
 from __future__ import annotations
@@ -45,6 +48,7 @@ from typing import (
     Iterator,
     List,
     Literal,
+    NamedTuple,
     Optional,
     Tuple,
     TypeVar,
@@ -63,8 +67,10 @@ from zarr.abc.codec import Codec
 from zarr.abc.store import ByteRequest, OffsetByteRequest, RangeByteRequest, Store, SuffixByteRequest
 from zarr.codecs import BloscCodec, BytesCodec
 from zarr.core.buffer import Buffer, BufferPrototype, default_buffer_prototype
+from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.common import JSON
 from zarr.core.group import AsyncGroup
+from zarr.core.indexing import BasicIndexer, ChunkProjection
 from zarr.core.metadata import ArrayV2Metadata
 from zarr.core.sync import sync
 from zarr.storage import LocalStore, StorePath
@@ -270,6 +276,198 @@ class _IndexedTarStore(Store):
 
 
 # -----------------------------------------------------------------------------
+# Direct chunk reads of indexed tar archives
+# -----------------------------------------------------------------------------
+
+#: Environment variable disabling direct reads (all reads via zarr-python's codec pipeline), e.g., to compare against
+#: or to benefit from zarr-python improvements
+DIRECT_READS_ENV = "NCORE_ZARR3_DIRECT_READS"
+
+#: Minimum number of decompressed bytes per chunk to decode the chunks of a read concurrently (smaller chunks are
+#: cheaper to decode than to hand off to a thread pool)
+_PARALLEL_CHUNK_BYTES = 2 << 20
+
+#: Maximum number of concurrent reads (e.g., of multiple reader threads) decoding their chunks concurrently, further
+#: concurrent reads decode their chunks sequentially (the reads themselves already utilize the cores)
+_PARALLEL_READS = 2
+
+
+class _ParallelReads:
+    """Bounds the number of reads decoding their chunks concurrently (per process)"""
+
+    def __init__(self) -> None:
+        self.semaphore = threading.BoundedSemaphore(_PARALLEL_READS)
+        self.executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
+        self.lock = threading.Lock()
+        self.pid = os.getpid()
+
+    def pool(self) -> concurrent.futures.ThreadPoolExecutor:
+        with self.lock:
+            if self.executor is None:
+                self.executor = concurrent.futures.ThreadPoolExecutor(
+                    max_workers=min(8, os.cpu_count() or 1), thread_name_prefix="ncore_zarr3_chunks"
+                )
+            return self.executor
+
+    #: the parallel reads state of the process
+    _state: Optional[_ParallelReads] = None
+
+    @classmethod
+    def get(cls) -> _ParallelReads:
+        """The parallel reads state of this process (re-created in forked processes, whose locks / threads are
+        unusable)"""
+        if cls._state is None or cls._state.pid != os.getpid():
+            cls._state = _ParallelReads()
+        return cls._state
+
+
+class _DirectRead(NamedTuple):
+    """How to read the chunks of an array directly (see :meth:`plan`)"""
+
+    archive: IndexedTarArchive
+    path: str
+    dtype: np.dtype
+    chunks: Tuple[int, ...]
+    chunk_key: Callable[[Tuple[int, ...]], str]
+    compressor: Optional[numcodecs.Blosc]
+    fill_value: object
+
+    @staticmethod
+    def enabled() -> bool:
+        return os.environ.get(DIRECT_READS_ENV, "1").strip().lower() not in ("0", "false", "no", "off")
+
+    @staticmethod
+    def plan(array: zarr.Array) -> Optional[_DirectRead]:
+        """How to read the chunks of an array directly (None if the array is read via zarr-python).
+
+        Supported are arrays of indexed tar archives opened for reading with a regular chunk grid, C order, numeric /
+        boolean data of native byte order or fixed-length bytes, no filters, and no compression or a single blosc
+        compressor (all arrays written by ncore). zarr-python determines the chunks and their selections (its
+        indexers), but the chunks are read and decompressed directly into the output array, instead of via
+        zarr-python's codec pipeline, which decodes each chunk into a temporary buffer and copies it (see
+        zarr-python#2904).
+
+        Planned per read (sub-microsecond), so nothing outlives the array.
+        """
+        store_path = array.async_array.store_path
+        if not isinstance(store := store_path.store, _IndexedTarStore) or store.archive.mode != "r":
+            return None
+
+        metadata = array.metadata
+        dtype = np.dtype(metadata.dtype.to_native_dtype())
+        if dtype.hasobject or not dtype.isnative or dtype.kind not in "biufS":
+            return None
+        compressor: object
+        if isinstance(metadata, ArrayV2Metadata):
+            if metadata.order != "C" or metadata.filters:
+                return None
+            compressor = metadata.compressor
+            chunks = tuple(metadata.chunks)
+        else:
+            codecs = list(metadata.codecs)
+            if not codecs or not isinstance(bytes_codec := codecs[0], BytesCodec):
+                return None
+            if dtype.itemsize > 1 and str(getattr(bytes_codec.endian, "value", bytes_codec.endian)) != sys.byteorder:
+                return None
+            if len(codecs) == 1:
+                compressor = None
+            elif len(codecs) == 2 and isinstance(codecs[1], BloscCodec):
+                compressor = codecs[1]._blosc_codec
+            else:
+                return None
+            if (chunk_shape := getattr(metadata.chunk_grid, "chunk_shape", None)) is None:  # (regular grids only)
+                return None
+            chunks = tuple(chunk_shape)
+        if compressor is not None and not isinstance(compressor, numcodecs.Blosc):
+            return None
+        return _DirectRead(
+            store.archive, store_path.path, dtype, chunks, metadata.encode_chunk_key, compressor, metadata.fill_value
+        )
+
+    @staticmethod
+    def is_basic_selection(selection: Selection) -> bool:
+        """True for selections of (tuples of) integers, slices with unit step, and Ellipsis"""
+        for item in selection if isinstance(selection, tuple) else (selection,):
+            if item is Ellipsis or (isinstance(item, (int, np.integer)) and not isinstance(item, (bool, np.bool_))):
+                continue
+            if isinstance(item, slice) and item.step in (None, 1):
+                continue
+            return False
+        return True
+
+    @staticmethod
+    def chunk_grid(array: zarr.Array) -> ChunkGrid:
+        """zarr-python's chunk grid of an array (an array attribute since zarr-python 3.2, metadata before)"""
+        if (grid := getattr(array.async_array, "_chunk_grid", None)) is not None:
+            return grid
+        return getattr(array.metadata, "chunk_grid")
+
+    def read(self, array: zarr.Array, selection: Selection) -> npt.NDArray[Any]:
+        """Reads a basic selection of an array, decompressing its chunks directly into the output array.
+
+        Reads of multiple large chunks (see :data:`_PARALLEL_CHUNK_BYTES`) read and decode their chunks concurrently
+        on a thread pool (positional reads and blosc decompression release the GIL), unless :data:`_PARALLEL_READS`
+        reads do so already. All other reads run on the calling thread.
+        """
+        shape = tuple(array.metadata.shape)
+        indexer = BasicIndexer(selection, shape, self.chunk_grid(array))
+        projections = list(indexer) if all(indexer.shape) else []
+
+        if (
+            self.compressor is None
+            and len(projections) == 1
+            and projections[0].is_complete_chunk
+            and self.chunks == shape == tuple(indexer.shape)
+        ):
+            # an uncompressed chunk with the complete array (e.g., an encoded image): use its bytes without copies
+            key = self.chunk_key(projections[0].chunk_coords)
+            try:
+                raw = self.archive[f"{self.path}/{key}" if self.path else key]
+            except KeyError:
+                pass  # (chunk not stored: fill value, see below)
+            else:
+                # (a read-only view of the record, no copies)
+                if (view := Zarr3Backend.chunk_view(raw, self.dtype, shape)) is None:
+                    raise ValueError(f"Chunk {key} doesn't match its array ({len(raw)} bytes)")
+                return view
+
+        out = np.empty(indexer.shape, dtype=self.dtype)
+
+        def read_chunk(projection: ChunkProjection) -> None:
+            key = self.chunk_key(projection.chunk_coords)
+            target = out[projection.out_selection] if projection.out_selection != () else out
+            try:
+                raw = self.archive[f"{self.path}/{key}" if self.path else key]
+            except KeyError:  # chunk not stored (fill value)
+                target[...] = np.asarray(self.fill_value, dtype=self.dtype) if self.fill_value is not None else 0
+                return
+            if (
+                self.compressor is not None
+                and projection.is_complete_chunk
+                and target.shape == self.chunks
+                and target.flags.c_contiguous
+            ):
+                self.compressor.decode(raw, out=target)
+                return
+            decoded = self.compressor.decode(raw) if self.compressor is not None else raw
+            selected = np.frombuffer(decoded, dtype=self.dtype).reshape(self.chunks)[projection.chunk_selection]
+            target[...] = selected.reshape(target.shape)  # (integer selections drop axes)
+
+        chunk_bytes = self.dtype.itemsize * int(np.prod(self.chunks))
+        parallel = _ParallelReads.get()
+        if len(projections) > 1 and chunk_bytes >= _PARALLEL_CHUNK_BYTES and parallel.semaphore.acquire(blocking=False):
+            try:
+                for future in [parallel.pool().submit(read_chunk, projection) for projection in projections]:
+                    future.result()
+            finally:
+                parallel.semaphore.release()
+        else:
+            for projection in projections:
+                read_chunk(projection)
+        return out  # (0-d arrays for 0-d results, see nodes.Array.read)
+
+
+# -----------------------------------------------------------------------------
 # Backend
 # -----------------------------------------------------------------------------
 
@@ -363,43 +561,13 @@ class Zarr3Backend(Backend[Store]):
 
     @override
     def read(self, array: zarr.Array, selection: Selection) -> ReadResult:
-        """Fast path: complete reads of arrays of indexed tar archives stored as a single uncompressed chunk are views
-        of the chunk record (no copies, see :meth:`_single_chunk_view`). Fallback: zarr-python's read (e.g., of
-        compressed or multi-chunk arrays, partial reads, and chunks not stored, which read as the fill value)"""
-        if (view := self._single_chunk_view(array, selection)) is not None:
-            return view
+        """Fast path: basic selections of arrays of indexed tar archives opened for reading are read directly (see
+        :class:`_DirectRead`): complete reads of arrays stored as a single uncompressed chunk are views of the chunk
+        record (no copies), chunks of all other arrays are decompressed into the output array. Fallback: zarr-python's
+        read (e.g., of directories, non-basic selections, or with direct reads disabled)"""
+        if _DirectRead.enabled() and _DirectRead.is_basic_selection(selection) and (plan := _DirectRead.plan(array)):
+            return self.read_result(plan.read(array, selection))
         return self.read_result(run(array.async_array.getitem(selection)))
-
-    def _single_chunk_view(self, array: zarr.Array, selection: Selection) -> Optional[ReadResult]:
-        """Complete reads of arrays of indexed tar archives stored as a single uncompressed chunk of the array's shape:
-        a read-only view of the chunk record (None otherwise, also for chunks not stored, which read as the fill
-        value)"""
-        store_path = array.async_array.store_path
-        if selection not in (Ellipsis, ()) or not isinstance(store := store_path.store, _IndexedTarStore):
-            return None
-        metadata = array.metadata
-        shape = tuple(metadata.shape)
-        dtype = np.dtype(metadata.dtype.to_native_dtype())
-        if not dtype.isnative or dtype.kind not in "biufS":
-            return None
-        if isinstance(metadata, ArrayV2Metadata):
-            if metadata.compressor is not None or metadata.filters or metadata.order != "C":
-                return None
-            chunks = tuple(metadata.chunks)
-        else:
-            if len(metadata.codecs) != 1 or not isinstance(bytes_codec := metadata.codecs[0], BytesCodec):
-                return None
-            if dtype.itemsize > 1 and str(getattr(bytes_codec.endian, "value", bytes_codec.endian)) != sys.byteorder:
-                return None
-            chunks = tuple(getattr(metadata.chunk_grid, "chunk_shape", ()) or ())
-        if chunks != shape and not (shape == () and chunks in ((), (1,))):
-            return None
-        key = metadata.encode_chunk_key((0,) * len(shape))
-        try:
-            record = store.archive[f"{store_path.path}/{key}" if store_path.path else key]
-        except KeyError:  # (chunk not stored: fill value)
-            return None
-        return self.chunk_view(record, dtype, shape)
 
     @override
     def compression(self, array: zarr.Array) -> Optional[BloscCompression]:
