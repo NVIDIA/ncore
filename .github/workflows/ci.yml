@@ -31,8 +31,6 @@ on:
     - main
     - 'release/*'
     - 'pull-request/[0-9]+'
-  merge_group:
-    branches: [main]
 
 permissions:
   contents: read

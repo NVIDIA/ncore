@@ -73,9 +73,8 @@ runs:
         # Skip repository-cache: at ~12 GB it takes longer to download+extract than
         # to let Bazel re-fetch wheels in parallel. The committed MODULE.bazel.lock
         # eliminates PyPI index queries, and the disk-cache covers build actions.
-        # Only save caches on push to main/PR branches (not on merge_group) to avoid
-        # cache pollution. merge_group runs use ephemeral refs that are never reused,
-        # so caches saved there waste the 10 GB budget without any restore benefit.
+        # Only save caches on pushes (main, release/* and the pull-request/<n> mirrors), not on
+        # other events like workflow_dispatch
         cache-save: ${{ github.event_name == 'push' }}
         # Bump to force-invalidate all CI caches (e.g. after changing cache structure)
         cache-version: 3
