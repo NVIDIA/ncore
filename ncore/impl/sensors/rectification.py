@@ -22,7 +22,7 @@ from typing import Literal, Union
 import numpy as np
 import torch
 
-from ncore.impl.sensors.camera import CameraModel
+from ncore.impl.sensors.camera import _CENTRAL_CAMERA_RAY_DIM, CameraModel
 from ncore.impl.sensors.common import to_torch
 
 
@@ -47,7 +47,31 @@ class Rectificator:
         Args:
             source: the source camera model the imagery was captured with.
             target: the target camera model to rectify the imagery into.
+
+        Raises:
+            TypeError: If exactly one of the models is non-central. Composing a central and a
+                       parallel projection is ill-posed without scene geometry: with no common
+                       projection centre to pivot about, the correspondence between the two image
+                       domains depends on the depth of what is being viewed.
+            NotImplementedError: If both models are non-central.
         """
+        # Rectification composes the target's unprojection with the source's projection, so the
+        # two ray representations have to agree (see CameraModel.camera_ray_dim)
+        if source.camera_ray_dim != target.camera_ray_dim:
+            raise TypeError(
+                "Cannot rectify between a central and a non-central camera model "
+                f"({type(source).__name__} has camera_ray_dim {source.camera_ray_dim}, "
+                f"{type(target).__name__} has {target.camera_ray_dim}). Mapping a perspective "
+                "bundle onto a parallel one is ill-posed without scene geometry."
+            )
+        if source.camera_ray_dim != _CENTRAL_CAMERA_RAY_DIM:
+            # Two orthographic models *do* have a well-defined (affine) remap, and the generic
+            # composition below happens to compute it, since the leading 3 components of a 6d ray
+            # are its origin and an orthographic projection drops the third. Refused rather than
+            # relied upon: it holds only for this particular pairing, not for non-central models
+            # in general, and no consumer needs it yet.
+            raise NotImplementedError("Rectification between two non-central camera models is not implemented yet.")
+
         self.source = source
         self.target = target
 
@@ -70,7 +94,7 @@ class Rectificator:
         # Target image points -> target rays -> source image points
         target_rays = target.image_points_to_camera_rays(target_image_points)
         source = self.source
-        source_proj = source.camera_rays_to_image_points(target_rays)
+        source_proj = source.camera_points_to_image_points(target_rays)
 
         sample_map = source_proj.image_points.reshape(target_height, target_width, 2)
         valid_mask = source_proj.valid_flag.reshape(target_height, target_width)
@@ -181,7 +205,7 @@ class Rectificator:
             :class:`~ncore.impl.sensors.camera.CameraModel.ImagePointsReturn`).
         """
         rays = self.source.image_points_to_camera_rays(points)
-        return self.target.camera_rays_to_image_points(rays)
+        return self.target.camera_points_to_image_points(rays)
 
     def target_points_to_source(self, points: Union[torch.Tensor, np.ndarray]) -> CameraModel.ImagePointsReturn:
         """Map continuous target image points back into the source camera domain
@@ -194,4 +218,4 @@ class Rectificator:
             :class:`~ncore.impl.sensors.camera.CameraModel.ImagePointsReturn`).
         """
         rays = self.target.image_points_to_camera_rays(points)
-        return self.source.camera_rays_to_image_points(rays)
+        return self.source.camera_points_to_image_points(rays)

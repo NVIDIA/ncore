@@ -25,6 +25,7 @@ import torch
 from ncore.impl.data.types import (
     ConcreteCameraModelParametersUnion,
     FThetaCameraModelParameters,
+    IdealOrthographicCameraModelParameters,
     IdealPinholeCameraModelParameters,
     OpenCVFisheyeCameraModelParameters,
     OpenCVPinholeCameraModelParameters,
@@ -140,7 +141,7 @@ class TestRectificator(unittest.TestCase):
         # Probe a few central target pixels (valid for all source models)
         for u, v in [(320, 240), (280, 200), (360, 280)]:
             ray = target.image_points_to_camera_rays(np.array([[u + 0.5, v + 0.5]], dtype=np.float32))
-            proj = source.camera_rays_to_image_points(ray)
+            proj = source.camera_points_to_image_points(ray)
             if not bool(proj.valid_flag[0]):
                 continue
             expected = proj.image_points[0].cpu().numpy()
@@ -244,6 +245,38 @@ class TestRectificator(unittest.TestCase):
         np.testing.assert_array_almost_equal(
             out[10:-10, 10:-10].cpu().numpy(), img[10:-10, 10:-10].cpu().numpy(), decimal=3
         )
+
+    def _orthographic(self) -> CameraModel:
+        return _model(
+            IdealOrthographicCameraModelParameters.from_window(
+                window_min=(-32.0, -24.0),
+                window_max=(32.0, 24.0),
+                resolution=np.array([640, 480], dtype=np.uint64),
+            ),
+            self.device,
+            self.dtype,
+        )
+
+    def test_mixing_central_and_non_central_models_is_refused(self):
+        """Mapping a perspective bundle onto a parallel one needs scene geometry
+
+        With no common projection centre to pivot about, the correspondence between the two image
+        domains depends on the depth of whatever is being viewed, so there is no single remap.
+        """
+        pinhole = _model(_ideal_target_params(), self.device, self.dtype)
+        orthographic = self._orthographic()
+
+        with self.assertRaises(TypeError):
+            Rectificator(pinhole, orthographic)
+
+        with self.assertRaises(TypeError):
+            Rectificator(orthographic, pinhole)
+
+    def test_two_non_central_models_are_not_supported_yet(self):
+        orthographic = self._orthographic()
+
+        with self.assertRaises(NotImplementedError):
+            Rectificator(orthographic, orthographic)
 
 
 if __name__ == "__main__":

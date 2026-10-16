@@ -350,6 +350,50 @@ class CameraModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
 
 CameraModelParametersT = TypeVar("CameraModelParametersT", bound=CameraModelParameters)
 
+
+def _resolve_image_domain_transform(
+    resolution: np.ndarray,
+    image_domain_scale: Union[float, Tuple[float, float]],
+    new_resolution: Optional[Tuple[int, int]] = None,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Resolves the per-axis scale factors and target resolution of an image domain transformation
+
+    The part of :meth:`CameraModelParameters.transform` that does not depend on the concrete
+    parameterization; each model applies the returned scale factors to its own intrinsics.
+
+    Args:
+        resolution: the current image resolution ``[width, height]`` (uint64, ``[2,]``).
+        image_domain_scale: an isotropic (if float) or anisotropic (if tuple of floats) scaling of
+                            the full image domain to a scaled image domain (e.g., to account for
+                            up-/downsampling). Resulting scaled image resolution needs to be
+                            integer if no explicit 'new_resolution' is provided.
+        new_resolution: an optional new resolution to set (if None, the full scaled resolution is
+                        used).
+
+    Returns:
+        a tuple of the per-axis scale factors (float32, ``[2,]``) and the target resolution
+        (uint64, ``[2,]``).
+    """
+    # Get scale factors for each image domain dimension
+    image_domain_scale_factors: np.ndarray
+    if isinstance(image_domain_scale, tuple):
+        image_domain_scale_factors = np.array(image_domain_scale, dtype=np.float32)
+    else:
+        image_domain_scale_factors = np.array([image_domain_scale, image_domain_scale], dtype=np.float32)
+
+    # Use new resolution if provided
+    scaled_resolution: np.ndarray
+    if new_resolution is not None:
+        scaled_resolution = np.array(new_resolution, dtype=np.uint64)
+
+    # Otherwise make sure the scaled resolution is integer
+    else:
+        scaled_resolution = resolution * image_domain_scale_factors
+        assert all([r.is_integer() for r in scaled_resolution]), "Resolution must be integer after scaling"
+
+    return image_domain_scale_factors, scaled_resolution.astype(np.uint64)
+
+
 #: Serialized camera model identifiers that predate the current :meth:`type` values. Kept so that
 #: data written before the rename still resolves to the same concrete class.
 _LEGACY_CAMERA_MODEL_TYPE_ALIASES: Dict[str, str] = {
@@ -531,22 +575,9 @@ class FThetaCameraModelParameters(CameraModelParameters):
             a transformed version of the FTheta camera model parameters
         """
 
-        # Get scale factors for each image domain dimension
-        image_domain_scale_factors: np.ndarray
-        if isinstance(image_domain_scale, tuple):
-            image_domain_scale_factors = np.array(image_domain_scale, dtype=np.float32)
-        else:
-            image_domain_scale_factors = np.array([image_domain_scale, image_domain_scale], dtype=np.float32)
-
-        # Use new resolution if provided
-        resolution: np.ndarray
-        if new_resolution is not None:
-            resolution = np.array(new_resolution, dtype=np.uint64)
-
-        # Otherwise make sure the scaled resolution is integer
-        else:
-            resolution = self.resolution * image_domain_scale_factors
-            assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
+        image_domain_scale_factors, resolution = _resolve_image_domain_transform(
+            self.resolution, image_domain_scale, new_resolution
+        )
 
         # Scale / offset principal point location by transforming it in the scaled image (make sure to account for 0.5px offset
         # of the image domain, as the stored parameters are represented with (0,0) at the center of the first pixel)
@@ -579,7 +610,7 @@ class FThetaCameraModelParameters(CameraModelParameters):
 
         return dataclasses.replace(
             self,
-            resolution=resolution.astype(np.uint64),
+            resolution=resolution,
             principal_point=principal_point,
             pixeldist_to_angle_poly=pixeldist_to_angle_poly,
             angle_to_pixeldist_poly=angle_to_pixeldist_poly,
@@ -646,26 +677,13 @@ class PinholeCameraModelParameters(CameraModelParameters):
             a transformed version of the pinhole-family camera model parameters
         """
 
-        # Get scale factors for each image domain dimension
-        image_domain_scale_factors: np.ndarray
-        if isinstance(image_domain_scale, tuple):
-            image_domain_scale_factors = np.array(image_domain_scale, dtype=np.float32)
-        else:
-            image_domain_scale_factors = np.array([image_domain_scale, image_domain_scale], dtype=np.float32)
-
-        # Use new resolution if provided
-        resolution: np.ndarray
-        if new_resolution is not None:
-            resolution = np.array(new_resolution, dtype=np.uint64)
-
-        # Otherwise make sure the scaled resolution is integer
-        else:
-            resolution = self.resolution * image_domain_scale_factors
-            assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
+        image_domain_scale_factors, resolution = _resolve_image_domain_transform(
+            self.resolution, image_domain_scale, new_resolution
+        )
 
         return dataclasses.replace(
             self,
-            resolution=resolution.astype(np.uint64),
+            resolution=resolution,
             principal_point=self.principal_point * image_domain_scale_factors
             - np.array(image_domain_offset, dtype=np.float32),
             focal_length=self.focal_length * image_domain_scale_factors,
@@ -926,26 +944,13 @@ class OpenCVFisheyeCameraModelParameters(CameraModelParameters):
             a transformed version of the OpenCV fisheye camera model parameters
         """
 
-        # Get scale factors for each image domain dimension
-        image_domain_scale_factors: np.ndarray
-        if isinstance(image_domain_scale, tuple):
-            image_domain_scale_factors = np.array(image_domain_scale, dtype=np.float32)
-        else:
-            image_domain_scale_factors = np.array([image_domain_scale, image_domain_scale], dtype=np.float32)
-
-        # Use new resolution if provided
-        resolution: np.ndarray
-        if new_resolution is not None:
-            resolution = np.array(new_resolution, dtype=np.uint64)
-
-        # Otherwise make sure the scaled resolution is integer
-        else:
-            resolution = self.resolution * image_domain_scale_factors
-            assert all([r.is_integer() for r in resolution]), "Resolution must be integer after scaling"
+        image_domain_scale_factors, resolution = _resolve_image_domain_transform(
+            self.resolution, image_domain_scale, new_resolution
+        )
 
         return dataclasses.replace(
             self,
-            resolution=resolution.astype(np.uint64),
+            resolution=resolution,
             principal_point=self.principal_point * image_domain_scale_factors
             - np.array(image_domain_offset, dtype=np.float32),
             focal_length=self.focal_length * image_domain_scale_factors,
@@ -1004,10 +1009,169 @@ class OpenCVFisheyeCameraModelParameters(CameraModelParameters):
         return util.compute_max_angle_with_monotonicity(fw_poly, max_r)
 
 
+@register_camera_model_parameters
+@dataclass
+class IdealOrthographicCameraModelParameters(CameraModelParameters):
+    """Represents an ideal (distortion-free) orthographic camera
+
+    An orthographic camera projects along its optical axis *without* dividing by depth, so a
+    point's image location depends only on its coordinates perpendicular to that axis. Unlike
+    every other NCore camera model it is therefore **non-central**: its rays are parallel and do
+    not share a common origin, which is why
+    :meth:`~ncore.sensors.CameraModel.image_points_to_camera_rays` returns 6d ``[origin,
+    direction]`` rays for it (see :attr:`~ncore.sensors.CameraModel.camera_ray_dim`).
+
+    The projection is the affine map
+
+    .. math::
+        \\begin{bmatrix} u \\\\ v \\end{bmatrix} =
+        \\begin{bmatrix} c_u \\\\ c_v \\end{bmatrix} +
+        \\begin{bmatrix} s_u x \\\\ s_v y \\end{bmatrix}
+
+    for a camera-frame point :math:`(x, y, z)`, principal point :math:`(c_u, c_v)` and
+    :attr:`pixels_per_unit` :math:`(s_u, s_v)`. The depth :math:`z` is dropped rather than divided
+    by, so the mapping is invariant to it.
+
+    Being distortion-free, this is the orthographic counterpart of
+    :class:`IdealPinholeCameraModelParameters`. A distorted sibling (a real object-side telecentric
+    lens, which has image-plane radial distortion) would share :attr:`principal_point` and
+    :attr:`pixels_per_unit` through a common abstract base, the way
+    :class:`PinholeCameraModelParameters` serves the pinhole family.
+    """
+
+    principal_point: np.ndarray = util.numpy_array_field(
+        np.float32
+    )  #: U and v coordinate of the principal point, following the :ref:`image coordinate conventions <image_coordinate_conventions>` (float32, [2,])
+    pixels_per_unit: np.ndarray = util.numpy_array_field(
+        np.float32
+    )  #: Image scale in u and v direction, resp., in pixels per scene unit, mapping camera coordinates to image coordinates relative to the principal point. The orthographic counterpart of a pinhole's ``focal_length``, which differs in being dimensionless-in, pixels-out; here the input carries scene units (meters for metric sequences, see :class:`PointCloud.CoordinateUnit`). Must be positive (float32, [2,])
+
+    @staticmethod
+    def type() -> str:
+        """Returns a string-identifier of the camera model"""
+        return "ideal-orthographic"
+
+    def paraxial_pinhole_geometry(self) -> ParaxialPinholeGeometry:
+        """Not defined: an orthographic camera has no pinhole approximation
+
+        A pinhole maps angle to pixel distance as :math:`r = f \\tan(\\theta)`, which degenerates
+        for a parallel projection: an orthographic camera's focal length is infinite, and its rays
+        have no common centre to measure an angle about. Rectifying to or from an ideal pinhole is
+        therefore ill-posed without scene geometry, and is refused here rather than approximated.
+
+        Raises:
+            TypeError: Always.
+        """
+        raise TypeError(
+            "An orthographic camera has no paraxial pinhole geometry: its projection is parallel, "
+            "so its focal length is infinite and its rays share no common centre. Converting it to "
+            "an ideal pinhole is ill-posed without scene geometry."
+        )
+
+    def window_min(self) -> np.ndarray:
+        """Lower metric bounds ``[u, v]`` of the viewed window, in scene units (float32, ``[2,]``)
+
+        The camera-frame coordinates that project onto the image origin. Together with
+        :meth:`window_max` this restates the intrinsics as the axis-aligned window the camera
+        views, the parallel-projection counterpart of a frustum, which is the form consumers
+        working in normalized image coordinates (e.g. bird's-eye-view feature maps) tend to want.
+        """
+        return (-self.principal_point / self.pixels_per_unit).astype(np.float32)
+
+    def window_max(self) -> np.ndarray:
+        """Upper metric bounds ``[u, v]`` of the viewed window, in scene units (float32, ``[2,]``)
+
+        The camera-frame coordinates that project onto the far image border. See
+        :meth:`window_min`.
+        """
+        return ((self.resolution.astype(np.float32) - self.principal_point) / self.pixels_per_unit).astype(np.float32)
+
+    @staticmethod
+    def from_window(
+        window_min: Union[np.ndarray, Tuple[float, float]],
+        window_max: Union[np.ndarray, Tuple[float, float]],
+        resolution: np.ndarray,
+        shutter_type: ShutterType = ShutterType.GLOBAL,
+    ) -> IdealOrthographicCameraModelParameters:
+        """Construct from the metric window the camera views, the inverse of :meth:`window_min` / :meth:`window_max`
+
+        Args:
+            window_min: lower metric bounds ``[u, v]`` of the viewed window, in scene units.
+            window_max: upper metric bounds ``[u, v]`` of the viewed window, in scene units.
+            resolution: image resolution ``[width, height]`` (uint64, ``[2,]``).
+            shutter_type: shutter type of the camera's imaging sensor.
+
+        Returns:
+            the equivalent ideal orthographic camera model parameters.
+
+        Raises:
+            ValueError: If the window is empty or inverted along either axis.
+        """
+        lower = np.asarray(window_min, dtype=np.float32)
+        upper = np.asarray(window_max, dtype=np.float32)
+        if not np.all(upper > lower):
+            raise ValueError(f"window_max must exceed window_min on both axes, got {window_min} and {window_max}")
+
+        pixels_per_unit = (resolution.astype(np.float32) / (upper - lower)).astype(np.float32)
+        return IdealOrthographicCameraModelParameters(
+            resolution=resolution,
+            shutter_type=shutter_type,
+            principal_point=(-lower * pixels_per_unit).astype(np.float32),
+            pixels_per_unit=pixels_per_unit,
+        )
+
+    def __post_init__(self) -> None:
+        # Sanity checks
+        super().__post_init__()
+
+        assert self.principal_point.shape == (2,)
+        assert self.principal_point.dtype == np.dtype("float32")
+
+        assert self.pixels_per_unit.shape == (2,)
+        assert self.pixels_per_unit.dtype == np.dtype("float32")
+        assert self.pixels_per_unit[0] > 0.0 and self.pixels_per_unit[1] > 0.0
+
+    def transform(
+        self,
+        image_domain_scale: Union[float, Tuple[float, float]],
+        image_domain_offset: Tuple[float, float] = (0.0, 0.0),
+        new_resolution: Optional[Tuple[int, int]] = None,
+    ) -> Self:
+        """
+        Applies a transformation to ideal orthographic camera model parameters
+
+        Args:
+            image_domain_scale: an isotropic (if float) or anisotropic (if tuple of floats) scaling of the
+                                full image domain to a scaled image domain (e.g., to account for up-/downsampling).
+                                Resulting scaled image resolution needs to be integer if no explicit 'new_resolution' is provided.
+            image_domain_offset: an offset of the _scaled_ image domain (e.g., to account for cropping).
+            new_resolution: an optional new resolution to set (if None, the full scaled resolution is used).
+
+        Returns:
+            a transformed version of the ideal orthographic camera model parameters
+        """
+
+        image_domain_scale_factors, resolution = _resolve_image_domain_transform(
+            self.resolution, image_domain_scale, new_resolution
+        )
+
+        # `pixels_per_unit` scales exactly like a pinhole's focal length: both map camera-frame
+        # coordinates to pixels relative to the principal point, so resampling the image domain
+        # scales them by the same factor
+        return dataclasses.replace(
+            self,
+            resolution=resolution,
+            principal_point=self.principal_point * image_domain_scale_factors
+            - np.array(image_domain_offset, dtype=np.float32),
+            pixels_per_unit=self.pixels_per_unit * image_domain_scale_factors,
+        )
+
+
 # Represents the collection of all concrete camera model parameter type
 ConcreteCameraModelParametersUnion = Union[
     FThetaCameraModelParameters,
     IdealPinholeCameraModelParameters,
+    IdealOrthographicCameraModelParameters,
     OpenCVPinholeCameraModelParameters,
     OpenCVFisheyeCameraModelParameters,
 ]

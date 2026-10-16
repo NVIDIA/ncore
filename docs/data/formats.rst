@@ -175,10 +175,10 @@ Camera and lidar intrinsic model parameters:
                    ├── lidar_model_type: str
                    └── lidar_model_parameters: {...}
 
-Model types include ``ftheta``, ``opencv-pinhole``, and ``opencv-fisheye`` for
-camera sensors, and ``row-offset-spinning`` for lidar sensors. For detailed
-model parameterizations and mathematical specifications, see
-:ref:`sensor_models`.
+Model types include ``ftheta``, ``ideal-pinhole``, ``opencv-pinhole``,
+``opencv-fisheye`` and ``ideal-orthographic`` for camera sensors, and
+``row-offset-spinning`` for lidar sensors. For detailed model parameterizations
+and mathematical specifications, see :ref:`sensor_models`.
 
 Masks Component
 ~~~~~~~~~~~~~~~
