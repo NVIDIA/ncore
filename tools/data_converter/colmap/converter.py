@@ -41,8 +41,8 @@ from ncore.data.v4 import (
 )
 from ncore.data_converter import FileBasedDataConverter, FileBasedDataConverterConfig
 from ncore.impl.common.transformations import HalfClosedInterval, se3_inverse
+from ncore.impl.data.json_types import JsonDocument, JsonLike
 from ncore.impl.data.types import (
-    JsonLike,
     OpenCVFisheyeCameraModelParameters,
     OpenCVPinholeCameraModelParameters,
     PointCloud,
@@ -66,7 +66,7 @@ class ColmapConverter4Config(FileBasedDataConverterConfig):
     colmap_dir: str = "sparse/0"
     images_dir: str = "images"
     masks_dir: Optional[str] = None
-    generic_meta_data: dict[str, JsonLike] = field(default_factory=dict)
+    generic_meta_data: JsonDocument = field(default_factory=dict)
     world_global_mode: Literal["none", "identity"] = "none"
 
 
@@ -191,7 +191,7 @@ class ColmapDataConverter(FileBasedDataConverter):
         self.colmap_dir = config.colmap_dir
         self.images_dir = config.images_dir
         self.masks_dir = config.masks_dir
-        self.generic_meta_data: dict[str, JsonLike] = config.generic_meta_data
+        self.generic_meta_data: JsonDocument = config.generic_meta_data
         self.world_global_mode: Literal["none", "identity"] = config.world_global_mode
         self.logger = logging.getLogger(__name__)
 
@@ -512,7 +512,7 @@ class ColmapDataConverter(FileBasedDataConverter):
                 ).astype(np.uint64)
 
                 generic_data: dict[str, np.ndarray] = {}
-                generic_meta_data: dict[str, JsonLike] = {}
+                generic_meta_data: JsonDocument = {}
 
                 # Check for a per-image mask file (grayscale, stored as generic frame data)
                 mask_path = self._find_mask_path(image_path, image_name)
@@ -640,7 +640,7 @@ def _build_scannetpp_split_metadata(
     image_names: list[str],
     camera_id: str,
     start_time_sec: float,
-) -> dict[str, JsonLike]:
+) -> JsonDocument:
     """Build train/test split metadata from ScanNet++ ``train_test_lists.json``.
 
     Returns a dict suitable for sequence-level ``generic_meta_data``.
@@ -663,7 +663,7 @@ def _build_scannetpp_split_metadata(
     train_filenames = [n for n in sorted_names if n in train_set]
     test_filenames = [n for n in sorted_names if n in test_set]
 
-    camera_splits: dict[str, JsonLike] = {}
+    camera_splits: JsonDocument = {}
     if train_filenames:
         camera_splits["train"] = {
             "frame_timestamps_us": [name_to_ts[n] for n in train_filenames],

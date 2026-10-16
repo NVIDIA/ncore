@@ -34,8 +34,8 @@ capability.
    appends a compressed index enabling O(1) key lookups and direct seeks to any
    chunk.
 
-The ``.itar`` store implements the abstract zarr ``Store`` interface, so it can
-be used as a drop-in replacement for directory stores in all NCore APIs. Via
+The ``.itar`` store can be used as a drop-in replacement for directory stores in
+all NCore APIs. Via
 `UPath <https://github.com/fsspec/universal_pathlib>`_, ``.itar`` containers can
 also be accessed transparently from cloud storage backends (e.g., S3, GCS)
 without requiring a local copy.

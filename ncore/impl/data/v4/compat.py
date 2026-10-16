@@ -36,12 +36,12 @@ from ncore.impl.data.compat import (
     SensorProtocol,
     SequenceLoaderProtocol,
 )
+from ncore.impl.data.json_types import JsonDocument
 from ncore.impl.data.types import (
     CameraLabelDescriptor,
     CameraModelParameters,
     CuboidTrackObservation,
     FrameTimepoint,
-    JsonLike,
     LabelCategory,
     LabelType,
     LidarModelParameters,
@@ -165,7 +165,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
 
     @property
     @override
-    def generic_meta_data(self) -> Dict[str, JsonLike]:
+    def generic_meta_data(self) -> JsonDocument:
         return self._reader.generic_meta_data
 
     @property
@@ -183,8 +183,8 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
         self._reader.reload_resources()
 
     @override
-    def get_sequence_meta(self) -> Dict[str, JsonLike]:
-        return cast(Dict[str, JsonLike], self._reader.get_sequence_meta().to_dict())
+    def get_sequence_meta(self) -> JsonDocument:
+        return cast(JsonDocument, self._reader.get_sequence_meta().to_dict())
 
     @property
     @override
@@ -271,7 +271,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             )
 
         @override
-        def get_frame_generic_meta_data(self, frame_index: int) -> Dict[str, JsonLike]:
+        def get_frame_generic_meta_data(self, frame_index: int) -> JsonDocument:
             """Returns generic frame meta-data for a specific frame"""
 
             return self._reader.get_frame_generic_meta_data(
@@ -570,7 +570,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
 
         @property
         @override
-        def labels_generic_meta_data(self) -> Dict[str, JsonLike]:
+        def labels_generic_meta_data(self) -> JsonDocument:
             return self._reader.generic_meta_data
 
         @override
@@ -644,7 +644,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             return self._reader.get_pc_generic_data(pc_index, name)
 
         @override
-        def get_pc_generic_meta_data(self, pc_index: int) -> Dict[str, JsonLike]:
+        def get_pc_generic_meta_data(self, pc_index: int) -> JsonDocument:
             return self._reader.get_pc_generic_meta_data(pc_index)
 
     @property

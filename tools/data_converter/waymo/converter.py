@@ -39,11 +39,11 @@ from ncore.impl.common.transformations import (
     transform_point_cloud,
 )
 from ncore.impl.common.util import unpack_optional
+from ncore.impl.data.json_types import JsonDocument
 from ncore.impl.data.types import (
     BBox3,
     CameraLabelDescriptor,
     CuboidTrackObservation,
-    JsonLike,
     LabelCategory,
     LabelEncoding,
     LabelSchema,
@@ -954,7 +954,7 @@ class WaymoConverter4(FileBasedDataConverter):
 
                 # Parse panoptic segmentation, if available
                 generic_data: dict[str, np.ndarray] = {}
-                generic_meta_data: dict[str, JsonLike] = {}
+                generic_meta_data: JsonDocument = {}
 
                 if (
                     hasattr(image, "camera_segmentation_label")
