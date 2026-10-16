@@ -204,7 +204,7 @@ jobs:
       - name: Generate release notes
         if: steps.release.outputs.needed == 'true'
         run: |
-          .github/release/release-notes.sh "${{ steps.release.outputs.version }}" HEAD > "${RUNNER_TEMP}/release-notes.md"
+          .github/release/release-notes.sh publish "${{ steps.release.outputs.version }}" HEAD > "${RUNNER_TEMP}/release-notes.md"
           cat "${RUNNER_TEMP}/release-notes.md"
 
       - name: Publish to PyPI

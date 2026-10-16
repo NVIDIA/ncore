@@ -182,19 +182,20 @@ required CI checks), but are not gated by the merge queue.
 
 The version of the `nvidia-ncore` wheel is the `embed_label` in `.bazelrc`. A release is a reviewed
 PR with a single `chore(version): vX.Y.Z` commit that changes it, against `main` or the release
-branch of that version:
+branch of that version. The body of that commit is the release notes.
 
 ```bash
 # On an up-to-date branch based on the target branch
 cog --config .cog.toml bump --auto             # or --patch / --minor / --major / --version X.Y.Z
 
-# Optionally add release highlights (markdown) to the body of the commit
-git commit --amend -S
+# Write the release notes: add highlights, edit the drafted change list
+git commit --amend -S --cleanup=scissors
 ```
 
 `cog bump` computes the next version from the conventional commits since the previous release tag
 reachable from the current branch, updates `.bazelrc`, and creates the release commit. It does not
-create a tag.
+create a tag. The commit body is drafted with the change list since that release tag (see
+[Release Notes](#release-notes)).
 
 When the release commit lands on `main` or a `release/*` branch, CI builds and publishes the wheel
 to [PyPI](https://pypi.org/project/nvidia-ncore), then creates the `vX.Y.Z` tag on the release
@@ -215,14 +216,28 @@ pip only installs pre-releases with `--pre` or an exact version pin.
 
 ### Release Notes
 
-Release notes live on the GitHub releases only; the repository does not keep a changelog file.
-They consist of the highlights from the body of the release commit, followed by the change list
-since the previous release tag reachable from the release commit, grouped by commit type. A final
-release lists everything since the previous final release, including the changes of its release
-candidates. Preview the notes of a release commit locally with:
+Release notes live on the GitHub releases only; the repository does not keep a changelog file. The
+notes of a release are the markdown body of its release commit, so they are reviewed and can be
+edited in the release PR. CI publishes the body as is, with two changes: wrapped lines are joined
+(GitHub would otherwise show every line break), and a link to the full diff since the previous
+release is appended.
+
+`cog bump` drafts the body with a `### Changes` section: the commits since the previous release tag
+reachable from the release commit, grouped by commit type, with short commit ids and authors (which
+GitHub links). A final release lists everything since the previous final release, including the
+changes of its release candidates. Typically, a `### Highlights` section is added above it, and
+entries are reworded or dropped where the commit summaries are not helpful to users.
+
+- Git removes lines starting with `#` from commit messages edited in an editor, which would remove
+  the markdown headings. Use `--cleanup=scissors` (or `git config commit.cleanup scissors`) when
+  editing the release commit.
+- Authors are mentioned by GitHub username if they have an entry in `[[changelog.authors]]` in
+  `.cog.toml`, and by name otherwise.
+
+Preview the published notes of a release commit locally with:
 
 ```bash
-.github/release/release-notes.sh <version> <release-commit>
+.github/release/release-notes.sh publish <version> <release-commit>
 ```
 
 ## Commit Signatures
