@@ -27,7 +27,7 @@ from upath import UPath
 
 from ncore.impl.data.backend import Attributes, ZarrStore
 from ncore.impl.data.itar import IndexedTarArchive
-from ncore.impl.data.nodes import Group, _backend
+from ncore.impl.data.nodes import Group, _backend, check_zarr_format
 
 
 class Store(ABC):
@@ -46,9 +46,12 @@ class Store(ABC):
         """The wrapped zarr-python store (of the installed zarr-python version)"""
         return self._zarr_store
 
-    def create_root_group(self, attributes: Attributes) -> Group:
-        """Creates the root group of the hierarchy of the store"""
-        return Group(_backend.create_root_group(self._zarr_store, 2, attributes), store=self)
+    def create_root_group(self, attributes: Attributes, *, zarr_format: int = 2) -> Group:
+        """Creates the root group of the hierarchy of the store, in zarr format v2 (default, readable with all
+        zarr-python versions) or v3 (requires zarr-python 3 for writing and reading)"""
+        return Group(
+            _backend.create_root_group(self._zarr_store, check_zarr_format(zarr_format), attributes), store=self
+        )
 
     def open_root_group(self, consolidated: bool = True) -> Group:
         """Opens the root group of the hierarchy of the store for reading, via its compressed consolidated metadata if
