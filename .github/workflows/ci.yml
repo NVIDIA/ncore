@@ -73,6 +73,10 @@ jobs:
           bazelisk build ...
           bazelisk test ...
 
+      - name: Save Bazel disk cache
+        if: github.event_name == 'push'
+        uses: ./.github/actions/save-bazel-disk-cache
+
   # =============================================================================
   # Deploy Documentation - runs only on main branch after build-and-test succeeds
   # =============================================================================
