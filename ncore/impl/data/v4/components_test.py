@@ -18,10 +18,12 @@ import io
 import tempfile
 import unittest
 
-from typing import Dict, Literal, Tuple, cast
+from typing import Dict, List, Literal, Tuple, cast
+from unittest import mock
 
 import numpy as np
 import PIL.Image as PILImage
+import zarr
 
 from parameterized import parameterized, parameterized_class
 from scipy.spatial.transform import Rotation as R
@@ -29,6 +31,7 @@ from upath import UPath
 
 from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import unpack_optional
+from ncore.impl.data import stores
 from ncore.impl.data.types import (
     BBox3,
     BivariateWindshieldModelParameters,
@@ -63,6 +66,18 @@ from ncore.impl.data.v4.components import (
     SequenceComponentGroupsReader,
     SequenceComponentGroupsWriter,
 )
+
+
+def _record_store_reads(store_type: Literal["itar", "directory"], read_keys: List[str]) -> mock._patch:
+    """Patch the store type's item access to append each read key to `read_keys`."""
+    store_cls = stores.IndexedTarStore if store_type == "itar" else zarr.storage.DirectoryStore
+    original_getitem = store_cls.__getitem__
+
+    def recording_getitem(store, key):
+        read_keys.append(key)
+        return original_getitem(store, key)
+
+    return mock.patch.object(store_cls, "__getitem__", recording_getitem)
 
 
 @parameterized_class(
@@ -1814,6 +1829,61 @@ class TestPointCloudsComponent(unittest.TestCase):
 
         tmpdir.cleanup()
 
+    def test_reader_open_is_lazy(self):
+        """Opening point-cloud readers must not read timestamp chunks or decode schemas until first use."""
+        schema = PointCloudsComponent.AttributeSchema(
+            transform_type=PointCloud.AttributeTransformType.INVARIANT,
+            dtype=np.dtype("uint8"),
+            shape_suffix=(3,),
+        )
+        pc_writer, store_writer, tmpdir, _ = self._make_writer_reader(attribute_schemas={"rgb": schema})
+
+        xyz = np.ones((4, 3), dtype=np.float32)
+        rgb = np.ones((4, 3), dtype=np.uint8)
+        pc_writer.store_pc(
+            xyz=xyz, reference_frame_id="world", reference_frame_timestamp_us=1_000_000, attributes={"rgb": rgb}
+        )
+        pc_writer.store_pc(
+            xyz=xyz, reference_frame_id="world", reference_frame_timestamp_us=2_000_000, attributes={"rgb": rgb}
+        )
+        store_paths = store_writer.finalize()
+
+        # Record every store key read and every schema decode
+        read_keys: List[str] = []
+
+        def timestamp_chunk_reads() -> int:
+            return sum(key.endswith("pc_timestamps_us/0") for key in read_keys)
+
+        # Nested instead of parenthesized context managers, which Python 3.8 doesn't support
+        from_dict = PointCloudsComponent.AttributeSchema.from_dict
+        with _record_store_reads(self.store_type, read_keys):
+            with mock.patch.object(
+                PointCloudsComponent.AttributeSchema, "from_dict", wraps=from_dict
+            ) as from_dict_mock:
+                reader = SequenceComponentGroupsReader(component_group_paths=store_paths).open_component_readers(
+                    PointCloudsComponent.Reader
+                )["test_pc"]
+
+                # Nothing loaded on open
+                self.assertEqual(timestamp_chunk_reads(), 0)
+                self.assertEqual(from_dict_mock.call_count, 0)
+
+                # Loaded once on first use, then cached
+                np.testing.assert_array_equal(
+                    reader.pc_timestamps_us, np.array([1_000_000, 2_000_000], dtype=np.uint64)
+                )
+                self.assertEqual(reader.pcs_count, 2)
+                self.assertEqual(timestamp_chunk_reads(), 1)
+
+                self.assertEqual(reader.attribute_names, ["rgb"])
+                self.assertEqual(reader.get_attribute_schema("rgb"), schema)
+                self.assertEqual(from_dict_mock.call_count, 1)
+
+                # Coordinate unit is unaffected
+                self.assertEqual(reader.coordinate_unit, PointCloud.CoordinateUnit.METERS)
+
+        tmpdir.cleanup()
+
     def test_multiple_pcs_different_ref_frames(self):
         """Write 2 PCs with different reference_frame_id, verify per-pc ref frames."""
         pc_writer, store_writer, tmpdir, _ = self._make_writer_reader()
@@ -2673,6 +2743,58 @@ class TestCameraLabelsComponent(unittest.TestCase):
 
         np.testing.assert_array_almost_equal(handle.get_data(), depth)
         self.assertIsNone(handle.get_encoded_data())
+
+        tmpdir.cleanup()
+
+    # ------------------------------------------------------------------
+    # 10b. test_reader_open_is_lazy
+    # ------------------------------------------------------------------
+    def test_reader_open_is_lazy(self) -> None:
+        """Opening label readers must not read timestamp chunks or decode descriptors until first use."""
+
+        writer, store_writer, tmpdir = self._make_writer(
+            descriptor := CameraLabelDescriptor(
+                camera_id="front",
+                label_type=LabelType.DEPTH_Z_M,
+                label_schema=LabelSchema(
+                    dtype=np.dtype("float32"),
+                    encoding=LabelEncoding.RAW,
+                ),
+                label_source=LabelSource.AUTOLABEL,
+            )
+        )
+        depth = np.ones((8, 8), dtype=np.float32)
+        writer.store_label(data=depth, timestamp_us=2_000_000)
+        writer.store_label(data=depth, timestamp_us=1_000_000)
+        store_paths = store_writer.finalize()
+
+        # Record every store key read and every descriptor decode
+        read_keys: List[str] = []
+
+        def timestamp_chunk_reads() -> int:
+            return sum(key.endswith("timestamps_us/0") for key in read_keys)
+
+        # Nested instead of parenthesized context managers, which Python 3.8 doesn't support
+        from_dict = CameraLabelDescriptor.from_dict
+        with _record_store_reads(self.store_type, read_keys):
+            with mock.patch.object(CameraLabelDescriptor, "from_dict", wraps=from_dict) as from_dict_mock:
+                reader = SequenceComponentGroupsReader(component_group_paths=store_paths).open_component_readers(
+                    CameraLabelsComponent.Reader
+                )["depth.z@front"]
+
+                # Nothing loaded on open
+                self.assertEqual(timestamp_chunk_reads(), 0)
+                self.assertEqual(from_dict_mock.call_count, 0)
+
+                # Loaded once on first use, then cached
+                np.testing.assert_array_equal(reader.timestamps_us, np.array([1_000_000, 2_000_000], dtype=np.uint64))
+                self.assertEqual(reader.labels_count, 2)
+                np.testing.assert_array_equal(reader.get_label(1_000_000).get_data(), depth)
+                self.assertEqual(timestamp_chunk_reads(), 1)
+
+                self.assertEqual(reader.label_descriptor, descriptor)
+                self.assertEqual(reader.get_label(2_000_000).descriptor, descriptor)
+                self.assertEqual(from_dict_mock.call_count, 1)
 
         tmpdir.cleanup()
 
