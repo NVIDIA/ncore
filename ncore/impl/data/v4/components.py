@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import concurrent.futures
+import functools
 import io
 import json
 import logging
@@ -1906,16 +1907,22 @@ class PointCloudsComponent:
         def supports_component_version(version: str) -> bool:
             return version == "v1"
 
-        def __init__(self, component_instance_name: str, component_group: zarr.Group) -> None:
-            super().__init__(component_instance_name, component_group)
+        # Timestamps (a chunk read) and attribute schemas (dataclass decodes) are loaded on first use rather than
+        # in the constructor, so opening sequences with many point-cloud components stays cheap until they are accessed.
 
-            self._pc_timestamps_us: npt.NDArray[np.uint64] = np.array(self._group["pc_timestamps_us"][:])
+        @functools.cached_property
+        def _pc_timestamps_us(self) -> npt.NDArray[np.uint64]:
+            return np.array(self._group["pc_timestamps_us"][:])
 
-            pcs_attrs = self._group["pcs"].attrs
-            self._coordinate_unit = PointCloud.CoordinateUnit[pcs_attrs["coordinate_unit"]]
-            self._attribute_schemas: Dict[str, PointCloudsComponent.AttributeSchema] = {
+        @functools.cached_property
+        def _coordinate_unit(self) -> PointCloud.CoordinateUnit:
+            return PointCloud.CoordinateUnit[self._group["pcs"].attrs["coordinate_unit"]]
+
+        @functools.cached_property
+        def _attribute_schemas(self) -> Dict[str, PointCloudsComponent.AttributeSchema]:
+            return {
                 name: PointCloudsComponent.AttributeSchema.from_dict(s)
-                for name, s in pcs_attrs["attribute_schemas"].items()
+                for name, s in self._group["pcs"].attrs["attribute_schemas"].items()
             }
 
         # -- properties --------------------------------------------------------
@@ -2117,12 +2124,20 @@ class CameraLabelsComponent:
         def supports_component_version(version: str) -> bool:
             return version == "v1"
 
-        def __init__(self, component_instance_name: str, component_group: zarr.Group) -> None:
-            super().__init__(component_instance_name, component_group)
+        # Timestamps (a chunk read) and the descriptor (a dataclass decode) are loaded on first use rather than
+        # in the constructor, so opening sequences with many label components stays cheap until they are accessed.
 
-            self._timestamps_us: npt.NDArray[np.uint64] = np.array(self._group["timestamps_us"][:])
-            self._timestamp_to_index: Dict[int, int] = {int(ts): i for i, ts in enumerate(self._timestamps_us)}
-            self._descriptor = types.CameraLabelDescriptor.from_dict(self._group["labels"].attrs["descriptor"])
+        @functools.cached_property
+        def _timestamps_us(self) -> npt.NDArray[np.uint64]:
+            return np.array(self._group["timestamps_us"][:])
+
+        @functools.cached_property
+        def _timestamp_to_index(self) -> Dict[int, int]:
+            return {int(ts): i for i, ts in enumerate(self._timestamps_us)}
+
+        @functools.cached_property
+        def _descriptor(self) -> types.CameraLabelDescriptor:
+            return types.CameraLabelDescriptor.from_dict(self._group["labels"].attrs["descriptor"])
 
         # -- properties --------------------------------------------------------
 
