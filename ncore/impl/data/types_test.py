@@ -14,11 +14,16 @@
 # limitations under the License.
 
 import io
+import json
 import unittest
 
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, TypeVar, Union, cast
+from unittest import mock
 
+import dataclasses_json
+import dataclasses_json.api
+import dataclasses_json.core
 import numpy as np
 import numpy.testing as np_testing
 import PIL.Image as PILImage
@@ -32,16 +37,24 @@ from ncore.impl.data.types import (
     _EXTERNAL_DISTORTION_PARAMETERS_BY_TYPE,
     _LIDAR_MODEL_PARAMETERS_BY_TYPE,
     EXTERNAL_DISTORTION_TYPE_KEY,
+    CameraLabelDescriptor,
     CameraModelParameters,
     EncodedImageData,
     ExternalDistortionParameters,
     FThetaCameraModelParameters,
     IdealPinholeCameraModelParameters,
+    LabelCategory,
+    LabelEncoding,
+    LabelSchema,
+    LabelSource,
+    LabelType,
+    LabelUnit,
     LidarModelParameters,
     OpenCVFisheyeCameraModelParameters,
     OpenCVPinholeCameraModelParameters,
     ParaxialPinholeGeometry,
     PointCloud,
+    QuantizationParams,
     RowOffsetStructuredSpinningLidarModelParameters,
     ShutterType,
     decode_camera_model_parameters,
@@ -734,3 +747,145 @@ class TestParaxialPinholeGeometry(unittest.TestCase):
                 kwargs["focal_length"] = np.array(focal, dtype=np.float32)
                 with self.assertRaises(AssertionError):
                     ParaxialPinholeGeometry(**kwargs)
+
+
+class TestCameraLabelDescriptorFromDict(unittest.TestCase):
+    """CameraLabelDescriptor.from_dict decodes like the generic dataclasses-json decoder, but reuses decoded
+    label types / schemas, as all labels of a sequence typically share them and only differ in the camera"""
+
+    DESCRIPTORS = [
+        CameraLabelDescriptor(
+            camera_id="camera_0_0",
+            label_type=LabelType.DEPTH_Z_M,
+            label_schema=LabelSchema(dtype=np.dtype("float32"), encoding=LabelEncoding.RAW),
+            label_source=LabelSource.EXTERNAL,
+        ),
+        CameraLabelDescriptor(
+            camera_id="front",
+            label_type=LabelType.FLOW_OPTICAL_FORWARD_PX,
+            label_schema=LabelSchema(
+                dtype=np.dtype("float32"),
+                shape_suffix=(2,),
+                encoding=LabelEncoding.RAW,
+                quantization=QuantizationParams(quantized_dtype=np.dtype("int16"), scale=0.01, offset=-1.5),
+            ),
+            label_source=LabelSource.AUTOLABEL,
+        ),
+        CameraLabelDescriptor(
+            camera_id="rear",
+            label_type=LabelType(LabelCategory.OTHER, "custom"),  # no unit
+            label_schema=LabelSchema(
+                dtype=np.dtype("uint8"), encoding=LabelEncoding.IMAGE_ENCODED, encoded_format="png"
+            ),
+            label_source=LabelSource.GT_ANNOTATION,
+        ),
+    ]
+
+    @staticmethod
+    def _generic_from_dict(d: dict) -> CameraLabelDescriptor:
+        """Reference: the generic dataclasses-json decoder of the mixin"""
+        return dataclasses_json.DataClassJsonMixin.from_dict.__func__(CameraLabelDescriptor, d)  # type: ignore[attr-defined]
+
+    def test_matches_generic_decoder(self):
+        for descriptor in self.DESCRIPTORS:
+            with self.subTest(camera_id=descriptor.camera_id):
+                serialized = json.loads(json.dumps(descriptor.to_dict()))  # as stored in zarr attrs
+
+                decoded = CameraLabelDescriptor.from_dict(serialized)
+
+                self.assertEqual(decoded, self._generic_from_dict(serialized))
+                self.assertEqual(decoded, descriptor)
+                self.assertEqual(decoded.to_dict(), descriptor.to_dict())
+
+    def test_unknown_names_behave_like_generic_decoder(self):
+        """Unknown units resolve to UNKNOWN, unknown categories / sources raise, exactly like the generic decoder"""
+        base = json.loads(json.dumps(self.DESCRIPTORS[0].to_dict()))
+
+        unknown_unit = {**base, "label_type": {**base["label_type"], "unit": "FUTURE_UNIT"}}
+        decoded = CameraLabelDescriptor.from_dict(unknown_unit)
+        self.assertEqual(decoded.label_type.unit, LabelUnit.UNKNOWN)
+        self.assertEqual(decoded, self._generic_from_dict(unknown_unit))
+
+        for invalid in (
+            {**base, "label_type": {**base["label_type"], "category": "FUTURE_CATEGORY"}},
+            {**base, "label_source": "FUTURE_SOURCE"},
+        ):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(KeyError):
+                    self._generic_from_dict(invalid)
+                with self.assertRaises(KeyError):
+                    CameraLabelDescriptor.from_dict(invalid)
+
+    def setUp(self):
+        # Decode caches are shared class state: start each test from empty caches with the default sizes
+        for cache in (CameraLabelDescriptor.label_type_cache, CameraLabelDescriptor.label_schema_cache):
+            max_size = cache.max_size
+            cache.clear()
+            self.addCleanup(setattr, cache, "max_size", max_size)
+
+    def test_reuses_decoded_label_type_and_schema(self):
+        serialized = json.loads(json.dumps(self.DESCRIPTORS[1].to_dict()))
+        other_camera = {**serialized, "camera_id": "camera_1"}
+
+        a = CameraLabelDescriptor.from_dict(serialized)
+        b = CameraLabelDescriptor.from_dict(other_camera)
+
+        self.assertEqual(b.camera_id, "camera_1")
+        self.assertIs(a.label_type, b.label_type)
+        self.assertIs(a.label_schema, b.label_schema)
+
+    def _record_generic_decodes(self):
+        """Patch the generic dataclasses-json decoder to record the decoded dataclass types"""
+        # The mixin's from_dict calls the generic decoder through dataclasses_json.api, nested dataclass fields
+        # through dataclasses_json.core: record both
+        decoded_types: List[type] = []
+        generic_decode = dataclasses_json.core._decode_dataclass
+
+        def recording_decode(cls, kvs, infer_missing):
+            decoded_types.append(cls)
+            return generic_decode(cls, kvs, infer_missing)
+
+        for module in (dataclasses_json.api, dataclasses_json.core):
+            patcher = mock.patch.object(module, "_decode_dataclass", recording_decode)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        return decoded_types
+
+    def _many_descriptors(self, n: int) -> List[dict]:
+        serialized = json.loads(json.dumps(self.DESCRIPTORS[0].to_dict()))
+        return [{**serialized, "camera_id": f"camera_0_{i}"} for i in range(n)]
+
+    def test_generic_decoder_runs_once_per_distinct_type_and_schema(self):
+        """Decoding many descriptors that share a type / schema must not run the (slow) generic decoder per call"""
+        descriptors = self._many_descriptors(100)
+        decoded_types = self._record_generic_decodes()
+
+        decoded = [CameraLabelDescriptor.from_dict(d) for d in descriptors]
+
+        self.assertEqual([d.camera_id for d in decoded], [f"camera_0_{i}" for i in range(100)])
+        # one generic decode each for LabelType and LabelSchema, independent of the number of descriptors
+        self.assertEqual(sorted(t.__name__ for t in decoded_types), ["LabelSchema", "LabelType"])
+
+    def test_disabled_caches_decode_every_time(self):
+        CameraLabelDescriptor.label_type_cache.max_size = 0
+        CameraLabelDescriptor.label_schema_cache.max_size = 0
+        descriptors = self._many_descriptors(3)
+        decoded_types = self._record_generic_decodes()
+
+        decoded = [CameraLabelDescriptor.from_dict(d) for d in descriptors]
+
+        self.assertEqual(decoded[0], self.DESCRIPTORS[0])
+        self.assertEqual(sorted(t.__name__ for t in decoded_types), ["LabelSchema"] * 3 + ["LabelType"] * 3)
+
+    def test_infer_missing_bypasses_caches(self):
+        """infer_missing changes decoding of missing fields, so it uses the generic decoder without caching"""
+        serialized = json.loads(json.dumps(self.DESCRIPTORS[0].to_dict()))
+        del serialized["label_schema"]["encoded_format"]  # optional field, only allowed to be missing when inferred
+        decoded_types = self._record_generic_decodes()
+
+        decoded = CameraLabelDescriptor.from_dict(serialized, infer_missing=True)
+
+        self.assertEqual(decoded, self.DESCRIPTORS[0])
+        self.assertIn(CameraLabelDescriptor, decoded_types)
+        self.assertEqual(len(CameraLabelDescriptor.label_type_cache), 0)
+        self.assertEqual(len(CameraLabelDescriptor.label_schema_cache), 0)
