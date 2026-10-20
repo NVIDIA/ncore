@@ -30,7 +30,7 @@ import unittest
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict, Iterator, List, Mapping, Optional, Tuple, cast
+from typing import IO, Any, Dict, Iterator, List, Mapping, Optional, Tuple, cast
 from unittest import mock
 
 import fsspec.asyn
@@ -40,6 +40,9 @@ import parameterized
 import zarr
 import zarr.errors
 import zarr.storage
+
+from typing_extensions import override
+from upath import UPath
 
 from ncore.impl.data import encoding, nodes
 from ncore.impl.data.backend import V2_CONSOLIDATED_METADATA_KEY, V3_CONSOLIDATED_METADATA_KEY, Backend, ZarrFormat
@@ -1326,6 +1329,130 @@ class TestAsyncReads(unittest.TestCase):
             self._assert_equal(asyncio.run(self._reads_async(root)), expected)
         self.assertGreaterEqual(len(requests), 4)  # (range requests of the chunks)
         self.assertFalse(IndexedTarArchive(self.path).is_remote)  # (local archives use positional reads)
+
+
+class RemoteFileSystem(fsspec.asyn.AsyncFileSystem):
+    """An asynchronous filesystem serving local files as remote files (with a request latency), recording the range
+    requests of records and the maximum number of requests in flight"""
+
+    protocol = "ncoretestremote"
+    async_impl = True
+    cachable = False  # (a filesystem per archive path, recording the requests of a test)
+
+    def __init__(self, latency: float = 0.0, **kwargs: Any) -> None:
+        super().__init__(loop=fsspec.asyn.get_loop(), **kwargs)
+        self.latency = latency
+        self.requests: List[Tuple[int, int]] = []
+        self.max_in_flight = 0
+        self._in_flight = 0
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _local(path: str) -> str:
+        # (stripped paths of universal_pathlib < 0.3 are relative)
+        return "/" + path.lstrip("/")
+
+    @override
+    async def _cat_file(
+        self, path: str, start: Optional[int] = None, end: Optional[int] = None, **kwargs: Any
+    ) -> bytes:
+        with self._lock:
+            self.requests.append((start or 0, end or 0))
+            self._in_flight += 1
+            self.max_in_flight = max(self.max_in_flight, self._in_flight)
+        await asyncio.sleep(self.latency)
+        with self._lock:
+            self._in_flight -= 1
+        with open(self._local(path), "rb") as f:
+            f.seek(start or 0)
+            return f.read(None if end is None else end - (start or 0))
+
+    @override
+    def _open(
+        self,
+        path: str,
+        mode: str = "rb",
+        block_size: Optional[int] = None,
+        autocommit: bool = True,
+        cache_options: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> IO[bytes]:
+        # (the archive's buffered file object)
+        return cast(IO[bytes], open(self._local(path), mode))
+
+
+fsspec.register_implementation(RemoteFileSystem.protocol, RemoteFileSystem)
+
+
+class TestRemoteRangeReads(unittest.TestCase):
+    """Synchronous reads of remote archives with exact range requests (opt-in), concurrent for multiple threads"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self._tmp.name, "store.itar")
+        rng = np.random.default_rng(0)
+        with IndexedTarZarrStore(self.path, mode="w") as store:
+            root = store.create_root_group({})
+            for i in range(8):
+                # (uncompressed frames of 192 KiB, larger than the archive's tail read, which is served from memory)
+                root.create_array(f"frame{i}", rng.random((16384, 3)).astype(np.float32), compression=None)
+            store.consolidate()
+        self.expected = {
+            f"frame{i}": IndexedTarZarrStore(self.path).open_root_group().array(f"frame{i}").read() for i in range(8)
+        }
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _open(self, latency: float = 0.0, **kwargs: Any) -> Tuple[nodes.Group, IndexedTarArchive, RemoteFileSystem]:
+        """The root group of the archive, opened as remote archive (via RemoteFileSystem), the archive, and its
+        filesystem (recording the range requests of reads, not of opening the archive)"""
+        store = IndexedTarZarrStore(
+            UPath(f"{RemoteFileSystem.protocol}://{self.path}", latency=latency), index_tail_read_size=1024, **kwargs
+        )
+        root = store.open_root_group()
+        fs = cast(RemoteFileSystem, store.archive.itar_upath.fs)
+        self.assertTrue(store.archive.is_remote)
+        fs.requests.clear()
+        return root, store.archive, fs
+
+    def _reads(self, root: nodes.Group, threads: int) -> Dict[str, np.ndarray]:
+        with concurrent.futures.ThreadPoolExecutor(threads) as pool:
+            arrays = {name: pool.submit(root.array(name).read) for name in self.expected}
+            return {name: future.result() for name, future in arrays.items()}
+
+    def _assert_expected(self, actual: Dict[str, np.ndarray]) -> None:
+        self.assertEqual(actual.keys(), self.expected.keys())
+        for name, value in self.expected.items():
+            np.testing.assert_array_equal(actual[name], value, name)
+
+    def test_range_reads(self):
+        """Records are read via exact range requests, not via the buffered file object"""
+        root, archive, fs = self._open(remote_range_reads=True)
+        with mock.patch.object(archive._file, "read", side_effect=AssertionError("file object read")):
+            self._assert_expected(self._reads(root, threads=1))
+        chunks = [archive._records[f"frame{i}/0.0"] for i in range(8)]  # (single-chunk arrays, zarr format v2)
+        self.assertEqual(sorted(fs.requests), sorted((r.offset, r.offset + r.size) for r in chunks))
+
+    def test_concurrent_range_reads_of_threads(self):
+        """Synchronous reads of multiple threads fetch their records concurrently (not serialized by the archive)"""
+        root, _, fs = self._open(latency=0.05, remote_range_reads=True)
+        self._assert_expected(self._reads(root, threads=8))
+        self.assertEqual(len(fs.requests), 8)
+        self.assertGreater(fs.max_in_flight, 1)
+
+    def test_default_reads_use_the_file_object(self):
+        """Without remote range reads, synchronous reads of remote archives use the buffered file object"""
+        root, archive, fs = self._open()
+        self.assertFalse(archive.remote_range_reads)
+        self._assert_expected(self._reads(root, threads=4))
+        self.assertEqual(fs.requests, [])
+
+    def test_local_archives_use_positional_reads(self):
+        """Local archives are read via positional reads, also with remote range reads"""
+        archive = IndexedTarArchive(self.path, remote_range_reads=True)
+        self.assertFalse(archive.is_remote)
+        self.assertIsNotNone(archive._pread_fd)
 
 
 @parameterized.parameterized_class(("zarr_format",), [(zarr_format,) for zarr_format in ZARR_FORMATS])

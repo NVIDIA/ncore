@@ -73,6 +73,12 @@ class IndexedTarArchive:
         Maximum bytes read from the end of the archive in a single I/O call to load the record index. Covers both the
         small index header and (ideally) the compressed index. Values smaller than the tar block size (512 bytes), or
         None, result in separate reads of the index header and index, which is more robust for large indices.
+    remote_range_reads : bool, optional, default False
+        Read records of remote archives (see :attr:`is_remote`) synchronously via exact byte-range requests, like
+        :meth:`read_async`, instead of via the archive's buffered file object (blocks of the filesystem's block size,
+        cached by its cache type, one request at a time). Synchronous reads of multiple threads then fetch their records
+        concurrently, which suits random access to high-latency storage (e.g., thread pools reading frames of S3
+        archives); the buffered file object suits sequential reading of nearby records.
 
     Records are accessed via a mapping interface (``archive[key]``, ``archive[key] = value``, ``key in archive``,
     ``keys()``, ``len(archive)``). Records of the index tail read are served from memory, so records stored near the end
@@ -122,10 +128,12 @@ class IndexedTarArchive:
         itar_path: Union[str, Path, UPath],
         mode: Literal["r", "w"] = "r",
         index_tail_read_size: Optional[int] = 1 << 20,  # 1 MiB by default
+        remote_range_reads: bool = False,
     ) -> None:
         if mode not in ("r", "w"):
             raise ValueError(f"IndexedTarArchive: unsupported mode {mode!r}, supported are 'r' and 'w'")
         self._mode: Literal["r", "w"] = mode
+        self._remote_range_reads = remote_range_reads
 
         # convert str / Path to an absolute UPath (with the UPath-internal `file://` protocol for local files)
         itar_upath = UPath(itar_path)
@@ -201,8 +209,8 @@ class IndexedTarArchive:
         """Reads the payload of a record synchronously (raises KeyError if it doesn't exist).
 
         Records held in memory (node metadata records of archives opened for writing, records of the index tail read)
-        are returned directly, records of local archives are read via positional reads, all other records via the
-        archive's buffered file object.
+        are returned directly, records of local archives are read via positional reads, records of remote archives via
+        the archive's buffered file object, or via exact range requests (see ``remote_range_reads``).
         """
         if (value := self._node_metadata_record(key)) is not None:
             return value
@@ -212,6 +220,10 @@ class IndexedTarArchive:
 
         if self._pread_fd is not None:
             return self._pread(self._pread_fd, record.offset, record.size)
+
+        if self._remote_range_reads and (fs := self._async_fs()) is not None:
+            # (an exact range request on the filesystem's I/O loop, concurrent with those of other threads)
+            return fs.cat_file(self._itar_upath.path, start=record.offset, end=record.offset + record.size)
 
         with self._lock:
             # restore the position afterwards (the position to append records to when writing)
@@ -238,6 +250,11 @@ class IndexedTarArchive:
             start = record.offset - tail.start
             return tail.data[start : start + record.size]
         return None
+
+    @property
+    def remote_range_reads(self) -> bool:
+        """True if synchronous reads of remote archives use exact range requests (see the class documentation)"""
+        return self._remote_range_reads
 
     @property
     def is_remote(self) -> bool:

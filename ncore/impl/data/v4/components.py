@@ -357,6 +357,7 @@ class SequenceComponentGroupsReader:
         component_group_paths: List[UPath] | List[Path],
         open_consolidated: bool = True,
         itar_index_tail_read_size: int = 1 << 20,  # 1 MiB default
+        itar_remote_range_reads: bool = False,
         max_threads: int | None = None,
         node_cache_size: int | None = None,
     ):
@@ -374,6 +375,10 @@ class SequenceComponentGroupsReader:
                                single I/O call to initialize the tar file index to minimize reads.
                                Default 1 MiB size fits typical use cases, but may be increased if the compressed
                                index size is expected to be larger or decreased if remote access chunk sizes are smaller.
+            itar_remote_range_reads: Read data of remote .itar files (e.g., on S3) via exact byte-range requests also with
+                               the synchronous reader APIs, so reads of multiple threads fetch their data concurrently
+                               (e.g., thread pools reading frames), instead of via a buffered file object (blocks of the
+                               filesystem's block size, one request at a time, suits sequential reading).
             max_threads:       The maximum number of threads used to open the component stores concurrently (if
                                None, use interpreter-default number of threads for a ThreadPoolExecutor)
             node_cache_size:   Number of opened groups / arrays (with their decoded meta-data, but not their data)
@@ -417,7 +422,10 @@ class SequenceComponentGroupsReader:
                         )
 
                     component_store = stores.IndexedTarZarrStore(
-                        component_store_upath, mode="r", index_tail_read_size=itar_index_tail_read_size
+                        component_store_upath,
+                        mode="r",
+                        index_tail_read_size=itar_index_tail_read_size,
+                        remote_range_reads=itar_remote_range_reads,
                     )
                 else:
                     component_store = stores.ZarrStoreAdapter.directory(component_store_upath)

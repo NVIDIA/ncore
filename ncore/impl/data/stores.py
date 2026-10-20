@@ -94,15 +94,19 @@ class Store(ABC):
 
 
 class IndexedTarZarrStore(Store):
-    """A zarr hierarchy in an indexed tar archive (local or remote, see :class:`IndexedTarArchive`)"""
+    """A zarr hierarchy in an indexed tar archive (local or remote, see :class:`IndexedTarArchive` for the
+    parameters)"""
 
     def __init__(
         self,
         itar_path: Union[str, Path, UPath],
         mode: Literal["r", "w"] = "r",
         index_tail_read_size: Optional[int] = 1 << 20,
+        remote_range_reads: bool = False,
     ) -> None:
-        self._archive = IndexedTarArchive(itar_path, mode=mode, index_tail_read_size=index_tail_read_size)
+        self._archive = IndexedTarArchive(
+            itar_path, mode=mode, index_tail_read_size=index_tail_read_size, remote_range_reads=remote_range_reads
+        )
         super().__init__(_backend.indexed_tar_store(self._archive))
 
     @property
