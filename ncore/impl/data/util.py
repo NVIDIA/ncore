@@ -13,10 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import re
+import threading
 
+from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Generic, Iterable, List, Literal, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Callable, Generic, Hashable, Iterable, List, Literal, Optional, TypeVar, cast
 
 import dataclasses_json
 import numpy as np
@@ -107,6 +110,85 @@ def numpy_array_field(datatype: "npt.DTypeLike", default=None) -> Any:
         return field(default_factory=lambda: default, metadata=metadata)
     else:
         return field(default=None, metadata=metadata)
+
+
+SerializedT = TypeVar("SerializedT")
+DecodedT = TypeVar("DecodedT")
+
+
+class DecodedValueCache(Generic[SerializedT, DecodedT]):
+    """Thread-safe least-recently-used cache of decoded values, keyed by their serialized form.
+
+    Avoids repeatedly running an expensive decoder (e.g., the generic dataclasses-json ``from_dict``) for
+    identical serialized values. The decoded values are shared between all callers, so they need to be
+    immutable (e.g., frozen dataclasses).
+
+    By default, serialized values are keyed by their canonical JSON form, which requires them to be
+    JSON-serializable; other serialized forms need a custom ``key`` function returning a hashable key.
+
+    ``max_size`` follows the :func:`functools.lru_cache` convention: ``None`` caches without bound, ``0``
+    disables caching, and a positive value bounds the number of cached values. It can be changed at any time
+    (shrinking evicts the least recently used values).
+    """
+
+    def __init__(
+        self,
+        decode: Callable[[SerializedT], DecodedT],
+        max_size: Optional[int] = 256,
+        # Canonical key of a JSON-serializable value, independent of the key order of its mappings
+        key: Callable[[SerializedT], Hashable] = lambda v: json.dumps(v, sort_keys=True),
+    ) -> None:
+        self._decode = decode
+        self._key = key
+        self._values: OrderedDict[Hashable, DecodedT] = OrderedDict()
+        self._lock = threading.Lock()
+        self._max_size: Optional[int] = None
+        self.max_size = max_size
+
+    @property
+    def max_size(self) -> Optional[int]:
+        """Maximum number of cached values (``None``: unbounded, ``0``: caching disabled)"""
+        return self._max_size
+
+    @max_size.setter
+    def max_size(self, max_size: Optional[int]) -> None:
+        if max_size is not None and max_size < 0:
+            raise ValueError(f"max_size needs to be None or non-negative, got {max_size}")
+        with self._lock:
+            self._max_size = max_size
+            self._evict()
+
+    def __call__(self, serialized: SerializedT) -> DecodedT:
+        """Returns the decoded value of ``serialized``, decoding it only if not cached"""
+        key = self._key(serialized)
+        with self._lock:
+            if key in self._values:
+                self._values.move_to_end(key)
+                return self._values[key]
+
+        # Decode outside of the lock (concurrent misses of the same key decode redundantly, but equivalently)
+        value = self._decode(serialized)
+
+        with self._lock:
+            self._values[key] = value
+            self._values.move_to_end(key)
+            self._evict()
+        return value
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._values)
+
+    def clear(self) -> None:
+        """Removes all cached values"""
+        with self._lock:
+            self._values.clear()
+
+    def _evict(self) -> None:
+        # Note: needs to be called while holding the lock
+        if self._max_size is not None:
+            while len(self._values) > self._max_size:
+                self._values.popitem(last=False)
 
 
 def enum_field(enum_class, default=None) -> Any:

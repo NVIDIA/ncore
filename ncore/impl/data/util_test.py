@@ -16,14 +16,19 @@
 import unittest
 import warnings
 
-from typing import cast
+from typing import List, Tuple, cast
 
 import numpy as np
 import torch
 
 from numpy.polynomial.polynomial import Polynomial
 
-from ncore.impl.data.util import closest_index_sorted, compute_max_angle_with_monotonicity, relative_angle
+from ncore.impl.data.util import (
+    DecodedValueCache,
+    closest_index_sorted,
+    compute_max_angle_with_monotonicity,
+    relative_angle,
+)
 
 
 class TestClosestIndexSorted(unittest.TestCase):
@@ -415,3 +420,118 @@ class TestRelativeAngle(unittest.TestCase):
 
             self.assertEqual(rel.relative_angle_rad.dtype, torch_dtype)
             self.assertEqual(float(rel.relative_angle_rad[0].item()), 0.0)
+
+
+class TestDecodedValueCache(unittest.TestCase):
+    """DecodedValueCache: bounded / unbounded / disabled LRU cache of decoded values keyed by their serialized form"""
+
+    @staticmethod
+    def _counting_decode():
+        calls: List[object] = []
+
+        def decode(kvs):
+            calls.append(kvs)
+            return ("decoded", kvs["name"])
+
+        return decode, calls
+
+    def test_reuses_decoded_values_by_serialized_form(self):
+        decode, calls = self._counting_decode()
+        cache = DecodedValueCache(decode, max_size=4)
+
+        a = cache({"name": "a", "x": 1})
+        b = cache({"x": 1, "name": "a"})  # same content, different key order
+
+        self.assertIs(a, b)
+        self.assertEqual(len(calls), 1)
+        self.assertIsNot(cache({"name": "a", "x": 2}), a)  # different content
+        self.assertEqual(len(calls), 2)
+
+    def test_evicts_least_recently_used(self):
+        decode, calls = self._counting_decode()
+        cache = DecodedValueCache(decode, max_size=2)
+
+        cache({"name": "a"})
+        cache({"name": "b"})
+        cache({"name": "a"})  # 'a' is now most recently used
+        cache({"name": "c"})  # evicts 'b', not 'a'
+        self.assertEqual(len(cache), 2)
+
+        n_calls = len(calls)
+        cache({"name": "a"})
+        self.assertEqual(len(calls), n_calls)  # still cached
+        cache({"name": "b"})
+        self.assertEqual(len(calls), n_calls + 1)  # was evicted
+
+    def test_unbounded_cache(self):
+        decode, calls = self._counting_decode()
+        cache = DecodedValueCache(decode, max_size=None)
+
+        for i in range(100):
+            cache({"name": str(i)})
+        for i in range(100):
+            cache({"name": str(i)})
+
+        self.assertEqual(len(cache), 100)
+        self.assertEqual(len(calls), 100)
+
+    def test_zero_size_disables_caching(self):
+        decode, calls = self._counting_decode()
+        cache = DecodedValueCache(decode, max_size=0)
+
+        self.assertEqual(cache({"name": "a"}), ("decoded", "a"))
+        cache({"name": "a"})
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(cache), 0)
+
+    def test_max_size_can_be_changed(self):
+        decode, calls = self._counting_decode()
+        cache = DecodedValueCache(decode, max_size=4)
+        for name in "abcd":
+            cache({"name": name})
+
+        cache.max_size = 2  # shrinking evicts the least recently used entries
+        self.assertEqual(len(cache), 2)
+        n_calls = len(calls)
+        cache({"name": "d"})
+        self.assertEqual(len(calls), n_calls)
+        cache({"name": "a"})
+        self.assertEqual(len(calls), n_calls + 1)
+
+        cache.max_size = 0
+        self.assertEqual(len(cache), 0)
+
+        with self.assertRaises(ValueError):
+            cache.max_size = -1
+
+    def test_default_max_size(self):
+        decode, _ = self._counting_decode()
+
+        self.assertEqual(DecodedValueCache(decode).max_size, 256)
+
+    def test_custom_key(self):
+        """Serialized values that are not JSON (e.g., tuples) can be cached with a custom key function"""
+        calls: List[object] = []
+
+        def decode(serialized: Tuple[str, int]) -> str:
+            calls.append(serialized)
+            return f"{serialized[0]}-{serialized[1]}"
+
+        cache = DecodedValueCache(decode, key=lambda serialized: serialized[0])
+
+        self.assertEqual(cache(("a", 1)), "a-1")
+        self.assertEqual(cache(("a", 2)), "a-1")  # same key, cached value
+        self.assertEqual(cache(("b", 1)), "b-1")
+        self.assertEqual(len(calls), 2)
+
+    def test_clear(self):
+        decode, calls = self._counting_decode()
+        cache = DecodedValueCache(decode, max_size=None)
+        cache({"name": "a"})
+
+        cache.clear()
+
+        self.assertEqual(len(cache), 0)
+        cache({"name": "a"})
+        self.assertEqual(len(calls), 2)
