@@ -36,13 +36,17 @@ from typing import (
     Protocol,
     Tuple,
     Type,
+    TypedDict,
     TypeVar,
     Union,
+    cast,
 )
 
 import dataclasses_json
 import numpy as np
 import PIL.Image as PILImage
+
+from dataclasses_json.core import Json
 
 
 if TYPE_CHECKING:
@@ -1774,6 +1778,41 @@ class EncodedImageHandle(Protocol):
     def get_data(self) -> EncodedImageData: ...
 
 
+class LabelTypeDict(TypedDict):
+    """Serialized form of :class:`LabelType`"""
+
+    category: str
+    qualifier: str
+    unit: Optional[str]
+
+
+class QuantizationParamsDict(TypedDict):
+    """Serialized form of :class:`QuantizationParams`"""
+
+    quantized_dtype: str
+    scale: float
+    offset: float
+
+
+class LabelSchemaDict(TypedDict):
+    """Serialized form of :class:`LabelSchema`"""
+
+    dtype: str
+    shape_suffix: List[int]
+    encoding: str
+    encoded_format: Optional[str]
+    quantization: Optional[QuantizationParamsDict]
+
+
+class CameraLabelDescriptorDict(TypedDict):
+    """Serialized form of :class:`CameraLabelDescriptor` (e.g., as stored in camera label components)"""
+
+    camera_id: str
+    label_type: LabelTypeDict
+    label_schema: LabelSchemaDict
+    label_source: str
+
+
 @dataclass(**({"slots": True, "frozen": True} if sys.version_info >= (3, 10) else {"frozen": True}))
 class CameraLabelDescriptor(dataclasses_json.DataClassJsonMixin):
     """Compound descriptor bundling the identity and schema of one camera label instance.
@@ -1792,6 +1831,36 @@ class CameraLabelDescriptor(dataclasses_json.DataClassJsonMixin):
         """Recommended instance name: ``category.qualifier@camera_id``."""
         cat = self.label_type.category.name.lower()
         return f"{cat}.{self.label_type.qualifier}@{self.camera_id}"
+
+    #: Caches of decoded label types / schemas used by :meth:`from_dict`. All label components of a sequence
+    #: typically share these, and only differ in their camera. ``max_size`` can be tuned (``None``: unbounded,
+    #: ``0``: no caching).
+    label_type_cache: ClassVar[util.DecodedValueCache[Json, LabelType]] = util.DecodedValueCache(LabelType.from_dict)
+    label_schema_cache: ClassVar[util.DecodedValueCache[Json, LabelSchema]] = util.DecodedValueCache(
+        LabelSchema.from_dict
+    )
+
+    @classmethod
+    def from_dict(cls, kvs: Json, *, infer_missing: bool = False) -> CameraLabelDescriptor:
+        """Decodes a descriptor like the generic dataclasses-json ``from_dict``, but reuses decoded label types and
+        schemas via :attr:`label_type_cache` / :attr:`label_schema_cache`.
+
+        The generic decoder resolves type hints on every call (~0.5 ms per descriptor). Sequences can have one
+        descriptor per camera and label type (e.g., hundreds for per-frame cameras), which typically all share
+        the same label type and schema, so decoding them dominated opening such sequences.
+        """
+        if infer_missing:
+            # Inferring missing fields is handled by the generic decoder only (note: explicit base instead of a
+            # zero-argument super(), which doesn't work in slotted dataclasses as these are re-created as a new class)
+            return super(CameraLabelDescriptor, cls).from_dict(kvs, infer_missing=True)
+
+        descriptor = cast(CameraLabelDescriptorDict, kvs)
+        return cls(
+            camera_id=descriptor["camera_id"],
+            label_type=cls.label_type_cache(cast(Json, descriptor["label_type"])),
+            label_schema=cls.label_schema_cache(cast(Json, descriptor["label_schema"])),
+            label_source=LabelSource.__members__[descriptor["label_source"]],
+        )
 
     def __post_init__(self) -> None:
         # Sanity checks
