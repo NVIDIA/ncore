@@ -111,10 +111,11 @@ pip.override(
 )
 use_repo(pip, "ncore_pip_deps")
 
-## rules_multitool (for ruff formatter)
+## rules_multitool (ruff for the formatter, cocogitto for commit checks and releases)
 bazel_dep(name = "rules_multitool", version = "1.0.0")
 
 multitool = use_extension("@rules_multitool//multitool:extension.bzl", "multitool")
+multitool.hub(lockfile = "//bazel:multitool.lock.json")
 use_repo(multitool, "multitool")
 
 ## external / test data
