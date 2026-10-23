@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Unified CI workflow that handles:
-# - Build and test (all branches)
+# - Conventional commit check, build and test (all branches)
 # - Documentation deployment to GitHub Pages (main branch only)
 # - Releases (main and release/* branches): publishing to PyPI, tagging and creating the GitHub
 #   release whenever the version in .bazelrc (embed_label) has no release tag yet
@@ -55,6 +55,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for the conventional commit check
 
       - name: Log GPU and driver info
         run: nvidia-smi
@@ -66,6 +68,12 @@ jobs:
           free-disk-space: false
           gpu-enabled: true
           github-token: ${{ secrets.NVIDIA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+
+      # All commits follow the Conventional Commits specification (https://www.conventionalcommits.org/),
+      # which `cog bump` and the release notes rely on. Runs on pull requests, and on the commits landing
+      # on main / release/* branches.
+      - name: Check conventional commits
+        run: bazelisk run //:cog -- check
 
       - name: Check code format
         run: bazelisk run format.check
@@ -195,16 +203,10 @@ jobs:
           free-disk-space: true
           github-token: ${{ secrets.NVIDIA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Install cocogitto
-        if: steps.release.outputs.needed == 'true'
-        uses: cocogitto/cocogitto-action@9a9fe03b31c47444290c0d7f9b1ee1b44ee13f20
-        with:
-          command: "--version"
-
       - name: Generate release notes
         if: steps.release.outputs.needed == 'true'
         run: |
-          .github/release/release-notes.sh publish "${{ steps.release.outputs.version }}" HEAD > "${RUNNER_TEMP}/release-notes.md"
+          bazelisk run //tools/release:release_notes -- publish "${{ steps.release.outputs.version }}" HEAD > "${RUNNER_TEMP}/release-notes.md"
           cat "${RUNNER_TEMP}/release-notes.md"
 
       - name: Publish to PyPI
