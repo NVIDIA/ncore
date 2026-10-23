@@ -16,6 +16,9 @@
 # Export config files needed by linter aspects
 exports_files(["pyproject.toml"])
 
+# Used by the release notes test
+exports_files([".cog.toml"])
+
 # Formatting target aliases for convenience
 alias(
     name = "format",
