@@ -15,8 +15,11 @@
 
 # Release tooling (see the "Releases & Versioning" section of CONTRIBUTING.md):
 # - the pinned cocogitto: `bazel run //:cog -- <args>`
+# - release notes: `bazel run //tools/release:release_notes -- <args>`
 
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("//bazel/pytest:defs.bzl", "pytest_test")
 
 sh_binary(
     name = "cog",
@@ -24,4 +27,29 @@ sh_binary(
     data = ["@multitool//tools/cog"],
     visibility = ["//:__pkg__"],
     deps = ["@bazel_tools//tools/bash/runfiles"],
+)
+
+py_library(
+    name = "pylib_release_notes",
+    srcs = ["release_notes.py"],
+    data = [
+        "release-notes.tera",
+        "@multitool//tools/cog",
+    ],
+    deps = ["@rules_python//python/runfiles"],
+)
+
+py_binary(
+    name = "release_notes",
+    srcs = ["release_notes.py"],
+    deps = [":pylib_release_notes"],
+)
+
+pytest_test(
+    name = "pytest_release_notes",
+    srcs = ["release_notes_test.py"],
+    args = ["--import-mode=importlib"],
+    data = ["//:.cog.toml"],
+    python_versions = ["3.11"],
+    deps = [":pylib_release_notes"],
 )

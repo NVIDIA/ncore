@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 SPDX-License-Identifier: Apache-2.0
 
-Cocogitto changelog template of the change list in release notes (see .github/release/release-notes.sh).
+Cocogitto changelog template of the change list in release notes (see release_notes.py).
 Groups commits by type, omits the `chore(version)` release commits, and keeps entries short: GitHub
 links the short commit ids and @usernames (see [[changelog.authors]] in .cog.toml) by itself.
 -#}
