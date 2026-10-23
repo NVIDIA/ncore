@@ -40,3 +40,7 @@ jobs:
         uses: cocogitto/cocogitto-action@9a9fe03b31c47444290c0d7f9b1ee1b44ee13f20
         with:
           command: "--config .cog.toml check"
+
+      # (cog is installed by the cocogitto action above)
+      - name: Test release notes
+        run: .github/release/release-notes_test.sh
