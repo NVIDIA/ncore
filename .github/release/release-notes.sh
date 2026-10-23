@@ -21,18 +21,24 @@
 #
 # Usage:
 #   release-notes.sh draft <version>
-#       Fill the empty body of the release commit at HEAD with the change list since the previous
-#       release (run by the cog post-bump hook, see .cog.toml).
+#       Fill the empty body of the release commit at HEAD with the change list of the release
+#       (run by the cog post-bump hook, see .cog.toml).
 #   release-notes.sh changes <version> <commit>
-#       Print the change list of the release at <commit> since the previous release.
+#       Print the change list of the release at <commit>.
 #   release-notes.sh publish <version> <commit>
 #       Print the GitHub release text of the release at <commit> (used by CI): the commit body
-#       without trailers and with wrapped lines joined, followed by a link to the full diff.
+#       without trailers and with wrapped lines joined, followed by links to the diffs.
 #
-# The previous release is the latest release tag reachable from the release commit. For a final
-# release (no pre-release part), pre-release tags are ignored, so the notes of e.g. v20.0.0 cover
-# everything since the last 19.x release reachable from it, not only the changes since the last
-# release candidate.
+# Change lists cover the whole release: all changes since the previous final release (pre-release
+# tags are ignored, e.g. v20.0.0 and v20.0.0-rc.1 list everything since the last 19.x release).
+# Pre-releases following an earlier pre-release of the same release also list the changes since that
+# one separately:
+#
+# - alpha / beta: the changes since the previous pre-release, then all changes of the release
+#   (collapsed)
+# - rc: all changes of the release, then the changes since the previous pre-release
+#
+# and link both diffs.
 #
 # Requires git, and cog for `draft` and `changes`, in a clone with full history and tags.
 
@@ -52,45 +58,89 @@ repo_root="$(git rev-parse --show-toplevel)"
 template="${repo_root}/.github/release/release-notes.tera"
 repo_url="https://github.com/NVIDIA/ncore"
 
-# Latest release tag reachable from the parent of the release commit <commit>
-previous_tag() {
-    local args=(--tags --abbrev=0 --match 'v[0-9]*')
-    if [[ "${version}" != *-* ]]; then
-        args+=(--exclude 'v*-*')
-    fi
-    git describe "${args[@]}" "$1^"
+# Latest final release tag reachable from the parent of the release commit <commit>
+previous_release() {
+    git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude 'v*-*' "$1^" 2>/dev/null || true
 }
 
-# Change list of the release at <commit>, rendered by cog with release-notes.tera
-changes() {
-    local target previous dir scratch
-    target="$(git rev-parse --verify "$1^{commit}")"
-    previous="$(previous_tag "${target}")"
-    dir="${repo_root}"
-    if [[ "${version}" != *-* ]] && [[ -n "$(git tag --list 'v*-*' --merged "${target}")" ]]; then
+# Pre-release tags of the release of <commit> reachable from its parent (since the previous final
+# release), newest first (by ancestry: the commits between them are walked from <commit> backwards)
+previous_prereleases() {
+    local commit="$1" base range
+    base="$(previous_release "${commit}")"
+    range="${base:+${base}..}${commit}^"
+    git log --format='%H' "${range}" | while read -r c; do
+        git tag --points-at "${c}" --list 'v[0-9]*-*'
+    done
+}
+
+# Change list (cog, release-notes.tera) of the commits in <from>..<to>, headings demoted by <level>
+# extra levels (0: `####` per commit type)
+change_list() {
+    local from="$1" to="$2" level="${3:-0}" dir="${repo_root}" scratch="" range inner
+    # (commit ids, the pre-release tags of the range may be dropped below)
+    to="$(git rev-parse --verify "${to}^{commit}")"
+    [[ -z "${from}" ]] || from="$(git rev-parse --verify "${from}^{commit}")"
+    range="${from:+${from}..}${to}"
+    inner="$(git log --format='%H' "${range}^" 2>/dev/null | while read -r c; do git tag --points-at "${c}" --list 'v*-*'; done)"
+    if [[ -n "${inner}" ]]; then
         # cog renders one section per tag in the range; drop pre-release tags in a throwaway clone so
-        # a final release gets a single change list
+        # the range gets a single change list
         scratch="$(mktemp -d)"
-        trap 'rm -rf "${scratch}"' EXIT
         git clone --quiet --no-checkout "${repo_root}" "${scratch}/repo"
-        git -C "${scratch}/repo" fetch --quiet "${repo_root}" "${target}"
-        git -C "${scratch}/repo" checkout --quiet --detach "${target}"
+        git -C "${scratch}/repo" fetch --quiet "${repo_root}" "${to}"
+        git -C "${scratch}/repo" checkout --quiet --detach "${to}"
         git -C "${scratch}/repo" tag --list 'v*-*' | xargs -r git -C "${scratch}/repo" tag --delete >/dev/null
         dir="${scratch}/repo"
     fi
-    printf '### Changes\n\n'
-    (cd "${dir}" && cog --config .cog.toml changelog --template "${template}" "${previous}..${target}") |
-        sed -e '/./,$!d' | sed -e ':a' -e '/^\n*$/{$d;N;ba' -e '}'
+    (cd "${dir}" && cog --config "${repo_root}/.cog.toml" changelog --template "${template}" "${range}") |
+        sed -e '/./,$!d' | sed -e ':a' -e '/^\n*$/{$d;N;ba' -e '}' |
+        { if [[ "${level}" -gt 0 ]]; then sed -E "s/^(#+)/\1$(printf '#%.0s' $(seq "${level}"))/"; else cat; fi }
+    [[ -z "${scratch}" ]] || rm -rf "${scratch}"
+}
+
+compare() { printf '%s/compare/%s...%s' "${repo_url}" "$1" "$2"; }
+
+# Change list of the release at <commit> (see the header)
+changes() {
+    local target base prereleases previous kind
+    target="$(git rev-parse --verify "$1^{commit}")"
+    base="$(previous_release "${target}")"
+    mapfile -t prereleases < <(previous_prereleases "${target}")
+    previous="${prereleases[0]:-}"
+
+    # final releases, and the first pre-release of a release: a single change list
+    if [[ "${version}" != *-* ]] || [[ -z "${previous}" ]]; then
+        printf '### Changes%s\n\n' "${base:+ since ${base}}"
+        change_list "${base}" "${target}"
+        return
+    fi
+
+    kind="${version#*-}"
+    kind="${kind%%.*}" # alpha / beta / rc
+
+    if [[ "${kind}" == rc ]]; then
+        printf '### Changes%s\n\n' "${base:+ since ${base}}"
+        change_list "${base}" "${target}"
+        printf '\n### New since %s\n\n' "${previous}"
+        change_list "${previous}" "${target}" 1
+    else
+        printf '### Changes since %s\n\n' "${previous}"
+        change_list "${previous}" "${target}"
+        printf '\n<details>\n<summary>All changes%s</summary>\n\n' "${base:+ since ${base}}"
+        change_list "${base}" "${target}"
+        printf '\n</details>\n'
+    fi
 }
 
 # Join wrapped lines of a markdown document into single lines, so GitHub (which renders single line
 # breaks in release text as hard breaks) shows regular paragraphs and list items. Lines are not
-# joined across blank lines, list items, headings, quotes, tables, code blocks, or explicit line
-# breaks (two trailing spaces or a trailing backslash).
+# joined across blank lines, list items, headings, quotes, tables, code blocks, HTML, or explicit
+# line breaks (two trailing spaces or a trailing backslash).
 unwrap() {
     awk '
         function flush() { if (have) print buf; have = 0; buf = "" }
-        function standalone(s) { return s ~ /^[ \t]*(#|>|\||[-*+][ \t]|[0-9]+[.)][ \t])/ }
+        function standalone(s) { return s ~ /^[ \t]*(#|>|\||<|[-*+][ \t]|[0-9]+[.)][ \t])/ }
         /^[ \t]*(```|~~~)/ { flush(); print; fence = !fence; next }
         fence { print; next }
         /^[ \t]*$/ { flush(); print; next }
@@ -100,7 +150,7 @@ unwrap() {
             } else {
                 flush(); buf = $0; have = 1
             }
-            hard = ($0 ~ /(  |\\)$/) || ($0 ~ /^[ \t]*(#|\|)/)
+            hard = ($0 ~ /(  |\\)$/) || ($0 ~ /^[ \t]*(#|\||<)/)
         }
         END { flush() }
     '
@@ -138,7 +188,15 @@ case "${mode}" in
             body="$(changes "${target}")"
         fi
         printf '%s\n\n' "${body}" | unwrap
-        printf '**Full diff**: %s/compare/%s...%s\n' "${repo_url}" "$(previous_tag "${target}")" "${tag}"
+        base="$(previous_release "${target}")"
+        mapfile -t prereleases < <(previous_prereleases "${target}")
+        previous="${prereleases[0]:-}"
+        if [[ "${version}" == *-* ]] && [[ -n "${previous}" ]]; then
+            printf '**Changes since %s**: %s  \n' "${previous}" "$(compare "${previous}" "${tag}")"
+        fi
+        if [[ -n "${base}" ]]; then
+            printf '**Full diff**: %s\n' "$(compare "${base}" "${tag}")"
+        fi
         ;;
     *)
         usage
