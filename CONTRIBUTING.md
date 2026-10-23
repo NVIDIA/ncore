@@ -118,7 +118,7 @@ With optional [breaking-change indicators](https://www.conventionalcommits.org/e
 - `ci`: Changes to CI configuration files and scripts
 - `chore`: Other changes that don't modify src or test files
 
-Commit messages are validated in CI using [cocogitto](https://github.com/cocogitto/cocogitto). PRs with non-compliant commits or merge commits will fail the conventional commits check.
+Commit messages are validated in CI using [cocogitto](https://github.com/cocogitto/cocogitto) (`bazel run //:cog -- check` locally). PRs with non-compliant commits or merge commits will fail the conventional commits check.
 
 ## Code Reviews
 
@@ -150,11 +150,13 @@ NCore uses [Semantic Versioning](https://semver.org/) with versions determined a
 
 ### Cocogitto Configuration
 
-Cocogitto is configured via `.cog.toml` in the repository root. All `cog` commands must reference this config:
+Cocogitto is configured via `.cog.toml` in the repository root. `bazel run //:cog -- <args>` runs the cocogitto
+version used by CI in the workspace with this configuration. A locally installed `cog` works as well, but needs
+`--config .cog.toml` (before the command) in all invocations:
 
 ```bash
-cog --config .cog.toml check                   # Validate commit messages
-cog --config .cog.toml bump --auto --dry-run   # Preview next version
+bazel run //:cog -- check                   # Validate commit messages
+bazel run //:cog -- bump --auto --dry-run   # Preview next version
 ```
 
 ### Branches
@@ -178,7 +180,7 @@ branch of that version. The body of that commit is the release notes.
 
 ```bash
 # On an up-to-date branch based on the target branch
-cog --config .cog.toml bump --auto             # or --patch / --minor / --major / --version X.Y.Z
+bazel run //:cog -- bump --auto   # or --patch / --minor / --major / --version X.Y.Z
 
 # Write the release notes: add highlights, edit the drafted change list
 git commit --amend -S --cleanup=scissors
@@ -202,7 +204,7 @@ beta (`20.0.0-beta.1`) and release candidates (`20.0.0-rc.1`), published to PyPI
 `20.0.0b1` and `20.0.0rc1` and marked as pre-releases on GitHub. Pass the version explicitly:
 
 ```bash
-cog --config .cog.toml bump --version 20.0.0-rc.1
+bazel run //:cog -- bump --version 20.0.0-rc.1
 ```
 
 pip only installs pre-releases with `--pre` or an exact version pin.
@@ -238,11 +240,11 @@ dropped where the commit summaries are not helpful to users.
 Preview the published notes of a release commit locally with:
 
 ```bash
-.github/release/release-notes.sh publish <version> <release-commit>
+bazel run //tools/release:release_notes -- publish <version> <release-commit>
 ```
 
-Changes to the release notes script are tested by `.github/release/release-notes_test.sh` (also run
-in CI).
+Changes to the release notes tool (`tools/release/`) are tested by
+`bazel test //tools/release:all`.
 
 ## Commit Signatures
 

@@ -3,13 +3,13 @@
 
 # Cocogitto configuration for conventional commit-based versioning and release notes.
 #
-# Usage:
-#   cog --config .cog.toml check                  # Validate commit messages
-#   cog --config .cog.toml bump --auto --dry-run  # Preview next version
-#   cog --config .cog.toml bump --auto            # Create the `chore(version): vX.Y.Z` release commit
+# Usage (the pinned cog uses this configuration; with a locally installed `cog`, pass `--config .cog.toml`):
+#   bazel run //:cog -- check                  # Validate commit messages
+#   bazel run //:cog -- bump --auto --dry-run  # Preview next version
+#   bazel run //:cog -- bump --auto            # Create the `chore(version): vX.Y.Z` release commit
 #
 # Release notes are not kept in the repository. CI creates them on the GitHub release, see
-# .github/release/release-notes.sh and the "Releases & Versioning" section of CONTRIBUTING.md.
+# tools/release/release_notes.py and the "Releases & Versioning" section of CONTRIBUTING.md.
 #
 # See https://docs.cocogitto.io/reference/config.html
 
@@ -25,10 +25,11 @@ pre_bump_hooks = [
 ]
 
 # Remove the local tag created by cog bump (CI creates the tag when the release commit lands), and
-# draft the release notes in the body of the release commit
+# draft the release notes in the body of the release commit (with the cog running the hooks: `bazel run //:cog`
+# exports it as COG, otherwise `cog` on the PATH)
 post_bump_hooks = [
     "git tag --delete {{version_tag}}",
-    ".github/release/release-notes.sh draft {{version}}",
+    "python3 tools/release/release_notes.py draft {{version}}",
 ]
 
 # The bump commit only changes .bazelrc; release notes live on GitHub releases
