@@ -205,8 +205,9 @@ the next push to the same branch) completes the release.
 
 ### Pre-releases
 
-Release candidates use a SemVer pre-release version, e.g. `20.0.0-rc.1`, published to PyPI as
-`20.0.0rc1` and marked as a pre-release on GitHub. Pass the version explicitly:
+Pre-releases use a SemVer pre-release version: alpha (`20.0.0-alpha.1`, APIs may still change),
+beta (`20.0.0-beta.1`) and release candidates (`20.0.0-rc.1`), published to PyPI as `20.0.0a1`,
+`20.0.0b1` and `20.0.0rc1` and marked as pre-releases on GitHub. Pass the version explicitly:
 
 ```bash
 cog --config .cog.toml bump --version 20.0.0-rc.1
@@ -219,14 +220,22 @@ pip only installs pre-releases with `--pre` or an exact version pin.
 Release notes live on the GitHub releases only; the repository does not keep a changelog file. The
 notes of a release are the markdown body of its release commit, so they are reviewed and can be
 edited in the release PR. CI publishes the body as is, with two changes: wrapped lines are joined
-(GitHub would otherwise show every line break), and a link to the full diff since the previous
-release is appended.
+(GitHub would otherwise show every line break), and links to the full diff since the previous final
+release (and for pre-releases, to the diff since the previous pre-release) are appended.
 
-`cog bump` drafts the body with a `### Changes` section: the commits since the previous release tag
-reachable from the release commit, grouped by commit type, with short commit ids and authors (which
-GitHub links). A final release lists everything since the previous final release, including the
-changes of its release candidates. Typically, a `### Highlights` section is added above it, and
-entries are reworded or dropped where the commit summaries are not helpful to users.
+`cog bump` drafts the body with the change list of the release: the commits since the previous final
+release tag reachable from the release commit, grouped by commit type, with short commit ids and
+authors (which GitHub links). Every release covers all changes since the previous final release,
+including the changes of earlier pre-releases. Pre-releases following an earlier pre-release of the
+same release list the changes since that one separately:
+
+- alpha / beta: `### Changes since <previous pre-release>` first, followed by all changes of the
+  release in a collapsed section
+- release candidates: `### Changes since <previous final release>` first, followed by
+  `### New since <previous pre-release>`
+
+Typically, a `### Highlights` section is added above the change list, and entries are reworded or
+dropped where the commit summaries are not helpful to users.
 
 - Git removes lines starting with `#` from commit messages edited in an editor, which would remove
   the markdown headings. Use `--cleanup=scissors` (or `git config commit.cleanup scissors`) when
@@ -239,6 +248,9 @@ Preview the published notes of a release commit locally with:
 ```bash
 .github/release/release-notes.sh publish <version> <release-commit>
 ```
+
+Changes to the release notes script are tested by `.github/release/release-notes_test.sh` (also run
+in CI).
 
 ## Commit Signatures
 
