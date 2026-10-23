@@ -27,6 +27,12 @@ alias(
     actual = "//bazel/format:format.check",
 )
 
+# Pinned cocogitto, run in the workspace with .cog.toml: `bazel run //:cog -- check`
+alias(
+    name = "cog",
+    actual = "//tools/release:cog",
+)
+
 # Package group representing all code-related sub-packages
 package_group(
     name = "code_package_group",
