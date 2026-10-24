@@ -31,8 +31,6 @@ on:
     - main
     - 'release/*'
     - 'pull-request/[0-9]+'
-  merge_group:
-    branches: [main]
 
 permissions:
   contents: read
@@ -83,39 +81,28 @@ jobs:
           bazelisk build ...
           bazelisk test ...
 
-  # =============================================================================
-  # Deploy Documentation - runs only on main branch after build-and-test succeeds
-  # =============================================================================
-  export-docs:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && github.repository == 'NVIDIA/ncore'
-    needs: build-and-test
-    runs-on: linux-amd64-cpu8
+      - name: Save Bazel disk cache
+        if: github.event_name == 'push'
+        uses: ./.github/actions/save-bazel-disk-cache
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Bazel environment
-        uses: ./.github/actions/setup-bazel
-        with:
-          install-pandoc: true
-          free-disk-space: true
-          github-token: ${{ secrets.NVIDIA_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
-
-      - name: Build documentation
-        run: bazelisk build //docs:ncore
-
+      # The documentation is built as part of `bazelisk build ...`, publish it from here instead of
+      # rebuilding it in a separate job
       - name: Setup Pages
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && github.repository == 'NVIDIA/ncore'
         uses: actions/configure-pages@v4
 
-      - name: Upload artifact
+      - name: Upload documentation
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && github.repository == 'NVIDIA/ncore'
         uses: actions/upload-pages-artifact@v3
         with:
           path: 'bazel-bin/docs/ncore_html/'
 
+  # =============================================================================
+  # Deploy Documentation - runs only on main branch after build-and-test succeeds
+  # =============================================================================
   deploy-docs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && github.repository == 'NVIDIA/ncore'
-    needs: export-docs
+    needs: build-and-test
     runs-on: linux-amd64-cpu4
     environment:
       name: github-pages

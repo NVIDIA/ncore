@@ -68,14 +68,15 @@ runs:
         bazelisk-version: 1.x
         # Avoid downloading Bazel every time
         bazelisk-cache: true
-        # Store build cache per workflow
-        disk-cache: ${{ github.workflow }}
+        # The disk cache is restored here and saved by the calling job (see the "Bazel disk cache"
+        # steps): setup-bazel keys it on the BUILD files only and skips saving on an exact key match,
+        # so it would not be refreshed as long as no BUILD file changes
+        disk-cache: false
         # Skip repository-cache: at ~12 GB it takes longer to download+extract than
         # to let Bazel re-fetch wheels in parallel. The committed MODULE.bazel.lock
         # eliminates PyPI index queries, and the disk-cache covers build actions.
-        # Only save caches on push to main/PR branches (not on merge_group) to avoid
-        # cache pollution. merge_group runs use ephemeral refs that are never reused,
-        # so caches saved there waste the 10 GB budget without any restore benefit.
+        # Only save caches on pushes (main, release/* and the pull-request/<n> mirrors), not on
+        # other events like workflow_dispatch
         cache-save: ${{ github.event_name == 'push' }}
         # Bump to force-invalidate all CI caches (e.g. after changing cache structure)
         cache-version: 3
@@ -83,7 +84,23 @@ runs:
         bazelrc: |
             build --color=yes
             build --show_timestamps
+            build --disk_cache=~/.cache/bazel-disk
             ${{ inputs.gpu-enabled != 'true' && 'test --config=no-gpu' || '' }}
+
+    # Restore the latest Bazel disk cache of this job from the current branch, or from main
+    - name: Restore Bazel disk cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/.cache/bazel-disk
+        key: bazel-disk-${{ github.job }}-${{ github.ref_name }}-${{ github.sha }}
+        restore-keys: |
+          bazel-disk-${{ github.job }}-${{ github.ref_name }}-
+          bazel-disk-${{ github.job }}-main-
+
+    # Entries not used by this job (see save-bazel-disk-cache) are dropped before saving
+    - name: Mark Bazel disk cache restore time
+      shell: bash
+      run: mkdir -p ~/.cache/bazel-disk && touch ~/.cache/bazel-disk.restored
 
     # Ensure bazelisk is on PATH for subsequent steps. The setup-bazel action
     # uses core.addPath() which doesn't propagate through composite actions
