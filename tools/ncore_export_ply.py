@@ -27,9 +27,9 @@ from point_cloud_utils import TriangleMesh
 
 from ncore.impl.common.transformations import transform_point_cloud
 from ncore.impl.common.util import unpack_optional
-from ncore.impl.data.compat import PointCloudsSourceProtocol
+from ncore.impl.data.compat import PointCloudsSourceProtocol, SequenceLoaderProtocol
 from ncore.impl.data.util import padded_index_string
-from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
+from ncore.impl.data.v4.compat import SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 
 
