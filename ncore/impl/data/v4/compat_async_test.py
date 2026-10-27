@@ -301,6 +301,18 @@ class TestSequenceLoaderV4OpenAsync(unittest.TestCase):
         self.assertEqual(len(loaders), 4)
         self.assertEqual({loader.sequence_id for loader in loaders}, {loaders[0].sequence_id})
 
+    def test_open_async_index_tail_retention(self) -> None:
+        """The index tail retention is passed to the reader (RELEASE_IF_CONSOLIDATED by default)"""
+        with mock.patch.object(
+            SequenceComponentGroupsReader, "open_async", wraps=SequenceComponentGroupsReader.open_async
+        ) as open_async:
+            asyncio.run(SequenceLoaderV4.open_async([_TEST_DATA_PATH]))
+            asyncio.run(SequenceLoaderV4.open_async([_TEST_DATA_PATH], itar_index_tail_retention="keep"))
+        self.assertEqual(
+            [call.kwargs["itar_index_tail_retention"] for call in open_async.call_args_list],
+            ["release_if_consolidated", "keep"],
+        )
+
 
 @parameterized_class(("store_type",), [("itar",), ("directory",)])
 class TestSequenceLoaderV4AsyncPointCloudsAndLabels(_AsyncReadsTestCase):

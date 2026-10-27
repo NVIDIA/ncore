@@ -32,7 +32,7 @@ from ncore.impl.data.backend import (
     ZarrFormat,
     ZarrStore,
 )
-from ncore.impl.data.itar import IndexedTarArchive
+from ncore.impl.data.itar import IndexedTarArchive, IndexTailRetention
 from ncore.impl.data.nodes import Group, _backend, check_zarr_format
 
 
@@ -143,6 +143,11 @@ class IndexedTarZarrStore(Store):
     def archive(self) -> IndexedTarArchive:
         """The records of the archive"""
         return self._archive
+
+    def release_index_tail(self, retention: IndexTailRetention, *, consolidated: bool) -> None:
+        """Releases the memory of the archive's index tail read as per `retention`, after opening the hierarchy of the
+        store (from its consolidated metadata if `consolidated`), see :meth:`IndexedTarArchive.release_index_tail`"""
+        self._archive.release_index_tail(retention, consolidated=consolidated)
 
     @override
     def reload_resources(self) -> None:
