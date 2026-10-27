@@ -46,7 +46,22 @@ import weakref
 
 from enum import IntEnum, unique
 from pathlib import Path
-from typing import IO, Any, Callable, ClassVar, Dict, Iterator, List, Literal, NamedTuple, Optional, Tuple, Union, cast
+from typing import (
+    IO,
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    Iterator,
+    List,
+    Literal,
+    NamedTuple,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+    get_args,
+)
 
 import fsspec.asyn
 
@@ -86,6 +101,44 @@ class TailBuffer(NamedTuple):
 
     start: int  #: File offset of the first byte
     data: bytes
+
+
+#: Which index tail reads opened archives keep in memory once the zarr hierarchy of the archive is opened (see
+#: :meth:`IndexedTarArchive.release_index_tail`).
+#:
+#: Loading the index reads the end of the archive (``index_tail_read_size``), which, besides the index, holds the records
+#: stored last: e.g., the consolidated metadata of a zarr hierarchy, node metadata records (archives written by NCore 20
+#: and later store them last), or all records of small archives. Records within a kept tail read are served from memory,
+#: records of released ones are read from storage (the decoded index is always kept):
+#:
+#: - ``"release_if_consolidated"``: release the tail read if the hierarchy was opened from its consolidated metadata
+#:   (which then holds all node metadata), keep it otherwise (node metadata records read when accessing nodes may lie
+#:   within it)
+#: - ``"release_after_opening"``: release the tail read after opening the hierarchy
+#: - ``"keep_complete_archives"``: release the tail read after opening the hierarchy, unless it holds the whole archive
+#:   (small archives stay in memory)
+#: - ``"keep"``: keep the tail read (records near the end of the archive are served from memory for its lifetime)
+IndexTailRetention = Literal["release_if_consolidated", "release_after_opening", "keep_complete_archives", "keep"]
+
+
+def check_index_tail_retention(retention: str) -> IndexTailRetention:
+    """The index tail retention `retention` (raises ValueError if it's not one of :data:`IndexTailRetention`)"""
+    if retention not in get_args(IndexTailRetention):
+        raise ValueError(
+            f"IndexedTarArchive: unsupported index tail retention {retention!r}, supported are "
+            + ", ".join(repr(value) for value in get_args(IndexTailRetention))
+        )
+    return cast(IndexTailRetention, retention)
+
+
+def releases_index_tail(retention: IndexTailRetention, *, complete_archive: bool, consolidated: bool) -> bool:
+    """True if `retention` releases a tail read: holding the whole archive if `complete_archive`, after opening the
+    hierarchy from its consolidated metadata if `consolidated`"""
+    if retention == "release_if_consolidated":
+        return consolidated
+    if retention == "keep_complete_archives":
+        return not complete_archive
+    return retention == "release_after_opening"
 
 
 @unique
@@ -199,14 +252,29 @@ class RecordIndex:
         with self._lock:
             return self._prefetched.pop(key, None)
 
+    def release_tail(self, retention: IndexTailRetention, consolidated: bool) -> None:
+        """Releases the tail read (and records prefetched but not read) as per `retention` (see
+        :func:`releases_index_tail`): records within it are read from the archive's source after"""
+        tail = self.tail
+        if not releases_index_tail(
+            check_index_tail_retention(retention), complete_archive=tail.start == 0, consolidated=consolidated
+        ):
+            return
+        # (an empty tail read at the end of the archive, which holds no records; not under the lock: readers don't take
+        # it, they read the tail once (see :meth:`in_memory`), and replacing it is a single atomic assignment)
+        self.tail = TailBuffer(tail.start + len(tail.data), b"")
+        with self._lock:
+            self._prefetched.clear()
+
     def in_memory(self, record: Record) -> Optional[bytes]:
         """The payload of a record held in memory (records of the tail read, empty records), None otherwise"""
         if record.size == 0:
             return b""
+        tail = self.tail  # (replaced when released by another thread)
         # (records end before the index, which ends the tail read: records starting within the tail read are part of it)
-        if record.offset >= self.tail.start:
-            start = record.offset - self.tail.start
-            return self.tail.data[start : start + record.size]
+        if record.offset >= tail.start:
+            start = record.offset - tail.start
+            return tail.data[start : start + record.size]
         return None
 
 
@@ -693,6 +761,13 @@ class IndexedTarArchive:
             if self._writer is not None:
                 self._writer.finish()
             self._source.close()
+
+    def release_index_tail(self, retention: IndexTailRetention, *, consolidated: bool) -> None:
+        """Releases the memory of the index tail read as per `retention`, after opening the zarr hierarchy of the
+        archive (from its consolidated metadata if `consolidated`): records within it are read from the archive's file
+        after (see :data:`IndexTailRetention`, archives opened for reading, no-op otherwise)"""
+        if self._index is not None:
+            self._index.release_tail(retention, consolidated)
 
     def reload_resources(self) -> None:
         """Re-opens the file resources of the archive's record source (file object, file descriptor of local archives),

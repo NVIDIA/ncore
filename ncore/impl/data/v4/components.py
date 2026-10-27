@@ -54,6 +54,7 @@ from ncore.impl.common.async_util import run_in_thread
 from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import MD5Hasher, unpack_optional
 from ncore.impl.data import nodes, stores, types, util
+from ncore.impl.data.itar import IndexTailRetention, check_index_tail_retention
 from ncore.impl.data.json_types import JsonDocument, JsonDocumentLike, to_json_document
 from ncore.impl.data.types import PointCloud
 
@@ -360,6 +361,7 @@ class SequenceComponentGroupsReader:
         component_group_paths: List[UPath] | List[Path],
         open_consolidated: bool = True,
         itar_index_tail_read_size: int = 1 << 20,  # 1 MiB default
+        itar_index_tail_retention: IndexTailRetention = "release_if_consolidated",
         itar_remote_range_reads: bool = False,
         max_threads: int | None = None,
         node_cache_size: int | None = None,
@@ -381,6 +383,14 @@ class SequenceComponentGroupsReader:
                                single I/O call to initialize the tar file index to minimize reads.
                                Default 1 MiB size fits typical use cases, but may be increased if the compressed
                                index size is expected to be larger or decreased if remote access chunk sizes are smaller.
+            itar_index_tail_retention: Which index tail reads of .itar files (the end of the archives read when opening
+                               them, see `itar_index_tail_read_size`) are kept in memory once the hierarchies are opened:
+                               "release_if_consolidated" (default) releases them if the hierarchies are opened from
+                               their consolidated metadata (`open_consolidated`), so readers only hold the decoded
+                               indices (records near the end of the archives are read from storage when accessed), and
+                               keeps them otherwise (node metadata records may lie within them). "release_after_opening"
+                               releases them, "keep_complete_archives" keeps them only for archives which fit into them
+                               completely (small stores are then read without requests), "keep" keeps them.
             itar_remote_range_reads: Read data of remote .itar files (e.g., on S3) via exact byte-range requests also with
                                the synchronous reader APIs, so reads of multiple threads fetch their data concurrently
                                (e.g., thread pools reading frames), instead of via a buffered file object (blocks of the
@@ -393,7 +403,7 @@ class SequenceComponentGroupsReader:
                                used nodes only, and 0 disables caching.
         """
 
-        self._init(node_cache_size)
+        self._init(node_cache_size, itar_index_tail_retention)
 
         component_group_upaths: List[UPath] = self.expand_component_group_paths(component_group_paths)
 
@@ -429,6 +439,7 @@ class SequenceComponentGroupsReader:
         component_group_paths: List[UPath] | List[Path],
         open_consolidated: bool = True,
         itar_index_tail_read_size: int = 1 << 20,
+        itar_index_tail_retention: IndexTailRetention = "release_if_consolidated",
         itar_remote_range_reads: bool = False,
         max_concurrent_requests: int | asyncio.Semaphore | None = None,
         node_cache_size: int | None = None,
@@ -446,7 +457,7 @@ class SequenceComponentGroupsReader:
                 sequences opened via ``asyncio.gather``), or None (all component stores at once).
         """
         reader = cls.__new__(cls)
-        reader._init(node_cache_size)
+        reader._init(node_cache_size, itar_index_tail_retention)
 
         component_group_upaths = await run_in_thread(cls.expand_component_group_paths, component_group_paths)
         assert len(component_group_upaths), "No component inputs provided"
@@ -486,10 +497,11 @@ class SequenceComponentGroupsReader:
         reader._check_version()
         return reader
 
-    def _init(self, node_cache_size: int | None) -> None:
+    def _init(self, node_cache_size: int | None, itar_index_tail_retention: IndexTailRetention) -> None:
         if node_cache_size is not None and node_cache_size < 0:
             raise ValueError(f"node_cache_size needs to be None or non-negative, got {node_cache_size}")
         self._node_cache_size = node_cache_size
+        self._itar_index_tail_retention = check_index_tail_retention(itar_index_tail_retention)
 
         # Load component stores concurrently (to hide latency) and check for sequence consistency
         self._component_stores: Dict[str, Tuple[nodes.Group, UPath]] = {}  # use str as the generic path / URL type
@@ -543,6 +555,8 @@ class SequenceComponentGroupsReader:
     ) -> None:
         """Opens the hierarchy of an opened component store and checks its sequence compatibility"""
         component_root = component_store.open_root_group(open_consolidated)
+        if isinstance(component_store, stores.IndexedTarZarrStore):
+            component_store.release_index_tail(self._itar_index_tail_retention, consolidated=open_consolidated)
 
         # Check sequence compatibility
         component_root_version = component_root.attr_str("version")

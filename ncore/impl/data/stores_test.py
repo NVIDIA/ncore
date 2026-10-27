@@ -48,7 +48,7 @@ from ncore.impl.common.util import unpack_optional
 from ncore.impl.data import encoding, itar, nodes
 from ncore.impl.data.backend import V2_CONSOLIDATED_METADATA_KEY, V3_CONSOLIDATED_METADATA_KEY, Backend, ZarrFormat
 from ncore.impl.data.encoding import decode_cbor_xz, decode_cbor_zlib, encode_cbor_xz
-from ncore.impl.data.itar import IndexedTarArchive, IndexFormat, is_node_metadata_key
+from ncore.impl.data.itar import IndexedTarArchive, IndexFormat, IndexTailRetention, is_node_metadata_key
 from ncore.impl.data.json_types import JsonDocument, JsonLike, to_json, to_json_document
 from ncore.impl.data.stores import IndexedTarZarrStore, Store, ZarrStoreAdapter, is_consolidated_metadata_key
 from ncore.impl.data.testing_fs import RemoteFileSystem
@@ -231,6 +231,64 @@ class TestIndexedTarArchive(unittest.TestCase):
         archive = IndexedTarArchive(self.path, index_tail_read_size=file_size - 1024)  # ends within "large"
         self.assertEqual(archive["large"], bytes(range(256)) * 64)
         self.assertEqual(archive["small"], b"s")
+
+    def _write_two_records(self) -> None:
+        with IndexedTarArchive(self.path, mode="w") as archive:
+            archive["first"] = b"1" * 1000
+            archive["last"] = b"2" * 1000
+
+    @parameterized.parameterized.expand(
+        [
+            # (retention, tail read of the whole archive, opened from consolidated metadata, tail read kept)
+            (retention, complete, consolidated, kept)
+            for retention, kept_by in (
+                ("release_if_consolidated", lambda complete, consolidated: not consolidated),
+                ("release_after_opening", lambda complete, consolidated: False),
+                ("keep_complete_archives", lambda complete, consolidated: complete),
+                ("keep", lambda complete, consolidated: True),
+            )
+            for complete in (False, True)
+            for consolidated in (False, True)
+            for kept in (kept_by(complete, consolidated),)
+        ]
+    )
+    def test_release_index_tail(self, retention: IndexTailRetention, complete: bool, consolidated: bool, kept: bool):
+        """Released index tail reads free their memory, their records are read from the archive file after"""
+        self._write_two_records()
+        size = Path(self.path).stat().st_size
+        last = _index(IndexedTarArchive(self.path)).records["last"]
+        # (a tail read of the whole archive, or starting at the last record: "first" lies before it)
+        archive = IndexedTarArchive(self.path, index_tail_read_size=size if complete else size - last.offset)
+        index = _index(archive)
+        self.assertEqual(index.tail.start == 0, complete)
+        self.assertIsNotNone(index.in_memory(index.records["last"]))
+        self.assertEqual(index.in_memory(index.records["first"]) is not None, complete)
+
+        archive.release_index_tail(retention, consolidated=consolidated)
+        tail = _index(archive).tail
+        self.assertEqual(len(tail.data) > 0, kept)
+        self.assertEqual(tail.start + len(tail.data), size)  # (still ends at the end of the archive)
+        with mock.patch("os.pread", side_effect=os.pread) as pread:
+            self.assertEqual(archive["last"], b"2" * 1000)
+            self.assertEqual(asyncio.run(archive.read_async("last")), b"2" * 1000)
+            self.assertEqual(archive["first"], b"1" * 1000)
+        # (kept: records before the tail read are read from the file, released: all records)
+        self.assertEqual(pread.call_count, (0 if complete else 1) if kept else 3)
+
+    def test_release_index_tail_of_archives_opened_for_writing(self):
+        """Releasing is a no-op for archives opened for writing"""
+        with IndexedTarArchive(self.path, mode="w") as writing:
+            writing["a"] = b"a"
+            writing.release_index_tail("release_after_opening", consolidated=True)
+            self.assertEqual(writing["a"], b"a")
+
+    def test_release_index_tail_drops_unread_prefetched_records(self):
+        self._write_two_records()
+        archive = asyncio.run(IndexedTarArchive.open_async(self.path, prefetch_keys=("first",)))
+        self.assertTrue(_index(archive)._prefetched)
+        archive.release_index_tail("release_after_opening", consolidated=True)
+        self.assertFalse(_index(archive)._prefetched)
+        self.assertEqual(archive["first"], b"1" * 1000)
 
     def test_positional_reads(self):
         """Local archives are read via positional reads"""

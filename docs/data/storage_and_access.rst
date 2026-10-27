@@ -353,6 +353,33 @@ Local stores are opened on worker threads.
    many stores concurrently, e.g.
    ``UPath("s3://bucket/sequence.json", config_kwargs={"max_pool_connections": 64})``.
 
+.. _index_tail_retention:
+
+Memory of Opened Sequences
+""""""""""""""""""""""""""
+
+Opening an ``.itar`` component store reads the end of the archive
+(``itar_index_tail_read_size``, up to 1 MiB per store by default), which holds the index
+and the records stored last: e.g., the store's consolidated metadata, node metadata
+records, or all records of small archives. Once a hierarchy is opened from its
+consolidated metadata, readers release its tail read by default, so opened sequences only
+hold their decoded indices (records near the end of the archives are then read from
+storage when accessed). ``itar_index_tail_retention`` of ``SequenceComponentGroupsReader``
+and ``SequenceLoaderV4.open_async`` selects the policy:
+
+- ``"release_if_consolidated"`` (default): release the tail reads of hierarchies opened
+  from their consolidated metadata, keep them otherwise (``open_consolidated=False``:
+  node metadata records read when accessing nodes may lie within them);
+- ``"release_after_opening"``: release all tail reads after opening;
+- ``"keep_complete_archives"``: keep the tail reads of archives which fit into them
+  completely (small stores, e.g. poses or intrinsics, are then read without requests),
+  release all others;
+- ``"keep"``: keep all tail reads.
+
+.. code-block:: python
+
+   reader = SequenceComponentGroupsReader(paths, itar_index_tail_retention="keep")
+
 .. _cloud_storage_access:
 
 Cloud and Remote Storage Access

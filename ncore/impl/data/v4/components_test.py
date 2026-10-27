@@ -3191,6 +3191,99 @@ class TestRemoteReaderOpening(unittest.TestCase):
             asyncio.run(SequenceComponentGroupsReader.open_async([self._remote(self.store_paths[0])] * 2))
 
 
+class TestReaderIndexTailRetention(unittest.TestCase):
+    """Readers release the index tail reads of their archives once the hierarchies are opened (as per
+    itar_index_tail_retention, by default if opened from their consolidated metadata)"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(self._tmp.name),
+            store_base_name="seq",
+            sequence_id="seq",
+            sequence_timestamp_interval_us=HalfClosedInterval(0, 10_000_001),
+            generic_meta_data={},
+        )
+        for name in ("a", "b"):
+            writer.register_component_writer(PosesComponent.Writer, name, f"poses_{name}").store_static_pose(
+                "x", "y", np.eye(4, dtype=np.float32)
+            )
+        self.store_paths = writer.finalize()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    @staticmethod
+    def _tails(reader: SequenceComponentGroupsReader) -> List[int]:
+        """The sizes of the index tail reads held by the archives of the reader"""
+        return [
+            len(unpack_optional(cast(stores.IndexedTarZarrStore, root.store).archive._index).tail.data)
+            for root, _ in reader._component_stores.values()
+        ]
+
+    def _assert_reads(self, reader: SequenceComponentGroupsReader) -> None:
+        poses = reader.open_component_readers(PosesComponent.Reader)
+        self.assertEqual(sorted(poses), ["a", "b"])
+        for poses_reader in poses.values():
+            self.assertEqual([edge for edge, _ in poses_reader.get_static_poses()], [("x", "y")])
+
+    def test_unsupported_index_tail_retention(self):
+        """Unsupported values raise when opening a reader, also of sequences without .itar stores"""
+        writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(self._tmp.name) / "directory",
+            store_base_name="seq",
+            sequence_id="seq",
+            sequence_timestamp_interval_us=HalfClosedInterval(0, 10_000_001),
+            generic_meta_data={},
+            store_type="directory",
+        )
+        writer.register_component_writer(PosesComponent.Writer, "a", "poses_a").store_static_pose(
+            "x", "y", np.eye(4, dtype=np.float32)
+        )
+        directory_paths = writer.finalize()
+        for paths in (self.store_paths, directory_paths):
+            for open_reader in (
+                lambda: SequenceComponentGroupsReader(paths, itar_index_tail_retention=cast(Any, "release")),
+                lambda: asyncio.run(
+                    SequenceComponentGroupsReader.open_async(paths, itar_index_tail_retention=cast(Any, "KEEP"))
+                ),
+            ):
+                with self.assertRaisesRegex(ValueError, "unsupported index tail retention"):
+                    open_reader()
+
+    @parameterized.expand(
+        [
+            ("default", {}, True, False),
+            ("default unconsolidated", {}, False, True),
+            ("release", {"itar_index_tail_retention": "release_after_opening"}, True, False),
+            # (the small archives fit into the tail read)
+            ("complete", {"itar_index_tail_retention": "keep_complete_archives"}, True, True),
+            ("keep", {"itar_index_tail_retention": "keep"}, True, True),
+            (
+                "release unconsolidated",
+                {"itar_index_tail_retention": "release_after_opening"},
+                False,
+                False,
+            ),
+            ("keep unconsolidated", {"itar_index_tail_retention": "keep"}, False, True),
+        ]
+    )
+    def test_index_tail_retention(self, _: str, kwargs: Dict[str, Any], open_consolidated: bool, kept: bool):
+        readers = [
+            SequenceComponentGroupsReader(self.store_paths, open_consolidated=open_consolidated, **kwargs),
+            asyncio.run(
+                SequenceComponentGroupsReader.open_async(
+                    self.store_paths, open_consolidated=open_consolidated, **kwargs
+                )
+            ),
+        ]
+        for reader in readers:
+            tails = self._tails(reader)
+            self.assertEqual(len(tails), 2)
+            self.assertTrue(all(tails) if kept else not any(tails), tails)
+            self._assert_reads(reader)
+
+
 class TestReaderNodeCaches(unittest.TestCase):
     """Component readers cache the opened nodes of their component (sized by node_cache_size)"""
 
