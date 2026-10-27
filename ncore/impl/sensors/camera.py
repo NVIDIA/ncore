@@ -27,9 +27,11 @@ import torch
 
 from ncore.impl.common.util import map_optional, unpack_optional
 from ncore.impl.data import types
+from ncore.impl.data import util as data_util
 from ncore.impl.sensors.common import (
     BaseModel,
     RollingShutterSolver,
+    eval_inverse_newton_bracketed,
     eval_poly_horner,
     eval_poly_inverse_horner_newton,
     rotmat_to_unitquat,
@@ -1786,6 +1788,7 @@ class OpenCVFisheyeCameraModel(CameraModel[types.OpenCVFisheyeCameraModelParamet
     focal_length: torch.Tensor
     max_angle: float
     newton_iterations: int
+    inverse_max_angle: float
     min_2d_norm: torch.Tensor
     forward_poly: torch.Tensor
     dforward_poly: torch.Tensor
@@ -1796,9 +1799,17 @@ class OpenCVFisheyeCameraModel(CameraModel[types.OpenCVFisheyeCameraModelParamet
         camera_model_parameters: types.OpenCVFisheyeCameraModelParameters,
         device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
-        newton_iterations: int = 3,
+        newton_iterations: int = 20,
         min_2d_norm: float = 1e-6,
     ):
+        """Initializes an OpenCVFisheyeCameraModel to operate on a specific device and floating-point type.
+
+        newton_iterations: upper bound on the number of Newton iterations to perform polynomial inversion (points not
+                           converging in plain Newton iterations are solved by safeguarded, bracketed Newton
+                           iterations, and iterations stop early once all points converged)
+        min_2d_norm: Threshold for 2d image_points-distances (relative to principal point) below which the principal ray
+                     is returned in ray generation (for points close to the principal point). Needs to be positive
+        """
         super().__init__(camera_model_parameters, device, dtype)
         del (device, dtype)
 
@@ -1828,10 +1839,21 @@ class OpenCVFisheyeCameraModel(CameraModel[types.OpenCVFisheyeCameraModelParamet
         self.register_buffer(
             "forward_poly", torch.tensor([0, 1, 0, k1, 0, k2, 0, k3, 0, k4], device=self.device, dtype=self.dtype)
         )
-        # eighth-degree differential of forward polynomial 1 + 3*k1*theta^2 + 5*k2*theta^4 + 7*k3*theta^8 + 9*k4*theta^8
+        # eighth-degree differential of forward polynomial 1 + 3*k1*theta^2 + 5*k2*theta^4 + 7*k3*theta^6 + 9*k4*theta^8
         self.register_buffer(
             "dforward_poly",
             torch.tensor([1, 0, 3 * k1, 0, 5 * k2, 0, 7 * k3, 0, 9 * k4], device=self.device, dtype=self.dtype),
+        )
+
+        # The forward polynomial is only invertible up to its first stationary point (and angles are bounded by pi).
+        # Image points are inverted on this increasing branch, which (intentionally) extends beyond max_angle.
+        # This is a host-side numpy computation independent of the model's torch dtype (the stationary point is
+        # found as a polynomial root in float64, see compute_max_angle_with_monotonicity)
+        self.inverse_max_angle: float = min(
+            math.pi,
+            data_util.compute_max_angle_with_monotonicity(
+                np.array([0, 1, 0, k1, 0, k2, 0, k3, 0, k4], dtype=np.float64), np.inf
+            ),
         )
 
         # approximate backward poly (mapping normalized distances to angles) *very crudely* by linear interpolation / equidistant angle model (also assuming image-centered principal point)
@@ -1861,9 +1883,25 @@ class OpenCVFisheyeCameraModel(CameraModel[types.OpenCVFisheyeCameraModelParamet
             max_angle=self.max_angle,
         )
 
+    def _eval_forward_poly_and_derivative(self, thetas: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Evaluates the odd forward polynomial and its even derivative with a joint Horner scheme in theta^2"""
+
+        k1, k2, k3, k4 = self.forward_poly[3], self.forward_poly[5], self.forward_poly[7], self.forward_poly[9]
+        dk1, dk2, dk3, dk4 = self.dforward_poly[2], self.dforward_poly[4], self.dforward_poly[6], self.dforward_poly[8]
+        thetas2 = thetas * thetas
+
+        return (
+            thetas * (1 + thetas2 * (k1 + thetas2 * (k2 + thetas2 * (k3 + thetas2 * k4)))),
+            1 + thetas2 * (dk1 + thetas2 * (dk2 + thetas2 * (dk3 + thetas2 * dk4))),
+        )
+
     def _image_points_to_camera_rays_impl(self, image_points: torch.Tensor) -> torch.Tensor:
         """
         Computes the camera ray for each image point, performing an iterative undistortion of the nonlinear distortion model
+
+        Rays are evaluated on the increasing branch of the forward polynomial, which may extend beyond max_angle
+        (such rays are outside of the calibrated field of view). Image points beyond the maximum of the forward
+        polynomial have no inverse and are mapped to the boundary ray of the increasing branch.
         """
 
         image_points = to_torch(
@@ -1877,8 +1915,12 @@ class OpenCVFisheyeCameraModel(CameraModel[types.OpenCVFisheyeCameraModelParamet
         deltas = torch.linalg.norm(normalized_image_points, axis=1, keepdims=True)
 
         # Evaluate backward polynomial as the inverse of the forward one
-        thetas = eval_poly_inverse_horner_newton(
-            self.forward_poly, self.dforward_poly, self.approx_backward_poly, self.newton_iterations, deltas
+        thetas = eval_inverse_newton_bracketed(
+            self._eval_forward_poly_and_derivative,
+            eval_poly_horner(self.approx_backward_poly, deltas),
+            deltas,
+            self.inverse_max_angle,
+            self.newton_iterations,
         )
 
         # Compute the camera rays and set the ones at the image center to [0,0,1]

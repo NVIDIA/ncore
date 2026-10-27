@@ -16,6 +16,7 @@
 import dataclasses
 import inspect
 import itertools
+import math
 import os
 import unittest
 
@@ -1302,6 +1303,146 @@ class TestFisheyeCamera(CommonTestCase):
                     np.linalg.norm(image_point_opencv - np.array(image_points.image_points.cpu())).item(),
                     self.MAX_DEVIATION_IN_IMAGE_COORDINATES,
                 )
+
+
+@parameterized.parameterized_class(
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
+)
+class TestFisheyeCameraInverse(CommonTestCase):
+    """Accuracy of the OpenCV fisheye inverse (image points to camera rays) for calibrations where
+    a plain Newton iteration from the equidistant starting point fails"""
+
+    device: torch.device
+    dtype: torch.dtype
+
+    def _model(
+        self,
+        radial_coeffs: List[float],
+        resolution: Tuple[int, int],
+        principal_point: Tuple[float, float],
+        focal_length: float,
+        max_angle: float,
+    ) -> OpenCVFisheyeCameraModel:
+        return OpenCVFisheyeCameraModel(
+            OpenCVFisheyeCameraModelParameters(
+                resolution=np.array(resolution, dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array(principal_point, dtype=np.float32),
+                focal_length=np.array([focal_length, focal_length], dtype=np.float32),
+                radial_coeffs=np.array(radial_coeffs, dtype=np.float32),
+                max_angle=max_angle,
+            ),
+            device=self.device,
+            dtype=self.dtype,
+        )
+
+    def _cubic_model(self) -> OpenCVFisheyeCameraModel:
+        # r(theta) = theta - theta^3/3 has its only stationary point at theta = 1, where r = 2/3, and the
+        # closed-form inverse theta = 2*sin(asin(3r/2)/3) on [0, 1]. With max_angle = 2 the equidistant
+        # starting point theta_0 = 2r lands exactly on the stationary point for r = 0.5.
+        return self._model([-1.0 / 3.0, 0.0, 0.0, 0.0], (1280, 576), (640.0, 288.0), 640.0, 2.0)
+
+    @staticmethod
+    def _cubic_inverse(k1: float, radii: np.ndarray) -> np.ndarray:
+        # Closed-form inverse of theta + k1*theta^3 (k1 < 0) on its increasing branch
+        a = np.sqrt(-3.0 * k1)
+        return 2.0 / a * np.sin(np.arcsin(1.5 * radii * a) / 3.0)
+
+    @staticmethod
+    def _monotonic_inverse(radial_coeffs: List[float], radii: np.ndarray, theta_max: float) -> np.ndarray:
+        # float64 bisection reference on [0, theta_max], valid if r(theta) is increasing on that interval
+        k = np.array(radial_coeffs, dtype=np.float32).astype(np.float64)
+        poly = Polynomial([0.0, 1.0, 0.0, k[0], 0.0, k[1], 0.0, k[2], 0.0, k[3]])
+        lower, upper = np.zeros_like(radii), np.full_like(radii, theta_max)
+        for _ in range(100):
+            middle = 0.5 * (lower + upper)
+            below = poly(middle) < radii
+            lower, upper = np.where(below, middle, lower), np.where(below, upper, middle)
+        return 0.5 * (lower + upper)
+
+    def _rays_along_x(self, cam_model: OpenCVFisheyeCameraModel, radii: np.ndarray) -> torch.Tensor:
+        principal_point = cam_model.principal_point.cpu().numpy().astype(np.float64)
+        focal_length = cam_model.focal_length.cpu().numpy().astype(np.float64)
+        image_points = np.stack(
+            [principal_point[0] + radii * focal_length[0], np.full_like(radii, principal_point[1])], 1
+        )
+        return cam_model.image_points_to_camera_rays(to_torch(image_points, device=self.device, dtype=self.dtype))
+
+    def _assert_angles(self, rays: torch.Tensor, expected_thetas: np.ndarray, atol: float):
+        rays_np = rays.detach().cpu().numpy().astype(np.float64)
+        self.assertTrue(np.isfinite(rays_np).all(), f"non-finite rays {rays_np}")
+        thetas = np.arctan2(np.linalg.norm(rays_np[:, :2], axis=1), rays_np[:, 2])
+        np.testing.assert_allclose(thetas, expected_thetas, rtol=0.0, atol=atol)
+
+    @property
+    def _angle_atol(self) -> float:
+        return 2e-6 if self.dtype == torch.float32 else 1e-10
+
+    def test_inverse_at_stationary_starting_point(self):
+        """Recovers the analytic inverse when Newton's starting point has a vanishing derivative"""
+
+        cam_model = self._cubic_model()
+        radii = np.array([0.1, 0.3, 0.49999, 0.5, 0.50001, 0.6, 0.66])
+        k1 = float(np.float32(-1.0 / 3.0))
+        self._assert_angles(self._rays_along_x(cam_model, radii), self._cubic_inverse(k1, radii), self._angle_atol)
+
+    def test_inverse_converges_over_full_image(self):
+        """Every pixel of a calibration whose equidistant starting points are far off converges with the default
+        iteration settings"""
+
+        radial_coeffs = [0.1, 0.2, 0.3, 0.4]
+        cam_model = self._model(radial_coeffs, (960, 540), (960.0, 540.0), 1000.0, float(np.deg2rad(70.0)))
+        pixels = np.stack(np.meshgrid(np.arange(960), np.arange(540), indexing="xy"), -1).reshape(-1, 2) + 0.5
+        rays = cam_model.image_points_to_camera_rays(to_torch(pixels, device=self.device, dtype=self.dtype))
+        radii = np.linalg.norm((pixels - np.array([960.0, 540.0])) / 1000.0, axis=1)
+        # r(theta) is increasing everywhere for positive coefficients
+        self._assert_angles(rays, self._monotonic_inverse(radial_coeffs, radii, np.pi), self._angle_atol)
+
+    def test_inverse_extrapolates_beyond_max_angle(self):
+        """Image points beyond max_angle but within the increasing part of the polynomial keep their exact
+        (extrapolated) inverse, they are not clamped to max_angle"""
+
+        radial_coeffs = [-0.030093122, -0.005103817, -0.000849622, 0.001079542]
+        cam_model = self._model(radial_coeffs, (3840, 2160), (1920.0, 1080.0), 1913.8, float(np.deg2rad(40.0)))
+        radii = np.array([0.2, 0.6, 0.9, 1.2, 1.5])
+        expected = self._monotonic_inverse(radial_coeffs, radii, np.pi)
+        self.assertGreater(expected[-1], np.deg2rad(40.0))
+        self._assert_angles(self._rays_along_x(cam_model, radii), expected, self._angle_atol)
+
+    def test_inverse_beyond_stationary_point_is_boundary_ray(self):
+        """Image points beyond the maximum of the polynomial have no inverse and map to the finite
+        boundary ray at the stationary angle"""
+
+        cam_model = self._cubic_model()
+        radii = np.array([0.67, 0.7, 0.9, 1.5, 3.0])
+        self._assert_angles(self._rays_along_x(cam_model, radii), np.ones_like(radii), 1e-6)
+
+    def test_inverse_gradients_follow_implicit_derivative(self):
+        """Gradients with respect to image points are the derivatives of the exact inverse, including at
+        the stationary starting point"""
+
+        cam_model = self._cubic_model()
+        image_points = torch.tensor(
+            [[960.0, 288.0], [832.0, 544.0], [700.0, 100.0]], device=self.device, dtype=self.dtype, requires_grad=True
+        )
+        weights = torch.tensor([[0.3, -0.7, 0.9], [-0.2, 0.6, 0.4], [0.5, 0.1, -0.8]], dtype=torch.float64)
+        rays = cam_model.image_points_to_camera_rays(image_points)
+        (rays.double().cpu() * weights).sum().backward()
+
+        # Reference: differentiate the closed-form inverse in float64
+        k1 = float(np.float32(-1.0 / 3.0))
+        ref_points = image_points.detach().double().cpu().requires_grad_()
+        uv = (ref_points - torch.tensor([640.0, 288.0], dtype=torch.float64)) / 640.0
+        radii = uv.norm(dim=1)
+        a = math.sqrt(-3.0 * k1)
+        thetas = 2.0 / a * torch.sin(torch.asin(1.5 * radii * a) / 3.0)
+        ref_rays = torch.cat([uv * (torch.sin(thetas) / radii)[:, None], torch.cos(thetas)[:, None]], 1)
+        (ref_rays * weights).sum().backward()
+
+        rtol = 1e-4 if self.dtype == torch.float32 else 1e-9
+        torch.testing.assert_close(
+            unpack_optional(image_points.grad).double().cpu(), unpack_optional(ref_points.grad), rtol=rtol, atol=rtol
+        )
 
 
 class CameraModelsBaseTestCase(CommonTestCase):
