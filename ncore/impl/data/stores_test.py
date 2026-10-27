@@ -44,10 +44,10 @@ import zarr.storage
 from typing_extensions import override
 from upath import UPath
 
-from ncore.impl.data import encoding, nodes
+from ncore.impl.data import encoding, itar, nodes
 from ncore.impl.data.backend import V2_CONSOLIDATED_METADATA_KEY, V3_CONSOLIDATED_METADATA_KEY, Backend, ZarrFormat
 from ncore.impl.data.encoding import decode_cbor_xz, decode_cbor_zlib, encode_cbor_xz
-from ncore.impl.data.itar import IndexedTarArchive, is_node_metadata_key
+from ncore.impl.data.itar import IndexedTarArchive, IndexFormat, is_node_metadata_key
 from ncore.impl.data.json_types import JsonDocument, JsonLike, to_json, to_json_document
 from ncore.impl.data.stores import IndexedTarZarrStore, Store, ZarrStoreAdapter, is_consolidated_metadata_key
 
@@ -140,19 +140,20 @@ class TestIndexedTarArchive(unittest.TestCase):
                 archive[key] = value
         archive = IndexedTarArchive(self.path, index_tail_read_size=None)
         self.assertFalse(archive.is_remote)
-        read = IndexedTarArchive.read
-        threads: Dict[str, str] = {}
+        pread = os.pread
+        threads: Dict[int, str] = {}  # (by read size)
 
-        def recording_read(archive: IndexedTarArchive, key: str) -> bytes:
-            threads[key] = threading.current_thread().name
-            return read(archive, key)
+        def recording_pread(fd: int, size: int, offset: int) -> bytes:
+            threads[size] = threading.current_thread().name
+            return pread(fd, size, offset)
 
         async def reads() -> Dict[str, bytes]:
             return dict(zip(records, await asyncio.gather(*(archive.read_async(key) for key in records))))
 
-        with mock.patch.object(IndexedTarArchive, "read", recording_read):
+        with mock.patch("os.pread", recording_pread):
             self.assertEqual(asyncio.run(reads()), records)
-        self.assertEqual(sorted(threads), ["a", "large"])  # (empty records are held in memory)
+        # (positional reads of "a" and "large", empty records are held in memory)
+        self.assertEqual(sorted(threads), sorted([len(records["a"]), len(records["large"])]))
         self.assertNotIn(threading.current_thread().name, threads.values())
         with self.assertRaises(KeyError):
             asyncio.run(archive.read_async("missing"))
@@ -254,6 +255,19 @@ class TestIndexedTarArchive(unittest.TestCase):
         gc.collect()
         self.assertEqual(open_fds(), before)
 
+    def test_reads_of_closed_archives(self):
+        """Records of closed archives can't be read (their file resources are released)"""
+        with IndexedTarArchive(self.path, mode="w") as archive:
+            archive["a"] = b"a" * 4096
+        archive = IndexedTarArchive(self.path, index_tail_read_size=None)
+        archive.close()
+        with open(self.path, "rb"):  # (a file opened after closing the archive may reuse its file descriptor)
+            with self.assertRaisesRegex(ValueError, "closed"):
+                archive.read("a")
+            with self.assertRaisesRegex(ValueError, "closed"):
+                asyncio.run(archive.read_async("a"))
+        archive.close()  # (closing twice is fine)
+
     def test_reload_resources(self):
         """Reloading resources neither truncates archives opened for writing nor affects reads"""
         with IndexedTarArchive(self.path, mode="w") as archive:
@@ -280,8 +294,8 @@ class TestIndexedTarArchive(unittest.TestCase):
             archive["a"] = b"a"
         data = bytearray(Path(self.path).read_bytes())
         header = len(data) - tarfile.BLOCKSIZE  # (the index header is stored in the last tar block)
-        magic, _, offset, size = struct.unpack_from(IndexedTarArchive.INDEX_HEADER_FORMAT, data, header)
-        struct.pack_into(IndexedTarArchive.INDEX_HEADER_FORMAT, data, header, magic, 99, offset, size)
+        magic, _, offset, size = struct.unpack_from(IndexFormat.HEADER_FORMAT, data, header)
+        struct.pack_into(IndexFormat.HEADER_FORMAT, data, header, magic, 99, offset, size)
         Path(self.path).write_bytes(bytes(data))
         with self.assertRaisesRegex(TypeError, "unsupported index type 99"):
             IndexedTarArchive(self.path)
@@ -1258,8 +1272,7 @@ class TestAsyncReads(unittest.TestCase):
                     f.seek(start or 0)
                     return f.read(None if end is None else end - (start or 0))
 
-        fs = LocalAsyncFileSystem(loop=fsspec.asyn.get_loop())
-        return mock.patch.object(IndexedTarArchive, "_async_fs", lambda self: fs)
+        return _read_as_remote(store.archive, LocalAsyncFileSystem(loop=fsspec.asyn.get_loop()))
 
     def test_remote_missing_chunks(self):
         """Chunks not stored in remote archives read as the fill value, also via asynchronous reads"""
@@ -1324,11 +1337,17 @@ class TestAsyncReads(unittest.TestCase):
         store = IndexedTarZarrStore(self.path, index_tail_read_size=None)  # (chunks aren't read with the index)
         root = store.open_root_group()
         expected = self._reads(root)
-        with mock.patch.object(IndexedTarArchive, "_async_fs", lambda self: fs):
+        with _read_as_remote(store.archive, fs):
             self.assertTrue(store.archive.is_remote)
             self._assert_equal(asyncio.run(self._reads_async(root)), expected)
         self.assertGreaterEqual(len(requests), 4)  # (range requests of the chunks)
         self.assertFalse(IndexedTarArchive(self.path).is_remote)  # (local archives use positional reads)
+
+
+def _read_as_remote(archive: IndexedTarArchive, fs: fsspec.asyn.AsyncFileSystem) -> Any:
+    """Reads an opened local archive as remote archive (via range requests of the filesystem) while active"""
+    source = itar._RemoteSource(fs, archive.itar_upath.path, archive._open_file, range_reads=False)
+    return mock.patch.object(archive, "_source", source)
 
 
 class RemoteFileSystem(fsspec.asyn.AsyncFileSystem):
@@ -1343,6 +1362,7 @@ class RemoteFileSystem(fsspec.asyn.AsyncFileSystem):
         super().__init__(loop=fsspec.asyn.get_loop(), **kwargs)
         self.latency = latency
         self.requests: List[Tuple[int, int]] = []
+        self.file_reads = 0  # (reads of the buffered file objects)
         self.max_in_flight = 0
         self._in_flight = 0
         self._lock = threading.Lock()
@@ -1377,8 +1397,15 @@ class RemoteFileSystem(fsspec.asyn.AsyncFileSystem):
         cache_options: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> IO[bytes]:
-        # (the archive's buffered file object)
-        return cast(IO[bytes], open(self._local(path), mode))
+        # (the archive's buffered file object, counting its reads)
+        file = open(self._local(path), mode)
+        read = file.read
+
+        def counting_read(*args: Any) -> bytes:
+            self.file_reads += 1
+            return read(*args)
+
+        return cast(IO[bytes], SimpleNamespace(read=counting_read, seek=file.seek, tell=file.tell, close=file.close))
 
 
 fsspec.register_implementation(RemoteFileSystem.protocol, RemoteFileSystem)
@@ -1429,8 +1456,9 @@ class TestRemoteRangeReads(unittest.TestCase):
     def test_range_reads(self):
         """Records are read via exact range requests, not via the buffered file object"""
         root, archive, fs = self._open(remote_range_reads=True)
-        with mock.patch.object(archive._file, "read", side_effect=AssertionError("file object read")):
-            self._assert_expected(self._reads(root, threads=1))
+        fs.file_reads = 0
+        self._assert_expected(self._reads(root, threads=1))
+        self.assertEqual(fs.file_reads, 0)
         chunks = [archive._records[f"frame{i}/0.0"] for i in range(8)]  # (single-chunk arrays, zarr format v2)
         self.assertEqual(sorted(fs.requests), sorted((r.offset, r.offset + r.size) for r in chunks))
 
@@ -1445,14 +1473,18 @@ class TestRemoteRangeReads(unittest.TestCase):
         """Without remote range reads, synchronous reads of remote archives use the buffered file object"""
         root, archive, fs = self._open()
         self.assertFalse(archive.remote_range_reads)
+        fs.file_reads = 0
         self._assert_expected(self._reads(root, threads=4))
         self.assertEqual(fs.requests, [])
+        self.assertGreater(fs.file_reads, 0)
 
     def test_local_archives_use_positional_reads(self):
         """Local archives are read via positional reads, also with remote range reads"""
-        archive = IndexedTarArchive(self.path, remote_range_reads=True)
+        archive = IndexedTarArchive(self.path, index_tail_read_size=1024, remote_range_reads=True)
         self.assertFalse(archive.is_remote)
-        self.assertIsNotNone(archive._pread_fd)
+        with mock.patch("os.pread", side_effect=os.pread) as pread:
+            archive.read("frame0/0.0")  # (192 KiB, outside of the tail read)
+        self.assertGreater(pread.call_count, 0)
 
 
 @parameterized.parameterized_class(("zarr_format",), [(zarr_format,) for zarr_format in ZARR_FORMATS])
