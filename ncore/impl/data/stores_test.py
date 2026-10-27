@@ -17,6 +17,7 @@ import asyncio
 import concurrent.futures
 import gc
 import hashlib
+import io
 import json
 import os
 import struct
@@ -30,7 +31,7 @@ import unittest
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import IO, Any, Dict, Iterator, List, Mapping, Optional, Tuple, cast
+from typing import Any, Dict, Iterator, List, Mapping, Optional, Tuple, cast
 from unittest import mock
 
 import fsspec.asyn
@@ -41,15 +42,16 @@ import zarr
 import zarr.errors
 import zarr.storage
 
-from typing_extensions import override
 from upath import UPath
 
+from ncore.impl.common.util import unpack_optional
 from ncore.impl.data import encoding, itar, nodes
 from ncore.impl.data.backend import V2_CONSOLIDATED_METADATA_KEY, V3_CONSOLIDATED_METADATA_KEY, Backend, ZarrFormat
 from ncore.impl.data.encoding import decode_cbor_xz, decode_cbor_zlib, encode_cbor_xz
 from ncore.impl.data.itar import IndexedTarArchive, IndexFormat, is_node_metadata_key
 from ncore.impl.data.json_types import JsonDocument, JsonLike, to_json, to_json_document
 from ncore.impl.data.stores import IndexedTarZarrStore, Store, ZarrStoreAdapter, is_consolidated_metadata_key
+from ncore.impl.data.testing_fs import RemoteFileSystem
 
 
 #: None / values < 512 (separate reads of index header and index), 1 KiB, 1 MiB (default), edge cases around 512
@@ -1344,71 +1346,15 @@ class TestAsyncReads(unittest.TestCase):
         self.assertFalse(IndexedTarArchive(self.path).is_remote)  # (local archives use positional reads)
 
 
+def _index(archive: IndexedTarArchive) -> itar.RecordIndex:
+    """The record index of an archive opened for reading"""
+    return unpack_optional(archive._index)
+
+
 def _read_as_remote(archive: IndexedTarArchive, fs: fsspec.asyn.AsyncFileSystem) -> Any:
     """Reads an opened local archive as remote archive (via range requests of the filesystem) while active"""
     source = itar._RemoteSource(fs, archive.itar_upath.path, archive._open_file, range_reads=False)
     return mock.patch.object(archive, "_source", source)
-
-
-class RemoteFileSystem(fsspec.asyn.AsyncFileSystem):
-    """An asynchronous filesystem serving local files as remote files (with a request latency), recording the range
-    requests of records and the maximum number of requests in flight"""
-
-    protocol = "ncoretestremote"
-    async_impl = True
-    cachable = False  # (a filesystem per archive path, recording the requests of a test)
-
-    def __init__(self, latency: float = 0.0, **kwargs: Any) -> None:
-        super().__init__(loop=fsspec.asyn.get_loop(), **kwargs)
-        self.latency = latency
-        self.requests: List[Tuple[int, int]] = []
-        self.file_reads = 0  # (reads of the buffered file objects)
-        self.max_in_flight = 0
-        self._in_flight = 0
-        self._lock = threading.Lock()
-
-    @staticmethod
-    def _local(path: str) -> str:
-        # (stripped paths of universal_pathlib < 0.3 are relative)
-        return "/" + path.lstrip("/")
-
-    @override
-    async def _cat_file(
-        self, path: str, start: Optional[int] = None, end: Optional[int] = None, **kwargs: Any
-    ) -> bytes:
-        with self._lock:
-            self.requests.append((start or 0, end or 0))
-            self._in_flight += 1
-            self.max_in_flight = max(self.max_in_flight, self._in_flight)
-        await asyncio.sleep(self.latency)
-        with self._lock:
-            self._in_flight -= 1
-        with open(self._local(path), "rb") as f:
-            f.seek(start or 0)
-            return f.read(None if end is None else end - (start or 0))
-
-    @override
-    def _open(
-        self,
-        path: str,
-        mode: str = "rb",
-        block_size: Optional[int] = None,
-        autocommit: bool = True,
-        cache_options: Optional[Dict[str, Any]] = None,
-        **kwargs: Any,
-    ) -> IO[bytes]:
-        # (the archive's buffered file object, counting its reads)
-        file = open(self._local(path), mode)
-        read = file.read
-
-        def counting_read(*args: Any) -> bytes:
-            self.file_reads += 1
-            return read(*args)
-
-        return cast(IO[bytes], SimpleNamespace(read=counting_read, seek=file.seek, tell=file.tell, close=file.close))
-
-
-fsspec.register_implementation(RemoteFileSystem.protocol, RemoteFileSystem)
 
 
 class TestRemoteRangeReads(unittest.TestCase):
@@ -1459,7 +1405,7 @@ class TestRemoteRangeReads(unittest.TestCase):
         fs.file_reads = 0
         self._assert_expected(self._reads(root, threads=1))
         self.assertEqual(fs.file_reads, 0)
-        chunks = [archive._records[f"frame{i}/0.0"] for i in range(8)]  # (single-chunk arrays, zarr format v2)
+        chunks = [_index(archive).records[f"frame{i}/0.0"] for i in range(8)]  # (single-chunk arrays, zarr format v2)
         self.assertEqual(sorted(fs.requests), sorted((r.offset, r.offset + r.size) for r in chunks))
 
     def test_concurrent_range_reads_of_threads(self):
@@ -1485,6 +1431,88 @@ class TestRemoteRangeReads(unittest.TestCase):
         with mock.patch("os.pread", side_effect=os.pread) as pread:
             archive.read("frame0/0.0")  # (192 KiB, outside of the tail read)
         self.assertGreater(pread.call_count, 0)
+
+
+class TestRemoteOpening(unittest.TestCase):
+    """Remote archives are opened with a single (suffix) range request of their end, if the index lies within the tail
+    read, without requests of the archive's size or file object"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        rng = np.random.default_rng(0)
+        self.records = {f"record{i:03}": rng.bytes(int(n)) for i, n in enumerate(rng.integers(0, 3000, size=200))}
+        self.path = os.path.join(self._tmp.name, "store.itar")
+        with IndexedTarArchive(self.path, mode="w") as archive:
+            for key, value in self.records.items():
+                archive[key] = value
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _open(self, **kwargs: Any) -> Tuple[IndexedTarArchive, RemoteFileSystem]:
+        archive = IndexedTarArchive(UPath(f"{RemoteFileSystem.protocol}://{self.path}"), **kwargs)
+        self.assertTrue(archive.is_remote)
+        return archive, cast(RemoteFileSystem, archive.itar_upath.fs)
+
+    def _assert_records(self, archive: IndexedTarArchive) -> None:
+        self.assertEqual(sorted(archive.keys()), sorted(self.records))
+        for key, value in self.records.items():
+            self.assertEqual(archive.read(key), value, key)
+
+    def test_single_request(self):
+        size = os.path.getsize(self.path)
+        for tail_read_size in (size + 4096, size, 1 << 20, 64 * 1024, tarfile.BLOCKSIZE * 8):
+            with self.subTest(tail_read_size=tail_read_size):
+                archive, fs = self._open(index_tail_read_size=tail_read_size)
+                self.assertEqual(fs.calls, [("cat", -tail_read_size, None)])  # (no file object opened)
+                # the tail read covers the end of the archive (records within it are served from memory)
+                tail = _index(archive).tail
+                self.assertEqual(tail.start + len(tail.data), size)
+                self.assertEqual(tail.start, max(0, size - tail_read_size))
+                self._assert_records(archive)
+
+    def test_index_outside_of_the_tail_read(self):
+        """A second range request reads the index, if it doesn't fit into the tail read"""
+        for tail_read_size in (None, 0, tarfile.BLOCKSIZE):
+            with self.subTest(tail_read_size=tail_read_size):
+                archive, fs = self._open(index_tail_read_size=tail_read_size)
+                self.assertEqual(len(fs.calls), 2)
+                self.assertEqual(fs.calls[0], ("cat", -tarfile.BLOCKSIZE, None))
+                self.assertEqual(fs.calls[1][0], "cat")
+                self._assert_records(archive)
+
+    def test_same_index_and_tail_as_the_file_object_based_loading(self):
+        for tail_read_size in (None, 64 * 1024, 1 << 20):
+            with self.subTest(tail_read_size=tail_read_size):
+                remote, _ = self._open(index_tail_read_size=tail_read_size)
+                local = IndexedTarArchive(self.path, index_tail_read_size=tail_read_size)
+                self.assertEqual(_index(remote).records, _index(local).records)
+                self.assertEqual(_index(remote).tail, _index(local).tail)
+
+    def test_buffered_reads_open_the_file_object_on_first_use(self):
+        archive, fs = self._open(index_tail_read_size=tarfile.BLOCKSIZE)
+        self._assert_records(archive)
+        self.assertEqual(fs.calls.count(("open",)), 1)
+        archive.reload_resources()
+        archive.close()
+        with self.assertRaises(ValueError):
+            archive.read("record000")
+
+    def test_errors(self):
+        with self.assertRaises(FileNotFoundError):
+            IndexedTarArchive(UPath(f"{RemoteFileSystem.protocol}://{self._tmp.name}/missing.itar"))
+        not_indexed = os.path.join(self._tmp.name, "plain.tar")
+        with tarfile.open(not_indexed, "w") as tar:
+            info = tarfile.TarInfo("a")
+            info.size = 3
+            tar.addfile(info, fileobj=io.BytesIO(b"abc"))
+        with self.assertRaisesRegex(ValueError, "invalid index header"):
+            IndexedTarArchive(UPath(f"{RemoteFileSystem.protocol}://{not_indexed}"))
+        tiny = os.path.join(self._tmp.name, "tiny.itar")
+        with open(tiny, "wb") as f:
+            f.write(b"itar")
+        with self.assertRaisesRegex(ValueError, "invalid index header"):
+            IndexedTarArchive(UPath(f"{RemoteFileSystem.protocol}://{tiny}"))
 
 
 @parameterized.parameterized_class(("zarr_format",), [(zarr_format,) for zarr_format in ZARR_FORMATS])

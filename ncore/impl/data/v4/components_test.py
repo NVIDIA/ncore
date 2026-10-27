@@ -37,6 +37,7 @@ from ncore.impl.data import nodes, stores
 from ncore.impl.data.itar import IndexedTarArchive
 from ncore.impl.data.json_types import JsonDocument
 from ncore.impl.data.nodes import BloscCompression
+from ncore.impl.data.testing_fs import RemoteFileSystem
 from ncore.impl.data.types import (
     BBox3,
     BivariateWindshieldModelParameters,
@@ -3011,6 +3012,46 @@ class TestReaderOpening(unittest.TestCase):
                 SequenceComponentGroupsReader(self.store_paths, max_threads=len(self.store_paths))
         last = events.index(f"store {self.store_paths[-1].name}")
         self.assertIn("hierarchy", events[:last])
+
+
+class TestRemoteReaderOpening(unittest.TestCase):
+    """Remote sequences are opened with one request per component store (and of the sequence meta-data file)"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(self._tmp.name),
+            store_base_name="seq",
+            sequence_id="seq",
+            sequence_timestamp_interval_us=HalfClosedInterval(0, 10_000_001),
+            generic_meta_data={},
+        )
+        for name in ("a", "b", "c"):
+            writer.register_component_writer(PosesComponent.Writer, name, f"poses_{name}").store_static_pose(
+                "x", "y", np.eye(4, dtype=np.float32)
+            )
+        self.store_paths = writer.finalize()
+        RemoteFileSystem.all_requests = []
+
+    def tearDown(self):
+        RemoteFileSystem.all_requests = None
+        self._tmp.cleanup()
+
+    @staticmethod
+    def _remote(path: UPath) -> UPath:
+        return UPath(f"{RemoteFileSystem.protocol}://{path}")
+
+    def test_one_request_per_store(self):
+        reader = SequenceComponentGroupsReader([self._remote(path) for path in self.store_paths])
+        self.assertEqual(sorted(reader.open_component_readers(PosesComponent.Reader)), ["a", "b", "c"])
+        self.assertEqual(
+            sorted(unpack_optional(RemoteFileSystem.all_requests)),
+            sorted(("cat", path.name) for path in self.store_paths),
+        )
+
+    def test_missing_archive(self):
+        with self.assertRaises(FileNotFoundError):
+            SequenceComponentGroupsReader([self._remote(UPath(self._tmp.name) / "missing.zarr.itar")])
 
 
 class TestReaderNodeCaches(unittest.TestCase):

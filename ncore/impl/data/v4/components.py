@@ -339,7 +339,8 @@ class SequenceComponentGroupsReader:
         for component_group_path in component_group_paths:
             component_group_path = UPath(component_group_path).absolute()
 
-            if component_group_path.is_file() and component_group_path.suffix == ".json":
+            # (only .json paths can be sequence meta-data files: other paths, e.g. of remote stores, aren't checked)
+            if component_group_path.suffix == ".json" and component_group_path.is_file():
                 # sequence meta-data file - load and expand
                 with component_group_path.open("r") as f:
                     sequence_meta = SequenceMeta.from_dict(json.load(f))
@@ -412,20 +413,21 @@ class SequenceComponentGroupsReader:
                 _logger.info(f"SequenceStoreReader: Loading component store {component_store_upath}")
 
                 component_store: stores.Store
-                if not component_store_upath.exists():
-                    raise FileNotFoundError(f"Component store {component_store_upath} doesn't exist")
-                if component_store_upath.is_file():
-                    if not component_store_upath.name.endswith(".zarr.itar"):
-                        # not a supported file-based store format
-                        raise RuntimeError(
-                            f"Unsupported file-based store format {component_store_upath}, expected .zarr.itar"
-                        )
-
+                if component_store_upath.name.endswith(".zarr.itar"):
+                    # (opening the archive reads its index, a missing archive raises FileNotFoundError: no requests
+                    # check its existence beforehand, which add latency to opening remote archives)
                     component_store = stores.IndexedTarZarrStore(
                         component_store_upath,
                         mode="r",
                         index_tail_read_size=itar_index_tail_read_size,
                         remote_range_reads=itar_remote_range_reads,
+                    )
+                elif not component_store_upath.exists():
+                    raise FileNotFoundError(f"Component store {component_store_upath} doesn't exist")
+                elif component_store_upath.is_file():
+                    # not a supported file-based store format
+                    raise RuntimeError(
+                        f"Unsupported file-based store format {component_store_upath}, expected .zarr.itar"
                     )
                 else:
                     component_store = stores.ZarrStoreAdapter.directory(component_store_upath)

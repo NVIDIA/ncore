@@ -158,6 +158,16 @@ class IndexFormat:
         index = cls.CODECS[cls.INDEX_TYPE][1]({"items": keys, "offset_datas": offsets, "sizes": sizes})
         return index, struct.pack(cls.HEADER_FORMAT, cls.HEADER_MAGIC, cls.INDEX_TYPE, index_offset, len(index))
 
+    @classmethod
+    def tail(cls, data: bytes) -> TailBuffer:
+        """The tail buffer of a read of the archive's end of unknown offset (e.g., a suffix range request): the archive
+        ends one block after the index, padded to blocks (the index header in the last block locates the index)"""
+        location = cls.locate(TailBuffer(0, data))
+        archive_size = (
+            -(-(location.offset + location.size) // tarfile.BLOCKSIZE) * tarfile.BLOCKSIZE + tarfile.BLOCKSIZE
+        )
+        return TailBuffer(archive_size - len(data), data)
+
     @staticmethod
     def tail_size(tail_read_size: Optional[int]) -> int:
         """The size of tail reads (at least the index header block)"""
@@ -194,26 +204,38 @@ class _Source:
     serialized by the lock (archives being written, which the writer appends to with the lock held, and archives of
     filesystems without positional or range reads), see the subclasses for local and remote archives"""
 
-    def __init__(self, open_file: Callable[[bool], IO[bytes]], truncate: bool) -> None:
-        """Opens the archive's file object via `open_file` (truncating the file if requested: archives being written,
-        re-opened without truncation by :meth:`reload`)"""
+    def __init__(self, open_file: Callable[[bool], IO[bytes]], truncate: bool = False, lazy: bool = False) -> None:
+        """Opens the archive's file object via `open_file` (on first use if `lazy`; truncating the file if requested:
+        archives being written, re-opened without truncation by :meth:`reload`)"""
         self._open_file = open_file
-        self.file = open_file(truncate)
+        self._file: Optional[IO[bytes]] = None if lazy else open_file(truncate)
         self.lock = threading.RLock()  # (shared with the writer: file object positions)
+
+    @property
+    def file(self) -> IO[bytes]:
+        """The file object (opened on first use if the source is lazy), use with the lock held"""
+        if self._file is None:
+            self._file = self._open_file(False)
+        return self._file
 
     def read(self, offset: int, size: int) -> bytes:
         """Reads a byte range (thread-safe)"""
         with self.lock:
             # restore the position afterwards (the position to append records to when writing)
-            position = self.file.tell()
-            self.file.seek(offset)
-            value = self.file.read(size)
-            self.file.seek(position)
+            file = self.file
+            position = file.tell()
+            file.seek(offset)
+            value = file.read(size)
+            file.seek(position)
             return value
 
     async def read_async(self, offset: int, size: int) -> bytes:
         """Reads a byte range without blocking the running event loop (on a worker thread)"""
         return await run_in_thread(self.read, offset, size)
+
+    async def load_index_async(self, tail_read_size: Optional[int]) -> RecordIndex:
+        """Loads the record index without blocking the running event loop (on a worker thread)"""
+        return await run_in_thread(self.load_index, tail_read_size)
 
     def load_index(self, tail_read_size: Optional[int]) -> RecordIndex:
         """Loads the record index from the end of the archive (with a single read if the index lies within the tail
@@ -230,17 +252,20 @@ class _Source:
             return RecordIndex(IndexFormat.decode(location, index), tail)
 
     def reload(self) -> None:
-        """Re-opens the file resources (e.g., in a forked process)"""
+        """Re-opens the file resources (e.g., in a forked process): the file object, if it's open (lazy sources open it
+        on first use)"""
         with self.lock:
-            position = self.file.tell()
-            self.file.close()
-            self.file = self._open_file(False)
-            self.file.seek(position)
+            if (file := self._file) is not None:
+                position = file.tell()
+                file.close()
+                self._file = self._open_file(False)
+                self._file.seek(position)
 
     def close(self) -> None:
         """Releases the file resources"""
         with self.lock:
-            self.file.close()
+            if self._file is not None:
+                self._file.close()
 
 
 class _LocalSource(_Source):
@@ -282,17 +307,41 @@ class _LocalSource(_Source):
 
 class _RemoteSource(_Source):
     """Reads a remote archive (on an asynchronous fsspec filesystem): asynchronously via range requests, synchronously
-    via range requests (``remote_range_reads``) or the buffered file object"""
+    via range requests (``remote_range_reads``) or the buffered file object (opened on first use)"""
 
     def __init__(
         self, fs: fsspec.asyn.AsyncFileSystem, path: str, open_file: Callable[[bool], IO[bytes]], range_reads: bool
     ) -> None:
         """A source of the archive at `path` of the filesystem `fs` (synchronous range reads if `range_reads`), opening
-        the buffered file object via `open_file`"""
-        super().__init__(open_file, truncate=False)
+        the buffered file object via `open_file` on first use (only synchronous reads without range reads use it)"""
+        super().__init__(open_file, lazy=True)
         self.fs = fs
         self._path = path
         self.range_reads = range_reads
+
+    def load_index(self, tail_read_size: Optional[int]) -> RecordIndex:
+        """Loads the record index synchronously, via the requests of :meth:`load_index_async` (no file object)"""
+        return fsspec.asyn.sync(self.fs.loop, self.load_index_async, tail_read_size)
+
+    async def load_index_async(self, tail_read_size: Optional[int]) -> RecordIndex:
+        """Loads the record index via a suffix range request of the end of the archive (``bytes=-N``), and a range
+        request of the index if it doesn't lie within the tail read. The archive's size isn't needed (no metadata
+        request): the archive ends one block after the padded index (see :meth:`IndexFormat.tail`)."""
+        tail = IndexFormat.tail(await self._cat(start=-IndexFormat.tail_size(tail_read_size)))
+        location = IndexFormat.locate(tail)
+        if (index := IndexFormat.index_in_tail(location, tail)) is None:
+            index = await self._cat(start=location.offset, end=location.offset + location.size)
+        # (decoding is CPU work: on a worker thread, not on the filesystem's I/O event loop)
+        return RecordIndex(await run_in_thread(IndexFormat.decode, location, index), tail)
+
+    async def _cat(self, start: int, end: Optional[int] = None) -> bytes:
+        """A range request on the filesystem's I/O event loop (awaitable from any event loop)"""
+        # (`_cat_file` is the coroutine asynchronous fsspec filesystems implement, `cat_file` its synchronous wrapper)
+        request = self.fs._cat_file(self._path, start=start, end=end)
+        if (fs_loop := self.fs.loop) is None or fs_loop is asyncio.get_running_loop():
+            return await request
+        # (filesystems are bound to fsspec's I/O event loop, their sessions can't be used on other event loops)
+        return await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(request, fs_loop))
 
     def read(self, offset: int, size: int) -> bytes:
         """Reads a byte range synchronously: via a range request (``remote_range_reads``, concurrent for multiple
@@ -304,12 +353,7 @@ class _RemoteSource(_Source):
 
     async def read_async(self, offset: int, size: int) -> bytes:
         """Reads a byte range via an asynchronous range request (concurrent reads overlap)"""
-        # (`_cat_file` is the coroutine asynchronous fsspec filesystems implement, `cat_file` its synchronous wrapper)
-        request = self.fs._cat_file(self._path, start=offset, end=offset + size)
-        if (fs_loop := self.fs.loop) is None or fs_loop is asyncio.get_running_loop():
-            return await request
-        # (filesystems are bound to fsspec's I/O event loop, their sessions can't be used on other event loops)
-        return await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(request, fs_loop))
+        return await self._cat(start=offset, end=offset + size)
 
 
 # -------------------------------------------------------------------------------------------------------------------
@@ -414,6 +458,13 @@ class IndexedTarArchive:
     ) -> None:
         """Opens the archive (see the class documentation for the parameters): its record source by the archive's
         location and mode, and for reading its record index"""
+        self._open(itar_path, mode, remote_range_reads)
+        if mode == "r":
+            self._index = self._source.load_index(index_tail_read_size)
+
+    def _open(self, itar_path: Union[str, Path, UPath], mode: Literal["r", "w"], remote_range_reads: bool) -> None:
+        """Opens the archive's record source by the archive's location and mode (archives opened for reading load
+        their index after, see :meth:`__init__`)"""
         if mode not in ("r", "w"):
             raise ValueError(f"IndexedTarArchive: unsupported mode {mode!r}, supported are 'r' and 'w'")
         self._mode: Literal["r", "w"] = mode
@@ -427,14 +478,12 @@ class IndexedTarArchive:
         if mode == "w":
             self._source = source = _Source(self._open_file, truncate=True)
             self._writer = _Writer(source)
-            return
-        if self._itar_upath.protocol in ("file", "local") and hasattr(os, "pread"):
+        elif self._itar_upath.protocol in ("file", "local") and hasattr(os, "pread"):
             self._source = _LocalSource(self._itar_upath.path, self._open_file)
         elif isinstance(fs := self._itar_upath.fs, fsspec.asyn.AsyncFileSystem):
             self._source = _RemoteSource(fs, self._itar_upath.path, self._open_file, remote_range_reads)
         else:
-            self._source = _Source(self._open_file, truncate=False)
-        self._index = self._source.load_index(index_tail_read_size)
+            self._source = _Source(self._open_file)
 
     def _open_file(self, truncate: bool) -> IO[bytes]:
         """Opens the archive's file object (read-only for reading, readable and writable for writing)"""
