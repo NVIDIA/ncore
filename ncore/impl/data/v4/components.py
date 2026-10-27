@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import concurrent.futures
 import functools
 import io
@@ -49,6 +50,7 @@ import PIL.Image as PILImage
 from typing_extensions import Concatenate, ParamSpec, TypedDict
 from upath import UPath
 
+from ncore.impl.common.async_util import run_in_thread
 from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import MD5Hasher, unpack_optional
 from ncore.impl.data import nodes, stores, types, util
@@ -364,6 +366,9 @@ class SequenceComponentGroupsReader:
     ):
         """Initialize a SequenceComponentReader for a virtual sequence represented by a list of components.
 
+        Opens the component stores synchronously (blocking, the stores concurrently on a thread pool), see
+        :meth:`open_async` for opening them asynchronously.
+
         Args:
             component_group_paths: Universal paths / URLs to component groups to load (which may include sequence meta-data files),
                                    which need to represent a *single* sequence
@@ -388,16 +393,11 @@ class SequenceComponentGroupsReader:
                                used nodes only, and 0 disables caching.
         """
 
-        if node_cache_size is not None and node_cache_size < 0:
-            raise ValueError(f"node_cache_size needs to be None or non-negative, got {node_cache_size}")
-        self._node_cache_size = node_cache_size
+        self._init(node_cache_size)
 
         component_group_upaths: List[UPath] = self.expand_component_group_paths(component_group_paths)
 
         assert len(component_group_upaths), "No component inputs provided"
-
-        # Load component stores concurrently (to hide latency) and check for sequence consistency
-        self._component_stores: Dict[str, Tuple[nodes.Group, UPath]] = {}  # use str as the generic path / URL type
 
         # Component stores are opened concurrently (hiding the latency of remote archive index reads), their
         # hierarchies are opened from their consolidated metadata sequentially on the calling thread (pure-Python CPU
@@ -406,77 +406,181 @@ class SequenceComponentGroupsReader:
 
             def thread_open_component_store(component_store_upath: UPath) -> Tuple[stores.Store, UPath]:
                 """Thread-executed component store opening"""
-
-                # Make sure paths are absolute at this point
                 component_store_upath = component_store_upath.absolute()
-
-                _logger.info(f"SequenceStoreReader: Loading component store {component_store_upath}")
-
-                component_store: stores.Store
-                if component_store_upath.name.endswith(".zarr.itar"):
-                    # (opening the archive reads its index, a missing archive raises FileNotFoundError: no requests
-                    # check its existence beforehand, which add latency to opening remote archives)
-                    component_store = stores.IndexedTarZarrStore(
-                        component_store_upath,
-                        mode="r",
-                        index_tail_read_size=itar_index_tail_read_size,
-                        remote_range_reads=itar_remote_range_reads,
-                    )
-                elif not component_store_upath.exists():
-                    raise FileNotFoundError(f"Component store {component_store_upath} doesn't exist")
-                elif component_store_upath.is_file():
-                    # not a supported file-based store format
-                    raise RuntimeError(
-                        f"Unsupported file-based store format {component_store_upath}, expected .zarr.itar"
-                    )
-                else:
-                    component_store = stores.ZarrStoreAdapter.directory(component_store_upath)
-
-                return component_store, component_store_upath
+                return (
+                    self._open_component_store(
+                        component_store_upath, itar_index_tail_read_size, itar_remote_range_reads
+                    ),
+                    component_store_upath,
+                )
 
             # (hierarchies are opened as soon as their stores are opened, in order, while the remaining stores
             # are still being opened)
             for component_store, component_store_path in executor.map(
                 thread_open_component_store, component_group_upaths
             ):
-                component_root = component_store.open_root_group(open_consolidated)
+                self._add_component_store(component_store, component_store_path, open_consolidated)
 
-                # Check sequence compatibility
-                component_root_version = component_root.attr_str("version")
-                if component_root_version not in [VERSION]:
-                    raise RuntimeError(
-                        f"Can't load V4 component store {component_store_path} with incompatible data version {component_root_version}"
-                    )
+        self._check_version()
 
-                component_store_sequence_id = component_root.attr_str("sequence_id")
-                sequence_timestamp_interval_us = component_root.attr_dict("sequence_timestamp_interval_us")
-                component_store_sequence_timestamp_interval_us = HalfClosedInterval(
-                    cast(int, sequence_timestamp_interval_us["start"]),
-                    cast(int, sequence_timestamp_interval_us["stop"]),
-                )
-                component_store_generic_meta_data = component_root.attr_dict("generic_meta_data")
+    @classmethod
+    async def open_async(
+        cls,
+        component_group_paths: List[UPath] | List[Path],
+        open_consolidated: bool = True,
+        itar_index_tail_read_size: int = 1 << 20,
+        itar_remote_range_reads: bool = False,
+        max_concurrent_requests: int | asyncio.Semaphore | None = None,
+        node_cache_size: int | None = None,
+    ) -> SequenceComponentGroupsReader:
+        """Opens a reader asynchronously, without blocking the running event loop (see :meth:`__init__` for the
+        parameters).
 
-                if not self._component_stores:
-                    self._sequence_id: str = component_store_sequence_id
-                    self._sequence_timestamp_interval_us = component_store_sequence_timestamp_interval_us
-                    self._generic_meta_data: JsonDocument = component_store_generic_meta_data
-                    self._version: str = component_root_version
+        The component stores of remote sequences (e.g. ``.zarr.itar`` archives on S3) are opened via asynchronous
+        requests (one per archive, see :meth:`ncore.impl.data.itar.IndexedTarArchive.open_async`), so opening the
+        stores of a sequence, and of many sequences concurrently (e.g., via ``asyncio.gather``), overlaps their requests.
 
-                if not self._sequence_id == component_store_sequence_id:
-                    raise RuntimeError("Can't load component store from different sequences")
-                if not self._sequence_timestamp_interval_us == component_store_sequence_timestamp_interval_us:
-                    raise RuntimeError("Can't load component store with different sequence timestamp intervals")
-                if not self._generic_meta_data == component_store_generic_meta_data:
-                    raise RuntimeError("Can't load component store with different generic meta-data")
-                if not self._version == component_root_version:
-                    raise RuntimeError("Can't load shards from different data versions")
+        Args:
+            max_concurrent_requests: The maximum number of component stores opened concurrently: a number (for this
+                sequence), a semaphore shared by readers opened concurrently (e.g., to bound the requests of many
+                sequences opened via ``asyncio.gather``), or None (all component stores at once).
+        """
+        reader = cls.__new__(cls)
+        reader._init(node_cache_size)
 
-                component_group_name = component_root.attr_str("component_group_name")
-                if component_group_name in self._component_stores:
-                    raise RuntimeError(f"Component group {component_group_name} loaded multiple times")
+        component_group_upaths = await run_in_thread(cls.expand_component_group_paths, component_group_paths)
+        assert len(component_group_upaths), "No component inputs provided"
 
-                self._component_stores[component_group_name] = (component_root, component_store_path)
+        semaphore = (
+            asyncio.Semaphore(max_concurrent_requests)
+            if isinstance(max_concurrent_requests, int)
+            else max_concurrent_requests
+        )
+        if isinstance(max_concurrent_requests, int) and max_concurrent_requests < 1:
+            raise ValueError(f"max_concurrent_requests needs to be positive, got {max_concurrent_requests}")
 
+        open_store = functools.partial(
+            cls._open_component_store_async,
+            itar_index_tail_read_size=itar_index_tail_read_size,
+            itar_remote_range_reads=itar_remote_range_reads,
+        )
+
+        async def open_component_store(component_store_upath: UPath) -> Tuple[stores.Store, UPath]:
+            component_store_upath = component_store_upath.absolute()
+            if semaphore is None:
+                return await open_store(component_store_upath), component_store_upath
+            async with semaphore:  # (python 3.8 has no asynchronous contextlib.nullcontext)
+                return await open_store(component_store_upath), component_store_upath
+
+        # (hierarchies are opened in order, each as soon as all stores before it are opened)
+        opening = [asyncio.ensure_future(open_component_store(path)) for path in component_group_upaths]
+        try:
+            for opened in opening:
+                component_store, component_store_path = await opened
+                reader._add_component_store(component_store, component_store_path, open_consolidated)
+        finally:
+            for task in opening:
+                task.cancel()
+            await asyncio.gather(*opening, return_exceptions=True)
+
+        reader._check_version()
+        return reader
+
+    def _init(self, node_cache_size: int | None) -> None:
+        if node_cache_size is not None and node_cache_size < 0:
+            raise ValueError(f"node_cache_size needs to be None or non-negative, got {node_cache_size}")
+        self._node_cache_size = node_cache_size
+
+        # Load component stores concurrently (to hide latency) and check for sequence consistency
+        self._component_stores: Dict[str, Tuple[nodes.Group, UPath]] = {}  # use str as the generic path / URL type
+
+    @staticmethod
+    def _open_component_store(
+        component_store_upath: UPath, itar_index_tail_read_size: int, itar_remote_range_reads: bool
+    ) -> stores.Store:
+        """Opens a component store (blocking)"""
+        _logger.info(f"SequenceStoreReader: Loading component store {component_store_upath}")
+
+        if component_store_upath.name.endswith(".zarr.itar"):
+            # (opening the archive reads its index, a missing archive raises FileNotFoundError: no requests
+            # check its existence beforehand, which add latency to opening remote archives)
+            return stores.IndexedTarZarrStore(
+                component_store_upath,
+                mode="r",
+                index_tail_read_size=itar_index_tail_read_size,
+                remote_range_reads=itar_remote_range_reads,
+            )
+        return SequenceComponentGroupsReader._open_directory_store(component_store_upath)
+
+    @staticmethod
+    async def _open_component_store_async(
+        component_store_upath: UPath, itar_index_tail_read_size: int, itar_remote_range_reads: bool
+    ) -> stores.Store:
+        """Opens a component store asynchronously (see :meth:`_open_component_store`): archives via asynchronous
+        requests, directory stores on a worker thread"""
+        _logger.info(f"SequenceStoreReader: Loading component store {component_store_upath}")
+
+        if component_store_upath.name.endswith(".zarr.itar"):
+            return await stores.IndexedTarZarrStore.open_async(
+                component_store_upath,
+                index_tail_read_size=itar_index_tail_read_size,
+                remote_range_reads=itar_remote_range_reads,
+            )
+        return await run_in_thread(SequenceComponentGroupsReader._open_directory_store, component_store_upath)
+
+    @staticmethod
+    def _open_directory_store(component_store_upath: UPath) -> stores.Store:
+        """Opens a directory-based component store (blocking: checks its existence and type)"""
+        if not component_store_upath.exists():
+            raise FileNotFoundError(f"Component store {component_store_upath} doesn't exist")
+        if component_store_upath.is_file():
+            # not a supported file-based store format
+            raise RuntimeError(f"Unsupported file-based store format {component_store_upath}, expected .zarr.itar")
+        return stores.ZarrStoreAdapter.directory(component_store_upath)
+
+    def _add_component_store(
+        self, component_store: stores.Store, component_store_path: UPath, open_consolidated: bool
+    ) -> None:
+        """Opens the hierarchy of an opened component store and checks its sequence compatibility"""
+        component_root = component_store.open_root_group(open_consolidated)
+
+        # Check sequence compatibility
+        component_root_version = component_root.attr_str("version")
+        if component_root_version not in [VERSION]:
+            raise RuntimeError(
+                f"Can't load V4 component store {component_store_path} with incompatible data version {component_root_version}"
+            )
+
+        component_store_sequence_id = component_root.attr_str("sequence_id")
+        sequence_timestamp_interval_us = component_root.attr_dict("sequence_timestamp_interval_us")
+        component_store_sequence_timestamp_interval_us = HalfClosedInterval(
+            cast(int, sequence_timestamp_interval_us["start"]),
+            cast(int, sequence_timestamp_interval_us["stop"]),
+        )
+        component_store_generic_meta_data = component_root.attr_dict("generic_meta_data")
+
+        if not self._component_stores:
+            self._sequence_id: str = component_store_sequence_id
+            self._sequence_timestamp_interval_us = component_store_sequence_timestamp_interval_us
+            self._generic_meta_data: JsonDocument = component_store_generic_meta_data
+            self._version: str = component_root_version
+
+        if not self._sequence_id == component_store_sequence_id:
+            raise RuntimeError("Can't load component store from different sequences")
+        if not self._sequence_timestamp_interval_us == component_store_sequence_timestamp_interval_us:
+            raise RuntimeError("Can't load component store with different sequence timestamp intervals")
+        if not self._generic_meta_data == component_store_generic_meta_data:
+            raise RuntimeError("Can't load component store with different generic meta-data")
+        if not self._version == component_root_version:
+            raise RuntimeError("Can't load shards from different data versions")
+
+        component_group_name = component_root.attr_str("component_group_name")
+        if component_group_name in self._component_stores:
+            raise RuntimeError(f"Component group {component_group_name} loaded multiple times")
+
+        self._component_stores[component_group_name] = (component_root, component_store_path)
+
+    def _check_version(self) -> None:
         # Check version-compatibility
         if self._version != VERSION:
             raise ValueError(f"Loading incompatible version {self._version}, supporting {VERSION} only")

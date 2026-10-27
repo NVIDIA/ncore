@@ -317,6 +317,42 @@ where it suits them (e.g., in a thread or process pool) on the encoded data retu
 ``get_frame_data_async``. Loaders without asynchronous reads only implement the
 synchronous protocols; use ``isinstance(loader, AsyncSequenceLoaderProtocol)`` to check.
 
+.. _async_opening:
+
+Opening Sequences Asynchronously
+""""""""""""""""""""""""""""""""
+
+Opening a sequence reads the index of each ``.itar`` component store (and the store's
+consolidated metadata). On remote storage, each store is opened with a single range request
+of the archive's end (a second one if the index doesn't fit into
+``itar_index_tail_read_size``). ``SequenceLoaderV4.open_async`` (and
+``SequenceComponentGroupsReader.open_async``) open sequences without blocking the event
+loop, issuing these requests asynchronously, so opening many sequences concurrently takes
+roughly the time of opening one. ``max_concurrent_requests`` bounds the number of component
+stores opened at once: a number per sequence, or an ``asyncio.Semaphore`` shared by
+sequences opened together:
+
+.. code-block:: python
+
+   import asyncio
+
+   from ncore.data.v4 import SequenceLoaderV4
+
+   async def open_sequences(sequence_meta_paths):
+       limit = asyncio.Semaphore(64)  # at most 64 component stores opened at once
+       return await asyncio.gather(
+           *(SequenceLoaderV4.open_async([path], max_concurrent_requests=limit) for path in sequence_meta_paths)
+       )
+
+Local stores are opened on worker threads.
+
+.. note::
+
+   The filesystem may bound the requests in flight as well: ``s3fs`` uses at most
+   ``max_pool_connections`` (default 10) concurrent connections. Raise it to open (or read)
+   many stores concurrently, e.g.
+   ``UPath("s3://bucket/sequence.json", config_kwargs={"max_pool_connections": 64})``.
+
 .. _cloud_storage_access:
 
 Cloud and Remote Storage Access

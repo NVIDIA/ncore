@@ -95,7 +95,10 @@ class Store(ABC):
 
 class IndexedTarZarrStore(Store):
     """A zarr hierarchy in an indexed tar archive (local or remote, see :class:`IndexedTarArchive` for the
-    parameters)"""
+    parameters).
+
+    The constructor opens the archive synchronously (blocking), see :meth:`open_async` for opening stores for reading
+    asynchronously."""
 
     def __init__(
         self,
@@ -104,10 +107,37 @@ class IndexedTarZarrStore(Store):
         index_tail_read_size: Optional[int] = 1 << 20,
         remote_range_reads: bool = False,
     ) -> None:
-        self._archive = IndexedTarArchive(
-            itar_path, mode=mode, index_tail_read_size=index_tail_read_size, remote_range_reads=remote_range_reads
+        """Opens the store synchronously (blocking, see :class:`IndexedTarArchive`), see :meth:`open_async` for opening
+        stores for reading asynchronously"""
+        self._init(
+            IndexedTarArchive(
+                itar_path, mode=mode, index_tail_read_size=index_tail_read_size, remote_range_reads=remote_range_reads
+            )
         )
+
+    def _init(self, archive: IndexedTarArchive) -> None:
+        self._archive = archive
         super().__init__(_backend.indexed_tar_store(self._archive))
+
+    @classmethod
+    async def open_async(
+        cls,
+        itar_path: Union[str, Path, UPath],
+        index_tail_read_size: Optional[int] = 1 << 20,
+        remote_range_reads: bool = False,
+    ) -> IndexedTarZarrStore:
+        """Opens a store for reading asynchronously, see :meth:`IndexedTarArchive.open_async` (the consolidated
+        metadata record, read when opening the hierarchy, is fetched asynchronously as well)"""
+        archive = await IndexedTarArchive.open_async(
+            itar_path,
+            index_tail_read_size=index_tail_read_size,
+            remote_range_reads=remote_range_reads,
+            # (read when opening the hierarchy of the store: fetched with the index, so it's read without blocking)
+            prefetch_keys=(V3_CONSOLIDATED_METADATA_KEY, V2_CONSOLIDATED_METADATA_KEY),
+        )
+        store = cls.__new__(cls)
+        store._init(archive)
+        return store
 
     @property
     def archive(self) -> IndexedTarArchive:
