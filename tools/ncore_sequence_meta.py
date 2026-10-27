@@ -22,7 +22,8 @@ from typing import Optional, Tuple
 
 import click
 
-from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
+from ncore.impl.data.compat import SequenceLoaderProtocol
+from ncore.impl.data.v4.compat import SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 
 

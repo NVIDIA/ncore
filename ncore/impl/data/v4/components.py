@@ -2026,7 +2026,8 @@ class PointCloudsComponent:
             return self._pc_group(pc_index).attr_str("reference_frame_id")
 
         def get_pc_reference_frame_timestamp_us(self, pc_index: int) -> int:
-            return int(self._group.array("pc_timestamps_us").read(pc_index))
+            # (from the cached timestamps of all point clouds, like pc_timestamps_us: no read per point cloud)
+            return int(self._pc_timestamps_us[pc_index])
 
         def get_pc_generic_data_names(self, pc_index: int) -> List[str]:
             return self._pc_group(pc_index, "generic_data").members()

@@ -53,6 +53,8 @@ Example:
 
 from __future__ import annotations
 
+import asyncio
+
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Protocol, Sequence, Tuple, Union, cast
 
@@ -726,15 +728,29 @@ class RayBundleSensorPointCloudsSourceAdapter:
 
     def get_pc(self, pc_index: int) -> PointCloud:
         sensor = self._sensor
-        return_index = self._return_index
 
         # xyz from motion-compensated point cloud
         frame_pc = sensor.get_frame_point_cloud(
             pc_index,
             motion_compensation=True,
             with_start_points=False,
-            return_index=return_index,
+            return_index=self._return_index,
         )
+        model_element = (
+            sensor.get_frame_ray_bundle_model_element(pc_index) if isinstance(sensor, LidarSensorProtocol) else None
+        )
+        return self._point_cloud(pc_index, frame_pc, model_element)
+
+    def _point_cloud(
+        self,
+        pc_index: int,
+        frame_pc: RayBundleSensorProtocol.FramePointCloud,
+        model_element: Optional[npt.NDArray[np.uint16]],
+    ) -> PointCloud:
+        """The point cloud of a sensor frame from its (motion-compensated) frame point cloud and its model elements
+        (if any), with lazily loaded attributes (shared by the synchronous and asynchronous reads)"""
+        sensor = self._sensor
+        return_index = self._return_index
 
         # Build lazy attributes
         attributes: Dict[str, PointCloud.Attribute] = {}
@@ -779,7 +795,6 @@ class RayBundleSensorPointCloudsSourceAdapter:
             )
 
             # model_element -- per-ray model element, only if present (INVARIANT)
-            model_element = lidar.get_frame_ray_bundle_model_element(pc_index)
             if model_element is not None:
                 captured_model_element: "npt.NDArray" = model_element
 
@@ -849,6 +864,48 @@ class RayBundleSensorPointCloudsSourceAdapter:
         step: Optional[int] = None,
     ) -> range:
         return range(*slice(start, stop, step).indices(self.pcs_count))
+
+
+class AsyncRayBundleSensorPointCloudsSourceAdapter(RayBundleSensorPointCloudsSourceAdapter):
+    """Adapts an :class:`AsyncRayBundleSensorProtocol` (lidar or radar) into :class:`AsyncPointCloudsSourceProtocol`
+    (see :class:`RayBundleSensorPointCloudsSourceAdapter`), reading point clouds asynchronously.
+
+    The protocol is declared after this class (the asynchronous protocols are defined at the end of the module), so
+    conformance is structural.
+    """
+
+    def __init__(
+        self,
+        sensor: AsyncRayBundleSensorProtocol,
+        return_index: int = 0,
+        promote_generic_data: Dict[
+            str, RayBundleSensorPointCloudsSourceAdapter.GenericDataPromotion
+        ] = RayBundleSensorPointCloudsSourceAdapter.DEFAULT_GENERIC_DATA_PROMOTIONS,
+    ) -> None:
+        super().__init__(sensor, return_index, promote_generic_data)
+        self._async_sensor = sensor
+
+    async def get_pc_async(self, pc_index: int) -> PointCloud:
+        sensor = self._async_sensor
+
+        async def no_model_element() -> None:
+            return None
+
+        frame_pc, model_element = await asyncio.gather(
+            sensor.get_frame_point_cloud_async(
+                pc_index,
+                motion_compensation=True,
+                with_start_points=False,
+                return_index=self._return_index,
+            ),
+            sensor.get_frame_ray_bundle_model_element_async(pc_index)
+            if isinstance(sensor, AsyncLidarSensorProtocol)
+            else no_model_element(),
+        )
+        return self._point_cloud(pc_index, frame_pc, model_element)
+
+    async def get_pc_generic_data_async(self, pc_index: int, name: str) -> "npt.NDArray":
+        return await self._async_sensor.get_frame_generic_data_async(pc_index, name)
 
 
 @runtime_checkable

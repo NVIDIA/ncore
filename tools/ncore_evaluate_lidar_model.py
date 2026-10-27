@@ -59,9 +59,9 @@ import tqdm
 from ncore.impl.common.transformations import MotionCompensator, se3_inverse, transform_point_cloud
 from ncore.impl.common.util import unpack_optional
 from ncore.impl.data import types
-from ncore.impl.data.compat import LidarSensorProtocol
+from ncore.impl.data.compat import LidarSensorProtocol, SequenceLoaderProtocol
 from ncore.impl.data.util import padded_index_string
-from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
+from ncore.impl.data.v4.compat import SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 from ncore.impl.sensors.camera import CameraModel
 from ncore.impl.sensors.lidar import StructuredLidarModel

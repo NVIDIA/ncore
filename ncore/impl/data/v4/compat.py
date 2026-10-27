@@ -15,7 +15,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Union, cast
+import asyncio
+
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Sequence, Union, cast
 
 import numpy as np
 import PIL.Image as PILImage
@@ -26,15 +28,16 @@ from upath import UPath
 from ncore.impl.common.transformations import HalfClosedInterval, MotionCompensator, PoseGraphInterpolator
 from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.compat import (
-    CameraLabelsProtocol,
-    CameraSensorProtocol,
-    LidarSensorProtocol,
-    PointCloudsSourceProtocol,
-    RadarSensorProtocol,
-    RayBundleSensorPointCloudsSourceAdapter,
+    AsyncCameraLabelsProtocol,
+    AsyncCameraSensorProtocol,
+    AsyncLidarSensorProtocol,
+    AsyncPointCloudsSourceProtocol,
+    AsyncRadarSensorProtocol,
+    AsyncRayBundleSensorPointCloudsSourceAdapter,
+    AsyncRayBundleSensorProtocol,
+    AsyncSensorProtocol,
+    AsyncSequenceLoaderProtocol,
     RayBundleSensorProtocol,
-    SensorProtocol,
-    SequenceLoaderProtocol,
 )
 from ncore.impl.data.json_types import JsonDocument
 from ncore.impl.data.types import (
@@ -66,8 +69,8 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
 
-class SequenceLoaderV4(SequenceLoaderProtocol):
-    """SequenceLoader implementation for NCore V4 data.
+class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
+    """SequenceLoader implementation for NCore V4 data (with asynchronous reads, see :class:`AsyncSequenceLoaderProtocol`).
 
     Provides a unified interface to access V4 format sequence data including sensors,
     poses, intrinsics, masks, and cuboid annotations.
@@ -206,7 +209,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
     def pose_graph(self) -> PoseGraphInterpolator:
         return self._pose_graph
 
-    class Sensor(SensorProtocol):
+    class Sensor(AsyncSensorProtocol):
         """Base sensor implementation for V4 data providing common sensor functionality.
 
         Args:
@@ -271,6 +274,14 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             )
 
         @override
+        async def get_frame_generic_data_async(self, frame_index: int, name: str) -> npt.NDArray[Any]:
+            """Returns generic frame-data for a specific frame and name, read asynchronously"""
+
+            return await self._reader.get_frame_generic_data_async(
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(), name
+            )
+
+        @override
         def get_frame_generic_meta_data(self, frame_index: int) -> JsonDocument:
             """Returns generic frame meta-data for a specific frame"""
 
@@ -278,7 +289,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
                 self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item()
             )
 
-    class CameraSensor(Sensor, CameraSensorProtocol):
+    class CameraSensor(Sensor, AsyncCameraSensorProtocol):
         """Camera sensor implementation for V4 data.
 
         Args:
@@ -321,14 +332,27 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             return dict(self._mask_reader.get_camera_mask_images(self.sensor_id))
 
         @override
-        def get_frame_handle(self, frame_index: int) -> CameraSensorProtocol.EncodedImageDataHandleProtocol:
+        async def get_mask_images_async(self) -> Dict[str, PILImage.Image]:
+            """Returns all available named camera mask images, read asynchronously (concurrently)"""
+
+            if (mask_reader := self._mask_reader) is None:
+                return {}
+
+            mask_names = mask_reader.get_camera_mask_names(self.sensor_id)
+            images = await asyncio.gather(
+                *(mask_reader.get_camera_mask_image_async(self.sensor_id, mask_name) for mask_name in mask_names)
+            )
+            return dict(zip(mask_names, images))
+
+        @override
+        def get_frame_handle(self, frame_index: int) -> AsyncCameraSensorProtocol.EncodedImageDataHandleProtocol:
             """Returns the frame's encoded image data"""
             return self.camera_reader.get_frame_handle(
                 self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item()
             )
 
     @override
-    def get_camera_sensor(self, sensor_id: str) -> CameraSensorProtocol:
+    def get_camera_sensor(self, sensor_id: str) -> AsyncCameraSensorProtocol:
         return self.CameraSensor(
             reader=unpack_optional(
                 self._cameras_readers.get(sensor_id),
@@ -339,7 +363,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             model_parameters=self._intrinsics_reader.get_camera_model_parameters(sensor_id),
         )
 
-    class RayBundleSensor(Sensor, RayBundleSensorProtocol):
+    class RayBundleSensor(Sensor, AsyncRayBundleSensorProtocol):
         """Base ray bundle sensor implementation for V4 data (lidar/radar).
 
         Args:
@@ -389,21 +413,95 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             )
 
         @override
+        async def get_frame_ray_bundle_direction_async(self, frame_index: int) -> "npt.NDArray[np.float32]":
+            """Returns the per-ray directions for the ray-bundle for a specific frame, read asynchronously"""
+            return await self.ray_bundle_reader.get_frame_ray_bundle_data_async(
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(), "direction"
+            )
+
+        @override
+        async def get_frame_ray_bundle_timestamp_us_async(self, frame_index: int) -> npt.NDArray[np.uint64]:
+            """Returns the per-ray timestamps for the ray-bundle for a specific frame, read asynchronously"""
+            return await self.ray_bundle_reader.get_frame_ray_bundle_data_async(
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(), "timestamp_us"
+            )
+
+        @override
         def get_frame_point_cloud(
             self, frame_index: int, motion_compensation: bool, with_start_points: bool, return_index: int = 0
         ) -> RayBundleSensorProtocol.FramePointCloud:
             """Returns motion-compensated or non-motion-compensated point-cloud for a specific frame"""
-            frame_timestamps_us = self.frames_timestamps_us[frame_index, :]
+            end_timestamp_us = int(self.frames_timestamps_us[frame_index, FrameTimepoint.END.value])
+            reader = self.ray_bundle_reader
 
             # V4 stores non-motion-compensated ray directions in 'direction' field and return-specific distances
-            xyz_m = (
-                self.ray_bundle_reader.get_frame_ray_bundle_data(
-                    int(frame_timestamps_us[FrameTimepoint.END.value]), "direction"
-                )
-                * self.ray_bundle_reader.get_frame_ray_bundle_return_data(
-                    int(frame_timestamps_us[FrameTimepoint.END.value]), "distance_m", return_index=return_index
-                )[:, np.newaxis]
+            return self._frame_point_cloud(
+                frame_index,
+                motion_compensation,
+                with_start_points,
+                direction=reader.get_frame_ray_bundle_data(end_timestamp_us, "direction"),
+                distance_m=reader.get_frame_ray_bundle_return_data(
+                    end_timestamp_us, "distance_m", return_index=return_index
+                ),
+                timestamp_us=(
+                    reader.get_frame_ray_bundle_data(end_timestamp_us, "timestamp_us") if motion_compensation else None
+                ),
             )
+
+        @override
+        async def get_frame_point_cloud_async(
+            self, frame_index: int, motion_compensation: bool, with_start_points: bool, return_index: int = 0
+        ) -> RayBundleSensorProtocol.FramePointCloud:
+            """Returns a frame point cloud like :meth:`get_frame_point_cloud`, with its data read asynchronously
+            (concurrently)"""
+            end_timestamp_us = int(self.frames_timestamps_us[frame_index, FrameTimepoint.END.value])
+            reader = self.ray_bundle_reader
+
+            async def no_timestamps() -> None:
+                return None
+
+            direction, distance_m, timestamp_us = await asyncio.gather(
+                reader.get_frame_ray_bundle_data_async(end_timestamp_us, "direction"),
+                reader.get_frame_ray_bundle_return_data_async(
+                    end_timestamp_us, "distance_m", return_index=return_index
+                ),
+                reader.get_frame_ray_bundle_data_async(end_timestamp_us, "timestamp_us")
+                if motion_compensation
+                else no_timestamps(),
+            )
+            return self._frame_point_cloud(
+                frame_index,
+                motion_compensation,
+                with_start_points,
+                direction=direction,
+                distance_m=distance_m,
+                timestamp_us=timestamp_us,
+            )
+
+        def _frame_point_cloud(
+            self,
+            frame_index: int,
+            motion_compensation: bool,
+            with_start_points: bool,
+            direction: npt.NDArray[np.float32],
+            distance_m: npt.NDArray[np.float32],
+            timestamp_us: Optional[npt.NDArray[np.uint64]],
+        ) -> RayBundleSensorProtocol.FramePointCloud:
+            """The (optionally motion-compensated) point cloud of a frame from its ray data (shared by the synchronous
+            and asynchronous reads).
+
+            Args:
+                frame_index: Index of the frame
+                motion_compensation: Whether to motion-compensate the points
+                with_start_points: Whether to include the ray segment start points
+                direction: Per-ray directions [N,3]
+                distance_m: Per-ray distances of the requested return [N,]
+                timestamp_us: Per-ray timestamps [N,], required if `motion_compensation` (unused otherwise, may be
+                    None)
+            """
+            frame_timestamps_us = self.frames_timestamps_us[frame_index, :]
+
+            xyz_m = direction * distance_m[:, np.newaxis]
 
             if not motion_compensation:
                 return RayBundleSensorProtocol.FramePointCloud(
@@ -416,8 +514,8 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             motion_compensation_result = self._motion_compensator.motion_compensate_points(
                 sensor_id=self.sensor_id,
                 xyz_pointtime=xyz_m,
-                timestamp_us=self.ray_bundle_reader.get_frame_ray_bundle_data(
-                    int(frame_timestamps_us[FrameTimepoint.END.value]), "timestamp_us"
+                timestamp_us=unpack_optional(
+                    timestamp_us, msg="per-ray timestamps are required for motion compensation"
                 ),
                 frame_start_timestamp_us=int(frame_timestamps_us[FrameTimepoint.START.value]),
                 frame_end_timestamp_us=int(frame_timestamps_us[FrameTimepoint.END.value]),
@@ -452,7 +550,30 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
                 self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(),
             )[return_index]
 
-    class LidarSensor(RayBundleSensor, LidarSensorProtocol):
+        @override
+        async def get_frame_ray_bundle_return_distance_m_async(
+            self, frame_index: int, return_index: int = 0
+        ) -> npt.NDArray[np.float32]:
+            """Returns the per-ray measured metric distances for the ray bundle return for a specific frame, read
+            asynchronously"""
+            return await self.ray_bundle_reader.get_frame_ray_bundle_return_data_async(
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(),
+                "distance_m",
+                return_index=return_index,
+            )
+
+        @override
+        async def get_frame_ray_bundle_return_valid_mask_async(
+            self, frame_index: int, return_index: int = 0
+        ) -> npt.NDArray[np.bool_]:
+            """Returns the per-ray valid mask of the ray bundle returns for a specific frame, read asynchronously"""
+            return (
+                await self.ray_bundle_reader.get_frame_ray_bundle_return_valid_mask_async(
+                    self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(),
+                )
+            )[return_index]
+
+    class LidarSensor(RayBundleSensor, AsyncLidarSensorProtocol):
         """Lidar sensor implementation for V4 data.
 
         Args:
@@ -507,8 +628,33 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
                 return_index=return_index,
             )
 
+        @override
+        async def get_frame_ray_bundle_model_element_async(self, frame_index: int) -> Optional[npt.NDArray[np.uint16]]:
+            """Returns the per-ray model elements for a ray bundle for a specific frame (None if not available), read
+            asynchronously"""
+
+            if self.lidar_reader.has_frame_ray_bundle_data(
+                timestamp_us := self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(), "model_element"
+            ):
+                return await self.lidar_reader.get_frame_ray_bundle_data_async(timestamp_us, "model_element")
+
+            return None
+
+        @override
+        async def get_frame_ray_bundle_return_intensity_async(
+            self, frame_index: int, return_index: int = 0
+        ) -> npt.NDArray[np.float32]:
+            """Returns the per-ray measured intensities for a ray bundle return for a specific frame, read
+            asynchronously"""
+
+            return await self.lidar_reader.get_frame_ray_bundle_return_data_async(
+                self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(),
+                "intensity",
+                return_index=return_index,
+            )
+
     @override
-    def get_lidar_sensor(self, sensor_id: str) -> LidarSensorProtocol:
+    def get_lidar_sensor(self, sensor_id: str) -> AsyncLidarSensorProtocol:
         return self.LidarSensor(
             reader=unpack_optional(
                 self._lidars_readers.get(sensor_id),
@@ -518,7 +664,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             model_parameters=self._intrinsics_reader.get_lidar_model_parameters(sensor_id),
         )
 
-    class RadarSensor(RayBundleSensor, RadarSensorProtocol):
+    class RadarSensor(RayBundleSensor, AsyncRadarSensorProtocol):
         """Radar sensor implementation for V4 data.
 
         Args:
@@ -538,7 +684,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             return cast(RadarSensorComponent.Reader, self._reader)
 
     @override
-    def get_radar_sensor(self, sensor_id: str) -> RadarSensorProtocol:
+    def get_radar_sensor(self, sensor_id: str) -> AsyncRadarSensorProtocol:
         return self.RadarSensor(
             reader=unpack_optional(
                 self._radars_readers.get(sensor_id),
@@ -547,8 +693,8 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             pose_graph=self._pose_graph,
         )
 
-    class CameraLabels(CameraLabelsProtocol):
-        """Wraps a :class:`CameraLabelsComponent.Reader` to implement :class:`CameraLabelsProtocol`."""
+    class CameraLabels(AsyncCameraLabelsProtocol):
+        """Wraps a :class:`CameraLabelsComponent.Reader` to implement :class:`AsyncCameraLabelsProtocol`."""
 
         def __init__(self, reader: CameraLabelsComponent.Reader) -> None:
             self._reader = reader
@@ -577,7 +723,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
         def get_label(self, timestamp_us: int) -> CameraLabelsComponent.Reader.CameraLabelHandle:
             return self._reader.get_label(timestamp_us)
 
-    class PointCloudsSource(PointCloudsSourceProtocol):
+    class PointCloudsSource(AsyncPointCloudsSourceProtocol):
         """Native point-clouds source wrapping a :class:`PointCloudsComponent.Reader`.
 
         Args:
@@ -604,6 +750,14 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
 
         @override
         def get_pc(self, pc_index: int) -> PointCloud:
+            return self._point_cloud(pc_index, self._reader.get_pc_xyz(pc_index))
+
+        @override
+        async def get_pc_async(self, pc_index: int) -> PointCloud:
+            return self._point_cloud(pc_index, await self._reader.get_pc_xyz_async(pc_index))
+
+        def _point_cloud(self, pc_index: int, xyz: npt.NDArray[np.float32]) -> PointCloud:
+            """The point cloud of a pc index with its points `xyz` (attributes are loaded lazily)"""
             reader = self._reader
 
             # Build lazy attributes from the declared schema
@@ -624,7 +778,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
                 )
 
             return PointCloud(
-                _xyz=reader.get_pc_xyz(pc_index),
+                _xyz=xyz,
                 reference_frame_id=reader.get_pc_reference_frame_id(pc_index),
                 reference_frame_timestamp_us=reader.get_pc_reference_frame_timestamp_us(pc_index),
                 coordinate_unit=reader.coordinate_unit,
@@ -644,6 +798,10 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
             return self._reader.get_pc_generic_data(pc_index, name)
 
         @override
+        async def get_pc_generic_data_async(self, pc_index: int, name: str) -> npt.NDArray:
+            return await self._reader.get_pc_generic_data_async(pc_index, name)
+
+        @override
         def get_pc_generic_meta_data(self, pc_index: int) -> JsonDocument:
             return self._reader.get_pc_generic_meta_data(pc_index)
 
@@ -653,21 +811,21 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
         return list(self._point_clouds_readers.keys())
 
     @override
-    def get_point_clouds_source(self, source_id: str, *, return_index: int = 0) -> PointCloudsSourceProtocol:
+    def get_point_clouds_source(self, source_id: str, *, return_index: int = 0) -> AsyncPointCloudsSourceProtocol:
         # 1. Check native point-clouds sources first
         if source_id in self._point_clouds_readers:
             return self.PointCloudsSource(self._point_clouds_readers[source_id])
 
         # 2. Check lidar sensors (adapted)
         if source_id in self._lidars_readers:
-            return RayBundleSensorPointCloudsSourceAdapter(
+            return AsyncRayBundleSensorPointCloudsSourceAdapter(
                 sensor=self.get_lidar_sensor(source_id),
                 return_index=return_index,
             )
 
         # 3. Check radar sensors (adapted)
         if source_id in self._radars_readers:
-            return RayBundleSensorPointCloudsSourceAdapter(
+            return AsyncRayBundleSensorPointCloudsSourceAdapter(
                 sensor=self.get_radar_sensor(source_id),
                 return_index=return_index,
             )
@@ -680,7 +838,7 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
         return list(self._camera_labels_readers.keys())
 
     @override
-    def get_camera_labels(self, camera_label_id: str) -> CameraLabelsProtocol:
+    def get_camera_labels(self, camera_label_id: str) -> AsyncCameraLabelsProtocol:
         if camera_label_id not in self._camera_labels_readers:
             raise KeyError(f"Camera labels '{camera_label_id}' not found")
         return self.CameraLabels(self._camera_labels_readers[camera_label_id])
@@ -691,8 +849,8 @@ class SequenceLoaderV4(SequenceLoaderProtocol):
         camera_id: str,
         label_type: Optional[LabelType] = None,
         label_category: Optional[LabelCategory] = None,
-    ) -> List[CameraLabelsProtocol]:
-        results: List[CameraLabelsProtocol] = []
+    ) -> Sequence[AsyncCameraLabelsProtocol]:
+        results: List[AsyncCameraLabelsProtocol] = []
         for reader in self._camera_labels_readers.values():
             if reader.label_descriptor.camera_id != camera_id:
                 continue

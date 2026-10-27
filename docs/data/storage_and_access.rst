@@ -306,6 +306,12 @@ asynchronous code:
        camera = loader.get_camera_sensor(camera_id)
        return await asyncio.gather(*(camera.get_frame_data_async(i) for i in frame_indices))
 
+``SequenceLoaderV4`` implements the asynchronous protocols: its asynchronous reads use the
+component readers' asynchronous reads (see :ref:`async_reads`), e.g.
+``get_frame_point_cloud_async`` reads the ray directions, distances and per-ray timestamps
+concurrently, and lidar / radar point-clouds sources adapted via
+``get_point_clouds_source`` read their point clouds asynchronously (``get_pc_async``).
+
 Image decoding is not part of the asynchronous APIs: it's CPU work, which callers run
 where it suits them (e.g., in a thread or process pool) on the encoded data returned by
 ``get_frame_data_async``. Loaders without asynchronous reads only implement the

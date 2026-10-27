@@ -101,6 +101,27 @@ pytest_test(
 )
 
 pytest_test(
+    name = "pytest_compat_async",
+    srcs = ["compat_async_test.py"],
+    data = [
+        "@test-data-v4//:dataset0",
+    ],
+    deps = [
+        ":pylib_compat",
+        ":pylib_components",
+        "//ncore/impl/common:pylib_transformations",
+        "//ncore/impl/data:pylib_compat",
+        "//ncore/impl/data:pylib_stores",
+        "//ncore/impl/data:pylib_types",
+        requirement("numpy"),
+        requirement("pillow"),
+        requirement("universal_pathlib"),
+        requirement("parameterized"),
+        "@rules_python//python/runfiles",
+    ],
+)
+
+pytest_test(
     name = "pytest_formats",
     srcs = ["formats_test.py"],
     data = [

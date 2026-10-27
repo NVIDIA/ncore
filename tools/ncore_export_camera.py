@@ -25,13 +25,14 @@ import cv2
 import numpy as np
 import tqdm
 
+from ncore.impl.data.compat import SequenceLoaderProtocol
 from ncore.impl.data.types import (
     CameraModelParameters,
     IdealPinholeCameraModelParameters,
     encode_camera_model_parameters,
 )
 from ncore.impl.data.util import padded_index_string
-from ncore.impl.data.v4.compat import SequenceLoaderProtocol, SequenceLoaderV4
+from ncore.impl.data.v4.compat import SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
 from ncore.impl.sensors.camera import CameraModel
 from ncore.impl.sensors.rectification import Rectificator
