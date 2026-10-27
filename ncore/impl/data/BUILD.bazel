@@ -115,11 +115,25 @@ pytest_test(
     ],
 )
 
+py_library(
+    name = "pylib_testing_fs",
+    testonly = True,
+    srcs = [
+        "testing_fs.py",
+    ],
+    deps = [
+        requirement("fsspec"),
+        requirement("typing_extensions"),
+    ],
+)
+
 pytest_test(
     name = "pytest_stores",
     srcs = ["stores_test.py"],
     deps = [
         ":pylib_stores",
+        ":pylib_testing_fs",
+        "//ncore/impl/common:pylib_util",
         requirement("fsspec"),
         requirement("numpy"),
         requirement("parameterized"),
