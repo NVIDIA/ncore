@@ -182,6 +182,22 @@ class RecordIndex:
         """The records by key, and the tail read the index was loaded from (ending at the end of the archive)"""
         self.records = records
         self.tail = tail
+        # records prefetched when opening (see :meth:`IndexedTarArchive.open_async`, e.g. the consolidated metadata
+        # record of a zarr hierarchy), held in memory until read once (single-use: removed by the first read)
+        self._prefetched: Dict[str, bytes] = {}
+        self._lock = threading.Lock()
+
+    def prefetch(self, key: str, value: bytes) -> None:
+        """Holds the payload of a record in memory until it's read once (see :meth:`take_prefetched`)"""
+        with self._lock:
+            self._prefetched[key] = value
+
+    def take_prefetched(self, key: str) -> Optional[bytes]:
+        """The payload of a prefetched record, which is removed (None if it wasn't prefetched or read already)"""
+        if not self._prefetched:
+            return None
+        with self._lock:
+            return self._prefetched.pop(key, None)
 
     def in_memory(self, record: Record) -> Optional[bytes]:
         """The payload of a record held in memory (records of the tail read, empty records), None otherwise"""
@@ -456,15 +472,42 @@ class IndexedTarArchive:
         index_tail_read_size: Optional[int] = 1 << 20,  # 1 MiB by default
         remote_range_reads: bool = False,
     ) -> None:
-        """Opens the archive (see the class documentation for the parameters): its record source by the archive's
-        location and mode, and for reading its record index"""
+        """Opens the archive synchronously (blocking: e.g., the index read of remote archives, see the class
+        documentation for the parameters), see :meth:`open_async` for opening archives for reading asynchronously"""
         self._open(itar_path, mode, remote_range_reads)
         if mode == "r":
             self._index = self._source.load_index(index_tail_read_size)
 
+    @classmethod
+    async def open_async(
+        cls,
+        itar_path: Union[str, Path, UPath],
+        index_tail_read_size: Optional[int] = 1 << 20,
+        remote_range_reads: bool = False,
+        prefetch_keys: Tuple[str, ...] = (),
+    ) -> IndexedTarArchive:
+        """Opens an archive for reading asynchronously, without blocking the running event loop (see the class
+        documentation for the parameters).
+
+        The index of remote archives (see :attr:`is_remote`) is loaded via asynchronous range requests (one if it lies
+        within the tail read), so opening many archives concurrently (e.g., via ``asyncio.gather``) overlaps their
+        requests. Other archives (e.g., local) are opened synchronously on a worker thread.
+
+        Records of ``prefetch_keys`` (if they exist) are read asynchronously while opening and held in memory until
+        they are read (once): e.g., the consolidated metadata record of a zarr hierarchy, which is read synchronously
+        when opening the hierarchy, then not needed anymore.
+        """
+        archive = cls.__new__(cls)
+        archive._open(itar_path, "r", remote_range_reads)
+        index = archive._index = await archive._source.load_index_async(index_tail_read_size)
+        keys = [key for key in prefetch_keys if key in index.records]
+        for key, value in zip(keys, await asyncio.gather(*(archive.read_async(key) for key in keys))):
+            index.prefetch(key, value)
+        return archive
+
     def _open(self, itar_path: Union[str, Path, UPath], mode: Literal["r", "w"], remote_range_reads: bool) -> None:
         """Opens the archive's record source by the archive's location and mode (archives opened for reading load
-        their index after, see :meth:`__init__`)"""
+        their index after, see :meth:`__init__` and :meth:`open_async`)"""
         if mode not in ("r", "w"):
             raise ValueError(f"IndexedTarArchive: unsupported mode {mode!r}, supported are 'r' and 'w'")
         self._mode: Literal["r", "w"] = mode
@@ -596,6 +639,8 @@ class IndexedTarArchive:
                 return b""
         else:
             index = cast(RecordIndex, self._index)
+            if (value := index.take_prefetched(key)) is not None:
+                return value
             record = index.records[key]
             if (value := index.in_memory(record)) is not None:
                 return value

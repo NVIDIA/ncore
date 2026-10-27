@@ -267,6 +267,41 @@ class TestSequenceLoaderV4AsyncReads(_AsyncReadsTestCase):
                         )
 
 
+class TestSequenceLoaderV4OpenAsync(unittest.TestCase):
+    """SequenceLoaderV4.open_async opens the same sequence as the synchronous constructor, also many sequences
+    concurrently"""
+
+    def test_open_async(self) -> None:
+        expected = SequenceLoaderV4(SequenceComponentGroupsReader([_TEST_DATA_PATH]))
+        loader = asyncio.run(SequenceLoaderV4.open_async([_TEST_DATA_PATH]))
+        self.assertIsInstance(loader, AsyncSequenceLoaderProtocol)
+        self.assertEqual(loader.sequence_id, expected.sequence_id)
+        self.assertEqual(loader.camera_ids, expected.camera_ids)
+        self.assertEqual(loader.lidar_ids, expected.lidar_ids)
+        self.assertEqual(loader.radar_ids, expected.radar_ids)
+        camera = loader.get_camera_sensor("camera_front_wide_120fov")
+        np.testing.assert_array_equal(
+            camera.frames_timestamps_us, expected.get_camera_sensor("camera_front_wide_120fov").frames_timestamps_us
+        )
+        self.assertEqual(
+            asyncio.run(camera.get_frame_data_async(0)).get_encoded_image_data(),
+            expected.get_camera_sensor("camera_front_wide_120fov").get_frame_data(0).get_encoded_image_data(),
+        )
+
+    def test_open_many_concurrently(self) -> None:
+        async def open_all() -> List[SequenceLoaderV4]:
+            limit = asyncio.Semaphore(8)
+            return list(
+                await asyncio.gather(
+                    *(SequenceLoaderV4.open_async([_TEST_DATA_PATH], max_concurrent_requests=limit) for _ in range(4))
+                )
+            )
+
+        loaders = asyncio.run(open_all())
+        self.assertEqual(len(loaders), 4)
+        self.assertEqual({loader.sequence_id for loader in loaders}, {loaders[0].sequence_id})
+
+
 @parameterized_class(("store_type",), [("itar",), ("directory",)])
 class TestSequenceLoaderV4AsyncPointCloudsAndLabels(_AsyncReadsTestCase):
     """Asynchronous reads of native and lidar-adapted point-clouds sources (multi-return lidar with model elements),

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Sequence, Union, cast
 
 import numpy as np
@@ -71,6 +72,9 @@ if TYPE_CHECKING:
 
 class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
     """SequenceLoader implementation for NCore V4 data (with asynchronous reads, see :class:`AsyncSequenceLoaderProtocol`).
+
+    The constructor takes an opened (synchronously or asynchronously) :class:`SequenceComponentGroupsReader`, see
+    :meth:`open_async` for opening a sequence's component stores and the loader asynchronously in one step.
 
     Provides a unified interface to access V4 format sequence data including sensors,
     poses, intrinsics, masks, and cuboid annotations.
@@ -159,6 +163,50 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
                     timestamps_us,
                 ) in self._poses_reader.get_dynamic_poses()
             ]
+        )
+
+    @classmethod
+    async def open_async(
+        cls,
+        component_group_paths: Union[List[UPath], List[Path]],
+        poses_component_group_name: str = "default",
+        intrinsics_component_group_name: str = "default",
+        masks_component_group_name: Optional[str] = "default",
+        cuboids_component_group_name: Optional[str] = "default",
+        open_consolidated: bool = True,
+        itar_index_tail_read_size: int = 1 << 20,
+        itar_remote_range_reads: bool = False,
+        max_concurrent_requests: Union[int, asyncio.Semaphore, None] = None,
+        node_cache_size: Optional[int] = None,
+    ) -> SequenceLoaderV4:
+        """Opens a sequence asynchronously, without blocking the running event loop (see
+        :meth:`SequenceComponentGroupsReader.open_async` and :meth:`__init__` for the parameters).
+
+        Opening many sequences concurrently overlaps their requests, e.g. with a shared bound of the requests in
+        flight:
+
+        .. code-block:: python
+
+            limit = asyncio.Semaphore(64)
+            loaders = await asyncio.gather(
+                *(SequenceLoaderV4.open_async([path], max_concurrent_requests=limit) for path in sequence_paths)
+            )
+        """
+        reader = await SequenceComponentGroupsReader.open_async(
+            component_group_paths,
+            open_consolidated=open_consolidated,
+            itar_index_tail_read_size=itar_index_tail_read_size,
+            itar_remote_range_reads=itar_remote_range_reads,
+            max_concurrent_requests=max_concurrent_requests,
+            node_cache_size=node_cache_size,
+        )
+        # (initializing the loader reads no data: component readers are initialized from the opened hierarchies)
+        return cls(
+            reader,
+            poses_component_group_name=poses_component_group_name,
+            intrinsics_component_group_name=intrinsics_component_group_name,
+            masks_component_group_name=masks_component_group_name,
+            cuboids_component_group_name=cuboids_component_group_name,
         )
 
     @property

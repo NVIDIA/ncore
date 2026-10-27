@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
+import contextlib
 import dataclasses
 import io
 import tempfile
@@ -3014,6 +3016,23 @@ class TestReaderOpening(unittest.TestCase):
         self.assertIn("hierarchy", events[:last])
 
 
+class _BlockingRequestsFail(contextlib.ExitStack):
+    """Fails blocking requests while active: synchronous requests of RemoteFileSystem (its synchronous wrappers, and
+    file objects), and blocking opening of archives"""
+
+    def __enter__(self) -> "_BlockingRequestsFail":
+        super().__enter__()
+        for name in ("cat_file", "info", "_open"):
+            self.enter_context(
+                mock.patch.object(RemoteFileSystem, name, side_effect=AssertionError(f"blocking request ({name})"))
+            )
+        # (the blocking constructor, e.g. run on a worker thread, which waits for the requests of the index read)
+        self.enter_context(
+            mock.patch.object(IndexedTarArchive, "__init__", side_effect=AssertionError("blocking archive opening"))
+        )
+        return self
+
+
 class TestRemoteReaderOpening(unittest.TestCase):
     """Remote sequences are opened with one request per component store (and of the sequence meta-data file)"""
 
@@ -3052,6 +3071,124 @@ class TestRemoteReaderOpening(unittest.TestCase):
     def test_missing_archive(self):
         with self.assertRaises(FileNotFoundError):
             SequenceComponentGroupsReader([self._remote(UPath(self._tmp.name) / "missing.zarr.itar")])
+
+    @staticmethod
+    def _no_blocking_requests() -> Any:
+        """Fails requests issued synchronously (e.g., a blocking `cat_file` instead of an awaited `_cat_file`, or a file
+        object): asynchronous opening only issues requests of the filesystem's coroutines on its event loop"""
+        return _BlockingRequestsFail()
+
+    def _assert_same_reader(self, reader: SequenceComponentGroupsReader, expected: SequenceComponentGroupsReader):
+        self.assertEqual(reader.sequence_id, expected.sequence_id)
+        self.assertEqual(reader.sequence_timestamp_interval_us, expected.sequence_timestamp_interval_us)
+        self.assertEqual(reader.generic_meta_data, expected.generic_meta_data)
+        self.assertEqual(reader.component_store_paths, expected.component_store_paths)
+        poses, expected_poses = (r.open_component_readers(PosesComponent.Reader) for r in (reader, expected))
+        self.assertEqual(sorted(poses), sorted(expected_poses))
+        for name, poses_reader in poses.items():
+            self.assertEqual(
+                [(edge, pose.tolist()) for edge, pose in poses_reader.get_static_poses()],
+                [(edge, pose.tolist()) for edge, pose in expected_poses[name].get_static_poses()],
+            )
+
+    def test_open_async(self):
+        """Asynchronous opening: the same reader, with one request per store (the consolidated metadata is part of the
+        tail read) and without blocking reads"""
+        paths = [self._remote(path) for path in self.store_paths]
+        expected = SequenceComponentGroupsReader(paths)
+        RemoteFileSystem.all_requests = []
+        with self._no_blocking_requests():
+            reader = asyncio.run(SequenceComponentGroupsReader.open_async(paths))
+        self.assertEqual(
+            sorted(unpack_optional(RemoteFileSystem.all_requests)),
+            sorted(("cat", path.name) for path in self.store_paths),
+        )
+        self._assert_same_reader(reader, expected)
+
+    def test_open_async_consolidated_metadata_outside_of_the_tail_read(self):
+        """The consolidated metadata record is fetched asynchronously when opening, if it's not part of the tail read"""
+        paths = [self._remote(path) for path in self.store_paths]
+        RemoteFileSystem.all_requests = []
+        with self._no_blocking_requests():
+            reader = asyncio.run(SequenceComponentGroupsReader.open_async(paths, itar_index_tail_read_size=512))
+        # (the index and the consolidated metadata record of each store)
+        self.assertEqual(len(unpack_optional(RemoteFileSystem.all_requests)), 3 * len(self.store_paths))
+        self._assert_same_reader(reader, SequenceComponentGroupsReader(paths))
+
+    def test_open_async_local_and_directory_stores(self):
+        expected = SequenceComponentGroupsReader(self.store_paths)
+        self._assert_same_reader(asyncio.run(SequenceComponentGroupsReader.open_async(self.store_paths)), expected)
+        directory = UPath(self._tmp.name) / "directory"
+        writer = SequenceComponentGroupsWriter(
+            output_dir_path=directory,
+            store_base_name="seq",
+            sequence_id="seq",
+            sequence_timestamp_interval_us=HalfClosedInterval(0, 10_000_001),
+            generic_meta_data={},
+            store_type="directory",
+        )
+        writer.register_component_writer(PosesComponent.Writer, "a", "poses_a").store_static_pose(
+            "x", "y", np.eye(4, dtype=np.float32)
+        )
+        directory_paths = writer.finalize()
+        self._assert_same_reader(
+            asyncio.run(SequenceComponentGroupsReader.open_async(directory_paths)),
+            SequenceComponentGroupsReader(directory_paths),
+        )
+
+    def test_open_async_max_concurrent_requests(self):
+        """At most `max_concurrent_requests` stores are opened at once: per reader, or shared via a semaphore"""
+        paths = [self._remote(path) for path in self.store_paths]
+
+        async def open_all(limit: Any, sequences: int) -> List[SequenceComponentGroupsReader]:
+            return list(
+                await asyncio.gather(
+                    *(
+                        SequenceComponentGroupsReader.open_async(paths, max_concurrent_requests=limit)
+                        for _ in range(sequences)
+                    )
+                )
+            )
+
+        in_flight, max_in_flight = 0, 0
+        open_async = IndexedTarArchive.open_async
+
+        async def counting_open_async(*args: Any, **kwargs: Any) -> IndexedTarArchive:
+            nonlocal in_flight, max_in_flight
+            in_flight += 1
+            max_in_flight = max(max_in_flight, in_flight)
+            try:
+                await asyncio.sleep(0.01)
+                return await open_async(*args, **kwargs)
+            finally:
+                in_flight -= 1
+
+        for limit, sequences, expected_max in ((1, 1, 1), (2, 1, 2), (None, 1, 3), (None, 4, 12)):
+            with self.subTest(limit=limit, sequences=sequences):
+                max_in_flight = 0
+                with mock.patch.object(IndexedTarArchive, "open_async", side_effect=counting_open_async):
+                    readers = asyncio.run(open_all(limit, sequences))
+                self.assertEqual(max_in_flight, expected_max)
+                self.assertEqual(len(readers), sequences)
+
+        async def open_shared(sequences: int) -> List[SequenceComponentGroupsReader]:
+            return await open_all(asyncio.Semaphore(2), sequences)  # (a semaphore shared by all sequences)
+
+        max_in_flight = 0
+        with mock.patch.object(IndexedTarArchive, "open_async", side_effect=counting_open_async):
+            self.assertEqual(len(asyncio.run(open_shared(4))), 4)
+        self.assertEqual(max_in_flight, 2)
+
+        with self.assertRaises(ValueError):
+            asyncio.run(SequenceComponentGroupsReader.open_async(paths, max_concurrent_requests=0))
+
+    def test_open_async_errors(self):
+        with self.assertRaises(FileNotFoundError):
+            asyncio.run(
+                SequenceComponentGroupsReader.open_async([self._remote(UPath(self._tmp.name) / "missing.zarr.itar")])
+            )
+        with self.assertRaisesRegex(RuntimeError, "loaded multiple times"):
+            asyncio.run(SequenceComponentGroupsReader.open_async([self._remote(self.store_paths[0])] * 2))
 
 
 class TestReaderNodeCaches(unittest.TestCase):

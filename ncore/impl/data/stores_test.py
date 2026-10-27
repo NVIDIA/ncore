@@ -1498,6 +1498,72 @@ class TestRemoteOpening(unittest.TestCase):
         with self.assertRaises(ValueError):
             archive.read("record000")
 
+    def test_open_async(self):
+        """Asynchronous opening: the same index and tail with the same requests, records of `prefetch_keys` fetched
+        concurrently and served from memory"""
+        for tail_read_size in (None, tarfile.BLOCKSIZE * 8, 1 << 20):
+            with self.subTest(tail_read_size=tail_read_size):
+                path = UPath(f"{RemoteFileSystem.protocol}://{self.path}")
+                RemoteFileSystem.all_requests = []
+                try:
+                    # (no blocking opening or index load, e.g. on a worker thread waiting for the requests)
+                    with mock.patch.object(IndexedTarArchive, "__init__", side_effect=AssertionError("blocking open")):
+                        with mock.patch.object(
+                            itar._RemoteSource, "load_index", side_effect=AssertionError("blocking index load")
+                        ):
+                            archive = asyncio.run(
+                                IndexedTarArchive.open_async(path, index_tail_read_size=tail_read_size)
+                            )
+                    requests = list(RemoteFileSystem.all_requests)
+                finally:
+                    RemoteFileSystem.all_requests = None
+                expected, expected_fs = self._open(index_tail_read_size=tail_read_size)
+                self.assertEqual(
+                    (_index(archive).records, _index(archive).tail), (_index(expected).records, _index(expected).tail)
+                )
+                # (the requests of synchronous opening: one range request if the index lies within the tail read, else
+                # two, no file object)
+                self.assertEqual([kind for kind, _ in requests], [call[0] for call in expected_fs.calls])
+                self.assertEqual([kind for kind, _ in requests], ["cat"] * (2 if tail_read_size is None else 1))
+                self._assert_records(archive)
+
+        archive = asyncio.run(
+            IndexedTarArchive.open_async(
+                UPath(f"{RemoteFileSystem.protocol}://{self.path}"),
+                index_tail_read_size=None,
+                prefetch_keys=("record000", "record001", "missing"),
+            )
+        )
+        self.assertEqual(sorted(_index(archive)._prefetched), ["record000", "record001"])
+        RemoteFileSystem.all_requests = []
+        try:
+            self.assertEqual(archive.read("record000"), self.records["record000"])
+            self.assertEqual(asyncio.run(archive.read_async("record001")), self.records["record001"])
+            self.assertEqual(RemoteFileSystem.all_requests, [])  # (served from memory)
+            # (single-use: not held in memory anymore, read again from the archive)
+            self.assertEqual(_index(archive)._prefetched, {})
+            self.assertEqual(archive.read("record000"), self.records["record000"])
+            self.assertIsNone(
+                _index(archive).in_memory(_index(archive).records["record000"])
+            )  # (tail: last block only)
+            self.assertEqual(len(RemoteFileSystem.all_requests), 1)
+        finally:
+            RemoteFileSystem.all_requests = None
+
+    def test_open_async_local(self):
+        """Local archives are opened synchronously on a worker thread (positional reads)"""
+        archive = asyncio.run(IndexedTarArchive.open_async(self.path, index_tail_read_size=None))
+        self.assertFalse(archive.is_remote)
+        with mock.patch("os.pread", side_effect=os.pread) as pread:
+            self._assert_records(archive)
+        self.assertGreater(pread.call_count, 0)
+
+    def test_open_async_errors(self):
+        with self.assertRaises(FileNotFoundError):
+            asyncio.run(IndexedTarArchive.open_async(UPath(f"{RemoteFileSystem.protocol}://{self._tmp.name}/x.itar")))
+        with self.assertRaises(FileNotFoundError):
+            asyncio.run(IndexedTarArchive.open_async(os.path.join(self._tmp.name, "x.itar")))
+
     def test_errors(self):
         with self.assertRaises(FileNotFoundError):
             IndexedTarArchive(UPath(f"{RemoteFileSystem.protocol}://{self._tmp.name}/missing.itar"))
