@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Optional, Protocol, Union, cast
+from typing import Callable, Literal, Optional, Protocol, Tuple, Union, cast
 
 import numpy as np
 import torch
@@ -154,6 +154,124 @@ def eval_poly_inverse_horner_newton(
         x_iter.append(x_iter[i] - residuals / dfdx)
 
     return x_iter[newton_iterations]
+
+
+#: Maximum number of plain Newton iterations before falling back to bracketed iterations in
+#: eval_inverse_newton_bracketed (sufficient for good starting points up to float64 precision)
+_PLAIN_NEWTON_ITERATIONS = 8
+
+
+def _inverse_newton_bracketed_iterations(
+    eval_function_and_derivative: Callable[[torch.Tensor], Tuple[torch.Tensor, torch.Tensor]],
+    x: torch.Tensor,
+    y: torch.Tensor,
+    x_max: float,
+    max_iterations: int,
+    tolerance: float,
+) -> torch.Tensor:
+    """Bracketed Newton iterations for points y < f(x_max) of a function f that is increasing on [0, x_max]
+
+    A Newton step is only taken if it stays within the bracket [lower, upper] around the root, which is narrowed
+    in every iteration, and if it at least halves the previous step (as in Numerical Recipes' rtsafe), otherwise
+    the bracket is bisected. This converges for any starting point x and never leaves [0, x_max]."""
+
+    lower = torch.zeros_like(y)
+    upper = torch.full_like(y, x_max)
+    x = torch.where((x > lower) & (x < upper), x, 0.5 * upper)
+    previous_step = upper.clone()
+    converged = torch.zeros_like(y, dtype=torch.bool)
+
+    for _ in range(max_iterations):
+        f, df = eval_function_and_derivative(x)
+        residual = f - y
+        newton_step = residual / df
+
+        # f is increasing on the bracket, so the residual's sign tells on which side of x the root is
+        lower = torch.where(residual < 0, x, lower)
+        upper = torch.where(residual > 0, x, upper)
+
+        # Converged once the Newton correction or the bracket is below the tolerance (the latter if rounding errors
+        # in the residual prevent the former)
+        converged = converged | (newton_step.abs() <= tolerance) | (upper - lower <= tolerance)
+        if bool(converged.all()):
+            break
+
+        x_newton = x - newton_step
+        use_newton = (x_newton > lower) & (x_newton < upper) & (2.0 * newton_step.abs() <= previous_step)
+        x_next = torch.where(converged, x, torch.where(use_newton, x_newton, 0.5 * (lower + upper)))
+        previous_step = (x_next - x).abs()
+        x = x_next
+
+    return x
+
+
+def eval_inverse_newton_bracketed(
+    eval_function_and_derivative: Callable[[torch.Tensor], Tuple[torch.Tensor, torch.Tensor]],
+    x_init: torch.Tensor,
+    y: torch.Tensor,
+    x_max: float,
+    max_iterations: int,
+) -> torch.Tensor:
+    """Evaluates the inverse x = f^{-1}(y) of a function y=f(x) that is increasing on [0, x_max]
+
+    eval_function_and_derivative evaluates f(x) and df/dx(x), x_init are approximate solutions to start from.
+
+    Plain Newton iterations are used first, which converge in a few iterations for good starting points. Points
+    for which they don't converge to a solution in [0, x_max] (e.g., as a starting point is close to a stationary
+    point of f) are solved by safeguarded Newton iterations within a bracket around the root, which converge for
+    any starting point. Iterations stop early once all points converged, so max_iterations is an upper bound.
+
+    Points with y >= f(x_max) have no inverse on [0, x_max] and evaluate to x_max.
+
+    Gradients are the ones of the exact inverse (dx/dy = 1 / f'(x) by implicit differentiation, analogously for
+    parameters of f) and do not depend on the iterations taken.
+    """
+
+    assert max_iterations >= 0, "Iteration number needs to be non-negative"
+
+    y_max, _ = eval_function_and_derivative(torch.tensor(x_max, device=y.device, dtype=y.dtype))
+    beyond_max = y >= y_max
+
+    # Absolute tolerance at the floating-point resolution of the solution
+    tolerance = 4.0 * torch.finfo(y.dtype).eps * max(1.0, x_max)
+
+    with torch.no_grad():
+        y_target = y.detach()
+
+        # Plain Newton iterations (limited, as they only pay off for good starting points)
+        x = x_init.detach()
+        newton_step = torch.full_like(x, torch.inf)
+        for _ in range(min(max_iterations, _PLAIN_NEWTON_ITERATIONS)):
+            f, df = eval_function_and_derivative(x)
+            newton_step = (f - y_target) / df
+            x = x - newton_step
+            if bool((newton_step.abs() <= tolerance).all()):
+                break
+
+        # f is increasing on [0, x_max], so a converged solution within it is the unique root. Bracketed iterations
+        # (restarting from the initial approximation) are only required for the remaining points with an inverse
+        converged = (newton_step.abs() <= tolerance) & (x >= 0) & (x <= x_max)
+        remaining = torch.nonzero((~converged & (y_target < y_max)).flatten()).flatten()
+        if remaining.numel() > 0:
+            x = x.clone()
+            x.view(-1)[remaining] = _inverse_newton_bracketed_iterations(
+                eval_function_and_derivative,
+                x_init.detach().reshape(-1)[remaining],
+                y_target.reshape(-1)[remaining],
+                x_max,
+                max_iterations,
+                tolerance,
+            )
+
+    if torch.is_grad_enabled():
+        # Newton update relative to the (detached) solution: this keeps its value but makes gradients the ones of
+        # the exact inverse (the derivative is replaced for points without an inverse, as they would otherwise
+        # propagate NaN gradients through torch.where)
+        f, df = eval_function_and_derivative(x)
+        residual = f - y
+        x = x - (residual - residual.detach()) / torch.where(beyond_max, torch.ones_like(df), df)
+
+    return torch.where(beyond_max, torch.full_like(x, x_max), x)
 
 
 def rotmat_to_unitquat(R: torch.Tensor) -> torch.Tensor:
