@@ -27,6 +27,8 @@ Key Components:
     - CameraSensorProtocol: Camera-specific extensions
     - RayBundleSensorProtocol: Ray bundle sensor interface (lidar/radar)
     - LidarSensorProtocol: Lidar-specific extensions
+    - Async*Protocol (e.g. AsyncSequenceLoaderProtocol): the synchronous protocols plus asynchronous reads of sensor
+      data (``*_async``), implemented by loaders with asynchronous reads (V4)
 
 The compatibility layer handles differences between different NCore data formats including:
     - Different storage mechanisms (shards vs. components)
@@ -52,7 +54,7 @@ Example:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Protocol, Tuple, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Protocol, Sequence, Tuple, Union, cast
 
 import numpy as np
 import PIL.Image as PILImage
@@ -183,7 +185,7 @@ class SequenceLoaderProtocol(Protocol):
         camera_id: str,
         label_type: Optional[LabelType] = None,
         label_category: Optional[LabelCategory] = None,
-    ) -> List[CameraLabelsProtocol]:
+    ) -> Sequence[CameraLabelsProtocol]:
         """Query camera label instances matching filters.
 
         Parameters
@@ -904,4 +906,196 @@ class CameraLabelsProtocol(Protocol):
 
     def get_label(self, timestamp_us: int) -> CameraLabelHandleProtocol:
         """Return a lazy handle to the label data at the given timestamp."""
+        ...
+
+
+# Asynchronous protocols
+#
+# Each asynchronous protocol extends its synchronous protocol: it provides the complete synchronous API (meta-data,
+# poses, timestamps, synchronous reads) plus asynchronous variants (``*_async``) of the methods reading data from
+# storage. Accessors returning other protocol types are narrowed to the asynchronous protocols, so a single
+# ``AsyncSequenceLoaderProtocol`` reference gives access to all sensors' asynchronous reads. Loaders without
+# asynchronous reads only implement the synchronous protocols.
+#
+# Decoding (e.g., of images) is not part of the asynchronous APIs: it's CPU work, to be done where the caller sees
+# fit (e.g., a thread / process pool) on data read via the asynchronous APIs.
+
+
+@runtime_checkable
+class AsyncSensorProtocol(SensorProtocol, Protocol):
+    """A sensor with asynchronous reads of its data (see :class:`SensorProtocol` for the synchronous API)"""
+
+    async def get_frame_generic_data_async(self, frame_index: int, name: str) -> npt.NDArray[Any]:
+        """Returns generic frame-data for a specific frame and name, read asynchronously"""
+        ...
+
+
+@runtime_checkable
+class AsyncCameraSensorProtocol(AsyncSensorProtocol, CameraSensorProtocol, Protocol):
+    """A camera sensor with asynchronous reads of its data (see :class:`CameraSensorProtocol` for the synchronous API)"""
+
+    @runtime_checkable
+    class EncodedImageDataHandleProtocol(CameraSensorProtocol.EncodedImageDataHandleProtocol, Protocol):
+        """References encoded image data without loading it (synchronously or asynchronously)"""
+
+        async def get_data_async(self) -> EncodedImageData:
+            """Loads the referenced encoded image data to memory asynchronously"""
+            ...
+
+    def get_frame_handle(self, frame_index: int) -> AsyncCameraSensorProtocol.EncodedImageDataHandleProtocol:
+        """Returns a handle of the frame's encoded image data (loadable synchronously or asynchronously)"""
+        ...
+
+    async def get_frame_data_async(self, frame_index: int) -> EncodedImageData:
+        """Returns the frame's encoded image data, read asynchronously (decode it via
+        :meth:`EncodedImageData.get_decoded_image`, e.g., in a worker pool)"""
+        return await self.get_frame_handle(frame_index).get_data_async()
+
+    async def get_mask_images_async(self) -> Dict[str, PILImage.Image]:
+        """Returns all available named camera mask images, read asynchronously"""
+        ...
+
+
+@runtime_checkable
+class AsyncRayBundleSensorProtocol(AsyncSensorProtocol, RayBundleSensorProtocol, Protocol):
+    """A ray-bundle sensor with asynchronous reads of its data (see :class:`RayBundleSensorProtocol` for the
+    synchronous API)"""
+
+    async def get_frame_ray_bundle_direction_async(self, frame_index: int) -> npt.NDArray[np.float32]:
+        """Returns the per-ray directions for the ray-bundle for a specific frame [N,3], read asynchronously"""
+        ...
+
+    async def get_frame_ray_bundle_timestamp_us_async(self, frame_index: int) -> npt.NDArray[np.uint64]:
+        """Returns the per-ray timestamps for the ray-bundle for a specific frame [N,], read asynchronously"""
+        ...
+
+    async def get_frame_ray_bundle_return_distance_m_async(
+        self, frame_index: int, return_index: int = 0
+    ) -> npt.NDArray[np.float32]:
+        """Returns the per-ray measured metric distances for the ray bundle returns of a specific frame [N,], read
+        asynchronously"""
+        ...
+
+    async def get_frame_ray_bundle_return_valid_mask_async(
+        self, frame_index: int, return_index: int = 0
+    ) -> npt.NDArray[np.bool_]:
+        """Returns the per-ray valid mask for the ray bundle returns of a specific frame [N], read asynchronously"""
+        ...
+
+    async def get_frame_point_cloud_async(
+        self,
+        frame_index: int,
+        motion_compensation: bool,
+        with_start_points: bool,
+        return_index: int = 0,
+    ) -> RayBundleSensorProtocol.FramePointCloud:
+        """Returns a frame point cloud like :meth:`RayBundleSensorProtocol.get_frame_point_cloud`, with its data read
+        asynchronously (concurrently)"""
+        ...
+
+
+@runtime_checkable
+class AsyncLidarSensorProtocol(AsyncRayBundleSensorProtocol, LidarSensorProtocol, Protocol):
+    """A lidar sensor with asynchronous reads of its data (see :class:`LidarSensorProtocol` for the synchronous API)"""
+
+    async def get_frame_ray_bundle_model_element_async(self, frame_index: int) -> Optional[npt.NDArray[np.uint16]]:
+        """Returns the per-ray model elements for a ray bundle for a specific frame [N,] (None if not available), read
+        asynchronously"""
+        ...
+
+    async def get_frame_ray_bundle_return_intensity_async(
+        self, frame_index: int, return_index: int = 0
+    ) -> npt.NDArray[np.float32]:
+        """Returns the per-ray measured intensities for a ray bundle return for a specific frame [N,], read
+        asynchronously"""
+        ...
+
+
+@runtime_checkable
+class AsyncRadarSensorProtocol(AsyncRayBundleSensorProtocol, RadarSensorProtocol, Protocol):
+    """A radar sensor with asynchronous reads of its data (see :class:`RadarSensorProtocol` for the synchronous API)"""
+
+    ...
+
+
+@runtime_checkable
+class AsyncPointCloudsSourceProtocol(PointCloudsSourceProtocol, Protocol):
+    """A point-clouds source with asynchronous reads of its data (see :class:`PointCloudsSourceProtocol` for the
+    synchronous API)"""
+
+    async def get_pc_async(self, pc_index: int) -> PointCloud:
+        """Returns the point cloud at *pc_index* like :meth:`PointCloudsSourceProtocol.get_pc`, with its points read
+        asynchronously (attributes are loaded lazily, as for :meth:`PointCloudsSourceProtocol.get_pc`)"""
+        ...
+
+    async def get_pc_generic_data_async(self, pc_index: int, name: str) -> npt.NDArray:
+        """Returns a generic data array by name for the given point cloud, read asynchronously"""
+        ...
+
+
+@runtime_checkable
+class AsyncCameraLabelsProtocol(CameraLabelsProtocol, Protocol):
+    """Camera labels with asynchronous reads of their data (see :class:`CameraLabelsProtocol` for the synchronous
+    API)"""
+
+    @runtime_checkable
+    class CameraLabelHandleProtocol(CameraLabelsProtocol.CameraLabelHandleProtocol, Protocol):
+        """A single camera label at a specific timestamp, loadable synchronously or asynchronously"""
+
+        async def get_data_async(self) -> npt.NDArray[Any]:
+            """Loads and returns the label data as a numpy array, read asynchronously"""
+            ...
+
+        async def get_encoded_data_async(self) -> Optional[bytes]:
+            """Returns raw encoded bytes for IMAGE_ENCODED labels (None for RAW labels), read asynchronously"""
+            ...
+
+    def get_label(self, timestamp_us: int) -> AsyncCameraLabelsProtocol.CameraLabelHandleProtocol:
+        """Return a lazy handle to the label data at the given timestamp (loadable synchronously or asynchronously)"""
+        ...
+
+
+@runtime_checkable
+class AsyncSequenceLoaderProtocol(SequenceLoaderProtocol, Protocol):
+    """A sequence loader whose sensors, point-clouds sources and camera labels support asynchronous reads of their data
+    (see :class:`SequenceLoaderProtocol` for the synchronous API).
+
+    Example:
+
+    .. code-block:: python
+
+        async def load_frames(loader: AsyncSequenceLoaderProtocol, camera_id: str, frame_indices: List[int]):
+            camera = loader.get_camera_sensor(camera_id)
+            return await asyncio.gather(*(camera.get_frame_data_async(i) for i in frame_indices))
+    """
+
+    def get_camera_sensor(self, sensor_id: str) -> AsyncCameraSensorProtocol:
+        """Returns a camera sensor instance (with asynchronous reads) for a given sensor id"""
+        ...
+
+    def get_lidar_sensor(self, sensor_id: str) -> AsyncLidarSensorProtocol:
+        """Returns a lidar sensor instance (with asynchronous reads) for a given sensor id"""
+        ...
+
+    def get_radar_sensor(self, sensor_id: str) -> AsyncRadarSensorProtocol:
+        """Returns a radar sensor instance (with asynchronous reads) for a given sensor id"""
+        ...
+
+    def get_point_clouds_source(self, source_id: str, *, return_index: int = 0) -> AsyncPointCloudsSourceProtocol:
+        """Returns a point-clouds source (with asynchronous reads) for a given source id (see
+        :meth:`SequenceLoaderProtocol.get_point_clouds_source`)"""
+        ...
+
+    def get_camera_labels(self, camera_label_id: str) -> AsyncCameraLabelsProtocol:
+        """Get a camera label instance (with asynchronous reads) by instance ID."""
+        ...
+
+    def query_camera_labels(
+        self,
+        camera_id: str,
+        label_type: Optional[LabelType] = None,
+        label_category: Optional[LabelCategory] = None,
+    ) -> Sequence[AsyncCameraLabelsProtocol]:
+        """Query camera label instances (with asynchronous reads) matching filters (see
+        :meth:`SequenceLoaderProtocol.query_camera_labels`)"""
         ...

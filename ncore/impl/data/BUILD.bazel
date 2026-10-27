@@ -94,6 +94,16 @@ py_library(
 )
 
 pytest_test(
+    name = "pytest_compat",
+    srcs = [
+        "compat_test.py",
+    ],
+    deps = [
+        ":pylib_compat",
+    ],
+)
+
+pytest_test(
     name = "pytest_util",
     srcs = [
         "util_test.py",

@@ -21,7 +21,7 @@ import dataclasses
 import functools
 import logging
 
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -217,7 +217,7 @@ class DataLoader:
         camera_id: str,
         label_type: Optional[LabelType] = None,
         label_category: Optional[LabelCategory] = None,
-    ) -> List[CameraLabelsProtocol]:
+    ) -> Sequence[CameraLabelsProtocol]:
         """Query camera label sources matching filters."""
         return self._loader.query_camera_labels(camera_id, label_type, label_category)
 
