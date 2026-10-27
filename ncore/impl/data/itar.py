@@ -23,6 +23,14 @@ them.
 Records are *write-once*: archives are append-only, and writing a record twice raises a ``ValueError``. The only
 exception are zarr node metadata records (see :func:`is_node_metadata_key`), which zarr-python 3 rewrites on every
 update of a node: they are kept in memory while writing and are appended (top-down) when closing the archive.
+
+Layout: the tar records, the tar end-of-archive blocks, the record index (padded to a tar block) and the index header
+(one tar block, the last block of the archive), see :class:`IndexFormat`.
+
+Implementation: :class:`IndexFormat` (de)serializes the index (no I/O), the record index of an opened archive
+(:class:`RecordIndex`) serves records held in memory, and the bytes of all other records come from a record source
+(:class:`_Source`, by the archive's location and mode): positional reads of local archives, range requests or a buffered
+file object of remote archives, the file being written. :class:`IndexedTarArchive` composes them.
 """
 
 from __future__ import annotations
@@ -40,7 +48,8 @@ from enum import IntEnum, unique
 from pathlib import Path
 from typing import IO, Any, Callable, ClassVar, Dict, Iterator, List, Literal, NamedTuple, Optional, Tuple, Union, cast
 
-from fsspec.asyn import AsyncFileSystem
+import fsspec.asyn
+
 from typing_extensions import Self
 from upath import UPath
 
@@ -58,6 +67,309 @@ NODE_METADATA_NAMES = (".zarray", ".zgroup", ".zattrs", "zarr.json")
 def is_node_metadata_key(key: str) -> bool:
     """True for keys of zarr node metadata records (zarr format v2 and v3)"""
     return key.rsplit("/", 1)[-1] in NODE_METADATA_NAMES
+
+
+# -------------------------------------------------------------------------------------------------------------------
+# Index format
+# -------------------------------------------------------------------------------------------------------------------
+
+
+class Record(NamedTuple):
+    """The payload of a record within the archive file"""
+
+    offset: int
+    size: int
+
+
+class TailBuffer(NamedTuple):
+    """Bytes read from the end of the archive file when loading the index"""
+
+    start: int  #: File offset of the first byte
+    data: bytes
+
+
+@unique
+class IndexType(IntEnum):
+    """Serialization formats of the record index"""
+
+    CBOR_LZMA_XZ_V1 = 1
+
+
+class IndexFormat:
+    """(De)serialization of the record index and its header (no I/O)"""
+
+    #: Index header (little-endian): magic (4 bytes), index type (uint32), index offset (uint64), index size (uint32)
+    HEADER_FORMAT: ClassVar[str] = "<4sIQI"
+    HEADER_MAGIC: ClassVar[bytes] = b"itar"
+
+    #: Index type of written archives
+    INDEX_TYPE: ClassVar[IndexType] = IndexType.CBOR_LZMA_XZ_V1
+
+    #: Decoders / encoders of the supported index types (the index is a structure of arrays: record keys, payload
+    #: offsets and payload sizes, ordered by payload offsets)
+    CODECS: ClassVar[Dict[IndexType, Tuple[Callable[[bytes], Any], Callable[[Any], bytes]]]] = {
+        IndexType.CBOR_LZMA_XZ_V1: (decode_cbor_xz, encode_cbor_xz),
+    }
+
+    class Location(NamedTuple):
+        """The location of the record index (from the index header in the last tar block)"""
+
+        index_type: IndexType
+        offset: int
+        size: int
+
+    @classmethod
+    def locate(cls, tail: TailBuffer) -> IndexFormat.Location:
+        """The location of the record index, from a tail read ending at the end of the archive"""
+        if len(tail.data) < tarfile.BLOCKSIZE:
+            raise ValueError("IndexedTarArchive: invalid index header, can't load indexed tar archive")
+        magic, index_type, offset, size = struct.unpack_from(
+            cls.HEADER_FORMAT, tail.data, len(tail.data) - tarfile.BLOCKSIZE
+        )
+        if magic != cls.HEADER_MAGIC:
+            raise ValueError("IndexedTarArchive: invalid index header, can't load indexed tar archive")
+        if index_type not in cls.CODECS:
+            raise TypeError(f"IndexedTarArchive: unsupported index type {index_type}")
+        return cls.Location(IndexType(index_type), offset, size)
+
+    @staticmethod
+    def index_in_tail(location: IndexFormat.Location, tail: TailBuffer) -> Optional[bytes]:
+        """The serialized index, if it lies within the tail read (None otherwise)"""
+        if location.offset < tail.start:
+            return None
+        start = location.offset - tail.start
+        return tail.data[start : start + location.size]
+
+    @classmethod
+    def decode(cls, location: IndexFormat.Location, index: bytes) -> Dict[str, Record]:
+        """The records of a serialized index (of the type and size of its location)"""
+        table = cls.CODECS[location.index_type][0](index)
+        _logger.debug(f"IndexedTarArchive: loaded index of {len(table['items'])} records ({location.size} bytes)")
+        return {
+            key: Record(offset, size)
+            for key, offset, size in zip(table["items"], table["offset_datas"], table["sizes"])
+        }
+
+    @classmethod
+    def encode(cls, records: Dict[str, Record], index_offset: int) -> Tuple[bytes, bytes]:
+        """The serialized index and its header (not padded) for an index stored at `index_offset`"""
+        table = sorted(((key, record.offset, record.size) for key, record in records.items()), key=lambda item: item[1])
+        keys, offsets, sizes = (list(column) for column in zip(*table)) if table else ([], [], [])
+        index = cls.CODECS[cls.INDEX_TYPE][1]({"items": keys, "offset_datas": offsets, "sizes": sizes})
+        return index, struct.pack(cls.HEADER_FORMAT, cls.HEADER_MAGIC, cls.INDEX_TYPE, index_offset, len(index))
+
+    @staticmethod
+    def tail_size(tail_read_size: Optional[int]) -> int:
+        """The size of tail reads (at least the index header block)"""
+        return max(tarfile.BLOCKSIZE, tail_read_size or 0)
+
+
+class RecordIndex:
+    """The records of an archive opened for reading, with the tail read of loading the index (records within it are
+    served from memory)"""
+
+    def __init__(self, records: Dict[str, Record], tail: TailBuffer) -> None:
+        """The records by key, and the tail read the index was loaded from (ending at the end of the archive)"""
+        self.records = records
+        self.tail = tail
+
+    def in_memory(self, record: Record) -> Optional[bytes]:
+        """The payload of a record held in memory (records of the tail read, empty records), None otherwise"""
+        if record.size == 0:
+            return b""
+        # (records end before the index, which ends the tail read: records starting within the tail read are part of it)
+        if record.offset >= self.tail.start:
+            start = record.offset - self.tail.start
+            return self.tail.data[start : start + record.size]
+        return None
+
+
+# -------------------------------------------------------------------------------------------------------------------
+# Record sources
+# -------------------------------------------------------------------------------------------------------------------
+
+
+class _Source:
+    """Reads byte ranges of an archive and owns its file resources: reads via the archive's (buffered) file object,
+    serialized by the lock (archives being written, which the writer appends to with the lock held, and archives of
+    filesystems without positional or range reads), see the subclasses for local and remote archives"""
+
+    def __init__(self, open_file: Callable[[bool], IO[bytes]], truncate: bool) -> None:
+        """Opens the archive's file object via `open_file` (truncating the file if requested: archives being written,
+        re-opened without truncation by :meth:`reload`)"""
+        self._open_file = open_file
+        self.file = open_file(truncate)
+        self.lock = threading.RLock()  # (shared with the writer: file object positions)
+
+    def read(self, offset: int, size: int) -> bytes:
+        """Reads a byte range (thread-safe)"""
+        with self.lock:
+            # restore the position afterwards (the position to append records to when writing)
+            position = self.file.tell()
+            self.file.seek(offset)
+            value = self.file.read(size)
+            self.file.seek(position)
+            return value
+
+    async def read_async(self, offset: int, size: int) -> bytes:
+        """Reads a byte range without blocking the running event loop (on a worker thread)"""
+        return await run_in_thread(self.read, offset, size)
+
+    def load_index(self, tail_read_size: Optional[int]) -> RecordIndex:
+        """Loads the record index from the end of the archive (with a single read if the index lies within the tail
+        read)"""
+        with self.lock:
+            file_size = self.file.seek(0, os.SEEK_END)
+            tail_size = min(file_size, IndexFormat.tail_size(tail_read_size))
+            self.file.seek(file_size - tail_size)
+            tail = TailBuffer(file_size - tail_size, self.file.read(tail_size))
+            location = IndexFormat.locate(tail)
+            if (index := IndexFormat.index_in_tail(location, tail)) is None:
+                self.file.seek(location.offset)
+                index = self.file.read(location.size)
+            return RecordIndex(IndexFormat.decode(location, index), tail)
+
+    def reload(self) -> None:
+        """Re-opens the file resources (e.g., in a forked process)"""
+        with self.lock:
+            position = self.file.tell()
+            self.file.close()
+            self.file = self._open_file(False)
+            self.file.seek(position)
+
+    def close(self) -> None:
+        """Releases the file resources"""
+        with self.lock:
+            self.file.close()
+
+
+class _LocalSource(_Source):
+    """Reads a local archive via positional reads (``os.pread``, not serialized) of a file descriptor (closed with the
+    source, or when the source is garbage-collected), and loads its index via the file object"""
+
+    def __init__(self, path: str, open_file: Callable[[bool], IO[bytes]]) -> None:
+        """Opens the file object (via `open_file`) and the file descriptor of the archive at the local `path`"""
+        super().__init__(open_file, truncate=False)
+        self._path = path
+        self._open_fd()
+
+    def _open_fd(self) -> None:
+        """Opens the file descriptor for positional reads (closed by the finalizer: on close, reload, or when the source
+        is garbage-collected)"""
+        self.fd = os.open(self._path, os.O_RDONLY)
+        self._fd_finalizer = weakref.finalize(self, os.close, self.fd)
+
+    def read(self, offset: int, size: int) -> bytes:
+        """Reads a byte range via positional reads (thread-safe, not serialized)"""
+        value = os.pread(self.fd, size, offset)
+        while len(value) < size:  # positional reads may return fewer bytes than requested
+            if not (chunk := os.pread(self.fd, size - len(value), offset + len(value))):
+                raise EOFError(f"IndexedTarArchive: archive ends within record at offset {offset}")
+            value += chunk
+        return value
+
+    def reload(self) -> None:
+        """Re-opens the file object and the file descriptor"""
+        super().reload()
+        self._fd_finalizer()
+        self._open_fd()
+
+    def close(self) -> None:
+        """Closes the file object and the file descriptor"""
+        super().close()
+        self._fd_finalizer()
+
+
+class _RemoteSource(_Source):
+    """Reads a remote archive (on an asynchronous fsspec filesystem): asynchronously via range requests, synchronously
+    via range requests (``remote_range_reads``) or the buffered file object"""
+
+    def __init__(
+        self, fs: fsspec.asyn.AsyncFileSystem, path: str, open_file: Callable[[bool], IO[bytes]], range_reads: bool
+    ) -> None:
+        """A source of the archive at `path` of the filesystem `fs` (synchronous range reads if `range_reads`), opening
+        the buffered file object via `open_file`"""
+        super().__init__(open_file, truncate=False)
+        self.fs = fs
+        self._path = path
+        self.range_reads = range_reads
+
+    def read(self, offset: int, size: int) -> bytes:
+        """Reads a byte range synchronously: via a range request (``remote_range_reads``, concurrent for multiple
+        threads), or via the buffered file object (serialized)"""
+        if self.range_reads:
+            # (an exact range request on the filesystem's I/O loop, concurrent with those of other threads)
+            return self.fs.cat_file(self._path, start=offset, end=offset + size)
+        return super().read(offset, size)
+
+    async def read_async(self, offset: int, size: int) -> bytes:
+        """Reads a byte range via an asynchronous range request (concurrent reads overlap)"""
+        # (`_cat_file` is the coroutine asynchronous fsspec filesystems implement, `cat_file` its synchronous wrapper)
+        request = self.fs._cat_file(self._path, start=offset, end=offset + size)
+        if (fs_loop := self.fs.loop) is None or fs_loop is asyncio.get_running_loop():
+            return await request
+        # (filesystems are bound to fsspec's I/O event loop, their sessions can't be used on other event loops)
+        return await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(request, fs_loop))
+
+
+# -------------------------------------------------------------------------------------------------------------------
+# Writing
+# -------------------------------------------------------------------------------------------------------------------
+
+
+class _Writer:
+    """Appends records to an archive opened for writing, via the file object of its source (not thread-safe: used with
+    the source's lock held, which serializes reads of the file object with appends)"""
+
+    def __init__(self, source: _Source) -> None:
+        """A writer appending to the file object of `source` (truncated, opened for writing)"""
+        self._source = source
+        self._tar_file = tarfile.TarFile(fileobj=source.file, mode="w")
+        self.records: Dict[str, Record] = {}
+        #: Node metadata records, held in memory until closing (rewritable, see the module documentation)
+        self.node_metadata: Dict[str, bytes] = {}
+
+    def append(self, key: str, payload: bytes) -> None:
+        """Appends a record (a tar member) to the archive"""
+        # the header of a record can span multiple tar blocks (long keys), the payload is padded to full blocks
+        info = tarfile.TarInfo(key)
+        info.size = len(payload)
+        self._tar_file.addfile(info, fileobj=io.BytesIO(payload))
+        padded_size = -(-len(payload) // tarfile.BLOCKSIZE) * tarfile.BLOCKSIZE
+        self.records[key] = Record(self._source.file.tell() - padded_size, len(payload))
+
+    def reload(self) -> None:
+        """Appends to the source's re-opened file object (after :meth:`_Source.reload`)"""
+        self._tar_file.fileobj = self._source.file
+
+    def finish(self) -> None:
+        """Appends the node metadata records, the tar end-of-archive blocks, the record index and its header"""
+        # (deterministic order independent of the order of node updates: parents before children)
+        node_metadata, self.node_metadata = self.node_metadata, {}
+        for key in sorted(node_metadata, key=lambda key: (key.count("/"), key)):
+            self.append(key, node_metadata[key])
+        # closing the tar file appends the end-of-archive blocks, but keeps the file object open
+        self._tar_file.close()
+
+        file = self._source.file
+
+        def pad_to_block() -> None:
+            if remainder := file.tell() % tarfile.BLOCKSIZE:
+                file.write(tarfile.NUL * (tarfile.BLOCKSIZE - remainder))
+
+        index_offset = file.tell()
+        assert index_offset % tarfile.BLOCKSIZE == 0, "IndexedTarArchive: archive end not at a tar block boundary"
+        index, header = IndexFormat.encode(self.records, index_offset)
+        file.write(index)
+        pad_to_block()
+        file.write(header)
+        pad_to_block()
+        _logger.debug(f"IndexedTarArchive: saved index of {len(self.records)} records ({len(index)} bytes)")
+
+
+# -------------------------------------------------------------------------------------------------------------------
+# Archive
+# -------------------------------------------------------------------------------------------------------------------
 
 
 class IndexedTarArchive:
@@ -87,41 +399,11 @@ class IndexedTarArchive:
 
     Archives opened for writing need to be closed (``close()``, or by using the archive as context manager), which
     appends the node metadata records and the record index. Until then, node metadata records can be rewritten (see
-    the module documentation), and are served from memory.
+    the module documentation), and are served from memory. Closed archives release their file resources: records not
+    held in memory can't be read anymore.
 
     All methods are thread-safe.
     """
-
-    class Record(NamedTuple):
-        """The payload of a record within the archive file"""
-
-        offset: int
-        size: int
-
-    class TailBuffer(NamedTuple):
-        """Bytes read from the end of the archive file when loading the index"""
-
-        start: int  #: File offset of the first byte
-        data: bytes
-
-    @unique
-    class IndexType(IntEnum):
-        """Serialization formats of the record index"""
-
-        CBOR_LZMA_XZ_V1 = 1
-
-    #: Index header (little-endian): magic (4 bytes), index type (uint32), index offset (uint64), index size (uint32)
-    INDEX_HEADER_FORMAT: ClassVar[str] = "<4sIQI"
-    INDEX_HEADER_MAGIC: ClassVar[bytes] = b"itar"
-
-    #: Index type of written archives
-    INDEX_TYPE: ClassVar[IndexType] = IndexType.CBOR_LZMA_XZ_V1
-
-    #: Decoders / encoders of the supported index types (the index is a structure of arrays: record keys, payload
-    #: offsets and payload sizes, ordered by payload offsets)
-    INDEX_CODECS: ClassVar[Dict[IndexType, Tuple[Callable[[bytes], Any], Callable[[Any], bytes]]]] = {
-        IndexType.CBOR_LZMA_XZ_V1: (decode_cbor_xz, encode_cbor_xz),
-    }
 
     def __init__(
         self,
@@ -130,33 +412,37 @@ class IndexedTarArchive:
         index_tail_read_size: Optional[int] = 1 << 20,  # 1 MiB by default
         remote_range_reads: bool = False,
     ) -> None:
+        """Opens the archive (see the class documentation for the parameters): its record source by the archive's
+        location and mode, and for reading its record index"""
         if mode not in ("r", "w"):
             raise ValueError(f"IndexedTarArchive: unsupported mode {mode!r}, supported are 'r' and 'w'")
         self._mode: Literal["r", "w"] = mode
         self._remote_range_reads = remote_range_reads
+        self._itar_upath = _absolute_upath(itar_path)
+        self._closed = False
 
-        # convert str / Path to an absolute UPath (with the UPath-internal `file://` protocol for local files)
-        itar_upath = UPath(itar_path)
-        if itar_upath.protocol == "":
-            itar_upath = UPath("file://" + str(itar_upath))
-        self._itar_upath = itar_upath.absolute()
-
-        # the tarfile module isn't thread-safe: writing and file-object based reading are serialized
-        self._lock = threading.RLock()
-
-        self._records: Dict[str, IndexedTarArchive.Record] = {}
-        self._node_metadata: Dict[str, bytes] = {}  # (write mode, written when closing)
-        self._tail: Optional[IndexedTarArchive.TailBuffer] = None
-        self._tar_file: Optional[tarfile.TarFile] = None
-        self._file: IO[bytes] = self._open_file(truncate=True)
-        if mode == "r":
-            self._records, self._tail = self._load_index(self._file, index_tail_read_size)
+        self._writer: Optional[_Writer] = None
+        self._index: Optional[RecordIndex] = None
+        self._source: _Source
+        if mode == "w":
+            self._source = source = _Source(self._open_file, truncate=True)
+            self._writer = _Writer(source)
+            return
+        if self._itar_upath.protocol in ("file", "local") and hasattr(os, "pread"):
+            self._source = _LocalSource(self._itar_upath.path, self._open_file)
+        elif isinstance(fs := self._itar_upath.fs, fsspec.asyn.AsyncFileSystem):
+            self._source = _RemoteSource(fs, self._itar_upath.path, self._open_file, remote_range_reads)
         else:
-            self._tar_file = tarfile.TarFile(fileobj=self._file, mode="w")
+            self._source = _Source(self._open_file, truncate=False)
+        self._index = self._source.load_index(index_tail_read_size)
 
-        self._pread_fd: Optional[int] = None
-        self._pread_finalizer: Optional[weakref.finalize] = None
-        self._open_positional_reads()
+    def _open_file(self, truncate: bool) -> IO[bytes]:
+        """Opens the archive's file object (read-only for reading, readable and writable for writing)"""
+        if self._mode == "r":
+            return self._itar_upath.open("rb")
+        # writing requires a readable file (universal_pathlib <= 0.2.6, the last version supporting python 3.8,
+        # supports "wb+" / "rb+" without declaring them in its type annotations)
+        return self._itar_upath.open("wb+" if truncate else "rb+")
 
     @property
     def mode(self) -> Literal["r", "w"]:
@@ -167,6 +453,17 @@ class IndexedTarArchive:
     def itar_upath(self) -> UPath:
         """Absolute location of the archive"""
         return self._itar_upath
+
+    @property
+    def remote_range_reads(self) -> bool:
+        """True if synchronous reads of remote archives use exact range requests (see the class documentation)"""
+        return self._remote_range_reads
+
+    @property
+    def is_remote(self) -> bool:
+        """True for archives opened for reading on asynchronous fsspec filesystems (e.g., s3fs, gcsfs, http), whose
+        records are read via asynchronous range requests by :meth:`read_async`"""
+        return isinstance(self._source, _RemoteSource)
 
     def __eq__(self, value: object) -> bool:
         return isinstance(value, IndexedTarArchive) and (self._itar_upath, self._mode) == (
@@ -184,143 +481,103 @@ class IndexedTarArchive:
     # Records
     # -------------------------------------------------------------------------
 
+    @property
+    def _records(self) -> Dict[str, Record]:
+        """The records of the archive (written so far, or of the index)"""
+        return self._writer.records if self._writer is not None else cast(RecordIndex, self._index).records
+
+    def _node_metadata(self) -> Dict[str, bytes]:
+        """The node metadata records held in memory (archives opened for writing)"""
+        return self._writer.node_metadata if self._writer is not None else {}
+
     def keys(self) -> List[str]:
         """Returns the keys of all records (in archive order, followed by node metadata records that are written when
         closing the archive)"""
         with self._lock:
-            return list(self._records) + list(self._node_metadata)
+            return list(self._records) + list(self._node_metadata())
 
     def __iter__(self) -> Iterator[str]:
         return iter(self.keys())
 
     def __len__(self) -> int:
         with self._lock:
-            return len(self._records) + len(self._node_metadata)
+            return len(self._records) + len(self._node_metadata())
 
     def __contains__(self, key: object) -> bool:
         with self._lock:
-            return key in self._records or key in self._node_metadata
+            return key in self._records or key in self._node_metadata()
 
     def __getitem__(self, key: str) -> bytes:
         """The payload of a record (raises KeyError if it doesn't exist), see :meth:`read`"""
         return self.read(key)
 
     def read(self, key: str) -> bytes:
-        """Reads the payload of a record synchronously (raises KeyError if it doesn't exist).
+        """Reads the payload of a record synchronously (raises KeyError if it doesn't exist, ValueError if it has to be
+        read from a closed archive).
 
-        Records held in memory (node metadata records of archives opened for writing, records of the index tail read)
-        are returned directly, records of local archives are read via positional reads, records of remote archives via
-        the archive's buffered file object, or via exact range requests (see ``remote_range_reads``).
+        Records held in memory (node metadata records of archives opened for writing, records of the index tail read,
+        empty records) are returned directly, records of local archives are read via positional reads, records of
+        remote archives via the archive's buffered file object or via exact range requests (see
+        ``remote_range_reads``), all others via the archive's file object.
         """
-        if (value := self._node_metadata_record(key)) is not None:
-            return value
-        record = self._records[key]
-        if (value := self._in_memory(record)) is not None:
-            return value
-
-        if self._pread_fd is not None:
-            return self._pread(self._pread_fd, record.offset, record.size)
-
-        if self._remote_range_reads and (fs := self._async_fs()) is not None:
-            # (an exact range request on the filesystem's I/O loop, concurrent with those of other threads)
-            return fs.cat_file(self._itar_upath.path, start=record.offset, end=record.offset + record.size)
-
-        with self._lock:
-            # restore the position afterwards (the position to append records to when writing)
-            position = self._file.tell()
-            self._file.seek(record.offset)
-            value = self._file.read(record.size)
-            self._file.seek(position)
-            return value
-
-    def _node_metadata_record(self, key: str) -> Optional[bytes]:
-        """The payload of a node metadata record of an archive opened for writing (held in memory until the archive is
-        closed, not in the record index yet), None otherwise"""
-        if not self._node_metadata:
-            return None
-        with self._lock:
-            return self._node_metadata.get(key)
-
-    def _in_memory(self, record: IndexedTarArchive.Record) -> Optional[bytes]:
-        """The payload of a record held in memory (records of the index tail read, empty records), None otherwise"""
-        if record.size == 0:
-            return b""
-        # (records end before the index, which ends the tail read: records starting within the tail read are part of it)
-        if (tail := self._tail) is not None and record.offset >= tail.start:
-            start = record.offset - tail.start
-            return tail.data[start : start + record.size]
-        return None
-
-    @property
-    def remote_range_reads(self) -> bool:
-        """True if synchronous reads of remote archives use exact range requests (see the class documentation)"""
-        return self._remote_range_reads
-
-    @property
-    def is_remote(self) -> bool:
-        """True for archives opened for reading on asynchronous fsspec filesystems (e.g., s3fs, gcsfs, http), whose
-        records are read via asynchronous range requests by :meth:`read_async`"""
-        return self._async_fs() is not None
+        value = self._lookup(key)
+        return value if isinstance(value, bytes) else self._source.read(*value)
 
     async def read_async(self, key: str) -> bytes:
         """Reads the payload of a record asynchronously, without blocking the running event loop (raises KeyError if it
-        doesn't exist).
+        doesn't exist, ValueError if it has to be read from a closed archive).
 
         Records held in memory are returned directly (see :meth:`read`). Records of remote archives (see
         :attr:`is_remote`) are read via asynchronous range requests (concurrent reads overlap), records of all other
-        archives (e.g., local) by :meth:`read` on a worker thread.
+        archives (e.g., local) on a worker thread.
         """
-        if (value := self._node_metadata_record(key)) is not None:
-            return value
-        record = self._records[key]
-        if (value := self._in_memory(record)) is not None:
-            return value
-        if (fs := self._async_fs()) is None:
-            return await run_in_thread(self.read, key)
+        value = self._lookup(key)
+        return value if isinstance(value, bytes) else await self._source.read_async(*value)
 
-        # (`_cat_file` is the coroutine asynchronous fsspec filesystems implement, `cat_file` its synchronous wrapper)
-        request = fs._cat_file(self._itar_upath.path, start=record.offset, end=record.offset + record.size)
-        if (fs_loop := fs.loop) is None or fs_loop is asyncio.get_running_loop():
-            return await request
-        # (filesystems are bound to fsspec's I/O event loop, their sessions can't be used on other event loops)
-        return await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(request, fs_loop))
-
-    def _async_fs(self) -> Optional[AsyncFileSystem]:
-        """The asynchronous fsspec filesystem of remote archives opened for reading (None otherwise, e.g. for local
-        archives)"""
-        if self._mode != "r" or self._pread_fd is not None:
-            return None
-        fs = self._itar_upath.fs
-        return fs if isinstance(fs, AsyncFileSystem) else None
+    def _lookup(self, key: str) -> Union[bytes, Record]:
+        """The payload of a record held in memory, or the record to read from the source (raises KeyError if it doesn't
+        exist, ValueError if it has to be read from a closed archive, whose file resources are released: e.g., the file
+        descriptor of a closed local archive may have been reused for another file)"""
+        if self._writer is not None:
+            with self._lock:
+                if (value := self._writer.node_metadata.get(key)) is not None:
+                    return value
+                record = self._writer.records[key]
+            if record.size == 0:
+                return b""
+        else:
+            index = cast(RecordIndex, self._index)
+            record = index.records[key]
+            if (value := index.in_memory(record)) is not None:
+                return value
+        if self._closed:
+            raise ValueError("IndexedTarArchive: archive is closed")
+        return record
 
     def __setitem__(self, key: str, value: Union[bytes, bytearray, memoryview]) -> None:
         """Appends a record (requires write mode, raises ValueError if the record exists already). Node metadata
         records are appended when closing the archive (and can be rewritten until then)."""
-        if self._mode != "w":
+        if self._writer is None:
             raise ValueError("IndexedTarArchive: archive is opened for reading and doesn't support writing")
         payload = bytes(value)
 
         with self._lock:
-            if self._file.closed:
+            if self._closed:
                 raise ValueError("IndexedTarArchive: archive is closed")
             if is_node_metadata_key(key):
-                self._node_metadata[key] = payload
-                return
-            if key in self._records:
+                self._writer.node_metadata[key] = payload
+            elif key in self._writer.records:
                 raise ValueError(f"IndexedTarArchive: record {key} already exists, records are write-once")
-            self._append(key, payload)
-
-    def _append(self, key: str, payload: bytes) -> None:
-        """Appends a record to the archive (called with the lock held)"""
-        # the header of a record can span multiple tar blocks (long keys), the payload is padded to full blocks
-        info = tarfile.TarInfo(key)
-        info.size = len(payload)
-        cast(tarfile.TarFile, self._tar_file).addfile(info, fileobj=io.BytesIO(payload))
-        padded_size = -(-len(payload) // tarfile.BLOCKSIZE) * tarfile.BLOCKSIZE
-        self._records[key] = self.Record(self._file.tell() - padded_size, len(payload))
+            else:
+                self._writer.append(key, payload)
 
     def __delitem__(self, key: str) -> None:
         raise NotImplementedError("IndexedTarArchive: records can't be deleted")
+
+    @property
+    def _lock(self) -> threading.RLock:
+        """The lock of the archive's file object (writing, file object based reads)"""
+        return self._source.lock
 
     # -------------------------------------------------------------------------
     # Lifecycle
@@ -333,123 +590,29 @@ class IndexedTarArchive:
         self.close()
 
     def close(self) -> None:
-        """Closes the archive (when writing: appends the record index, which is required to read the archive)"""
+        """Closes the archive: when writing, appends the node metadata records and the record index (which is required
+        to read the archive), and releases the archive's file resources (records held in memory remain readable)"""
         with self._lock:
-            if self._file.closed:
+            if self._closed:
                 return
-            if self._mode == "w":
-                # (deterministic order independent of the order of node updates: parents before children)
-                node_metadata, self._node_metadata = self._node_metadata, {}
-                for key in sorted(node_metadata, key=lambda key: (key.count("/"), key)):
-                    self._append(key, node_metadata[key])
-                # closing the tar file appends the end-of-archive blocks, but keeps the file object open
-                cast(tarfile.TarFile, self._tar_file).close()
-                self._save_index(self._file, self._records)
-            self._file.close()
-            self._close_positional_reads()
+            self._closed = True
+            if self._writer is not None:
+                self._writer.finish()
+            self._source.close()
 
     def reload_resources(self) -> None:
-        """Re-opens the file objects (required in processes forked after opening the archive)"""
+        """Re-opens the file resources of the archive's record source (file object, file descriptor of local archives),
+        and lets the writer of archives opened for writing append to the re-opened file object (required in processes
+        forked after opening the archive)"""
         with self._lock:
-            position = self._file.tell()
-            self._file.close()
-            self._file = self._open_file(truncate=False)
-            self._file.seek(position)
-            if self._tar_file is not None:
-                self._tar_file.fileobj = self._file
-            self._close_positional_reads()
-            self._open_positional_reads()
+            self._source.reload()
+            if self._writer is not None:
+                self._writer.reload()
 
-    def _open_file(self, truncate: bool) -> IO[bytes]:
-        if self._mode == "r":
-            return self._itar_upath.open("rb")
-        # writing requires a readable file (universal_pathlib <= 0.2.6, the last version supporting python 3.8,
-        # supports "wb+" / "rb+" without declaring them in its type annotations)
-        return self._itar_upath.open("wb+" if truncate else "rb+")
 
-    def _open_positional_reads(self) -> None:
-        """Opens a file descriptor for positional reads of local archives opened for reading, which is closed with the
-        archive (or when the archive is garbage-collected)"""
-        if self._mode == "r" and self._itar_upath.protocol in ("file", "local") and hasattr(os, "pread"):
-            self._pread_fd = os.open(self._itar_upath.path, os.O_RDONLY)
-            self._pread_finalizer = weakref.finalize(self, os.close, self._pread_fd)
-
-    def _close_positional_reads(self) -> None:
-        if self._pread_finalizer is not None:
-            self._pread_finalizer()
-        self._pread_finalizer = None
-        self._pread_fd = None
-
-    # -------------------------------------------------------------------------
-    # Positional reads / index serialization
-    # -------------------------------------------------------------------------
-
-    @staticmethod
-    def _pread(fd: int, offset: int, size: int) -> bytes:
-        value = os.pread(fd, size, offset)
-        while len(value) < size:  # positional reads may return fewer bytes than requested
-            if not (chunk := os.pread(fd, size - len(value), offset + len(value))):
-                raise EOFError(f"IndexedTarArchive: archive ends within record at offset {offset}")
-            value += chunk
-        return value
-
-    @classmethod
-    def _load_index(
-        cls, file: IO[bytes], tail_read_size: Optional[int]
-    ) -> Tuple[Dict[str, IndexedTarArchive.Record], IndexedTarArchive.TailBuffer]:
-        """Loads the record index from the end of an archive file (with a single read if the index lies within the tail
-        read), and returns it together with the tail read"""
-        file.seek(0, os.SEEK_END)
-        file_size = file.tell()
-
-        tail_size = min(file_size, max(tarfile.BLOCKSIZE, tail_read_size or 0))
-        file.seek(file_size - tail_size)
-        tail = cls.TailBuffer(file_size - tail_size, file.read(tail_size))
-
-        # the index header is stored in the last tar block
-        header_offset = len(tail.data) - tarfile.BLOCKSIZE
-        magic, index_type, index_offset, index_size = struct.unpack_from(
-            cls.INDEX_HEADER_FORMAT, tail.data, header_offset
-        )
-        if magic != cls.INDEX_HEADER_MAGIC:
-            raise ValueError("IndexedTarArchive: invalid index header, can't load indexed tar archive")
-        if index_type not in cls.INDEX_CODECS:
-            raise TypeError(f"IndexedTarArchive: unsupported index type {index_type}")
-        decode_index = cls.INDEX_CODECS[cls.IndexType(index_type)][0]
-
-        if index_offset >= tail.start:
-            index = tail.data[index_offset - tail.start : index_offset - tail.start + index_size]
-        else:
-            file.seek(index_offset)
-            index = file.read(index_size)
-
-        table = decode_index(index)
-        _logger.debug(f"IndexedTarArchive: loaded index of {len(table['items'])} records ({index_size} bytes)")
-        records = {
-            key: cls.Record(offset, size)
-            for key, offset, size in zip(table["items"], table["offset_datas"], table["sizes"])
-        }
-        return records, tail
-
-    @classmethod
-    def _save_index(cls, file: IO[bytes], records: Dict[str, IndexedTarArchive.Record]) -> None:
-        """Appends the record index and its header to a finalized archive file (after the end-of-archive blocks)"""
-
-        def pad_to_block() -> None:
-            if remainder := file.tell() % tarfile.BLOCKSIZE:
-                file.write(tarfile.NUL * (tarfile.BLOCKSIZE - remainder))
-
-        index_offset = file.tell()
-        assert index_offset % tarfile.BLOCKSIZE == 0, "IndexedTarArchive: archive end not at a tar block boundary"
-
-        table = sorted(((key, record.offset, record.size) for key, record in records.items()), key=lambda item: item[1])
-        keys, offsets, sizes = (list(column) for column in zip(*table)) if table else ([], [], [])
-        index = cls.INDEX_CODECS[cls.INDEX_TYPE][1]({"items": keys, "offset_datas": offsets, "sizes": sizes})
-        file.write(index)
-        pad_to_block()
-
-        file.write(
-            struct.pack(cls.INDEX_HEADER_FORMAT, cls.INDEX_HEADER_MAGIC, cls.INDEX_TYPE, index_offset, len(index))
-        )
-        pad_to_block()
-        _logger.debug(f"IndexedTarArchive: saved index of {len(records)} records ({len(index)} bytes)")
+def _absolute_upath(itar_path: Union[str, Path, UPath]) -> UPath:
+    """An absolute UPath (with the UPath-internal `file://` protocol for local files)"""
+    itar_upath = UPath(itar_path)
+    if itar_upath.protocol == "":
+        itar_upath = UPath("file://" + str(itar_upath))
+    return itar_upath.absolute()
