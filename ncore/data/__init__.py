@@ -16,6 +16,14 @@
 """Package exposing methods related to NCore's basic data types and abstract APIs"""
 
 from ncore.impl.data.compat import (
+    AsyncCameraLabelsProtocol,
+    AsyncCameraSensorProtocol,
+    AsyncLidarSensorProtocol,
+    AsyncPointCloudsSourceProtocol,
+    AsyncRadarSensorProtocol,
+    AsyncRayBundleSensorProtocol,
+    AsyncSensorProtocol,
+    AsyncSequenceLoaderProtocol,
     CameraLabelsProtocol,
     CameraSensorProtocol,
     LidarSensorProtocol,
@@ -108,4 +116,13 @@ __all__ = [
     "PointCloudsSourceProtocol",
     "RayBundleSensorPointCloudsSourceAdapter",
     "CameraLabelsProtocol",
+    # asynchronous compat protocols
+    "AsyncSequenceLoaderProtocol",
+    "AsyncSensorProtocol",
+    "AsyncCameraSensorProtocol",
+    "AsyncRayBundleSensorProtocol",
+    "AsyncLidarSensorProtocol",
+    "AsyncRadarSensorProtocol",
+    "AsyncPointCloudsSourceProtocol",
+    "AsyncCameraLabelsProtocol",
 ]

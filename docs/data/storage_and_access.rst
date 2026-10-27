@@ -278,6 +278,39 @@ synchronously. Custom components can implement asynchronous accessors via
    the request latency for each record, and is likely slower than with the buffered file
    object (which serves nearby records from its cached blocks).
 
+.. _async_compat:
+
+Asynchronous Reads via the Compatibility Layer
+""""""""""""""""""""""""""""""""""""""""""""""
+
+The sequence-level compatibility protocols (``SequenceLoaderProtocol`` and its sensor,
+point-clouds and camera-label protocols) have asynchronous counterparts in
+``ncore.data``: ``AsyncSequenceLoaderProtocol``, ``AsyncCameraSensorProtocol``,
+``AsyncLidarSensorProtocol``, ``AsyncRadarSensorProtocol``,
+``AsyncPointCloudsSourceProtocol`` and ``AsyncCameraLabelsProtocol``. Each extends its
+synchronous protocol: it provides the complete synchronous API (metadata, poses,
+timestamps, synchronous reads) plus ``*_async`` variants of the methods reading data
+from storage (e.g. ``get_frame_data_async``, ``get_frame_point_cloud_async``,
+``get_pc_async``). Accessors return the asynchronous protocols (e.g.
+``AsyncSequenceLoaderProtocol.get_camera_sensor`` returns an
+``AsyncCameraSensorProtocol``), so a single loader reference serves synchronous and
+asynchronous code:
+
+.. code-block:: python
+
+   import asyncio
+
+   from ncore.data import AsyncSequenceLoaderProtocol
+
+   async def load_frames(loader: AsyncSequenceLoaderProtocol, camera_id: str, frame_indices):
+       camera = loader.get_camera_sensor(camera_id)
+       return await asyncio.gather(*(camera.get_frame_data_async(i) for i in frame_indices))
+
+Image decoding is not part of the asynchronous APIs: it's CPU work, which callers run
+where it suits them (e.g., in a thread or process pool) on the encoded data returned by
+``get_frame_data_async``. Loaders without asynchronous reads only implement the
+synchronous protocols; use ``isinstance(loader, AsyncSequenceLoaderProtocol)`` to check.
+
 .. _cloud_storage_access:
 
 Cloud and Remote Storage Access
