@@ -94,7 +94,7 @@ class LidarModel(BaseModel, ABC, Generic[LidarModelParametersT_co]):
         valid_flag: torch.Tensor
 
     @dataclass
-    class SensorRayReturn:
+    class SensorRaysReturn:
         """
         Contains
             - sensor rays [float] (n,3)
@@ -174,7 +174,7 @@ class LidarModel(BaseModel, ABC, Generic[LidarModelParametersT_co]):
         ...
 
     @abstractmethod
-    def sensor_angles_to_sensor_rays(self, sensor_angles: Union[torch.Tensor, np.ndarray]) -> SensorRayReturn:
+    def sensor_angles_to_sensor_rays(self, sensor_angles: Union[torch.Tensor, np.ndarray]) -> SensorRaysReturn:
         """Lidar model-specific implementation of elevation/azimuth angles to sensor rays"""
         ...
 
@@ -350,7 +350,7 @@ class RowOffsetStructuredSpinningLidarModel(
 
     def sensor_angles_to_sensor_rays(
         self, sensor_angles: Union[torch.Tensor, np.ndarray]
-    ) -> LidarModel.SensorRayReturn:
+    ) -> LidarModel.SensorRaysReturn:
         """Computes the sensor rays for elevation/azimuth angles."""
 
         # sensor_angles: N x 2 array of elevation and azimuth angles
@@ -365,7 +365,7 @@ class RowOffsetStructuredSpinningLidarModel(
         y = torch.sin(azimuths_rad) * cos_elevations
         z = torch.sin(elevations_rad)
 
-        return LidarModel.SensorRayReturn(
+        return LidarModel.SensorRaysReturn(
             sensor_rays=torch.stack([x, y, z], dim=-1), valid_flag=self._valid_sensor_angles(sensor_angles)
         )
 
