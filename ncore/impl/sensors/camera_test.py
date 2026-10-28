@@ -326,7 +326,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
             np.array(
                 ftheta_from_reference(camera, self.device, self.dtype)
                 .image_points_to_camera_rays(np.array(imagePoints2d, ndmin=2))
-                .cpu()
+                .camera_rays.cpu()
             ),
             np.array(rays3dExpected, ndmin=2),
         ):
@@ -405,7 +405,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
                 # Evaluate torch-camera
                 ray3d = camera_ftheta.image_points_to_camera_rays(
                     to_torch(expectedPoint2d, device=camera_ftheta.device, dtype=camera_ftheta.dtype)
-                )
+                ).camera_rays
 
                 # test that the computed rays of both cameras agree
                 self.assertLessEqual(np.linalg.norm(ray3d_ref - np.array(ray3d.cpu())).item(), MAX_DEVIATION_RAY)
@@ -459,7 +459,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
                 # Evaluate torch-camera
                 ray3d = camera_ftheta.image_points_to_camera_rays(
                     to_torch(expectedPoint2d, device=camera_ftheta.device, dtype=camera_ftheta.dtype)
-                )
+                ).camera_rays
 
                 with self.subTest(angle=np.degrees(np.arccos(ray3d.cpu()[0][2]))):
                     # Verify torch-camera's result
@@ -521,7 +521,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
                 # Evaluate torch-camera
                 ray3d = camera_ftheta.image_points_to_camera_rays(
                     to_torch(expectedPoint2d, device=camera_ftheta.device, dtype=camera_ftheta.dtype)
-                )
+                ).camera_rays
 
                 with self.subTest(angle=np.degrees(np.arccos(ray3d.cpu()[0][2]))):
                     # Verify torch-camera's result
@@ -586,8 +586,10 @@ class TestReferenceFThetaCamera(CommonTestCase):
         # Points to test
         pixel_idxs = np.random.default_rng(seed=0).choice(resolution - 1, (100, 2))
 
-        pixel_rays = ftheta_cam.pixels_to_camera_rays(pixel_idxs.astype(np.int32)).cpu()
-        image_point_rays = ftheta_cam.image_points_to_camera_rays((pixel_idxs + 0.5).astype(np.float32)).cpu()
+        pixel_rays = ftheta_cam.pixels_to_camera_rays(pixel_idxs.astype(np.int32)).camera_rays.cpu()
+        image_point_rays = ftheta_cam.image_points_to_camera_rays(
+            (pixel_idxs + 0.5).astype(np.float32)
+        ).camera_rays.cpu()
 
         self._compareVector(pixel_rays, image_point_rays)
 
@@ -601,7 +603,7 @@ class TestReferenceFThetaCamera(CommonTestCase):
         ftheta_cam = ftheta_from_reference(camera, self.device, self.dtype)
 
         def check(pixel_idxs: np.ndarray) -> None:
-            camera_rays = ftheta_cam.pixels_to_camera_rays(pixel_idxs.astype(np.int32)).cpu()
+            camera_rays = ftheta_cam.pixels_to_camera_rays(pixel_idxs.astype(np.int32))
 
             world_rays = ftheta_cam.pixels_to_world_rays_shutter_pose(
                 pixel_idxs=pixel_idxs,
@@ -818,7 +820,7 @@ class TestPinholeCamera(CommonTestCase):
                 # Verify torch-camera's result
                 ray3d = cam_model.image_points_to_camera_rays(
                     to_torch(expectedPoint2d, device=cam_model.device, dtype=cam_model.dtype)
-                )
+                ).camera_rays
                 image_points = cam_model.camera_rays_to_image_points(ray3d)
 
                 self.assertTrue(image_points.valid_flag)
@@ -1013,7 +1015,7 @@ class TestJacobian(CommonTestCase):
 
         rays3d = cam_model.image_points_to_camera_rays(
             torch.Tensor([[20, 40], [11, 12], [15, 20], [500, 500]])
-        )  # valid rays only
+        ).camera_rays  # valid rays only
 
         for ray3d in rays3d:
             pref, Jref = cam_model_ref.camera_ray_to_image_points(ray3d.cpu().numpy())
@@ -1153,7 +1155,7 @@ class TestJacobian(CommonTestCase):
 
             valid_rays3d = cam_model.image_points_to_camera_rays(
                 torch.Tensor([[20, 40], [11, 12], [15, 20], [500, 500]])
-            )  # valid rays
+            ).camera_rays  # valid rays
             self.assertLessEqual(
                 (torch.linalg.norm(valid_rays3d, axis=1, keepdims=True) - torch.ones_like(valid_rays3d[:, :1]))
                 .abs()
@@ -1239,7 +1241,7 @@ class TestFisheyeCamera(CommonTestCase):
         # make sure the principal point gets unprojected to the principal axis
         ray3d = self.cam_model.image_points_to_camera_rays(
             torch.from_numpy(self.cam_model_params.principal_point).reshape(1, 2)
-        )
+        ).camera_rays
 
         self.assertLessEqual(
             np.linalg.norm(ray3d.cpu().numpy() - np.array([0, 0, 1])).item(), self.MAX_DEVIATION_IN_RAY_COORDINATES
@@ -1286,7 +1288,7 @@ class TestFisheyeCamera(CommonTestCase):
 
                 ray3d = self.cam_model.image_points_to_camera_rays(
                     to_torch(expectedPoint2d, device=self.cam_model.device, dtype=self.dtype)
-                )
+                ).camera_rays
                 image_points = self.cam_model.camera_rays_to_image_points(ray3d)
 
                 if i > 0:
@@ -1366,7 +1368,9 @@ class TestFisheyeCameraInverse(CommonTestCase):
         image_points = np.stack(
             [principal_point[0] + radii * focal_length[0], np.full_like(radii, principal_point[1])], 1
         )
-        return cam_model.image_points_to_camera_rays(to_torch(image_points, device=self.device, dtype=self.dtype))
+        return cam_model.image_points_to_camera_rays(
+            to_torch(image_points, device=self.device, dtype=self.dtype)
+        ).camera_rays
 
     def _assert_angles(self, rays: torch.Tensor, expected_thetas: np.ndarray, atol: float):
         rays_np = rays.detach().cpu().numpy().astype(np.float64)
@@ -1394,7 +1398,7 @@ class TestFisheyeCameraInverse(CommonTestCase):
         radial_coeffs = [0.1, 0.2, 0.3, 0.4]
         cam_model = self._model(radial_coeffs, (960, 540), (960.0, 540.0), 1000.0, float(np.deg2rad(70.0)))
         pixels = np.stack(np.meshgrid(np.arange(960), np.arange(540), indexing="xy"), -1).reshape(-1, 2) + 0.5
-        rays = cam_model.image_points_to_camera_rays(to_torch(pixels, device=self.device, dtype=self.dtype))
+        rays = cam_model.image_points_to_camera_rays(to_torch(pixels, device=self.device, dtype=self.dtype)).camera_rays
         radii = np.linalg.norm((pixels - np.array([960.0, 540.0])) / 1000.0, axis=1)
         # r(theta) is increasing everywhere for positive coefficients
         self._assert_angles(rays, self._monotonic_inverse(radial_coeffs, radii, np.pi), self._angle_atol)
@@ -1427,7 +1431,7 @@ class TestFisheyeCameraInverse(CommonTestCase):
             [[960.0, 288.0], [832.0, 544.0], [700.0, 100.0]], device=self.device, dtype=self.dtype, requires_grad=True
         )
         weights = torch.tensor([[0.3, -0.7, 0.9], [-0.2, 0.6, 0.4], [0.5, 0.1, -0.8]], dtype=torch.float64)
-        rays = cam_model.image_points_to_camera_rays(image_points)
+        rays = cam_model.image_points_to_camera_rays(image_points).camera_rays
         (rays.double().cpu() * weights).sum().backward()
 
         # Reference: differentiate the closed-form inverse in float64
@@ -1444,6 +1448,249 @@ class TestFisheyeCameraInverse(CommonTestCase):
         torch.testing.assert_close(
             unpack_optional(image_points.grad).double().cpu(), unpack_optional(ref_points.grad), rtol=rtol, atol=rtol
         )
+
+
+@parameterized.parameterized_class(
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
+)
+class TestCameraRaysValidFlag(CommonTestCase):
+    """Valid flags of image-point unprojections: a ray is valid iff the model has a well-defined ray for the image
+    point within its calibrated field of view (independently of the image bounds)"""
+
+    device: torch.device
+    dtype: torch.dtype
+
+    def _image_points(self, points: List[List[float]]) -> torch.Tensor:
+        return torch.tensor(points, device=self.device, dtype=self.dtype)
+
+    def _assert_valid_flag(self, rays: CameraModel.CameraRaysReturn, expected: List[bool]):
+        self.assertEqual(rays.camera_rays.shape, (len(expected), 3))
+        self.assertEqual(rays.valid_flag.dtype, torch.bool)
+        self.assertEqual(rays.valid_flag.device.type, self.device.type)
+        self.assertEqual(rays.valid_flag.cpu().tolist(), expected)
+
+    def test_fisheye_valid_within_max_angle(self):
+        """Fisheye rays are valid strictly within max_angle, also beyond the image bounds, and invalid for
+        extrapolated rays beyond max_angle and boundary rays beyond the maximum of the polynomial"""
+
+        # r(theta) = theta - theta^3/3 is increasing up to theta = 1 (r = 2/3), max_angle = 0.8 corresponds to
+        # r = 0.6293 (403 pixels from the principal point at 640, 288)
+        cam_model = OpenCVFisheyeCameraModel(
+            OpenCVFisheyeCameraModelParameters(
+                resolution=np.array([1280, 576], dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array([640.0, 288.0], dtype=np.float32),
+                focal_length=np.array([640.0, 640.0], dtype=np.float32),
+                radial_coeffs=np.array([-1.0 / 3.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                max_angle=0.8,
+            ),
+            device=self.device,
+            dtype=self.dtype,
+        )
+        rays = cam_model.image_points_to_camera_rays(
+            self._image_points(
+                [
+                    [640.0, 288.0],  # principal point
+                    [640.0 + 0.5 * 640.0, 288.0],  # within max_angle
+                    [640.0, 288.0 + 0.6 * 640.0],  # within max_angle, outside of the image
+                    [640.0 + 0.65 * 640.0, 288.0],  # beyond max_angle, extrapolated
+                    [640.0 + 0.9 * 640.0, 288.0],  # beyond the maximum of the polynomial
+                ]
+            )
+        )
+        self._assert_valid_flag(rays, [True, True, True, False, False])
+
+    def test_ftheta_valid_within_max_angle(self):
+        """FTheta rays are valid strictly within max_angle"""
+
+        cam_model = FThetaCameraModel(
+            FThetaCameraModelParameters(
+                resolution=np.array([1000, 1000], dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array([499.5, 499.5], dtype=np.float32),
+                reference_poly=FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE,
+                pixeldist_to_angle_poly=np.array([0.0, 1e-3, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                angle_to_pixeldist_poly=np.array([0.0, 1e3, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                max_angle=0.6,
+                linear_cde=np.array([1.0, 0.0, 0.0], dtype=np.float32),
+            ),
+            device=self.device,
+            dtype=self.dtype,
+        )
+        # theta = 1e-3 * pixel distance from the principal point (at 500, 500 in image point coordinates)
+        rays = cam_model.image_points_to_camera_rays(
+            self._image_points([[500.0, 500.0], [800.0, 500.0], [500.0, 1050.0], [500.0, 1150.0]])
+        )
+        self._assert_valid_flag(rays, [True, True, True, False])
+
+    def test_ftheta_invalid_for_backward_inverse(self):
+        """FTheta rays are invalid if the inverse of the forward polynomial yields a negative angle"""
+
+        # angle_to_pixeldist = 1000*theta - 200*theta^3 has its maximum at theta = 1.29 (r = 860.7 pixels), beyond
+        # which the Newton-based inverse yields negative angles (backward-facing rays)
+        cam_model = FThetaCameraModel(
+            FThetaCameraModelParameters(
+                resolution=np.array([1000, 1000], dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array([499.5, 499.5], dtype=np.float32),
+                reference_poly=FThetaCameraModelParameters.PolynomialType.ANGLE_TO_PIXELDIST,
+                pixeldist_to_angle_poly=np.array([0.0, 1e-3, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                angle_to_pixeldist_poly=np.array([0.0, 1e3, 0.0, -200.0, 0.0, 0.0], dtype=np.float32),
+                max_angle=0.6,
+                linear_cde=np.array([1.0, 0.0, 0.0], dtype=np.float32),
+            ),
+            device=self.device,
+            dtype=self.dtype,
+        )
+        rays = cam_model.image_points_to_camera_rays(self._image_points([[500.0, 800.0], [500.0, 3000.0]]))
+        self.assertLess(float(rays.camera_rays[1, 2]), 0.0)
+        self._assert_valid_flag(rays, [True, False])
+
+    def test_camera_rays_to_image_points_combines_valid_flags(self):
+        """Projecting a CameraRaysReturn combines its valid flag with the validity of the projection, both for image
+        points and pixels, while plain ray tensors keep the projection's validity"""
+
+        cam_model = IdealPinholeCameraModel(
+            IdealPinholeCameraModelParameters(
+                resolution=np.array([640, 480], dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array([320.0, 240.0], dtype=np.float32),
+                focal_length=np.array([500.0, 500.0], dtype=np.float32),
+            ),
+            device=self.device,
+            dtype=self.dtype,
+        )
+        rays = torch.tensor([[0.0, 0.0, 1.0], [0.1, 0.0, 1.0], [5.0, 0.0, 1.0]], device=self.device, dtype=self.dtype)
+        expected_projection_valid = [True, True, False]  # the last ray projects outside of the image
+
+        self.assertEqual(
+            cam_model.camera_rays_to_image_points(rays).valid_flag.cpu().tolist(), expected_projection_valid
+        )
+
+        camera_rays = CameraModel.CameraRaysReturn(
+            camera_rays=rays, valid_flag=torch.tensor([False, True, True], device=self.device)
+        )
+        self.assertEqual(
+            cam_model.camera_rays_to_image_points(camera_rays).valid_flag.cpu().tolist(), [False, True, False]
+        )
+        self.assertEqual(cam_model.camera_rays_to_pixels(camera_rays).valid_flag.cpu().tolist(), [False, True, False])
+
+        # Jacobians are unaffected by the combination of the flags
+        with_jacobians = cam_model.camera_rays_to_image_points(camera_rays, return_jacobians=True)
+        self.assertIsNotNone(with_jacobians.jacobians)
+        self.assertEqual(with_jacobians.valid_flag.cpu().tolist(), [False, True, False])
+
+    def test_ideal_pinhole_always_valid(self):
+        """Ideal pinhole rays are valid for all image points"""
+
+        cam_model = IdealPinholeCameraModel(
+            IdealPinholeCameraModelParameters(
+                resolution=np.array([640, 480], dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array([320.0, 240.0], dtype=np.float32),
+                focal_length=np.array([500.0, 500.0], dtype=np.float32),
+            ),
+            device=self.device,
+            dtype=self.dtype,
+        )
+        rays = cam_model.image_points_to_camera_rays(self._image_points([[320.0, 240.0], [-1e4, 1e4]]))
+        self._assert_valid_flag(rays, [True, True])
+
+    def _opencv_pinhole(self, radial_coeffs: List[float]) -> OpenCVPinholeCameraModel:
+        return OpenCVPinholeCameraModel(
+            OpenCVPinholeCameraModelParameters(
+                resolution=np.array([640, 480], dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array([320.0, 240.0], dtype=np.float32),
+                focal_length=np.array([500.0, 500.0], dtype=np.float32),
+                radial_coeffs=np.array(radial_coeffs, dtype=np.float32),
+                tangential_coeffs=np.zeros(2, dtype=np.float32),
+                thin_prism_coeffs=np.zeros(4, dtype=np.float32),
+            ),
+            device=self.device,
+            dtype=self.dtype,
+        )
+
+    def test_opencv_pinhole_valid_if_undistortion_converges(self):
+        """OpenCV pinhole rays are valid iff the iterative undistortion of the image point converges"""
+
+        # Mild barrel distortion: the undistortion converges within the image and slightly beyond
+        rays = self._opencv_pinhole([-0.1, 0.0, 0.0, 0.0, 0.0, 0.0]).image_points_to_camera_rays(
+            self._image_points([[320.0, 240.0], [600.0, 400.0], [700.0, 500.0]])
+        )
+        self._assert_valid_flag(rays, [True, True, True])
+
+        # Strong pincushion distortion: the fixed-point undistortion diverges far from the principal point
+        rays = self._opencv_pinhole([2.0, 0.0, 0.0, 0.0, 0.0, 0.0]).image_points_to_camera_rays(
+            self._image_points([[320.0, 240.0], [330.0, 245.0], [2000.0, 2000.0]])
+        )
+        self._assert_valid_flag(rays, [True, True, False])
+
+    def test_distortion_free_opencv_pinhole_always_valid(self):
+        """Distortion-free OpenCV pinholes take the closed-form path and are valid for all image points"""
+
+        rays = self._opencv_pinhole([0.0] * 6).image_points_to_camera_rays(
+            self._image_points([[320.0, 240.0], [-1e4, 1e4]])
+        )
+        self._assert_valid_flag(rays, [True, True])
+
+    def test_pixels_and_world_rays_forward_valid_flag(self):
+        """pixels_to_camera_rays and all world-ray unprojections forward the valid flag of the camera rays,
+        including camera rays that are passed in"""
+
+        cam_model = OpenCVFisheyeCameraModel(
+            OpenCVFisheyeCameraModelParameters(
+                resolution=np.array([1280, 576], dtype=np.uint64),
+                shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
+                principal_point=np.array([640.0, 288.0], dtype=np.float32),
+                focal_length=np.array([640.0, 640.0], dtype=np.float32),
+                radial_coeffs=np.array([-1.0 / 3.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                max_angle=0.8,
+            ),
+            device=self.device,
+            dtype=self.dtype,
+        )
+        # Pixel 320 to the right of the principal point is within max_angle (r = 0.5), pixel 600 is beyond (r = 0.94)
+        pixel_idxs = torch.tensor([[640, 288], [960, 288], [1240, 288]], dtype=torch.int32, device=self.device)
+        expected = [True, True, False]
+
+        camera_rays = cam_model.pixels_to_camera_rays(pixel_idxs)
+        self._assert_valid_flag(camera_rays, expected)
+
+        T_start = torch.eye(4, device=self.device, dtype=self.dtype)
+        T_end = T_start.clone()
+        T_end[0, 3] = 1.0
+
+        for passed_camera_rays in (None, camera_rays):
+            for name, world_rays in (
+                (
+                    "static",
+                    cam_model.pixels_to_world_rays_static_pose(pixel_idxs, T_start, camera_rays=passed_camera_rays),
+                ),
+                (
+                    "mean",
+                    cam_model.pixels_to_world_rays_mean_pose(
+                        pixel_idxs, T_start, T_end, camera_rays=passed_camera_rays
+                    ),
+                ),
+                (
+                    "shutter",
+                    cam_model.pixels_to_world_rays_shutter_pose(
+                        pixel_idxs, T_start, T_end, camera_rays=passed_camera_rays
+                    ),
+                ),
+            ):
+                with self.subTest(pose=name, passed_camera_rays=passed_camera_rays is not None):
+                    self.assertEqual(world_rays.world_rays.shape, (3, 6))
+                    self.assertEqual(world_rays.valid_flag.cpu().tolist(), expected)
+
+        # The flag of passed camera rays is forwarded as is
+        passed = CameraModel.CameraRaysReturn(
+            camera_rays=camera_rays.camera_rays,
+            valid_flag=torch.tensor([False, True, True], device=self.device),
+        )
+        world_rays = cam_model.pixels_to_world_rays_shutter_pose(pixel_idxs, T_start, T_end, camera_rays=passed)
+        self.assertEqual(world_rays.valid_flag.cpu().tolist(), [False, True, True])
 
 
 class CameraModelsBaseTestCase(CommonTestCase):
@@ -1703,7 +1950,7 @@ class TestTransformParameters(CameraModelsBaseTestCase):
                                 )
 
                                 # Validate original image domain -> 3d -> transformed image domain round-trip
-                                ray3d = cam_model.image_points_to_camera_rays(IMAGE_POINTS)
+                                ray3d = cam_model.image_points_to_camera_rays(IMAGE_POINTS).camera_rays
                                 image_points_transformed = cam_model_transformed.camera_rays_to_image_points(ray3d)
 
                                 self.assertTrue(
@@ -1722,7 +1969,7 @@ class TestTransformParameters(CameraModelsBaseTestCase):
                                 # Validate transformed image-domain -> 3d -> untransformed image-domain round-trip
                                 ray3d_transformed = cam_model_transformed.image_points_to_camera_rays(
                                     image_points_transformed_ref
-                                )
+                                ).camera_rays
 
                                 image_points_untransformed = cam_model.camera_rays_to_image_points(ray3d_transformed)
 
@@ -2205,7 +2452,7 @@ class TestIdealPinholeCamera(CommonTestCase):
     def test_roundtrip(self):
         model = self._make_ideal()
         pixels = torch.tensor([[100, 80], [320, 240], [500, 400]], dtype=torch.int32, device=self.device)
-        rays = model.pixels_to_camera_rays(pixels)
+        rays = model.pixels_to_camera_rays(pixels).camera_rays
         result = model.camera_rays_to_pixels(rays)
         self.assertTrue(bool(result.valid_flag.all()))
         self._compareVector(result.pixels.cpu().numpy(), pixels.cpu().numpy())
@@ -2217,8 +2464,8 @@ class TestIdealPinholeCamera(CommonTestCase):
         image_points = ideal.pixels_to_image_points(
             torch.tensor([[100, 80], [320, 240], [500, 400]], dtype=torch.int32, device=self.device)
         )
-        rays_ideal = ideal.image_points_to_camera_rays(image_points)
-        rays_opencv = opencv.image_points_to_camera_rays(image_points)
+        rays_ideal = ideal.image_points_to_camera_rays(image_points).camera_rays
+        rays_opencv = opencv.image_points_to_camera_rays(image_points).camera_rays
         self.assertIsNone(
             np.testing.assert_array_almost_equal(rays_ideal.cpu().numpy(), rays_opencv.cpu().numpy(), decimal=5)
         )
@@ -2250,7 +2497,9 @@ class TestIdealPinholeCamera(CommonTestCase):
 
     def test_jacobian_path(self):
         model = self._make_ideal()
-        rays = model.pixels_to_camera_rays(torch.tensor([[100, 80], [320, 240]], dtype=torch.int32, device=self.device))
+        rays = model.pixels_to_camera_rays(
+            torch.tensor([[100, 80], [320, 240]], dtype=torch.int32, device=self.device)
+        ).camera_rays
         result = model.camera_rays_to_image_points(rays, return_jacobians=True)
         jacobians = result.jacobians
         self.assertIsNotNone(jacobians)

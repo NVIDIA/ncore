@@ -92,7 +92,8 @@ class Rectificator:
     def valid_mask(self) -> torch.Tensor:
         """Boolean mask of valid target pixels, shape ``[H, W]``
 
-        A target pixel is valid when its ray projects to a point inside the source image.
+        A target pixel is valid when it has a valid ray within the target's calibrated field of view, and this ray
+        projects to a point inside the source image.
         """
         return self._valid_mask
 
@@ -178,7 +179,8 @@ class Rectificator:
 
         Returns:
             target image points and a valid flag (see
-            :class:`~ncore.impl.sensors.camera.CameraModel.ImagePointsReturn`).
+            :class:`~ncore.impl.sensors.camera.CameraModel.ImagePointsReturn`), invalid for source points without a
+            valid ray in the source camera.
         """
         rays = self.source.image_points_to_camera_rays(points)
         return self.target.camera_rays_to_image_points(rays)
@@ -191,7 +193,8 @@ class Rectificator:
 
         Returns:
             source image points and a valid flag (see
-            :class:`~ncore.impl.sensors.camera.CameraModel.ImagePointsReturn`).
+            :class:`~ncore.impl.sensors.camera.CameraModel.ImagePointsReturn`), invalid for target points without a
+            valid ray in the target camera.
         """
         rays = self.target.image_points_to_camera_rays(points)
         return self.source.camera_rays_to_image_points(rays)

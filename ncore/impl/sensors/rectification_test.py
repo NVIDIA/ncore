@@ -139,7 +139,7 @@ class TestRectificator(unittest.TestCase):
 
         # Probe a few central target pixels (valid for all source models)
         for u, v in [(320, 240), (280, 200), (360, 280)]:
-            ray = target.image_points_to_camera_rays(np.array([[u + 0.5, v + 0.5]], dtype=np.float32))
+            ray = target.image_points_to_camera_rays(np.array([[u + 0.5, v + 0.5]], dtype=np.float32)).camera_rays
             proj = source.camera_rays_to_image_points(ray)
             if not bool(proj.valid_flag[0]):
                 continue
@@ -211,6 +211,39 @@ class TestRectificator(unittest.TestCase):
         img = torch.rand(480, 640, 3, device=self.device)
         for rect in (pure, narrow, widen):
             self.assertEqual(tuple(rect.apply(img).shape), (480, 640, 3))
+
+    def test_target_pixels_outside_target_field_of_view_are_invalid(self):
+        # A fisheye target with a narrow calibrated field of view: target pixels beyond it have no well-defined
+        # (only extrapolated) rays, which must not be treated as valid even if they project into the source image
+        source = _model(_distorted_pinhole_params(), self.device, self.dtype)
+        target_params = OpenCVFisheyeCameraModelParameters(
+            resolution=np.array([640, 480], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array([320.0, 240.0], dtype=np.float32),
+            focal_length=np.array([600.0, 600.0], dtype=np.float32),
+            radial_coeffs=np.zeros(4, dtype=np.float32),
+            max_angle=0.3,  # 180 pixels from the principal point for the equidistant model
+        )
+        target = _model(target_params, self.device, self.dtype)
+        rect = Rectificator(source, target)
+
+        # (row, column) of a pixel within, and a pixel beyond the target's field of view, both projecting into the
+        # source image
+        within, beyond = (240, 320 + 100), (240, 320 + 250)
+        for v, u in (within, beyond):
+            ray = target.image_points_to_camera_rays(
+                torch.tensor([[u + 0.5, v + 0.5]], device=self.device, dtype=self.dtype)
+            ).camera_rays
+            self.assertTrue(bool(source.camera_rays_to_image_points(ray).valid_flag[0]))
+
+        self.assertTrue(bool(rect.valid_mask[within]))
+        self.assertFalse(bool(rect.valid_mask[beyond]))
+
+        # The same holds for mapping points
+        points = torch.tensor(
+            [[within[1] + 0.5, within[0] + 0.5], [beyond[1] + 0.5, beyond[0] + 0.5]], device=self.device
+        )
+        self.assertEqual(rect.target_points_to_source(points).valid_flag.cpu().tolist(), [True, False])
 
     def test_apply_zeroes_invalid(self):
         # Build a target that is wider than the source so some target pixels fall
