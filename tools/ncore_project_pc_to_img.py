@@ -331,7 +331,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
                         pc_frame_index, return_index=params.sensor_return_index
                     ),
                 )
-                .cpu()
+                .sensor_points.cpu()
                 .numpy()
             )
 

@@ -293,7 +293,7 @@ class TestArgoverse2Converter(unittest.TestCase):
             model = StructuredLidarModel.maybe_from_parameters(model_params, device="cpu")
             assert model is not None
             predicted = model.elements_to_sensor_points(elem[far], np.ones(int(far.sum()), dtype=np.float32))
-            predicted = predicted.cpu().numpy()
+            predicted = predicted.sensor_points.cpu().numpy()
             predicted /= np.linalg.norm(predicted, axis=1, keepdims=True)
             cos = np.clip(np.sum(predicted * direction[far], axis=1), -1.0, 1.0)
             median_err_deg = float(np.degrees(np.median(np.arccos(cos))))

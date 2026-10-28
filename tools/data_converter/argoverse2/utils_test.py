@@ -135,7 +135,7 @@ class TestVlp32cModelDerivation(unittest.TestCase):
 
         sm = StructuredLidarModel.maybe_from_parameters(model, device="cpu")
         assert sm is not None
-        predicted = sm.elements_to_sensor_points(elem, np.ones(len(elem), dtype=np.float32)).cpu().numpy()
+        predicted = sm.elements_to_sensor_points(elem, np.ones(len(elem), dtype=np.float32)).sensor_points.cpu().numpy()
         predicted /= np.linalg.norm(predicted, axis=1, keepdims=True)
         direction = xyz / np.linalg.norm(xyz, axis=1, keepdims=True)
         cos = np.clip(np.sum(predicted * direction, axis=1), -1.0, 1.0)
@@ -181,7 +181,9 @@ class TestVlp32cModelDerivation(unittest.TestCase):
             )
             elem = reconstruct_model_elements(laser, offset, geometry, xyz)
             self.assertTrue(np.all(elem[:, 1] < model.n_columns))
-            predicted = sm.elements_to_sensor_points(elem, np.ones(len(elem), dtype=np.float32)).cpu().numpy()
+            predicted = (
+                sm.elements_to_sensor_points(elem, np.ones(len(elem), dtype=np.float32)).sensor_points.cpu().numpy()
+            )
             predicted /= np.linalg.norm(predicted, axis=1, keepdims=True)
             direction = xyz / np.linalg.norm(xyz, axis=1, keepdims=True)
             cos = np.clip(np.sum(predicted * direction, axis=1), -1.0, 1.0)
@@ -212,7 +214,7 @@ class TestVlp32cModelDerivation(unittest.TestCase):
             "cw", revolutions=1.05, seed=2, start_az_rad=0.2 + np.radians(5.0), az_rate_factor=1.003
         )
         elem = reconstruct_model_elements(laser, offset, geometry, xyz)
-        predicted = sm.elements_to_sensor_points(elem, np.ones(len(elem), dtype=np.float32)).cpu().numpy()
+        predicted = sm.elements_to_sensor_points(elem, np.ones(len(elem), dtype=np.float32)).sensor_points.cpu().numpy()
         predicted /= np.linalg.norm(predicted, axis=1, keepdims=True)
         direction = xyz / np.linalg.norm(xyz, axis=1, keepdims=True)
         cos = np.clip(np.sum(predicted * direction, axis=1), -1.0, 1.0)

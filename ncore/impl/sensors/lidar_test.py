@@ -331,9 +331,40 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
         # make sure retrieved parameters still correspond to reference
         self.assertEqual(self.model_parameters.to_json(), self.lidar_model.get_parameters().to_json())
 
+    def test_elements_forward_valid_flags(self):
+        """Structured element unprojections return the valid flag of their sensor rays, which is set for all elements
+        of the structured model, and world-ray unprojections forward it (also for passed-in sensor rays)"""
+
+        sensor_rays = self.lidar_model.elements_to_sensor_rays(self.elements)
+        self.assertIsInstance(sensor_rays, LidarModel.SensorRaysReturn)
+        self.assertEqual(sensor_rays.sensor_rays.shape, (len(self.elements), 3))
+        self.assertEqual(sensor_rays.valid_flag.dtype, torch.bool)
+        self.assertTrue(bool(sensor_rays.valid_flag.all()))
+
+        distances = np.full(len(self.elements), 2.0, dtype=np.float32)
+        sensor_points = self.lidar_model.elements_to_sensor_points(self.elements, distances)
+        self.assertIsInstance(sensor_points, LidarModel.SensorPointsReturn)
+        torch.testing.assert_close(sensor_points.sensor_points, 2.0 * sensor_rays.sensor_rays)
+        self.assertTrue(torch.equal(sensor_points.valid_flag, sensor_rays.valid_flag))
+
+        T_sensor_world = np.eye(4, dtype=np.float32)
+        world_rays = self.lidar_model.elements_to_world_rays_shutter_pose(self.elements, T_sensor_world, T_sensor_world)
+        self.assertTrue(torch.equal(world_rays.valid_flag, sensor_rays.valid_flag))
+
+        # The flag of passed sensor rays is forwarded as is
+        passed_valid_flag = torch.zeros_like(sensor_rays.valid_flag)
+        passed_valid_flag[::2] = True
+        world_rays = self.lidar_model.elements_to_world_rays_shutter_pose(
+            self.elements,
+            T_sensor_world,
+            T_sensor_world,
+            sensor_rays=LidarModel.SensorRaysReturn(sensor_rays=sensor_rays.sensor_rays, valid_flag=passed_valid_flag),
+        )
+        self.assertTrue(torch.equal(world_rays.valid_flag, passed_valid_flag))
+
     def test_angle_conversion(self):
         """Make sure angle conversion works correctly (element -> ray -> angle -> ray)"""
-        sensor_rays = self.lidar_model.elements_to_sensor_rays(self.elements)
+        sensor_rays = self.lidar_model.elements_to_sensor_rays(self.elements).sensor_rays
 
         sensor_angles = self.lidar_model.sensor_rays_to_sensor_angles(sensor_rays)
         sensor_rays_reconstructed = self.lidar_model.sensor_angles_to_sensor_rays(sensor_angles.sensor_angles)
@@ -346,7 +377,7 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
         """Make sure angle conversion works correctly (element -> angle -> ray -> angle)"""
         sensor_angles = self.lidar_model.elements_to_sensor_angles(self.elements)
 
-        sensor_rays = self.lidar_model.elements_to_sensor_rays(self.elements)
+        sensor_rays = self.lidar_model.elements_to_sensor_rays(self.elements).sensor_rays
         sensor_angles_reconstructed = self.lidar_model.sensor_rays_to_sensor_angles(sensor_rays)
 
         assert torch.all(sensor_angles_reconstructed.valid_flag)
