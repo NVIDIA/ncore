@@ -191,12 +191,15 @@ def _inverse_newton_bracketed_iterations(
         upper = torch.where(residual > 0, x, upper)
 
         # Converged once the Newton correction or the bracket is below the tolerance (the latter if rounding errors
-        # in the residual prevent the former)
-        converged = converged | (newton_step.abs() <= tolerance) | (upper - lower <= tolerance)
+        # in the residual prevent the former). The final Newton correction is still applied (if within the bracket),
+        # as the tolerance is coarser than the accuracy of a converged Newton step
+        x_newton = x - newton_step
+        newly_converged = ~converged & ((newton_step.abs() <= tolerance) | (upper - lower <= tolerance))
+        x = torch.where(newly_converged & (x_newton >= lower) & (x_newton <= upper), x_newton, x)
+        converged = converged | newly_converged
         if bool(converged.all()):
             break
 
-        x_newton = x - newton_step
         use_newton = (x_newton > lower) & (x_newton < upper) & (2.0 * newton_step.abs() <= previous_step)
         x_next = torch.where(converged, x, torch.where(use_newton, x_newton, 0.5 * (lower + upper)))
         previous_step = (x_next - x).abs()

@@ -1376,7 +1376,8 @@ class TestFisheyeCameraInverse(CommonTestCase):
 
     @property
     def _angle_atol(self) -> float:
-        return 2e-6 if self.dtype == torch.float32 else 1e-10
+        # Accuracy of converged Newton iterations at the floating-point resolution of the polynomial evaluation
+        return 3e-7 if self.dtype == torch.float32 else 1e-14
 
     def test_inverse_at_stationary_starting_point(self):
         """Recovers the analytic inverse when Newton's starting point has a vanishing derivative"""
