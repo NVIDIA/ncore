@@ -313,7 +313,7 @@ class TestNuScenesConverter(unittest.TestCase):
                     model_element_data[valid],
                     distance[valid],
                 )
-                .cpu()
+                .sensor_points.cpu()
                 .numpy()
             )
 

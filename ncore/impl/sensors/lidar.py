@@ -105,15 +105,28 @@ class LidarModel(BaseModel, ABC, Generic[LidarModelParametersT_co]):
         valid_flag: torch.Tensor
 
     @dataclass
+    class SensorPointsReturn:
+        """
+        Contains
+            - sensor points [float] (n,3)
+            - valid_flag [bool] (n,), the valid flag of the corresponding sensor rays
+        """
+
+        sensor_points: torch.Tensor
+        valid_flag: torch.Tensor
+
+    @dataclass
     class WorldRaysReturn:
         """
         Contains
             - rays [point, direction] in the world coordinate frame, represented by 3d start of ray points and 3d ray directions [float] (n,6)
+            - valid_flag [bool] (n,), the valid flag of the corresponding sensor rays
             - [optional] sensor-to-worlds poses of the returned rays [float] (n,4,4)
             - [optional] timestamps of the returned rays [int] (n,)
         """
 
         world_rays: torch.Tensor
+        valid_flag: torch.Tensor
         T_sensor_worlds: Optional[torch.Tensor] = None
         timestamps_us: Optional[torch.Tensor] = None
 
@@ -205,8 +218,9 @@ class StructuredLidarModel(LidarModel[StructuredLidarModelParametersT_co], ABC):
 
     def elements_to_sensor_points(
         self, elements: Union[torch.Tensor, np.ndarray], element_distances: Union[torch.Tensor, np.ndarray]
-    ) -> torch.Tensor:
-        """Computes 3d sensor points for elements in the structured lidar model. Elements are given as (row, column) indices."""
+    ) -> LidarModel.SensorPointsReturn:
+        """Computes 3d sensor points and a valid flag (of the sensor rays) for elements in the structured lidar model.
+        Elements are given as (row, column) indices."""
 
         # elements: N x 2 array of (row, column) indices
         assert elements.ndim == 2
@@ -217,15 +231,18 @@ class StructuredLidarModel(LidarModel[StructuredLidarModelParametersT_co], ABC):
 
         sensor_rays = self.elements_to_sensor_rays(elements)
 
-        return sensor_rays * element_distances[:, None]
+        return LidarModel.SensorPointsReturn(
+            sensor_points=sensor_rays.sensor_rays * element_distances[:, None], valid_flag=sensor_rays.valid_flag
+        )
 
-    def elements_to_sensor_rays(self, elements: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
-        """Computes normalized 3d sensor ray directions for elements in the structured lidar model. Elements are given as (row, column) indices."""
+    def elements_to_sensor_rays(self, elements: Union[torch.Tensor, np.ndarray]) -> LidarModel.SensorRaysReturn:
+        """Computes normalized 3d sensor ray directions and a valid flag for elements in the structured lidar model.
+        Elements are given as (row, column) indices."""
 
         elements = to_torch(elements, device=self.device, dtype=torch.long)
 
         sensor_angles = self.elements_to_sensor_angles(elements)
-        return self.sensor_angles_to_sensor_rays(sensor_angles).sensor_rays
+        return self.sensor_angles_to_sensor_rays(sensor_angles)
 
     @abstractmethod
     def elements_to_sensor_angles(self, elements: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
@@ -596,13 +613,14 @@ class RowOffsetStructuredSpinningLidarModel(
         T_sensor_world_end: Union[torch.Tensor, np.ndarray],
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
-        sensor_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
+        sensor_rays: Optional[LidarModel.SensorRaysReturn] = None,
         return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
     ) -> LidarModel.WorldRaysReturn:
         """Unprojects elements to world rays using *rolling-shutter compensation* of sensor motion.
 
-        Can optionally re-use known sensor rays associated with elements.
+        Can optionally re-use known sensor rays associated with elements (as returned by elements_to_sensor_rays). The
+        valid flag of the sensor rays is forwarded to the world rays.
 
         For each element returns 3d world rays [point, direction], represented by 3d start of ray points and 3d ray directions in the world frame
         """
@@ -639,13 +657,19 @@ class RowOffsetStructuredSpinningLidarModel(
         # Compute the sensor rays for the elements
         if sensor_rays is not None:
             # Reuse provided sensor rays
-            sensor_rays = to_torch(sensor_rays, device=self.device, dtype=self.dtype)
-            assert len(sensor_rays.shape) == 2
-            assert len(sensor_rays) == len(elements)
-            assert sensor_rays.shape[1] == 3
-            assert sensor_rays.dtype == self.dtype
+            assert isinstance(sensor_rays, LidarModel.SensorRaysReturn), (
+                "[LidarModel]: sensor_rays need to be provided as LidarModel.SensorRaysReturn"
+            )
+            sensor_rays_tensor = to_torch(sensor_rays.sensor_rays, device=self.device, dtype=self.dtype)
+            valid_flag = to_torch(sensor_rays.valid_flag, device=self.device)
+            assert len(sensor_rays_tensor.shape) == 2
+            assert len(sensor_rays_tensor) == len(elements)
+            assert sensor_rays_tensor.shape[1] == 3
+            assert valid_flag.shape == (len(elements),)
+            assert valid_flag.dtype == torch.bool
         else:
-            sensor_rays = self.elements_to_sensor_rays(elements)
+            computed_sensor_rays = self.elements_to_sensor_rays(elements)
+            sensor_rays_tensor, valid_flag = computed_sensor_rays.sensor_rays, computed_sensor_rays.valid_flag
 
         # Get relative frame-times based on the elements column index relative to the total number of columns
         # (columns are measured in increasing time order irrespective of spin-direction)
@@ -664,17 +688,22 @@ class RowOffsetStructuredSpinningLidarModel(
             )
         )  # [n_elements, 3, 3]
 
-        world_ray_directions_rs = torch.bmm(R_sensor_world_rs, sensor_rays[:, :, None]).squeeze(-1)  # [n_elements, 3]
+        world_ray_directions_rs = torch.bmm(R_sensor_world_rs, sensor_rays_tensor[:, :, None]).squeeze(
+            -1
+        )  # [n_elements, 3]
 
         # Copy the values in the output variable
         return_var = LidarModel.WorldRaysReturn(
             world_rays=torch.cat(
                 tensors=(cast(torch.Tensor, world_position_rs), world_ray_directions_rs), dim=1
-            )  # [n_elements, 6])
+            ),  # [n_elements, 6])
+            valid_flag=valid_flag,
         )
 
         if return_T_sensor_worlds:
-            return_var.T_sensor_worlds = torch.zeros((len(sensor_rays), 4, 4), dtype=self.dtype, device=self.device)
+            return_var.T_sensor_worlds = torch.zeros(
+                (len(sensor_rays_tensor), 4, 4), dtype=self.dtype, device=self.device
+            )
             return_var.T_sensor_worlds[:, :3, :3] = R_sensor_world_rs
             return_var.T_sensor_worlds[:, :3, 3] = world_position_rs
             return_var.T_sensor_worlds[:, 3, 3] = 1

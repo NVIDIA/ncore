@@ -318,7 +318,7 @@ def _evaluate_sequence(
         directions[valid_dist] = xyz_native[valid_dist] / distances[valid_dist, np.newaxis]
 
         # Compute model-predicted directions via the torch lidar model
-        model_directions = lidar_model.elements_to_sensor_rays(model_element).cpu().numpy()
+        model_directions = lidar_model.elements_to_sensor_rays(model_element).sensor_rays.cpu().numpy()
 
         # Compute metrics
         metrics = compute_frame_metrics(
