@@ -45,7 +45,7 @@ test --test_env=OMP_NUM_THREADS=1
 test:no-gpu --test_env=NCORE_NO_GPU_TESTS=1
 
 # Wheel versioning
-build --embed_label=20.0.0-alpha.1
+build --embed_label=20.0.0-alpha.2
 
 # ty type checker aspect
 build --aspects //bazel/lint:linters.bzl%ty
