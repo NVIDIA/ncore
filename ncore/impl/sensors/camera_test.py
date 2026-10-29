@@ -321,15 +321,12 @@ class TestReferenceFThetaCamera(CommonTestCase):
         for a, e in zip(camera.imagePoints2rays(imagePoints2d), rays3dExpected):
             self._compareVector(a, e)
 
-        # Torch-version
-        for a, e in zip(
-            np.array(
-                ftheta_from_reference(camera, self.device, self.dtype)
-                .image_points_to_camera_rays(np.array(imagePoints2d, ndmin=2))
-                .camera_rays.cpu()
-            ),
-            np.array(rays3dExpected, ndmin=2),
-        ):
+        # Torch-version (image points are within the field of view of the reference cameras)
+        camera_rays = ftheta_from_reference(camera, self.device, self.dtype).image_points_to_camera_rays(
+            np.array(imagePoints2d, ndmin=2)
+        )
+        self.assertTrue(bool(camera_rays.valid_flag.all()))
+        for a, e in zip(np.array(camera_rays.camera_rays.cpu()), np.array(rays3dExpected, ndmin=2)):
             self._compareVector(a, e)
 
     def test_rays2imagePoints(self):
@@ -403,9 +400,10 @@ class TestReferenceFThetaCamera(CommonTestCase):
                 ray3d_ref = camera_ref.imagePoints2rays(expectedPoint2d)
 
                 # Evaluate torch-camera
-                ray3d = camera_ftheta.image_points_to_camera_rays(
+                camera_rays = camera_ftheta.image_points_to_camera_rays(
                     to_torch(expectedPoint2d, device=camera_ftheta.device, dtype=camera_ftheta.dtype)
-                ).camera_rays
+                )
+                ray3d = camera_rays.camera_rays
 
                 # test that the computed rays of both cameras agree
                 self.assertLessEqual(np.linalg.norm(ray3d_ref - np.array(ray3d.cpu())).item(), MAX_DEVIATION_RAY)
@@ -417,8 +415,13 @@ class TestReferenceFThetaCamera(CommonTestCase):
                         np.linalg.norm(expectedPoint2d - actualPoint2d_ref).item(), MAX_DEVIATION_IN_PIXEL
                     )
 
-                    # Verify torch-camera's result
-                    image_points = camera_ftheta.camera_rays_to_image_points(ray3d)
+                    # Verify torch-camera's result: image points are within the field of view, so their rays are
+                    # valid, and the valid flag of the camera rays is combined in the projection (the image corner
+                    # p=0 lies on the boundary of the field of view / image, so is not checked)
+                    image_points = camera_ftheta.camera_rays_to_image_points(camera_rays)
+                    if p > 0:
+                        self.assertTrue(bool(camera_rays.valid_flag[0]))
+                        self.assertTrue(bool(image_points.valid_flag[0]))
                     self.assertLessEqual(
                         np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())).item(),
                         MAX_DEVIATION_IN_PIXEL,
@@ -457,13 +460,19 @@ class TestReferenceFThetaCamera(CommonTestCase):
                 expectedPoint2d = np.array([[p, p]])
 
                 # Evaluate torch-camera
-                ray3d = camera_ftheta.image_points_to_camera_rays(
+                camera_rays = camera_ftheta.image_points_to_camera_rays(
                     to_torch(expectedPoint2d, device=camera_ftheta.device, dtype=camera_ftheta.dtype)
-                ).camera_rays
+                )
+                ray3d = camera_rays.camera_rays
 
                 with self.subTest(angle=np.degrees(np.arccos(ray3d.cpu()[0][2]))):
-                    # Verify torch-camera's result
-                    image_points = camera_ftheta.camera_rays_to_image_points(ray3d)
+                    # Verify torch-camera's result: image points are within the field of view, so their rays are
+                    # valid, and the valid flag of the camera rays is combined in the projection (the image corner
+                    # p=0 lies on the boundary of the field of view / image, so is not checked)
+                    image_points = camera_ftheta.camera_rays_to_image_points(camera_rays)
+                    if p > 0:
+                        self.assertTrue(bool(camera_rays.valid_flag[0]))
+                        self.assertTrue(bool(image_points.valid_flag[0]))
                     self.assertLessEqual(
                         np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())).item(),
                         MAX_DEVIATION_IN_PIXEL,
@@ -519,13 +528,19 @@ class TestReferenceFThetaCamera(CommonTestCase):
                 expectedPoint2d = np.array([[p, p]])
 
                 # Evaluate torch-camera
-                ray3d = camera_ftheta.image_points_to_camera_rays(
+                camera_rays = camera_ftheta.image_points_to_camera_rays(
                     to_torch(expectedPoint2d, device=camera_ftheta.device, dtype=camera_ftheta.dtype)
-                ).camera_rays
+                )
+                ray3d = camera_rays.camera_rays
 
                 with self.subTest(angle=np.degrees(np.arccos(ray3d.cpu()[0][2]))):
-                    # Verify torch-camera's result
-                    image_points = camera_ftheta.camera_rays_to_image_points(ray3d)
+                    # Verify torch-camera's result: image points are within the field of view, so their rays are
+                    # valid, and the valid flag of the camera rays is combined in the projection (the image corner
+                    # p=0 lies on the boundary of the field of view / image, so is not checked)
+                    image_points = camera_ftheta.camera_rays_to_image_points(camera_rays)
+                    if p > 0:
+                        self.assertTrue(bool(camera_rays.valid_flag[0]))
+                        self.assertTrue(bool(image_points.valid_flag[0]))
                     self.assertLessEqual(
                         np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())).item(),
                         MAX_DEVIATION_IN_PIXEL,
@@ -817,12 +832,13 @@ class TestPinholeCamera(CommonTestCase):
                 # very idempotence of imagePoints2rays(rays2imagePoints([p,p]))
                 expectedPoint2d = np.array([[p, p]])
 
-                # Verify torch-camera's result
-                ray3d = cam_model.image_points_to_camera_rays(
+                # Verify torch-camera's result (the valid flag of the camera rays is combined in the projection)
+                camera_rays = cam_model.image_points_to_camera_rays(
                     to_torch(expectedPoint2d, device=cam_model.device, dtype=cam_model.dtype)
-                ).camera_rays
-                image_points = cam_model.camera_rays_to_image_points(ray3d)
+                )
+                image_points = cam_model.camera_rays_to_image_points(camera_rays)
 
+                self.assertTrue(camera_rays.valid_flag)
                 self.assertTrue(image_points.valid_flag)
                 self.assertLessEqual(
                     np.linalg.norm(expectedPoint2d - np.array(image_points.image_points.cpu())).item(),
@@ -1013,9 +1029,9 @@ class TestJacobian(CommonTestCase):
         )
         cam_model = CameraModel.from_parameters(cam_model_params, device=self.device, dtype=self.dtype)
 
-        rays3d = cam_model.image_points_to_camera_rays(
-            torch.Tensor([[20, 40], [11, 12], [15, 20], [500, 500]])
-        ).camera_rays  # valid rays only
+        camera_rays = cam_model.image_points_to_camera_rays(torch.Tensor([[20, 40], [11, 12], [15, 20], [500, 500]]))
+        self.assertTrue(bool(camera_rays.valid_flag.all()))
+        rays3d = camera_rays.camera_rays  # valid rays only
 
         for ray3d in rays3d:
             pref, Jref = cam_model_ref.camera_ray_to_image_points(ray3d.cpu().numpy())
@@ -1153,9 +1169,11 @@ class TestJacobian(CommonTestCase):
             def projection_wrapper(x):
                 return cam_model.camera_rays_to_image_points(x[None, :]).image_points.squeeze()
 
-            valid_rays3d = cam_model.image_points_to_camera_rays(
+            valid_camera_rays = cam_model.image_points_to_camera_rays(
                 torch.Tensor([[20, 40], [11, 12], [15, 20], [500, 500]])
-            ).camera_rays  # valid rays
+            )
+            self.assertTrue(bool(valid_camera_rays.valid_flag.all()), msg=f"{type(cam_model)} returned invalid rays")
+            valid_rays3d = valid_camera_rays.camera_rays  # valid rays
             self.assertLessEqual(
                 (torch.linalg.norm(valid_rays3d, axis=1, keepdims=True) - torch.ones_like(valid_rays3d[:, :1]))
                 .abs()
@@ -1238,10 +1256,12 @@ class TestFisheyeCamera(CommonTestCase):
     def test_special_cases(self):
         """Validate a few special cases"""
 
-        # make sure the principal point gets unprojected to the principal axis
-        ray3d = self.cam_model.image_points_to_camera_rays(
+        # make sure the principal point gets unprojected to the principal axis, as a valid ray
+        camera_rays = self.cam_model.image_points_to_camera_rays(
             torch.from_numpy(self.cam_model_params.principal_point).reshape(1, 2)
-        ).camera_rays
+        )
+        ray3d = camera_rays.camera_rays
+        self.assertTrue(bool(camera_rays.valid_flag[0]))
 
         self.assertLessEqual(
             np.linalg.norm(ray3d.cpu().numpy() - np.array([0, 0, 1])).item(), self.MAX_DEVIATION_IN_RAY_COORDINATES
@@ -1286,11 +1306,14 @@ class TestFisheyeCamera(CommonTestCase):
                 # 1. very idempotence imagePoints2rays(rays2imagePoints([p,p])) torch-camera's result
                 expectedPoint2d = np.array([[p, p]])
 
-                ray3d = self.cam_model.image_points_to_camera_rays(
+                camera_rays = self.cam_model.image_points_to_camera_rays(
                     to_torch(expectedPoint2d, device=self.cam_model.device, dtype=self.dtype)
-                ).camera_rays
-                image_points = self.cam_model.camera_rays_to_image_points(ray3d)
+                )
+                ray3d = camera_rays.camera_rays
+                image_points = self.cam_model.camera_rays_to_image_points(camera_rays)
 
+                # all sampled points are within the field of view (max_angle)
+                self.assertTrue(bool(camera_rays.valid_flag[0]))
                 if i > 0:
                     # avoid 'valid' prevision issues if points get re-projected right onto each side of the image boundary for p=[0,0]
                     self.assertTrue(image_points.valid_flag)
@@ -1884,6 +1907,68 @@ class TestParameterIO(CameraModelsBaseTestCase):
 @parameterized.parameterized_class(
     ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
 )
+class TestCameraRaysValidFlagConsistency(CameraModelsBaseTestCase):
+    """Calibration-independent consistency of the valid flags of image-point unprojections for all camera models"""
+
+    device: torch.device
+    dtype: torch.dtype
+
+    MAX_DEVIATION_IN_IMAGE_COORDINATES = 0.01
+    GRID_STEP = 16
+
+    def _image_point_grid(self, cam_model: CameraModel, margin: int) -> torch.Tensor:
+        # Grid covering the image and a margin around it (to also exercise points outside of the image)
+        width, height = (int(v) for v in cam_model.resolution.cpu())
+        xs = torch.arange(-margin, width + margin, self.GRID_STEP, dtype=self.dtype) + 0.5
+        ys = torch.arange(-margin, height + margin, self.GRID_STEP, dtype=self.dtype) + 0.5
+        return torch.stack(torch.meshgrid(xs, ys, indexing="xy"), dim=-1).reshape(-1, 2).to(self.device)
+
+    def test_valid_rays_reproject_consistently(self):
+        """Valid rays are finite, normalized, and reproject to their image points, both directly and through
+        camera_rays_to_image_points with the CameraRaysReturn (whose valid flag is combined with the projection's)"""
+
+        for cam_model_params in self.cam_model_params + self.cam_model_params_wsd:
+            cam_model = camera_model_from_parameters(cam_model_params, device=self.device, dtype=self.dtype)
+            name = f"{type(cam_model).__name__}{'+wsd' if cam_model.external_distortion is not None else ''}"
+            with self.subTest(model=name):
+                image_points = self._image_point_grid(cam_model, margin=int(cam_model.resolution.max()) // 4)
+                camera_rays = cam_model.image_points_to_camera_rays(image_points)
+                valid = camera_rays.valid_flag
+
+                self.assertEqual(valid.shape, (len(image_points),))
+                self.assertEqual(valid.dtype, torch.bool)
+                self.assertGreater(int(valid.sum()), 0, msg="Expected valid rays for image points within the image")
+
+                # Valid rays are finite and normalized
+                valid_rays = camera_rays.camera_rays[valid]
+                self.assertTrue(bool(torch.isfinite(valid_rays).all()))
+                torch.testing.assert_close(
+                    torch.linalg.norm(valid_rays, dim=1), torch.ones_like(valid_rays[:, 0]), atol=1e-5, rtol=0.0
+                )
+
+                # Projections of camera rays given as CameraRaysReturn are never valid for invalid rays
+                projection = cam_model.camera_rays_to_image_points(camera_rays)
+                self.assertFalse(bool((projection.valid_flag & ~valid).any()))
+
+                # All valid rays reproject to their image points, also outside of the image (where the projection
+                # itself is invalid only because of the image bounds)
+                deviation = torch.linalg.norm(projection.image_points[valid] - image_points[valid], dim=1)
+                self.assertLessEqual(float(deviation.max()), self.MAX_DEVIATION_IN_IMAGE_COORDINATES)
+
+                # Valid rays of image points within the image also reproject validly
+                width, height = cam_model.resolution.cpu().tolist()
+                in_image = (
+                    (image_points[:, 0] >= 0)
+                    & (image_points[:, 0] < width)
+                    & (image_points[:, 1] >= 0)
+                    & (image_points[:, 1] < height)
+                )
+                self.assertTrue(bool(projection.valid_flag[valid & in_image].all()))
+
+
+@parameterized.parameterized_class(
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
+)
 class TestTransformParameters(CameraModelsBaseTestCase):
     device: torch.device
     dtype: torch.dtype
@@ -1950,8 +2035,11 @@ class TestTransformParameters(CameraModelsBaseTestCase):
                                 )
 
                                 # Validate original image domain -> 3d -> transformed image domain round-trip
-                                ray3d = cam_model.image_points_to_camera_rays(IMAGE_POINTS).camera_rays
-                                image_points_transformed = cam_model_transformed.camera_rays_to_image_points(ray3d)
+                                camera_rays = cam_model.image_points_to_camera_rays(IMAGE_POINTS)
+                                self.assertTrue(camera_rays.valid_flag.all(), msg="All rays need to be valid")
+                                image_points_transformed = cam_model_transformed.camera_rays_to_image_points(
+                                    camera_rays
+                                )
 
                                 self.assertTrue(
                                     image_points_transformed.valid_flag.all(),
@@ -1967,11 +2055,13 @@ class TestTransformParameters(CameraModelsBaseTestCase):
                                 )
 
                                 # Validate transformed image-domain -> 3d -> untransformed image-domain round-trip
-                                ray3d_transformed = cam_model_transformed.image_points_to_camera_rays(
+                                camera_rays_transformed = cam_model_transformed.image_points_to_camera_rays(
                                     image_points_transformed_ref
-                                ).camera_rays
+                                )
 
-                                image_points_untransformed = cam_model.camera_rays_to_image_points(ray3d_transformed)
+                                image_points_untransformed = cam_model.camera_rays_to_image_points(
+                                    camera_rays_transformed
+                                )
 
                                 self.assertTrue(
                                     image_points_untransformed.valid_flag.all(),
@@ -2452,7 +2542,8 @@ class TestIdealPinholeCamera(CommonTestCase):
     def test_roundtrip(self):
         model = self._make_ideal()
         pixels = torch.tensor([[100, 80], [320, 240], [500, 400]], dtype=torch.int32, device=self.device)
-        rays = model.pixels_to_camera_rays(pixels).camera_rays
+        rays = model.pixels_to_camera_rays(pixels)
+        self.assertTrue(bool(rays.valid_flag.all()))
         result = model.camera_rays_to_pixels(rays)
         self.assertTrue(bool(result.valid_flag.all()))
         self._compareVector(result.pixels.cpu().numpy(), pixels.cpu().numpy())
@@ -2464,10 +2555,13 @@ class TestIdealPinholeCamera(CommonTestCase):
         image_points = ideal.pixels_to_image_points(
             torch.tensor([[100, 80], [320, 240], [500, 400]], dtype=torch.int32, device=self.device)
         )
-        rays_ideal = ideal.image_points_to_camera_rays(image_points).camera_rays
-        rays_opencv = opencv.image_points_to_camera_rays(image_points).camera_rays
+        rays_ideal = ideal.image_points_to_camera_rays(image_points)
+        rays_opencv = opencv.image_points_to_camera_rays(image_points)
+        self.assertTrue(bool(rays_ideal.valid_flag.all()) and bool(rays_opencv.valid_flag.all()))
         self.assertIsNone(
-            np.testing.assert_array_almost_equal(rays_ideal.cpu().numpy(), rays_opencv.cpu().numpy(), decimal=5)
+            np.testing.assert_array_almost_equal(
+                rays_ideal.camera_rays.cpu().numpy(), rays_opencv.camera_rays.cpu().numpy(), decimal=5
+            )
         )
 
         proj_ideal = ideal.camera_rays_to_image_points(rays_ideal)
