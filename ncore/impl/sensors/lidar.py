@@ -167,14 +167,16 @@ class LidarModel(BaseModel, ABC, Generic[LidarModelParametersT_co]):
     @abstractmethod
     def sensor_rays_to_sensor_angles(
         self, sensor_rays: Union[torch.Tensor, np.ndarray], normalized: bool = True
-    ) -> SensorAnglesReturn:
+    ) -> LidarModel.SensorAnglesReturn:
         """
         Lidar model-specific implementation of sensor_rays_to_sensor_angles
         """
         ...
 
     @abstractmethod
-    def sensor_angles_to_sensor_rays(self, sensor_angles: Union[torch.Tensor, np.ndarray]) -> SensorRaysReturn:
+    def sensor_angles_to_sensor_rays(
+        self, sensor_angles: Union[torch.Tensor, np.ndarray]
+    ) -> LidarModel.SensorRaysReturn:
         """Lidar model-specific implementation of elevation/azimuth angles to sensor rays"""
         ...
 
@@ -508,7 +510,7 @@ class RowOffsetStructuredSpinningLidarModel(
         return_valid_indices: bool = False,
         return_timestamps: bool = False,
         return_all_projections: bool = False,
-    ) -> RowOffsetStructuredSpinningLidarModel.WorldPointsToSensorAnglesReturn:
+    ) -> LidarModel.WorldPointsToSensorAnglesReturn:
         """Projects world points to corresponding sensor angle coordinates using *rolling-shutter compensation* of sensor motion"""
 
         if return_timestamps:
@@ -554,7 +556,7 @@ class RowOffsetStructuredSpinningLidarModel(
         relative_time_final = iter_result.t
 
         # We always return sensor angles points
-        return_var = self.WorldPointsToSensorAnglesReturn(sensor_angles=projection)
+        return_var = LidarModel.WorldPointsToSensorAnglesReturn(sensor_angles=projection)
 
         if return_T_world_sensors:
             # Assemble [n, 4, 4] rigid transformation matrices from rotation and translation
@@ -597,7 +599,7 @@ class RowOffsetStructuredSpinningLidarModel(
         sensor_rays: Optional[Union[torch.Tensor, np.ndarray]] = None,
         return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
-    ) -> RowOffsetStructuredSpinningLidarModel.WorldRaysReturn:
+    ) -> LidarModel.WorldRaysReturn:
         """Unprojects elements to world rays using *rolling-shutter compensation* of sensor motion.
 
         Can optionally re-use known sensor rays associated with elements.
@@ -665,7 +667,7 @@ class RowOffsetStructuredSpinningLidarModel(
         world_ray_directions_rs = torch.bmm(R_sensor_world_rs, sensor_rays[:, :, None]).squeeze(-1)  # [n_elements, 3]
 
         # Copy the values in the output variable
-        return_var = self.WorldRaysReturn(
+        return_var = LidarModel.WorldRaysReturn(
             world_rays=torch.cat(
                 tensors=(cast(torch.Tensor, world_position_rs), world_ray_directions_rs), dim=1
             )  # [n_elements, 6])

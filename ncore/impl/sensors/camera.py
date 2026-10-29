@@ -569,7 +569,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
             return_all_projections,
         )
 
-        return self.WorldPointsToPixelsReturn(
+        return CameraModel.WorldPointsToPixelsReturn(
             pixels=self.image_points_to_pixels(tmp.image_points),
             T_world_sensors=tmp.T_world_sensors,
             valid_indices=tmp.valid_indices,
@@ -601,7 +601,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
             return_all_projections,
         )
 
-        return self.WorldPointsToPixelsReturn(
+        return CameraModel.WorldPointsToPixelsReturn(
             pixels=self.image_points_to_pixels(tmp.image_points),
             T_world_sensors=tmp.T_world_sensors,
             valid_indices=tmp.valid_indices,
@@ -699,7 +699,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
                     T_world_sensor_start[:3, :3] @ world_points.transpose(0, 1) + T_world_sensor_start[:3, 3, None]
                 ).transpose(0, 1)
             )
-            return_var = self.WorldPointsToImagePointsReturn(
+            return_var = CameraModel.WorldPointsToImagePointsReturn(
                 image_points=(
                     image_points_start.image_points[image_points_start.valid_flag]
                     if not return_all_projections
@@ -736,7 +736,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         t = iter_result.t
 
         # We always return image points
-        return_var = self.WorldPointsToImagePointsReturn(image_points=projection)
+        return_var = CameraModel.WorldPointsToImagePointsReturn(image_points=projection)
 
         if return_T_world_sensors:
             # Assemble [n, 4, 4] rigid transformation matrices from rotation and translation
@@ -802,7 +802,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         image_points = self.camera_rays_to_image_points(cam_rays)
 
         # We always return image points
-        return_var = self.WorldPointsToImagePointsReturn(
+        return_var = CameraModel.WorldPointsToImagePointsReturn(
             image_points=(
                 image_points.image_points[image_points.valid_flag]
                 if not return_all_projections
@@ -977,7 +977,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         world_rays[:, :3] = T_sensor_world[:3, 3]  # broadcasts [3] -> [n_image_points, 3]
         world_rays[:, 3:] = world_ray_directions
 
-        return_var = self.WorldRaysReturn(world_rays=world_rays, valid_flag=camera_rays_return.valid_flag)
+        return_var = CameraModel.WorldRaysReturn(world_rays=world_rays, valid_flag=camera_rays_return.valid_flag)
 
         if return_T_sensor_worlds:
             # Expand constant transformation for all rays (uses views, avoids copying memory)
@@ -1108,7 +1108,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         world_rays[:, :3] = world_position_rs
         world_rays[:, 3:] = world_ray_directions_rs
 
-        return_var = self.WorldRaysReturn(world_rays=world_rays, valid_flag=camera_rays_return.valid_flag)
+        return_var = CameraModel.WorldRaysReturn(world_rays=world_rays, valid_flag=camera_rays_return.valid_flag)
 
         if return_T_sensor_worlds:
             return_var.T_sensor_worlds = torch.zeros((len(image_points), 4, 4), dtype=self.dtype, device=self.device)
