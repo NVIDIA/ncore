@@ -11,3 +11,4 @@
    :maxdepth: 1
 
    data.v4
+   data.stores

@@ -30,7 +30,9 @@ from ncore.impl.data.v4.components import (
     RadarSensorComponent,
     SequenceComponentGroupsReader,
     SequenceComponentGroupsWriter,
+    SequenceMeta,
 )
+from ncore.impl.data.v4.types import ComponentGroupAssignments
 
 
 __all__ = [
@@ -48,6 +50,9 @@ __all__ = [
     "CuboidsComponent",
     "PointCloudsComponent",
     "CameraLabelsComponent",
+    # sequences
+    "SequenceMeta",
+    "ComponentGroupAssignments",
     # compat APIs
     "SequenceLoaderV4",
 ]

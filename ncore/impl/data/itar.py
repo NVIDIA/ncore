@@ -46,6 +46,7 @@ import weakref
 
 from enum import IntEnum, unique
 from pathlib import Path
+from types import MappingProxyType
 from typing import (
     IO,
     Any,
@@ -55,6 +56,7 @@ from typing import (
     Iterator,
     List,
     Literal,
+    Mapping,
     NamedTuple,
     Optional,
     Tuple,
@@ -92,8 +94,8 @@ def is_node_metadata_key(key: str) -> bool:
 class Record(NamedTuple):
     """The payload of a record within the archive file"""
 
-    offset: int
-    size: int
+    offset: int  #: File offset of the first byte of the payload
+    size: int  #: Size of the payload in bytes
 
 
 class TailBuffer(NamedTuple):
@@ -520,6 +522,8 @@ class IndexedTarArchive:
         concurrently, which suits random access to high-latency storage (e.g., thread pools reading frames of S3
         archives); the buffered file object suits sequential reading of nearby records.
 
+    Notes
+    -----
     Records are accessed via a mapping interface (``archive[key]``, ``archive[key] = value``, ``key in archive``,
     ``keys()``, ``len(archive)``). Records of the index tail read are served from memory, so records stored near the end
     of the archive don't repeat its high-latency I/O. Local archives are read via positional reads (``os.pread``),
@@ -640,6 +644,13 @@ class IndexedTarArchive:
     # -------------------------------------------------------------------------
     # Records
     # -------------------------------------------------------------------------
+
+    @property
+    def records(self) -> Mapping[str, Record]:
+        """The records of the archive by key, with the offset and size of their payload in the archive file (a
+        read-only view: for archives opened for writing, of the records appended so far, which excludes the node
+        metadata records appended when closing the archive)"""
+        return MappingProxyType(self._records)
 
     @property
     def _records(self) -> Dict[str, Record]:

@@ -33,6 +33,7 @@ from ncore.impl.data.compat import (
     SensorProtocol,
     SequenceLoaderProtocol,
 )
+from ncore.impl.data.json_types import Json, JsonDocument, JsonDocumentLike, JsonLike
 from ncore.impl.data.types import (
     BBox3,
     BivariateWindshieldModelParameters,
@@ -107,6 +108,11 @@ __all__ = [
     "QuantizationParams",
     "LabelSchema",
     "CameraLabelDescriptor",
+    # JSON values of attributes / meta data (as read, and accepted for writing)
+    "Json",
+    "JsonDocument",
+    "JsonLike",
+    "JsonDocumentLike",
     # compat protocols
     "SequenceLoaderProtocol",
     "SensorProtocol",

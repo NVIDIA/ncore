@@ -493,6 +493,15 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         camera_rays: torch.Tensor
         valid_flag: torch.Tensor
 
+        @classmethod
+        def all_valid(cls, camera_rays: torch.Tensor) -> CameraModel.CameraRaysReturn:
+            """Camera rays that are all valid (e.g., precomputed rays known to be within the calibrated field of
+            view): a valid flag of True for each ray (on the rays' device)"""
+            return cls(
+                camera_rays=camera_rays,
+                valid_flag=torch.ones(camera_rays.shape[:-1], dtype=torch.bool, device=camera_rays.device),
+            )
+
     @dataclass
     class WorldRaysReturn:
         """
@@ -1540,10 +1549,7 @@ class PinholeCameraModel(CameraModel[PinholeCameraModelParametersT_co], ABC):
         """Closed-form ideal-pinhole unprojection of image points to normalized rays, which are always valid"""
         cam_rays2 = (image_points - self.principal_point) / self.focal_length
         cam_rays3 = torch.cat([cam_rays2, torch.ones_like(cam_rays2[:, :1])], dim=1)
-        return CameraModel.CameraRaysReturn(
-            camera_rays=cam_rays3 / torch.linalg.norm(cam_rays3, axis=1, keepdims=True),
-            valid_flag=torch.ones(len(image_points), dtype=torch.bool, device=image_points.device),
-        )
+        return CameraModel.CameraRaysReturn.all_valid(cam_rays3 / torch.linalg.norm(cam_rays3, axis=1, keepdims=True))
 
     def _ideal_camera_rays_to_image_points(
         self, cam_rays: torch.Tensor, return_jacobians: bool

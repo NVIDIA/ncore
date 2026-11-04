@@ -1603,6 +1603,30 @@ class TestCameraRaysValidFlag(CommonTestCase):
         self.assertIsNotNone(with_jacobians.jacobians)
         self.assertEqual(with_jacobians.valid_flag.cpu().tolist(), [False, True, False])
 
+    def test_all_valid_camera_rays(self):
+        """All-valid camera rays have a valid flag of True per ray, on the rays' device, and are combined with the
+        validity of projections"""
+        rays = torch.tensor([[0.0, 0.0, 1.0], [5.0, 0.0, 1.0]], device=self.device, dtype=self.dtype)
+        all_valid = CameraModel.CameraRaysReturn.all_valid(rays)
+        self.assertIs(all_valid.camera_rays, rays)
+        self.assertEqual(all_valid.valid_flag.dtype, torch.bool)
+        self.assertEqual(all_valid.valid_flag.shape, rays.shape[:-1])
+        self.assertEqual(all_valid.valid_flag.device, rays.device)
+        self.assertTrue(bool(all_valid.valid_flag.all()))
+
+        cam_model = IdealPinholeCameraModel(
+            IdealPinholeCameraModelParameters(
+                resolution=np.array([100, 100], dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array([50.0, 50.0], dtype=np.float32),
+                focal_length=np.array([50.0, 50.0], dtype=np.float32),
+            ),
+            device=self.device,
+            dtype=self.dtype,
+        )
+        # (the second ray projects outside of the image)
+        self.assertEqual(cam_model.camera_rays_to_image_points(all_valid).valid_flag.cpu().tolist(), [True, False])
+
     def test_ideal_pinhole_always_valid(self):
         """Ideal pinhole rays are valid for all image points"""
 

@@ -29,8 +29,10 @@ py_binary(
         requirement("nvidia_sphinx_theme"),
         requirement("sphinx_copybutton"),
         "@ncore_repo//ncore/data:pylib",
+        "@ncore_repo//ncore/data/stores:pylib",
         "@ncore_repo//ncore/data/v4:pylib",
         "@ncore_repo//ncore/data_converter:pylib",
+        "@ncore_repo//ncore/geometry:pylib",
         "@ncore_repo//ncore/sensors:pylib",
     ],
 )

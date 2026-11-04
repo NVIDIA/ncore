@@ -18,3 +18,14 @@ def test_import_package():
     """Make sure package can be imported"""
 
     import ncore.data.v4  # noqa: F401
+
+
+def test_sequence_types():
+    """The package exposes the sequence types of the implementation (the same objects)"""
+    import ncore.data.v4 as public
+
+    from ncore.impl.data.v4 import components, types
+
+    assert "SequenceMeta" in public.__all__ and public.SequenceMeta is components.SequenceMeta
+    assert "ComponentGroupAssignments" in public.__all__
+    assert public.ComponentGroupAssignments is types.ComponentGroupAssignments

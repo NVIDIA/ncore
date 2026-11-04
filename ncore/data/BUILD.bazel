@@ -25,6 +25,7 @@ py_library(
     ],
     deps = [
         "//ncore/impl/data:pylib_compat",
+        "//ncore/impl/data:pylib_json_types",
         "//ncore/impl/data:pylib_types",
         "//ncore/impl/data:pylib_util",
     ],
