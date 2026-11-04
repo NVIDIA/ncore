@@ -65,6 +65,10 @@ signature = "Minh Vu"
 username = "fallintoplace"
 
 [[changelog.authors]]
+signature = "Nick Lucas"
+username = "nlucas-nvidia"
+
+[[changelog.authors]]
 signature = "Sanchit Garg"
 username = "sanchitgarg"
 
