@@ -1993,6 +1993,56 @@ class TestCameraRaysValidFlagConsistency(CameraModelsBaseTestCase):
 @parameterized.parameterized_class(
     ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
 )
+class TestProjectionValidIndices(CameraModelsBaseTestCase):
+    """valid_indices of world-point projections for all camera models and shutter types"""
+
+    device: torch.device
+    dtype: torch.dtype
+
+    def test_valid_indices_are_1d_and_ordered(self):
+        """valid_indices stays 1-D and ordered for zero, one, or more valid projections on every projection path"""
+        T_world_sensor = np.eye(4)
+
+        # Points on the optical axis project to the principal point of every camera model
+        in_front = [0, 0, 10]
+        behind = [0, 0, -10]
+        further_in_front = [0, 0, 20]
+
+        def check(cam_model: CameraModel, world_points: List[List[int]], expected_valid_indices: List[int]) -> None:
+            # Shutter-pose projection takes a separate code path for global and rolling shutters
+            shutter_pose = cam_model.world_points_to_image_points_shutter_pose(
+                np.array(world_points), T_world_sensor, T_world_sensor, return_valid_indices=True
+            )
+            self.assertEqual(unpack_optional(shutter_pose.valid_indices).tolist(), expected_valid_indices)
+
+            static_pose = cam_model.world_points_to_image_points_static_pose(
+                np.array(world_points), T_world_sensor, return_valid_indices=True
+            )
+            self.assertEqual(unpack_optional(static_pose.valid_indices).tolist(), expected_valid_indices)
+
+        for cam_model_params in self.cam_model_params + self.cam_model_params_wsd:
+            # Covers every shutter type so new types are tested automatically
+            for shutter_type in ShutterType:
+                cam_model = camera_model_from_parameters(
+                    dataclasses.replace(cam_model_params, shutter_type=shutter_type),
+                    device=self.device,
+                    dtype=self.dtype,
+                )
+                name = f"{type(cam_model).__name__}{'+wsd' if cam_model.external_distortion is not None else ''}"
+                with self.subTest(model=name, shutter_type=shutter_type):
+                    # No valid points: valid_indices is empty
+                    check(cam_model, [behind], expected_valid_indices=[])
+
+                    # Single valid point: valid_indices must be [0], not a 0-dim scalar
+                    check(cam_model, [in_front, behind], expected_valid_indices=[0])
+
+                    # Multiple valid points: indices of the valid points, in input order
+                    check(cam_model, [in_front, behind, further_in_front], expected_valid_indices=[0, 2])
+
+
+@parameterized.parameterized_class(
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
+)
 class TestTransformParameters(CameraModelsBaseTestCase):
     device: torch.device
     dtype: torch.dtype

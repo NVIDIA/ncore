@@ -720,7 +720,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
                     T_world_sensor_start, dims=(int(image_points_start.valid_flag.sum().item()), 1, 1)
                 )
             if return_valid_indices:
-                return_var.valid_indices = torch.where(image_points_start.valid_flag)[0].squeeze()
+                return_var.valid_indices = torch.where(image_points_start.valid_flag)[0]
             if return_timestamps:
                 return_var.timestamps_us = torch.tile(
                     torch.tensor(start_timestamp_us, device=self.device),
@@ -826,7 +826,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
             )
 
         if return_valid_indices:
-            return_var.valid_indices = torch.where(image_points.valid_flag)[0].squeeze()
+            return_var.valid_indices = torch.where(image_points.valid_flag)[0]
 
         if return_timestamps:
             return_var.timestamps_us = torch.tile(
