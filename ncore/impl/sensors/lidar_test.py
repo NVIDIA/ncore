@@ -362,6 +362,23 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
         )
         self.assertTrue(torch.equal(world_rays.valid_flag, passed_valid_flag))
 
+    def test_all_valid_sensor_rays(self):
+        """All-valid sensor rays have a valid flag of True per ray, on the rays' device, and are accepted as sensor
+        rays to unproject"""
+        sensor_rays = self.lidar_model.elements_to_sensor_rays(self.elements).sensor_rays
+        all_valid = LidarModel.SensorRaysReturn.all_valid(sensor_rays)
+        self.assertIs(all_valid.sensor_rays, sensor_rays)
+        self.assertEqual(all_valid.valid_flag.dtype, torch.bool)
+        self.assertEqual(all_valid.valid_flag.shape, sensor_rays.shape[:-1])
+        self.assertEqual(all_valid.valid_flag.device, sensor_rays.device)
+        self.assertTrue(bool(all_valid.valid_flag.all()))
+
+        T_sensor_world = np.eye(4, dtype=np.float32)
+        world_rays = self.lidar_model.elements_to_world_rays_shutter_pose(
+            self.elements, T_sensor_world, T_sensor_world, sensor_rays=all_valid
+        )
+        self.assertTrue(torch.equal(world_rays.valid_flag, all_valid.valid_flag))
+
     def test_angle_conversion(self):
         """Make sure angle conversion works correctly (element -> ray -> angle -> ray)"""
         sensor_rays = self.lidar_model.elements_to_sensor_rays(self.elements).sensor_rays

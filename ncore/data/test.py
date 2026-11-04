@@ -18,3 +18,14 @@ def test_import_package():
     """Make sure package can be imported"""
 
     import ncore.data  # noqa: F401
+
+
+def test_json_types():
+    """The package exposes the JSON value types of the implementation (the same objects)"""
+    import ncore.data as public
+
+    from ncore.impl.data import json_types
+
+    for name in ("Json", "JsonDocument", "JsonLike", "JsonDocumentLike"):
+        assert name in public.__all__, name
+        assert getattr(public, name) is getattr(json_types, name), name

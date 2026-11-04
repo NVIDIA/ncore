@@ -104,6 +104,15 @@ class LidarModel(BaseModel, ABC, Generic[LidarModelParametersT_co]):
         sensor_rays: torch.Tensor
         valid_flag: torch.Tensor
 
+        @classmethod
+        def all_valid(cls, sensor_rays: torch.Tensor) -> LidarModel.SensorRaysReturn:
+            """Sensor rays that are all valid (e.g., rays of the elements of a structured lidar model): a valid flag
+            of True for each ray (on the rays' device)"""
+            return cls(
+                sensor_rays=sensor_rays,
+                valid_flag=torch.ones(sensor_rays.shape[:-1], dtype=torch.bool, device=sensor_rays.device),
+            )
+
     @dataclass
     class SensorPointsReturn:
         """
