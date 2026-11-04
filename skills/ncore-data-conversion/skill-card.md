@@ -14,8 +14,6 @@ NVIDIA NCore <br>
 ### License/Terms of Use: <br>
 Apache-2.0, per the [repository LICENSE](../../LICENSE). <br>
 
-Adapted from NVIDIA-authored material in [NVIDIA/nurec-skills](https://github.com/NVIDIA/nurec-skills) at commit `5b9d287`, narrowed to the built-in converters and re-verified against this repository. <br>
-
 ## Use Case: <br>
 Engineers converting autonomous-vehicle and scene-capture datasets (PAI, Waymo, COLMAP/ScanNet++, KITTI, nuScenes, Argoverse 2) into the NCore V4 sensor-data format, adapting an existing converter for a dataset NCore does not support, or diagnosing calibration and timing problems in a converted store. <br>
 
