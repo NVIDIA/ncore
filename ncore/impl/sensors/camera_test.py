@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import dataclasses
 import inspect
 import itertools
@@ -65,6 +66,7 @@ from ncore.impl.sensors.camera import (
     register_external_distortion_model,
     to_torch,
 )
+from ncore.impl.sensors.common import eval_ftheta_tangential
 
 
 # =============================================================================
@@ -93,6 +95,65 @@ def _get_test_devices() -> Tuple[torch.device, ...]:
 ConcreteCameraModelUnion = Union[
     FThetaCameraModel, IdealPinholeCameraModel, OpenCVPinholeCameraModel, OpenCVFisheyeCameraModel
 ]
+
+
+def _ftheta_front_tele_params() -> FThetaCameraModelParameters:
+    """Real-world narrow FTheta camera with DriveWorks tangential distortion (front tele 30fov)"""
+    return FThetaCameraModelParameters(
+        resolution=np.array([3840, 2160], dtype=np.uint64),
+        shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
+        principal_point=np.array([1897.9122, 1077.6737], dtype=np.float32),
+        reference_poly=FThetaCameraModelParameters.PolynomialType.ANGLE_TO_PIXELDIST,
+        angle_to_pixeldist_poly=np.array(
+            [0.0, 7284.8965, -130.64005, 1932.2605, -2034.5332, -1009.2933], dtype=np.float32
+        ),
+        pixeldist_to_angle_poly=np.array(
+            [0.0, 1.3726648e-04, 3.5653702e-10, -7.2147897e-13, 1.2644619e-16, 1.5034910e-21], dtype=np.float32
+        ),
+        max_angle=0.302192,
+        tangential_coeffs=np.array([-3.598739, -3.6424482], dtype=np.float32),
+    )
+
+
+def _ftheta_cross_right_params() -> FThetaCameraModelParameters:
+    """Real-world wide FTheta camera with DriveWorks tangential distortion (cross right 120fov)"""
+    return FThetaCameraModelParameters(
+        resolution=np.array([3840, 2160], dtype=np.uint64),
+        shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
+        principal_point=np.array([1919.6964, 1513.8091], dtype=np.float32),
+        reference_poly=FThetaCameraModelParameters.PolynomialType.ANGLE_TO_PIXELDIST,
+        angle_to_pixeldist_poly=np.array([0.0, 1870.7732, -5.2363844, -52.2381, -31.12245, 18.9092], dtype=np.float32),
+        pixeldist_to_angle_poly=np.array(
+            [0.0, 5.3350365e-04, 4.6422204e-09, -1.1631308e-12, 4.6077542e-15, -9.3253013e-19], dtype=np.float32
+        ),
+        max_angle=1.398486,
+        tangential_coeffs=np.array([-0.096198946, -0.08372834], dtype=np.float32),
+    )
+
+
+def _ftheta_fisheye_params() -> FThetaCameraModelParameters:
+    """FTheta fisheye beyond a hemisphere with explicit zero tangential coefficients
+
+    The forward polynomial is a real-world front fisheye 200fov calibration, the backward polynomial a least-squares
+    fit of its inverse on [0, 2] rad. The backward polynomial is the reference as it is monotonic over the whole
+    image (unlike the forward polynomial, which has its maximum at 2.47 rad, within the image corners).
+
+    This is a test fixture, not a real calibration: the fitted backward polynomial deviates from the exact inverse
+    of the forward polynomial by up to about 1.3e-3 rad."""
+    return FThetaCameraModelParameters(
+        resolution=np.array([1920, 1536], dtype=np.uint64),
+        shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
+        principal_point=np.array([958.93066, 761.12213], dtype=np.float32),
+        reference_poly=FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE,
+        angle_to_pixeldist_poly=np.array(
+            [0.0, 506.00974, 29.93178, -43.35096, 49.284027, -15.206235], dtype=np.float32
+        ),
+        pixeldist_to_angle_poly=np.array(
+            [0.0, 1.9737487e-03, -1.7467720e-07, 3.5128320e-10, -8.0337608e-13, 4.8121265e-16], dtype=np.float32
+        ),
+        max_angle=1.9,
+        tangential_coeffs=np.zeros(2, dtype=np.float32),
+    )
 
 
 class ReferenceFThetaCamera:
@@ -1118,6 +1179,9 @@ class TestJacobian(CommonTestCase):
                 device=self.device,
                 dtype=self.dtype,
             ),
+            # NV FTheta instances with tangential distortion
+            CameraModel.from_parameters(_ftheta_front_tele_params(), device=self.device, dtype=self.dtype),
+            CameraModel.from_parameters(_ftheta_cross_right_params(), device=self.device, dtype=self.dtype),
             # External costumer fisheye model
             CameraModel.from_parameters(
                 OpenCVFisheyeCameraModelParameters(
@@ -1159,7 +1223,9 @@ class TestJacobian(CommonTestCase):
                 .abs()
                 .max()
                 .item(),
-                1e-07,
+                # A few ulps (sin / cos of an angle and a separately rounded unit direction are normalized only up
+                # to rounding, for purely radial FTheta models as well)
+                4 * torch.finfo(valid_rays3d.dtype).eps,
                 msg=f"{type(cam_model)} failed to return normalized rays",
             )  # make sure all camera models return *normalized* rays
             principal_direction_rays3d = torch.Tensor([[0, 0, 1], [0, 0, 5], [0, 0, 0.1]]).to(
@@ -1560,6 +1626,9 @@ class CameraModelsBaseTestCase(CommonTestCase):
                 principal_point=np.array([959.5, 639.5], dtype=np.float32),
                 focal_length=np.array([1480.0, 1480.0], dtype=np.float32),
             ),
+            # ftheta camera models with tangential distortion
+            _ftheta_front_tele_params(),
+            _ftheta_cross_right_params(),
         ]
 
         # Add an arbitrary dummy windshield model
@@ -1579,6 +1648,10 @@ class CameraModelsBaseTestCase(CommonTestCase):
             self.cam_model_params_wsd.append(
                 dataclasses.replace(cam_model_params, external_distortion_parameters=windshield_model_parameters)
             )
+
+        # ftheta fisheye beyond a hemisphere with explicit zero tangential distortion (without the dummy windshield
+        # model, whose float32 ray z-component sqrt(1 - x^2 - y^2) is too imprecise for rays close to 90 degrees)
+        self.cam_model_params.append(_ftheta_fisheye_params())
 
 
 @parameterized.parameterized_class(
@@ -1787,6 +1860,345 @@ class TestTransformParameters(CameraModelsBaseTestCase):
                                     ).item(),
                                     self.MAX_DEVIATION_IN_IMAGE_COORDINATES,
                                 )
+
+
+@parameterized.parameterized_class(
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
+)
+class TestFThetaTangential(CameraModelsBaseTestCase):
+    """DriveWorks-compatible tangential distortion of the FTheta camera model"""
+
+    device: torch.device
+    dtype: torch.dtype
+
+    def _tolerance(self) -> float:
+        return 1e-6 if self.dtype == torch.float64 else 1e-3
+
+    def _roundtrip_tolerance(self) -> float:
+        """Image point round trip bound [px] (float32: the image coordinates themselves are only resolved to
+        ~2.4e-4 px at x = 3840)"""
+        return 1e-3 if self.dtype == torch.float64 else 2e-3
+
+    def _tangential_params(self) -> List[FThetaCameraModelParameters]:
+        return [_ftheta_front_tele_params(), _ftheta_cross_right_params()]
+
+    def _zero_tangential_ftheta_params(self) -> List[FThetaCameraModelParameters]:
+        return [
+            p
+            for p in self.cam_model_params + self.cam_model_params_wsd
+            if isinstance(p, FThetaCameraModelParameters) and not p.has_tangential_distortion
+        ]
+
+    @staticmethod
+    def _rays_in_fov(camera_rays: torch.Tensor, max_angle: float) -> torch.Tensor:
+        """Whether unprojected camera rays are within the FOV, i.e. their angle to the principal axis is below max_angle
+        (out-of-FOV rays of tangential models are clamped onto the cone of the maximum angle; the margin covers the
+        rounding of the angles of float32 rays)"""
+        rays = camera_rays.detach().to(torch.float64)
+        angles = torch.atan2(torch.linalg.norm(rays[:, :2], dim=1), rays[:, 2])
+        return angles < max_angle - 1e-5
+
+    def _ray_grid(self, max_angle: float, num_thetas: int = 32, num_azimuths: int = 64) -> np.ndarray:
+        """Unit camera rays with angles in (0, max_angle] to the principal axis, for all azimuths"""
+        thetas, azimuths = np.meshgrid(
+            np.linspace(max_angle / num_thetas, max_angle, num_thetas),
+            np.linspace(0.0, 2 * np.pi, num_azimuths, endpoint=False),
+            indexing="ij",
+        )
+        thetas, azimuths = thetas.reshape(-1), azimuths.reshape(-1)
+        return np.stack([np.sin(thetas) * np.cos(azimuths), np.sin(thetas) * np.sin(azimuths), np.cos(thetas)], axis=1)
+
+    @staticmethod
+    def _reference_projection(params: FThetaCameraModelParameters, rays: np.ndarray) -> np.ndarray:
+        """Independent float64 numpy reference of the DriveWorks FTheta projection with tangential distortion and
+        linear term (in image coordinates with the origin at the top-left corner of the first pixel)"""
+        rays = rays.astype(np.float64)
+        X, Y, Z = rays[:, 0], rays[:, 1], rays[:, 2]
+        rho = np.hypot(X, Y)
+        theta = np.arctan2(rho, Z)
+        delta = np.polynomial.polynomial.polyval(theta, params.angle_to_pixeldist_poly.astype(np.float64))
+        x, y = X / Z, Y / Z
+        r2 = x * x + y * y
+        t0, t1 = (float(t) for t in params.tangential_coeffs)
+        u = delta * X / rho + 2 * t0 * x * y + t1 * (r2 + 2 * x * x)
+        v = delta * Y / rho + 2 * t1 * x * y + t0 * (r2 + 2 * y * y)
+        c, d, e = (float(v) for v in params.linear_cde)
+        return np.stack([c * u + d * v, e * u + v], axis=1) + params.principal_point.astype(np.float64) + 0.5
+
+    def test_eval_ftheta_tangential_matches_dw_formula(self):
+        xy = torch.tensor([[1.0, 0.0], [0.0, 1.0], [0.3, -0.2]], dtype=self.dtype, device=self.device)
+        t = torch.tensor([0.7, -0.4], dtype=self.dtype, device=self.device)
+        out = eval_ftheta_tangential(xy, t).cpu().to(torch.float64)
+        # DW CameraModelTest: T(1, 0, t0, t1) = (3 * t1, t0)
+        torch.testing.assert_close(out[0], torch.tensor([3 * -0.4, 0.7], dtype=torch.float64))
+        torch.testing.assert_close(out[1], torch.tensor([-0.4, 3 * 0.7], dtype=torch.float64))
+        x, y = 0.3, -0.2
+        r2 = x * x + y * y
+        torch.testing.assert_close(
+            out[2],
+            torch.tensor(
+                [2 * 0.7 * x * y + -0.4 * (r2 + 2 * x * x), 2 * -0.4 * x * y + 0.7 * (r2 + 2 * y * y)],
+                dtype=torch.float64,
+            ),
+        )
+
+    def test_projection_matches_reference(self):
+        """Projections of in-FOV rays coincide with an independent numpy reference of the DW formula"""
+        # Also with a non-identity linear term, which is applied after the tangential offsets
+        all_params = [
+            variant
+            for params in self._tangential_params()
+            for variant in (params, dataclasses.replace(params, linear_cde=np.array([1.1, -0.1, 0.2], np.float32)))
+        ]
+        for params in all_params:
+            with self.subTest(principal_point=params.principal_point.tolist(), linear_cde=params.linear_cde.tolist()):
+                cam_model = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
+
+                # Evaluate the reference on the rays as represented in the model's precision
+                rays = to_torch(self._ray_grid(0.95 * params.max_angle), device=self.device, dtype=self.dtype)
+                expected = self._reference_projection(params, rays.cpu().numpy())
+
+                projection = cam_model.camera_rays_to_image_points(rays)
+                actual = projection.image_points.cpu().numpy().astype(np.float64)
+
+                self.assertTrue(bool(projection.valid_flag.any()))
+                self.assertLessEqual(float(np.abs(actual - expected).max()), self._tolerance())
+
+    def test_zero_tangentials_take_radial_only_path(self):
+        """Models with zero tangential coefficients never evaluate the tangential term (NaN coefficients do not
+        affect any output), so their outputs are exactly those of the purely radial model"""
+        for params in self._zero_tangential_ftheta_params():
+            with self.subTest(params=params):
+                reference = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
+                # Model buffers may share memory with the parameters' arrays, so poison a copy only
+                poisoned = camera_model_from_parameters(copy.deepcopy(params), device=self.device, dtype=self.dtype)
+                poisoned.tangential_coeffs.fill_(float("nan"))
+
+                legacy_dict = params.to_dict()
+                legacy_dict.pop("tangential_coeffs", None)
+                legacy = camera_model_from_parameters(
+                    FThetaCameraModelParameters.from_dict(legacy_dict), device=self.device, dtype=self.dtype
+                )
+
+                rays = to_torch(self._ray_grid(1.2 * params.max_angle), device=self.device, dtype=self.dtype)
+                image_points = rays.new_tensor([[10.5, 20.5], [500.0, 300.0], [1000.0, 700.0], [1700.0, 1100.0]])
+
+                expected_projection = reference.camera_rays_to_image_points(rays, return_jacobians=True)
+                expected_rays = reference.image_points_to_camera_rays(image_points)
+
+                for name, model in (("nan", poisoned), ("legacy", legacy)):
+                    with self.subTest(model=name):
+                        projection = model.camera_rays_to_image_points(rays, return_jacobians=True)
+                        camera_rays = model.image_points_to_camera_rays(image_points)
+                        for actual, expected in (
+                            (projection.image_points, expected_projection.image_points),
+                            (projection.valid_flag, expected_projection.valid_flag),
+                            (projection.jacobians, expected_projection.jacobians),
+                            (camera_rays, expected_rays),
+                        ):
+                            torch.testing.assert_close(actual, expected, rtol=0.0, atol=0.0)
+
+    def test_get_parameters_roundtrips_tangentials(self):
+        for params in self._tangential_params():
+            with self.subTest(principal_point=params.principal_point.tolist()):
+                cam_model = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
+                self.assertEqual(cam_model.get_parameters().to_json(), params.to_json())
+                np.testing.assert_array_equal(cam_model.get_parameters().tangential_coeffs, params.tangential_coeffs)
+
+    def test_out_of_fov_rays_finite(self):
+        """Rays beyond the FOV (incl. at 90 degrees and behind the camera) project to finite, invalid points with
+        finite Jacobians, on the cone of the maximum angle"""
+        params = _ftheta_cross_right_params()
+        cam_model = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
+
+        azimuth = 0.7
+        direction = np.array([np.cos(azimuth), np.sin(azimuth)])
+
+        def ray(theta: float) -> List[float]:
+            return [*(np.sin(theta) * direction), np.cos(theta)]
+
+        rays = to_torch(
+            np.array(
+                [
+                    ray(params.max_angle + 0.01),
+                    [*direction, 0.0],  # exactly at 90 degrees
+                    ray(2.0),  # behind the camera
+                    [*(1e-3 * direction), -1.0],  # almost opposite to the principal axis
+                    [0.0, 0.0, -1.0],  # opposite to the principal axis
+                    [0.0, 0.0, 1.0],  # principal axis
+                ]
+            ),
+            device=self.device,
+            dtype=self.dtype,
+        )
+
+        projection = cam_model.camera_rays_to_image_points(rays, return_jacobians=True)
+
+        self.assertTrue(bool(torch.isfinite(projection.image_points).all()))
+        self.assertTrue(bool(torch.isfinite(unpack_optional(projection.jacobians)).all()))
+        self.assertEqual(projection.valid_flag.cpu().tolist(), [False] * 5 + [True])
+
+        # The principal axis maps to the principal point exactly
+        torch.testing.assert_close(projection.image_points[-1], cam_model.principal_point, rtol=0.0, atol=0.0)
+
+        # Out-of-FOV rays with the same azimuth are clamped to the cone of the maximum angle
+        boundary = cam_model.camera_rays_to_image_points(
+            to_torch(np.array([ray(params.max_angle)]), device=self.device, dtype=self.dtype)
+        ).image_points
+        torch.testing.assert_close(
+            projection.image_points[:4],
+            boundary.expand(4, 2),
+            rtol=0.0,
+            atol=self._tolerance() if self.dtype == torch.float64 else 1e-2,
+        )
+
+    def test_transform_behavioural(self):
+        """Projections (unprojections) of transformed parameters coincide with the transformed projections
+        (unprojections of the transformed image points) of the original ones"""
+        scales_offsets: List[Tuple[Union[float, Tuple[float, float]], Tuple[float, float]]] = [
+            (0.5, (0.0, 0.0)),
+            ((0.5, 0.25), (0.0, 0.0)),
+            (1.0, (13.0, 7.0)),
+            ((0.5, 0.25), (13.0, 7.0)),
+        ]
+        for params in self._tangential_params() + [_ftheta_fisheye_params()]:
+            rays = to_torch(self._ray_grid(0.95 * params.max_angle), device=self.device, dtype=self.dtype)
+            cam_model = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
+            p0 = cam_model.camera_rays_to_image_points(rays)
+            image_points = self._image_grid(params, num_x=25, num_y=15)
+            r0 = cam_model.image_points_to_camera_rays(image_points)
+            for scale, offset in scales_offsets:
+                with self.subTest(principal_point=params.principal_point.tolist(), scale=scale, offset=offset):
+                    transformed = camera_model_from_parameters(
+                        params.transform(image_domain_scale=scale, image_domain_offset=offset),
+                        device=self.device,
+                        dtype=self.dtype,
+                    )
+                    p1 = transformed.camera_rays_to_image_points(rays).image_points
+
+                    # Image coordinates have their origin at the top-left corner of the first pixel, so the image
+                    # domain transformation is a plain scale followed by the offset
+                    expected = p0.image_points * p0.image_points.new_tensor(
+                        scale if isinstance(scale, tuple) else (scale, scale)
+                    ) - p0.image_points.new_tensor(offset)
+                    self.assertLessEqual(float((p1 - expected).abs().max()), self._tolerance())
+
+                    # Unprojections of the transformed image points by the transformed parameters coincide with the
+                    # unprojections of the original image points
+                    scale_xy = image_points.new_tensor(scale if isinstance(scale, tuple) else (scale, scale))
+                    r1 = transformed.image_points_to_camera_rays(
+                        image_points * scale_xy - image_points.new_tensor(offset)
+                    )
+                    valid0 = self._rays_in_fov(r0, params.max_angle)
+                    valid1 = self._rays_in_fov(r1, params.max_angle)
+                    both_valid = valid0 & valid1
+                    self.assertGreater(int(both_valid.sum()), 0)
+                    self.assertTrue(bool((valid0 == valid1).all()))
+                    rays0 = r0[both_valid].to(torch.float64)
+                    rays1 = r1[both_valid].to(torch.float64)
+                    angles = torch.atan2(
+                        torch.linalg.norm(torch.linalg.cross(rays0, rays1), dim=1), (rays0 * rays1).sum(dim=1)
+                    )
+                    # Same bound for float32 (the power-of-two scales and integer offsets transform exactly)
+                    self.assertLessEqual(float(angles.max()), 1e-5)
+
+    def _image_grid(self, params: FThetaCameraModelParameters, num_x: int = 97, num_y: int = 55) -> torch.Tensor:
+        """Regular grid of image points over [0, W] x [0, H], incl. the image corners"""
+        width, height = (float(v) for v in params.resolution)
+        xs, ys = np.meshgrid(np.linspace(0.0, width, num_x), np.linspace(0.0, height, num_y))
+        return to_torch(np.stack([xs.reshape(-1), ys.reshape(-1)], axis=1), device=self.device, dtype=self.dtype)
+
+    def _roundtrip_params(self) -> List[FThetaCameraModelParameters]:
+        """Tangential models with either polynomial as reference (with the backward polynomial as reference it is the
+        exact unprojection, the forward polynomial only its approximate inverse)"""
+        return [
+            dataclasses.replace(params, reference_poly=reference_poly)
+            for params in self._tangential_params()
+            for reference_poly in (
+                FThetaCameraModelParameters.PolynomialType.ANGLE_TO_PIXELDIST,
+                FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE,
+            )
+        ]
+
+    def test_unprojection_roundtrip_full_image(self):
+        """Unprojected image points over the full image reproject to themselves"""
+        tolerance = self._roundtrip_tolerance()
+        for params in self._roundtrip_params():
+            with self.subTest(principal_point=params.principal_point.tolist(), reference_poly=params.reference_poly):
+                cam_model = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
+                image_points = self._image_grid(params)
+
+                camera_rays = cam_model.image_points_to_camera_rays(image_points)
+                valid = self._rays_in_fov(camera_rays, params.max_angle)
+                # All image points are in the FOV, except for a single image corner just beyond max_angle (by less
+                # than a pixel, its ray is clamped onto the cone of the maximum angle): bottom-right for the front
+                # tele, top-right for the cross right camera
+                width, height = (float(v) for v in params.resolution)
+                is_front_tele = np.array_equal(params.principal_point, _ftheta_front_tele_params().principal_point)
+                invalid_corner = image_points.new_tensor((width, height) if is_front_tele else (width, 0.0))
+                expected_valid = (image_points != invalid_corner).any(dim=1)
+                self.assertEqual(int((~expected_valid).sum()), 1)
+                self.assertTrue(bool((valid == expected_valid).all()))
+
+                reprojected = cam_model.camera_rays_to_image_points(camera_rays[valid]).image_points
+                self.assertLessEqual(float((reprojected - image_points[valid]).abs().max()), tolerance)
+
+    def test_unprojection_out_of_fov_finite(self):
+        """Image points beyond the FOV unproject to finite, invalid rays with finite gradients, and image points within
+        the FOV still reproject to themselves"""
+        # Reduced FOV so that the image corners (at ~1.25 rad) are beyond the FOV, for both reference polynomials (the
+        # backward polynomial of the cross-right camera turns negative at ~7100 px from the principal point)
+        for reference_poly in (
+            FThetaCameraModelParameters.PolynomialType.ANGLE_TO_PIXELDIST,
+            FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE,
+        ):
+            params = dataclasses.replace(_ftheta_cross_right_params(), max_angle=0.9, reference_poly=reference_poly)
+            with self.subTest(reference_poly=reference_poly):
+                cam_model = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
+                width, height = (float(v) for v in params.resolution)
+
+                # Image corners and radial sweeps from the principal point to far beyond the image, whose radial
+                # angles reach beyond 90 degrees (forward reference) or below zero (backward reference)
+                corners = np.array([[0.0, 0.0], [width, 0.0], [0.0, height], [width, height]])
+                dists, azimuths = np.meshgrid(
+                    np.linspace(0.0, 10000.0, 1001), np.linspace(0.0, 2 * np.pi, 16, endpoint=False)
+                )
+                sweeps = np.stack([dists * np.cos(azimuths), dists * np.sin(azimuths)], axis=-1).reshape(-1, 2) + (
+                    params.principal_point.astype(np.float64) + 0.5
+                )
+                image_points = to_torch(np.concatenate([corners, sweeps]), device=self.device, dtype=self.dtype)
+                image_points.requires_grad_(True)
+
+                camera_rays = cam_model.image_points_to_camera_rays(image_points)
+                camera_rays.sum().backward()
+
+                self.assertTrue(bool(torch.isfinite(camera_rays).all()))
+                self.assertTrue(bool(torch.isfinite(unpack_optional(image_points.grad)).all()))
+                in_fov = self._rays_in_fov(camera_rays, params.max_angle)
+                self.assertEqual(in_fov[:4].cpu().tolist(), [False] * 4)
+
+                # In-FOV rays within 6000 px of the principal point reproject to their image points (out-of-FOV image
+                # points are not misclassified as in the FOV there; further out, the polynomials themselves wrap
+                # around, which purely radial models are equally subject to)
+                within = np.concatenate([np.ones(4, dtype=bool), dists.reshape(-1) <= 6000.0])
+                valid = in_fov & to_torch(within, device=self.device)
+                self.assertGreater(int(valid.sum()), 0)
+                reprojected = cam_model.camera_rays_to_image_points(camera_rays.detach()[valid]).image_points
+                tolerance = self._roundtrip_tolerance()
+                self.assertLessEqual(float((reprojected - image_points.detach()[valid]).abs().max()), tolerance)
+
+    def test_unprojection_principal_point(self):
+        """The principal point unprojects exactly to the principal axis"""
+        for params in self._roundtrip_params():
+            with self.subTest(principal_point=params.principal_point.tolist(), reference_poly=params.reference_poly):
+                cam_model = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
+                camera_rays = cam_model.image_points_to_camera_rays(cam_model.principal_point[None, :])
+                torch.testing.assert_close(
+                    camera_rays,
+                    camera_rays.new_tensor([[0.0, 0.0, 1.0]]),
+                    rtol=0.0,
+                    atol=0.0,
+                )
 
 
 @parameterized.parameterized_class(
