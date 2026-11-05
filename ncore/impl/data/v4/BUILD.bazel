@@ -134,6 +134,7 @@ pytest_test(
     deps = [
         ":pylib_components",
         "//ncore/impl/data:pylib_stores",
+        "//ncore/impl/data:pylib_types",
         requirement("numpy"),
         requirement("parameterized"),
         requirement("universal_pathlib"),
