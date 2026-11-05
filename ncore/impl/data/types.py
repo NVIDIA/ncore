@@ -848,16 +848,26 @@ class OpenCVPinholeCameraModelParameters(PinholeCameraModelParameters):
         np.float32
     )  #: Radial distortion coefficients ``[k1,k2,k3,k4,k5,k6]`` parameterizing the rational radial distortion factor :math:`\frac{1 + k_1r^2 + k_2r^4 + k_3r^6}{1 + k_4r^2 + k_5r^4 + k_6r^6}` for squared norms :math:`r^2` of normalized camera coordinates (float32, [6,])
     tangential_coeffs: np.ndarray = util.numpy_array_field(
-        np.float32
-    )  #: Tangential distortion coefficients ``[p1,p2]`` parameterizing the tangential distortion components :math:`\begin{bmatrix} 2p_1x'y' + p_2 \left(r^2 + 2{x'}^2 \right) \\ p_1 \left(r^2 + 2{y'}^2 \right) + 2p_2x'y' \end{bmatrix}` for normalized camera coordinates :math:`\begin{bmatrix} x' \\ y' \end{bmatrix}` (float32, [2,])
+        np.float32, default=np.zeros(2, dtype=np.float32)
+    )  #: Tangential distortion coefficients ``[p1,p2]`` parameterizing the tangential distortion components :math:`\begin{bmatrix} 2p_1x'y' + p_2 \left(r^2 + 2{x'}^2 \right) \\ p_1 \left(r^2 + 2{y'}^2 \right) + 2p_2x'y' \end{bmatrix}` for normalized camera coordinates :math:`\begin{bmatrix} x' \\ y' \end{bmatrix}` (float32, [2,], defaults to zeros if absent; always serialized)
     thin_prism_coeffs: np.ndarray = util.numpy_array_field(
-        np.float32
-    )  #: Thins prism distortion coefficients ``[s1,s2,s3,s4]`` parameterizing the thin prism distortion components :math:`\begin{bmatrix} s_1r^2 + s_2r^4 \\ s_3r^2 + s_4r^4 \end{bmatrix}` for squared norms :math:`r^2` of normalized camera coordinates (float32, [4,]
+        np.float32, default=np.zeros(4, dtype=np.float32)
+    )  #: Thins prism distortion coefficients ``[s1,s2,s3,s4]`` parameterizing the thin prism distortion components :math:`\begin{bmatrix} s_1r^2 + s_2r^4 \\ s_3r^2 + s_4r^4 \end{bmatrix}` for squared norms :math:`r^2` of normalized camera coordinates (float32, [4,], defaults to zeros if absent; always serialized)
 
     @staticmethod
     def type() -> str:
         """Returns a string-identifier of the camera model"""
         return "opencv-pinhole"
+
+    @property
+    def has_tangential_distortion(self) -> bool:
+        """Whether any tangential distortion coefficient is non-zero"""
+        return bool(np.any(self.tangential_coeffs != 0))
+
+    @property
+    def has_thin_prism_distortion(self) -> bool:
+        """Whether any thin-prism distortion coefficient is non-zero"""
+        return bool(np.any(self.thin_prism_coeffs != 0))
 
     def __post_init__(self) -> None:
         # Sanity checks (principal_point / focal_length are checked by the base)
@@ -883,8 +893,8 @@ class OpenCVPinholeCameraModelParameters(PinholeCameraModelParameters):
         return (
             self.external_distortion_parameters is None
             and not np.any(self.radial_coeffs)
-            and not np.any(self.tangential_coeffs)
-            and not np.any(self.thin_prism_coeffs)
+            and not self.has_tangential_distortion
+            and not self.has_thin_prism_distortion
         )
 
 
