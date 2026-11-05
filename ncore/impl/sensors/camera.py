@@ -1682,6 +1682,10 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         # closed-form ideal pinhole path. Reuses the parameters' own check (which also
         # accounts for external distortion).
         self._is_distortion_free: bool = camera_model_parameters.is_distortion_free
+        # Zero tangential / thin-prism terms are skipped in the distortion computation (their contributions are
+        # zero); decided once at construction, the coefficient buffers are not re-read to select the code path
+        self._has_tangential: bool = bool(np.any(camera_model_parameters.tangential_coeffs != 0))
+        self._has_thin_prism: bool = bool(np.any(camera_model_parameters.thin_prism_coeffs != 0))
 
     def get_parameters(self) -> types.OpenCVPinholeCameraModelParameters:
         """Returns the camera model parameters specific to the current camera model instance"""
@@ -1749,7 +1753,7 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
             cam_rays_valid.requires_grad = True
 
         uv_normalized = cam_rays_valid[:, :2] / cam_rays_valid[:, 2:3]  # [n,2]
-        icD, delta_x, delta_y, r_2 = self.__compute_distortion(uv_normalized)
+        icD, delta, r_2 = self.__compute_distortion(uv_normalized)
 
         k_min_radial_dist = 0.8
         k_max_radial_dist = 1.2
@@ -1758,9 +1762,9 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
 
         # Project using ideal pinhole model (apply radial / tangential / thin-prism distortions)
         # in case radial distortion is within limits
-        uvND = uv_normalized[valid_radial] * icD[valid_radial, None] + torch.cat(
-            [delta_x[valid_radial, None], delta_y[valid_radial, None]], dim=1
-        )
+        uvND = uv_normalized[valid_radial] * icD[valid_radial, None]
+        if delta is not None:
+            uvND = uvND + delta[valid_radial]
         image_points[valid_idx[valid_radial]] = uvND * self.focal_length + self.principal_point
 
         # If the radial distortion is out-of-limits, the computed coordinates will be unreasonable
@@ -1800,16 +1804,21 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
 
         return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
 
-    def __compute_distortion(self, xy: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Computes the radial, tangential, and thin-prism distortion given the camera rays"""
+    def __compute_distortion(self, xy: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor]:
+        """Computes the radial factor, the additive tangential and thin-prism distortion ([n,2], None if both
+        terms are zero), and the squared radii of the given normalized coordinates"""
 
         # Compute the helper variables
         xy_squared = torch.square(xy)
         r_2 = torch.sum(xy_squared, dim=1)
-        xy_prod = xy[:, 0] * xy[:, 1]
-        a1 = 2 * xy_prod
-        a2 = r_2 + 2 * xy_squared[:, 0]
-        a3 = r_2 + 2 * xy_squared[:, 1]
+
+        # Note: the tangential helper terms are created before the radial factor on purpose, keeping the autograd
+        # graph (and hence the accumulation order of the jacobians) identical to the evaluation without fast paths
+        if self._has_tangential:
+            xy_prod = xy[:, 0] * xy[:, 1]
+            a1 = 2 * xy_prod
+            a2 = r_2 + 2 * xy_squared[:, 0]
+            a3 = r_2 + 2 * xy_squared[:, 1]
 
         icD_numerator = 1.0 + r_2 * (
             self.radial_coeffs[0] + r_2 * (self.radial_coeffs[1] + r_2 * self.radial_coeffs[2])
@@ -1819,18 +1828,26 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         )
         icD = icD_numerator / icD_denominator
 
-        delta_x = (
-            self.tangential_coeffs[0] * a1
-            + self.tangential_coeffs[1] * a2
-            + r_2 * (self.thin_prism_coeffs[0] + r_2 * self.thin_prism_coeffs[1])
-        )
-        delta_y = (
-            self.tangential_coeffs[0] * a3
-            + self.tangential_coeffs[1] * a1
-            + r_2 * (self.thin_prism_coeffs[2] + r_2 * self.thin_prism_coeffs[3])
-        )
+        delta: Optional[torch.Tensor] = None
+        if self._has_tangential:
+            delta = torch.stack(
+                [
+                    self.tangential_coeffs[0] * a1 + self.tangential_coeffs[1] * a2,
+                    self.tangential_coeffs[0] * a3 + self.tangential_coeffs[1] * a1,
+                ],
+                dim=1,
+            )
+        if self._has_thin_prism:
+            thin_prism = torch.stack(
+                [
+                    r_2 * (self.thin_prism_coeffs[0] + r_2 * self.thin_prism_coeffs[1]),
+                    r_2 * (self.thin_prism_coeffs[2] + r_2 * self.thin_prism_coeffs[3]),
+                ],
+                dim=1,
+            )
+            delta = thin_prism if delta is None else delta + thin_prism
 
-        return icD, delta_x, delta_y, r_2
+        return icD, delta, r_2
 
     def __iterative_undistort(
         self, image_points: torch.Tensor, stop_mean_of_squares_error_px2: float = 1e-12, max_iterations: int = 10
@@ -1841,11 +1858,9 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         cam_rays = cam_rays_0
         for _ in range(max_iterations):
             # apply *inverse* of distortion to camera rays to iteratively find the rays that correspond to the *distorted* source points
-            icD, delta_x, delta_y, _ = self.__compute_distortion(cam_rays)
+            icD, delta, _ = self.__compute_distortion(cam_rays)
 
-            residual = cam_rays - (
-                cam_rays := (cam_rays_0 - torch.cat([delta_x[:, None], delta_y[:, None]], dim=1)) / icD[:, None]
-            )
+            residual = cam_rays - (cam_rays := (cam_rays_0 if delta is None else cam_rays_0 - delta) / icD[:, None])
 
             if torch.mean(torch.square(residual)).item() <= stop_mean_of_squares_error_px2:
                 break
