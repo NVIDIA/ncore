@@ -1891,6 +1891,16 @@ class CameraModelsBaseTestCase(CommonTestCase):
                 tangential_coeffs=np.array([0.001805535524580487, -0.00005530628187935031], dtype=np.float32),
                 thin_prism_coeffs=np.array([0, 0, 0, 0], dtype=np.float32),
             ),
+            # opencv pinhole camera model with rational radial and thin-prism, but without tangential distortion
+            OpenCVPinholeCameraModelParameters(
+                resolution=np.array([1920, 1280], dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array([958.3, 641.7], dtype=np.float32),
+                focal_length=np.array([2061.5, 2060.25], dtype=np.float32),
+                radial_coeffs=np.array([0.0424, -0.3417, 0.01, 0.02, -0.01, 0.02], dtype=np.float32),
+                tangential_coeffs=np.array([0, 0], dtype=np.float32),
+                thin_prism_coeffs=np.array([0.01, 0.02, 0.02, 0.01], dtype=np.float32),
+            ),
             OpenCVFisheyeCameraModelParameters(
                 resolution=np.array([3840, 2160], dtype=np.uint64),
                 shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
@@ -2589,6 +2599,97 @@ class TestFThetaTangential(CameraModelsBaseTestCase):
                     atol=0.0,
                 )
                 self.assertEqual(camera_rays.valid_flag.cpu().tolist(), [True])
+
+
+@parameterized.parameterized_class(
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
+)
+class TestOpenCVPinholeZeroTerms(CameraModelsBaseTestCase):
+    """Zero tangential / thin-prism terms of the OpenCV pinhole camera model are skipped"""
+
+    device: torch.device
+    dtype: torch.dtype
+
+    def _opencv_pinhole_params(self) -> List[OpenCVPinholeCameraModelParameters]:
+        params = [
+            p
+            for p in self.cam_model_params + self.cam_model_params_wsd
+            if isinstance(p, OpenCVPinholeCameraModelParameters)
+        ]
+        # Radial-only variants of all fixtures
+        params += [
+            dataclasses.replace(
+                p, tangential_coeffs=np.zeros(2, dtype=np.float32), thin_prism_coeffs=np.zeros(4, dtype=np.float32)
+            )
+            for p in params
+        ]
+        return params
+
+    def _evaluate(self, model: CameraModel) -> Tuple[torch.Tensor, ...]:
+        width, height = (float(v) for v in model.resolution.cpu())
+        xs, ys = np.meshgrid(np.linspace(0.0, width, 25), np.linspace(0.0, height, 17))
+        image_points = to_torch(
+            np.stack([xs.reshape(-1), ys.reshape(-1)], axis=1), device=self.device, dtype=self.dtype
+        )
+        camera_rays = model.image_points_to_camera_rays(image_points)
+        # Also project rays beyond the radial distortion limits
+        rays = torch.cat(
+            [camera_rays.camera_rays, camera_rays.camera_rays.new_tensor([[2.0, 1.0, 1.0], [-3.0, -2.0, 1.0]])]
+        )
+        projection = model.camera_rays_to_image_points(rays, return_jacobians=True)
+        return (
+            camera_rays.camera_rays,
+            camera_rays.valid_flag,
+            projection.image_points,
+            projection.valid_flag,
+            unpack_optional(projection.jacobians),
+        )
+
+    def test_flags(self):
+        for params in self._opencv_pinhole_params():
+            with self.subTest(params=params):
+                model = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
+                assert isinstance(model, OpenCVPinholeCameraModel)
+                self.assertEqual(model._has_tangential, bool(np.any(params.tangential_coeffs)))
+                self.assertEqual(model._has_thin_prism, bool(np.any(params.thin_prism_coeffs)))
+
+    def test_zero_terms_bit_identical_to_full_evaluation(self):
+        """Skipping zero terms gives exactly the outputs of evaluating all terms"""
+        for params in self._opencv_pinhole_params():
+            with self.subTest(params=params):
+                fast = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
+                full = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
+                assert isinstance(full, OpenCVPinholeCameraModel)
+                full._has_tangential = True
+                full._has_thin_prism = True
+                for actual, expected in zip(self._evaluate(fast), self._evaluate(full)):
+                    self.assertTrue(torch.equal(actual, expected))
+
+    def test_zero_terms_skip_coefficients(self):
+        """Zero tangential / thin-prism coefficients are never read (NaN coefficients do not affect any output, which
+        are exactly those of the unmodified model), non-zero ones are"""
+        params_list = self._opencv_pinhole_params()
+        # Cover zero and non-zero tangential and thin-prism terms
+        self.assertTrue(any(np.any(p.tangential_coeffs) for p in params_list))
+        self.assertTrue(any(not np.any(p.tangential_coeffs) for p in params_list))
+        self.assertTrue(any(np.any(p.thin_prism_coeffs) for p in params_list))
+        self.assertTrue(any(not np.any(p.thin_prism_coeffs) for p in params_list))
+
+        for params in params_list:
+            for name in ("tangential_coeffs", "thin_prism_coeffs"):
+                with self.subTest(params=params, poisoned=name):
+                    reference = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
+                    # Model buffers may share memory with the parameters' arrays, so poison a copy only
+                    poisoned = camera_model_from_parameters(copy.deepcopy(params), device=self.device, dtype=self.dtype)
+                    getattr(poisoned, name).fill_(float("nan"))
+
+                    expected_outputs = self._evaluate(reference)
+                    actual_outputs = self._evaluate(poisoned)
+                    if np.any(getattr(params, name)):
+                        self.assertTrue(bool(torch.isnan(actual_outputs[0]).any()))
+                    else:
+                        for actual, expected in zip(actual_outputs, expected_outputs):
+                            torch.testing.assert_close(actual, expected, rtol=0.0, atol=0.0)
 
 
 @parameterized.parameterized_class(

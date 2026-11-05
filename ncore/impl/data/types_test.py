@@ -566,6 +566,53 @@ class TestFThetaTangentialParameters(unittest.TestCase):
         np.testing.assert_array_equal(_ftheta().transform(0.5).tangential_coeffs, [0.0, 0.0])
 
 
+class TestOpenCVPinholeOptionalCoefficients(unittest.TestCase):
+    """Defaults, serialization and predicates of the OpenCV pinhole tangential / thin-prism coefficients"""
+
+    @staticmethod
+    def _opencv_pinhole(**overrides: Any) -> OpenCVPinholeCameraModelParameters:
+        kwargs: Dict[str, Any] = dict(
+            resolution=np.array((640, 480), dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array((320.0, 240.0), dtype=np.float32),
+            focal_length=np.array((500.0, 500.0), dtype=np.float32),
+            radial_coeffs=np.zeros(6, dtype=np.float32),
+        )
+        kwargs.update(overrides)
+        return OpenCVPinholeCameraModelParameters(**kwargs)
+
+    def test_defaults_are_zero_and_not_shared(self):
+        a, b = self._opencv_pinhole(), self._opencv_pinhole()
+        np.testing.assert_array_equal(a.tangential_coeffs, np.zeros(2, np.float32))
+        np.testing.assert_array_equal(a.thin_prism_coeffs, np.zeros(4, np.float32))
+        assert a.tangential_coeffs.dtype == np.float32 and a.thin_prism_coeffs.dtype == np.float32
+        assert a.tangential_coeffs is not b.tangential_coeffs
+        assert a.thin_prism_coeffs is not b.thin_prism_coeffs
+
+    def test_zero_coefficients_are_always_serialized(self):
+        # older readers have no defaults for these fields, so they must stay in the payload
+        d = encode_camera_model_parameters(self._opencv_pinhole())["camera_model_parameters"]
+        assert d["tangential_coeffs"] == [0.0, 0.0]
+        assert d["thin_prism_coeffs"] == [0.0, 0.0, 0.0, 0.0]
+
+    def test_payload_without_keys_decodes_to_zero(self):
+        encoded = encode_camera_model_parameters(self._opencv_pinhole())
+        del encoded["camera_model_parameters"]["tangential_coeffs"]
+        del encoded["camera_model_parameters"]["thin_prism_coeffs"]
+        p = decode_camera_model_parameters(encoded)
+        assert isinstance(p, OpenCVPinholeCameraModelParameters)
+        np.testing.assert_array_equal(p.tangential_coeffs, np.zeros(2, np.float32))
+        np.testing.assert_array_equal(p.thin_prism_coeffs, np.zeros(4, np.float32))
+
+    def test_predicates(self):
+        p = self._opencv_pinhole()
+        assert not p.has_tangential_distortion and not p.has_thin_prism_distortion and p.is_distortion_free
+        p = self._opencv_pinhole(tangential_coeffs=np.array([0.0, 1e-6], np.float32))
+        assert p.has_tangential_distortion and not p.has_thin_prism_distortion and not p.is_distortion_free
+        p = self._opencv_pinhole(thin_prism_coeffs=np.array([0.0, 0.0, 0.0, -1e-6], np.float32))
+        assert not p.has_tangential_distortion and p.has_thin_prism_distortion and not p.is_distortion_free
+
+
 if __name__ == "__main__":
     unittest.main()
 
