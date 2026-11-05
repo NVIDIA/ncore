@@ -86,6 +86,8 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
         intrinsics_component_group_name: Name of the intrinsics component group to load
         masks_component_group_name: Name of the masks component group to load
         cuboids_component_group_name: Name of the cuboids component group to load
+        motion_compensator_parameters: Parameters of the motion compensation of the ray bundle sensors' point
+            clouds (defaults to the exact method)
     """
 
     def __init__(
@@ -96,6 +98,7 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
         intrinsics_component_group_name: str = "default",
         masks_component_group_name: Optional[str] = "default",
         cuboids_component_group_name: Optional[str] = "default",
+        motion_compensator_parameters: Optional[MotionCompensator.Parameters] = None,
     ):
         self._reader: SequenceComponentGroupsReader = reader
 
@@ -165,6 +168,8 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
                 ) in self._poses_reader.get_dynamic_poses()
             ]
         )
+        # motion compensator of the ray bundle sensors' point clouds
+        self._motion_compensator: MotionCompensator = MotionCompensator(self._pose_graph, motion_compensator_parameters)
 
     @classmethod
     async def open_async(
@@ -180,6 +185,7 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
         itar_remote_range_reads: bool = False,
         max_concurrent_requests: Union[int, asyncio.Semaphore, None] = None,
         node_cache_size: Optional[int] = None,
+        motion_compensator_parameters: Optional[MotionCompensator.Parameters] = None,
     ) -> SequenceLoaderV4:
         """Opens a sequence asynchronously, without blocking the running event loop (see
         :meth:`SequenceComponentGroupsReader.open_async` and :meth:`__init__` for the parameters).
@@ -210,6 +216,7 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
             intrinsics_component_group_name=intrinsics_component_group_name,
             masks_component_group_name=masks_component_group_name,
             cuboids_component_group_name=cuboids_component_group_name,
+            motion_compensator_parameters=motion_compensator_parameters,
         )
 
     @property
@@ -419,17 +426,19 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
 
         Args:
             reader: Ray bundle sensor component reader (lidar or radar)
-            pose_graph: Pose graph interpolator for coordinate transformations and motion compensation
+            pose_graph: Pose graph interpolator for coordinate transformations
+            motion_compensator: Motion compensator of the point clouds
         """
 
         def __init__(
             self,
             reader: Union[LidarSensorComponent.Reader, RadarSensorComponent.Reader],
             pose_graph: PoseGraphInterpolator,
+            motion_compensator: MotionCompensator,
         ):
             super().__init__(reader, pose_graph)
 
-            self._motion_compensator: MotionCompensator = MotionCompensator(pose_graph)
+            self._motion_compensator: MotionCompensator = motion_compensator
 
         @property
         def ray_bundle_reader(self) -> BaseRayBundleSensorComponentReader:
@@ -631,6 +640,7 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
             reader: Lidar component reader
             pose_graph: Pose graph interpolator for coordinate transformations
             model_parameters: Lidar intrinsic model parameters, if available
+            motion_compensator: Motion compensator of the point clouds
         """
 
         def __init__(
@@ -638,8 +648,9 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
             reader: LidarSensorComponent.Reader,
             pose_graph: PoseGraphInterpolator,
             model_parameters: Optional[LidarModelParameters],
+            motion_compensator: MotionCompensator,
         ):
-            super().__init__(reader, pose_graph)
+            super().__init__(reader, pose_graph, motion_compensator)
 
             self._model_parameters: Optional[LidarModelParameters] = model_parameters
 
@@ -713,6 +724,7 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
             ),
             pose_graph=self._pose_graph,
             model_parameters=self._intrinsics_reader.get_lidar_model_parameters(sensor_id),
+            motion_compensator=self._motion_compensator,
         )
 
     class RadarSensor(RayBundleSensor, AsyncRadarSensorProtocol):
@@ -721,14 +733,16 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
         Args:
             reader: Radar component reader
             pose_graph: Pose graph interpolator for coordinate transformations
+            motion_compensator: Motion compensator of the point clouds
         """
 
         def __init__(
             self,
             reader: RadarSensorComponent.Reader,
             pose_graph: PoseGraphInterpolator,
+            motion_compensator: MotionCompensator,
         ):
-            super().__init__(reader, pose_graph)
+            super().__init__(reader, pose_graph, motion_compensator)
 
         @property
         def radar_reader(self) -> RadarSensorComponent.Reader:
@@ -742,6 +756,7 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
                 msg=f"Radar sensor '{sensor_id}' not available in loaded radar sensor groups",
             ),
             pose_graph=self._pose_graph,
+            motion_compensator=self._motion_compensator,
         )
 
     class CameraLabels(AsyncCameraLabelsProtocol):
