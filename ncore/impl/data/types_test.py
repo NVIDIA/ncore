@@ -18,7 +18,7 @@ import json
 import unittest
 
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple, TypeVar, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union, cast
 from unittest import mock
 
 import dataclasses_json
@@ -409,6 +409,22 @@ class TestEncodedImageData(unittest.TestCase):
         self.assertIs(a1, a2)
 
 
+def _ftheta(**overrides: Any) -> FThetaCameraModelParameters:
+    """FTheta parameters with a simple linear polynomial, with keyword overrides for single fields"""
+    kwargs: Dict[str, Any] = dict(
+        resolution=np.array([640, 480], dtype=np.uint64),
+        shutter_type=ShutterType.GLOBAL,
+        principal_point=np.array([320.0, 240.0], dtype=np.float32),
+        reference_poly=FThetaCameraModelParameters.PolynomialType.ANGLE_TO_PIXELDIST,
+        pixeldist_to_angle_poly=np.array([0.0, 0.0008, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+        angle_to_pixeldist_poly=np.array([0.0, 1250.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+        max_angle=float(np.radians(45.0)),
+        linear_cde=np.array([1.0, 0.0, 0.0], dtype=np.float32),
+    )
+    kwargs.update(overrides)
+    return FThetaCameraModelParameters(**kwargs)
+
+
 class TestCameraModelParametersTransformSelf(unittest.TestCase):
     """`transform` must preserve the concrete parameter type, statically and at runtime"""
 
@@ -418,15 +434,9 @@ class TestCameraModelParametersTransformSelf(unittest.TestCase):
 
     @classmethod
     def _ftheta(cls) -> FThetaCameraModelParameters:
-        return FThetaCameraModelParameters(
+        return _ftheta(
             resolution=cls._RESOLUTION,
-            shutter_type=ShutterType.GLOBAL,
             principal_point=cls._PRINCIPAL_POINT,
-            reference_poly=FThetaCameraModelParameters.PolynomialType.ANGLE_TO_PIXELDIST,
-            pixeldist_to_angle_poly=np.array([0.0, 0.0008, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
-            angle_to_pixeldist_poly=np.array([0.0, 1250.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
-            max_angle=float(np.radians(45.0)),
-            linear_cde=np.array([1.0, 0.0, 0.0], dtype=np.float32),
         )
 
     @classmethod
@@ -477,6 +487,76 @@ class TestCameraModelParametersTransformSelf(unittest.TestCase):
         # `_all_parameters()`, which is typed as the abstract base.
         ftheta: FThetaCameraModelParameters = _downscale(self._ftheta(), 0.5)
         self.assertIsInstance(ftheta.angle_to_pixeldist_poly, np.ndarray)
+
+
+class TestFThetaTangentialParameters(unittest.TestCase):
+    """Parameter-level behaviour of the FTheta tangential distortion coefficients"""
+
+    def test_default_is_zero_and_not_shared(self):
+        a, b = _ftheta(), _ftheta()
+        np.testing.assert_array_equal(a.tangential_coeffs, np.zeros(2, np.float32))
+        assert a.tangential_coeffs.dtype == np.float32
+        assert a.tangential_coeffs is not b.tangential_coeffs
+        assert not a.has_tangential_distortion
+
+    def test_zero_is_omitted_nonzero_is_written(self):
+        assert "tangential_coeffs" not in _ftheta().to_dict()
+        # the stored intrinsics meta-data goes through this encoder, so existing data re-encodes unchanged
+        assert "tangential_coeffs" not in encode_camera_model_parameters(_ftheta())["camera_model_parameters"]
+        d = _ftheta(tangential_coeffs=np.array([0.5, -1.0], np.float32)).to_dict()
+        assert d["tangential_coeffs"] == [0.5, -1.0]
+
+    def test_identity_linear_cde_is_omitted_nonidentity_is_written(self):
+        assert "linear_cde" not in _ftheta().to_dict()
+        assert "linear_cde" not in encode_camera_model_parameters(_ftheta())["camera_model_parameters"]
+        cde = np.array([1.001, 0.002, -0.003], np.float32)
+        d = encode_camera_model_parameters(_ftheta(linear_cde=cde))["camera_model_parameters"]
+        np.testing.assert_array_equal(np.array(d["linear_cde"], np.float32), cde)
+        # any deviation from the exact identity is written
+        assert "linear_cde" in _ftheta(linear_cde=np.array([1.0, 0.0, 1e-7], np.float32)).to_dict()
+
+    def test_payload_without_linear_cde_decodes_to_identity(self):
+        encoded = encode_camera_model_parameters(_ftheta())
+        assert "linear_cde" not in encoded["camera_model_parameters"]
+        p = decode_camera_model_parameters(encoded)
+        assert isinstance(p, FThetaCameraModelParameters)
+        np.testing.assert_array_equal(p.linear_cde, [1.0, 0.0, 0.0])
+        assert p.linear_cde.dtype == np.float32
+        cde = np.array([1.001, 0.002, -0.003], np.float32)
+        q = decode_camera_model_parameters(encode_camera_model_parameters(_ftheta(linear_cde=cde)))
+        assert isinstance(q, FThetaCameraModelParameters)
+        np.testing.assert_array_equal(q.linear_cde, cde)
+
+    def test_legacy_payload_without_key_decodes_to_zero(self):
+        d = _ftheta().to_dict()
+        d.pop("tangential_coeffs", None)
+        p = FThetaCameraModelParameters.from_dict(d)
+        np.testing.assert_array_equal(p.tangential_coeffs, [0.0, 0.0])
+
+    def test_encode_decode_roundtrip_nonzero(self):
+        p = _ftheta(tangential_coeffs=np.array([-3.598739, -3.6424482], np.float32))
+        q = decode_camera_model_parameters(encode_camera_model_parameters(p))
+        assert isinstance(q, FThetaCameraModelParameters)
+        np.testing.assert_array_equal(q.tangential_coeffs, p.tangential_coeffs)
+
+    def test_validation(self):
+        with self.assertRaises(AssertionError):
+            _ftheta(tangential_coeffs=np.zeros(3, np.float32))
+        with self.assertRaises(AssertionError):
+            _ftheta(tangential_coeffs=np.zeros(2, np.float64))
+        with self.assertRaises(AssertionError):
+            _ftheta(max_angle=np.pi / 2, tangential_coeffs=np.array([0.1, 0.0], np.float32))
+        # fisheye with explicit zeros: accepted
+        _ftheta(max_angle=2.44, tangential_coeffs=np.zeros(2, np.float32))
+
+    def test_transform_scales_by_v_scale_and_ignores_offset(self):
+        t = np.array([-3.6, 1.2], np.float32)
+        p = _ftheta(tangential_coeffs=t)
+        q = p.transform(image_domain_scale=(0.5, 0.25), image_domain_offset=(13.0, 7.0))
+        np.testing.assert_allclose(q.tangential_coeffs, t * 0.25, rtol=1e-6)
+        assert q.tangential_coeffs.dtype == np.float32
+        np.testing.assert_array_equal(p.tangential_coeffs, t)  # source not mutated
+        np.testing.assert_array_equal(_ftheta().transform(0.5).tangential_coeffs, [0.0, 0.0])
 
 
 if __name__ == "__main__":

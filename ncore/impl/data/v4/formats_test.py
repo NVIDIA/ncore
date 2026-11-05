@@ -34,7 +34,7 @@ import parameterized
 from python.runfiles import Runfiles
 from upath import UPath
 
-from ncore.impl.data import nodes
+from ncore.impl.data import nodes, types
 from ncore.impl.data.json_types import JsonDocument
 from ncore.impl.data.v4.components import (
     CameraSensorComponent,
@@ -108,7 +108,10 @@ class SequenceSummary:
     dynamic_poses: Dict[str, Dict[Tuple[str, str], Tuple[List[List[List[float]]], List[int]]]] = dataclasses.field(
         default_factory=dict
     )
-    intrinsics: Dict[str, Tuple[JsonDocument, JsonDocument]] = dataclasses.field(default_factory=dict)
+    #: decoded camera model parameters by camera id, and lidar intrinsics attributes by lidar id
+    intrinsics: Dict[str, Tuple[Dict[str, JsonDocument], Dict[str, JsonDocument]]] = dataclasses.field(
+        default_factory=dict
+    )
     cuboids: Dict[str, List[JsonDocument]] = dataclasses.field(default_factory=dict)
     #: mask images by camera id and mask name
     masks: Dict[str, Dict[str, Dict[str, bytes]]] = dataclasses.field(default_factory=dict)
@@ -172,7 +175,16 @@ def _summary(reader: SequenceComponentGroupsReader, subsampled: bool = False, fr
         out.dynamic_poses[name] = {k: (p.tolist(), t.tolist()) for k, (p, t) in poses.get_dynamic_poses()}
 
     for name, intrinsics in sorted(reader.open_component_readers(IntrinsicsComponent.Reader).items()):
-        out.intrinsics[name] = (intrinsics._group.group("cameras").attrs, intrinsics._group.group("lidars").attrs)
+        cameras_group, lidars_group = intrinsics._group.group("cameras"), intrinsics._group.group("lidars")
+        out.intrinsics[name] = (
+            # Camera model parameters are compared by meaning (decoded and re-encoded), as encoders may omit
+            # default-valued fields that older writers stored explicitly
+            {
+                camera_id: types.decode_camera_model_parameters(cameras_group.group(camera_id).attrs).to_dict()
+                for camera_id in sorted(cameras_group.members())
+            },
+            {lidar_id: lidars_group.group(lidar_id).attrs for lidar_id in sorted(lidars_group.members())},
+        )
 
     for name, cuboids in sorted(reader.open_component_readers(CuboidsComponent.Reader).items()):
         out.cuboids[name] = [obs.to_dict() for obs in cuboids.get_observations()]
