@@ -209,12 +209,12 @@ will additionally be available in ``camera_model_parameters``:
   :math:`\begin{bmatrix} 2p_1x'y' + p_2 \left(r^2 + 2{x'}^2 \right) \\
   p_1 \left(r^2 + 2{y'}^2 \right) + 2p_2x'y' \end{bmatrix}` for
   normalized camera coordinates :math:`\begin{bmatrix} x' \\ y'
-  \end{bmatrix}` (float32, [2,])
+  \end{bmatrix}` (float32, [2,], optional, defaults to zeros)
 * ``thin_prism_coeffs`` - thins prism distortion coefficients
   ``[s1,s2,s3,s4]`` parameterizing the thin prism distortion components
   :math:`\begin{bmatrix} s_1r^2 + s_2r^4 \\ s_3r^2 + s_4r^4
   \end{bmatrix}` for squared norms :math:`r^2` of normalized camera
-  coordinates (float32, [4,])
+  coordinates (float32, [4,], optional, defaults to zeros)
 
 Mathematical Model
 """"""""""""""""""
