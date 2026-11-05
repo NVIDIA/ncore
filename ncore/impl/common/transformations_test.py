@@ -16,6 +16,7 @@
 import unittest
 
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 
@@ -24,9 +25,12 @@ from scipy.spatial.transform import Rotation as R
 
 from ncore.impl.common.transformations import (
     HalfClosedInterval,
+    MotionCompensationMethod,
     MotionCompensator,
+    MotionCompensatorParameters,
     PoseGraphInterpolator,
     PoseInterpolator,
+    _interpolation_grid,
     is_within_3d_bboxes,
 )
 from ncore.impl.common.util import unpack_optional
@@ -391,6 +395,252 @@ class TestMotionCompensator(unittest.TestCase):
         )
         self.assertEqual(empty.reference_frame_id, lidar_sensor.sensor_id)
         self.assertEqual(empty.anchor_frame_id, "world")
+
+
+class TestMotionCompensatorMethods(unittest.TestCase):
+    """The ``"interpolated"`` method against the ``"exact"`` one"""
+
+    def setUp(self):
+        _test_data_path = unpack_optional(
+            _RUNFILES.Rlocation(
+                "test-data-v4/c9b05cf4-afb9-11ec-b3c2-00044bf65fcb@1648597318700123-1648599151600035.json"
+            )
+        )
+        self.loader = SequenceLoaderV4(SequenceComponentGroupsReader([Path(_test_data_path)]))
+
+    def _frame(self, frame_idx: int):
+        lidar_sensor = self.loader.get_lidar_sensor("lidar_gt_top_p128_v4p5")
+        xyz = lidar_sensor.get_frame_point_cloud(
+            frame_idx, motion_compensation=False, with_start_points=False, return_index=0
+        ).xyz_m_end
+        return (
+            lidar_sensor.sensor_id,
+            xyz,
+            lidar_sensor.get_frame_ray_bundle_timestamp_us(frame_idx),
+            lidar_sensor.get_frame_timestamp_us(frame_idx, types.FrameTimepoint.START),
+            lidar_sensor.get_frame_timestamp_us(frame_idx, types.FrameTimepoint.END),
+        )
+
+    def test_invalid_parameters_raise(self):
+        with self.assertRaises(ValueError):
+            MotionCompensatorParameters(method=cast(MotionCompensationMethod, "fast"))
+        for tolerance in (0.0, -1e-5):
+            with self.assertRaises(ValueError):
+                MotionCompensatorParameters("interpolated", interpolation_tolerance=tolerance)
+
+    def test_default_parameters_are_exact(self):
+        compensator = MotionCompensator(self.loader.pose_graph)
+        self.assertEqual(compensator.parameters, MotionCompensatorParameters("exact"))
+
+    def test_interpolated_matches_exact_on_recorded_frames(self):
+        """On recorded lidar frames the interpolated method agrees with the exact one far below a millimeter, for
+        compensation (start / end points) and decompensation, and for interior reference timestamps"""
+        exact = MotionCompensator(self.loader.pose_graph, MotionCompensatorParameters("exact"))
+        interpolated = MotionCompensator(self.loader.pose_graph, MotionCompensatorParameters("interpolated"))
+        self.assertEqual(interpolated.parameters.method, "interpolated")
+
+        for frame_idx in range(0, 2):
+            sensor_id, xyz, timestamp_us, start_us, end_us = self._frame(frame_idx)
+            # the frame's points span a non-trivial time range, and the ego vehicle moves within it
+            self.assertGreater(int(timestamp_us.max() - timestamp_us.min()), 10_000)
+
+            for reference_us in (end_us, (start_us + end_us) // 2):
+                expected = exact.motion_compensate_points(
+                    sensor_id, xyz, timestamp_us, start_us, end_us, reference_timestamp_us=reference_us
+                )
+                actual = interpolated.motion_compensate_points(
+                    sensor_id, xyz, timestamp_us, start_us, end_us, reference_timestamp_us=reference_us
+                )
+                # sanity: motion compensation moves the points (by more than the tolerance below)
+                self.assertGreater(np.abs(expected.xyz_e_reftime - xyz).max(), 1e-2)
+                np.testing.assert_allclose(actual.xyz_e_reftime, expected.xyz_e_reftime, rtol=0, atol=1e-4)
+                np.testing.assert_allclose(actual.xyz_s_reftime, expected.xyz_s_reftime, rtol=0, atol=1e-4)
+                self.assertEqual(actual.xyz_e_reftime.dtype, np.float32)
+                self.assertEqual(actual.xyz_s_reftime.dtype, np.float32)
+
+                np.testing.assert_allclose(
+                    interpolated.motion_decompensate_points(
+                        sensor_id, expected.xyz_e_reftime, timestamp_us, start_us, end_us, reference_us
+                    ),
+                    exact.motion_decompensate_points(
+                        sensor_id, expected.xyz_e_reftime, timestamp_us, start_us, end_us, reference_us
+                    ),
+                    rtol=0,
+                    atol=1e-4,
+                )
+
+    def test_interpolated_is_exact_for_linear_motion(self):
+        """For a constant-velocity translation the per-point transformations are linear in time, so the
+        interpolation is exact (also for timestamps at the frame boundaries and points in between grid timestamps)"""
+        timestamps_us = np.array([0, 1_000_000], dtype=np.uint64)
+        T_rig_world = np.stack([get_SE3(np.array([0.0, 0.0, 0.0])), get_SE3(np.array([30.0, -4.0, 1.0]))])
+        pose_graph = PoseGraphInterpolator(
+            [
+                PoseGraphInterpolator.Edge("rig", "world", T_rig_world, timestamps_us),
+                PoseGraphInterpolator.Edge("lidar", "rig", get_SE3(np.array([1.0, 0.0, 2.0])), None),
+            ]
+        )
+        rng = np.random.default_rng(0)
+        xyz = rng.normal(scale=50.0, size=(5000, 3)).astype(np.float32)
+        start_us, end_us = 200_000, 300_000
+        timestamp_us = rng.integers(start_us, end_us + 1, size=5000).astype(np.uint64)
+        timestamp_us[:2] = (start_us, end_us)
+
+        exact = MotionCompensator(pose_graph, MotionCompensatorParameters("exact")).motion_compensate_points(
+            "lidar", xyz, timestamp_us, start_us, end_us
+        )
+        interpolated = MotionCompensator(
+            pose_graph, MotionCompensatorParameters("interpolated")
+        ).motion_compensate_points("lidar", xyz, timestamp_us, start_us, end_us)
+        np.testing.assert_allclose(interpolated.xyz_e_reftime, exact.xyz_e_reftime, rtol=0, atol=1e-4)
+        np.testing.assert_allclose(interpolated.xyz_s_reftime, exact.xyz_s_reftime, rtol=0, atol=1e-5)
+
+    def _rotating_pose_graph(self) -> PoseGraphInterpolator:
+        """A turning vehicle: 30 deg/s yaw rate, 10 m/s"""
+        timestamps_us = np.array([0, 1_000_000], dtype=np.uint64)
+        T_end = np.eye(4)
+        T_end[:3, :3] = R.from_euler("z", np.deg2rad(30.0)).as_matrix()
+        T_end[:3, 3] = (10.0, 3.0, 0.0)
+        return PoseGraphInterpolator(
+            [
+                PoseGraphInterpolator.Edge("rig", "world", np.stack([np.eye(4), T_end]), timestamps_us),
+                PoseGraphInterpolator.Edge("lidar", "rig", get_SE3(np.array([0.0, 0.0, 0.0])), None),
+            ]
+        )
+
+    def test_interpolated_deviation_is_bounded_by_tolerance(self):
+        """For a rotation the interpolation deviates from the exact transformation by the chord error of the rotation
+        within the grid intervals, which the adaptive grid bounds by the tolerance (evaluated in float64 to separate
+        the bound from float32 rounding)"""
+        pose_graph = self._rotating_pose_graph()
+        rng = np.random.default_rng(1)
+        xyz = rng.normal(scale=60.0, size=(5000, 3))
+        start_us, end_us = 400_000, 500_000
+        timestamp_us = rng.integers(start_us, end_us + 1, size=5000).astype(np.uint64)
+
+        T_ref = pose_graph.evaluate_poses("world", "lidar", np.array(end_us, dtype=np.uint64)).astype(np.float64)
+
+        def evaluate(timestamps_us: np.ndarray) -> np.ndarray:
+            return T_ref @ pose_graph.evaluate_poses("lidar", "world", timestamps_us).astype(np.float64)
+
+        T_exact = evaluate(timestamp_us)
+        exact = np.einsum("nij,nj->ni", T_exact[:, :3, :3], xyz) + T_exact[:, :3, 3]
+        # the rotation within the frame moves far points by meters
+        self.assertGreater(np.abs(exact - xyz).max(), 1.0)
+
+        max_distance = float(np.max(np.linalg.norm(xyz, axis=1)))
+        n_intervals = []
+        for tolerance in (1e-2, 1e-3, 1e-4, 1e-5, 1e-6):
+            grid, T_grid = _interpolation_grid(
+                evaluate, np.array([start_us, end_us], dtype=np.int64), max_distance, tolerance
+            )
+            n_intervals.append(len(grid) - 1)
+            interval = np.clip(np.searchsorted(grid, timestamp_us.astype(np.int64), side="right") - 1, 0, len(grid) - 2)
+            weight = ((timestamp_us.astype(np.int64) - grid[interval]) / (grid[interval + 1] - grid[interval]))[
+                :, None, None
+            ]
+            T = T_grid[interval] + weight * (T_grid[interval + 1] - T_grid[interval])
+            interpolated = np.einsum("nij,nj->ni", T[:, :3, :3], xyz) + T[:, :3, 3]
+            self.assertLessEqual(np.abs(interpolated - exact).max(), tolerance, f"tolerance {tolerance}")
+        # finer tolerances refine the grid
+        self.assertEqual(n_intervals, sorted(n_intervals))
+        self.assertGreater(n_intervals[-1], n_intervals[0])
+
+    def test_interpolated_matches_exact_within_tolerance_and_float32_rounding(self):
+        """The float32 points of both methods differ by at most the tolerance plus the float32 rounding of the
+        transformations (relative ~1e-7 of the point distances)"""
+        pose_graph = self._rotating_pose_graph()
+        rng = np.random.default_rng(2)
+        xyz = rng.normal(scale=60.0, size=(5000, 3)).astype(np.float32)
+        start_us, end_us = 400_000, 500_000
+        timestamp_us = rng.integers(start_us, end_us + 1, size=5000).astype(np.uint64)
+        rounding = 4 * float(np.finfo(np.float32).eps) * float(np.max(np.linalg.norm(xyz, axis=1)))
+
+        exact = MotionCompensator(pose_graph, MotionCompensatorParameters("exact")).motion_compensate_points(
+            "lidar", xyz, timestamp_us, start_us, end_us
+        )
+        for tolerance in (1e-3, 1e-5):
+            interpolated = MotionCompensator(
+                pose_graph, MotionCompensatorParameters("interpolated", tolerance)
+            ).motion_compensate_points("lidar", xyz, timestamp_us, start_us, end_us)
+            np.testing.assert_allclose(
+                interpolated.xyz_e_reftime, exact.xyz_e_reftime, rtol=0, atol=tolerance + rounding
+            )
+
+    def test_interpolation_grid_contains_pose_timestamps(self):
+        """The pose timestamps within the frame (where the interpolated motion changes) are grid timestamps, also
+        for motions that don't need refinement"""
+        timestamps_us = np.array([0, 150_000, 300_000], dtype=np.uint64)
+        T_rig_world = np.stack(
+            [get_SE3(np.array([0.0, 0.0, 0.0])), get_SE3(np.array([3.0, 0.0, 0.0])), get_SE3(np.array([3.0, 3.0, 0.0]))]
+        )
+        pose_graph = PoseGraphInterpolator(
+            [
+                PoseGraphInterpolator.Edge("rig", "world", T_rig_world, timestamps_us),
+                PoseGraphInterpolator.Edge("lidar", "rig", get_SE3(np.array([0.0, 0.0, 0.0])), None),
+            ]
+        )
+        self.assertEqual(
+            [t.tolist() for t in pose_graph.get_path_timestamps_us("lidar", "world")], [timestamps_us.tolist()]
+        )
+        # the translation changes direction at 150 ms: piecewise linear, exact with the breakpoint, not without it
+        rng = np.random.default_rng(3)
+        xyz = rng.normal(scale=20.0, size=(2000, 3)).astype(np.float32)
+        start_us, end_us = 100_000, 200_000
+        timestamp_us = rng.integers(start_us, end_us + 1, size=2000).astype(np.uint64)
+        exact = MotionCompensator(pose_graph, MotionCompensatorParameters("exact")).motion_compensate_points(
+            "lidar", xyz, timestamp_us, start_us, end_us
+        )
+        interpolated = MotionCompensator(
+            pose_graph, MotionCompensatorParameters("interpolated")
+        ).motion_compensate_points("lidar", xyz, timestamp_us, start_us, end_us)
+        np.testing.assert_allclose(interpolated.xyz_e_reftime, exact.xyz_e_reftime, rtol=0, atol=1e-4)
+
+    def test_empty_and_single_timestamp(self):
+        pose_graph = self.loader.pose_graph
+        sensor_id, xyz, timestamp_us, start_us, end_us = self._frame(0)
+        for method in ("exact", "interpolated"):
+            compensator = MotionCompensator(pose_graph, MotionCompensatorParameters(method))
+            empty = compensator.motion_compensate_points(
+                sensor_id, np.empty((0, 3), np.float32), np.empty((0,), np.uint64), start_us, end_us
+            )
+            self.assertEqual(empty.xyz_e_reftime.shape, (0, 3))
+            # all points at the reference timestamp map through the identity
+            single = compensator.motion_compensate_points(
+                sensor_id, xyz[:100], np.full(100, end_us, dtype=np.uint64), start_us, end_us
+            )
+            np.testing.assert_allclose(single.xyz_e_reftime, xyz[:100], rtol=0, atol=1e-4)
+
+    def test_sequence_loader_forwards_method(self):
+        """SequenceLoaderV4 point clouds use the requested method"""
+        _test_data_path = unpack_optional(
+            _RUNFILES.Rlocation(
+                "test-data-v4/c9b05cf4-afb9-11ec-b3c2-00044bf65fcb@1648597318700123-1648599151600035.json"
+            )
+        )
+        reader = SequenceComponentGroupsReader([Path(_test_data_path)])
+        exact_loader = SequenceLoaderV4(reader)
+        interpolated_loader = SequenceLoaderV4(
+            reader, motion_compensator_parameters=MotionCompensatorParameters("interpolated")
+        )
+
+        exact_pc = exact_loader.get_lidar_sensor("lidar_gt_top_p128_v4p5").get_frame_point_cloud(
+            0, motion_compensation=True, with_start_points=True
+        )
+        interpolated_pc = interpolated_loader.get_lidar_sensor("lidar_gt_top_p128_v4p5").get_frame_point_cloud(
+            0, motion_compensation=True, with_start_points=True
+        )
+        np.testing.assert_allclose(interpolated_pc.xyz_m_end, exact_pc.xyz_m_end, rtol=0, atol=1e-4)
+        # the methods differ (the interpolation is not the exact evaluation)
+        self.assertFalse(np.array_equal(interpolated_pc.xyz_m_end, exact_pc.xyz_m_end))
+
+        # the parameters are passed through to the sensors' motion compensators
+        parameters = MotionCompensatorParameters("interpolated", interpolation_tolerance=3e-4)
+        lidar = SequenceLoaderV4(reader, motion_compensator_parameters=parameters).get_lidar_sensor(
+            "lidar_gt_top_p128_v4p5"
+        )
+        assert isinstance(lidar, SequenceLoaderV4.LidarSensor)
+        self.assertIs(lidar._motion_compensator.parameters, parameters)  # noqa: SLF001
 
 
 class TestMotionCompensatorAnchorFrame(unittest.TestCase):

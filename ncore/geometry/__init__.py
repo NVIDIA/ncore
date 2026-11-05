@@ -18,7 +18,9 @@ of points and bounding boxes, and time intervals"""
 
 from ncore.impl.common.transformations import (
     HalfClosedInterval,
+    MotionCompensationMethod,
     MotionCompensator,
+    MotionCompensatorParameters,
     PoseGraphInterpolator,
     PoseInterpolator,
     bbox_pose,
@@ -37,6 +39,8 @@ __all__ = [
     "PoseInterpolator",
     "PoseGraphInterpolator",
     "MotionCompensator",
+    "MotionCompensationMethod",
+    "MotionCompensatorParameters",
     # rigid transformations
     "se3_inverse",
     "so3_trans_2_se3",

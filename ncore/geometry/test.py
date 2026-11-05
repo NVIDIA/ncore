@@ -27,6 +27,8 @@ class TestPackage(unittest.TestCase):
             "PoseInterpolator",
             "PoseGraphInterpolator",
             "MotionCompensator",
+            "MotionCompensationMethod",
+            "MotionCompensatorParameters",
             "se3_inverse",
             "so3_trans_2_se3",
             "transform_point_cloud",
