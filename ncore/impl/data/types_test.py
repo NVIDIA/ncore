@@ -515,6 +515,13 @@ class TestFThetaTangentialParameters(unittest.TestCase):
         # any deviation from the exact identity is written
         assert "linear_cde" in _ftheta(linear_cde=np.array([1.0, 0.0, 1e-7], np.float32)).to_dict()
 
+    def test_has_linear_term(self):
+        assert not _ftheta().has_linear_term
+        # all-zero linear terms are repaired to the identity
+        assert not _ftheta(linear_cde=np.zeros(3, np.float32)).has_linear_term
+        for cde in ([1.001, 0.0, 0.0], [1.0, 1e-7, 0.0], [1.0, 0.0, -1e-7]):
+            assert _ftheta(linear_cde=np.array(cde, np.float32)).has_linear_term, cde
+
     def test_payload_without_linear_cde_decodes_to_identity(self):
         encoded = encode_camera_model_parameters(_ftheta())
         assert "linear_cde" not in encoded["camera_model_parameters"]
