@@ -425,6 +425,7 @@ class FThetaCameraModelParameters(CameraModelParameters):
         if (c1 := float(self.angle_to_pixeldist_poly[1])) <= 0.0:
             raise ValueError(f"Cannot derive a positive focal length for an ideal pinhole (got {c1})")
         c = float(self.linear_cde[0])
+        # The tangential term is second order in the normalized coordinates and does not contribute here
         return ParaxialPinholeGeometry(
             np.array([c1 * c, c1], dtype=np.float32),
             (self.principal_point + 0.5).astype(np.float32),
@@ -454,13 +455,25 @@ class FThetaCameraModelParameters(CameraModelParameters):
     )  #: Coefficients of the angles-to-pixeldistances polynomial (float32, [6,])
     max_angle: float = 0.0  #: Maximal extrinsic ray angle [rad] with the principal direction (float32)
     linear_cde: np.ndarray = util.numpy_array_field(
-        np.float32, default=np.array([1.0, 0.0, 0.0], dtype=np.float32)
-    )  #: Coefficients of the constrained linear term [c,d;e,1] transforming between sensor coordinates (in mm) to image coordinates (in px) (float32, [3,])
+        np.float32,
+        default=np.array([1.0, 0.0, 0.0], dtype=np.float32),
+        exclude_if=lambda v: np.array_equal(v, [1.0, 0.0, 0.0]),
+    )  #: Coefficients of the constrained linear term [c,d;e,1] transforming between sensor coordinates (in mm) to image coordinates (in px) (float32, [3,]). The identity [1, 0, 0] (the default) is omitted when serializing
+    tangential_coeffs: np.ndarray = util.numpy_array_field(
+        np.float32,
+        default=np.zeros(2, dtype=np.float32),
+        exclude_if=lambda v: not np.any(v),
+    )  #: Tangential distortion coefficients [t0, t1] in pixels (float32, [2,]). With normalized coordinates ``x = X/Z, y = Y/Z`` the offsets ``du = 2*t0*x*y + t1*(r^2 + 2*x^2)`` and ``dv = t0*(r^2 + 2*y^2) + 2*t1*x*y`` (``r^2 = x^2 + y^2``) are added to the radial (polynomial) offset from the principal point before the linear term is applied. All zeros (the default) means no tangential distortion; such values are omitted when serializing
 
     @staticmethod
     def type() -> str:
         """Returns a string-identifier of the camera model"""
         return "ftheta"
+
+    @property
+    def has_tangential_distortion(self) -> bool:
+        """Whether any tangential distortion coefficient is non-zero"""
+        return bool(np.any(self.tangential_coeffs != 0))
 
     @property
     def bw_poly(self) -> np.ndarray:
@@ -514,6 +527,14 @@ class FThetaCameraModelParameters(CameraModelParameters):
         # some datasets might store _invalid_ linear terms (all zero) - workaround by setting these to default linear term
         if np.allclose(self.linear_cde, 0.0):
             self.linear_cde = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+
+        assert self.tangential_coeffs.shape == (2,)
+        assert self.tangential_coeffs.dtype == np.dtype("float32")
+
+        # The tangential term grows with tan(theta)^2 and is undefined at 90 degrees, so it is only
+        # supported for fields of view below a hemisphere; zero coefficients impose no constraint
+        if self.has_tangential_distortion:
+            assert self.max_angle < np.pi / 2, "Tangential distortion requires max_angle < pi/2"
 
     def transform(
         self,
@@ -578,6 +599,12 @@ class FThetaCameraModelParameters(CameraModelParameters):
             [self.linear_cde[0] * scale_ratio, self.linear_cde[1] * scale_ratio, self.linear_cde[2]], dtype=np.float32
         )
 
+        # The tangential offset T is added to the polynomial pixel offset before the linear term, so the
+        # scaled projection is S A (rad + T) = A' (sv rad + sv T), with A' the ratio-scaled linear term
+        # above: T scales with the v-scale like the fw polynomial. It is relative to the principal
+        # point, so the crop offset does not affect it (and zeros stay zeros).
+        tangential_coeffs = (self.tangential_coeffs * image_domain_scale_factors[1]).astype(np.float32)
+
         # Note: as the FOV can't be effectively increased by scaling / cropping operations, the max-angle is currently not updated and still represents
         # an upper-bound - consider re-computing a tighter upper bound in the future?
 
@@ -588,6 +615,7 @@ class FThetaCameraModelParameters(CameraModelParameters):
             pixeldist_to_angle_poly=pixeldist_to_angle_poly,
             angle_to_pixeldist_poly=angle_to_pixeldist_poly,
             linear_cde=linear_cde,
+            tangential_coeffs=tangential_coeffs,
         )
 
 
