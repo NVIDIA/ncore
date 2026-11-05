@@ -34,7 +34,7 @@ from parameterized import parameterized_class
 from python.runfiles import Runfiles
 from upath import UPath
 
-from ncore.impl.common.transformations import HalfClosedInterval
+from ncore.impl.common.transformations import HalfClosedInterval, MotionCompensator, PoseGraphInterpolator
 from ncore.impl.data import nodes
 from ncore.impl.data.compat import (
     AsyncCameraLabelsProtocol,
@@ -48,6 +48,7 @@ from ncore.impl.data.compat import (
 from ncore.impl.data.types import (
     CameraLabelDescriptor,
     EncodedImageData,
+    FrameTimepoint,
     LabelEncoding,
     LabelSchema,
     LabelSource,
@@ -265,6 +266,101 @@ class TestSequenceLoaderV4AsyncReads(_AsyncReadsTestCase):
                             ),
                             sensor.get_frame_point_cloud(1, motion_compensation, with_start_points),
                         )
+
+
+class TestSequenceLoaderV4MotionCompensation(_AsyncReadsTestCase):
+    """Motion-compensated point clouds of the lidar and radar sensors (sync and async) with both methods: ``EXACT``
+    reproduces the previous per-point evaluation up to rounding, ``INTERPOLATED`` within its tolerance; the sensors use
+    the loader's motion compensator, also after replacing a sensor's pose graph"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        reader = SequenceComponentGroupsReader([_TEST_DATA_PATH])
+        cls.loaders = {
+            method: SequenceLoaderV4(reader, motion_compensator_parameters=MotionCompensator.Parameters(method))
+            for method in MotionCompensator.Parameters.Method
+        }
+
+    @staticmethod
+    def _expected(sensor, frame_index: int) -> Tuple[np.ndarray, np.ndarray]:
+        """Previous implementation: one 4x4 transformation per point, at its timestamp, compensated to the frame end"""
+        xyz = sensor.get_frame_point_cloud(frame_index, motion_compensation=False, with_start_points=False).xyz_m_end
+        timestamp_us = sensor.get_frame_ray_bundle_timestamp_us(frame_index)
+        end_us = sensor.frames_timestamps_us[frame_index, FrameTimepoint.END.value]
+        unique, inverse = np.unique(timestamp_us, return_inverse=True)
+        T = (
+            sensor.pose_graph.evaluate_poses("world", sensor.sensor_id, np.array(end_us, dtype=np.uint64))
+            @ sensor.pose_graph.evaluate_poses(sensor.sensor_id, "world", unique)
+        ).astype(np.float32)[inverse]
+        return (T[:, :3, :3] @ xyz[:, :, np.newaxis])[:, :, 0] + T[:, :3, 3], T[:, :3, 3]
+
+    def test_point_clouds_against_previous_implementation(self) -> None:
+        for method, loader in self.loaders.items():
+            for sensor in (
+                loader.get_lidar_sensor(loader.lidar_ids[0]),
+                loader.get_radar_sensor(loader.radar_ids[0]),
+            ):
+                for frame_index in (0, sensor.frames_count - 1):
+                    with self.subTest(method=method.name, sensor=sensor.sensor_id, frame_index=frame_index):
+                        expected_end, expected_start = self._expected(sensor, frame_index)
+                        point_cloud = sensor.get_frame_point_cloud(frame_index, True, True)
+                        self.assertFramePointCloudEqual(
+                            self.run_async(sensor.get_frame_point_cloud_async(frame_index, True, True)), point_cloud
+                        )
+                        for actual, expected in (
+                            (point_cloud.xyz_m_end, expected_end),
+                            (point_cloud.xyz_m_start, expected_start),
+                        ):
+                            assert actual is not None
+                            self.assertEqual((actual.shape, actual.dtype), (expected.shape, expected.dtype))
+                            if method is MotionCompensator.Parameters.Method.EXACT:
+                                # up to the rounding of the summation order (depends on the numpy version): a few
+                                # float32 eps (2^-23) of the largest coordinates
+                                rounding = 8 * float(np.finfo(np.float32).eps) * float(np.abs(expected).max())
+                                np.testing.assert_allclose(actual, expected, rtol=0, atol=rounding)
+                            else:
+                                np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-4)
+
+    def test_sensors_share_the_loaders_motion_compensator(self) -> None:
+        for method, loader in self.loaders.items():
+            sensors = [
+                loader.get_lidar_sensor(loader.lidar_ids[0]),
+                loader.get_lidar_sensor(loader.lidar_ids[0]),
+                loader.get_radar_sensor(loader.radar_ids[0]),
+            ]
+            compensators = []
+            for sensor in sensors:
+                assert isinstance(sensor, SequenceLoaderV4.RayBundleSensor)
+                compensators.append(sensor._motion_compensator)  # noqa: SLF001
+            self.assertEqual(len({id(compensator) for compensator in compensators}), 1)
+            self.assertIs(compensators[0].parameters.method, method)
+
+    def test_replaced_pose_graph_keeps_the_loaders_motion_compensation(self) -> None:
+        """A sensor's replaced pose graph (``set_pose_graph``, e.g. per-sensor poses) is used for its sensor poses;
+        its point clouds keep using the loader's motion compensator (as before)"""
+        loader = self.loaders[MotionCompensator.Parameters.Method.EXACT]
+        lidar = loader.get_lidar_sensor(loader.lidar_ids[0])
+        expected = lidar.get_frame_point_cloud(0, True, False).xyz_m_end
+        # a pose graph without motion (the time-dependent edges' poses replaced by identities)
+        static = PoseGraphInterpolator(
+            [
+                PoseGraphInterpolator.Edge(
+                    edge.source_node,
+                    edge.target_node,
+                    edge.T_source_target
+                    if edge.timestamps_us is None
+                    else np.tile(np.eye(4, dtype=edge.T_source_target.dtype), (len(edge.timestamps_us), 1, 1)),
+                    edge.timestamps_us,
+                )
+                for edge in lidar.pose_graph.normalized_edge_map.values()
+            ]
+        )
+        lidar.set_pose_graph(static)
+        self.assertIs(lidar.pose_graph, static)
+        np.testing.assert_array_equal(lidar.get_frame_point_cloud(0, True, False).xyz_m_end, expected)
+        # (with the replaced pose graph, the points would not move)
+        uncompensated = lidar.get_frame_point_cloud(0, False, False).xyz_m_end
+        self.assertGreater(float(np.abs(expected - uncompensated).max()), 1e-2)
 
 
 class TestSequenceLoaderV4OpenAsync(unittest.TestCase):
