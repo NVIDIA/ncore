@@ -1274,6 +1274,9 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
             )
             / (c - e * d),
         )
+        # Identity linear terms are skipped in the projection / unprojection (exact, as I @ v == v); decided once at
+        # construction, the A / Ainv buffers are not re-read to select the code path
+        self._has_linear_term: bool = not np.array_equal(camera_model_parameters.linear_cde, [1.0, 0.0, 0.0])
 
         # Initialize first derivative of polynomials for Newton iteration-based inversions
         self.register_buffer(
@@ -1362,7 +1365,9 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
         image_points = image_points.to(self.dtype)
 
         # Get f(theta)-weighted normalized 2d vectors (undoing linear term)
-        image_points_dist = torch.einsum("ij,nj->ni", self.Ainv, image_points - self.principal_point)
+        image_points_dist = image_points - self.principal_point
+        if self._has_linear_term:
+            image_points_dist = torch.einsum("ij,nj->ni", self.Ainv, image_points_dist)
         rdist = torch.linalg.norm(image_points_dist, axis=1, keepdims=True)
 
         # Evaluate backward polynomial to get theta = f^-1(rdist) factors
@@ -1465,15 +1470,14 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
             xy_dir = cam_rays[:, :2] / ray_xy_norms
             xy_norm = torch.tan(thetas) * xy_dir
             pre_linear = deltas * xy_dir + eval_ftheta_tangential(xy_norm, self.tangential_coeffs)
-
-            # Apply linear term [c,d;e,1], relative to principal point
-            image_points = torch.einsum("ij,nj->ni", self.A, pre_linear) + self.principal_point[None, :]
         else:
-            # Apply linear term [c,d;e,1] to f(theta)-weighted normalized 2d vectors, relative to principal point
-            image_points = (
-                torch.einsum("ij,nj->ni", self.A, deltas / ray_xy_norms * cam_rays[:, :2])
-                + self.principal_point[None, :]
-            )
+            # f(theta)-weighted normalized 2d vectors
+            pre_linear = deltas / ray_xy_norms * cam_rays[:, :2]
+
+        # Apply linear term [c,d;e,1] (skipped if identity), relative to principal point
+        if self._has_linear_term:
+            pre_linear = torch.einsum("ij,nj->ni", self.A, pre_linear)
+        image_points = pre_linear + self.principal_point[None, :]
 
         # Extract valid image points
         valid_x = torch.logical_and(0.0 <= image_points[:, 0], image_points[:, 0] < self.resolution[0])
