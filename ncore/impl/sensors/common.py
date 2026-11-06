@@ -126,6 +126,25 @@ def eval_poly_horner(poly_coefficients: torch.Tensor, x: torch.Tensor) -> torch.
     return y
 
 
+def eval_ftheta_tangential(xy: torch.Tensor, coeffs: torch.Tensor) -> torch.Tensor:
+    """Evaluates the DriveWorks-compatible FTheta tangential distortion offsets (in pixels)
+
+    For normalized coordinates ``xy = [x, y]`` (``x = X/Z, y = Y/Z``, shape [N,2]) and coefficients
+    ``coeffs = [t0, t1]`` (shape [2,]) returns the offsets [N,2] given by
+    ``T(x, y) = (2*t0*x*y + t1*(r2 + 2*x^2), 2*t1*x*y + t0*(r2 + 2*y^2))`` with ``r2 = x^2 + y^2``
+    """
+
+    x = xy[:, 0]
+    y = xy[:, 1]
+    t0 = coeffs[0]
+    t1 = coeffs[1]
+
+    xy2 = 2 * x * y
+    r2 = x * x + y * y
+
+    return torch.stack((t0 * xy2 + t1 * (r2 + 2 * x * x), t1 * xy2 + t0 * (r2 + 2 * y * y)), dim=1)
+
+
 def eval_poly_inverse_horner_newton(
     poly_coefficients: torch.Tensor,
     poly_derivative_coefficients: torch.Tensor,

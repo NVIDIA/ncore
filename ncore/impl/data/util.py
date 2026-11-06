@@ -98,16 +98,27 @@ def closest_index_sorted(sorted_array: np.ndarray, value: int) -> int:
     return idx
 
 
-def numpy_array_field(datatype: "npt.DTypeLike", default=None) -> Any:
-    """Provides encoder / decoder functionality for numpy arrays into field types compatible with dataclass-JSON"""
+def numpy_array_field(
+    datatype: "npt.DTypeLike", default=None, exclude_if: Optional[Callable[[Any], bool]] = None
+) -> Any:
+    """Provides encoder / decoder functionality for numpy arrays into field types compatible with dataclass-JSON
+
+    Args:
+        datatype: dtype the decoded array is cast to
+        default: optional default value; each instance receives its own copy (cast to ``datatype``)
+        exclude_if: optional predicate on the field value; if it returns True the field is omitted when serializing
+    """
 
     def decoder(*args, **kwargs) -> np.ndarray:
         return np.array(*args, **kwargs).astype(datatype)
 
-    metadata = dataclasses_json.config(encoder=np.ndarray.tolist, decoder=decoder)
+    if exclude_if is not None:
+        metadata = dataclasses_json.config(encoder=np.ndarray.tolist, decoder=decoder, exclude=exclude_if)
+    else:
+        metadata = dataclasses_json.config(encoder=np.ndarray.tolist, decoder=decoder)
 
     if default is not None:
-        return field(default_factory=lambda: default, metadata=metadata)
+        return field(default_factory=lambda: np.array(default, dtype=datatype), metadata=metadata)
     else:
         return field(default=None, metadata=metadata)
 

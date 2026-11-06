@@ -78,6 +78,18 @@ will additionally be available in ``camera_model_parameters``:
   :math:`\begin{bmatrix} c & d \\ e & 1 \end{bmatrix}` transforming between
   sensor coordinates (in mm) to image coordinates (in px) (float32, [3,])
 
+The following intrinsic parameter is optional and defaults to zeros if absent:
+
+* ``tangential_coeffs`` - tangential distortion coefficients ``[t0,t1]``
+  [px] parameterizing the tangential distortion components
+  :math:`\begin{bmatrix} 2t_0x'y' + t_1 \left(r^2 + 2{x'}^2 \right) \\
+  2t_1x'y' + t_0 \left(r^2 + 2{y'}^2 \right) \end{bmatrix}` for
+  normalized camera coordinates :math:`\begin{bmatrix} x' \\ y'
+  \end{bmatrix}` and :math:`r^2 = {x'}^2 + {y'}^2`, following the
+  DriveWorks FTheta tangential distortion model. Zeros mean no tangential
+  distortion, and zero coefficients are omitted when serializing. Non-zero
+  coefficients require ``max_angle`` < :math:`\pi/2` (float32, [2,])
+
 Mathematical Model
 """"""""""""""""""
 
@@ -95,17 +107,46 @@ The FTheta model projects 3D camera rays to image coordinates through the follow
    
       \delta = f(\theta) = c_0 + c_1\theta + c_2\theta^2 + c_3\theta^3 + c_4\theta^4 + c_5\theta^5
 
-3. **Linear Transformation**: Apply constrained linear transformation A and add principal point:
+3. **Tangential Distortion**: Evaluate the tangential distortion [px] at the
+   normalized camera coordinates (zero if ``tangential_coeffs`` are zero):
+
+   .. math::
+
+      x' = \frac{x}{z}, \quad y' = \frac{y}{z}, \quad r^2 = {x'}^2 + {y'}^2
+
+      T(x', y') =
+      \begin{bmatrix}
+      2t_0x'y' + t_1(r^2 + 2{x'}^2) \\
+      2t_1x'y' + t_0(r^2 + 2{y'}^2)
+      \end{bmatrix}
+
+   The normalized coordinates are evaluated from the angle :math:`\theta` clamped to
+   ``max_angle``, i.e., as :math:`\tan(\min(\theta, \theta_{max}))` times
+   the unit direction of [x, y], so that they stay finite for rays beyond the
+   FOV (which are flagged invalid).
+
+4. **Linear Transformation**: Add the tangential distortion before applying
+   the constrained linear transformation A, and add the principal point:
    
    .. math::
    
       \begin{bmatrix} u \\ v \end{bmatrix} = 
       \begin{bmatrix} c & d \\ e & 1 \end{bmatrix}
+      \left(
       \frac{\delta}{\sqrt{x^2 + y^2}}
-      \begin{bmatrix} x \\ y \end{bmatrix} + 
+      \begin{bmatrix} x \\ y \end{bmatrix} + T(x', y')
+      \right) +
       \begin{bmatrix} u_0 \\ v_0 \end{bmatrix}
 
 The inverse operation uses the backward polynomial (either reference or approximate inverse).
+With non-zero tangential distortion, the inverse is a fixed-point iteration
+starting from the purely radial solution, with a fixed iteration count
+(``FThetaCameraModel.tangential_iterations``, 4 by default, which converges to
+float32 precision on real 120 degree calibrations): each iteration subtracts the tangential
+distortion evaluated at the current estimate from the undone linear term and
+updates :math:`\theta` from the remaining radial distance, by one warm-started Newton step
+on the forward polynomial (``ANGLE_TO_PIXELDIST`` reference) or by evaluating
+the backward polynomial (``PIXELDIST_TO_ANGLE`` reference).
 
 **Example:** For a typical FTheta model, both forward and backward polynomials contain 6 coefficients each (float32, [6,]).
 
@@ -400,7 +441,9 @@ ratio:
   :math:`c = \mathrm{linear\_cde}[0]`, since
   :math:`\mathrm{d}\,\delta/\mathrm{d}\theta|_{\theta=0} = c_1` and
   :math:`r = f\tan\theta \approx f\theta` near :math:`\theta = 0` (the linear
-  term's shear components are not representable by a pinhole and are dropped).
+  term's shear components are not representable by a pinhole and are dropped;
+  the tangential distortion terms are of higher order and not part of the
+  paraxial geometry, so they are ignored as well).
 
 The ``target_fov`` argument selects the angular extent of the rectified pinhole
 as a *full* field-of-view angle [rad]:
