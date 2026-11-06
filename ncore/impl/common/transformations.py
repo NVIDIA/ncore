@@ -18,7 +18,7 @@ from __future__ import annotations
 import sys
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union, overload
+from typing import TYPE_CHECKING, Callable, Dict, List, Literal, Optional, Set, Tuple, Union, overload
 
 import numpy as np
 
@@ -537,6 +537,180 @@ def is_within_3d_bboxes(pc: np.ndarray, bboxes: np.ndarray) -> np.ndarray:
     return points_in_bboxes
 
 
+MotionCompensationMethod = Literal["exact", "interpolated"]
+"""Method of :class:`MotionCompensator` to evaluate the per-point transformations:
+
+- ``"exact"``: interpolates the poses at each distinct point timestamp
+- ``"interpolated"``: interpolates the poses at the timestamps of an adaptive grid spanning the frame, and linearly
+  interpolates the transformations of the points in between (faster). The grid contains the pose timestamps of the
+  pose graph within the frame, and is refined such that the interpolated transformations move the points by at most
+  the interpolation tolerance from the exact ones (in addition to the float32 rounding of both methods).
+"""
+
+
+@dataclass(frozen=True)
+class MotionCompensatorParameters:
+    """Parameters of the motion compensation of :class:`MotionCompensator` (passed through, e.g., by sequence
+    loaders to their sensors' point clouds)"""
+
+    #: How the per-point transformations are evaluated, ``"exact"`` (default) or the faster ``"interpolated"`` (see
+    #: :data:`MotionCompensationMethod`)
+    method: MotionCompensationMethod = "exact"
+
+    #: Maximum deviation of the points of the ``"interpolated"`` method from the exact transformations, in the units
+    #: of the pose graph's translations (e.g. meters). The float32 rounding of both methods is not included. Smaller
+    #: tolerances refine the interpolation grid at practically no cost (the per-point work doesn't depend on the grid
+    #: size).
+    interpolation_tolerance: float = 1e-5
+
+    def __post_init__(self) -> None:
+        if self.method not in ("exact", "interpolated"):
+            raise ValueError(f"Unsupported motion compensation method {self.method!r}")
+        if not self.interpolation_tolerance > 0:
+            raise ValueError(f"Interpolation tolerance must be positive, got {self.interpolation_tolerance}")
+
+
+def _unique_timestamps(timestamp_us: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """``np.unique(timestamp_us, return_inverse=True)``, without sorting for timestamps spanning a small range
+    (e.g., the points of a frame)"""
+    timestamp_us = np.asarray(timestamp_us)
+    t_min = timestamp_us.min()
+    span = int(timestamp_us.max() - t_min) + 1
+    if span > 4 * timestamp_us.size + 1024:
+        return np.unique(timestamp_us, return_inverse=True)
+    offsets = (timestamp_us - t_min).astype(np.int64)
+    present = np.zeros(span, dtype=bool)
+    present[offsets] = True
+    rank = np.cumsum(present, dtype=np.int64) - 1
+    return (np.flatnonzero(present) + t_min).astype(timestamp_us.dtype), rank[offsets]
+
+
+def _transform_points_per_point(
+    xyz: np.ndarray, T_unique: np.ndarray, unique_idxs: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Transforms each point by its transformation ``T_unique[unique_idxs]``, [N,3], [U,4,4], [N]
+
+    Returns:
+        the transformed points [N,3] and the translations of the transformations [N,3]
+    """
+    T = T_unique[unique_idxs, :3, :]  # [N,3,4]
+    translations = T[:, :, 3]
+    return np.einsum("nij,nj->ni", T[:, :, :3], xyz) + translations, translations
+
+
+def _grid_intervals(timestamp_us: np.ndarray, grid_timestamps_us: np.ndarray) -> np.ndarray:
+    """Index of the interval [grid[i], grid[i+1]] of each timestamp (clamped to the first / last interval), for a
+    sorted grid of integer timestamps"""
+    timestamp_us = np.asarray(timestamp_us).astype(np.int64)
+    grid_timestamps_us = grid_timestamps_us.astype(np.int64)
+    n_intervals = len(grid_timestamps_us) - 1
+    t_min = int(grid_timestamps_us[0])
+    span = int(grid_timestamps_us[-1]) - t_min + 1
+    if span > 4 * timestamp_us.size + 1024:
+        intervals = np.searchsorted(grid_timestamps_us, timestamp_us, side="right") - 1
+    else:
+        # lookup table of the interval of each timestamp within the grid's (small) time range
+        table = np.searchsorted(grid_timestamps_us, np.arange(t_min, t_min + span, dtype=np.int64), side="right") - 1
+        intervals = table[np.clip(timestamp_us - t_min, 0, span - 1)]
+    return np.clip(intervals, 0, n_intervals - 1).astype(np.int32)
+
+
+def _transform_points_interpolated(
+    xyz: np.ndarray,
+    timestamp_us: np.ndarray,
+    grid_timestamps_us: np.ndarray,
+    T_grid: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Transforms each point by the linear interpolation of the transformations ``T_grid`` [M+1,4,4] at its timestamp,
+    ``T_grid`` evaluated at the sorted grid timestamps [M+1] (M >= 1)
+
+    Returns:
+        the transformed points [N,3] and the interpolated translations [N,3] (float32)
+    """
+    grid_timestamps_us = grid_timestamps_us.astype(np.int64)
+
+    # interval index and interpolation weight of each point (from the interval's start and inverse length)
+    interval = _grid_intervals(timestamp_us, grid_timestamps_us)
+    interval_start_us = grid_timestamps_us[:-1].astype(np.float64)
+    inverse_length = 1.0 / np.maximum(np.diff(grid_timestamps_us), 1).astype(np.float64)
+    weight = (np.asarray(timestamp_us).astype(np.float64) - np.take(interval_start_us, interval)).astype(np.float32)
+    weight *= np.take(inverse_length.astype(np.float32), interval)
+
+    # transformation entries and their per-interval differences, one row per entry [12,M+1] / [12,M]
+    T_grid = T_grid[:, :3, :].astype(np.float32)
+    entries = np.ascontiguousarray(T_grid.reshape(-1, 12).T)
+    deltas = np.ascontiguousarray(np.diff(T_grid, axis=0).reshape(-1, 12).T)
+
+    x, y, z = np.asarray(xyz, dtype=np.float32).T.copy()
+    transformed = np.empty((3, len(interval)), dtype=np.float32)
+    translations = np.empty((3, len(interval)), dtype=np.float32)
+    entry = np.empty(len(interval), dtype=np.float32)
+
+    def interpolate_entry(index: int, out: np.ndarray) -> np.ndarray:
+        np.take(deltas[index], interval, out=out)
+        out *= weight
+        out += np.take(entries[index], interval)
+        return out
+
+    for row in range(3):
+        interpolate_entry(4 * row + 3, translations[row])
+        transformed[row] = translations[row]
+        transformed[row] += interpolate_entry(4 * row + 0, entry) * x
+        transformed[row] += interpolate_entry(4 * row + 1, entry) * y
+        transformed[row] += interpolate_entry(4 * row + 2, entry) * z
+
+    return transformed.T, translations.T
+
+
+def _interpolation_grid(
+    evaluate_transformations: Callable[[np.ndarray], np.ndarray],
+    breakpoint_timestamps_us: np.ndarray,
+    max_point_distance: float,
+    tolerance: float,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Grid of timestamps such that linearly interpolating the transformations between consecutive grid timestamps
+    moves points up to ``max_point_distance`` from the origin by at most ``tolerance`` from the exact transformations
+
+    The grid contains the (sorted, unique) breakpoint timestamps (the frame boundaries and the pose timestamps within
+    the frame, at which the interpolated motion changes). Between breakpoints, the deviation of the interpolation is
+    estimated at the interval midpoint (where it is largest), and the interval is subdivided as the deviation decreases
+    quadratically with the interval length (with a safety factor of 2).
+
+    Returns:
+        the grid timestamps [M+1] and the transformations at them [M+1,4,4]
+    """
+    breakpoints = breakpoint_timestamps_us.astype(np.int64)
+    if len(breakpoints) < 2:
+        breakpoints = np.array([breakpoints[0], breakpoints[0] + 1], dtype=np.int64)
+    midpoints = (breakpoints[:-1] + breakpoints[1:]) // 2
+    T = evaluate_transformations(np.concatenate([breakpoints, midpoints]).astype(np.uint64)).astype(np.float64)
+    T_breakpoints, T_midpoints = T[: len(breakpoints)], T[len(breakpoints) :]
+
+    # deviation of the exact transformation at the midpoint from the interpolation of the interval's end
+    # transformations, for points up to max_point_distance from the origin
+    T_linear = 0.5 * (T_breakpoints[:-1] + T_breakpoints[1:])
+    deviation = np.linalg.norm(
+        T_midpoints[:, :3, :3] - T_linear[:, :3, :3], ord=2, axis=(1, 2)
+    ) * max_point_distance + np.linalg.norm(T_midpoints[:, :3, 3] - T_linear[:, :3, 3], axis=1)
+    subdivisions = np.maximum(1, np.ceil(np.sqrt(2.0 * deviation / tolerance))).astype(np.int64)
+    # (intervals can't be subdivided below single microseconds)
+    subdivisions = np.minimum(subdivisions, np.maximum(1, breakpoints[1:] - breakpoints[:-1]))
+
+    if (subdivisions == 1).all():
+        return breakpoints, T_breakpoints
+
+    grid = np.unique(
+        np.concatenate(
+            [
+                np.round(np.linspace(start, end, count + 1)[:-1]).astype(np.int64)
+                for start, end, count in zip(breakpoints[:-1], breakpoints[1:], subdivisions)
+            ]
+            + [breakpoints[-1:]]
+        )
+    )
+    return grid, evaluate_transformations(grid.astype(np.uint64))
+
+
 class MotionCompensator:
     """Performs motion compensation / decompensation of points measured relative to time-dependent frames"""
 
@@ -548,6 +722,7 @@ class MotionCompensator:
         T_rig_worlds_timestamps_us: np.ndarray,
         anchor_frame_id: str = "world",
         rig_frame_id: str = "rig",
+        parameters: Optional[MotionCompensatorParameters] = None,
     ) -> MotionCompensator:
         """Constructs a motion-compensator from a sensor-rig transformations for a specific sensor only
 
@@ -559,6 +734,7 @@ class MotionCompensator:
             anchor_frame_id (str): name of the common anchor frame node (defaults to "world").
                 Pass the same value as ``anchor_frame_id`` to the (de)compensation methods.
             rig_frame_id (str): name of the rig frame node (defaults to "rig").
+            parameters (Optional[MotionCompensatorParameters]): parameters of the motion compensation
         """
 
         return MotionCompensator(
@@ -577,21 +753,76 @@ class MotionCompensator:
                         timestamps_us=None,
                     ),
                 ]
-            )
+            ),
+            parameters,
         )
 
     def __init__(
         self,
         pose_graph: PoseGraphInterpolator,
+        parameters: Optional[MotionCompensatorParameters] = None,
     ) -> None:
         """
         Initializes motion-compensator to use a pose-graph interpolator
 
         Args:
             pose_graph (PoseGraphInterpolator): Should contain transformations from sensors to 'world' frame
+            parameters (Optional[MotionCompensatorParameters]): parameters of the motion compensation (defaults to
+                the exact method)
         """
 
         self._pose_graph = pose_graph
+        self._parameters = parameters if parameters is not None else MotionCompensatorParameters()
+
+    @property
+    def parameters(self) -> MotionCompensatorParameters:
+        """The parameters of the motion compensation"""
+        return self._parameters
+
+    def _point_transformations(
+        self,
+        sensor_id: str,
+        anchor_frame_id: str,
+        xyz: np.ndarray,
+        timestamp_us: np.ndarray,
+        frame_start_timestamp_us: int,
+        frame_end_timestamp_us: int,
+        evaluate_transformations: Callable[[np.ndarray], np.ndarray],
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Transforms each point by the transformation at its timestamp, evaluated by ``evaluate_transformations``
+        ([K] timestamps -> [K,4,4] transformations), according to the method
+
+        Returns:
+            the transformed points [N,3] and the translations of the per-point transformations [N,3] (float32)
+        """
+        if self._parameters.method == "interpolated":
+            # the interpolated motion changes at the pose timestamps of the time-dependent edges between the frames
+            breakpoints = [np.array([frame_start_timestamp_us, frame_end_timestamp_us], dtype=np.int64)]
+            for pose_timestamps_us in self._pose_graph.get_path_timestamps_us(sensor_id, anchor_frame_id):
+                pose_timestamps_us = pose_timestamps_us.astype(np.int64)
+                breakpoints.append(
+                    pose_timestamps_us[
+                        (pose_timestamps_us > frame_start_timestamp_us) & (pose_timestamps_us < frame_end_timestamp_us)
+                    ]
+                )
+            xyz = np.asarray(xyz, dtype=np.float32)
+            max_point_distance = float(np.sqrt(np.max(np.einsum("ij,ij->i", xyz, xyz))))
+            grid_timestamps_us, T_grid = _interpolation_grid(
+                evaluate_transformations,
+                np.unique(np.concatenate(breakpoints)),
+                max_point_distance,
+                self._parameters.interpolation_tolerance,
+            )
+            return _transform_points_interpolated(xyz, timestamp_us, grid_timestamps_us, T_grid)
+
+        # Determine unique timestamps to only perform actually required pose interpolations (a lot of points share
+        # the same timestamp)
+        timestamp_unique, unique_timestamp_reverse_idxs = _unique_timestamps(timestamp_us)
+        return _transform_points_per_point(
+            xyz,
+            evaluate_transformations(timestamp_unique).astype(np.float32),
+            unique_timestamp_reverse_idxs,
+        )
 
     @dataclass
     class MotionCompensationResult:
@@ -669,23 +900,21 @@ class MotionCompensator:
             anchor_frame_id, sensor_id, np.array(reference_timestamp_us, dtype=np.uint64)
         )
 
-        # Determine unique timestamps to only perform actually required pose interpolations (a lot of points share the same timestamp)
-        timestamp_unique, unique_timestamp_reverse_idxs = np.unique(timestamp_us, return_inverse=True)
-
         # Per-point transform mapping the point-time sensor frame to the reference-time
         # sensor frame:
         #   T_sensor_pointtime_sensor_reftime = T_anchor_sensor_reftime @ T_sensor_pointtime_anchor
-        T_sensor_pointtime_sensor_reftime_unique = (
-            T_anchor_sensor_reftime @ self._pose_graph.evaluate_poses(sensor_id, anchor_frame_id, timestamp_unique)
-        ).astype(np.float32)
-
-        # Pick sensor positions (in the reference-time pose) for each start point (blow up to original potentially non-unique timestamp range)
-        xyz_s_reftime = T_sensor_pointtime_sensor_reftime_unique[unique_timestamp_reverse_idxs, :3, -1]  # N x 3
-
-        # Apply time-dependent transformations to all points
-        xyz_e_reftime = transform_point_cloud(
-            xyz_pointtime[:, np.newaxis, :], T_sensor_pointtime_sensor_reftime_unique[unique_timestamp_reverse_idxs]
-        ).squeeze(1)  # N x 3
+        # Its translation is the sensor position (in the reference-time pose) of each start point.
+        xyz_e_reftime, xyz_s_reftime = self._point_transformations(
+            sensor_id,
+            anchor_frame_id,
+            xyz_pointtime,
+            timestamp_us,
+            frame_start_timestamp_us,
+            frame_end_timestamp_us,
+            lambda timestamps_us: (
+                T_anchor_sensor_reftime @ self._pose_graph.evaluate_poses(sensor_id, anchor_frame_id, timestamps_us)
+            ),
+        )
 
         return self.MotionCompensationResult(
             xyz_s_reftime,
@@ -757,19 +986,18 @@ class MotionCompensator:
             sensor_id, anchor_frame_id, np.array(reference_timestamp_us, dtype=np.uint64)
         )  # [4, 4]
 
-        # Determine unique timestamps to only perform actually required pose interpolations (a lot of points share the same timestamp)
-        timestamp_unique, unique_timestamp_reverse_idxs = np.unique(timestamp_us, return_inverse=True)
-
         # evaluate_poses(anchor, sensor) yields T_anchor_sensor_pointtime (the inverse of T_sensor_pointtime_anchor).
-        T_anchor_sensor_pointtime_unique = self._pose_graph.evaluate_poses(anchor_frame_id, sensor_id, timestamp_unique)
-        T_sensor_reftime_sensor_pointtime_unique = (T_anchor_sensor_pointtime_unique @ T_sensor_reftime_anchor).astype(
-            np.float32
+        xyz_pointtime, _ = self._point_transformations(
+            sensor_id,
+            anchor_frame_id,
+            xyz_reftime,
+            timestamp_us,
+            frame_start_timestamp_us,
+            frame_end_timestamp_us,
+            lambda timestamps_us: (
+                self._pose_graph.evaluate_poses(anchor_frame_id, sensor_id, timestamps_us) @ T_sensor_reftime_anchor
+            ),
         )
-
-        # Apply the decompensation transformations
-        xyz_pointtime = transform_point_cloud(
-            xyz_reftime[:, np.newaxis, :], T_sensor_reftime_sensor_pointtime_unique[unique_timestamp_reverse_idxs]
-        ).squeeze(1)
 
         return xyz_pointtime
 
@@ -882,6 +1110,18 @@ class PoseGraphInterpolator:
     def nodes(self) -> Set[str]:
         """Returns the set of nodes in the pose graph"""
         return self._nodes
+
+    def get_path_timestamps_us(self, source_node: str, target_node: str) -> List[npt.NDArray[np.uint64]]:
+        """Returns the pose timestamps of the time-dependent edges on the path between two nodes (the timestamps at
+        which the interpolated relative pose of the nodes may change its motion)"""
+        if (path := self._paths.get(source_node, {}).get(target_node)) is None:
+            raise KeyError(f"No path from {source_node} to {target_node} in pose graph")
+        timestamps_us: List[npt.NDArray[np.uint64]] = []
+        for edge_nodes in path:
+            edge = self._normalized_edge_map[self.normalize_node_pair(edge_nodes[0], edge_nodes[1])]
+            if edge.timestamps_us is not None:
+                timestamps_us.append(edge.timestamps_us)
+        return timestamps_us
 
     @staticmethod
     def normalize_node_pair(node_a: str, node_b: str) -> Tuple[str, str]:
