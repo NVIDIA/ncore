@@ -2350,6 +2350,45 @@ class TestFThetaTangential(CameraModelsBaseTestCase):
                         ):
                             torch.testing.assert_close(actual, expected, rtol=0.0, atol=0.0)
 
+    def test_identity_linear_term_skips_matrix(self):
+        """Models with an identity linear term never evaluate the linear matrices (NaN matrices do not affect any
+        output, which are exactly those of the unmodified model), models with a non-identity linear term do"""
+        ftheta_params = self._tangential_params() + [
+            p for p in self.cam_model_params + self.cam_model_params_wsd if isinstance(p, FThetaCameraModelParameters)
+        ]
+        identity_params = [p for p in ftheta_params if not p.has_linear_term]
+        non_identity_params = [p for p in ftheta_params if p.has_linear_term]
+        # Cover both the tangential and the purely radial code paths, and the non-identity case
+        self.assertTrue(any(p.has_tangential_distortion for p in identity_params))
+        self.assertTrue(any(not p.has_tangential_distortion for p in identity_params))
+        self.assertTrue(non_identity_params)
+
+        def evaluate(model: FThetaCameraModel, max_angle: float) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            rays = to_torch(self._ray_grid(0.95 * max_angle), device=self.device, dtype=self.dtype)
+            image_points = rays.new_tensor([[10.5, 20.5], [500.0, 300.0], [1000.0, 700.0], [1700.0, 1100.0]])
+            projection = model.camera_rays_to_image_points(rays, return_jacobians=True)
+            camera_rays = model.image_points_to_camera_rays(image_points)
+            assert projection.jacobians is not None
+            return projection.image_points, projection.jacobians, camera_rays.camera_rays
+
+        for params, is_identity in [(p, True) for p in identity_params] + [(p, False) for p in non_identity_params]:
+            with self.subTest(params=params):
+                reference = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
+                # Model buffers may share memory with the parameters' arrays, so poison a copy only
+                poisoned = camera_model_from_parameters(copy.deepcopy(params), device=self.device, dtype=self.dtype)
+                assert isinstance(reference, FThetaCameraModel) and isinstance(poisoned, FThetaCameraModel)
+                poisoned.A.fill_(float("nan"))
+                poisoned.Ainv.fill_(float("nan"))
+
+                expected_outputs = evaluate(reference, params.max_angle)
+                actual_outputs = evaluate(poisoned, params.max_angle)
+                for actual, expected in zip(actual_outputs, expected_outputs):
+                    if is_identity:
+                        self.assertTrue(bool(torch.isfinite(actual).all()))
+                        torch.testing.assert_close(actual, expected, rtol=0.0, atol=0.0)
+                    else:
+                        self.assertTrue(bool(torch.isnan(actual).any()))
+
     def test_get_parameters_roundtrips_tangentials(self):
         for params in self._tangential_params():
             with self.subTest(principal_point=params.principal_point.tolist()):
