@@ -458,6 +458,11 @@ class FThetaCameraModelParameters(CameraModelParameters):
         return "ftheta"
 
     @property
+    def has_linear_term(self) -> bool:
+        """Whether the linear term differs from the identity [1, 0, 0]"""
+        return not np.array_equal(self.linear_cde, [1.0, 0.0, 0.0])
+
+    @property
     def has_tangential_distortion(self) -> bool:
         """Whether any tangential distortion coefficient is non-zero"""
         return bool(np.any(self.tangential_coeffs != 0))
