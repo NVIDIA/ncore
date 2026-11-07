@@ -412,6 +412,7 @@ class FThetaCameraModelParameters(CameraModelParameters):
         if (c1 := float(self.angle_to_pixeldist_poly[1])) <= 0.0:
             raise ValueError(f"Cannot derive a positive focal length for an ideal pinhole (got {c1})")
         c = float(self.linear_cde[0])
+        # The tangential term is second order in the normalized coordinates and does not contribute here
         return ParaxialPinholeGeometry(
             np.array([c1 * c, c1], dtype=np.float32),
             (self.principal_point + 0.5).astype(np.float32),
@@ -441,13 +442,30 @@ class FThetaCameraModelParameters(CameraModelParameters):
     )  #: Coefficients of the angles-to-pixeldistances polynomial (float32, [6,])
     max_angle: float = 0.0  #: Maximal extrinsic ray angle [rad] with the principal direction (float32)
     linear_cde: np.ndarray = util.numpy_array_field(
-        np.float32, default=np.array([1.0, 0.0, 0.0], dtype=np.float32)
-    )  #: Coefficients of the constrained linear term [c,d;e,1] transforming between sensor coordinates (in mm) to image coordinates (in px) (float32, [3,])
+        np.float32,
+        default=np.array([1.0, 0.0, 0.0], dtype=np.float32),
+        exclude_if=lambda v: np.array_equal(np.asarray(v), [1.0, 0.0, 0.0]),
+    )  #: Coefficients of the constrained linear term [c,d;e,1] transforming between sensor coordinates (in mm) to image coordinates (in px) (float32, [3,]). The identity [1, 0, 0] (the default) is omitted when serializing
+    tangential_coeffs: np.ndarray = util.numpy_array_field(
+        np.float32,
+        default=np.zeros(2, dtype=np.float32),
+        exclude_if=lambda v: not np.any(np.asarray(v)),
+    )  #: Tangential distortion coefficients [t0, t1] in pixels (float32, [2,]). With normalized coordinates ``x = X/Z, y = Y/Z`` the offsets ``du = 2*t0*x*y + t1*(r^2 + 2*x^2)`` and ``dv = t0*(r^2 + 2*y^2) + 2*t1*x*y`` (``r^2 = x^2 + y^2``) are added to the radial (polynomial) offset from the principal point before the linear term is applied. All zeros (the default) means no tangential distortion; such values are omitted when serializing
 
     @staticmethod
     def type() -> str:
         """Returns a string-identifier of the camera model"""
         return "ftheta"
+
+    @property
+    def has_linear_term(self) -> bool:
+        """Whether the linear term differs from the identity [1, 0, 0]"""
+        return not np.array_equal(self.linear_cde, [1.0, 0.0, 0.0])
+
+    @property
+    def has_tangential_distortion(self) -> bool:
+        """Whether any tangential distortion coefficient is non-zero"""
+        return bool(np.any(self.tangential_coeffs != 0))
 
     @property
     def bw_poly(self) -> np.ndarray:
@@ -501,6 +519,14 @@ class FThetaCameraModelParameters(CameraModelParameters):
         # some datasets might store _invalid_ linear terms (all zero) - workaround by setting these to default linear term
         if np.allclose(self.linear_cde, 0.0):
             self.linear_cde = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+
+        assert self.tangential_coeffs.shape == (2,)
+        assert self.tangential_coeffs.dtype == np.dtype("float32")
+
+        # The tangential term grows with tan(theta)^2 and is undefined at 90 degrees, so it is only
+        # supported for fields of view below a hemisphere; zero coefficients impose no constraint
+        if self.has_tangential_distortion:
+            assert self.max_angle < np.pi / 2, "Tangential distortion requires max_angle < pi/2"
 
     def transform(
         self,
@@ -565,6 +591,12 @@ class FThetaCameraModelParameters(CameraModelParameters):
             [self.linear_cde[0] * scale_ratio, self.linear_cde[1] * scale_ratio, self.linear_cde[2]], dtype=np.float32
         )
 
+        # The tangential offset T is added to the polynomial pixel offset before the linear term, so the
+        # scaled projection is S A (rad + T) = A' (sv rad + sv T), with A' the ratio-scaled linear term
+        # above: T scales with the v-scale like the fw polynomial. It is relative to the principal
+        # point, so the crop offset does not affect it (and zeros stay zeros).
+        tangential_coeffs = (self.tangential_coeffs * image_domain_scale_factors[1]).astype(np.float32)
+
         # Note: as the FOV can't be effectively increased by scaling / cropping operations, the max-angle is currently not updated and still represents
         # an upper-bound - consider re-computing a tighter upper bound in the future?
 
@@ -575,6 +607,7 @@ class FThetaCameraModelParameters(CameraModelParameters):
             pixeldist_to_angle_poly=pixeldist_to_angle_poly,
             angle_to_pixeldist_poly=angle_to_pixeldist_poly,
             linear_cde=linear_cde,
+            tangential_coeffs=tangential_coeffs,
         )
 
 
@@ -815,16 +848,26 @@ class OpenCVPinholeCameraModelParameters(PinholeCameraModelParameters):
         np.float32
     )  #: Radial distortion coefficients ``[k1,k2,k3,k4,k5,k6]`` parameterizing the rational radial distortion factor :math:`\frac{1 + k_1r^2 + k_2r^4 + k_3r^6}{1 + k_4r^2 + k_5r^4 + k_6r^6}` for squared norms :math:`r^2` of normalized camera coordinates (float32, [6,])
     tangential_coeffs: np.ndarray = util.numpy_array_field(
-        np.float32
-    )  #: Tangential distortion coefficients ``[p1,p2]`` parameterizing the tangential distortion components :math:`\begin{bmatrix} 2p_1x'y' + p_2 \left(r^2 + 2{x'}^2 \right) \\ p_1 \left(r^2 + 2{y'}^2 \right) + 2p_2x'y' \end{bmatrix}` for normalized camera coordinates :math:`\begin{bmatrix} x' \\ y' \end{bmatrix}` (float32, [2,])
+        np.float32, default=np.zeros(2, dtype=np.float32)
+    )  #: Tangential distortion coefficients ``[p1,p2]`` parameterizing the tangential distortion components :math:`\begin{bmatrix} 2p_1x'y' + p_2 \left(r^2 + 2{x'}^2 \right) \\ p_1 \left(r^2 + 2{y'}^2 \right) + 2p_2x'y' \end{bmatrix}` for normalized camera coordinates :math:`\begin{bmatrix} x' \\ y' \end{bmatrix}` (float32, [2,], defaults to zeros if absent; always serialized)
     thin_prism_coeffs: np.ndarray = util.numpy_array_field(
-        np.float32
-    )  #: Thins prism distortion coefficients ``[s1,s2,s3,s4]`` parameterizing the thin prism distortion components :math:`\begin{bmatrix} s_1r^2 + s_2r^4 \\ s_3r^2 + s_4r^4 \end{bmatrix}` for squared norms :math:`r^2` of normalized camera coordinates (float32, [4,]
+        np.float32, default=np.zeros(4, dtype=np.float32)
+    )  #: Thins prism distortion coefficients ``[s1,s2,s3,s4]`` parameterizing the thin prism distortion components :math:`\begin{bmatrix} s_1r^2 + s_2r^4 \\ s_3r^2 + s_4r^4 \end{bmatrix}` for squared norms :math:`r^2` of normalized camera coordinates (float32, [4,], defaults to zeros if absent; always serialized)
 
     @staticmethod
     def type() -> str:
         """Returns a string-identifier of the camera model"""
         return "opencv-pinhole"
+
+    @property
+    def has_tangential_distortion(self) -> bool:
+        """Whether any tangential distortion coefficient is non-zero"""
+        return bool(np.any(self.tangential_coeffs != 0))
+
+    @property
+    def has_thin_prism_distortion(self) -> bool:
+        """Whether any thin-prism distortion coefficient is non-zero"""
+        return bool(np.any(self.thin_prism_coeffs != 0))
 
     def __post_init__(self) -> None:
         # Sanity checks (principal_point / focal_length are checked by the base)
@@ -850,8 +893,8 @@ class OpenCVPinholeCameraModelParameters(PinholeCameraModelParameters):
         return (
             self.external_distortion_parameters is None
             and not np.any(self.radial_coeffs)
-            and not np.any(self.tangential_coeffs)
-            and not np.any(self.thin_prism_coeffs)
+            and not self.has_tangential_distortion
+            and not self.has_thin_prism_distortion
         )
 
 

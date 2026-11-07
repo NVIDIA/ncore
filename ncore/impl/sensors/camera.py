@@ -1272,6 +1272,8 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
     max_angle: float
     newton_iterations: int
     min_2d_norm: torch.Tensor
+    tangential_coeffs: torch.Tensor
+    tangential_iterations: int
 
     def __init__(
         self,
@@ -1330,6 +1332,9 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
             )
             / (c - e * d),
         )
+        # Identity linear terms are skipped in the projection / unprojection (exact, as I @ v == v); decided once at
+        # construction, the A / Ainv buffers are not re-read to select the code path
+        self._has_linear_term: bool = camera_model_parameters.has_linear_term
 
         # Initialize first derivative of polynomials for Newton iteration-based inversions
         self.register_buffer(
@@ -1354,6 +1359,20 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
         self.max_angle: float = float(camera_model_parameters.max_angle)
         self.newton_iterations: int = newton_iterations
 
+        # Tangential distortion coefficients [t0, t1] (always registered, all zeros for purely radial models).
+        # The tangential code paths are only taken if any coefficient is non-zero, so purely radial models
+        # evaluate exactly as without tangential support. Non-persistent, as the code path is selected at
+        # construction (state dicts are unchanged by tangential support)
+        self.register_buffer(
+            "tangential_coeffs",
+            to_torch(camera_model_parameters.tangential_coeffs, device=self.device, dtype=self.dtype),
+            persistent=False,
+        )
+        # Decided once at construction; the buffer is not re-read to select the code path
+        self._has_tangentials: bool = camera_model_parameters.has_tangential_distortion
+        # Fixed number of iterations of the tangential distortion inversion in the unprojection
+        self.tangential_iterations: int = 4
+
         # 2D pixel-distance threshold
         assert min_2d_norm > 0, "require positive minimum norm threshold"
         self.register_buffer("min_2d_norm", torch.tensor(min_2d_norm, dtype=self.dtype, device=self.device))
@@ -1372,6 +1391,27 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
         assert self.A.dtype == self.dtype
         assert self.Ainv.shape == (2, 2)
         assert self.Ainv.dtype == self.dtype
+        assert self.tangential_coeffs.shape == (2,)
+        assert self.tangential_coeffs.dtype == self.dtype
+
+    @staticmethod
+    def eval_tangential_distortion(xy: torch.Tensor, coeffs: torch.Tensor) -> torch.Tensor:
+        """Evaluates the tangential distortion offsets (in pixels)
+
+        For normalized coordinates ``xy = [x, y]`` (``x = X/Z, y = Y/Z``, shape [N,2]) and coefficients
+        ``coeffs = [t0, t1]`` (shape [2,]) returns the offsets [N,2] given by
+        ``T(x, y) = (2*t0*x*y + t1*(r2 + 2*x^2), 2*t1*x*y + t0*(r2 + 2*y^2))`` with ``r2 = x^2 + y^2``
+        """
+
+        x = xy[:, 0]
+        y = xy[:, 1]
+        t0 = coeffs[0]
+        t1 = coeffs[1]
+
+        xy2 = 2 * x * y
+        r2 = x * x + y * y
+
+        return torch.stack((t0 * xy2 + t1 * (r2 + 2 * x * x), t1 * xy2 + t0 * (r2 + 2 * y * y)), dim=1)
 
     def get_parameters(self) -> types.FThetaCameraModelParameters:
         """Returns the camera model parameters specific to the current camera model instance"""
@@ -1389,6 +1429,7 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
             pixeldist_to_angle_poly=self.bw_poly.cpu().numpy().astype(np.float32),
             max_angle=self.max_angle,
             linear_cde=self.A.flatten()[:3].cpu().numpy().astype(np.float32),
+            tangential_coeffs=self.tangential_coeffs.cpu().numpy().astype(np.float32),
         )
 
     def _image_points_to_camera_rays_impl(self, image_points: torch.Tensor) -> CameraModel.CameraRaysReturn:
@@ -1401,7 +1442,9 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
         image_points = image_points.to(self.dtype)
 
         # Get f(theta)-weighted normalized 2d vectors (undoing linear term)
-        image_points_dist = torch.einsum("ij,nj->ni", self.Ainv, image_points - self.principal_point)
+        image_points_dist = image_points - self.principal_point
+        if self._has_linear_term:
+            image_points_dist = torch.einsum("ij,nj->ni", self.Ainv, image_points_dist)
         rdist = torch.linalg.norm(image_points_dist, axis=1, keepdims=True)
 
         # Evaluate backward polynomial to get theta = f^-1(rdist) factors
@@ -1413,10 +1456,46 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
                 self.fw_poly, self.dfw_poly, self.bw_poly, self.newton_iterations, rdist
             )
 
-        # Compute the camera rays and set the ones at the image center to [0,0,1]
-        cam_rays = torch.hstack(
-            (torch.sin(thetas) * image_points_dist / torch.maximum(rdist, self.min_2d_norm), torch.cos(thetas))
-        )
+        if self._has_tangentials:
+            # Invert xd = f(theta) * [X, Y] / |[X, Y]| + T(tan(theta) * [X, Y] / |[X, Y]|) by a fixed number of
+            # fixed-point iterations on the radial part v = xd - T(x, y), starting from the purely radial solution.
+            # Each iteration re-estimates the angle from |v|, by a single warm-started Newton step on the forward
+            # polynomial or by evaluating the backward polynomial directly. The tangential offsets are evaluated with
+            # angles clamped to [0, max_angle] (max_angle < pi/2), keeping the normalized coordinates finite also
+            # beyond the FOV
+            radial_dist = image_points_dist
+            radial_rdist = rdist
+            for _ in range(self.tangential_iterations):
+                xy_norm = (
+                    torch.tan(torch.clamp(thetas, min=0.0, max=self.max_angle))
+                    * radial_dist
+                    / torch.maximum(radial_rdist, self.min_2d_norm)
+                )
+                radial_dist = image_points_dist - self.eval_tangential_distortion(xy_norm, self.tangential_coeffs)
+                radial_rdist = torch.linalg.norm(radial_dist, axis=1, keepdims=True)
+                if self.reference_poly == types.FThetaCameraModelParameters.PolynomialType.PIXELDIST_TO_ANGLE:
+                    thetas = eval_poly_horner(self.bw_poly, radial_rdist)
+                else:
+                    thetas = thetas - (eval_poly_horner(self.fw_poly, thetas) - radial_rdist) / eval_poly_horner(
+                        self.dfw_poly, thetas
+                    )
+
+            # Compute the camera rays from the clamped angles (finite also for angles beyond the FOV, which are
+            # invalid)
+            thetas_clamped = torch.clamp(thetas, min=0.0, max=self.max_angle)
+            cam_rays = torch.hstack(
+                (
+                    torch.sin(thetas_clamped) * radial_dist / torch.maximum(radial_rdist, self.min_2d_norm),
+                    torch.cos(thetas_clamped),
+                )
+            )
+        else:
+            # Compute the camera rays
+            cam_rays = torch.hstack(
+                (torch.sin(thetas) * image_points_dist / torch.maximum(rdist, self.min_2d_norm), torch.cos(thetas))
+            )
+
+        # Set the camera rays at the image center to [0,0,1]
         cam_rays[rdist.flatten() < self.min_2d_norm, :] = torch.tensor(
             [[0, 0, 1]], device=self.device, dtype=self.dtype
         )
@@ -1465,10 +1544,21 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
             # fw is reference, evaluate it directly
             deltas = eval_poly_horner(self.fw_poly, thetas)
 
-        # Apply linear term [c,d;e,1] to f(theta)-weighted normalized 2d vectors, relative to principal point
-        image_points = (
-            torch.einsum("ij,nj->ni", self.A, deltas / ray_xy_norms * cam_rays[:, :2]) + self.principal_point[None, :]
-        )
+        if self._has_tangentials:
+            # Add the tangential offsets (in pixels) of the normalized coordinates [x, y] = tan(theta) * [X, Y] / |[X, Y]|
+            # to the f(theta)-weighted normalized 2d vectors. The FOV-clamped angles (< pi/2) keep the normalized
+            # coordinates finite also for rays at or beyond 90 degrees
+            xy_dir = cam_rays[:, :2] / ray_xy_norms
+            xy_norm = torch.tan(thetas) * xy_dir
+            pre_linear = deltas * xy_dir + self.eval_tangential_distortion(xy_norm, self.tangential_coeffs)
+        else:
+            # f(theta)-weighted normalized 2d vectors
+            pre_linear = deltas / ray_xy_norms * cam_rays[:, :2]
+
+        # Apply linear term [c,d;e,1] (skipped if identity), relative to principal point
+        if self._has_linear_term:
+            pre_linear = torch.einsum("ij,nj->ni", self.A, pre_linear)
+        image_points = pre_linear + self.principal_point[None, :]
 
         # Extract valid image points
         valid_x = torch.logical_and(0.0 <= image_points[:, 0], image_points[:, 0] < self.resolution[0])
@@ -1652,14 +1742,18 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
             "radial_coeffs",
             to_torch(camera_model_parameters.radial_coeffs, device=self.device, dtype=self.dtype),
         )
+        # Zero tangential / thin-prism terms are skipped in the distortion computation (their contributions are
+        # zero); decided once at construction, the coefficient buffers are not re-read to select the code path
         self.register_buffer(
             "tangential_coeffs",
             to_torch(camera_model_parameters.tangential_coeffs, device=self.device, dtype=self.dtype),
         )
+        self._has_tangential: bool = camera_model_parameters.has_tangential_distortion
         self.register_buffer(
             "thin_prism_coeffs",
             to_torch(camera_model_parameters.thin_prism_coeffs, device=self.device, dtype=self.dtype),
         )
+        self._has_thin_prism: bool = camera_model_parameters.has_thin_prism_distortion
 
         assert self.radial_coeffs.shape == (6,)
         assert self.radial_coeffs.dtype == self.dtype
@@ -1744,7 +1838,7 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
             cam_rays_valid.requires_grad = True
 
         uv_normalized = cam_rays_valid[:, :2] / cam_rays_valid[:, 2:3]  # [n,2]
-        icD, delta_x, delta_y, r_2 = self.__compute_distortion(uv_normalized)
+        icD, delta, r_2 = self.__compute_distortion(uv_normalized)
 
         k_min_radial_dist = 0.8
         k_max_radial_dist = 1.2
@@ -1753,9 +1847,9 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
 
         # Project using ideal pinhole model (apply radial / tangential / thin-prism distortions)
         # in case radial distortion is within limits
-        uvND = uv_normalized[valid_radial] * icD[valid_radial, None] + torch.cat(
-            [delta_x[valid_radial, None], delta_y[valid_radial, None]], dim=1
-        )
+        uvND = uv_normalized[valid_radial] * icD[valid_radial, None]
+        if delta is not None:
+            uvND = uvND + delta[valid_radial]
         image_points[valid_idx[valid_radial]] = uvND * self.focal_length + self.principal_point
 
         # If the radial distortion is out-of-limits, the computed coordinates will be unreasonable
@@ -1795,16 +1889,21 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
 
         return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
 
-    def __compute_distortion(self, xy: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Computes the radial, tangential, and thin-prism distortion given the camera rays"""
+    def __compute_distortion(self, xy: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor]:
+        """Computes the radial factor, the additive tangential and thin-prism distortion ([n,2], None if both
+        terms are zero), and the squared radii of the given normalized coordinates"""
 
         # Compute the helper variables
         xy_squared = torch.square(xy)
         r_2 = torch.sum(xy_squared, dim=1)
-        xy_prod = xy[:, 0] * xy[:, 1]
-        a1 = 2 * xy_prod
-        a2 = r_2 + 2 * xy_squared[:, 0]
-        a3 = r_2 + 2 * xy_squared[:, 1]
+
+        # Note: the tangential helper terms are created before the radial factor on purpose, keeping the autograd
+        # graph (and hence the accumulation order of the jacobians) identical to the evaluation without fast paths
+        if self._has_tangential:
+            xy_prod = xy[:, 0] * xy[:, 1]
+            a1 = 2 * xy_prod
+            a2 = r_2 + 2 * xy_squared[:, 0]
+            a3 = r_2 + 2 * xy_squared[:, 1]
 
         icD_numerator = 1.0 + r_2 * (
             self.radial_coeffs[0] + r_2 * (self.radial_coeffs[1] + r_2 * self.radial_coeffs[2])
@@ -1814,18 +1913,26 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         )
         icD = icD_numerator / icD_denominator
 
-        delta_x = (
-            self.tangential_coeffs[0] * a1
-            + self.tangential_coeffs[1] * a2
-            + r_2 * (self.thin_prism_coeffs[0] + r_2 * self.thin_prism_coeffs[1])
-        )
-        delta_y = (
-            self.tangential_coeffs[0] * a3
-            + self.tangential_coeffs[1] * a1
-            + r_2 * (self.thin_prism_coeffs[2] + r_2 * self.thin_prism_coeffs[3])
-        )
+        delta: Optional[torch.Tensor] = None
+        if self._has_tangential:
+            delta = torch.stack(
+                [
+                    self.tangential_coeffs[0] * a1 + self.tangential_coeffs[1] * a2,
+                    self.tangential_coeffs[0] * a3 + self.tangential_coeffs[1] * a1,
+                ],
+                dim=1,
+            )
+        if self._has_thin_prism:
+            thin_prism = torch.stack(
+                [
+                    r_2 * (self.thin_prism_coeffs[0] + r_2 * self.thin_prism_coeffs[1]),
+                    r_2 * (self.thin_prism_coeffs[2] + r_2 * self.thin_prism_coeffs[3]),
+                ],
+                dim=1,
+            )
+            delta = thin_prism if delta is None else delta + thin_prism
 
-        return icD, delta_x, delta_y, r_2
+        return icD, delta, r_2
 
     def __iterative_undistort(
         self, image_points: torch.Tensor, stop_mean_of_squares_error_px2: float = 1e-12, max_iterations: int = 10
@@ -1840,11 +1947,9 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         squared_residual = torch.full_like(cam_rays_0[:, 0], torch.inf)
         for _ in range(max_iterations):
             # apply *inverse* of distortion to camera rays to iteratively find the rays that correspond to the *distorted* source points
-            icD, delta_x, delta_y, _ = self.__compute_distortion(cam_rays)
+            icD, delta, _ = self.__compute_distortion(cam_rays)
 
-            residual = cam_rays - (
-                cam_rays := (cam_rays_0 - torch.cat([delta_x[:, None], delta_y[:, None]], dim=1)) / icD[:, None]
-            )
+            residual = cam_rays - (cam_rays := (cam_rays_0 if delta is None else cam_rays_0 - delta) / icD[:, None])
             squared_residual = torch.mean(torch.square(residual), dim=1)
 
             if torch.mean(squared_residual).item() <= stop_mean_of_squares_error_px2:
