@@ -25,11 +25,12 @@ class TestPackage(unittest.TestCase):
         """The package exposes the storage APIs of the implementation (the same objects)"""
         import ncore.data.stores as public
 
-        from ncore.impl.data import itar, nodes, stores
+        from ncore.impl.data import backend, itar, nodes, stores
 
         expected = {
             "IndexedTarArchive": itar.IndexedTarArchive,
             "Record": itar.Record,
+            "RecordExistsError": itar.RecordExistsError,
             "Store": stores.Store,
             "IndexedTarZarrStore": stores.IndexedTarZarrStore,
             "ZarrStoreAdapter": stores.ZarrStoreAdapter,
@@ -37,6 +38,8 @@ class TestPackage(unittest.TestCase):
             "Group": nodes.Group,
             "Array": nodes.Array,
             "ZarrFormat": nodes.ZarrFormat,
+            "BloscCompression": backend.BloscCompression,
+            "EncodedArray": nodes.EncodedArray,
         }
         self.assertEqual(sorted(public.__all__), sorted(expected))
         for name, value in expected.items():
