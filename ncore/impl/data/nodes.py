@@ -218,25 +218,37 @@ class Array(_Node):
         """The blosc compression of the array (None if uncompressed, raises ValueError for other compressors)"""
         return _backend.compression(self._array)
 
-    def read(self, selection: Selection = Ellipsis) -> npt.NDArray[Any]:
+    def read(self, selection: Selection = Ellipsis, *, out: Optional[npt.NDArray[Any]] = None) -> npt.NDArray[Any]:
         """Reads (a selection of) the data of the array.
 
         Returns a read-only array of the array's dtype with the shape of the selection (0-dimensional for selections of
         single elements). Complete reads of arrays stored as a single uncompressed chunk (e.g., encoded images) are
         views of the chunk record (no copies), all other reads are decoded by the backend (see
         :meth:`ncore.impl.data.backend.Backend.read`).
+
+        With ``out``, a writeable C-contiguous array of the array's dtype and the selection's shape, the data is read
+        into ``out``, which is returned itself (it stays writeable, and keeps its type, e.g., :class:`numpy.memmap`).
+        Raises ValueError for other output arrays.
         """
-        array = np.asarray(_backend.read(self._array, selection))
+        result = _backend.read(self._array, selection, out)
+        if out is not None:
+            return out
+        array = np.asarray(result)
         array.setflags(write=False)  # (numpy scalars are converted to new 0-dimensional arrays)
         return array
 
-    async def read_async(self, selection: Selection = Ellipsis) -> npt.NDArray[Any]:
+    async def read_async(
+        self, selection: Selection = Ellipsis, *, out: Optional[npt.NDArray[Any]] = None
+    ) -> npt.NDArray[Any]:
         """Reads (a selection of) the data of the array asynchronously, see :meth:`read`.
 
         Concurrent reads (e.g., via ``asyncio.gather``) overlap their I/O (e.g., range requests of remote archives) and
         decompression, the running event loop isn't blocked (blocking work runs on worker threads).
         """
-        array = np.asarray(await _backend.read_async(self._array, selection))
+        result = await _backend.read_async(self._array, selection, out)
+        if out is not None:
+            return out
+        array = np.asarray(result)
         array.setflags(write=False)  # (numpy scalars are converted to new 0-dimensional arrays)
         return array
 

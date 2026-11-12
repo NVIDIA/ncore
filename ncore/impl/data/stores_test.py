@@ -1995,6 +1995,173 @@ class TestZeroCopyReads(unittest.TestCase):
         self.assertFalse(array.flags.writeable)
 
 
+#: Arrays of :class:`TestReadOut` (data, chunks, compression) and the selections read from them, by layout
+_READ_OUT_LAYOUTS: Dict[str, Tuple[np.ndarray, Tuple[int, ...], bool, Any]] = {
+    "multi_chunk_blosc": (np.arange(24, dtype=np.float32).reshape(6, 4), (2, 4), True, Ellipsis),
+    "single_chunk_raw": (np.arange(15, dtype=np.uint8).reshape(5, 3), (5, 3), False, Ellipsis),
+    "partial_selection": (np.arange(24, dtype=np.float32).reshape(6, 4), (4, 4), True, (slice(1, 5), 2)),
+    "scalar": (np.arange(24, dtype=np.int64).reshape(6, 4), (2, 4), True, (3, 1)),
+}
+
+
+class TestReadOut(unittest.TestCase):
+    """Reads into preallocated output arrays (``out``)"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _array(self, store_type: str, zarr_format: ZarrFormat, layout: str) -> Tuple[nodes.Array, Any]:
+        """The array of a layout (written to and opened from a store of the given type), and its selection"""
+        _require(self, zarr_format)
+        data, chunks, compressed, selection = _READ_OUT_LAYOUTS[layout]
+        if store_type == "itar":
+            path = os.path.join(self._tmp.name, "store.itar")
+            writer: Store = IndexedTarZarrStore(path, mode="w")
+        else:
+            path = os.path.join(self._tmp.name, "store.zarr")
+            writer = ZarrStoreAdapter.directory(path)
+        with writer:
+            root = writer.create_root_group({}, zarr_format=zarr_format)
+            root.create_array("a", data, chunks=chunks, compression=nodes.BloscCompression() if compressed else None)
+            writer.consolidate()
+        reader = IndexedTarZarrStore(path) if store_type == "itar" else ZarrStoreAdapter.directory(path)
+        return reader.open_root_group().array("a"), selection
+
+    def _direct_reads(self, direct: bool) -> Any:
+        """zarr-python 3: direct reads, or reads via zarr-python's codec pipeline"""
+        if not direct and not ZARR_PYTHON_3:
+            self.skipTest("reads via zarr-python's codec pipeline (zarr-python 3)")
+        return mock.patch.dict(os.environ, {"NCORE_ZARR3_DIRECT_READS": "1" if direct else "0"})
+
+    _CASES = [
+        (store_type, zarr_format, layout, direct)
+        for store_type in ("itar", "directory")
+        for zarr_format in ZARR_FORMATS
+        for layout in _READ_OUT_LAYOUTS
+        for direct in (True, False)
+    ]
+
+    @parameterized.parameterized.expand(_CASES)
+    def test_read_into_out_matches_read(self, store_type: str, zarr_format: ZarrFormat, layout: str, direct: bool):
+        array, selection = self._array(store_type, zarr_format, layout)
+        with self._direct_reads(direct):
+            expected = array.read(selection)
+            out = np.empty(expected.shape, dtype=array.dtype)
+            result = array.read(selection, out=out)
+        self.assertIs(result, out)
+        self.assertTrue(out.flags.writeable)
+        np.testing.assert_array_equal(out, expected)
+
+    @parameterized.parameterized.expand(_CASES)
+    def test_read_async_into_out_matches_read(
+        self, store_type: str, zarr_format: ZarrFormat, layout: str, direct: bool
+    ):
+        array, selection = self._array(store_type, zarr_format, layout)
+        with self._direct_reads(direct):
+            expected = array.read(selection)
+            out = np.empty(expected.shape, dtype=array.dtype)
+            result = asyncio.run(array.read_async(selection, out=out))
+            self.assertIs(result, out)
+            self.assertTrue(out.flags.writeable)
+            np.testing.assert_array_equal(out, expected)
+            if ZARR_PYTHON_3:  # (the loop of the calling thread)
+                out = np.empty(expected.shape, dtype=array.dtype)
+                self.assertIs(run(array.read_async(selection, out=out)), out)
+                np.testing.assert_array_equal(out, expected)
+
+    @parameterized.parameterized.expand(
+        [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in ZARR_FORMATS]
+    )
+    def test_read_out_returns_subclasses_of_ndarray(self, store_type: str, zarr_format: ZarrFormat):
+        """Output arrays are returned themselves, also instances of subclasses of numpy arrays (e.g., memory maps)"""
+        array, selection = self._array(store_type, zarr_format, "multi_chunk_blosc")
+        expected = array.read(selection)
+        path = os.path.join(self._tmp.name, "out.npy")
+        out = np.memmap(path, dtype=array.dtype, mode="w+", shape=expected.shape)
+        self.assertIs(array.read(selection, out=out), out)
+        np.testing.assert_array_equal(out, expected)
+        out[...] = 0
+        self.assertIs(asyncio.run(array.read_async(selection, out=out)), out)
+        np.testing.assert_array_equal(out, expected)
+        del out
+
+    @parameterized.parameterized.expand(
+        [
+            (store_type, zarr_format, direct)
+            for store_type in ("itar", "directory")
+            for zarr_format in ZARR_FORMATS
+            for direct in (True, False)
+        ]
+    )
+    def test_read_out_of_0d_arrays(self, store_type: str, zarr_format: ZarrFormat, direct: bool):
+        """Reads of 0-dimensional arrays (numeric arrays, and blobs of zarr format v2) into 0-dimensional outputs"""
+        _require(self, zarr_format)
+        path = os.path.join(self._tmp.name, "store.itar" if store_type == "itar" else "store.zarr")
+        writer: Store = (
+            IndexedTarZarrStore(path, mode="w") if store_type == "itar" else ZarrStoreAdapter.directory(path)
+        )
+        with writer:
+            root = writer.create_root_group({}, zarr_format=zarr_format)
+            root.create_array("number", np.float32(3.5))
+            root.create_bytes_array("blob", b"abc\x00def")
+            writer.consolidate()
+        reader = IndexedTarZarrStore(path) if store_type == "itar" else ZarrStoreAdapter.directory(path)
+        root = reader.open_root_group()
+        names = ["number", "blob"] if zarr_format == 2 else ["number"]  # (blobs of zarr format v3 are 1-dimensional)
+        with self._direct_reads(direct):
+            for name in names:
+                array = root.array(name)
+                self.assertEqual(array.shape, (), name)
+                expected = array.read()
+                out = np.empty((), dtype=array.dtype)
+                self.assertIs(array.read(out=out), out)
+                np.testing.assert_array_equal(out, expected)
+                out = np.empty((), dtype=array.dtype)
+                self.assertIs(asyncio.run(array.read_async(out=out)), out)
+                np.testing.assert_array_equal(out, expected)
+        if zarr_format == 2:
+            self.assertEqual(out.item(), b"abc\x00def")
+
+    @parameterized.parameterized.expand(
+        [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in ZARR_FORMATS]
+    )
+    def test_read_out_of_single_raw_chunk_copies(self, store_type: str, zarr_format: ZarrFormat):
+        """Reads of arrays stored as a single uncompressed chunk copy the chunk into ``out`` (no view of the record)"""
+        array, _ = self._array(store_type, zarr_format, "single_chunk_raw")
+        expected = _READ_OUT_LAYOUTS["single_chunk_raw"][0]
+        out = np.empty(array.shape, dtype=np.uint8)
+        self.assertIs(array.read(out=out), out)
+        out[...] = 0
+        np.testing.assert_array_equal(array.read(), expected)
+        out = np.empty(array.shape, dtype=np.uint8)
+        self.assertIs(asyncio.run(array.read_async(out=out)), out)
+        out[...] = 0
+        np.testing.assert_array_equal(array.read(), expected)
+
+    @parameterized.parameterized.expand(_CASES)
+    def test_read_out_rejects_mismatched_out(self, store_type: str, zarr_format: ZarrFormat, layout: str, direct: bool):
+        array, selection = self._array(store_type, zarr_format, layout)
+        with self._direct_reads(direct):
+            shape = array.read(selection).shape
+            read_only = np.empty(shape, dtype=array.dtype)
+            read_only.setflags(write=False)
+            mismatched = [
+                np.empty(shape + (1,), dtype=array.dtype),  # (wrong shape)
+                np.empty(shape, dtype=np.float64 if array.dtype != np.float64 else np.float32),  # (wrong dtype)
+                read_only,
+            ]
+            if shape:  # (not contiguous)
+                mismatched.append(np.empty(shape[:-1] + (2 * shape[-1],), dtype=array.dtype)[..., ::2])
+            for out in mismatched:
+                with self.assertRaises(ValueError, msg=f"{out.shape} {out.dtype} {out.strides}"):
+                    array.read(selection, out=out)
+                with self.assertRaises(ValueError, msg=f"{out.shape} {out.dtype} {out.strides} (async)"):
+                    asyncio.run(array.read_async(selection, out=out))
+
+
 @parameterized.parameterized_class(("zarr_format",), [(zarr_format,) for zarr_format in nodes.SUPPORTED_ZARR_FORMATS])
 class TestEdgeCases(unittest.TestCase):
     """Edge cases of reads (blobs, fast-path fallbacks) and error paths of the backends"""

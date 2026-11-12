@@ -25,6 +25,7 @@ import numcodecs
 import numpy as np
 import zarr
 import zarr.errors
+import zarr.indexing
 import zarr.storage
 
 from numcodecs.compat import ensure_bytes
@@ -172,10 +173,16 @@ class Zarr2Backend(Backend[BaseStore]):
         return array
 
     @override
-    def read(self, array: zarr.Array, selection: Selection) -> ReadResult:
+    def read(self, array: zarr.Array, selection: Selection, out: Optional[np.ndarray] = None) -> ReadResult:
         """Fast path: complete reads of arrays stored as a single uncompressed chunk are views of the chunk record (no
         copies, see :meth:`_single_chunk_record`). Fallback: zarr-python's read (e.g., of compressed or multi-chunk
-        arrays, partial reads, and chunks not stored, which read as the fill value)"""
+        arrays, partial reads, and chunks not stored, which read as the fill value). Reads into ``out`` are
+        zarr-python's reads into ``out``."""
+        if out is not None:
+            Backend.check_read_out(out, zarr.indexing.BasicIndexer(selection, array).shape, array.dtype)
+            # (zarr-python 2 reads into numpy arrays, type checking runs against zarr-python 3's NDBuffer signature)
+            array.get_basic_selection(selection, out=out)  # ty: ignore[invalid-argument-type]
+            return out
         if (record := self._single_chunk_record(array, selection)) is not None and (
             view := self.chunk_view(record, array.dtype, array.shape)
         ) is not None:
@@ -199,10 +206,10 @@ class Zarr2Backend(Backend[BaseStore]):
         return record if isinstance(record, bytes) else None
 
     @override
-    async def read_async(self, array: zarr.Array, selection: Selection) -> ReadResult:
+    async def read_async(self, array: zarr.Array, selection: Selection, out: Optional[np.ndarray] = None) -> ReadResult:
         """Asynchronous :meth:`read`, returning the same results (zarr-python 2 is synchronous: reads run on worker
         threads, so the running event loop isn't blocked)"""
-        return await run_in_thread(self.read, array, selection)
+        return await run_in_thread(self.read, array, selection, out)
 
     @override
     def compression(self, array: zarr.Array) -> Optional[BloscCompression]:
