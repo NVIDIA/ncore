@@ -1015,6 +1015,10 @@ class Zarr3Backend(Backend[Store]):
         raise KeyError(f"No consolidated metadata ({V2_CONSOLIDATED_METADATA_KEY} / {V3_CONSOLIDATED_METADATA_KEY})")
 
     @override
+    def has_consolidated_metadata(self, store: Store) -> bool:
+        return any(run(store.exists(key)) for key in (V3_CONSOLIDATED_METADATA_KEY, V2_CONSOLIDATED_METADATA_KEY))
+
+    @override
     def consolidate(self, store: Store) -> None:
         if (root := self._get(store, "zarr.json")) is not None:
             # zarr format v3 specifies no consolidated metadata, zarr-python 3 stores it in the root group document

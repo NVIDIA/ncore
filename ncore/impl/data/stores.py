@@ -66,10 +66,14 @@ class Store(ABC):
             _backend.create_root_group(self._zarr_store, check_zarr_format(zarr_format), attributes), store=self
         )
 
-    def open_root_group(self, consolidated: bool = True) -> Group:
+    def open_root_group(self, consolidated: Union[bool, Literal["auto"]] = True) -> Group:
         """Opens the root group of the hierarchy of the store for reading: from its consolidated metadata record if
         consolidated (raises KeyError if the store has none, see :meth:`consolidate`), otherwise from its node metadata
-        records"""
+        records. ``"auto"`` opens it from its consolidated metadata record if the store has one."""
+        if consolidated == "auto":
+            consolidated = _backend.has_consolidated_metadata(self._zarr_store)
+        elif not isinstance(consolidated, bool):
+            raise ValueError(f"consolidated must be True, False or 'auto', got {consolidated!r}")
         return Group(_backend.open_root_group(self._zarr_store, consolidated), store=self)
 
     def consolidate(self) -> None:

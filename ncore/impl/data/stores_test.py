@@ -477,6 +477,75 @@ class TestStores(unittest.TestCase):
         )
         self.assertEqual(sorted(self._store("directory", "r").open_root_group(consolidated=True).members()), ["before"])
 
+    @parameterized.parameterized.expand(
+        [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in ZARR_FORMATS]
+    )
+    def test_auto_open_of_consolidated_stores_reads_no_node_metadata(self, store_type: str, zarr_format: ZarrFormat):
+        _require(self, zarr_format)
+        if store_type == "itar":
+            _write(self._store("itar", "w"), zarr_format=zarr_format)
+            store = self._store("itar", "r")
+            with mock.patch.object(
+                IndexedTarArchive, "read", autospec=True, side_effect=IndexedTarArchive.read
+            ) as getitem:
+                _check_reference(self, store.open_root_group(consolidated="auto"))
+            read_keys = [call.args[1] for call in getitem.call_args_list]
+            # (resolving "auto" is an index lookup, the consolidated metadata record is read once)
+            consolidated_key = V2_CONSOLIDATED_METADATA_KEY if zarr_format == 2 else V3_CONSOLIDATED_METADATA_KEY
+            self.assertEqual(read_keys.count(consolidated_key), 1)
+            self.assertEqual([key for key in read_keys if is_node_metadata_key(key)], [])
+        else:
+            # (nodes added after consolidating are members of the node metadata records only)
+            with self._store("directory", "w") as store:
+                root = store.create_root_group(_ROOT_ATTRIBUTES, zarr_format=zarr_format)
+                root.create_array("before", np.zeros(2))
+                store.consolidate()
+            root.create_array("after", np.ones(2))
+            self.assertEqual(
+                sorted(self._store("directory", "r").open_root_group(consolidated="auto").members()), ["before"]
+            )
+
+    @parameterized.parameterized.expand(
+        [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in ZARR_FORMATS]
+    )
+    def test_auto_open_of_unconsolidated_stores_reads_node_metadata(self, store_type: str, zarr_format: ZarrFormat):
+        _require(self, zarr_format)
+        _write(self._store(store_type, "w"), consolidate=False, zarr_format=zarr_format)
+        _check_reference(self, self._store(store_type, "r").open_root_group(consolidated="auto"))
+
+    @parameterized.parameterized.expand(
+        [
+            (store_type, zarr_format, consolidate)
+            for store_type in ("itar", "directory")
+            for zarr_format in ZARR_FORMATS
+            for consolidate in (True, False)
+        ]
+    )
+    def test_auto_opens_are_read_only(self, store_type: str, zarr_format: ZarrFormat, consolidate: bool):
+        _require(self, zarr_format)
+        _write(self._store(store_type, "w"), consolidate=consolidate, zarr_format=zarr_format)
+        root = self._store(store_type, "r").open_root_group(consolidated="auto")
+        writes = {
+            "write": lambda: root.array("foo").write(slice(0, 2), np.ones((2, 3, 3))),
+            "create_empty_array": lambda: root.create_empty_array("x", shape=(2,), dtype=np.float32, chunks=(2,)),
+            "create_encoded_array": lambda: root.create_encoded_array(
+                "x", nodes.EncodedArray.encode(np.ones(2), zarr_format=zarr_format)
+            ),
+        }
+        for name, write in writes.items():
+            with self.subTest(name):
+                with self.assertRaises(ValueError) as raised:
+                    write()
+                self.assertEqual(type(raised.exception), ValueError)
+                self.assertIn("is opened for reading", str(raised.exception))
+        self.assertNotIn("x", self._store(store_type, "r").open_root_group(consolidated=False))
+
+    @parameterized.parameterized.expand([("yes",), (None,), (1,), (0,)])
+    def test_invalid_consolidated_values_raise(self, consolidated: object):
+        _write(self._store("directory", "w"))
+        with self.assertRaisesRegex(ValueError, "True, False or 'auto'"):
+            self._store("directory", "r").open_root_group(consolidated=cast(Any, consolidated))
+
     @parameterized.parameterized.expand([(zarr_format,) for zarr_format in ZARR_FORMATS])
     def test_stores_are_identical(self, zarr_format: ZarrFormat):
         """Indexed tar archives and directories store the same records"""
@@ -2440,8 +2509,10 @@ class TestPartialWrites(unittest.TestCase):
 
         records: Dict[str, Any] = {}
         _write(ZarrStoreAdapter(NoReadOnlyViews(records)), zarr_format=zarr_format)
-        with self.assertRaisesRegex(ValueError, "writable NoReadOnlyViews"):
-            ZarrStoreAdapter(NoReadOnlyViews(records)).open_root_group(True)
+        for consolidated in (True, "auto"):
+            with self.subTest(consolidated=consolidated):
+                with self.assertRaisesRegex(ValueError, "writable NoReadOnlyViews"):
+                    ZarrStoreAdapter(NoReadOnlyViews(records)).open_root_group(consolidated)
         with self.assertRaisesRegex(ValueError, "not read-only"):  # (raised by zarr-python)
             ZarrStoreAdapter(NoReadOnlyViews(records)).open_root_group(False)
         read_only: Dict[str, Any] = {"read_only": True}  # (a keyword of zarr-python 3 stores only)

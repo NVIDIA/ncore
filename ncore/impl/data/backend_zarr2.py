@@ -311,6 +311,11 @@ class Zarr2Backend(Backend[BaseStore]):
         return zarr.open_group(store=store, mode="r")
 
     @override
+    def has_consolidated_metadata(self, store: BaseStore) -> bool:
+        # (zarr-python 2 reads zarr format v2 hierarchies only, which have no v3 consolidated metadata record)
+        return V2_CONSOLIDATED_METADATA_KEY in store
+
+    @override
     def consolidate(self, store: BaseStore) -> None:
         metadata = {key: json.loads(store[key]) for key in store if is_node_metadata_key(key)}
         store[V2_CONSOLIDATED_METADATA_KEY] = encode_cbor_xz({"zarr_consolidated_format": 1, "metadata": metadata})
