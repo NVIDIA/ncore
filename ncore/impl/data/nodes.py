@@ -37,12 +37,14 @@ from ncore.impl.data.backend import (
     Attributes,
     Backend,
     BloscCompression,
+    FillValue,
     ReadResult,
     Selection,
     ZarrFormat,
     ZarrNode,
     ZarrStore,
 )
+from ncore.impl.data.itar import RecordExistsError
 from ncore.impl.data.json_types import Json, JsonDocument
 
 
@@ -178,6 +180,11 @@ class _Node:
         """Updates (merges) attributes of the node"""
         _backend.update_attributes(self._node, attributes)
 
+    def _check_writable(self) -> None:
+        """Raises ValueError for nodes of stores opened for reading"""
+        if self._node.read_only:
+            raise ValueError(f"Node {self.path!r} is opened for reading and doesn't support writing")
+
     def _typed_attr(self, name: str, expected: Type[T]) -> T:
         value = self._node.attrs[name]
         if not isinstance(value, expected) or (isinstance(value, bool) and expected is int):
@@ -251,6 +258,30 @@ class Array(_Node):
         array = np.asarray(result)
         array.setflags(write=False)  # (numpy scalars are converted to new 0-dimensional arrays)
         return array
+
+    def write(self, selection: Selection, data: npt.ArrayLike) -> None:
+        """Writes data to a basic selection of the array (integers, slices with unit step, Ellipsis), e.g., of arrays
+        created by :meth:`Group.create_empty_array`.
+
+        The chunks the selection touches are stored (also chunks equal to the fill value), partially selected chunks are
+        completed with the array's current data (the fill value if not written yet). Records of indexed tar archives
+        are write-once: each chunk can be written once, so callers write whole chunks (or chunk-aligned blocks). Writes
+        of multiple chunks that fail (e.g., on a chunk written already) can leave other chunks of the selection stored
+        (zarr-python 3 writes them concurrently).
+
+        Raises :class:`ncore.impl.data.itar.RecordExistsError` (a ValueError) for chunks written already (indexed tar
+        archives), and ValueError for other selections and for arrays of stores opened for reading (checked before
+        writing, with either zarr-python version).
+        """
+        if not _backend.is_basic_selection(selection):
+            raise ValueError(f"Writes of array {self.path!r} need basic selections, got {selection!r}")
+        self._check_writable()
+        try:
+            _backend.write(self._array, selection, data)
+        except RecordExistsError as e:
+            raise RecordExistsError(
+                e.key, f"Chunk {e.key!r} of array {self.path!r} is written already (records are write-once)"
+            ) from e
 
     def read_bytes(self) -> bytes:
         """Reads a binary blob stored by :meth:`Group.create_bytes_array`.
@@ -412,6 +443,57 @@ class Group(_Node):
         if chunks != "auto":
             chunks = tuple(max(1, int(size)) for size in (values.shape if chunks == "single" else chunks))
         return Array(_backend.create_array(self._group, name, values, chunks, compression, attributes))
+
+    def create_empty_array(
+        self,
+        name: str,
+        *,
+        shape: Tuple[int, ...],
+        dtype: npt.DTypeLike,
+        chunks: Tuple[int, ...],
+        compression: Optional[BloscCompression] = BloscCompression(),
+        fill_value: Optional[FillValue] = None,
+        attributes: Optional[Attributes] = None,
+    ) -> Array:
+        """Creates a member array without data, whose chunks are written by :meth:`Array.write` (chunks not written
+        are not stored, and read as ``fill_value``).
+
+        The node metadata is the one :meth:`create_array` writes for the same dtype, chunks and compression (and fill
+        value), and so are the records of written chunks.
+
+        Parameters
+        ----------
+        name
+            Name of the array within the group.
+        shape
+            Shape of the array.
+        dtype
+            dtype of the array.
+        chunks
+            Chunk shape (zero-sized dimensions are clamped to 1, as zarr requires positive chunk sizes).
+        compression
+            Blosc compression of the chunks (default: lz4, level 5, bit-shuffle), or None for uncompressed chunks.
+        fill_value
+            Value of the elements of chunks not written (default: the fill value :meth:`create_array` writes for the
+            dtype, i.e. zero, False, or empty bytes / strings).
+        attributes
+            Optional attributes of the array.
+
+        Raises
+        ------
+        ValueError
+            For groups of stores opened for reading, and for chunks that don't match the shape.
+        """
+        self._check_writable()
+        shape = tuple(int(size) for size in shape)
+        chunks = tuple(max(1, int(size)) for size in chunks)
+        if len(chunks) != len(shape):
+            raise ValueError(f"Chunks {chunks} don't match the dimensions of shape {shape}")
+        dtype = np.dtype(dtype)
+        resolved: FillValue = np.zeros(1, dtype=dtype)[0] if fill_value is None else fill_value
+        return Array(
+            _backend.create_empty_array(self._group, name, shape, dtype, chunks, compression, resolved, attributes)
+        )
 
     def create_bytes_array(self, name: str, data: bytes, *, attributes: Optional[Attributes] = None) -> Array:
         """Stores a binary blob (e.g., an encoded image) as uncompressed member array.

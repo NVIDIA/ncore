@@ -2162,6 +2162,307 @@ class TestReadOut(unittest.TestCase):
                     asyncio.run(array.read_async(selection, out=out))
 
 
+#: dtypes of the tests of records written by other APIs than :meth:`nodes.Group.create_array` (``|S``: zarr format v2)
+_BYTE_IDENTITY_DTYPES = ("float32", "int32", "bool", "|S5")
+
+
+def _byte_identity_data(shape: Tuple[int, ...], dtype: str) -> np.ndarray:
+    """Random data of a dtype, whose rows 10 to 19 are zero (chunks of the fill value, which are stored as well)"""
+    rng = np.random.default_rng(0)
+    if dtype.startswith("|S"):
+        x = rng.integers(ord("a"), ord("z"), size=shape + (5,), dtype=np.uint8).view("|S5")[..., 0]
+    elif dtype == "bool":
+        x = rng.random(shape) < 0.5
+    elif dtype == "int32":
+        x = rng.integers(-1000, 1000, size=shape, dtype=np.int32)
+    else:
+        x = rng.random(shape).astype(dtype)
+    x[10:20] = np.zeros((), dtype=x.dtype)
+    return x
+
+
+class TestPartialWrites(unittest.TestCase):
+    """Arrays created without data (``create_empty_array``), written in selections (``Array.write``)"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _path(self, store_type: str, name: str = "store") -> str:
+        return os.path.join(self._tmp.name, f"{name}.itar" if store_type == "itar" else f"{name}.zarr")
+
+    def _store(self, store_type: str, mode: str, name: str = "store") -> Store:
+        if store_type == "itar":
+            return IndexedTarZarrStore(self._path(store_type, name), mode="w" if mode == "w" else "r")
+        return ZarrStoreAdapter.directory(self._path(store_type, name))
+
+    def _records(self, store_type: str, name: str = "store") -> Dict[str, bytes]:
+        """All records of a store (by key)"""
+        path = self._path(store_type, name)
+        if store_type == "itar":
+            archive = IndexedTarArchive(path)
+            return {key: archive[key] for key in archive.keys()}
+        return {str(p.relative_to(path)): p.read_bytes() for p in Path(path).rglob("*") if p.is_file()}
+
+    @staticmethod
+    def _chunk_key(zarr_format: ZarrFormat, path: str, coords: Tuple[int, ...]) -> str:
+        """The record key of a chunk (default chunk key encodings of zarr format v2 and v3)"""
+        if zarr_format == 2:
+            return f"{path}/{'.'.join(map(str, coords))}"
+        return f"{path}/c/{'/'.join(map(str, coords))}"
+
+    def _create(
+        self, store_type: str, zarr_format: ZarrFormat, write: Any, chunks: Tuple[int, ...] = (10, 3), **kwargs: Any
+    ) -> None:
+        """Creates the array ``a`` (25 x 3 float32, chunks of 10 x 3) and writes it with ``write(array)``"""
+        _require(self, zarr_format)
+        with self._store(store_type, "w") as store:
+            root = store.create_root_group({}, zarr_format=zarr_format)
+            write(root.create_empty_array("a", shape=(25, 3), dtype=np.float32, chunks=chunks, **kwargs))
+            store.consolidate()
+
+    def _read_root(self, store_type: str) -> nodes.Group:
+        return self._store(store_type, "r").open_root_group()
+
+    _CASES = [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in ZARR_FORMATS]
+
+    @parameterized.parameterized.expand(
+        [(store_type, zarr_format, direct) for store_type, zarr_format in _CASES for direct in (True, False)]
+    )
+    def test_unwritten_chunks_are_not_stored(self, store_type: str, zarr_format: ZarrFormat, direct: bool):
+        if not direct and not ZARR_PYTHON_3:
+            self.skipTest("reads via zarr-python's codec pipeline (zarr-python 3)")
+        rng = np.random.default_rng(0)
+        a = rng.random((10, 3), dtype=np.float32)
+        b = rng.random((5, 3), dtype=np.float32)
+
+        def write(array: nodes.Array) -> None:
+            array.write(slice(0, 10), a)
+            array.write(slice(20, 25), b)
+
+        self._create(store_type, zarr_format, write)
+        keys = set(self._records(store_type))
+        self.assertIn(self._chunk_key(zarr_format, "a", (0, 0)), keys)
+        self.assertIn(self._chunk_key(zarr_format, "a", (2, 0)), keys)
+        self.assertNotIn(self._chunk_key(zarr_format, "a", (1, 0)), keys)
+
+        expected = np.concatenate([a, np.zeros((10, 3), dtype=np.float32), b])
+        with mock.patch.dict(os.environ, {"NCORE_ZARR3_DIRECT_READS": "1" if direct else "0"}):
+            array = self._read_root(store_type).array("a")
+            np.testing.assert_array_equal(array.read(), expected)
+            np.testing.assert_array_equal(asyncio.run(array.read_async()), expected)
+            np.testing.assert_array_equal(array.read((slice(8, 22), 1)), expected[8:22, 1])
+
+    @parameterized.parameterized.expand(
+        [
+            (store_type, zarr_format, dtype)
+            for store_type, zarr_format in _CASES
+            for dtype in _BYTE_IDENTITY_DTYPES
+            if zarr_format == 2 or not dtype.startswith("|S")
+        ]
+    )
+    def test_written_records_match_create_array(self, store_type: str, zarr_format: ZarrFormat, dtype: str):
+        _require(self, zarr_format)
+        x = _byte_identity_data((25, 3), dtype)
+        compression = nodes.BloscCompression(cname="zstd", shuffle="shuffle")
+        attributes = {"unit": "m"}
+
+        def write(array: nodes.Array) -> None:
+            for start in (20, 0, 10):  # (in any order)
+                array.write((slice(start, start + 10), Ellipsis), x[start : start + 10])
+
+        with self._store(store_type, "w") as store:
+            root = store.create_root_group({}, zarr_format=zarr_format)
+            write(
+                root.create_empty_array(
+                    "a",
+                    shape=x.shape,
+                    dtype=x.dtype,
+                    chunks=(10, 3),
+                    compression=compression,
+                    attributes=attributes,
+                )
+            )
+            store.consolidate()
+        with self._store(store_type, "w", "reference") as store:
+            store.create_root_group({}, zarr_format=zarr_format).create_array(
+                "a", x, chunks=(10, 3), compression=compression, attributes=attributes
+            )
+            store.consolidate()
+
+        records, reference = self._records(store_type), self._records(store_type, "reference")
+        self.assertEqual(sorted(records), sorted(reference))
+        self.assertIn(self._chunk_key(zarr_format, "a", (1, 0)), records)
+        for key, value in reference.items():
+            if key == V2_CONSOLIDATED_METADATA_KEY:  # (ordered by the record order of the stores)
+                self.assertEqual(decode_cbor_xz(records[key]), decode_cbor_xz(value))
+            elif key == V3_CONSOLIDATED_METADATA_KEY:
+                self.assertEqual(decode_cbor_zlib(records[key]), decode_cbor_zlib(value))
+            else:
+                self.assertEqual(records[key], value, key)
+        array = self._read_root(store_type).array("a")
+        np.testing.assert_array_equal(array.read(), x)
+        self.assertEqual((array.compression, array.attrs), (compression, attributes))
+
+    @parameterized.parameterized.expand(_CASES)
+    def test_chunks_of_fill_values_written_via_opened_arrays_are_stored(self, store_type: str, zarr_format: ZarrFormat):
+        """Arrays opened from their group (with zarr-python's default configuration) store written chunks of the fill
+        value too"""
+        _require(self, zarr_format)
+        with self._store(store_type, "w") as store:
+            root = store.create_root_group({}, zarr_format=zarr_format)
+            root.create_empty_array("a", shape=(25, 3), dtype=np.float32, chunks=(10, 3))
+            root.array("a").write(slice(10, 20), np.zeros((10, 3)))
+            store.consolidate()
+        self.assertIn(self._chunk_key(zarr_format, "a", (1, 0)), self._records(store_type))
+
+    @parameterized.parameterized.expand(
+        [(store_type, zarr_format, direct) for store_type, zarr_format in _CASES for direct in (True, False)]
+    )
+    def test_fill_value_is_read_for_unwritten_chunks(self, store_type: str, zarr_format: ZarrFormat, direct: bool):
+        if not direct and not ZARR_PYTHON_3:
+            self.skipTest("reads via zarr-python's codec pipeline (zarr-python 3)")
+        self._create(store_type, zarr_format, lambda array: None, fill_value=0.5)
+        self.assertFalse([key for key in self._records(store_type) if key.startswith(("a/0", "a/1", "a/2", "a/c/"))])
+        with mock.patch.dict(os.environ, {"NCORE_ZARR3_DIRECT_READS": "1" if direct else "0"}):
+            array = self._read_root(store_type).array("a")
+            np.testing.assert_array_equal(array.read(), np.full((25, 3), 0.5, dtype=np.float32))
+            np.testing.assert_array_equal(asyncio.run(array.read_async()), np.full((25, 3), 0.5, dtype=np.float32))
+
+    @parameterized.parameterized.expand(
+        [(store_type, zarr_format, dtype) for store_type, zarr_format in _CASES for dtype in ("|S5", "<U3")]
+    )
+    def test_default_fill_value_of_strings_is_empty(self, store_type: str, zarr_format: ZarrFormat, dtype: str):
+        _require(self, zarr_format)
+        with self._store(store_type, "w") as store:
+            root = store.create_root_group({}, zarr_format=zarr_format)
+            array = root.create_empty_array("a", shape=(5,), dtype=dtype, chunks=(2,))
+            array.write(slice(0, 2), np.array(["ab", "cd"], dtype=dtype))
+            store.consolidate()
+        empty = np.zeros((), dtype=dtype)[()]
+        self.assertEqual(empty, b"" if dtype.startswith("|S") else "")
+        array = self._read_root(store_type).array("a")
+        np.testing.assert_array_equal(array.read(), np.array(["ab", "cd", empty, empty, empty], dtype=dtype))
+
+    @parameterized.parameterized.expand([(zarr_format,) for zarr_format in ZARR_FORMATS])
+    def test_rewriting_a_chunk_of_an_archive_raises(self, zarr_format: ZarrFormat):
+        def write(array: nodes.Array) -> None:
+            array.write(slice(0, 5), np.ones((5, 3)))
+            with self.assertRaises(ValueError) as raised:
+                array.write(slice(5, 10), np.ones((5, 3)))
+            key = self._chunk_key(zarr_format, "a", (0, 0))
+            self.assertIsInstance(raised.exception, itar.RecordExistsError)
+            self.assertEqual(cast(itar.RecordExistsError, raised.exception).key, key)
+            self.assertIn(repr(key), str(raised.exception))
+            self.assertIn("'a'", str(raised.exception))
+            self.assertIsInstance(raised.exception.__cause__, itar.RecordExistsError)
+            self.assertEqual(cast(itar.RecordExistsError, raised.exception.__cause__).key, key)
+
+        self._create("itar", zarr_format, write)
+
+    @parameterized.parameterized.expand(_CASES)
+    def test_partial_chunk_writes_of_directories(self, store_type: str, zarr_format: ZarrFormat):
+        """Directories allow rewriting chunks: partial chunk writes complete the chunk with its current data"""
+        if store_type != "directory":
+            self.skipTest("records of indexed tar archives are write-once")
+        self._create(
+            store_type,
+            zarr_format,
+            lambda array: (array.write(slice(0, 5), np.ones((5, 3))), array.write((slice(5, 10), 1), np.full(5, 2))),
+        )
+        expected = np.zeros((25, 3), dtype=np.float32)
+        expected[:5] = 1
+        expected[5:10, 1] = 2
+        np.testing.assert_array_equal(self._read_root(store_type).array("a").read(), expected)
+
+    #: (store type, zarr format, consolidated) of stores opened for reading
+    _READING_CASES = [
+        (store_type, zarr_format, consolidated) for store_type, zarr_format in _CASES for consolidated in (True, False)
+    ]
+
+    @parameterized.parameterized.expand(_READING_CASES)
+    def test_write_to_store_opened_for_reading_raises(
+        self, store_type: str, zarr_format: ZarrFormat, consolidated: bool
+    ):
+        self._create(store_type, zarr_format, lambda array: None)
+        array = self._store(store_type, "r").open_root_group(consolidated).array("a")
+        with self.assertRaises(ValueError) as raised:
+            array.write(slice(0, 10), np.ones((10, 3)))
+        # (the same error with both zarr-python versions and all stores, raised before writing)
+        self.assertEqual(type(raised.exception), ValueError)
+        self.assertIn("'a' is opened for reading", str(raised.exception))
+        self.assertNotIn(self._chunk_key(zarr_format, "a", (0, 0)), self._records(store_type))
+
+    @parameterized.parameterized.expand(_READING_CASES)
+    def test_create_empty_array_in_store_opened_for_reading_raises(
+        self, store_type: str, zarr_format: ZarrFormat, consolidated: bool
+    ):
+        self._create(store_type, zarr_format, lambda array: None)
+        root = self._store(store_type, "r").open_root_group(consolidated)
+        with self.assertRaises(ValueError) as raised:
+            root.create_empty_array("b", shape=(5,), dtype=np.float32, chunks=(5,))
+        self.assertEqual(type(raised.exception), ValueError)
+        self.assertIn("is opened for reading", str(raised.exception))
+        self.assertNotIn("b", root)
+        self.assertFalse([key for key in self._records(store_type) if key.startswith("b/")])
+
+    @parameterized.parameterized.expand([(zarr_format,) for zarr_format in ZARR_FORMATS])
+    def test_consolidated_opens_keep_direct_reads(self, zarr_format: ZarrFormat):
+        """Read-only views of stores (of nodes opened from consolidated metadata) keep direct reads"""
+        if not ZARR_PYTHON_3:
+            self.skipTest("direct reads of zarr-python 3")
+        self._create("itar", zarr_format, lambda array: array.write(slice(0, 10), np.ones((10, 3))))
+        array = self._read_root("itar").array("a")
+        plan = backend_zarr3._DirectRead.plan(array.zarr)
+        assert plan is not None
+        self.assertIsInstance(plan.records, backend_zarr3._ArchiveRecords)
+        self._create("directory", zarr_format, lambda array: array.write(slice(0, 10), np.ones((10, 3))))
+        array = self._read_root("directory").array("a")
+        self.assertTrue(array.zarr.read_only)
+        plan = backend_zarr3._DirectRead.plan(array.zarr)
+        assert plan is not None
+        self.assertIsInstance(plan.records, backend_zarr3._StoreRecords)
+
+    @parameterized.parameterized.expand([(zarr_format,) for zarr_format in ZARR_FORMATS])
+    def test_writable_stores_without_read_only_views_are_rejected(self, zarr_format: ZarrFormat):
+        """Opening writable stores of types without read-only views raises, consolidated or not (read-only stores of
+        those types open)"""
+        if not ZARR_PYTHON_3:
+            self.skipTest("read-only views of zarr-python 3 stores")
+        _require(self, zarr_format)
+
+        class NoReadOnlyViews(zarr.storage.MemoryStore):
+            def with_read_only(self, read_only: bool = False) -> Any:
+                raise NotImplementedError
+
+        records: Dict[str, Any] = {}
+        _write(ZarrStoreAdapter(NoReadOnlyViews(records)), zarr_format=zarr_format)
+        with self.assertRaisesRegex(ValueError, "writable NoReadOnlyViews"):
+            ZarrStoreAdapter(NoReadOnlyViews(records)).open_root_group(True)
+        with self.assertRaisesRegex(ValueError, "not read-only"):  # (raised by zarr-python)
+            ZarrStoreAdapter(NoReadOnlyViews(records)).open_root_group(False)
+        read_only: Dict[str, Any] = {"read_only": True}  # (a keyword of zarr-python 3 stores only)
+        root = ZarrStoreAdapter(NoReadOnlyViews(records, **read_only)).open_root_group(True)
+        _check_reference(self, root)
+
+    @parameterized.parameterized.expand(
+        [("indices", [0, 1]), ("mask", np.ones(25, dtype=bool)), ("step", slice(0, 10, 2)), ("bool", True)]
+    )
+    def test_writes_of_other_selections_raise(self, _: str, selection: Any):
+        def write(array: nodes.Array) -> None:
+            with self.assertRaisesRegex(ValueError, "basic selections"):
+                array.write(selection, 1.0)
+
+        self._create("directory", 2, write)
+        self.assertNotIn("a/0.0", self._records("directory"))
+
+    def test_chunks_are_required_to_match_the_shape(self):
+        with self.assertRaisesRegex(ValueError, "don't match"):
+            self._create("directory", 2, lambda array: None, chunks=(10,))
+
+
 @parameterized.parameterized_class(("zarr_format",), [(zarr_format,) for zarr_format in nodes.SUPPORTED_ZARR_FORMATS])
 class TestEdgeCases(unittest.TestCase):
     """Edge cases of reads (blobs, fast-path fallbacks) and error paths of the backends"""
