@@ -25,6 +25,8 @@ from typing import Generic, Optional, Tuple, TypeVar, Union, cast, overload
 import numpy as np
 import torch
 
+from numpy.polynomial import polynomial as np_polynomial
+
 from ncore.impl.common.util import map_optional, unpack_optional
 from ncore.impl.data import types
 from ncore.impl.data import util as data_util
@@ -1734,9 +1736,30 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         camera_model_parameters: types.OpenCVPinholeCameraModelParameters,
         device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
+        max_normalized_radius_squared: Optional[float] = None,
     ):
+        """Initializes an OpenCVPinholeCameraModel to operate on a specific device and floating-point type.
+
+        max_normalized_radius_squared: bound on the squared radius ``(x/z)^2 + (y/z)^2`` of the normalized coordinates
+                                       of camera rays which project to / unproject from valid image points. ``None``
+                                       derives it from the radial distortion coefficients (see
+                                       :meth:`compute_max_normalized_radius_squared`), ``math.inf`` disables the bound.
+                                       Needs to be positive. Not applicable to distortion-free models (which project
+                                       like ideal pinholes)
+        """
         super().__init__(camera_model_parameters, device, dtype)
         del (device, dtype)
+
+        if max_normalized_radius_squared is None:
+            max_normalized_radius_squared = self.compute_max_normalized_radius_squared(
+                camera_model_parameters.radial_coeffs
+            )
+        elif not float(max_normalized_radius_squared) > 0.0:
+            raise ValueError(
+                f"Maximum normalized radius squared needs to be positive, got {max_normalized_radius_squared}"
+            )
+        #: Exclusive bound on the squared radius of the normalized coordinates of valid camera rays
+        self.max_normalized_radius_squared: float = float(max_normalized_radius_squared)
 
         self.register_buffer(
             "radial_coeffs",
@@ -1767,6 +1790,52 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         # closed-form ideal pinhole path. Reuses the parameters' own check (which also
         # accounts for external distortion).
         self._is_distortion_free: bool = camera_model_parameters.is_distortion_free
+
+    @staticmethod
+    def compute_max_normalized_radius_squared(radial_coeffs: np.ndarray) -> float:
+        """Computes the largest squared radius of normalized coordinates up to which the radial distortion is valid
+
+        With ``s = r^2`` the squared radius of the normalized coordinates ``(x/z, y/z)`` and ``d(s) = N(s) / D(s)``
+        the rational radial distortion factor (``N(s) = 1 + k1 s + k2 s^2 + k3 s^3``,
+        ``D(s) = 1 + k4 s + k5 s^2 + k6 s^3``), the distorted radius ``r d(s)`` is a one-to-one function of the
+        radius ``r`` up to its first extremum (beyond it, distinct rays project to the same image points). The bound
+        is the smallest positive root of either the derivative of the distorted radius (whose sign is the one of the
+        polynomial ``N D + 2 s (N' D - N D')``) or of ``D`` (a pole of the distortion factor), and ``math.inf`` if
+        the distortion has neither.
+
+        Only the radial distortion is taken into account (tangential and thin-prism distortions are not).
+
+        Args:
+            radial_coeffs: the radial distortion coefficients ``[k1, k2, k3, k4, k5, k6]``
+
+        Returns:
+            the exclusive bound on the squared radius of the normalized coordinates of valid camera rays
+        """
+        k = np.asarray(radial_coeffs, dtype=np.float64).reshape(6)
+
+        numerator = np.array([1.0, k[0], k[1], k[2]])
+        denominator = np.array([1.0, k[3], k[4], k[5]])
+        derivative = np_polynomial.polyadd(
+            np_polynomial.polymul(numerator, denominator),
+            np_polynomial.polymulx(
+                2.0
+                * np_polynomial.polysub(
+                    np_polynomial.polymul(np_polynomial.polyder(numerator), denominator),
+                    np_polynomial.polymul(numerator, np_polynomial.polyder(denominator)),
+                )
+            ),
+        )
+
+        max_r2 = math.inf
+        for polynomial in (derivative, denominator):
+            polynomial = np.trim_zeros(polynomial, "b")
+            if len(polynomial) < 2:
+                continue  # constant (both are 1 at s = 0), no root
+            for root in np_polynomial.polyroots(polynomial):
+                # (multiple roots, e.g., where the derivative only touches zero, are computed as nearly real pairs)
+                if root.real > 0.0 and abs(root.imag) <= 1e-6 * abs(root):
+                    max_r2 = min(max_r2, float(root.real))
+        return max_r2
 
     def get_parameters(self) -> types.OpenCVPinholeCameraModelParameters:
         """Returns the camera model parameters specific to the current camera model instance"""
@@ -1807,9 +1876,14 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         camera_rays2, converged = self.__iterative_undistort(image_points)
         camera_rays3 = torch.cat([camera_rays2, torch.ones_like(camera_rays2[:, :1])], dim=1)
 
+        # Rays beyond the maximum radius are invalid (the undistortion might have converged to a ray beyond the
+        # distortion's extremum, which projects back to the image point, but not one-to-one)
+        max_r2 = self.max_normalized_radius_squared
+        valid = converged & (torch.sum(torch.square(camera_rays2), dim=1) < max_r2)
+
         # make sure rays are normalized
         return CameraModel.CameraRaysReturn(
-            camera_rays=camera_rays3 / torch.linalg.norm(camera_rays3, axis=1, keepdims=True), valid_flag=converged
+            camera_rays=camera_rays3 / torch.linalg.norm(camera_rays3, axis=1, keepdims=True), valid_flag=valid
         )
 
     def _camera_rays_to_image_points_impl(
@@ -1840,19 +1914,19 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         uv_normalized = cam_rays_valid[:, :2] / cam_rays_valid[:, 2:3]  # [n,2]
         icD, delta, r_2 = self.__compute_distortion(uv_normalized)
 
-        k_min_radial_dist = 0.8
-        k_max_radial_dist = 1.2
-
-        valid_radial = torch.logical_and(icD > k_min_radial_dist, icD < k_max_radial_dist)
+        # Rays beyond the maximum radius (the first extremum of the radially distorted radius, or a pole of the radial
+        # distortion) don't project one-to-one
+        max_r2 = self.max_normalized_radius_squared
+        valid_radial = r_2 < max_r2
 
         # Project using ideal pinhole model (apply radial / tangential / thin-prism distortions)
-        # in case radial distortion is within limits
+        # in case the ray is within the maximum radius
         uvND = uv_normalized[valid_radial] * icD[valid_radial, None]
         if delta is not None:
             uvND = uvND + delta[valid_radial]
         image_points[valid_idx[valid_radial]] = uvND * self.focal_length + self.principal_point
 
-        # If the radial distortion is out-of-limits, the computed coordinates will be unreasonable
+        # If the ray is beyond the maximum radius, the computed coordinates will be unreasonable
         # (might even flip signs) - check on which side of the image we overshoot, and set the coordinates
         # out of the image bounds accordingly. The coordinates will be clipped to
         # viable range and direction but the exact values cannot be trusted / are still invalid
