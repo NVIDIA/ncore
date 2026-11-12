@@ -70,6 +70,11 @@ ZarrFormat = Literal[2, 3]
 #: Basic selections of array data (integers, slices and Ellipsis)
 Selection = Union[int, slice, EllipsisType, Tuple[Union[int, slice, EllipsisType], ...]]
 
+#: Fill values of arrays (read for elements of chunks not stored): numpy scalars (e.g., ``numpy.integer``,
+#: ``numpy.floating``, ``numpy.bool_``, ``numpy.bytes_``, ``numpy.str_``), or Python scalars converted to the array's
+#: dtype
+FillValue = Union[np.generic, bool, int, float, complex, bytes, str]
+
 #: Results of reads of (selections of) arrays: a read-only numpy array of the array's dtype with the shape of the
 #: selection, or a numpy scalar of the array's dtype if the selection is a single element (zarr-python versions differ in
 #: whether they return 0-dimensional arrays or scalars, e.g., ``numpy.bytes_`` for fixed-length bytes). Arrays stored as
@@ -218,6 +223,50 @@ class Backend(ABC, Generic[StoreT]):
     ) -> zarr.Array:
         """Creates a member array initialized with data"""
         ...
+
+    @abstractmethod
+    def create_empty_array(
+        self,
+        group: zarr.Group,
+        name: str,
+        shape: Tuple[int, ...],
+        dtype: np.dtype,
+        chunks: Tuple[int, ...],
+        compression: Optional[BloscCompression],
+        fill_value: FillValue,
+        attributes: Optional[Attributes],
+    ) -> zarr.Array:
+        """Creates a member array without chunks (read as the fill value until written, see :meth:`write`), with the
+        node metadata :meth:`create_array` writes for the same dtype, chunks and compression.
+
+        Callers pass a writable group, a resolved chunk shape (positive sizes, one per dimension of ``shape``) and a
+        resolved fill value (the dtype's zero if not given). Implementations store no chunk records, and configure the
+        array so that later writes store chunks equal to the fill value (as :meth:`create_array` does).
+        """
+        ...
+
+    @abstractmethod
+    def write(self, array: zarr.Array, selection: Selection, data: npt.ArrayLike) -> None:
+        """Writes data to a basic selection of an array (see :meth:`is_basic_selection`). The chunks the selection
+        touches are stored (also chunks equal to the fill value), all other chunks are not written.
+
+        Callers pass basic selections only, of arrays of writable stores. Implementations store the touched chunks with
+        the records :meth:`create_array` writes for the same data (also for arrays opened with zarr-python's default
+        configuration, which skips chunks equal to the fill value). Rewrites of records of indexed tar archives raise
+        the archive's :class:`~ncore.impl.data.itar.RecordExistsError` (propagated unchanged).
+        """
+        ...
+
+    @staticmethod
+    def is_basic_selection(selection: Selection) -> bool:
+        """True for selections of (tuples of) integers, slices with unit step, and Ellipsis"""
+        for item in selection if isinstance(selection, tuple) else (selection,):
+            if item is Ellipsis or (isinstance(item, (int, np.integer)) and not isinstance(item, (bool, np.bool_))):
+                continue
+            if isinstance(item, slice) and item.step in (None, 1):
+                continue
+            return False
+        return True
 
     @staticmethod
     def read_result(value: npt.ArrayLike) -> ReadResult:

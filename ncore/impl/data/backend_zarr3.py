@@ -31,6 +31,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import contextlib
+import dataclasses
 import json
 import os
 import sys
@@ -64,9 +65,10 @@ import zarr.api.asynchronous as zarr_async
 
 from typing_extensions import override
 from upath import UPath
-from zarr.abc.codec import Codec
+from zarr.abc.codec import BytesBytesCodec
 from zarr.abc.store import ByteRequest, OffsetByteRequest, RangeByteRequest, Store, SuffixByteRequest
 from zarr.codecs import BloscCodec, BytesCodec, TransposeCodec, ZstdCodec
+from zarr.core.array_spec import ArrayConfig
 from zarr.core.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.common import JSON
@@ -83,6 +85,7 @@ from ncore.impl.data.backend import (
     Backend,
     BloscCompression,
     BloscConfigV3,
+    FillValue,
     ReadResult,
     Selection,
     ZarrFormat,
@@ -496,17 +499,6 @@ class _DirectRead(NamedTuple):
         )
 
     @staticmethod
-    def is_basic_selection(selection: Selection) -> bool:
-        """True for selections of (tuples of) integers, slices with unit step, and Ellipsis"""
-        for item in selection if isinstance(selection, tuple) else (selection,):
-            if item is Ellipsis or (isinstance(item, (int, np.integer)) and not isinstance(item, (bool, np.bool_))):
-                continue
-            if isinstance(item, slice) and item.step in (None, 1):
-                continue
-            return False
-        return True
-
-    @staticmethod
     def chunk_grid(array: zarr.Array) -> ChunkGrid:
         """zarr-python's chunk grid of an array, as its indexers take it.
 
@@ -519,8 +511,8 @@ class _DirectRead(NamedTuple):
         return getattr(array.metadata, "chunk_grid")
 
     def read(self, array: zarr.Array, selection: Selection, out: Optional[np.ndarray] = None) -> npt.NDArray[Any]:
-        """Reads a basic selection of an array (see :meth:`is_basic_selection`), decompressing its chunks directly into
-        the output array (``out`` if given, see :class:`_DirectReadOp`).
+        """Reads a basic selection of an array (see :meth:`Backend.is_basic_selection`), decompressing its chunks directly
+        into the output array (``out`` if given, see :class:`_DirectReadOp`).
 
         Reads of multiple large chunks (see :data:`_PARALLEL_CHUNK_BYTES`) read and decode their chunks concurrently
         on a thread pool (positional reads and blosc decompression release the GIL), unless :data:`_PARALLEL_READS`
@@ -732,26 +724,69 @@ class Zarr3Backend(Backend[Store]):
         compression: Optional[BloscCompression],
         attributes: Optional[Attributes],
     ) -> zarr.Array:
-        compressor: Union[numcodecs.Blosc, Codec, None] = None
-        if compression is not None:
-            if group.metadata.zarr_format == 2:
-                compressor = compression.to_numcodecs()
-            else:
-                compressor = BloscCodec(
-                    cname=compression.cname,
-                    clevel=compression.clevel,
-                    shuffle=compression.shuffle,
-                    blocksize=compression.blocksize,
-                )
         return group.create_array(
             name,
             data=data,
             chunks=chunks,
-            compressors=compressor,
+            compressors=self._compressor(group, compression),
             attributes=None if attributes is None else self._json_document(attributes),
             # (store chunks equal to the fill value too, as zarr-python 2: identical records of both versions)
             config={"write_empty_chunks": True},
         )
+
+    @staticmethod
+    def _compressor(
+        group: zarr.Group, compression: Optional[BloscCompression]
+    ) -> Union[numcodecs.Blosc, BytesBytesCodec, None]:
+        """The blosc compressor of arrays of a group (of its zarr format)"""
+        if compression is None:
+            return None
+        if group.metadata.zarr_format == 2:
+            return compression.to_numcodecs()
+        return BloscCodec(
+            cname=compression.cname,
+            clevel=compression.clevel,
+            shuffle=compression.shuffle,
+            blocksize=compression.blocksize,
+        )
+
+    @override
+    def create_empty_array(
+        self,
+        group: zarr.Group,
+        name: str,
+        shape: Tuple[int, ...],
+        dtype: np.dtype,
+        chunks: Tuple[int, ...],
+        compression: Optional[BloscCompression],
+        fill_value: FillValue,
+        attributes: Optional[Attributes],
+    ) -> zarr.Array:
+        return group.create_array(
+            name,
+            shape=shape,
+            dtype=dtype,
+            chunks=chunks,
+            compressors=self._compressor(group, compression),
+            fill_value=fill_value,
+            attributes=None if attributes is None else self._json_document(attributes),
+            # (written chunks are stored also if equal to the fill value, as by create_array)
+            config={"write_empty_chunks": True},
+        )
+
+    @override
+    def write(self, array: zarr.Array, selection: Selection, data: npt.ArrayLike) -> None:
+        async_array = array.async_array
+        # (zarr-python < 3.2: _config, later: config)
+        config: ArrayConfig = getattr(async_array, "config", None) or getattr(async_array, "_config")
+        if not config.write_empty_chunks:
+            # (arrays opened with zarr-python's default configuration don't store chunks equal to the fill value)
+            async_array = zarr.AsyncArray(
+                metadata=async_array.metadata,
+                store_path=async_array.store_path,
+                config=dataclasses.replace(config, write_empty_chunks=True),
+            )
+        run(async_array.setitem(selection, data))
 
     @override
     def read(self, array: zarr.Array, selection: Selection, out: Optional[np.ndarray] = None) -> ReadResult:
@@ -760,7 +795,7 @@ class Zarr3Backend(Backend[Store]):
         record (no copies), chunks of all other arrays are decompressed into the output array. Fallback: zarr-python's
         read (e.g., of directories, non-basic selections, or with direct reads disabled), copied into ``out`` if
         given"""
-        if _DirectRead.enabled() and _DirectRead.is_basic_selection(selection) and (plan := _DirectRead.plan(array)):
+        if _DirectRead.enabled() and self.is_basic_selection(selection) and (plan := _DirectRead.plan(array)):
             result = plan.read(array, selection, out)
             return result if out is not None else self.read_result(result)
         self._check_out(array, selection, out)
@@ -789,7 +824,7 @@ class Zarr3Backend(Backend[Store]):
         (the calling thread's), on a worker thread's event loop when awaited on other event loops (e.g., of
         applications), so they aren't blocked by decoding.
         """
-        if _DirectRead.enabled() and _DirectRead.is_basic_selection(selection) and (plan := _DirectRead.plan(array)):
+        if _DirectRead.enabled() and self.is_basic_selection(selection) and (plan := _DirectRead.plan(array)):
             result = await plan.read_async(array, selection, out)
             return result if out is not None else self.read_result(result)
         self._check_out(array, selection, out)
@@ -870,7 +905,7 @@ class Zarr3Backend(Backend[Store]):
                 node.update(value)
         inline: _InlineConsolidatedMetadata = {"kind": "inline", "must_understand": False, "metadata": members}
         document = {**metadata[".zgroup"], "attributes": metadata.get(".zattrs", {}), "consolidated_metadata": inline}
-        return zarr.Group(AsyncGroup.from_dict(StorePath(store, ""), document))
+        return zarr.Group(AsyncGroup.from_dict(StorePath(cls._read_only(store), ""), document))
 
     @classmethod
     def _open_v3_consolidated(cls, store: Store, record: bytes) -> zarr.Group:
@@ -879,7 +914,22 @@ class Zarr3Backend(Backend[Store]):
         root = decode_cbor_zlib(record)
         inline = cast(_InlineConsolidatedMetadata, root["consolidated_metadata"])
         inline = {**inline, "metadata": cls._parent_grouped(inline["metadata"], str)}
-        return zarr.Group(AsyncGroup.from_dict(StorePath(store, ""), {**root, "consolidated_metadata": inline}))
+        document = {**root, "consolidated_metadata": inline}
+        return zarr.Group(AsyncGroup.from_dict(StorePath(cls._read_only(store), ""), document))
+
+    @staticmethod
+    def _read_only(store: Store) -> Store:
+        """A read-only view of a store, as zarr-python opens stores for reading (the store itself if it is read-only;
+        raises ValueError for writable stores of types without read-only views)"""
+        if store.read_only:
+            return store
+        try:
+            return store.with_read_only(True)
+        except NotImplementedError as error:
+            raise ValueError(
+                f"Cannot open a writable {type(store).__name__} for reading: its type has no read-only views. Open a "
+                "read-only store, or use a store type implementing with_read_only()."
+            ) from error
 
     @classmethod
     def _v3_member_documents(cls, store: Store) -> Dict[str, JsonDocument]:

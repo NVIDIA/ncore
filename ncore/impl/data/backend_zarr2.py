@@ -39,6 +39,7 @@ from ncore.impl.data.backend import (
     Attributes,
     Backend,
     BloscCompression,
+    FillValue,
     ReadResult,
     Selection,
     ZarrFormat,
@@ -171,6 +172,35 @@ class Zarr2Backend(Backend[BaseStore]):
         if attributes is not None:
             array.attrs.update(to_json_document(attributes))
         return array
+
+    @override
+    def create_empty_array(
+        self,
+        group: zarr.Group,
+        name: str,
+        shape: Tuple[int, ...],
+        dtype: np.dtype,
+        chunks: Tuple[int, ...],
+        compression: Optional[BloscCompression],
+        fill_value: FillValue,
+        attributes: Optional[Attributes],
+    ) -> zarr.Array:
+        array = group.create_dataset(
+            name,
+            shape=shape,
+            dtype=dtype,
+            chunks=chunks,
+            compressor=None if compression is None else compression.to_numcodecs(),
+            fill_value=fill_value,
+        )
+        if attributes is not None:
+            array.attrs.update(to_json_document(attributes))
+        return array
+
+    @override
+    def write(self, array: zarr.Array, selection: Selection, data: npt.ArrayLike) -> None:
+        # (zarr-python 2 stores chunks equal to the fill value by default, as create_array does)
+        array[selection] = data
 
     @override
     def read(self, array: zarr.Array, selection: Selection, out: Optional[np.ndarray] = None) -> ReadResult:

@@ -86,6 +86,15 @@ def is_node_metadata_key(key: str) -> bool:
     return key.rsplit("/", 1)[-1] in NODE_METADATA_NAMES
 
 
+class RecordExistsError(ValueError):
+    """A record written to an archive exists already (records are write-once)"""
+
+    def __init__(self, key: str, message: Optional[str] = None) -> None:
+        super().__init__(message or f"IndexedTarArchive: record {key} already exists, records are write-once")
+        #: the key of the record
+        self.key = key
+
+
 # -------------------------------------------------------------------------------------------------------------------
 # Index format
 # -------------------------------------------------------------------------------------------------------------------
@@ -728,8 +737,8 @@ class IndexedTarArchive:
         return record
 
     def __setitem__(self, key: str, value: Union[bytes, bytearray, memoryview]) -> None:
-        """Appends a record (requires write mode, raises ValueError if the record exists already). Node metadata
-        records are appended when closing the archive (and can be rewritten until then)."""
+        """Appends a record (requires write mode, raises :class:`RecordExistsError`, a ValueError, if the record exists
+        already). Node metadata records are appended when closing the archive (and can be rewritten until then)."""
         if self._writer is None:
             raise ValueError("IndexedTarArchive: archive is opened for reading and doesn't support writing")
         payload = bytes(value)
@@ -740,7 +749,7 @@ class IndexedTarArchive:
             if is_node_metadata_key(key):
                 self._writer.node_metadata[key] = payload
             elif key in self._writer.records:
-                raise ValueError(f"IndexedTarArchive: record {key} already exists, records are write-once")
+                raise RecordExistsError(key)
             else:
                 self._writer.append(key, payload)
 
