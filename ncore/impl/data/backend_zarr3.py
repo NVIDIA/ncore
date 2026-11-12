@@ -32,6 +32,7 @@ import asyncio
 import concurrent.futures
 import contextlib
 import dataclasses
+import itertools
 import json
 import os
 import sys
@@ -76,7 +77,7 @@ from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ChunkProjection
 from zarr.core.metadata import ArrayV2Metadata
 from zarr.core.sync import sync
-from zarr.storage import LocalStore, StorePath
+from zarr.storage import LocalStore, MemoryStore, StorePath
 
 from ncore.impl.data.backend import (
     V2_CONSOLIDATED_METADATA_KEY,
@@ -85,6 +86,7 @@ from ncore.impl.data.backend import (
     Backend,
     BloscCompression,
     BloscConfigV3,
+    EncodedChunks,
     FillValue,
     ReadResult,
     Selection,
@@ -726,22 +728,68 @@ class Zarr3Backend(Backend[Store]):
     ) -> zarr.Array:
         return group.create_array(
             name,
+            attributes=None if attributes is None else self._json_document(attributes),
+            **self._create_array_options(group.metadata.zarr_format, data, chunks, compression),
+        )
+
+    @classmethod
+    def _create_array_options(
+        cls,
+        zarr_format: ZarrFormat,
+        data: npt.NDArray[np.generic],
+        chunks: Union[Tuple[int, ...], Literal["auto"]],
+        compression: Optional[BloscCompression],
+    ) -> Dict[str, Any]:
+        """The options of zarr-python's ``create_array`` of :meth:`create_array` (and :meth:`encode_chunks`)"""
+        return dict(
             data=data,
             chunks=chunks,
-            compressors=self._compressor(group, compression),
-            attributes=None if attributes is None else self._json_document(attributes),
+            compressors=cls._compressor(zarr_format, compression),
             # (store chunks equal to the fill value too, as zarr-python 2: identical records of both versions)
             config={"write_empty_chunks": True},
         )
 
+    @override
+    def encode_chunks(
+        self,
+        data: npt.NDArray[np.generic],
+        zarr_format: ZarrFormat,
+        chunks: Union[Tuple[int, ...], Literal["auto"]],
+        compression: Optional[BloscCompression],
+    ) -> EncodedChunks:
+        store = MemoryStore()
+
+        async def encode() -> zarr.Array:
+            group = await zarr_async.create_group(store=store, zarr_format=zarr_format)
+            options = self._create_array_options(zarr_format, data, chunks, compression)
+            return zarr.Array(await group.create_array("a", **options))
+
+        array = run(encode())
+        records = {}
+        for coords in itertools.product(*(range(n) for n in array.cdata_shape)):
+            if (record := self._get(store, f"a/{array.metadata.encode_chunk_key(coords)}")) is not None:
+                records[coords] = record
+        fill_value = np.array([array.metadata.fill_value], dtype=data.dtype)[0]
+        return EncodedChunks(tuple(array.chunks), fill_value, records)
+
+    @staticmethod
+    @override
+    def chunk_grid_shape(shape: Tuple[int, ...], chunks: Tuple[int, ...]) -> Tuple[int, ...]:
+        return tuple(-(-size // chunk) for size, chunk in zip(shape, chunks))
+
+    @override
+    def write_chunk_record(self, array: zarr.Array, coords: Tuple[int, ...], record: bytes) -> None:
+        store_path = array.async_array.store_path / array.metadata.encode_chunk_key(coords)
+        run(store_path.set(default_buffer_prototype().buffer.from_bytes(record)))
+
     @staticmethod
     def _compressor(
-        group: zarr.Group, compression: Optional[BloscCompression]
+        zarr_format: ZarrFormat, compression: Optional[BloscCompression]
     ) -> Union[numcodecs.Blosc, BytesBytesCodec, None]:
-        """The blosc compressor of arrays of a group (of its zarr format)"""
+        """The blosc compressor of arrays of a zarr format"""
         if compression is None:
             return None
-        if group.metadata.zarr_format == 2:
+        if zarr_format == 2:
             return compression.to_numcodecs()
         return BloscCodec(
             cname=compression.cname,
@@ -767,7 +815,7 @@ class Zarr3Backend(Backend[Store]):
             shape=shape,
             dtype=dtype,
             chunks=chunks,
-            compressors=self._compressor(group, compression),
+            compressors=self._compressor(group.metadata.zarr_format, compression),
             fill_value=fill_value,
             attributes=None if attributes is None else self._json_document(attributes),
             # (written chunks are stored also if equal to the fill value, as by create_array)

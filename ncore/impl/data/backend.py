@@ -24,7 +24,7 @@ import sys
 import typing
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Generic, List, Literal, Optional, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, Generic, List, Literal, NamedTuple, Optional, Tuple, TypeVar, Union
 
 import numcodecs
 import numpy as np
@@ -162,6 +162,17 @@ class BloscCompression:
 ZarrNode = Union[zarr.Group, zarr.Array]
 
 
+class EncodedChunks(NamedTuple):
+    """The chunk records of an array encoded by :meth:`Backend.encode_chunks`"""
+
+    #: Chunk shape (resolved, also for automatic chunk shapes)
+    chunks: Tuple[int, ...]
+    #: Fill value of the array's node metadata (a numpy scalar of the array's dtype)
+    fill_value: FillValue
+    #: Records of the stored chunks, by chunk coordinates
+    records: Dict[Tuple[int, ...], bytes]
+
+
 class Backend(ABC, Generic[StoreT]):
     """zarr-python version specific operations of nodes and stores (implemented by the backend of each zarr-python
     version, for the store type of its zarr-python version)"""
@@ -242,6 +253,46 @@ class Backend(ABC, Generic[StoreT]):
         Callers pass a writable group, a resolved chunk shape (positive sizes, one per dimension of ``shape``) and a
         resolved fill value (the dtype's zero if not given). Implementations store no chunk records, and configure the
         array so that later writes store chunks equal to the fill value (as :meth:`create_array` does).
+        """
+        ...
+
+    @abstractmethod
+    def encode_chunks(
+        self,
+        data: npt.NDArray[np.generic],
+        zarr_format: ZarrFormat,
+        chunks: Union[Tuple[int, ...], Literal["auto"]],
+        compression: Optional[BloscCompression],
+    ) -> EncodedChunks:
+        """Encodes the chunks of an array as :meth:`create_array` writes them (into an in-memory store of the call, so
+        concurrent calls share no state).
+
+        Callers pass a numpy array, a zarr format and a chunk shape resolved as for :meth:`create_array`.
+        Implementations may run on any thread and share no state between calls. They return the resolved chunk shape,
+        the fill value of the node metadata as a numpy scalar of the array's dtype, and the records
+        :meth:`create_array` stores for the same data, dtype, chunks and compression (byte-identical), by chunk
+        coordinates. Raises ValueError for zarr formats the zarr-python version doesn't support.
+        """
+        ...
+
+    @staticmethod
+    @abstractmethod
+    def chunk_grid_shape(shape: Tuple[int, ...], chunks: Tuple[int, ...]) -> Tuple[int, ...]:
+        """The number of chunks of an array per dimension (the range of the chunk coordinates of its records).
+
+        Callers pass a shape and a chunk shape of the same dimensions. The coordinates of the records of
+        :meth:`encode_chunks` lie in this range (e.g., zarr-python 2 stores 0-dimensional arrays at ``(0,)``).
+        """
+        ...
+
+    @abstractmethod
+    def write_chunk_record(self, array: zarr.Array, coords: Tuple[int, ...], record: bytes) -> None:
+        """Stores an encoded chunk record (see :meth:`encode_chunks`) of an array at the chunk's key.
+
+        Callers pass arrays of writable stores created by :meth:`create_empty_array` with the dtype, chunks,
+        compression and fill value of the encoding, and coordinates within :meth:`chunk_grid_shape`. Implementations
+        store the record unchanged. Rewrites of records of indexed tar archives raise the archive's
+        :class:`~ncore.impl.data.itar.RecordExistsError` (propagated unchanged).
         """
         ...
 

@@ -23,9 +23,24 @@ are accessible via the ``zarr`` properties (for APIs of the installed zarr-pytho
 from __future__ import annotations
 
 import collections
+import contextlib
+import dataclasses
 import threading
 
-from typing import TYPE_CHECKING, Any, Iterator, List, Literal, Optional, Tuple, Type, TypeVar, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+)
 
 import numpy as np
 import zarr
@@ -82,6 +97,82 @@ def check_zarr_format(zarr_format: int) -> ZarrFormat:
             f"(supported: {', '.join(f'v{f}' for f in SUPPORTED_ZARR_FORMATS)})"
         )
     return cast(ZarrFormat, zarr_format)
+
+
+def _resolve_chunks(
+    shape: Tuple[int, ...], chunks: Union[Tuple[int, ...], Literal["single", "auto"]]
+) -> Union[Tuple[int, ...], Literal["auto"]]:
+    """The chunk shape of an array of a shape as :meth:`Group.create_array` takes it ("auto" is resolved by the
+    backend, zero-sized dimensions are clamped to 1)"""
+    if chunks == "auto":
+        return chunks
+    return tuple(max(1, int(size)) for size in (shape if chunks == "single" else chunks))
+
+
+@dataclasses.dataclass(frozen=True)
+class EncodedArray:
+    """An array encoded into chunk records, produced by :meth:`EncodedArray.encode` (e.g., on worker threads) and
+    stored by passing it to :meth:`Group.create_encoded_array`"""
+
+    #: Shape of the array
+    shape: Tuple[int, ...]
+    #: dtype of the array
+    dtype: np.dtype
+    #: Chunk shape (resolved, also for "single" and "auto")
+    chunks: Tuple[int, ...]
+    #: Blosc compression of the chunks (None: uncompressed)
+    compression: Optional[BloscCompression]
+    #: zarr format of the records
+    zarr_format: ZarrFormat
+    #: Fill value of the array's node metadata (a numpy scalar of the array's dtype)
+    fill_value: FillValue
+    #: Records of the stored chunks, by chunk coordinates
+    chunk_records: Dict[Tuple[int, ...], bytes]
+
+    @classmethod
+    def encode(
+        cls,
+        data: npt.ArrayLike,
+        *,
+        dtype: Optional[npt.DTypeLike] = None,
+        chunks: Union[Tuple[int, ...], Literal["single", "auto"]] = "single",
+        compression: Optional[BloscCompression] = BloscCompression(),
+        zarr_format: ZarrFormat = 2,
+    ) -> EncodedArray:
+        """Encodes the chunks of an array as :meth:`Group.create_array` writes them, to be stored by
+        :meth:`Group.create_encoded_array`.
+
+        Uses no store and no shared state, so arrays can be encoded concurrently on worker threads (e.g., to compress
+        the arrays of a group in parallel, and store them in order).
+
+        Parameters
+        ----------
+        data
+            Data of the array (defines the shape of the array, and its dtype if ``dtype`` isn't given).
+        dtype
+            Optional dtype of the array (the data is converted to it).
+        chunks
+            Chunk shape (zero-sized dimensions are clamped to 1, as zarr requires positive chunk sizes): "single"
+            stores the array as a single chunk (default), "auto" uses the chunk shape heuristic of zarr-python (both
+            are resolved in :attr:`EncodedArray.chunks`).
+        compression
+            Blosc compression of the chunks (default: lz4, level 5, bit-shuffle), or None for uncompressed chunks.
+        zarr_format
+            zarr format of the records (the zarr format of the group the array is stored in, raises ValueError for
+            zarr formats unsupported by the installed zarr-python version).
+        """
+        zarr_format = check_zarr_format(zarr_format)
+        values = np.asarray(data, dtype=dtype)
+        encoded = _backend.encode_chunks(values, zarr_format, _resolve_chunks(values.shape, chunks), compression)
+        return cls(
+            tuple(values.shape),
+            values.dtype,
+            encoded.chunks,
+            compression,
+            zarr_format,
+            encoded.fill_value,
+            encoded.records,
+        )
 
 
 T = TypeVar("T")
@@ -276,8 +367,15 @@ class Array(_Node):
         if not _backend.is_basic_selection(selection):
             raise ValueError(f"Writes of array {self.path!r} need basic selections, got {selection!r}")
         self._check_writable()
-        try:
+        with self._write_once():
             _backend.write(self._array, selection, data)
+
+    @contextlib.contextmanager
+    def _write_once(self) -> Iterator[None]:
+        """Raises :class:`RecordExistsError` naming the array and the chunk for chunks written already (indexed tar
+        archives)"""
+        try:
+            yield
         except RecordExistsError as e:
             raise RecordExistsError(
                 e.key, f"Chunk {e.key!r} of array {self.path!r} is written already (records are write-once)"
@@ -440,8 +538,7 @@ class Group(_Node):
             Optional attributes of the array.
         """
         values = np.asarray(data, dtype=dtype)
-        if chunks != "auto":
-            chunks = tuple(max(1, int(size)) for size in (values.shape if chunks == "single" else chunks))
+        chunks = _resolve_chunks(values.shape, chunks)
         return Array(_backend.create_array(self._group, name, values, chunks, compression, attributes))
 
     def create_empty_array(
@@ -494,6 +591,65 @@ class Group(_Node):
         return Array(
             _backend.create_empty_array(self._group, name, shape, dtype, chunks, compression, resolved, attributes)
         )
+
+    def create_encoded_array(
+        self, name: str, encoded: EncodedArray, *, attributes: Optional[Attributes] = None
+    ) -> Array:
+        """Creates a member array from chunks encoded by :meth:`EncodedArray.encode` (e.g., on worker threads).
+
+        The records are the ones :meth:`create_array` writes for the same data, chunks and compression. The encoded
+        array is validated before creating the array.
+
+        Parameters
+        ----------
+        name
+            Name of the array within the group.
+        encoded
+            The encoded array (of the group's zarr format).
+        attributes
+            Optional attributes of the array.
+
+        Raises
+        ------
+        ValueError
+            For groups of stores opened for reading, and for encoded arrays of another zarr format than the group's,
+            whose chunk shape doesn't match their shape, or with records outside of their chunk grid.
+        ncore.impl.data.itar.RecordExistsError
+            For chunks written already (indexed tar archives; a ValueError).
+        """
+        self._check_writable()
+        if encoded.zarr_format != self.zarr_format:
+            raise ValueError(
+                f"Array {name!r} is encoded in zarr format v{encoded.zarr_format}, "
+                f"the group {self.path!r} is of zarr format v{self.zarr_format}"
+            )
+        if len(encoded.chunks) != len(encoded.shape):
+            raise ValueError(
+                f"Chunks {encoded.chunks} of encoded array {name!r} don't match the dimensions of shape {encoded.shape}"
+            )
+        grid = _backend.chunk_grid_shape(encoded.shape, encoded.chunks)
+        for coords in encoded.chunk_records:
+            if len(coords) != len(grid) or not all(0 <= c < n for c, n in zip(coords, grid)):
+                raise ValueError(
+                    f"Chunk {coords} of encoded array {name!r} is outside of its chunk grid {grid} "
+                    f"(shape {encoded.shape}, chunks {encoded.chunks})"
+                )
+        array = Array(
+            _backend.create_empty_array(
+                self._group,
+                name,
+                encoded.shape,
+                encoded.dtype,
+                encoded.chunks,
+                encoded.compression,
+                encoded.fill_value,
+                attributes,
+            )
+        )
+        for coords, record in encoded.chunk_records.items():
+            with array._write_once():
+                _backend.write_chunk_record(array.zarr, coords, record)
+        return array
 
     def create_bytes_array(self, name: str, data: bytes, *, attributes: Optional[Attributes] = None) -> Array:
         """Stores a binary blob (e.g., an encoded image) as uncompressed member array.
