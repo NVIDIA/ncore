@@ -431,6 +431,15 @@ class Backend(ABC, Generic[StoreT]):
         ...
 
     @abstractmethod
+    def has_consolidated_metadata(self, store: StoreT) -> bool:
+        """Whether a store has a consolidated metadata record this backend can open (see :meth:`open_root_group`).
+
+        Implementations check for the record's key only (no reads of node metadata), and return True only for records
+        :meth:`open_root_group` opens with ``consolidated=True``.
+        """
+        ...
+
+    @abstractmethod
     def consolidate(self, store: StoreT) -> None:
         """Stores the consolidated metadata record of the hierarchy of a store (after writing all nodes)"""
         ...
