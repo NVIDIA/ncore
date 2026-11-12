@@ -2692,6 +2692,209 @@ class TestOpenCVPinholeZeroTerms(CameraModelsBaseTestCase):
                             torch.testing.assert_close(actual, expected, rtol=0.0, atol=0.0)
 
 
+class TestOpenCVPinholeMaxNormalizedRadiusSquared(unittest.TestCase):
+    """Bound on the squared radius of normalized coordinates of the OpenCV pinhole radial distortion"""
+
+    @staticmethod
+    def _distorted_radius(radial_coeffs, r2: np.ndarray) -> np.ndarray:
+        k1, k2, k3, k4, k5, k6 = radial_coeffs
+        d = (1 + r2 * (k1 + r2 * (k2 + r2 * k3))) / (1 + r2 * (k4 + r2 * (k5 + r2 * k6)))
+        return np.sqrt(r2) * d
+
+    def _assert_first_extremum(self, radial_coeffs, max_r2: float) -> None:
+        """The distorted radius is increasing below the bound, and decreasing just above it"""
+        r2 = np.linspace(0.0, max_r2, 10001)
+        self.assertTrue(np.all(np.diff(self._distorted_radius(radial_coeffs, r2)) > 0))
+        above = self._distorted_radius(radial_coeffs, np.array([max_r2, max_r2 * 1.01]))
+        self.assertLess(above[1], above[0])
+
+    def test_radial_k1(self):
+        # The distorted radius r (1 + k1 r^2) has its extremum at r^2 = -1 / (3 k1) (where d = 2/3)
+        for k1 in (-0.05, -0.1, -0.3, -1.0):
+            with self.subTest(k1=k1):
+                coeffs = [k1, 0, 0, 0, 0, 0]
+                max_r2 = OpenCVPinholeCameraModel.compute_max_normalized_radius_squared(np.array(coeffs))
+                self.assertAlmostEqual(max_r2, -1.0 / (3.0 * k1), places=12)
+                self._assert_first_extremum(coeffs, max_r2)
+
+    def test_monotonic_distortions(self):
+        for coeffs in (
+            [0, 0, 0, 0, 0, 0],
+            [0.2, 0.05, 0.001, 0, 0, 0],  # pincushion
+            [-0.1, 0.01, 0, 0, 0, 0],  # barrel, increasing again before an extremum
+            [0.1, 0, 0, 0.05, 0, 0],
+        ):
+            with self.subTest(coeffs=coeffs):
+                self.assertEqual(
+                    OpenCVPinholeCameraModel.compute_max_normalized_radius_squared(np.array(coeffs)), math.inf
+                )
+
+    def test_pole(self):
+        # D(s) = 1 - 0.5 s has its root at s = 2 (with an increasing distorted radius before it)
+        self.assertAlmostEqual(
+            OpenCVPinholeCameraModel.compute_max_normalized_radius_squared(np.array([0.1, 0, 0, -0.5, 0, 0])),
+            2.0,
+            places=12,
+        )
+
+    def test_rational_first_extremum(self):
+        # The distorted radius of this rational distortion has a maximum, a minimum, and increases again beyond
+        coeffs = [-0.3, 0.05, 0, 0.2, 0, 0]
+        max_r2 = OpenCVPinholeCameraModel.compute_max_normalized_radius_squared(np.array(coeffs))
+        self._assert_first_extremum(coeffs, max_r2)
+        r2 = np.linspace(max_r2, 20.0, 10001)
+        self.assertTrue(np.any(np.diff(self._distorted_radius(coeffs, r2)) > 0))
+
+    def test_double_root(self):
+        # The derivative 1 + 3 k1 s + 5 k2 s^2 only touches zero at s = -3 k1 / (10 k2) for (3 k1)^2 = 20 k2 (its
+        # double root is computed as a nearly real complex pair for the second coefficients)
+        for k1, k2 in ((-0.2, 0.018), (-0.3, 0.0405)):
+            with self.subTest(k1=k1, k2=k2):
+                max_r2 = OpenCVPinholeCameraModel.compute_max_normalized_radius_squared(np.array([k1, k2, 0, 0, 0, 0]))
+                self.assertAlmostEqual(max_r2, -3.0 * k1 / (10.0 * k2), places=5)
+
+    def test_waymo(self):
+        # Extremum of the radial distortion of the Waymo fixture
+        coeffs = [0.04239636827428756, -0.34165672675852826, 0, 0, 0, 0]
+        max_r2 = OpenCVPinholeCameraModel.compute_max_normalized_radius_squared(np.array(coeffs))
+        self._assert_first_extremum(coeffs, max_r2)
+
+
+@parameterized.parameterized_class(
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
+)
+class TestOpenCVPinholeRadialValidity(CommonTestCase):
+    """Validity of OpenCV pinhole projections / unprojections by the bound on the squared normalized radius"""
+
+    device: str
+    dtype: torch.dtype
+
+    K1 = -0.1  # extremum of the distorted radius at r^2 = 10 / 3 (radial distortion factor 2/3)
+    FOCAL_LENGTH = 500.0
+    PRINCIPAL_POINT = (960.0, 640.0)
+
+    def _params(self, k1: float = K1) -> OpenCVPinholeCameraModelParameters:
+        return OpenCVPinholeCameraModelParameters(
+            resolution=np.array([1920, 1280], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array(self.PRINCIPAL_POINT, dtype=np.float32),
+            focal_length=np.array([self.FOCAL_LENGTH, self.FOCAL_LENGTH], dtype=np.float32),
+            radial_coeffs=np.array([k1, 0, 0, 0, 0, 0], dtype=np.float32),
+            tangential_coeffs=np.zeros(2, dtype=np.float32),
+            thin_prism_coeffs=np.zeros(4, dtype=np.float32),
+        )
+
+    def _rays(self, r2s) -> torch.Tensor:
+        # Rays along the image's diagonal direction with the given squared normalized radii
+        direction = np.array([0.8, 0.6])
+        return torch.tensor([[*(direction * math.sqrt(r2)), 1.0] for r2 in r2s], device=self.device, dtype=self.dtype)
+
+    def test_derived_bound(self):
+        params = self._params()
+        model = OpenCVPinholeCameraModel(params, device=self.device, dtype=self.dtype)
+        expected_max_r2 = OpenCVPinholeCameraModel.compute_max_normalized_radius_squared(params.radial_coeffs)
+        self.assertEqual(model.max_normalized_radius_squared, expected_max_r2)
+        self.assertAlmostEqual(expected_max_r2, 10.0 / 3.0, places=5)
+        # (the generic factory derives the bound)
+        from_parameters = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
+        assert isinstance(from_parameters, OpenCVPinholeCameraModel)
+        self.assertEqual(from_parameters.max_normalized_radius_squared, expected_max_r2)
+
+    def test_projection_validity(self):
+        model = OpenCVPinholeCameraModel(self._params(), device=self.device, dtype=self.dtype)
+        max_r2 = model.max_normalized_radius_squared
+        # Within the image: r^2 = 2.0 (radial distortion factor 0.8, the distorted point at 566 px from the principal
+        # point), 0.95 max_r2 (factor 0.68, which the former fixed limits (0.8, 1.2) rejected), and 1.05 max_r2 (beyond
+        # the extremum; the point would still project into the image, but not one-to-one)
+        projection = model.camera_rays_to_image_points(self._rays([2.0, 0.95 * max_r2, 1.05 * max_r2]))
+        self.assertEqual(projection.valid_flag.tolist(), [True, True, False])
+
+        # Valid rays project with the distortion model
+        for index, r2 in enumerate([2.0, 0.95 * max_r2]):
+            radius = math.sqrt(r2) * (1 + self.K1 * r2) * self.FOCAL_LENGTH
+            expected = torch.tensor(
+                [self.PRINCIPAL_POINT[0] + 0.8 * radius, self.PRINCIPAL_POINT[1] + 0.6 * radius],
+                device=self.device,
+                dtype=self.dtype,
+            )
+            torch.testing.assert_close(projection.image_points[index], expected, rtol=0.0, atol=1e-3)
+
+        # The ray beyond the extremum is moved out of the image
+        self.assertGreater(
+            float(
+                torch.linalg.norm(projection.image_points[2] - projection.image_points.new_tensor(self.PRINCIPAL_POINT))
+            ),
+            1000.0,
+        )
+
+    def test_unprojection_validity(self):
+        model = OpenCVPinholeCameraModel(self._params(), device=self.device, dtype=self.dtype)
+        bounded = OpenCVPinholeCameraModel(
+            self._params(), device=self.device, dtype=self.dtype, max_normalized_radius_squared=0.75
+        )
+        # (rays where the fixed-point undistortion converges, which is slow towards the extremum; unprojected one by
+        # one, as the undistortion stops on the mean residual of all points)
+        for r2 in (0.5, 1.0):
+            with self.subTest(r2=r2):
+                ray = self._rays([r2])
+                image_point = model.camera_rays_to_image_points(ray).image_points
+                unprojection = model.image_points_to_camera_rays(image_point)
+                self.assertTrue(bool(unprojection.valid_flag[0]))
+                torch.testing.assert_close(
+                    unprojection.camera_rays, ray / torch.linalg.norm(ray, dim=1, keepdim=True), rtol=0.0, atol=1e-5
+                )
+                # A bound below the ray's radius invalidates its unprojection (whose undistortion converged)
+                self.assertEqual(bool(bounded.image_points_to_camera_rays(image_point).valid_flag[0]), r2 < 0.75)
+
+    def test_explicit_bound(self):
+        params = self._params()
+        max_r2 = OpenCVPinholeCameraModel.compute_max_normalized_radius_squared(params.radial_coeffs)
+        rays = self._rays([1.0, 2.0, 1.05 * max_r2])
+        for bound, expected_valid in (
+            (1.5, [True, False, False]),  # stricter than the derived bound
+            (1.1 * max_r2, [True, True, True]),  # beyond the extremum
+            (math.inf, [True, True, True]),
+        ):
+            with self.subTest(bound=bound):
+                model = OpenCVPinholeCameraModel(
+                    params, device=self.device, dtype=self.dtype, max_normalized_radius_squared=bound
+                )
+                self.assertEqual(model.max_normalized_radius_squared, bound)
+                self.assertEqual(model.camera_rays_to_image_points(rays).valid_flag.tolist(), expected_valid)
+
+    def test_explicit_bound_of_distortion_free_model(self):
+        """Distortion-free models project like ideal pinholes, irrespective of the bound"""
+        params = self._params(k1=0.0)
+        bounded = OpenCVPinholeCameraModel(
+            params, device=self.device, dtype=self.dtype, max_normalized_radius_squared=1.5
+        )
+        unbounded = OpenCVPinholeCameraModel(params, device=self.device, dtype=self.dtype)
+        self.assertEqual(unbounded.max_normalized_radius_squared, math.inf)
+
+        rays = self._rays([1.0, 2.0])
+        bounded_projection = bounded.camera_rays_to_image_points(rays)
+        self.assertEqual(bounded_projection.valid_flag.tolist(), [True, True])
+        self.assertTrue(
+            torch.equal(bounded_projection.image_points, unbounded.camera_rays_to_image_points(rays).image_points)
+        )
+        bounded_rays = bounded.image_points_to_camera_rays(bounded_projection.image_points)
+        self.assertEqual(bounded_rays.valid_flag.tolist(), [True, True])
+        self.assertTrue(
+            torch.equal(
+                bounded_rays.camera_rays,
+                unbounded.image_points_to_camera_rays(bounded_projection.image_points).camera_rays,
+            )
+        )
+
+    def test_invalid_bound(self):
+        for bound in (0.0, -1.0, math.nan):
+            with self.subTest(bound=bound):
+                with self.assertRaises(ValueError):
+                    OpenCVPinholeCameraModel(
+                        self._params(), device=self.device, dtype=self.dtype, max_normalized_radius_squared=bound
+                    )
+
+
 @parameterized.parameterized_class(
     ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
 )
