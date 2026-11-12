@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 
 from typing import TYPE_CHECKING, Iterator, List, Literal, Optional, Tuple, Union
@@ -39,6 +40,7 @@ from ncore.impl.data.backend import (
     Attributes,
     Backend,
     BloscCompression,
+    EncodedChunks,
     FillValue,
     ReadResult,
     Selection,
@@ -196,6 +198,35 @@ class Zarr2Backend(Backend[BaseStore]):
         if attributes is not None:
             array.attrs.update(to_json_document(attributes))
         return array
+
+    @override
+    def encode_chunks(
+        self,
+        data: npt.NDArray[np.generic],
+        zarr_format: ZarrFormat,
+        chunks: Union[Tuple[int, ...], Literal["auto"]],
+        compression: Optional[BloscCompression],
+    ) -> EncodedChunks:
+        if zarr_format != 2:
+            raise ValueError(f"zarr-python 2 only supports zarr format v2, got v{zarr_format}")
+        store = zarr.storage.KVStore(dict())
+        array = self.create_array(zarr.group(store=store), "a", data, chunks, compression, None)
+        records = {}
+        for coords in itertools.product(*(range(n) for n in array.cdata_shape)):
+            if (record := store.get(array._chunk_key(coords))) is not None:
+                records[coords] = ensure_bytes(record)
+        # (zarr-python 2 reports Python scalars for some dtypes, e.g. str for "<U")
+        return EncodedChunks(tuple(array.chunks), np.array([array.fill_value], dtype=array.dtype)[0], records)
+
+    @staticmethod
+    @override
+    def chunk_grid_shape(shape: Tuple[int, ...], chunks: Tuple[int, ...]) -> Tuple[int, ...]:
+        # (zarr-python 2 stores 0-dimensional arrays as a single chunk at coordinates (0,))
+        return tuple(-(-size // chunk) for size, chunk in zip(shape, chunks)) or (1,)
+
+    @override
+    def write_chunk_record(self, array: zarr.Array, coords: Tuple[int, ...], record: bytes) -> None:
+        array.chunk_store[array._chunk_key(coords)] = record
 
     @override
     def write(self, array: zarr.Array, selection: Selection, data: npt.ArrayLike) -> None:

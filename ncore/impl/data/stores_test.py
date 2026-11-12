@@ -15,6 +15,7 @@
 
 import asyncio
 import concurrent.futures
+import dataclasses
 import gc
 import hashlib
 import io
@@ -2461,6 +2462,257 @@ class TestPartialWrites(unittest.TestCase):
     def test_chunks_are_required_to_match_the_shape(self):
         with self.assertRaisesRegex(ValueError, "don't match"):
             self._create("directory", 2, lambda array: None, chunks=(10,))
+
+
+class TestEncodedArrays(unittest.TestCase):
+    """Arrays created from chunks encoded elsewhere (``EncodedArray.encode``, ``create_encoded_array``)"""
+
+    #: (shape, chunks) of the layouts
+    _LAYOUTS: Dict[str, Tuple[Tuple[int, ...], Any]] = {
+        "single_chunk": ((20, 7), (20, 7)),
+        "multi_chunk": ((20, 8), (10, 4)),
+        "edge_chunks": ((25, 7), (10, 4)),
+        "auto": ((25, 7), "auto"),
+    }
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _store(self, store_type: str, name: str, mode: str = "w") -> Store:
+        path = os.path.join(self._tmp.name, f"{name}.itar" if store_type == "itar" else f"{name}.zarr")
+        if store_type == "itar":
+            return IndexedTarZarrStore(path, mode="w" if mode == "w" else "r")
+        return ZarrStoreAdapter.directory(path)
+
+    def _records(self, store_type: str, name: str) -> Dict[str, bytes]:
+        """All records of a store (by key), without the consolidated metadata"""
+        path = os.path.join(self._tmp.name, f"{name}.itar" if store_type == "itar" else f"{name}.zarr")
+        if store_type == "itar":
+            archive = IndexedTarArchive(path)
+            records = {key: archive[key] for key in archive.keys()}
+        else:
+            records = {str(p.relative_to(path)): p.read_bytes() for p in Path(path).rglob("*") if p.is_file()}
+        return {key: value for key, value in records.items() if not is_consolidated_metadata_key(key)}
+
+    @parameterized.parameterized.expand(
+        [
+            (store_type, zarr_format, layout)
+            for store_type in ("itar", "directory")
+            for zarr_format in ZARR_FORMATS
+            for layout in ("single_chunk", "multi_chunk", "edge_chunks", "auto")
+        ]
+    )
+    def test_encoded_array_matches_create_array(self, store_type: str, zarr_format: ZarrFormat, layout: str):
+        _require(self, zarr_format)
+        shape, chunks = self._LAYOUTS[layout]
+        x = np.random.default_rng(0).random(shape).astype(np.float32)
+        x[:10, :4] = 0  # (a chunk of the fill value: stored as well)
+        compression = nodes.BloscCompression(cname="zstd", shuffle="shuffle")
+        attributes = {"unit": "m"}
+
+        encoded = nodes.EncodedArray.encode(x, chunks=chunks, compression=compression, zarr_format=zarr_format)
+        self.assertNotEqual(encoded.chunks, "auto")
+        with self._store(store_type, "encoded") as store:
+            root = store.create_root_group({}, zarr_format=zarr_format)
+            created = root.create_encoded_array("x", encoded, attributes=attributes)
+            store.consolidate()
+        with self._store(store_type, "reference") as store:
+            root = store.create_root_group({}, zarr_format=zarr_format)
+            reference = root.create_array("x", x, chunks=chunks, compression=compression, attributes=attributes)
+            store.consolidate()
+
+        self.assertEqual(created.zarr.chunks, reference.zarr.chunks)
+        records, expected = self._records(store_type, "encoded"), self._records(store_type, "reference")
+        self.assertEqual(sorted(records), sorted(expected))
+        self.assertGreater(len(records), 2)
+        for key, value in expected.items():
+            self.assertEqual(records[key], value, key)
+        array = self._store(store_type, "encoded", "r").open_root_group().array("x")
+        np.testing.assert_array_equal(array.read(), x)
+        self.assertEqual((array.compression, array.attrs), (compression, attributes))
+
+    @parameterized.parameterized.expand([(zarr_format,) for zarr_format in ZARR_FORMATS])
+    def test_encoding_on_worker_threads(self, zarr_format: ZarrFormat):
+        _require(self, zarr_format)
+        rng = np.random.default_rng(0)
+        inputs = [rng.random((25 + i, 7)).astype(np.float32) for i in range(8)]
+        with concurrent.futures.ThreadPoolExecutor(4) as executor:
+            encoded = list(
+                executor.map(lambda x: nodes.EncodedArray.encode(x, chunks=(10, 4), zarr_format=zarr_format), inputs)
+            )
+        with self._store("itar", "encoded") as store:
+            root = store.create_root_group({}, zarr_format=zarr_format)
+            for i, array in enumerate(encoded):
+                root.create_encoded_array(f"x{i}", array)
+            store.consolidate()
+        root = self._store("itar", "encoded", "r").open_root_group()
+        for i, x in enumerate(inputs):
+            np.testing.assert_array_equal(root.array(f"x{i}").read(), x)
+
+    def test_zarr_format_mismatch_raises(self):
+        _require(self, 3)
+        encoded = nodes.EncodedArray.encode(np.ones((5, 3)), zarr_format=2)
+        with self._store("directory", "encoded") as store:
+            root = store.create_root_group({}, zarr_format=3)
+            with self.assertRaisesRegex(ValueError, "zarr format v2"):
+                root.create_encoded_array("x", encoded)
+            self.assertNotIn("x", root)
+
+    def test_unsupported_zarr_format_raises(self):
+        if ZARR_PYTHON_3:
+            self.skipTest("zarr format v3 is supported by zarr-python 3")
+        with self.assertRaisesRegex(ValueError, "not supported by zarr-python"):
+            nodes.EncodedArray.encode(np.ones(3), zarr_format=3)
+
+    def test_rewriting_an_encoded_chunk_of_an_archive_raises(self):
+        encoded = nodes.EncodedArray.encode(np.ones((20, 3)), chunks=(10, 3))
+        with self._store("itar", "encoded") as store:
+            array = store.create_root_group({}).create_encoded_array("x", encoded)
+            with self.assertRaises(ValueError) as raised:
+                array.write(slice(0, 10), np.zeros((10, 3)))
+            self.assertIsInstance(raised.exception, itar.RecordExistsError)
+            self.assertIn("'x/0.0'", str(raised.exception))
+            self.assertIsInstance(raised.exception.__cause__, itar.RecordExistsError)
+
+    def _assert_same_records(self, store_type: str) -> None:
+        """The records of the stores "encoded" and "reference" are identical"""
+        records, expected = self._records(store_type, "encoded"), self._records(store_type, "reference")
+        self.assertEqual(sorted(records), sorted(expected))
+        for key, value in expected.items():
+            self.assertEqual(records[key], value, key)
+
+    _CASES = [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in ZARR_FORMATS]
+
+    @parameterized.parameterized.expand(_CASES)
+    def test_defaults_match_create_array(self, store_type: str, zarr_format: ZarrFormat):
+        """EncodedArray.encode and create_array resolve their default chunk shapes alike"""
+        _require(self, zarr_format)
+        # (large enough for zarr-python's heuristic to split it into multiple chunks)
+        x = np.random.default_rng(0).integers(0, 100, size=(1024, 1024), dtype=np.int32)
+        # (blosc compresses the blocks of large chunks on multiple threads, storing them in the order they complete)
+        with mock.patch.object(numcodecs.blosc, "use_threads", False):
+            encoded = nodes.EncodedArray.encode(x, zarr_format=zarr_format)
+            self.assertEqual(encoded.chunks, x.shape)
+            self.assertEqual(list(encoded.chunk_records), [(0, 0)])
+            with self._store(store_type, "encoded") as store:
+                store.create_root_group({}, zarr_format=zarr_format).create_encoded_array("x", encoded)
+                store.consolidate()
+            with self._store(store_type, "reference") as store:
+                store.create_root_group({}, zarr_format=zarr_format).create_array("x", x)
+                store.consolidate()
+        self._assert_same_records(store_type)
+
+    @parameterized.parameterized.expand(
+        [
+            (store_type, zarr_format, dtype)
+            for store_type, zarr_format in _CASES
+            for dtype in _BYTE_IDENTITY_DTYPES
+            if zarr_format == 2 or not dtype.startswith("|S")
+        ]
+    )
+    def test_encoded_dtypes_match_create_array(self, store_type: str, zarr_format: ZarrFormat, dtype: str):
+        _require(self, zarr_format)
+        x = _byte_identity_data((25, 3), dtype)
+        compression = nodes.BloscCompression(cname="zstd", shuffle="shuffle")
+        encoded = nodes.EncodedArray.encode(x, chunks=(10, 3), compression=compression, zarr_format=zarr_format)
+        with self._store(store_type, "encoded") as store:
+            store.create_root_group({}, zarr_format=zarr_format).create_encoded_array("x", encoded)
+            store.consolidate()
+        with self._store(store_type, "reference") as store:
+            root = store.create_root_group({}, zarr_format=zarr_format)
+            root.create_array("x", x, chunks=(10, 3), compression=compression)
+            store.consolidate()
+        self._assert_same_records(store_type)
+        np.testing.assert_array_equal(self._store(store_type, "encoded", "r").open_root_group().array("x").read(), x)
+
+    @parameterized.parameterized.expand(
+        [
+            (store_type, zarr_format, kind)
+            for store_type, zarr_format in _CASES
+            for kind in ("number", "bytes")
+            if zarr_format == 2 or kind == "number"
+        ]
+    )
+    def test_encoded_0d_arrays_match_create_array(self, store_type: str, zarr_format: ZarrFormat, kind: str):
+        """0-dimensional arrays (numbers, and blobs of zarr format v2)"""
+        _require(self, zarr_format)
+        x = np.float32(3.5) if kind == "number" else np.asarray(b"abc\x00def")
+        encoded = nodes.EncodedArray.encode(x, zarr_format=zarr_format)
+        self.assertEqual((encoded.shape, encoded.chunks, len(encoded.chunk_records)), ((), (), 1))
+        with self._store(store_type, "encoded") as store:
+            store.create_root_group({}, zarr_format=zarr_format).create_encoded_array("x", encoded)
+            store.consolidate()
+        with self._store(store_type, "reference") as store:
+            store.create_root_group({}, zarr_format=zarr_format).create_array("x", x)
+            store.consolidate()
+        self._assert_same_records(store_type)
+        array = self._store(store_type, "encoded", "r").open_root_group().array("x")
+        np.testing.assert_array_equal(array.read(), x)
+        if kind == "bytes":
+            self.assertEqual(array.read_bytes(), b"abc\x00def")
+
+    @parameterized.parameterized.expand(
+        [
+            (zarr_format, dtype)
+            for zarr_format in ZARR_FORMATS
+            for dtype in ("float32", "int32", "bool", "|S5", "<U3")
+            if zarr_format == 2 or dtype != "|S5"
+        ]
+    )
+    def test_fill_values_are_numpy_scalars_of_the_dtype(self, zarr_format: ZarrFormat, dtype: str):
+        _require(self, zarr_format)
+        encoded = nodes.EncodedArray.encode(np.zeros((5, 3), dtype=dtype), zarr_format=zarr_format)
+        # (scalars of fixed-length bytes / strings have the length of their value, not of the array's dtype)
+        self.assertIs(type(encoded.fill_value), np.dtype(dtype).type)
+
+    def test_encoded_arrays_are_frozen(self):
+        encoded = nodes.EncodedArray.encode(np.ones((5, 3)))
+        with self.assertRaises(dataclasses.FrozenInstanceError):
+            setattr(encoded, "chunks", (1, 3))
+
+    @parameterized.parameterized.expand(
+        [
+            ("dimensions", dict(chunks=(10,)), "don't match the dimensions"),
+            ("beyond_grid", dict(chunk_records={(2, 0): b"x"}), "outside of its chunk grid"),
+            ("negative", dict(chunk_records={(-1, 0): b"x"}), "outside of its chunk grid"),
+            ("coords_dimensions", dict(chunk_records={(0,): b"x"}), "outside of its chunk grid"),
+            ("0d", dict(shape=(), chunks=(), chunk_records={(1,): b"x"}), "outside of its chunk grid"),
+            ("0d_coords", dict(shape=(), chunks=(), chunk_records={(0, 0): b"x"}), "outside of its chunk grid"),
+        ]
+    )
+    def test_invalid_encoded_arrays_raise(self, _: str, changes: Dict[str, Any], message: str):
+        """Encoded arrays are validated before the array is created"""
+        encoded = dataclasses.replace(nodes.EncodedArray.encode(np.ones((20, 3)), chunks=(10, 3)), **changes)
+        with self._store("directory", "encoded") as store:
+            root = store.create_root_group({})
+            with self.assertRaisesRegex(ValueError, message):
+                root.create_encoded_array("x", encoded)
+            self.assertNotIn("x", root)
+
+    @parameterized.parameterized.expand(
+        [
+            (store_type, zarr_format, consolidated)
+            for store_type, zarr_format in _CASES
+            for consolidated in (True, False)
+        ]
+    )
+    def test_create_encoded_array_in_store_opened_for_reading_raises(
+        self, store_type: str, zarr_format: ZarrFormat, consolidated: bool
+    ):
+        _require(self, zarr_format)
+        with self._store(store_type, "encoded") as store:
+            store.create_root_group({}, zarr_format=zarr_format)
+            store.consolidate()
+        root = self._store(store_type, "encoded", "r").open_root_group(consolidated)
+        encoded = nodes.EncodedArray.encode(np.ones((5, 3)), zarr_format=zarr_format)
+        with self.assertRaises(ValueError) as raised:
+            root.create_encoded_array("x", encoded)
+        self.assertEqual(type(raised.exception), ValueError)
+        self.assertIn("is opened for reading", str(raised.exception))
+        self.assertFalse([key for key in self._records(store_type, "encoded") if key.startswith("x/")])
 
 
 @parameterized.parameterized_class(("zarr_format",), [(zarr_format,) for zarr_format in nodes.SUPPORTED_ZARR_FORMATS])
