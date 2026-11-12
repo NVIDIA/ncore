@@ -266,20 +266,34 @@ class Backend(ABC, Generic[StoreT]):
         # (fixed-length bytes strip trailing NUL bytes, as numpy: no copy without trailing NUL bytes)
         return blob.rstrip(b"\x00") if value.dtype.kind == "S" else blob
 
+    @staticmethod
+    def check_read_out(out: np.ndarray, shape: Tuple[int, ...], dtype: np.dtype) -> None:
+        """Validates an output array of a read of the given shape and dtype (raises ValueError unless it has this shape
+        and dtype, and is C-contiguous and writeable)"""
+        if out.shape != shape or out.dtype != dtype:
+            raise ValueError(f"Output array of {out.shape} {out.dtype} doesn't match the read ({shape} {dtype})")
+        if not out.flags.c_contiguous or not out.flags.writeable:
+            raise ValueError("Output arrays of reads need to be C-contiguous and writeable")
+
     @abstractmethod
-    def read(self, array: zarr.Array, selection: Selection) -> ReadResult:
+    def read(self, array: zarr.Array, selection: Selection, out: Optional[np.ndarray] = None) -> ReadResult:
         """Reads (a selection of) the data of an array (see :data:`ReadResult`).
 
         Fast path: complete reads of arrays stored as a single uncompressed chunk return a read-only view of the chunk
         record (see :meth:`chunk_view`, no copies). Fallback: all other reads (partial reads, compressed / multi-chunk
         arrays, chunks not stored, which read as the fill value) are decoded by zarr-python (see :meth:`read_result`).
+
+        Callers pass ``out`` unvalidated. Implementations validate it with :meth:`check_read_out` before any I/O
+        (raising its ValueError), write the data into it and return ``out`` itself (writeable, also for single
+        uncompressed chunks, which are copied). Without ``out``, results are read-only (views or new arrays).
         """
         ...
 
     @abstractmethod
-    async def read_async(self, array: zarr.Array, selection: Selection) -> ReadResult:
-        """Reads (a selection of) the data of an array asynchronously (see :data:`ReadResult`), without blocking the
-        running event loop"""
+    async def read_async(self, array: zarr.Array, selection: Selection, out: Optional[np.ndarray] = None) -> ReadResult:
+        """Reads (a selection of) the data of an array asynchronously, with the results and the contract of
+        :meth:`read` (also for ``out``), without blocking the running event loop (blocking work runs on worker
+        threads)"""
         ...
 
     @abstractmethod
