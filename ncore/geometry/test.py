@@ -13,16 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import unittest
+
+import ncore.geometry as public
+
+from ncore.geometry import MotionCompensator
+from ncore.impl.common import transformations
 
 
 class TestPackage(unittest.TestCase):
     def test_public_names(self):
         """The package exposes the geometry utilities of the implementation (the same objects)"""
-        import ncore.geometry as public
-
-        from ncore.impl.common import transformations
-
         expected = [
             "PoseInterpolator",
             "PoseGraphInterpolator",
@@ -40,3 +42,14 @@ class TestPackage(unittest.TestCase):
         self.assertEqual(sorted(public.__all__), sorted(expected))
         for name in expected:
             self.assertIs(getattr(public, name), getattr(transformations, name), name)
+
+    def test_keyword_only_parameters(self):
+        """The parameters of motion compensators and the optional arguments of their (de)compensation methods are
+        keyword-only"""
+        for function, expected in (
+            (MotionCompensator.__init__, ["parameters"]),
+            (MotionCompensator.motion_compensate_points, ["reference_timestamp_us", "anchor_frame_id"]),
+            (MotionCompensator.motion_decompensate_points, ["reference_timestamp_us", "anchor_frame_id"]),
+        ):
+            parameters = inspect.signature(function).parameters.values()
+            self.assertEqual([p.name for p in parameters if p.kind is p.KEYWORD_ONLY], expected, function.__qualname__)
