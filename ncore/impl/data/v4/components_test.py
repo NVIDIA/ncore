@@ -2978,9 +2978,9 @@ class TestReaderOpening(unittest.TestCase):
         threads = []
         open_root_group = stores.Store.open_root_group
 
-        def recording_open_root_group(store: stores.Store, consolidated: bool = True) -> nodes.Group:
+        def recording_open_root_group(store: stores.Store, *, consolidated: bool = True) -> nodes.Group:
             threads.append(threading.current_thread())
-            return open_root_group(store, consolidated)
+            return open_root_group(store, consolidated=consolidated)
 
         with mock.patch.object(stores.Store, "open_root_group", autospec=True, side_effect=recording_open_root_group):
             reader = SequenceComponentGroupsReader(self.store_paths, max_threads=4)
@@ -3002,10 +3002,10 @@ class TestReaderOpening(unittest.TestCase):
             init(store, path, *args, **kwargs)
             events.append(f"store {UPath(path).name}")
 
-        def recording_open_root_group(store: stores.Store, consolidated: bool = True) -> nodes.Group:
+        def recording_open_root_group(store: stores.Store, *, consolidated: bool = True) -> nodes.Group:
             events.append("hierarchy")
             opened.set()
-            return open_root_group(store, consolidated)
+            return open_root_group(store, consolidated=consolidated)
 
         with mock.patch.object(stores.IndexedTarZarrStore, "__init__", autospec=True, side_effect=recording_init):
             with mock.patch.object(

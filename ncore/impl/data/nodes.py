@@ -84,8 +84,6 @@ def _installed_backend() -> Backend[ZarrStore]:
 
 _backend: Backend[ZarrStore] = _installed_backend()
 
-__all__ = ["ZarrFormat"]  # (re-exported for component readers / writers)
-
 #: zarr formats supported by the installed zarr-python version
 SUPPORTED_ZARR_FORMATS: Tuple[ZarrFormat, ...] = _backend.supported_zarr_formats
 
@@ -180,16 +178,20 @@ T = TypeVar("T")
 
 
 class NodeCache:
-    """Cache of the opened nodes of a hierarchy opened for reading, by node path.
+    """Cache of the opened nodes of a hierarchy, by node path.
 
     Opening a node constructs its zarr-python object (decoding its metadata), which dominates repeated reads of small
     arrays (e.g., of frames). Cached nodes reference their metadata only, never array data. ``max_entries=None`` caches
     all opened nodes, ``max_entries=N`` the N most recently used nodes (evicted nodes are re-opened on access).
+    For hierarchies opened for writing, cached nodes don't see writes made through other group objects, and nodes
+    created via groups are not added to the cache.
 
     All methods are thread-safe.
     """
 
     def __init__(self, max_entries: Optional[int] = None) -> None:
+        """Creates an empty cache of at most ``max_entries`` nodes (None: unbounded; raises ValueError if not
+        positive)"""
         if max_entries is not None and max_entries < 1:
             raise ValueError(f"max_entries needs to be positive or None (unbounded), got {max_entries}")
         self._max_entries = max_entries
@@ -198,9 +200,11 @@ class NodeCache:
 
     @property
     def max_entries(self) -> Optional[int]:
+        """The maximum number of cached nodes (None if unbounded)"""
         return self._max_entries
 
     def __len__(self) -> int:
+        """The number of cached nodes"""
         return len(self._nodes)
 
     def keys(self) -> List[str]:
@@ -209,6 +213,8 @@ class NodeCache:
             return list(self._nodes)
 
     def _open(self, group: ZarrGroup, path: str) -> ZarrNode:
+        """Returns the cached node at ``path`` relative to ``group``, opening and caching it if not cached (evicting the
+        least recently used node if full; raises KeyError if it doesn't exist)"""
         key = _Node._join(group.path, path)
         with self._lock:
             if (node := self._nodes.get(key)) is not None:
@@ -230,6 +236,7 @@ class _Node:
     """Common functionality of groups and arrays"""
 
     def __init__(self, node: ZarrNode) -> None:
+        """Wraps a zarr-python group or array"""
         self._node = node
 
     @property
@@ -257,8 +264,20 @@ class _Node:
         return self._typed_attr(name, str)
 
     def attr_int(self, name: str) -> int:
-        """Returns an integer attribute (raises KeyError if missing, TypeError for other types)"""
+        """Returns an integer attribute (raises KeyError if missing, TypeError for other types, also for booleans)"""
         return self._typed_attr(name, int)
+
+    def attr_float(self, name: str) -> float:
+        """Returns a number attribute as float (JSON numbers: floats and integers, raises KeyError if missing,
+        TypeError for other types, also for booleans)"""
+        value = self._node.attrs[name]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise TypeError(f"Attribute {name!r} of {self.path!r} is not of type float: {value!r}")
+        return float(value)
+
+    def attr_bool(self, name: str) -> bool:
+        """Returns a boolean attribute (raises KeyError if missing, TypeError for other types)"""
+        return self._typed_attr(name, bool)
 
     def attr_dict(self, name: str) -> JsonDocument:
         """Returns a dictionary attribute (raises KeyError if missing, TypeError for other types)"""
@@ -269,7 +288,8 @@ class _Node:
         return self._typed_attr(name, list)
 
     def update_attrs(self, attributes: Attributes) -> None:
-        """Updates (merges) attributes of the node"""
+        """Updates (merges) attributes of the node (raises ValueError for nodes of stores opened for reading)"""
+        self._check_writable()
         _backend.update_attributes(self._node, attributes)
 
     def _check_writable(self) -> None:
@@ -278,6 +298,8 @@ class _Node:
             raise ValueError(f"Node {self.path!r} is opened for reading and doesn't support writing")
 
     def _typed_attr(self, name: str, expected: Type[T]) -> T:
+        """Returns attribute ``name`` if it is of type ``expected`` (raises KeyError if missing, TypeError for other
+        types, also for booleans if ``expected`` is int)"""
         value = self._node.attrs[name]
         if not isinstance(value, expected) or (isinstance(value, bool) and expected is int):
             raise TypeError(f"Attribute {name!r} of {self.path!r} is not of type {expected.__name__}: {value!r}")
@@ -289,15 +311,18 @@ class _Node:
         return f"{parent}/{path}" if parent else path
 
     def __repr__(self) -> str:
+        """The type, path and zarr format of the node"""
         return f"{type(self).__name__}({self.path!r}, zarr_format={self.zarr_format})"
 
 
 class Array(_Node):
     """An array of an NCore data store"""
 
-    def __init__(self, array: ZarrArray) -> None:
+    def __init__(self, array: ZarrArray, *, store: Optional[Store] = None) -> None:
+        """Wraps a zarr-python array of ``store`` (None if not opened / created via a store)"""
         super().__init__(array)
         self._array = array
+        self._store = store
 
     @property
     def zarr(self) -> ZarrArray:
@@ -305,12 +330,38 @@ class Array(_Node):
         return self._array
 
     @property
+    def store(self) -> Optional[Store]:
+        """The store of the array (None for arrays not opened / created via a :class:`~ncore.data.stores.Store`)"""
+        return self._store
+
+    @property
     def shape(self) -> Tuple[int, ...]:
+        """The shape of the array"""
         return tuple(self._array.shape)
 
     @property
+    def ndim(self) -> int:
+        """The number of dimensions of the array"""
+        return len(self._array.shape)
+
+    @property
     def dtype(self) -> np.dtype:
+        """The numpy dtype of the array"""
         return np.dtype(self._array.dtype)
+
+    @property
+    def chunks(self) -> Tuple[int, ...]:
+        """The chunk shape of the array"""
+        return tuple(int(size) for size in self._array.chunks)
+
+    @property
+    def fill_value(self) -> Optional[FillValue]:
+        """The fill value of the array (read for elements of chunks not stored) as a numpy scalar of the array's dtype,
+        None if the array has none"""
+        if (value := self._array.fill_value) is None:
+            return None
+        # (zarr-python 2 reports Python scalars for some dtypes, e.g. str for "<U")
+        return np.array([value], dtype=self.dtype)[0]
 
     @property
     def compression(self) -> Optional[BloscCompression]:
@@ -322,8 +373,8 @@ class Array(_Node):
 
         Returns a read-only array of the array's dtype with the shape of the selection (0-dimensional for selections of
         single elements). Complete reads of arrays stored as a single uncompressed chunk (e.g., encoded images) are
-        views of the chunk record (no copies), all other reads are decoded by the backend (see
-        :meth:`ncore.impl.data.backend.Backend.read`).
+        views of the chunk record (no copies), all other reads are decoded by zarr-python (or by ncore's direct reads
+        of indexed tar archives with zarr-python 3).
 
         With ``out``, a writeable C-contiguous array of the array's dtype and the selection's shape, the data is read
         into ``out``, which is returned itself (it stays writeable, and keeps its type, e.g., :class:`numpy.memmap`).
@@ -361,7 +412,7 @@ class Array(_Node):
         of multiple chunks that fail (e.g., on a chunk written already) can leave other chunks of the selection stored
         (zarr-python 3 writes them concurrently).
 
-        Raises :class:`ncore.impl.data.itar.RecordExistsError` (a ValueError) for chunks written already (indexed tar
+        Raises :class:`~ncore.data.stores.RecordExistsError` (a ValueError) for chunks written already (indexed tar
         archives), and ValueError for other selections and for arrays of stores opened for reading (checked before
         writing, with either zarr-python version).
         """
@@ -387,7 +438,8 @@ class Array(_Node):
 
         Blobs stored as a single uncompressed chunk (all blobs written by ncore, e.g. of indexed tar archives) are their
         chunk record (no copies), other blobs (e.g., of multiple chunks) are copied once from the read array. Raises
-        TypeError for arrays that don't store a binary blob (see :meth:`ncore.impl.data.backend.Backend.blob`).
+        TypeError for arrays that don't store a binary blob (0-dimensional fixed-length bytes arrays in zarr format v2,
+        1-dimensional ``uint8`` arrays in zarr format v3).
         """
         return self._blob(_backend.read(self._array, ()))
 
@@ -396,6 +448,7 @@ class Array(_Node):
         return self._blob(await _backend.read_async(self._array, ()))
 
     def _blob(self, value: ReadResult) -> bytes:
+        """The bytes of a read binary blob (raises TypeError if the array doesn't store one)"""
         try:
             return _backend.blob(value)
         except TypeError:
@@ -405,10 +458,14 @@ class Array(_Node):
 class Group(_Node):
     """A group of an NCore data store.
 
-    Members of groups using a :class:`NodeCache` are opened via the cache (also members of member groups).
+    Members of groups using a :class:`NodeCache` are opened via the cache (also members of member groups). Listings of
+    members (:meth:`keys`, :meth:`items`, iteration, :meth:`groups`, :meth:`arrays`) are ordered by name (string
+    order, e.g. "10" before "9").
     """
 
-    def __init__(self, group: ZarrGroup, cache: Optional[NodeCache] = None, store: Optional[Store] = None) -> None:
+    def __init__(self, group: ZarrGroup, *, cache: Optional[NodeCache] = None, store: Optional[Store] = None) -> None:
+        """Wraps a zarr-python group of ``store`` (None if not opened / created via a store), opening its members via
+        ``cache`` (shared with its member groups; None to open them uncached)"""
         super().__init__(group)
         self._group = group
         self._cache = cache
@@ -421,7 +478,7 @@ class Group(_Node):
 
     @property
     def store(self) -> Optional[Store]:
-        """The store of the group (None for groups not opened / created via a :class:`~ncore.impl.data.stores.Store`)"""
+        """The store of the group (None for groups not opened / created via a :class:`~ncore.data.stores.Store`)"""
         return self._store
 
     @property
@@ -431,11 +488,12 @@ class Group(_Node):
 
     def with_cache(self, cache: Optional[NodeCache]) -> Group:
         """Returns the group, using the given node cache to open its members"""
-        return Group(self._group, cache, self._store)
+        return Group(self._group, cache=cache, store=self._store)
 
     # -- reading ---------------------------------------------------------------
 
     def _open(self, path: str) -> ZarrNode:
+        """Opens the (nested) member at ``path``, via the cache if any (raises KeyError if it doesn't exist)"""
         if self._cache is not None:
             return self._cache._open(self._group, path)
         return _backend.open_member(self._group, path)
@@ -443,32 +501,45 @@ class Group(_Node):
     def node(self, path: str) -> Union[Group, Array]:
         """Returns a (nested) member group or array (raises KeyError if it doesn't exist)"""
         node = self._open(path)
-        return Group(node, self._cache, self._store) if isinstance(node, ZarrGroup) else Array(node)
+        return self._wrap(node)
 
     def group(self, path: str) -> Group:
         """Returns a (nested) member group (raises KeyError if it doesn't exist or isn't a group)"""
         if not isinstance(node := self._open(path), ZarrGroup):
             raise KeyError(f"{_Node._join(self.path, path)} is not a group")
-        return Group(node, self._cache, self._store)
+        return self._wrap_group(node)
 
     def array(self, path: str) -> Array:
         """Returns a (nested) member array (raises KeyError if it doesn't exist or isn't an array)"""
         if not isinstance(node := self._open(path), ZarrArray):
             raise KeyError(f"{_Node._join(self.path, path)} is not an array")
-        return Array(node)
+        return self._wrap_array(node)
 
-    def members(self) -> List[str]:
-        """Names of all direct members"""
-        return _backend.member_names(self._group)
+    def _wrap(self, node: ZarrNode) -> Union[Group, Array]:
+        """A member group or array, with the group's cache and store"""
+        return self._wrap_group(node) if isinstance(node, ZarrGroup) else self._wrap_array(node)
+
+    def _wrap_group(self, group: ZarrGroup) -> Group:
+        """A member group, with the group's cache and store"""
+        return Group(group, cache=self._cache, store=self._store)
+
+    def _wrap_array(self, array: ZarrArray) -> Array:
+        """A member array, with the group's store"""
+        return Array(array, store=self._store)
 
     def __contains__(self, name: str) -> bool:
         """True if the group has a direct member with the given name"""
         return _backend.has_member(self._group, name)
 
     def groups(self) -> Iterator[Tuple[str, Group]]:
-        """Iterates over the direct member groups (ordered by name)"""
+        """Iterates over the direct member groups (ordered by name: string order, e.g. "10" before "9")"""
         for name, group in sorted(_backend.member_groups(self._group), key=lambda member: member[0]):
-            yield name, Group(group, self._cache, self._store)
+            yield name, self._wrap_group(group)
+
+    def arrays(self) -> Iterator[Tuple[str, Array]]:
+        """Iterates over the direct member arrays (ordered by name: string order, e.g. "10" before "9")"""
+        for name, array in sorted(_backend.member_arrays(self._group), key=lambda member: member[0]):
+            yield name, self._wrap_array(array)
 
     # (zarr-python style read access, without the equality semantics of mappings: groups compare by identity)
 
@@ -484,31 +555,45 @@ class Group(_Node):
             return None
 
     def keys(self) -> List[str]:
-        """Names of all direct members, see :meth:`members`"""
-        return self.members()
+        """Names of all direct members (ordered by name: string order, e.g. "10" before "9")"""
+        return sorted(_backend.member_names(self._group))
 
     def items(self) -> Iterator[Tuple[str, Union[Group, Array]]]:
-        """Iterates over the direct members (opened on iteration)"""
-        for name in self.members():
+        """Iterates over the direct members (ordered by name: string order, e.g. "10" before "9", opened on iteration)"""
+        for name in self.keys():
             yield name, self.node(name)
 
     def __iter__(self) -> Iterator[str]:
-        """Iterates over the names of the direct members"""
-        return iter(self.members())
+        """Iterates over the names of the direct members (ordered by name: string order, e.g. "10" before "9")"""
+        return iter(self.keys())
 
     def __len__(self) -> int:
         """The number of direct members (groups without members are falsy, as zarr-python groups)"""
-        return len(self.members())
+        return len(_backend.member_names(self._group))
 
     # -- writing ---------------------------------------------------------------
 
-    def create_group(self, name: str, *, attributes: Optional[Attributes] = None) -> Group:
-        """Creates a member group (raises if a member with the name exists already)"""
-        return Group(_backend.create_group(self._group, name, attributes), store=self._store)
+    # (all writing methods raise ValueError for nodes of stores opened for reading, checked before writing with either
+    # zarr-python version)
 
-    def require_group(self, name: str) -> Group:
-        """Returns a member group, creating it if it doesn't exist yet"""
-        return Group(_backend.require_group(self._group, name), store=self._store)
+    def create_group(self, name: str, *, attributes: Optional[Attributes] = None) -> Group:
+        """Creates a member group (raises if a member with the name exists already, ValueError for groups of stores
+        opened for reading)"""
+        self._check_writable()
+        return self._wrap_group(_backend.create_group(self._group, name, attributes))
+
+    def require_group(self, name: str, *, attributes: Optional[Attributes] = None) -> Group:
+        """Returns a member group, creating it (with ``attributes``) if it doesn't exist yet. The attributes of an
+        existing group are not changed (see :meth:`update_attrs`). Raises ValueError for groups of stores opened for
+        reading (also if the member group exists) and if the member is an array. Not atomic: concurrent calls for the same name can both try to
+        create the group."""
+        self._check_writable()
+        if not _backend.has_member(self._group, name):
+            if attributes is not None:
+                return self.create_group(name, attributes=attributes)
+        elif not isinstance(self._open(name), ZarrGroup):
+            raise ValueError(f"{_Node._join(self.path, name)!r} is an array, not a group")
+        return self._wrap_group(_backend.require_group(self._group, name))
 
     def create_array(
         self,
@@ -537,10 +622,16 @@ class Group(_Node):
             Blosc compression of the chunks (default: lz4, level 5, bit-shuffle), or None for uncompressed chunks.
         attributes
             Optional attributes of the array.
+
+        Raises
+        ------
+        ValueError
+            For groups of stores opened for reading.
         """
+        self._check_writable()
         values = np.asarray(data, dtype=dtype)
         chunks = _resolve_chunks(values.shape, chunks)
-        return Array(_backend.create_array(self._group, name, values, chunks, compression, attributes))
+        return self._wrap_array(_backend.create_array(self._group, name, values, chunks, compression, attributes))
 
     def create_empty_array(
         self,
@@ -589,7 +680,7 @@ class Group(_Node):
             raise ValueError(f"Chunks {chunks} don't match the dimensions of shape {shape}")
         dtype = np.dtype(dtype)
         resolved: FillValue = np.zeros(1, dtype=dtype)[0] if fill_value is None else fill_value
-        return Array(
+        return self._wrap_array(
             _backend.create_empty_array(self._group, name, shape, dtype, chunks, compression, resolved, attributes)
         )
 
@@ -615,7 +706,7 @@ class Group(_Node):
         ValueError
             For groups of stores opened for reading, and for encoded arrays of another zarr format than the group's,
             whose chunk shape doesn't match their shape, or with records outside of their chunk grid.
-        ncore.impl.data.itar.RecordExistsError
+        ncore.data.stores.RecordExistsError
             For chunks written already (indexed tar archives; a ValueError).
         """
         self._check_writable()
@@ -635,7 +726,7 @@ class Group(_Node):
                     f"Chunk {coords} of encoded array {name!r} is outside of its chunk grid {grid} "
                     f"(shape {encoded.shape}, chunks {encoded.chunks})"
                 )
-        array = Array(
+        array = self._wrap_array(
             _backend.create_empty_array(
                 self._group,
                 name,
@@ -656,7 +747,9 @@ class Group(_Node):
         """Stores a binary blob (e.g., an encoded image) as uncompressed member array.
 
         zarr format v2: 0-dimensional fixed-length bytes array (``|S<N>``, the layout of ncore <= 19.8). zarr format v3:
-        1-dimensional ``uint8`` array (fixed-length bytes are not part of the zarr format v3 specification).
+        1-dimensional ``uint8`` array (fixed-length bytes are not part of the zarr format v3 specification). Raises
+        ValueError for groups of stores opened for reading.
         """
+        self._check_writable()
         value = np.asarray(data) if self.zarr_format == 2 else np.frombuffer(data, dtype=np.uint8)
         return self.create_array(name, value, compression=None, attributes=attributes)

@@ -40,7 +40,7 @@ from ncore.impl.data.compat import (
     AsyncSequenceLoaderProtocol,
     RayBundleSensorProtocol,
 )
-from ncore.impl.data.itar import IndexTailRetention
+from ncore.impl.data.itar import DEFAULT_INDEX_TAIL_READ_SIZE, IndexTailRetention
 from ncore.impl.data.json_types import JsonDocument
 from ncore.impl.data.types import (
     CameraLabelDescriptor,
@@ -182,7 +182,7 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
         masks_component_group_name: Optional[str] = "default",
         cuboids_component_group_name: Optional[str] = "default",
         open_consolidated: bool = True,
-        itar_index_tail_read_size: int = 1 << 20,
+        itar_index_tail_read_size: Optional[int] = DEFAULT_INDEX_TAIL_READ_SIZE,
         itar_index_tail_retention: IndexTailRetention = "release_if_consolidated",
         itar_remote_range_reads: bool = False,
         max_concurrent_requests: Union[int, asyncio.Semaphore, None] = None,

@@ -24,7 +24,21 @@ import sys
 import typing
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, Generic, List, Literal, NamedTuple, Optional, Tuple, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Generic,
+    List,
+    Literal,
+    Mapping,
+    NamedTuple,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
 
 import numcodecs
 import numpy as np
@@ -33,8 +47,9 @@ import zarr
 from typing_extensions import TypedDict
 from upath import UPath
 
+from ncore.impl.data.encoding import decode_cbor_xz, encode_cbor_xz
 from ncore.impl.data.itar import IndexedTarArchive
-from ncore.impl.data.json_types import JsonDocumentLike
+from ncore.impl.data.json_types import JsonDocument, JsonDocumentLike
 
 
 if sys.version_info >= (3, 10):
@@ -72,6 +87,31 @@ V2_CONSOLIDATED_METADATA_KEY = ".zmetadata.cbor.xz"
 #: consolidated metadata of all members, as written by zarr-python 3's ``consolidate_metadata``, CBOR + zlib encoded;
 #: zlib decodes several times faster than LZMA)
 V3_CONSOLIDATED_METADATA_KEY = "zarr.json.cbor.zlib"
+
+
+class V2ConsolidatedMetadata(TypedDict):
+    """zarr-python 2's consolidated metadata document (``.zmetadata``)"""
+
+    zarr_consolidated_format: int
+    #: node metadata documents by node metadata key (e.g., ``a/.zarray``)
+    metadata: Dict[str, JsonDocument]
+
+
+def encode_v2_consolidated_metadata(metadata: Mapping[str, JsonDocument]) -> bytes:
+    """The consolidated metadata record of a zarr format v2 hierarchy (see :data:`V2_CONSOLIDATED_METADATA_KEY`) of the
+    node metadata documents by node metadata key"""
+    document: V2ConsolidatedMetadata = {"zarr_consolidated_format": 1, "metadata": dict(metadata)}
+    return encode_cbor_xz(cast(JsonDocument, document))
+
+
+def decode_v2_consolidated_metadata(record: bytes) -> Dict[str, JsonDocument]:
+    """The node metadata documents by node metadata key of a consolidated metadata record of a zarr format v2 hierarchy
+    (raises ValueError for unsupported consolidated metadata formats)"""
+    document = cast(V2ConsolidatedMetadata, decode_cbor_xz(record))
+    if (consolidated_format := document.get("zarr_consolidated_format")) != 1:
+        raise ValueError(f"Unsupported zarr consolidated metadata format: {consolidated_format}")
+    return document["metadata"]
+
 
 #: zarr formats (on-disk format versions of zarr hierarchies)
 ZarrFormat = Literal[2, 3]
@@ -214,6 +254,11 @@ class Backend(ABC, Generic[StoreT]):
     @abstractmethod
     def member_groups(self, group: zarr.Group) -> List[Tuple[str, zarr.Group]]:
         """Direct member groups of a group"""
+        ...
+
+    @abstractmethod
+    def member_arrays(self, group: zarr.Group) -> List[Tuple[str, zarr.Array]]:
+        """Direct member arrays of a group"""
         ...
 
     @abstractmethod
@@ -416,6 +461,11 @@ class Backend(ABC, Generic[StoreT]):
     def zarr_store(self, store: object) -> StoreT:
         """A zarr-python store of the backend's zarr-python version (raises TypeError for other objects, e.g. stores of
         other zarr-python versions)"""
+        ...
+
+    @abstractmethod
+    def is_read_only(self, store: StoreT) -> bool:
+        """Whether a store is opened for reading only (e.g., indexed tar archives opened for reading)"""
         ...
 
     @abstractmethod
