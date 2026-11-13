@@ -56,14 +56,19 @@ def time_bounds(timestamps_us: List[int], seek_sec: Optional[float], duration_se
     end_timestamp_us = int(timestamps_us[-1])
 
     if seek_sec is not None:
-        assert seek_sec >= 0.0, "Require positive seek time"
+        if not seek_sec >= 0.0:
+            raise ValueError(f"seek_sec must be non-negative, got {seek_sec}")
         start_timestamp_us += int(seek_sec * 1e6)
 
     if duration_sec is not None:
-        assert duration_sec > 0.0, "Require positive duration time"
+        if not duration_sec > 0.0:
+            raise ValueError(f"duration_sec must be positive, got {duration_sec}")
         end_timestamp_us = start_timestamp_us + int(duration_sec * 1e6)
 
-    assert start_timestamp_us < end_timestamp_us, "Arguments lead to invalid time bounds"
+    if not start_timestamp_us < end_timestamp_us:
+        raise ValueError(
+            f"Arguments lead to invalid time bounds: start {start_timestamp_us} is not before end {end_timestamp_us}"
+        )
 
     return start_timestamp_us, end_timestamp_us
 
@@ -87,9 +92,12 @@ class HalfClosedInterval:
 
     def __post_init__(self) -> None:
         """Makes sure interval is well-defined"""
-        assert isinstance(self.start, int)
-        assert isinstance(self.stop, int)
-        assert self.start <= self.stop
+        if not isinstance(self.start, int):
+            raise ValueError(f"start must be an int, got {type(self.start).__name__}")
+        if not isinstance(self.stop, int):
+            raise ValueError(f"stop must be an int, got {type(self.stop).__name__}")
+        if not self.start <= self.stop:
+            raise ValueError(f"start must not exceed stop, got start={self.start}, stop={self.stop}")
 
     def __contains__(self, item: Union[int, np.integer, HalfClosedInterval]) -> bool:
         """Determines if an item / other interval is contained in the interval"""
@@ -165,12 +173,16 @@ class PoseInterpolator:
         """
 
         poses = np.asarray(poses)
-        assert poses.ndim == 3 and poses.shape[1:] == (4, 4) and np.issubdtype(poses.dtype, np.floating), (
-            "Invalid poses input"
-        )
+        if not (poses.ndim == 3 and poses.shape[1:] == (4, 4) and np.issubdtype(poses.dtype, np.floating)):
+            raise ValueError(
+                f"poses must be a floating point [m, 4, 4] array, got shape {poses.shape}, dtype {poses.dtype}"
+            )
 
         timestamps = np.asarray(timestamps)
-        assert timestamps.ndim == 1 and len(timestamps) > 1, "Invalid timestamps input"
+        if not (timestamps.ndim == 1 and len(timestamps) > 1):
+            raise ValueError(
+                f"timestamps must be a 1-dimensional array of at least 2 elements, got shape {timestamps.shape}"
+            )
 
         self._poses = poses
         self._timestamps = timestamps
@@ -502,9 +514,12 @@ def is_within_3d_bboxes(pc: np.ndarray, bboxes: np.ndarray) -> np.ndarray:
         point_in_bboxes; [N,M] boolean array.
     """
 
-    assert np.shape(pc)[1] == 3, "Wrong PC input size"
-    assert np.ndim(bboxes) == 2, "bboxes need to be a 2D numpy array"
-    assert np.shape(bboxes)[1] == 9, "bboxes need to be a 2D numpy array"
+    if np.shape(pc)[1] != 3:
+        raise ValueError(f"pc must have shape [N, 3], got shape {np.shape(pc)}")
+    if np.ndim(bboxes) != 2:
+        raise ValueError(f"bboxes must be a 2D array, got ndim={np.ndim(bboxes)}")
+    if np.shape(bboxes)[1] != 9:
+        raise ValueError(f"bboxes must have shape [M, 9], got shape {np.shape(bboxes)}")
 
     centers = bboxes[..., 0:3]
     dims = bboxes[..., 3:6]
@@ -873,7 +888,10 @@ class MotionCompensator:
         """
 
         # Sanity check timestamp consistency
-        assert len(xyz_pointtime) == len(timestamp_us)
+        if len(xyz_pointtime) != len(timestamp_us):
+            raise ValueError(
+                f"xyz_pointtime and timestamp_us must have the same length, got {len(xyz_pointtime)} and {len(timestamp_us)}"
+            )
 
         if reference_timestamp_us is None:
             reference_timestamp_us = frame_end_timestamp_us
@@ -887,12 +905,16 @@ class MotionCompensator:
                 anchor_frame_id=anchor_frame_id,
             )
 
-        assert frame_start_timestamp_us <= timestamp_us.min() and timestamp_us.max() <= frame_end_timestamp_us, (
-            "Point timestamps not in frame time bounds"
-        )
-        assert frame_start_timestamp_us <= reference_timestamp_us <= frame_end_timestamp_us, (
-            "Reference timestamp not in frame time bounds"
-        )
+        if not (frame_start_timestamp_us <= timestamp_us.min() and timestamp_us.max() <= frame_end_timestamp_us):
+            raise ValueError(
+                f"Point timestamps [{timestamp_us.min()}, {timestamp_us.max()}] not in frame time bounds "
+                f"[{frame_start_timestamp_us}, {frame_end_timestamp_us}]"
+            )
+        if not (frame_start_timestamp_us <= reference_timestamp_us <= frame_end_timestamp_us):
+            raise ValueError(
+                f"Reference timestamp {reference_timestamp_us} not in frame time bounds "
+                f"[{frame_start_timestamp_us}, {frame_end_timestamp_us}]"
+            )
 
         # Interpolate egomotion at the reference timestamp for the reference sensor pose
         T_anchor_sensor_reftime = self._pose_graph.evaluate_poses(
@@ -959,7 +981,10 @@ class MotionCompensator:
         """
 
         # Sanity check timestamp consistency
-        assert len(xyz_reftime) == len(timestamp_us)
+        if len(xyz_reftime) != len(timestamp_us):
+            raise ValueError(
+                f"xyz_reftime and timestamp_us must have the same length, got {len(xyz_reftime)} and {len(timestamp_us)}"
+            )
 
         if reference_timestamp_us is None:
             reference_timestamp_us = frame_end_timestamp_us
@@ -972,12 +997,16 @@ class MotionCompensator:
                 anchor_frame_id=anchor_frame_id,
             )
 
-        assert frame_start_timestamp_us <= timestamp_us.min() and timestamp_us.max() <= frame_end_timestamp_us, (
-            "Point timestamps not in frame time bounds"
-        )
-        assert frame_start_timestamp_us <= reference_timestamp_us <= frame_end_timestamp_us, (
-            "Reference timestamp not in frame time bounds"
-        )
+        if not (frame_start_timestamp_us <= timestamp_us.min() and timestamp_us.max() <= frame_end_timestamp_us):
+            raise ValueError(
+                f"Point timestamps [{timestamp_us.min()}, {timestamp_us.max()}] not in frame time bounds "
+                f"[{frame_start_timestamp_us}, {frame_end_timestamp_us}]"
+            )
+        if not (frame_start_timestamp_us <= reference_timestamp_us <= frame_end_timestamp_us):
+            raise ValueError(
+                f"Reference timestamp {reference_timestamp_us} not in frame time bounds "
+                f"[{frame_start_timestamp_us}, {frame_end_timestamp_us}]"
+            )
 
         # Decompensation maps points from the reference-time sensor frame to each
         # point's own sensor frame. This is the exact inverse of
@@ -1034,11 +1063,20 @@ class PoseGraphInterpolator:
 
             self.interpolator: Optional[PoseInterpolator] = None
             if timestamps_us is not None:
-                assert len(self.T_source_target.shape) == 3 and self.T_source_target.shape[0] == len(timestamps_us)
-                assert self.T_source_target.shape[1:] == (4, 4)
+                if not (len(self.T_source_target.shape) == 3 and self.T_source_target.shape[0] == len(timestamps_us)):
+                    raise ValueError(
+                        f"T_source_target of a dynamic edge must have shape [{len(timestamps_us)}, 4, 4], got shape {self.T_source_target.shape}"
+                    )
+                if self.T_source_target.shape[1:] != (4, 4):
+                    raise ValueError(
+                        f"T_source_target of a dynamic edge must have shape [n, 4, 4], got shape {self.T_source_target.shape}"
+                    )
                 self.interpolator = PoseInterpolator(self.T_source_target, timestamps_us)
             else:
-                assert self.T_source_target.shape == (4, 4)
+                if self.T_source_target.shape != (4, 4):
+                    raise ValueError(
+                        f"T_source_target of a static edge must have shape (4, 4), got shape {self.T_source_target.shape}"
+                    )
 
         def get_T(
             self, source_node: str, target_node: str, timestamps_us: npt.NDArray[np.uint64]
@@ -1055,7 +1093,8 @@ class PoseGraphInterpolator:
                             in the data-type of the edge
             """
 
-            assert np.issubdtype(timestamps_us.dtype, np.integer), "Timestamps must be of integer type"
+            if not np.issubdtype(timestamps_us.dtype, np.integer):
+                raise ValueError(f"timestamps_us must be of integer type, got {timestamps_us.dtype}")
 
             batch_shape = timestamps_us.shape
 
