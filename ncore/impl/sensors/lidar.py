@@ -282,11 +282,12 @@ class RowOffsetStructuredSpinningLidarModel(
     def __init__(
         self,
         parameters: types.RowOffsetStructuredSpinningLidarModelParameters,
+        device: Union[str, torch.device] = torch.device("cuda"),
+        dtype: torch.dtype = torch.float32,
+        *,
         angles_to_columns_map_resolution_factor: int = 4,
         angles_to_columns_map_dtype: torch.dtype = torch.int16,
         angles_to_columns_map_init: bool = False,
-        device: Union[str, torch.device] = torch.device("cuda"),
-        dtype: torch.dtype = torch.float32,
         fov_eps_factor: float = 4.0,  # used to account for accumulated numerical errors in FOV checks
     ):
         super().__init__(device=device, dtype=dtype)
@@ -622,6 +623,7 @@ class RowOffsetStructuredSpinningLidarModel(
         T_sensor_world_end: Union[torch.Tensor, np.ndarray],
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
+        *,
         sensor_rays: Optional[LidarModel.SensorRaysReturn] = None,
         return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,

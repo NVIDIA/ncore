@@ -549,6 +549,7 @@ class IndexedTarArchive:
     def __init__(
         self,
         itar_path: Union[str, Path, UPath],
+        *,
         mode: Literal["r", "w"] = "r",
         index_tail_read_size: Optional[int] = 1 << 20,  # 1 MiB by default
         remote_range_reads: bool = False,
@@ -563,6 +564,7 @@ class IndexedTarArchive:
     async def open_async(
         cls,
         itar_path: Union[str, Path, UPath],
+        *,
         index_tail_read_size: Optional[int] = 1 << 20,
         remote_range_reads: bool = False,
         prefetch_keys: Tuple[str, ...] = (),

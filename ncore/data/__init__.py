@@ -21,6 +21,7 @@ from ncore.impl.data.compat import (
     AsyncLidarSensorProtocol,
     AsyncPointCloudsSourceProtocol,
     AsyncRadarSensorProtocol,
+    AsyncRayBundleSensorPointCloudsSourceAdapter,
     AsyncRayBundleSensorProtocol,
     AsyncSensorProtocol,
     AsyncSequenceLoaderProtocol,
@@ -30,6 +31,7 @@ from ncore.impl.data.compat import (
     PointCloudsSourceProtocol,
     RadarSensorProtocol,
     RayBundleSensorPointCloudsSourceAdapter,
+    RayBundleSensorProtocol,
     SensorProtocol,
     SequenceLoaderProtocol,
 )
@@ -70,6 +72,7 @@ from ncore.impl.data.types import (
     register_external_distortion_parameters,
     register_lidar_model_parameters,
 )
+from ncore.impl.data.util import FOV
 
 
 __all__ = [
@@ -108,6 +111,7 @@ __all__ = [
     "QuantizationParams",
     "LabelSchema",
     "CameraLabelDescriptor",
+    "FOV",
     # JSON values of attributes / meta data (as read, and accepted for writing)
     "Json",
     "JsonDocument",
@@ -119,6 +123,7 @@ __all__ = [
     "CameraSensorProtocol",
     "LidarSensorProtocol",
     "RadarSensorProtocol",
+    "RayBundleSensorProtocol",
     "PointCloudsSourceProtocol",
     "RayBundleSensorPointCloudsSourceAdapter",
     "CameraLabelsProtocol",
@@ -130,5 +135,6 @@ __all__ = [
     "AsyncLidarSensorProtocol",
     "AsyncRadarSensorProtocol",
     "AsyncPointCloudsSourceProtocol",
+    "AsyncRayBundleSensorPointCloudsSourceAdapter",
     "AsyncCameraLabelsProtocol",
 ]

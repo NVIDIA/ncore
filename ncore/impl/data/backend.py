@@ -42,12 +42,21 @@ if sys.version_info >= (3, 10):
 else:  # pragma: no cover
     EllipsisType = type(Ellipsis)
 
+#: Major version of the installed zarr-python
+ZARR_PYTHON_MAJOR = int(zarr.__version__.split(".", 1)[0])
+
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-    from zarr.abc.store import Store as ZarrStore  # (type checking runs against zarr-python 3)
+    from zarr.abc.store import Store as _ZarrStore  # (type checking runs against zarr-python 3)
+elif ZARR_PYTHON_MAJOR >= 3:
+    from zarr.abc.store import Store as _ZarrStore
 else:
-    ZarrStore = object
+    from zarr._storage.store import BaseStore as _ZarrStore
+
+#: The store base class of the installed zarr-python version (zarr-python 2: ``zarr._storage.store.BaseStore``,
+#: zarr-python 3: ``zarr.abc.store.Store``, which have no common base class)
+ZarrStore = _ZarrStore
 
 
 # Consolidation: after writing all nodes of a hierarchy, ncore stores the node metadata of all its members in a single
@@ -86,7 +95,7 @@ ReadResult = Union["npt.NDArray[Any]", np.generic]
 #: :func:`~ncore.impl.data.json_types.to_json`)
 Attributes = JsonDocumentLike
 
-#: The zarr-python store type of a backend (zarr-python 2: ``zarr.storage.BaseStore``, zarr-python 3:
+#: The zarr-python store type of a backend (zarr-python 2: ``zarr._storage.store.BaseStore``, zarr-python 3:
 #: ``zarr.abc.store.Store``, which have no common base class). :data:`ZarrStore` is the store type of the installed
 #: zarr-python version (statically the one type checking runs against)
 StoreT = TypeVar("StoreT")
