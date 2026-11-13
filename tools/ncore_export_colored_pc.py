@@ -29,7 +29,7 @@ from ncore.impl.data.compat import PointCloudsSourceProtocol, SequenceLoaderProt
 from ncore.impl.data.util import padded_index_string
 from ncore.impl.data.v4.compat import SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
-from ncore.impl.sensors.camera import CameraModel
+from ncore.impl.sensors.camera import camera_model_from_parameters
 
 
 try:
@@ -244,7 +244,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
 
     # Initialize the camera model on requested device (not needed if using source rgb)
     cam_model = (
-        None if use_source_rgb else CameraModel.from_parameters(cam_sensor.model_parameters, device=params.device)
+        None if use_source_rgb else camera_model_from_parameters(cam_sensor.model_parameters, device=params.device)
     )
 
     output_path = Path(params.output_dir)

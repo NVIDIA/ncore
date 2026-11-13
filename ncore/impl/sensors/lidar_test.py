@@ -162,15 +162,32 @@ class TestLidarModelFactory(unittest.TestCase):
             RowOffsetStructuredSpinningLidarModel,
         )
 
-    def test_deprecated_static_factories_forward(self):
-        parameters = self._parameters()
+    def test_static_factories_removed(self):
         for owner in (LidarModel, StructuredLidarModel):
             with self.subTest(owner=owner.__name__):
-                self.assertIsInstance(
-                    owner.maybe_from_parameters(parameters, device="cpu"),
-                    RowOffsetStructuredSpinningLidarModel,
+                self.assertFalse(hasattr(owner, "maybe_from_parameters"))
+
+    def test_forwards_model_kwargs(self):
+        """Keyword arguments after dtype reach the concrete model's constructor"""
+        for factory in (lidar_model_from_parameters, maybe_lidar_model_from_parameters):
+            with self.subTest(factory=factory.__name__):
+                model = factory(
+                    self._parameters(),
+                    device="cpu",
+                    angles_to_columns_map_resolution_factor=2,
+                    angles_to_columns_map_init=True,
+                    fov_eps_factor=8.0,
                 )
-                self.assertIsNone(owner.maybe_from_parameters(None, device="cpu"))
+                assert isinstance(model, RowOffsetStructuredSpinningLidarModel)
+                self.assertEqual(model.angles_to_columns_map_resolution_factor, 2)
+                self.assertIsNotNone(model.angles_to_columns_map)
+                self.assertEqual(model.fov_eps_rad, 8.0 * torch.finfo(torch.float32).eps)
+
+    def test_rejects_unknown_model_kwargs(self):
+        for factory in (lidar_model_from_parameters, maybe_lidar_model_from_parameters):
+            with self.subTest(factory=factory.__name__):
+                with self.assertRaisesRegex(TypeError, "unexpected keyword argument 'not_an_argument'"):
+                    factory(self._parameters(), device="cpu", not_an_argument=1)
 
     def test_unregistered_parameters_raise(self):
         with self.assertRaises(TypeError):
@@ -199,8 +216,9 @@ class TestLidarModelFactory(unittest.TestCase):
             lidar_model_parameters: CustomLidarModelParameters,
             device: Union[str, torch.device] = torch.device("cuda"),
             dtype: torch.dtype = torch.float32,
+            **model_kwargs,
         ) -> CustomLidarModel:
-            return CustomLidarModel(lidar_model_parameters, device=device, dtype=dtype)
+            return CustomLidarModel(lidar_model_parameters, device, dtype, **model_kwargs)
 
         # The registry is process-global and singledispatch offers no unregister; keying it on a
         # method-local parameter type keeps the registration unreachable from other tests.
@@ -210,6 +228,9 @@ class TestLidarModelFactory(unittest.TestCase):
         # `RowOffsetStructuredSpinningLidarModel`. That stays sound here because `CustomLidarModel`
         # is one; see `register_lidar_model` for when it is not.
         self.assertIsInstance(lidar_model_from_parameters(parameters, device="cpu"), CustomLidarModel)
+        # (keyword arguments reach registered factories)
+        model = lidar_model_from_parameters(parameters, device="cpu", angles_to_columns_map_resolution_factor=3)
+        self.assertEqual(model.angles_to_columns_map_resolution_factor, 3)
 
     def test_lidar_model_parameters_type_is_covariant(self):
         # A collection of lidar models must still have `LidarModel` as a common static supertype;
@@ -379,6 +400,34 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
         )
         self.assertTrue(torch.equal(world_rays.valid_flag, all_valid.valid_flag))
 
+    def test_sensor_rays_return_to_sensor_angles(self):
+        """The valid flag of sensor rays given as SensorRaysReturn is combined with the validity of the angles"""
+        sensor_rays = self.lidar_model.elements_to_sensor_rays(self.elements).sensor_rays
+        # (a ray outside of the vertical FOV, whose angles are invalid)
+        out_of_fov = sensor_rays.new_tensor([[0.0, 0.0, 1.0]])
+        rays = torch.cat([sensor_rays[:4], out_of_fov])
+        passed_valid_flag = torch.tensor([True, False, True, False, True], device=rays.device)
+
+        plain = self.lidar_model.sensor_rays_to_sensor_angles(rays)
+        self.assertEqual(plain.valid_flag.cpu().tolist(), [True, True, True, True, False])
+
+        for normalized, passed_rays in ((True, rays), (False, 3.0 * rays)):
+            with self.subTest(normalized=normalized):
+                combined = self.lidar_model.sensor_rays_to_sensor_angles(
+                    LidarModel.SensorRaysReturn(sensor_rays=passed_rays, valid_flag=passed_valid_flag),
+                    normalized=normalized,
+                )
+                self.assertEqual(combined.valid_flag.cpu().tolist(), [True, False, True, False, False])
+                torch.testing.assert_close(combined.sensor_angles, plain.sensor_angles)
+
+        # (numpy flags are accepted as well)
+        combined = self.lidar_model.sensor_rays_to_sensor_angles(
+            LidarModel.SensorRaysReturn(
+                sensor_rays=rays, valid_flag=cast(torch.Tensor, passed_valid_flag.cpu().numpy())
+            )
+        )
+        self.assertEqual(combined.valid_flag.cpu().tolist(), [True, False, True, False, False])
+
     def test_angle_conversion(self):
         """Make sure angle conversion works correctly (element -> ray -> angle -> ray)"""
         sensor_rays = self.lidar_model.elements_to_sensor_rays(self.elements).sensor_rays
@@ -393,6 +442,9 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
     def test_angle_conversion_2(self):
         """Make sure angle conversion works correctly (element -> angle -> ray -> angle)"""
         sensor_angles = self.lidar_model.elements_to_sensor_angles(self.elements)
+        assert isinstance(sensor_angles, LidarModel.SensorAnglesReturn)
+        assert torch.all(sensor_angles.valid_flag)
+        self.assertEqual(sensor_angles.valid_flag.shape, (len(self.elements),))
 
         sensor_rays = self.lidar_model.elements_to_sensor_rays(self.elements).sensor_rays
         sensor_angles_reconstructed = self.lidar_model.sensor_rays_to_sensor_angles(sensor_rays)
@@ -400,7 +452,7 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
         assert torch.all(sensor_angles_reconstructed.valid_flag)
 
         np.testing.assert_array_almost_equal(
-            sensor_angles.cpu(), sensor_angles_reconstructed.sensor_angles.cpu(), decimal=6
+            sensor_angles.sensor_angles.cpu(), sensor_angles_reconstructed.sensor_angles.cpu(), decimal=6
         )
 
     def test_angles_to_columns(self):
@@ -409,7 +461,7 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
             self.model_parameters.n_columns - 1
         )  # GT relative frame times from element indices
 
-        sensor_angles = self.lidar_model.elements_to_sensor_angles(self.elements)  # always perfect
+        sensor_angles = self.lidar_model.elements_to_sensor_angles(self.elements).sensor_angles  # always perfect
         relative_timestamp_reconstructed = (
             self.lidar_model.sensor_angles_relative_frame_times(sensor_angles)  # map sampling-based approximation
         )
@@ -558,7 +610,7 @@ class TestRowOffsetStructuredSpinningLidarModel(unittest.TestCase):
         self.assertIsNotNone(world_rays.timestamps_us, "Timestamps are not returned")
         self.assertIsNotNone(world_rays.T_sensor_worlds, "Sensor poses are not returned")
 
-        sensor_angles_ref = self.lidar_model.elements_to_sensor_angles(self.elements)
+        sensor_angles_ref = self.lidar_model.elements_to_sensor_angles(self.elements).sensor_angles
 
         # Assert that more than 99 % of the valid rolling-shutter reprojections are
         # within 1e-3rad ~ 0.0572deg of the original element angles

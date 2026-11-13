@@ -18,7 +18,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import singledispatch
-from typing import Generic, Literal, Optional, TypeVar, Union, cast, overload
+from typing import Any, Generic, Literal, Optional, TypeVar, Union, cast, overload
 
 import numpy as np
 import torch
@@ -143,13 +143,16 @@ class LidarModel(BaseModel, ABC, Generic[LidarModelParametersT_co]):
     class WorldPointsToSensorAnglesReturn:
         """
         Contains
-            - sensor angles of the valid projections [float] (n,2)
-            - [optional] world-to-sensor poses of valid projections [float] (n,4,4)
-            - [optional] indices of the valid projections relative to the input points [int] (n,)
-            - [optional] timestamps of the valid projections [int] (n,)
+            - sensor angles of the valid projections [float] (n_valid,2), or of all input points [float] (n,2) if
+              requested with ``return_all_projections`` (undefined for invalid projections)
+            - valid_flag [bool] (n,), whether each input point projects validly (``n_valid = valid_flag.sum()``)
+            - [optional] world-to-sensor poses of the valid projections [float] (n_valid,4,4)
+            - [optional] indices of the valid projections relative to the input points [int] (n_valid,)
+            - [optional] timestamps of the valid projections [int] (n_valid,)
         """
 
         sensor_angles: torch.Tensor
+        valid_flag: torch.Tensor
         T_world_sensors: Optional[torch.Tensor] = None
         valid_indices: Optional[torch.Tensor] = None
         timestamps_us: Optional[torch.Tensor] = None
@@ -162,23 +165,6 @@ class LidarModel(BaseModel, ABC, Generic[LidarModelParametersT_co]):
         super().__init__(device, dtype)
         del (device, dtype)
 
-    @staticmethod
-    def maybe_from_parameters(
-        lidar_model_parameters: Optional[types.LidarModelParameters],
-        device: Union[str, torch.device] = torch.device("cuda"),
-        dtype: torch.dtype = torch.float32,
-    ) -> Optional[LidarModel]:
-        """
-        Initialize a generic lidar model from parameters, if available
-
-        .. deprecated::
-            Prefer the module-level :func:`maybe_lidar_model_from_parameters`, which dispatches on
-            the parameter type (and can be extended for out-of-tree models via
-            :func:`register_lidar_model`) instead of being a closed dispatch table inherited by
-            every lidar model.
-        """
-        return maybe_lidar_model_from_parameters(lidar_model_parameters, device, dtype)
-
     @abstractmethod
     def get_parameters(self) -> LidarModelParametersT_co:
         """
@@ -188,10 +174,16 @@ class LidarModel(BaseModel, ABC, Generic[LidarModelParametersT_co]):
 
     @abstractmethod
     def sensor_rays_to_sensor_angles(
-        self, sensor_rays: Union[torch.Tensor, np.ndarray], normalized: bool = True
+        self,
+        sensor_rays: Union[torch.Tensor, np.ndarray, LidarModel.SensorRaysReturn],
+        normalized: bool = True,
     ) -> LidarModel.SensorAnglesReturn:
         """
-        Lidar model-specific implementation of sensor_rays_to_sensor_angles
+        Computes the elevation / azimuth angles of sensor rays and a valid flag
+
+        If the sensor rays are given as SensorRaysReturn, their valid flag is combined with the validity of the
+        angles, i.e., invalid sensor rays result in invalid sensor angles. ``normalized`` states whether the rays
+        are of unit length (otherwise they are normalized first).
         """
         ...
 
@@ -204,26 +196,7 @@ class LidarModel(BaseModel, ABC, Generic[LidarModelParametersT_co]):
 
 
 class StructuredLidarModel(LidarModel[StructuredLidarModelParametersT_co], ABC):
-    @staticmethod
-    def maybe_from_parameters(
-        lidar_model_parameters: Optional[types.LidarModelParameters],
-        device: Union[str, torch.device] = torch.device("cuda"),
-        dtype: torch.dtype = torch.float32,
-    ) -> Optional[StructuredLidarModel]:
-        """
-        Initialize a structured lidar model from parameters, if available
-
-        .. deprecated::
-            Prefer the module-level :func:`maybe_lidar_model_from_parameters`. This shadowed the
-            base's static method with a narrowed return type, so which closed dispatch table ran
-            depended only on the class name the caller happened to spell. The parameter type stays
-            as wide as the base's: narrowing it here would be a contravariance violation, so the
-            structured-ness of the result is enforced at runtime instead.
-        """
-        model = maybe_lidar_model_from_parameters(lidar_model_parameters, device, dtype)
-        if model is not None and not isinstance(model, StructuredLidarModel):
-            raise TypeError(f"{type(lidar_model_parameters)} does not build a structured lidar model")
-        return model
+    """Base class for structured lidar models, whose rays are indexed by (row, column) elements"""
 
     def elements_to_sensor_points(
         self, elements: Union[torch.Tensor, np.ndarray], element_distances: Union[torch.Tensor, np.ndarray]
@@ -251,12 +224,15 @@ class StructuredLidarModel(LidarModel[StructuredLidarModelParametersT_co], ABC):
         elements = to_torch(elements, device=self.device, dtype=torch.long)
 
         sensor_angles = self.elements_to_sensor_angles(elements)
-        return self.sensor_angles_to_sensor_rays(sensor_angles)
+        sensor_rays = self.sensor_angles_to_sensor_rays(sensor_angles.sensor_angles)
+        sensor_rays.valid_flag = sensor_rays.valid_flag & sensor_angles.valid_flag
+        return sensor_rays
 
     @abstractmethod
-    def elements_to_sensor_angles(self, elements: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+    def elements_to_sensor_angles(self, elements: Union[torch.Tensor, np.ndarray]) -> LidarModel.SensorAnglesReturn:
         """
-        Lidar model-specific implementation of elements_to_sensor_angles
+        Computes the elevation / azimuth angles and a valid flag for elements in the structured lidar model. Elements
+        are given as (row, column) indices.
         """
         ...
 
@@ -338,8 +314,9 @@ class RowOffsetStructuredSpinningLidarModel(
             row_azimuth_offsets_rad=self.row_azimuth_offsets_rad.cpu().numpy().astype(np.float32),
         )
 
-    def elements_to_sensor_angles(self, elements: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
-        """Retrieves the elevation and azimuth angles for elements in the structured lidar model. Elements are given as (row, column) indices."""
+    def elements_to_sensor_angles(self, elements: Union[torch.Tensor, np.ndarray]) -> LidarModel.SensorAnglesReturn:
+        """Retrieves the elevation and azimuth angles for elements in the structured lidar model, which are all valid.
+        Elements are given as (row, column) indices."""
 
         # elements: N x 2 array of (row, column) indices
         assert elements.ndim == 2
@@ -352,12 +329,27 @@ class RowOffsetStructuredSpinningLidarModel(
 
         sensor_angles = torch.stack([elevations_rad, azimuths_rad], dim=-1)
 
-        return self._normalize_angle(sensor_angles)
+        sensor_angles = self._normalize_angle(sensor_angles)
+        return LidarModel.SensorAnglesReturn(
+            sensor_angles=sensor_angles,
+            valid_flag=torch.ones(sensor_angles.shape[:-1], dtype=torch.bool, device=sensor_angles.device),
+        )
 
     def sensor_rays_to_sensor_angles(
-        self, sensor_rays: Union[torch.Tensor, np.ndarray], normalized: bool = True
+        self,
+        sensor_rays: Union[torch.Tensor, np.ndarray, LidarModel.SensorRaysReturn],
+        normalized: bool = True,
     ) -> LidarModel.SensorAnglesReturn:
-        """Computes the elevation and azimuth angles for normalized 3d sensor rays."""
+        """Computes the elevation and azimuth angles for 3d sensor rays, which are valid within the FOV of the sensor
+
+        If the sensor rays are given as SensorRaysReturn, their valid flag is combined with the validity of the
+        angles. ``normalized`` states whether the rays are of unit length (otherwise they are normalized first).
+        """
+
+        rays_valid_flag: Optional[torch.Tensor] = None
+        if isinstance(sensor_rays, LidarModel.SensorRaysReturn):
+            rays_valid_flag = to_torch(sensor_rays.valid_flag, device=self.device)
+            sensor_rays = sensor_rays.sensor_rays
 
         # sensor_rays: N x 3 array of sensor rays
         assert sensor_rays.ndim == 2
@@ -373,9 +365,12 @@ class RowOffsetStructuredSpinningLidarModel(
         azimuths_rad = torch.atan2(sensor_rays[:, 1], sensor_rays[:, 0])
         sensor_angles = torch.stack([elevations_rad, azimuths_rad], dim=-1)
 
-        return LidarModel.SensorAnglesReturn(
-            sensor_angles=sensor_angles, valid_flag=self._valid_sensor_angles(sensor_angles)
-        )
+        valid_flag = self._valid_sensor_angles(sensor_angles)
+        if rays_valid_flag is not None:
+            assert rays_valid_flag.shape == valid_flag.shape
+            valid_flag = valid_flag & rays_valid_flag
+
+        return LidarModel.SensorAnglesReturn(sensor_angles=sensor_angles, valid_flag=valid_flag)
 
     def sensor_angles_to_sensor_rays(
         self, sensor_angles: Union[torch.Tensor, np.ndarray]
@@ -533,12 +528,17 @@ class RowOffsetStructuredSpinningLidarModel(
         max_iterations: int = 10,
         stop_t_delta: float = 1e-4,
         stop_t_delta_rate: float = 1e-6,  # stop when progress stalls (discrete column quantization)
+        *,
         return_T_world_sensors: bool = False,
         return_valid_indices: bool = False,
         return_timestamps: bool = False,
         return_all_projections: bool = False,
     ) -> LidarModel.WorldPointsToSensorAnglesReturn:
-        """Projects world points to corresponding sensor angle coordinates using *rolling-shutter compensation* of sensor motion"""
+        """Projects world points to corresponding sensor angle coordinates using *rolling-shutter compensation* of sensor motion
+
+        Returns the sensor angles of the valid projections (of all points with ``return_all_projections``) and the
+        valid flag of all points, see :class:`LidarModel.WorldPointsToSensorAnglesReturn`.
+        """
 
         if return_timestamps:
             assert start_timestamp_us is not None
@@ -583,7 +583,7 @@ class RowOffsetStructuredSpinningLidarModel(
         relative_time_final = iter_result.t
 
         # We always return sensor angles points
-        return_var = LidarModel.WorldPointsToSensorAnglesReturn(sensor_angles=projection)
+        return_var = LidarModel.WorldPointsToSensorAnglesReturn(sensor_angles=projection, valid_flag=projection_valid)
 
         if return_T_world_sensors:
             # Assemble [n, 4, 4] rigid transformation matrices from rotation and translation
@@ -780,6 +780,7 @@ def _lidar_model_from_parameters(
     lidar_model_parameters: types.LidarModelParameters,
     device: Union[str, torch.device] = torch.device("cuda"),
     dtype: torch.dtype = torch.float32,
+    **model_kwargs: Any,
 ) -> LidarModel:
     """Open dispatch registry backing :func:`lidar_model_from_parameters`
 
@@ -799,16 +800,19 @@ def _(
     lidar_model_parameters: types.RowOffsetStructuredSpinningLidarModelParameters,
     device: Union[str, torch.device] = torch.device("cuda"),
     dtype: torch.dtype = torch.float32,
+    **model_kwargs: Any,
 ) -> RowOffsetStructuredSpinningLidarModel:
-    return RowOffsetStructuredSpinningLidarModel(lidar_model_parameters, device=device, dtype=dtype)
+    return RowOffsetStructuredSpinningLidarModel(lidar_model_parameters, device, dtype, **model_kwargs)
 
 
 #: Registers a lidar model factory for a lidar model parameter type
 #:
 #: Accepts the same forms as :meth:`functools.singledispatch.register`, i.e. it can be used as a
 #: bare decorator on a factory whose first parameter is annotated with the parameter type it
-#: builds from. Dispatch follows the parameter type's MRO, so a model parameter type derived from
-#: a registered one resolves to the base's factory unless it registers its own.
+#: builds from. Factories receive the keyword arguments given to :func:`lidar_model_from_parameters`
+#: after ``dtype`` (``model_kwargs``) and forward them to the model's constructor. Dispatch follows
+#: the parameter type's MRO, so a model parameter type derived from a registered one resolves to the
+#: base's factory unless it registers its own.
 #:
 #: Registration is a runtime mechanism; it cannot extend the overloads of
 #: :func:`lidar_model_from_parameters`. Out-of-tree parameters deriving from
@@ -826,6 +830,7 @@ def lidar_model_from_parameters(
     lidar_model_parameters: types.RowOffsetStructuredSpinningLidarModelParameters,
     device: Union[str, torch.device] = ...,
     dtype: torch.dtype = ...,
+    **model_kwargs: Any,
 ) -> RowOffsetStructuredSpinningLidarModel: ...
 
 
@@ -834,6 +839,7 @@ def lidar_model_from_parameters(
     lidar_model_parameters: LidarModelParametersT,
     device: Union[str, torch.device] = ...,
     dtype: torch.dtype = ...,
+    **model_kwargs: Any,
 ) -> LidarModel[LidarModelParametersT]: ...
 
 
@@ -841,6 +847,7 @@ def lidar_model_from_parameters(
     lidar_model_parameters: types.LidarModelParameters,
     device: Union[str, torch.device] = torch.device("cuda"),
     dtype: torch.dtype = torch.float32,
+    **model_kwargs: Any,
 ) -> LidarModel:
     """Initializes the lidar model corresponding to the given lidar model parameters
 
@@ -851,6 +858,9 @@ def lidar_model_from_parameters(
         lidar_model_parameters: the lidar model parameters to build the lidar model from.
         device: the device to instantiate the lidar model on.
         dtype: the floating point type to instantiate the lidar model with.
+        model_kwargs: keyword arguments forwarded to the lidar model's constructor (e.g.,
+            ``angles_to_columns_map_init`` of :class:`RowOffsetStructuredSpinningLidarModel`);
+            arguments the constructor does not accept raise a ``TypeError``.
 
     Returns:
         the lidar model corresponding to ``lidar_model_parameters``.
@@ -858,13 +868,14 @@ def lidar_model_from_parameters(
     Raises:
         TypeError: if no lidar model is registered for the given parameter type.
     """
-    return _lidar_model_from_parameters(lidar_model_parameters, device, dtype)
+    return _lidar_model_from_parameters(lidar_model_parameters, device, dtype, **model_kwargs)
 
 
 def maybe_lidar_model_from_parameters(
     lidar_model_parameters: Optional[types.LidarModelParameters],
     device: Union[str, torch.device] = torch.device("cuda"),
     dtype: torch.dtype = torch.float32,
+    **model_kwargs: Any,
 ) -> Optional[LidarModel]:
     """Initializes the lidar model corresponding to the given parameters, if any
 
@@ -875,10 +886,11 @@ def maybe_lidar_model_from_parameters(
         lidar_model_parameters: the lidar model parameters to build from, or None.
         device: the device to instantiate the lidar model on.
         dtype: the floating point type to instantiate the lidar model with.
+        model_kwargs: keyword arguments forwarded to the lidar model's constructor.
 
     Returns:
         the corresponding lidar model, or None if no parameters were given.
     """
     if lidar_model_parameters is None:
         return None
-    return lidar_model_from_parameters(lidar_model_parameters, device, dtype)
+    return lidar_model_from_parameters(lidar_model_parameters, device, dtype, **model_kwargs)

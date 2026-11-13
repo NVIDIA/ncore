@@ -36,7 +36,7 @@ import pyarrow.feather as feather
 from upath import UPath
 
 from ncore.impl.data.types import IdealPinholeCameraModelParameters, ShutterType
-from ncore.impl.sensors.lidar import StructuredLidarModel
+from ncore.impl.sensors.lidar import StructuredLidarModel, maybe_lidar_model_from_parameters
 from tools.data_converter.argoverse2.utils import (
     VLP32C_N_BEAMS,
     VLP32C_SCAN_DURATION_US,
@@ -133,8 +133,8 @@ class TestVlp32cModelDerivation(unittest.TestCase):
         self.assertTrue(np.all(elem[:, 0] < model.n_rows))
         self.assertTrue(np.all(elem[:, 1] < model.n_columns))
 
-        sm = StructuredLidarModel.maybe_from_parameters(model, device="cpu")
-        assert sm is not None
+        sm = maybe_lidar_model_from_parameters(model, device="cpu")
+        assert isinstance(sm, StructuredLidarModel)
         predicted = sm.elements_to_sensor_points(elem, np.ones(len(elem), dtype=np.float32)).sensor_points.cpu().numpy()
         predicted /= np.linalg.norm(predicted, axis=1, keepdims=True)
         direction = xyz / np.linalg.norm(xyz, axis=1, keepdims=True)
@@ -171,8 +171,8 @@ class TestVlp32cModelDerivation(unittest.TestCase):
         ref_xyz, ref_laser, ref_offset, _, _ = _synthesize_sweep("cw", revolutions=1.05, start_az_rad=0.3)
         geometry = derive_vlp32c_geometry(ref_xyz, ref_laser, ref_offset)
         model = build_vlp32c_model(geometry)
-        sm = StructuredLidarModel.maybe_from_parameters(model, device="cpu")
-        assert sm is not None
+        sm = maybe_lidar_model_from_parameters(model, device="cpu")
+        assert isinstance(sm, StructuredLidarModel)
 
         # Reconstruct several sweeps captured at different spin phases.
         for shift_deg in (-30.0, -1.0, 1.0, 30.0):
@@ -205,8 +205,8 @@ class TestVlp32cModelDerivation(unittest.TestCase):
         ref_xyz, ref_laser, ref_offset, _, _ = _synthesize_sweep("cw", revolutions=1.05, start_az_rad=0.2)
         geometry = derive_vlp32c_geometry(ref_xyz, ref_laser, ref_offset)
         model = build_vlp32c_model(geometry)
-        sm = StructuredLidarModel.maybe_from_parameters(model, device="cpu")
-        assert sm is not None
+        sm = maybe_lidar_model_from_parameters(model, device="cpu")
+        assert isinstance(sm, StructuredLidarModel)
 
         # A sweep whose azimuth advances 0.3% faster than the nominal column rate
         # (~1 deg of drift accumulated over the revolution) plus a phase offset.

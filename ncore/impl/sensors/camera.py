@@ -13,6 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Camera models and external distortion models
+
+The tensors a model derives from its parameters (coefficients, polynomials, principal point, ...) are registered as
+persistent buffers: they move with the model across devices and dtypes and are part of its state dict. Flags selecting
+code paths (``_has_tangential_distortion``, ``_has_thin_prism_distortion``, ``_has_linear_term``) are decided once from
+the parameters at construction and are not re-read from the buffers, so a state dict only restores a model constructed
+from parameters with the same zero / non-zero terms.
+"""
+
 from __future__ import annotations
 
 import math
@@ -20,12 +29,10 @@ import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import singledispatch
-from typing import Generic, Optional, Tuple, TypeVar, Union, cast, overload
+from typing import Any, Generic, Optional, Tuple, TypeVar, Union, cast, overload
 
 import numpy as np
 import torch
-
-from numpy.polynomial import polynomial as np_polynomial
 
 from ncore.impl.common.util import map_optional, unpack_optional
 from ncore.impl.data import types
@@ -63,23 +70,6 @@ class ExternalDistortionModel(BaseModel, ABC, Generic[ExternalDistortionParamete
     that an ``ExternalDistortionModel`` remains statically useful without having to narrow it to a
     concrete model type. Plain (unparameterized) annotations remain valid and behave as before.
     """
-
-    @staticmethod
-    def from_parameters(
-        external_distortion_parameters: types.ExternalDistortionParameters,
-        device: Union[str, torch.device] = torch.device("cuda"),
-        dtype: torch.dtype = torch.float32,
-    ) -> ExternalDistortionModel:
-        """
-        Initialize a generic external distortion model from parameters
-
-        .. deprecated::
-            Prefer the module-level :func:`external_distortion_model_from_parameters`, which
-            dispatches on the parameter type (and can be extended for out-of-tree models via
-            :func:`register_external_distortion_model`) instead of being a closed dispatch table
-            inherited by every external distortion model.
-        """
-        return external_distortion_model_from_parameters(external_distortion_parameters, device, dtype)
 
     @abstractmethod
     def get_parameters(self) -> ExternalDistortionParametersT_co:
@@ -345,7 +335,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
 
     @abstractmethod
     def _camera_rays_to_image_points_impl(
-        self, cam_rays: torch.Tensor, return_jacobians: bool
+        self, camera_rays: torch.Tensor, return_jacobians: bool
     ) -> CameraModel.ImagePointsReturn:
         """
         Camera model-specific implementation of camera_rays_to_image_points
@@ -374,17 +364,17 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         image_points = image_points.to(self.dtype)
 
         # Evaluate regular lens model
-        cam_rays = self._image_points_to_camera_rays_impl(image_points)
+        camera_rays = self._image_points_to_camera_rays_impl(image_points)
 
         # Apply external distortion if available
         if self.external_distortion is not None:
-            cam_rays.camera_rays = self.external_distortion.undistort_camera_rays(cam_rays.camera_rays)
+            camera_rays.camera_rays = self.external_distortion.undistort_camera_rays(camera_rays.camera_rays)
 
-        return cam_rays
+        return camera_rays
 
     def camera_rays_to_image_points(
         self,
-        cam_rays: Union[torch.Tensor, np.ndarray, CameraModel.CameraRaysReturn],
+        camera_rays: Union[torch.Tensor, np.ndarray, CameraModel.CameraRaysReturn],
         return_jacobians: bool = False,
     ) -> CameraModel.ImagePointsReturn:
         """
@@ -396,19 +386,19 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         """
 
         rays_valid_flag: Optional[torch.Tensor] = None
-        if isinstance(cam_rays, CameraModel.CameraRaysReturn):
-            rays_valid_flag = to_torch(cam_rays.valid_flag, device=self.device)
-            cam_rays = cam_rays.camera_rays
+        if isinstance(camera_rays, CameraModel.CameraRaysReturn):
+            rays_valid_flag = to_torch(camera_rays.valid_flag, device=self.device)
+            camera_rays = camera_rays.camera_rays
 
         # If the input is a numpy array first convert it to torch otherwise just send to correct device
-        cam_rays = to_torch(cam_rays, dtype=self.dtype, device=self.device)
+        camera_rays = to_torch(camera_rays, dtype=self.dtype, device=self.device)
 
         # Apply external distortion if available
         if self.external_distortion is not None:
-            cam_rays = self.external_distortion.distort_camera_rays(cam_rays)
+            camera_rays = self.external_distortion.distort_camera_rays(camera_rays)
 
         # Evaluate regular lens model
-        image_points = self._camera_rays_to_image_points_impl(cam_rays, return_jacobians)
+        image_points = self._camera_rays_to_image_points_impl(camera_rays, return_jacobians)
 
         if rays_valid_flag is not None:
             assert rays_valid_flag.shape == image_points.valid_flag.shape
@@ -424,46 +414,32 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         return self.image_points_to_camera_rays(self.pixels_to_image_points(pixel_idxs))
 
     def camera_rays_to_pixels(
-        self, cam_rays: Union[torch.Tensor, np.ndarray, CameraModel.CameraRaysReturn]
+        self, camera_rays: Union[torch.Tensor, np.ndarray, CameraModel.CameraRaysReturn]
     ) -> CameraModel.PixelsReturn:
         """
         For each camera ray, computes the corresponding pixel index and a valid flag (combined with the valid flag
         of camera rays given as CameraRaysReturn, see camera_rays_to_image_points)
         """
-        image_points = self.camera_rays_to_image_points(cam_rays)
+        image_points = self.camera_rays_to_image_points(camera_rays)
 
         return CameraModel.PixelsReturn(
             pixels=self.image_points_to_pixels(image_points.image_points), valid_flag=image_points.valid_flag
         )
 
-    @staticmethod
-    def from_parameters(
-        cam_model_parameters: types.CameraModelParameters,
-        device: Union[str, torch.device] = torch.device("cuda"),
-        dtype: torch.dtype = torch.float32,
-    ) -> CameraModel:
-        """
-        Initialize a generic camera model class from camera model parameters
-
-        .. deprecated::
-            Prefer the module-level :func:`camera_model_from_parameters`, which dispatches on the
-            parameter type (and can be extended for out-of-tree models via
-            :func:`register_camera_model`) instead of being a closed dispatch table inherited by
-            every camera model.
-        """
-        return camera_model_from_parameters(cam_model_parameters, device, dtype)
-
     @dataclass
     class WorldPointsToPixelsReturn:
         """
         Contains
-            - pixel indices of the valid projections [int] (n,2)
-            - [optional] world-to-sensor poses of valid projections [float] (n,4,4)
-            - [optional] indices of the valid projections relative to the input points [int] (n,)
-            - [optional] timestamps of the valid projections [int] (n,)
+            - pixel indices of the valid projections [int] (n_valid,2), or of all input points [int] (n,2) if
+              requested with ``return_all_projections`` (undefined for invalid projections)
+            - valid_flag [bool] (n,), whether each input point projects validly (``n_valid = valid_flag.sum()``)
+            - [optional] world-to-sensor poses of the valid projections [float] (n_valid,4,4)
+            - [optional] indices of the valid projections relative to the input points [int] (n_valid,)
+            - [optional] timestamps of the valid projections [int] (n_valid,)
         """
 
         pixels: torch.Tensor
+        valid_flag: torch.Tensor
         T_world_sensors: Optional[torch.Tensor] = None
         valid_indices: Optional[torch.Tensor] = None
         timestamps_us: Optional[torch.Tensor] = None
@@ -472,13 +448,16 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
     class WorldPointsToImagePointsReturn:
         """
         Contains
-            - image point coordinates of the valid projections [float] (n,2)
-            - [optional] world-to-sensor poses of valid projections [float] (n,4,4)
-            - [optional] indices of the valid projections relative to the input points [int] (n,)
-            - [optional] timestamps of the valid projections [int] (n,)
+            - image point coordinates of the valid projections [float] (n_valid,2), or of all input points [float]
+              (n,2) if requested with ``return_all_projections`` (undefined for invalid projections)
+            - valid_flag [bool] (n,), whether each input point projects validly (``n_valid = valid_flag.sum()``)
+            - [optional] world-to-sensor poses of the valid projections [float] (n_valid,4,4)
+            - [optional] indices of the valid projections relative to the input points [int] (n_valid,)
+            - [optional] timestamps of the valid projections [int] (n_valid,)
         """
 
         image_points: torch.Tensor
+        valid_flag: torch.Tensor
         T_world_sensors: Optional[torch.Tensor] = None
         valid_indices: Optional[torch.Tensor] = None
         timestamps_us: Optional[torch.Tensor] = None
@@ -552,12 +531,17 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         end_timestamp_us: Optional[int] = None,
         max_iterations: int = 10,
         stop_t_delta: float = 1e-4,  # ~0.1 px for 1080p
+        *,
         return_T_world_sensors: bool = False,
         return_valid_indices: bool = False,
         return_timestamps: bool = False,
         return_all_projections: bool = False,
     ) -> CameraModel.WorldPointsToPixelsReturn:
-        """Projects world points to corresponding pixel indices using *rolling-shutter compensation* of sensor motion"""
+        """Projects world points to corresponding pixel indices using *rolling-shutter compensation* of sensor motion
+
+        Returns the pixel indices of the valid projections (of all points with ``return_all_projections``) and the
+        valid flag of all points, see :class:`WorldPointsToPixelsReturn`.
+        """
 
         if return_timestamps:
             assert start_timestamp_us is not None
@@ -574,14 +558,15 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
             end_timestamp_us,
             max_iterations,
             stop_t_delta,
-            return_T_world_sensors,
-            return_valid_indices,
-            return_timestamps,
-            return_all_projections,
+            return_T_world_sensors=return_T_world_sensors,
+            return_valid_indices=return_valid_indices,
+            return_timestamps=return_timestamps,
+            return_all_projections=return_all_projections,
         )
 
         return CameraModel.WorldPointsToPixelsReturn(
             pixels=self.image_points_to_pixels(tmp.image_points),
+            valid_flag=tmp.valid_flag,
             T_world_sensors=tmp.T_world_sensors,
             valid_indices=tmp.valid_indices,
             timestamps_us=tmp.timestamps_us,
@@ -592,12 +577,17 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         world_points: Union[torch.Tensor, np.ndarray],
         T_world_sensor: Union[torch.Tensor, np.ndarray],
         timestamp_us: Optional[int] = None,
+        *,
         return_T_world_sensors: bool = False,
         return_valid_indices: bool = False,
         return_timestamps: bool = False,
         return_all_projections: bool = False,
     ) -> CameraModel.WorldPointsToPixelsReturn:
-        """Projects world points to corresponding pixel indices using a *fixed* sensor pose (not compensating for potential sensor-motion)."""
+        """Projects world points to corresponding pixel indices using a *fixed* sensor pose (not compensating for potential sensor-motion).
+
+        Returns the pixel indices of the valid projections (of all points with ``return_all_projections``) and the
+        valid flag of all points, see :class:`WorldPointsToPixelsReturn`.
+        """
 
         if return_timestamps:
             assert timestamp_us is not None
@@ -606,14 +596,15 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
             world_points,
             T_world_sensor,
             timestamp_us,
-            return_T_world_sensors,
-            return_valid_indices,
-            return_timestamps,
-            return_all_projections,
+            return_T_world_sensors=return_T_world_sensors,
+            return_valid_indices=return_valid_indices,
+            return_timestamps=return_timestamps,
+            return_all_projections=return_all_projections,
         )
 
         return CameraModel.WorldPointsToPixelsReturn(
             pixels=self.image_points_to_pixels(tmp.image_points),
+            valid_flag=tmp.valid_flag,
             T_world_sensors=tmp.T_world_sensors,
             valid_indices=tmp.valid_indices,
             timestamps_us=tmp.timestamps_us,
@@ -626,6 +617,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         T_world_sensor_end: Union[torch.Tensor, np.ndarray],
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
+        *,
         return_T_world_sensors: bool = False,
         return_valid_indices: bool = False,
         return_timestamps: bool = False,
@@ -633,6 +625,9 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
     ) -> CameraModel.WorldPointsToPixelsReturn:
         """Projects world points to corresponding pixel indices using the *mean pose* of the sensor between
         the start and end poses (not compensating for potential sensor-motion).
+
+        Returns the pixel indices of the valid projections (of all points with ``return_all_projections``) and the
+        valid flag of all points, see :class:`WorldPointsToPixelsReturn`.
         """
 
         if return_timestamps:
@@ -649,16 +644,16 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
 
         return self.world_points_to_pixels_static_pose(
             world_points,
-            self.__interpolate_poses(
+            self._interpolate_poses(
                 to_torch(T_world_sensor_start, device=self.device, dtype=self.dtype),
                 to_torch(T_world_sensor_end, device=self.device, dtype=self.dtype),
                 0.5,
             ),
             timestamp_us,
-            return_T_world_sensors,
-            return_valid_indices,
-            return_timestamps,
-            return_all_projections,
+            return_T_world_sensors=return_T_world_sensors,
+            return_valid_indices=return_valid_indices,
+            return_timestamps=return_timestamps,
+            return_all_projections=return_all_projections,
         )
 
     def world_points_to_image_points_shutter_pose(
@@ -670,12 +665,17 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         end_timestamp_us: Optional[int] = None,
         max_iterations: int = 10,
         stop_t_delta: float = 1e-4,  # ~0.1 px for 1080p
+        *,
         return_T_world_sensors: bool = False,
         return_valid_indices: bool = False,
         return_timestamps: bool = False,
         return_all_projections: bool = False,
     ) -> CameraModel.WorldPointsToImagePointsReturn:
-        """Projects world points to corresponding image point coordinates using *rolling-shutter compensation* of sensor motion"""
+        """Projects world points to corresponding image point coordinates using *rolling-shutter compensation* of sensor motion
+
+        Returns the image points of the valid projections (of all points with ``return_all_projections``) and the
+        valid flag of all points, see :class:`WorldPointsToImagePointsReturn`.
+        """
 
         # Check if the variables are numpy, convert them to torch and send them to correct device
         world_points = to_torch(world_points, device=self.device, dtype=self.dtype)
@@ -715,7 +715,8 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
                     image_points_start.image_points[image_points_start.valid_flag]
                     if not return_all_projections
                     else image_points_start.image_points
-                )
+                ),
+                valid_flag=image_points_start.valid_flag,
             )
             if return_T_world_sensors:
                 return_var.T_world_sensors = torch.tile(
@@ -747,7 +748,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         t = iter_result.t
 
         # We always return image points
-        return_var = CameraModel.WorldPointsToImagePointsReturn(image_points=projection)
+        return_var = CameraModel.WorldPointsToImagePointsReturn(image_points=projection, valid_flag=projection_valid)
 
         if return_T_world_sensors:
             # Assemble [n, 4, 4] rigid transformation matrices from rotation and translation
@@ -785,12 +786,17 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         world_points: Union[torch.Tensor, np.ndarray],
         T_world_sensor: Union[torch.Tensor, np.ndarray],
         timestamp_us: Optional[int] = None,
+        *,
         return_T_world_sensors: bool = False,
         return_valid_indices: bool = False,
         return_timestamps: bool = False,
         return_all_projections: bool = False,
     ) -> CameraModel.WorldPointsToImagePointsReturn:
-        """Projects world points to corresponding image point coordinates using a *fixed* sensor pose (not compensating for potential sensor-motion)."""
+        """Projects world points to corresponding image point coordinates using a *fixed* sensor pose (not compensating for potential sensor-motion).
+
+        Returns the image points of the valid projections (of all points with ``return_all_projections``) and the
+        valid flag of all points, see :class:`WorldPointsToImagePointsReturn`.
+        """
 
         # Check if the variables are numpy, convert them to torch and send them to correct device
         world_points = to_torch(world_points, device=self.device, dtype=self.dtype)
@@ -809,8 +815,8 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         t_world_sensor = T_world_sensor[:3, 3]  # [3, 1]
 
         # Do the transformation
-        cam_rays = torch.matmul(R_world_sensor, world_points[:, :, None]).squeeze(-1) + t_world_sensor
-        image_points = self.camera_rays_to_image_points(cam_rays)
+        camera_rays = torch.matmul(R_world_sensor, world_points[:, :, None]).squeeze(-1) + t_world_sensor
+        image_points = self.camera_rays_to_image_points(camera_rays)
 
         # We always return image points
         return_var = CameraModel.WorldPointsToImagePointsReturn(
@@ -818,7 +824,8 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
                 image_points.image_points[image_points.valid_flag]
                 if not return_all_projections
                 else image_points.image_points
-            )
+            ),
+            valid_flag=image_points.valid_flag,
         )
 
         if return_T_world_sensors:
@@ -844,6 +851,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         T_world_sensor_end: Union[torch.Tensor, np.ndarray],
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
+        *,
         return_T_world_sensors: bool = False,
         return_valid_indices: bool = False,
         return_timestamps: bool = False,
@@ -851,6 +859,9 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
     ) -> CameraModel.WorldPointsToImagePointsReturn:
         """Projects world points to corresponding image point coordinates using the *mean pose* of the sensor between
         the start and end poses (not compensating for potential sensor-motion).
+
+        Returns the image points of the valid projections (of all points with ``return_all_projections``) and the
+        valid flag of all points, see :class:`WorldPointsToImagePointsReturn`.
         """
 
         if return_timestamps:
@@ -867,16 +878,16 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
 
         return self.world_points_to_image_points_static_pose(
             world_points,
-            self.__interpolate_poses(
+            self._interpolate_poses(
                 to_torch(T_world_sensor_start, device=self.device, dtype=self.dtype),
                 to_torch(T_world_sensor_end, device=self.device, dtype=self.dtype),
                 0.5,
             ),
             timestamp_us,
-            return_T_world_sensors,
-            return_valid_indices,
-            return_timestamps,
-            return_all_projections,
+            return_T_world_sensors=return_T_world_sensors,
+            return_valid_indices=return_valid_indices,
+            return_timestamps=return_timestamps,
+            return_all_projections=return_all_projections,
         )
 
     def pixels_to_world_rays_static_pose(
@@ -1040,7 +1051,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
 
         return self.image_points_to_world_rays_static_pose(
             image_points,
-            self.__interpolate_poses(
+            self._interpolate_poses(
                 to_torch(T_sensor_world_start, device=self.device, dtype=self.dtype),
                 to_torch(T_sensor_world_end, device=self.device, dtype=self.dtype),
                 0.5,
@@ -1218,7 +1229,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
             to_torch(image_points, device=self.device, dtype=self.dtype), self.resolution, self.shutter_type
         )
 
-    def __interpolate_poses(self, pose_s: torch.Tensor, pose_e: torch.Tensor, t: float) -> torch.Tensor:
+    def _interpolate_poses(self, pose_s: torch.Tensor, pose_e: torch.Tensor, t: float) -> torch.Tensor:
         """Interpolate/extrapolate pose components linearly between two poses using
         linear interpolation for positions / SLERP interpolation for orientations
         given an interpolation point t in [0,1]"""
@@ -1247,12 +1258,12 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         return interp_pose
 
     @staticmethod
-    def _numerically_stable_xy_norm(cam_rays: torch.Tensor) -> torch.Tensor:
+    def _numerically_stable_xy_norm(camera_rays: torch.Tensor) -> torch.Tensor:
         """Evaluate the norm in a numerically stable manner"""
 
-        xy_norms = torch.zeros_like(cam_rays[:, 0]).unsqueeze(1)  # Zero rays stay with zero norm
+        xy_norms = torch.zeros_like(camera_rays[:, 0]).unsqueeze(1)  # Zero rays stay with zero norm
 
-        abs_pts = torch.abs(cam_rays[:, :2])
+        abs_pts = torch.abs(camera_rays[:, :2])
         min_pts = torch.min(abs_pts, dim=1, keepdim=True).values
         max_pts = torch.max(abs_pts, dim=1, keepdim=True).values
 
@@ -1291,12 +1302,15 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
         *,
         newton_iterations: int = 3,
         min_2d_norm: float = 1e-6,
+        tangential_iterations: int = 4,
     ):
         """Initializes a FThetaCameraModel to operate on a specific device and floating-point type.
 
         newton_iterations: the number of Newton iterations to perform polynomial inversion (zero to disable)
         min_2d_norm: Threshold for 2d image_points-distances (relative to principal point) below which the principal ray
                      is returned in ray generation (for points close to the principal point). Needs to be positive
+        tangential_iterations: the number of fixed-point iterations inverting the tangential distortion in the
+                               unprojection (only used for models with tangential distortion). Needs to be non-negative
         """
         super().__init__(camera_model_parameters, device, dtype)
         del (device, dtype)
@@ -1370,17 +1384,16 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
 
         # Tangential distortion coefficients [t0, t1] (always registered, all zeros for purely radial models).
         # The tangential code paths are only taken if any coefficient is non-zero, so purely radial models
-        # evaluate exactly as without tangential support. Non-persistent, as the code path is selected at
-        # construction (state dicts are unchanged by tangential support)
+        # evaluate exactly as without tangential support
         self.register_buffer(
             "tangential_coeffs",
             to_torch(camera_model_parameters.tangential_coeffs, device=self.device, dtype=self.dtype),
-            persistent=False,
         )
-        # Decided once at construction; the buffer is not re-read to select the code path
-        self._has_tangentials: bool = camera_model_parameters.has_tangential_distortion
+        self._has_tangential_distortion: bool = camera_model_parameters.has_tangential_distortion
         # Fixed number of iterations of the tangential distortion inversion in the unprojection
-        self.tangential_iterations: int = 4
+        if tangential_iterations < 0:
+            raise ValueError(f"Number of tangential iterations needs to be non-negative, got {tangential_iterations}")
+        self.tangential_iterations: int = tangential_iterations
 
         # 2D pixel-distance threshold
         assert min_2d_norm > 0, "require positive minimum norm threshold"
@@ -1402,6 +1415,16 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
         assert self.Ainv.dtype == self.dtype
         assert self.tangential_coeffs.shape == (2,)
         assert self.tangential_coeffs.dtype == self.dtype
+
+    def _load_from_state_dict(
+        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+    ):
+        # State dicts written without tangential coefficients (by models without tangential support, or with the
+        # coefficients as non-persistent buffer) keep the coefficients the model was constructed with
+        state_dict.setdefault(prefix + "tangential_coeffs", self.tangential_coeffs)
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
 
     @staticmethod
     def eval_tangential_distortion(xy: torch.Tensor, coeffs: torch.Tensor) -> torch.Tensor:
@@ -1465,7 +1488,7 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
                 self.fw_poly, self.dfw_poly, self.bw_poly, self.newton_iterations, rdist
             )
 
-        if self._has_tangentials:
+        if self._has_tangential_distortion:
             # Invert xd = f(theta) * [X, Y] / |[X, Y]| + T(tan(theta) * [X, Y] / |[X, Y]|) by a fixed number of
             # fixed-point iterations on the radial part v = xd - T(x, y), starting from the purely radial solution.
             # Each iteration re-estimates the angle from |v|, by a single warm-started Newton step on the forward
@@ -1492,7 +1515,7 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
             # Compute the camera rays from the clamped angles (finite also for angles beyond the FOV, which are
             # invalid)
             thetas_clamped = torch.clamp(thetas, min=0.0, max=self.max_angle)
-            cam_rays = torch.hstack(
+            camera_rays = torch.hstack(
                 (
                     torch.sin(thetas_clamped) * radial_dist / torch.maximum(radial_rdist, self.min_2d_norm),
                     torch.cos(thetas_clamped),
@@ -1500,12 +1523,12 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
             )
         else:
             # Compute the camera rays
-            cam_rays = torch.hstack(
+            camera_rays = torch.hstack(
                 (torch.sin(thetas) * image_points_dist / torch.maximum(rdist, self.min_2d_norm), torch.cos(thetas))
             )
 
         # Set the camera rays at the image center to [0,0,1]
-        cam_rays[rdist.flatten() < self.min_2d_norm, :] = torch.tensor(
+        camera_rays[rdist.flatten() < self.min_2d_norm, :] = torch.tensor(
             [[0, 0, 1]], device=self.device, dtype=self.dtype
         )
 
@@ -1513,27 +1536,27 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
         # angles of the Newton-based inverse beyond the maximum of the forward polynomial are invalid
         valid = torch.isfinite(thetas[:, 0]) & (thetas[:, 0] >= 0.0) & (thetas[:, 0] < self.max_angle)
 
-        return CameraModel.CameraRaysReturn(camera_rays=cam_rays, valid_flag=valid)
+        return CameraModel.CameraRaysReturn(camera_rays=camera_rays, valid_flag=valid)
 
     def _camera_rays_to_image_points_impl(
-        self, cam_rays: torch.Tensor, return_jacobians
+        self, camera_rays: torch.Tensor, return_jacobians
     ) -> CameraModel.ImagePointsReturn:
         """
         For each camera ray it computes the corresponding image point coordinates
         """
 
-        cam_rays = to_torch(cam_rays, device=self.device, dtype=self.dtype)
+        camera_rays = to_torch(camera_rays, device=self.device, dtype=self.dtype)
 
-        initial_requires_grad = cam_rays.requires_grad
+        initial_requires_grad = camera_rays.requires_grad
         if return_jacobians:
-            cam_rays.requires_grad = True
+            camera_rays.requires_grad = True
 
-        ray_xy_norms = self._numerically_stable_xy_norm(cam_rays)
+        ray_xy_norms = self._numerically_stable_xy_norm(camera_rays)
 
         # Make sure norm is non-vanishing (norm vanishes for points along the principal-axis)
         ray_xy_norms[ray_xy_norms[:, 0] <= 0.0] = torch.finfo(self.dtype).eps
 
-        thetas_full = torch.atan2(ray_xy_norms[:], cam_rays[:, 2:])
+        thetas_full = torch.atan2(ray_xy_norms[:], camera_rays[:, 2:])
 
         # Limit angles to max_angle to prevent projected points to leave valid cone around max_angle.
         # In particular for omnidirectional cameras, this prevents points outside the FOV to be
@@ -1553,16 +1576,16 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
             # fw is reference, evaluate it directly
             deltas = eval_poly_horner(self.fw_poly, thetas)
 
-        if self._has_tangentials:
+        if self._has_tangential_distortion:
             # Add the tangential offsets (in pixels) of the normalized coordinates [x, y] = tan(theta) * [X, Y] / |[X, Y]|
             # to the f(theta)-weighted normalized 2d vectors. The FOV-clamped angles (< pi/2) keep the normalized
             # coordinates finite also for rays at or beyond 90 degrees
-            xy_dir = cam_rays[:, :2] / ray_xy_norms
+            xy_dir = camera_rays[:, :2] / ray_xy_norms
             xy_norm = torch.tan(thetas) * xy_dir
             pre_linear = deltas * xy_dir + self.eval_tangential_distortion(xy_norm, self.tangential_coeffs)
         else:
             # f(theta)-weighted normalized 2d vectors
-            pre_linear = deltas / ray_xy_norms * cam_rays[:, :2]
+            pre_linear = deltas / ray_xy_norms * camera_rays[:, :2]
 
         # Apply linear term [c,d;e,1] (skipped if identity), relative to principal point
         if self._has_linear_term:
@@ -1579,22 +1602,22 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
 
         if return_jacobians:
             # Evaluate Jacobians of valid points by gradients of both output dimensions
-            jacobians = torch.empty((len(cam_rays), 2, 3), dtype=self.dtype, device=self.device)
+            jacobians = torch.empty((len(camera_rays), 2, 3), dtype=self.dtype, device=self.device)
 
-            initial_gradient = torch.ones((len(cam_rays),), dtype=self.dtype, device=self.device)
+            initial_gradient = torch.ones((len(camera_rays),), dtype=self.dtype, device=self.device)
             image_points[:, 0].backward(gradient=initial_gradient, retain_graph=True)
 
-            assert cam_rays.grad is not None
-            jacobians[:, 0] = cam_rays.grad
+            assert camera_rays.grad is not None
+            jacobians[:, 0] = camera_rays.grad
 
-            cam_rays.grad.zero_()
+            camera_rays.grad.zero_()
 
             image_points[:, 1].backward(gradient=initial_gradient)
-            jacobians[:, 1] = cam_rays.grad
+            jacobians[:, 1] = camera_rays.grad
 
             # Cleanup for other backprop users
-            cam_rays.grad.zero_()
-            cam_rays.requires_grad = initial_requires_grad
+            camera_rays.grad.zero_()
+            camera_rays.requires_grad = initial_requires_grad
         else:
             jacobians = None
 
@@ -1651,21 +1674,21 @@ class PinholeCameraModel(CameraModel[PinholeCameraModelParametersT_co], ABC):
         return CameraModel.CameraRaysReturn.all_valid(cam_rays3 / torch.linalg.norm(cam_rays3, axis=1, keepdims=True))
 
     def _ideal_camera_rays_to_image_points(
-        self, cam_rays: torch.Tensor, return_jacobians: bool
+        self, camera_rays: torch.Tensor, return_jacobians: bool
     ) -> CameraModel.ImagePointsReturn:
         """Closed-form ideal-pinhole projection of normalized camera rays to image points"""
-        image_points = torch.zeros_like(cam_rays[:, :2])
+        image_points = torch.zeros_like(camera_rays[:, :2])
 
         # Points must be in front of the camera plane
-        valid = cam_rays[:, 2] > 0.0
+        valid = camera_rays[:, 2] > 0.0
         valid_idx = torch.where(valid)[0]
 
-        cam_rays_valid = torch.index_select(cam_rays, 0, valid_idx)
+        camera_rays_valid = torch.index_select(camera_rays, 0, valid_idx)
 
         if return_jacobians:
-            cam_rays_valid.requires_grad = True
+            camera_rays_valid.requires_grad = True
 
-        uv_normalized = cam_rays_valid[:, :2] / cam_rays_valid[:, 2:3]  # [n,2]
+        uv_normalized = camera_rays_valid[:, :2] / camera_rays_valid[:, 2:3]  # [n,2]
         image_points[valid_idx] = uv_normalized * self.focal_length + self.principal_point
 
         # Check if the image points fall within the image
@@ -1676,18 +1699,18 @@ class PinholeCameraModel(CameraModel[PinholeCameraModelParametersT_co], ABC):
         valid[valid_idx[~valid_pts]] = False
 
         if return_jacobians:
-            jacobians = torch.zeros((len(cam_rays), 2, 3), dtype=self.dtype, device=self.device)
+            jacobians = torch.zeros((len(camera_rays), 2, 3), dtype=self.dtype, device=self.device)
 
             initial_gradient = torch.ones((len(valid_idx),), dtype=self.dtype, device=self.device)
-            image_points[valid_idx, 0].backward(gradient=initial_gradient, retain_graph=True, inputs=cam_rays_valid)
+            image_points[valid_idx, 0].backward(gradient=initial_gradient, retain_graph=True, inputs=camera_rays_valid)
 
-            assert cam_rays_valid.grad is not None
-            jacobians[valid_idx, 0] = cam_rays_valid.grad
+            assert camera_rays_valid.grad is not None
+            jacobians[valid_idx, 0] = camera_rays_valid.grad
 
-            cam_rays_valid.grad.zero_()
+            camera_rays_valid.grad.zero_()
 
             image_points[valid_idx, 1].backward(gradient=initial_gradient)
-            jacobians[valid_idx, 1] = cam_rays_valid.grad
+            jacobians[valid_idx, 1] = camera_rays_valid.grad
         else:
             jacobians = None
 
@@ -1725,10 +1748,10 @@ class IdealPinholeCameraModel(PinholeCameraModel[types.IdealPinholeCameraModelPa
         return self._ideal_image_points_to_camera_rays(image_points)
 
     def _camera_rays_to_image_points_impl(
-        self, cam_rays: torch.Tensor, return_jacobians
+        self, camera_rays: torch.Tensor, return_jacobians
     ) -> CameraModel.ImagePointsReturn:
-        cam_rays = to_torch(cam_rays, device=self.device, dtype=self.dtype)
-        return self._ideal_camera_rays_to_image_points(cam_rays, return_jacobians)
+        camera_rays = to_torch(camera_rays, device=self.device, dtype=self.dtype)
+        return self._ideal_camera_rays_to_image_points(camera_rays, return_jacobians)
 
 
 class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModelParameters]):
@@ -1751,7 +1774,8 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         max_normalized_radius_squared: bound on the squared radius ``(x/z)^2 + (y/z)^2`` of the normalized coordinates
                                        of camera rays which project to / unproject from valid image points. ``None``
                                        derives it from the radial distortion coefficients (see
-                                       :meth:`compute_max_normalized_radius_squared`), ``math.inf`` disables the bound.
+                                       :meth:`~ncore.data.OpenCVPinholeCameraModelParameters.compute_max_normalized_radius_squared`),
+                                       ``math.inf`` disables the bound.
                                        Needs to be positive. Not applicable to distortion-free models (which project
                                        like ideal pinholes)
         """
@@ -1759,8 +1783,10 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         del (device, dtype)
 
         if max_normalized_radius_squared is None:
-            max_normalized_radius_squared = self.compute_max_normalized_radius_squared(
-                camera_model_parameters.radial_coeffs
+            max_normalized_radius_squared = (
+                types.OpenCVPinholeCameraModelParameters.compute_max_normalized_radius_squared(
+                    camera_model_parameters.radial_coeffs
+                )
             )
         elif not float(max_normalized_radius_squared) > 0.0:
             raise ValueError(
@@ -1779,12 +1805,12 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
             "tangential_coeffs",
             to_torch(camera_model_parameters.tangential_coeffs, device=self.device, dtype=self.dtype),
         )
-        self._has_tangential: bool = camera_model_parameters.has_tangential_distortion
+        self._has_tangential_distortion: bool = camera_model_parameters.has_tangential_distortion
         self.register_buffer(
             "thin_prism_coeffs",
             to_torch(camera_model_parameters.thin_prism_coeffs, device=self.device, dtype=self.dtype),
         )
-        self._has_thin_prism: bool = camera_model_parameters.has_thin_prism_distortion
+        self._has_thin_prism_distortion: bool = camera_model_parameters.has_thin_prism_distortion
 
         assert self.radial_coeffs.shape == (6,)
         assert self.radial_coeffs.dtype == self.dtype
@@ -1798,52 +1824,6 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         # closed-form ideal pinhole path. Reuses the parameters' own check (which also
         # accounts for external distortion).
         self._is_distortion_free: bool = camera_model_parameters.is_distortion_free
-
-    @staticmethod
-    def compute_max_normalized_radius_squared(radial_coeffs: np.ndarray) -> float:
-        """Computes the largest squared radius of normalized coordinates up to which the radial distortion is valid
-
-        With ``s = r^2`` the squared radius of the normalized coordinates ``(x/z, y/z)`` and ``d(s) = N(s) / D(s)``
-        the rational radial distortion factor (``N(s) = 1 + k1 s + k2 s^2 + k3 s^3``,
-        ``D(s) = 1 + k4 s + k5 s^2 + k6 s^3``), the distorted radius ``r d(s)`` is a one-to-one function of the
-        radius ``r`` up to its first extremum (beyond it, distinct rays project to the same image points). The bound
-        is the smallest positive root of either the derivative of the distorted radius (whose sign is the one of the
-        polynomial ``N D + 2 s (N' D - N D')``) or of ``D`` (a pole of the distortion factor), and ``math.inf`` if
-        the distortion has neither.
-
-        Only the radial distortion is taken into account (tangential and thin-prism distortions are not).
-
-        Args:
-            radial_coeffs: the radial distortion coefficients ``[k1, k2, k3, k4, k5, k6]``
-
-        Returns:
-            the exclusive bound on the squared radius of the normalized coordinates of valid camera rays
-        """
-        k = np.asarray(radial_coeffs, dtype=np.float64).reshape(6)
-
-        numerator = np.array([1.0, k[0], k[1], k[2]])
-        denominator = np.array([1.0, k[3], k[4], k[5]])
-        derivative = np_polynomial.polyadd(
-            np_polynomial.polymul(numerator, denominator),
-            np_polynomial.polymulx(
-                2.0
-                * np_polynomial.polysub(
-                    np_polynomial.polymul(np_polynomial.polyder(numerator), denominator),
-                    np_polynomial.polymul(numerator, np_polynomial.polyder(denominator)),
-                )
-            ),
-        )
-
-        max_r2 = math.inf
-        for polynomial in (derivative, denominator):
-            polynomial = np.trim_zeros(polynomial, "b")
-            if len(polynomial) < 2:
-                continue  # constant (both are 1 at s = 0), no root
-            for root in np_polynomial.polyroots(polynomial):
-                # (multiple roots, e.g., where the derivative only touches zero, are computed as nearly real pairs)
-                if root.real > 0.0 and abs(root.imag) <= 1e-6 * abs(root):
-                    max_r2 = min(max_r2, float(root.real))
-        return max_r2
 
     def get_parameters(self) -> types.OpenCVPinholeCameraModelParameters:
         """Returns the camera model parameters specific to the current camera model instance"""
@@ -1881,7 +1861,7 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         if self._is_distortion_free:
             return self._ideal_image_points_to_camera_rays(image_points)
 
-        camera_rays2, converged = self.__iterative_undistort(image_points)
+        camera_rays2, converged = self._iterative_undistort(image_points)
         camera_rays3 = torch.cat([camera_rays2, torch.ones_like(camera_rays2[:, :1])], dim=1)
 
         # Rays beyond the maximum radius are invalid (the undistortion might have converged to a ray beyond the
@@ -1895,32 +1875,32 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         )
 
     def _camera_rays_to_image_points_impl(
-        self, cam_rays: torch.Tensor, return_jacobians
+        self, camera_rays: torch.Tensor, return_jacobians
     ) -> CameraModel.ImagePointsReturn:
         """
         For each camera ray compute the corresponding image point coordinates
         """
 
-        cam_rays = to_torch(cam_rays, device=self.device, dtype=self.dtype)
+        camera_rays = to_torch(camera_rays, device=self.device, dtype=self.dtype)
 
         # Distortion-free OpenCV pinholes are equivalent to an ideal pinhole - use the
         # closed-form path and skip the distortion computation
         if self._is_distortion_free:
-            return self._ideal_camera_rays_to_image_points(cam_rays, return_jacobians)
+            return self._ideal_camera_rays_to_image_points(camera_rays, return_jacobians)
 
         # Initialize the valid flag and set all the points behind the camera plane to invalid
-        image_points = torch.zeros_like(cam_rays[:, :2])
+        image_points = torch.zeros_like(camera_rays[:, :2])
 
-        valid = cam_rays[:, 2] > 0.0
+        valid = camera_rays[:, 2] > 0.0
         valid_idx = torch.where(valid)[0]
 
-        cam_rays_valid = torch.index_select(cam_rays, 0, valid_idx)
+        camera_rays_valid = torch.index_select(camera_rays, 0, valid_idx)
 
         if return_jacobians:
-            cam_rays_valid.requires_grad = True
+            camera_rays_valid.requires_grad = True
 
-        uv_normalized = cam_rays_valid[:, :2] / cam_rays_valid[:, 2:3]  # [n,2]
-        icD, delta, r_2 = self.__compute_distortion(uv_normalized)
+        uv_normalized = camera_rays_valid[:, :2] / camera_rays_valid[:, 2:3]  # [n,2]
+        icD, delta, r_2 = self._compute_distortion(uv_normalized)
 
         # Rays beyond the maximum radius (the first extremum of the radially distorted radius, or a pole of the radial
         # distortion) don't project one-to-one
@@ -1954,26 +1934,31 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
 
         if return_jacobians:
             # Evaluate Jacobians of valid points by gradients of both output dimensions
-            jacobians = torch.zeros((len(cam_rays), 2, 3), dtype=self.dtype, device=self.device)
+            jacobians = torch.zeros((len(camera_rays), 2, 3), dtype=self.dtype, device=self.device)
 
             initial_gradient = torch.ones((len(valid_idx),), dtype=self.dtype, device=self.device)
-            image_points[valid_idx, 0].backward(gradient=initial_gradient, retain_graph=True, inputs=cam_rays_valid)
+            image_points[valid_idx, 0].backward(gradient=initial_gradient, retain_graph=True, inputs=camera_rays_valid)
 
-            assert cam_rays_valid.grad is not None
-            jacobians[valid_idx, 0] = cam_rays_valid.grad
+            assert camera_rays_valid.grad is not None
+            jacobians[valid_idx, 0] = camera_rays_valid.grad
 
-            cam_rays_valid.grad.zero_()
+            camera_rays_valid.grad.zero_()
 
             image_points[valid_idx, 1].backward(gradient=initial_gradient)
-            jacobians[valid_idx, 1] = cam_rays_valid.grad
+            jacobians[valid_idx, 1] = camera_rays_valid.grad
         else:
             jacobians = None
 
         return CameraModel.ImagePointsReturn(image_points=image_points, valid_flag=valid, jacobians=jacobians)
 
-    def __compute_distortion(self, xy: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor]:
+    def _compute_distortion(self, xy: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor]:
         """Computes the radial factor, the additive tangential and thin-prism distortion ([n,2], None if both
-        terms are zero), and the squared radii of the given normalized coordinates"""
+        terms are zero), and the squared radii of the given normalized coordinates
+
+        Overridable hook of subclasses with a different distortion model: both the projection and the iterative
+        undistortion (:meth:`_iterative_undistort`) evaluate the distortion through it, the distorted normalized
+        coordinates being ``xy * radial_factor + additive_distortion``.
+        """
 
         # Compute the helper variables
         xy_squared = torch.square(xy)
@@ -1981,7 +1966,7 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
 
         # Note: the tangential helper terms are created before the radial factor on purpose, keeping the autograd
         # graph (and hence the accumulation order of the jacobians) identical to the evaluation without fast paths
-        if self._has_tangential:
+        if self._has_tangential_distortion:
             xy_prod = xy[:, 0] * xy[:, 1]
             a1 = 2 * xy_prod
             a2 = r_2 + 2 * xy_squared[:, 0]
@@ -1996,7 +1981,7 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         icD = icD_numerator / icD_denominator
 
         delta: Optional[torch.Tensor] = None
-        if self._has_tangential:
+        if self._has_tangential_distortion:
             delta = torch.stack(
                 [
                     self.tangential_coeffs[0] * a1 + self.tangential_coeffs[1] * a2,
@@ -2004,7 +1989,7 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
                 ],
                 dim=1,
             )
-        if self._has_thin_prism:
+        if self._has_thin_prism_distortion:
             thin_prism = torch.stack(
                 [
                     r_2 * (self.thin_prism_coeffs[0] + r_2 * self.thin_prism_coeffs[1]),
@@ -2016,31 +2001,43 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
 
         return icD, delta, r_2
 
-    def __iterative_undistort(
-        self, image_points: torch.Tensor, stop_mean_of_squares_error_px2: float = 1e-12, max_iterations: int = 10
+    def _iterative_undistort(
+        self,
+        image_points: torch.Tensor,
+        *,
+        stop_squared_residual: float = 1e-12,
+        max_iterations: int = 10,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Iteratively undistorts image points, returning the undistorted normalized coordinates and whether the
-        iteration converged for each point (squared residual within stop_mean_of_squares_error_px2)"""
+        iteration converged for each point
+
+        The squared residual of a point is the mean of squares of the change of its normalized coordinates in an
+        iteration. A point converged if its squared residual is within ``stop_squared_residual``; the fixed-point
+        iterations stop once all points converged, or after ``max_iterations``.
+
+        Overridable hook of subclasses with a different undistortion scheme (used by the unprojection).
+        """
 
         # start by unprojecting points to rays using distortion-less ideal pinhole model only
-        cam_rays_0 = (image_points - self.principal_point) / self.focal_length
+        camera_rays_0 = (image_points - self.principal_point) / self.focal_length
 
-        cam_rays = cam_rays_0
-        squared_residual = torch.full_like(cam_rays_0[:, 0], torch.inf)
+        camera_rays = camera_rays_0
+        squared_residual = torch.full_like(camera_rays_0[:, 0], torch.inf)
         for _ in range(max_iterations):
             # apply *inverse* of distortion to camera rays to iteratively find the rays that correspond to the *distorted* source points
-            icD, delta, _ = self.__compute_distortion(cam_rays)
+            icD, delta, _ = self._compute_distortion(camera_rays)
 
-            residual = cam_rays - (cam_rays := (cam_rays_0 if delta is None else cam_rays_0 - delta) / icD[:, None])
+            residual = camera_rays - (
+                camera_rays := (camera_rays_0 if delta is None else camera_rays_0 - delta) / icD[:, None]
+            )
             squared_residual = torch.mean(torch.square(residual), dim=1)
 
-            if torch.mean(squared_residual).item() <= stop_mean_of_squares_error_px2:
+            if bool(torch.all(squared_residual <= stop_squared_residual)):
                 break
 
-        # Mean stopping criterion over all points above, per-point convergence for the valid flag
-        converged = (squared_residual <= stop_mean_of_squares_error_px2) & torch.isfinite(cam_rays).all(dim=1)
+        converged = (squared_residual <= stop_squared_residual) & torch.isfinite(camera_rays).all(dim=1)
 
-        return cam_rays, converged
+        return camera_rays, converged
 
 
 class OpenCVFisheyeCameraModel(CameraModel[types.OpenCVFisheyeCameraModelParameters]):
@@ -2050,7 +2047,7 @@ class OpenCVFisheyeCameraModel(CameraModel[types.OpenCVFisheyeCameraModelParamet
     focal_length: torch.Tensor
     max_angle: float
     newton_iterations: int
-    inverse_max_angle: float
+    _inverse_max_angle: float
     min_2d_norm: torch.Tensor
     forward_poly: torch.Tensor
     dforward_poly: torch.Tensor
@@ -2112,7 +2109,7 @@ class OpenCVFisheyeCameraModel(CameraModel[types.OpenCVFisheyeCameraModelParamet
         # Image points are inverted on this increasing branch, which (intentionally) extends beyond max_angle.
         # This is a host-side numpy computation independent of the model's torch dtype (the stationary point is
         # found as a polynomial root in float64, see compute_max_angle_with_monotonicity)
-        self.inverse_max_angle: float = min(
+        self._inverse_max_angle: float = min(
             math.pi,
             data_util.compute_max_angle_with_monotonicity(
                 np.array([0, 1, 0, k1, 0, k2, 0, k3, 0, k4], dtype=np.float64), np.inf
@@ -2183,42 +2180,42 @@ class OpenCVFisheyeCameraModel(CameraModel[types.OpenCVFisheyeCameraModelParamet
             self._eval_forward_poly_and_derivative,
             eval_poly_horner(self.approx_backward_poly, deltas),
             deltas,
-            self.inverse_max_angle,
+            self._inverse_max_angle,
             self.newton_iterations,
         )
 
         # Compute the camera rays and set the ones at the image center to [0,0,1]
-        cam_rays = torch.hstack(
+        camera_rays = torch.hstack(
             (torch.sin(thetas) * normalized_image_points / torch.maximum(deltas, self.min_2d_norm), torch.cos(thetas))
         )
-        cam_rays[deltas.flatten() < self.min_2d_norm, :] = torch.tensor(
+        camera_rays[deltas.flatten() < self.min_2d_norm, :] = torch.tensor(
             [[0, 0, 1]], device=self.device, dtype=self.dtype
         )
 
         # Rays are valid within the calibrated field of view (as in the projection, strictly smaller angles)
         valid = torch.isfinite(thetas[:, 0]) & (thetas[:, 0] < self.max_angle)
 
-        return CameraModel.CameraRaysReturn(camera_rays=cam_rays, valid_flag=valid)
+        return CameraModel.CameraRaysReturn(camera_rays=camera_rays, valid_flag=valid)
 
     def _camera_rays_to_image_points_impl(
-        self, cam_rays: torch.Tensor, return_jacobians
+        self, camera_rays: torch.Tensor, return_jacobians
     ) -> CameraModel.ImagePointsReturn:
         """
         For each camera ray compute the corresponding image point coordinates
         """
 
-        cam_rays = to_torch(cam_rays, device=self.device, dtype=self.dtype)
+        camera_rays = to_torch(camera_rays, device=self.device, dtype=self.dtype)
 
-        initial_requires_grad = cam_rays.requires_grad
+        initial_requires_grad = camera_rays.requires_grad
         if return_jacobians:
-            cam_rays.requires_grad = True
+            camera_rays.requires_grad = True
 
-        ray_xy_norms = self._numerically_stable_xy_norm(cam_rays)
+        ray_xy_norms = self._numerically_stable_xy_norm(camera_rays)
 
         # Make sure norm is non-vanishing (norm vanishes for points along the principal-axis)
         ray_xy_norms[ray_xy_norms[:, 0] <= 0.0] = torch.finfo(self.dtype).eps
 
-        thetas_full = torch.atan2(ray_xy_norms[:], cam_rays[:, 2:])
+        thetas_full = torch.atan2(ray_xy_norms[:], camera_rays[:, 2:])
 
         # Limit angles to max_angle to prevent projected points to leave valid cone around max_angle.
         # In particular for omnidirectional cameras, this prevents points outside the FOV to be
@@ -2233,7 +2230,7 @@ class OpenCVFisheyeCameraModel(CameraModel[types.OpenCVFisheyeCameraModelParamet
             self.forward_poly, thetas
         )  # these correspond to the radial distances to the principal point in the normalized image domain (up to focal length scales)
 
-        image_points = self.focal_length * (deltas / ray_xy_norms * cam_rays[:, :2]) + self.principal_point[None, :]
+        image_points = self.focal_length * (deltas / ray_xy_norms * camera_rays[:, :2]) + self.principal_point[None, :]
 
         # Extract valid image points (projections into image domain and within max angle range)
         valid_x = torch.logical_and(0.0 <= image_points[:, 0], image_points[:, 0] < self.resolution[0])
@@ -2245,22 +2242,22 @@ class OpenCVFisheyeCameraModel(CameraModel[types.OpenCVFisheyeCameraModelParamet
 
         if return_jacobians:
             # Evaluate Jacobians of valid points by gradients of both output dimensions
-            jacobians = torch.empty((len(cam_rays), 2, 3), dtype=self.dtype, device=self.device)
+            jacobians = torch.empty((len(camera_rays), 2, 3), dtype=self.dtype, device=self.device)
 
-            initial_gradient = torch.ones((len(cam_rays),), dtype=self.dtype, device=self.device)
+            initial_gradient = torch.ones((len(camera_rays),), dtype=self.dtype, device=self.device)
             image_points[:, 0].backward(gradient=initial_gradient, retain_graph=True)
 
-            assert cam_rays.grad is not None
-            jacobians[:, 0] = cam_rays.grad
+            assert camera_rays.grad is not None
+            jacobians[:, 0] = camera_rays.grad
 
-            cam_rays.grad.zero_()
+            camera_rays.grad.zero_()
 
             image_points[:, 1].backward(gradient=initial_gradient)
-            jacobians[:, 1] = cam_rays.grad
+            jacobians[:, 1] = camera_rays.grad
 
             # Cleanup for other backprop users
-            cam_rays.grad.zero_()
-            cam_rays.requires_grad = initial_requires_grad
+            camera_rays.grad.zero_()
+            camera_rays.requires_grad = initial_requires_grad
         else:
             jacobians = None
 
@@ -2272,6 +2269,7 @@ def _camera_model_from_parameters(
     cam_model_parameters: types.CameraModelParameters,
     device: Union[str, torch.device] = torch.device("cuda"),
     dtype: torch.dtype = torch.float32,
+    **model_kwargs: Any,
 ) -> CameraModel:
     """Open dispatch registry backing :func:`camera_model_from_parameters`
 
@@ -2291,8 +2289,9 @@ def _(
     cam_model_parameters: types.FThetaCameraModelParameters,
     device: Union[str, torch.device] = torch.device("cuda"),
     dtype: torch.dtype = torch.float32,
+    **model_kwargs: Any,
 ) -> FThetaCameraModel:
-    return FThetaCameraModel(cam_model_parameters, device, dtype)
+    return FThetaCameraModel(cam_model_parameters, device, dtype, **model_kwargs)
 
 
 @_camera_model_from_parameters.register
@@ -2300,8 +2299,9 @@ def _(
     cam_model_parameters: types.IdealPinholeCameraModelParameters,
     device: Union[str, torch.device] = torch.device("cuda"),
     dtype: torch.dtype = torch.float32,
+    **model_kwargs: Any,
 ) -> IdealPinholeCameraModel:
-    return IdealPinholeCameraModel(cam_model_parameters, device, dtype)
+    return IdealPinholeCameraModel(cam_model_parameters, device, dtype, **model_kwargs)
 
 
 @_camera_model_from_parameters.register
@@ -2309,8 +2309,9 @@ def _(
     cam_model_parameters: types.OpenCVPinholeCameraModelParameters,
     device: Union[str, torch.device] = torch.device("cuda"),
     dtype: torch.dtype = torch.float32,
+    **model_kwargs: Any,
 ) -> OpenCVPinholeCameraModel:
-    return OpenCVPinholeCameraModel(cam_model_parameters, device, dtype)
+    return OpenCVPinholeCameraModel(cam_model_parameters, device, dtype, **model_kwargs)
 
 
 @_camera_model_from_parameters.register
@@ -2318,8 +2319,9 @@ def _(
     cam_model_parameters: types.OpenCVFisheyeCameraModelParameters,
     device: Union[str, torch.device] = torch.device("cuda"),
     dtype: torch.dtype = torch.float32,
+    **model_kwargs: Any,
 ) -> OpenCVFisheyeCameraModel:
-    return OpenCVFisheyeCameraModel(cam_model_parameters, device, dtype)
+    return OpenCVFisheyeCameraModel(cam_model_parameters, device, dtype, **model_kwargs)
 
 
 #: Registers a camera model factory for a camera model parameter type
@@ -2329,8 +2331,11 @@ def _(
 #: builds from::
 #:
 #:     @register_camera_model
-#:     def _(cam_model_parameters: MyCameraModelParameters, device=..., dtype=...) -> MyCameraModel:
-#:         return MyCameraModel(cam_model_parameters, device, dtype)
+#:     def _(cam_model_parameters: MyCameraModelParameters, device=..., dtype=..., **model_kwargs) -> MyCameraModel:
+#:         return MyCameraModel(cam_model_parameters, device, dtype, **model_kwargs)
+#:
+#: Factories receive the keyword arguments given to :func:`camera_model_from_parameters` after
+#: ``dtype`` (``model_kwargs``) and forward them to the model's constructor.
 #:
 #: Dispatch follows the parameter type's MRO, so a model parameter type derived from a registered
 #: one resolves to the base's factory unless it registers its own.
@@ -2351,6 +2356,7 @@ def camera_model_from_parameters(
     cam_model_parameters: types.FThetaCameraModelParameters,
     device: Union[str, torch.device] = ...,
     dtype: torch.dtype = ...,
+    **model_kwargs: Any,
 ) -> FThetaCameraModel: ...
 
 
@@ -2359,6 +2365,7 @@ def camera_model_from_parameters(
     cam_model_parameters: types.IdealPinholeCameraModelParameters,
     device: Union[str, torch.device] = ...,
     dtype: torch.dtype = ...,
+    **model_kwargs: Any,
 ) -> IdealPinholeCameraModel: ...
 
 
@@ -2367,6 +2374,7 @@ def camera_model_from_parameters(
     cam_model_parameters: types.OpenCVPinholeCameraModelParameters,
     device: Union[str, torch.device] = ...,
     dtype: torch.dtype = ...,
+    **model_kwargs: Any,
 ) -> OpenCVPinholeCameraModel: ...
 
 
@@ -2375,6 +2383,7 @@ def camera_model_from_parameters(
     cam_model_parameters: types.OpenCVFisheyeCameraModelParameters,
     device: Union[str, torch.device] = ...,
     dtype: torch.dtype = ...,
+    **model_kwargs: Any,
 ) -> OpenCVFisheyeCameraModel: ...
 
 
@@ -2383,6 +2392,7 @@ def camera_model_from_parameters(
     cam_model_parameters: CameraModelParametersT,
     device: Union[str, torch.device] = ...,
     dtype: torch.dtype = ...,
+    **model_kwargs: Any,
 ) -> CameraModel[CameraModelParametersT]: ...
 
 
@@ -2390,6 +2400,7 @@ def camera_model_from_parameters(
     cam_model_parameters: types.CameraModelParameters,
     device: Union[str, torch.device] = torch.device("cuda"),
     dtype: torch.dtype = torch.float32,
+    **model_kwargs: Any,
 ) -> CameraModel:
     """Initializes the camera model corresponding to the given camera model parameters
 
@@ -2400,6 +2411,9 @@ def camera_model_from_parameters(
         cam_model_parameters: the camera model parameters to build the camera model from.
         device: the device to instantiate the camera model on.
         dtype: the floating point type to instantiate the camera model with.
+        model_kwargs: keyword arguments forwarded to the camera model's constructor (e.g.,
+            ``newton_iterations`` of :class:`FThetaCameraModel`); arguments the constructor does
+            not accept raise a ``TypeError``.
 
     Returns:
         the camera model corresponding to ``cam_model_parameters``.
@@ -2407,7 +2421,7 @@ def camera_model_from_parameters(
     Raises:
         TypeError: if no camera model is registered for the given parameter type.
     """
-    return _camera_model_from_parameters(cam_model_parameters, device, dtype)
+    return _camera_model_from_parameters(cam_model_parameters, device, dtype, **model_kwargs)
 
 
 @singledispatch
@@ -2415,6 +2429,7 @@ def _external_distortion_model_from_parameters(
     external_distortion_parameters: types.ExternalDistortionParameters,
     device: Union[str, torch.device] = torch.device("cuda"),
     dtype: torch.dtype = torch.float32,
+    **model_kwargs: Any,
 ) -> ExternalDistortionModel:
     """Open dispatch registry backing :func:`external_distortion_model_from_parameters`
 
@@ -2434,16 +2449,19 @@ def _(
     external_distortion_parameters: types.BivariateWindshieldModelParameters,
     device: Union[str, torch.device] = torch.device("cuda"),
     dtype: torch.dtype = torch.float32,
+    **model_kwargs: Any,
 ) -> BivariateWindshieldModel:
-    return BivariateWindshieldModel(external_distortion_parameters, device, dtype)
+    return BivariateWindshieldModel(external_distortion_parameters, device, dtype, **model_kwargs)
 
 
 #: Registers an external distortion model factory for an external distortion parameter type
 #:
 #: Accepts the same forms as :meth:`functools.singledispatch.register`, i.e. it can be used as a
 #: bare decorator on a factory whose first parameter is annotated with the parameter type it
-#: builds from. Dispatch follows the parameter type's MRO, so a parameter type derived from a
-#: registered one resolves to the base's factory unless it registers its own.
+#: builds from. Factories receive the keyword arguments given to
+#: :func:`external_distortion_model_from_parameters` after ``dtype`` (``model_kwargs``) and forward them
+#: to the model's constructor. Dispatch follows the parameter type's MRO, so a parameter type derived
+#: from a registered one resolves to the base's factory unless it registers its own.
 #:
 #: Registration is a runtime mechanism; it cannot extend the overloads of
 #: :func:`external_distortion_model_from_parameters`. Out-of-tree parameters deriving from
@@ -2461,6 +2479,7 @@ def external_distortion_model_from_parameters(
     external_distortion_parameters: types.BivariateWindshieldModelParameters,
     device: Union[str, torch.device] = ...,
     dtype: torch.dtype = ...,
+    **model_kwargs: Any,
 ) -> BivariateWindshieldModel: ...
 
 
@@ -2469,6 +2488,7 @@ def external_distortion_model_from_parameters(
     external_distortion_parameters: ExternalDistortionParametersT,
     device: Union[str, torch.device] = ...,
     dtype: torch.dtype = ...,
+    **model_kwargs: Any,
 ) -> ExternalDistortionModel[ExternalDistortionParametersT]: ...
 
 
@@ -2476,6 +2496,7 @@ def external_distortion_model_from_parameters(
     external_distortion_parameters: types.ExternalDistortionParameters,
     device: Union[str, torch.device] = torch.device("cuda"),
     dtype: torch.dtype = torch.float32,
+    **model_kwargs: Any,
 ) -> ExternalDistortionModel:
     """Initializes the external distortion model corresponding to the given parameters
 
@@ -2486,6 +2507,8 @@ def external_distortion_model_from_parameters(
         external_distortion_parameters: the parameters to build the distortion model from.
         device: the device to instantiate the model on.
         dtype: the floating point type to instantiate the model with.
+        model_kwargs: keyword arguments forwarded to the model's constructor; arguments the
+            constructor does not accept raise a ``TypeError``.
 
     Returns:
         the external distortion model corresponding to ``external_distortion_parameters``.
@@ -2493,4 +2516,4 @@ def external_distortion_model_from_parameters(
     Raises:
         TypeError: if no model is registered for the given parameter type.
     """
-    return _external_distortion_model_from_parameters(external_distortion_parameters, device, dtype)
+    return _external_distortion_model_from_parameters(external_distortion_parameters, device, dtype, **model_kwargs)
