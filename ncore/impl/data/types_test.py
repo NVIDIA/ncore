@@ -547,11 +547,11 @@ class TestFThetaTangentialParameters(unittest.TestCase):
         np.testing.assert_array_equal(q.tangential_coeffs, p.tangential_coeffs)
 
     def test_validation(self):
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, r"tangential_coeffs must have shape \(2,\), got shape \(3,\)"):
             _ftheta(tangential_coeffs=np.zeros(3, np.float32))
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "tangential_coeffs must be of dtype float32, got float64"):
             _ftheta(tangential_coeffs=np.zeros(2, np.float64))
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "max_angle < pi/2"):
             _ftheta(max_angle=np.pi / 2, tangential_coeffs=np.array([0.1, 0.0], np.float32))
         # fisheye with explicit zeros: accepted
         _ftheta(max_angle=2.44, tangential_coeffs=np.zeros(2, np.float32))
@@ -858,7 +858,7 @@ class TestParaxialPinholeGeometry(unittest.TestCase):
             with self.subTest(field=field):
                 kwargs = self._valid()
                 kwargs[field] = bad
-                with self.assertRaises(AssertionError):
+                with self.assertRaisesRegex(ValueError, f"{field} must be of dtype"):
                     ParaxialPinholeGeometry(**kwargs)
 
     def test_wrong_shape_is_rejected(self):
@@ -870,7 +870,7 @@ class TestParaxialPinholeGeometry(unittest.TestCase):
             with self.subTest(field=field):
                 kwargs = self._valid()
                 kwargs[field] = bad
-                with self.assertRaises(AssertionError):
+                with self.assertRaisesRegex(ValueError, f"{field} must have shape"):
                     ParaxialPinholeGeometry(**kwargs)
 
     def test_non_positive_focal_is_rejected(self):
@@ -879,7 +879,7 @@ class TestParaxialPinholeGeometry(unittest.TestCase):
             with self.subTest(focal=focal):
                 kwargs = self._valid()
                 kwargs["focal_length"] = np.array(focal, dtype=np.float32)
-                with self.assertRaises(AssertionError):
+                with self.assertRaisesRegex(ValueError, "focal_length must be positive"):
                     ParaxialPinholeGeometry(**kwargs)
 
 
