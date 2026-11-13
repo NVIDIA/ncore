@@ -19,6 +19,7 @@ from typing import Literal, cast
 
 import numpy as np
 
+from ncore.impl.common.transformations import MotionCompensator
 from ncore.impl.data import util as data_util
 from tools.data_converter.structured_lidar_model import (
     HDL32E_ELEVATIONS_RAD,
@@ -26,6 +27,7 @@ from tools.data_converter.structured_lidar_model import (
     HDL32E_N_COLUMNS,
     ColumnAlignment,
     _binned_correction,
+    align_frame,
     assign_model_columns,
     compute_column_alignment,
     compute_frame_timestamps,
@@ -713,6 +715,43 @@ class TestStructuredLidarModel(unittest.TestCase):
         # And recovered as the true elevation set sorted descending (the
         # interleaving is undone, not merely nudged).
         np.testing.assert_allclose(elev.astype(np.float64), np.sort(elevations)[::-1], atol=1e-5)
+
+    # --- align_frame tests ----------------------------------------------------
+
+    def test_align_frame_static_rig_decompensates_to_input(self) -> None:
+        """For a static rig the decompensated points equal the (valid) motion-compensated input points."""
+        model = self.model
+        n_cols, n_beams = model.n_columns, HDL32E_N_BEAMS
+        xyz = self._make_decompensated_grid(
+            model.column_azimuths_rad.astype(np.float64), n_beams, HDL32E_ELEVATIONS_RAD[::-1].astype(np.float64)
+        ).astype(np.float32)
+        ring_index = np.tile(np.arange(n_beams), n_cols)
+        frame_start_us, frame_end_us = 1_000_000, 1_050_000
+        compensator = MotionCompensator.from_sensor_rig(
+            sensor_id="lidar",
+            T_sensor_rig=np.eye(4),
+            T_rig_worlds=np.stack([np.eye(4), np.eye(4)]),
+            T_rig_worlds_timestamps_us=np.array([frame_start_us, frame_end_us], dtype=np.uint64),
+        )
+
+        aligned = align_frame(
+            xyz,
+            ring_index,
+            np.ones(len(xyz), dtype=np.float32),
+            n_beams,
+            model,
+            compensator,
+            "lidar",
+            frame_start_us,
+            frame_end_us,
+        )
+
+        assert aligned is not None
+        self.assertIsInstance(aligned.xyz_decompensated, np.ndarray)
+        self.assertEqual(aligned.xyz_decompensated.shape, (len(aligned.timestamps_us), 3))
+        self.assertGreater(len(aligned.xyz_decompensated), 0)
+        input_rows = {tuple(row) for row in np.round(xyz, 3)}
+        self.assertTrue(all(tuple(row) in input_rows for row in np.round(aligned.xyz_decompensated, 3)))
 
     # --- derive_nominal_hdl32e tests -------------------------------------------
 

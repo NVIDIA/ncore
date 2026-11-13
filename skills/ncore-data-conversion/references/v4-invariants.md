@@ -122,6 +122,8 @@ compensated to. Transform world or ego-frame points into that frame first, and
 pass the matching `reference_timestamp_us` and `anchor_frame_id`, where the
 anchor must match the one used for compensation. Feeding world-frame points
 straight in silently corrupts both range and direction rather than raising.
+It returns a `MotionCompensator.MotionDecompensationResult`; the points are its
+`xyz_pointtime` field.
 
 ## Sensor ids differ between converters
 

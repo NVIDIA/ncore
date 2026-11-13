@@ -151,15 +151,17 @@ class PoseInterpolator:
 
     @property
     def timestamps(self) -> np.ndarray:
-        """Returns the timestamps corresponding to the original poses used for interpolation"""
+        """Returns the timestamps corresponding to the original poses used for interpolation (microseconds)"""
         return self._timestamps
 
-    def __init__(self, poses, timestamps) -> None:
+    def __init__(self, poses: npt.ArrayLike, timestamps: npt.ArrayLike) -> None:
         """Initializes the PoseInterpolator
 
         Args:
-            poses: Rigid transformations in SE3 representation [m, 4, 4]
-            timestamps: Corresponding timestamps for each pose [m]
+            poses: Rigid transformations in SE3 representation [m, 4, 4] (floating point)
+            timestamps: Corresponding timestamps for each pose [m], in microseconds (integer type). Interpolation
+                also accepts other strictly increasing time domains (e.g., normalized floating point times), while
+                :meth:`extrapolate_to_timestamps` requires integer microseconds.
         """
 
         poses = np.asarray(poses)
@@ -173,12 +175,12 @@ class PoseInterpolator:
         self._poses = poses
         self._timestamps = timestamps
 
-        self.slerp = spatial.transform.Slerp(timestamps, R.from_matrix(poses[:, :3, :3]))
-        self.f_t = interpolate.interp1d(timestamps, poses[:, 0:3, 3], axis=0)
+        self._slerp = spatial.transform.Slerp(timestamps, R.from_matrix(poses[:, :3, :3]))
+        self._f_t = interpolate.interp1d(timestamps, poses[:, 0:3, 3], axis=0)
 
-        self.last_row = np.array([0, 0, 0, 1], dtype=np.float32).reshape(1, 1, -1)
+        self._last_row = np.array([0, 0, 0, 1], dtype=np.float32).reshape(1, 1, -1)
 
-    def in_range(self, ts) -> bool:
+    def in_range(self, ts: npt.ArrayLike) -> bool:
         """Returns true if all provided timestamps (scalar or array-like) are within the interpolation range"""
         return (
             np.logical_and(self._timestamps[0] <= (ts_array := np.asarray(ts)), ts_array <= self._timestamps[-1])
@@ -198,13 +200,13 @@ class PoseInterpolator:
         Raises:
             ValueError: If any timestamp is outside the interpolation range
         """
-        t_interp = self.f_t(ts_target).reshape(-1, 3, 1).astype(dtype)
-        R_interp = self.slerp(ts_target).as_matrix().reshape(-1, 3, 3).astype(dtype)
+        t_interp = self._f_t(ts_target).reshape(-1, 3, 1).astype(dtype)
+        R_interp = self._slerp(ts_target).as_matrix().reshape(-1, 3, 3).astype(dtype)
 
         return np.concatenate(
             (
                 np.concatenate([R_interp, t_interp], axis=-1),
-                np.tile(self.last_row.astype(dtype=dtype), (R_interp.shape[0], 1, 1)),
+                np.tile(self._last_row.astype(dtype=dtype), (R_interp.shape[0], 1, 1)),
             ),
             axis=1,
         )
@@ -337,7 +339,7 @@ class PoseInterpolator:
 
         # Allocate output
         result = np.empty((len(ts_target), 4, 4), dtype=float_type)
-        result[:, 3, :] = self.last_row.astype(float_type)
+        result[:, 3, :] = self._last_row.astype(float_type)
 
         # Handle timestamps within range using standard interpolation
         if mask_within.any():
@@ -739,12 +741,13 @@ class MotionCompensator:
                     ),
                 ]
             ),
-            parameters,
+            parameters=parameters,
         )
 
     def __init__(
         self,
         pose_graph: PoseGraphInterpolator,
+        *,
         parameters: Optional[MotionCompensator.Parameters] = None,
     ) -> None:
         """
@@ -810,16 +813,27 @@ class MotionCompensator:
 
     @dataclass
     class MotionCompensationResult:
-        # motion-compensated ray segment start points, relative to the sensor frame at the reference time, [N,3]
+        """Result of :meth:`MotionCompensator.motion_compensate_points`"""
+
+        #: Motion-compensated ray start points (the sensor positions at the points' measurement times), relative to
+        #: the sensor frame at the reference time [N, 3]
         xyz_s_reftime: np.ndarray
-        # motion-compensated ray segment end points, relative to the sensor frame at the reference time, [N,3]
+        #: Motion-compensated ray end points (the measured points), relative to the sensor frame at the reference
+        #: time [N, 3]
         xyz_e_reftime: np.ndarray
-        # reference sensor frame the compensated points are expressed in (equals the sensor_id)
-        reference_frame_id: str
-        # timestamp of the reference sensor frame the points are expressed in
-        reference_timestamp_us: int
-        # common anchor frame used to compose the compensation transforms
-        anchor_frame_id: str
+        reference_frame_id: str  #: Reference sensor frame the compensated points are expressed in (the ``sensor_id``)
+        reference_timestamp_us: int  #: Timestamp of the reference sensor frame the points are expressed in
+        anchor_frame_id: str  #: Common anchor frame used to compose the compensation transforms
+
+    @dataclass
+    class MotionDecompensationResult:
+        """Result of :meth:`MotionCompensator.motion_decompensate_points`"""
+
+        #: Motion-decompensated points, relative to the sensor frame at each point's measurement time [N, 3]
+        xyz_pointtime: np.ndarray
+        reference_frame_id: str  #: Reference sensor frame the input points were expressed in (the ``sensor_id``)
+        reference_timestamp_us: int  #: Timestamp of the reference sensor frame the input points were expressed in
+        anchor_frame_id: str  #: Common anchor frame used to compose the decompensation transforms
 
     def motion_compensate_points(
         self,
@@ -828,6 +842,7 @@ class MotionCompensator:
         timestamp_us: np.ndarray,
         frame_start_timestamp_us: int,
         frame_end_timestamp_us: int,
+        *,
         reference_timestamp_us: Optional[int] = None,
         anchor_frame_id: str = "world",
     ) -> MotionCompensationResult:
@@ -864,7 +879,7 @@ class MotionCompensator:
             reference_timestamp_us = frame_end_timestamp_us
 
         if not len(xyz_pointtime):
-            return self.MotionCompensationResult(
+            return MotionCompensator.MotionCompensationResult(
                 np.empty_like(xyz_pointtime, shape=(0, 3)),
                 np.empty_like(xyz_pointtime, shape=(0, 3)),
                 reference_frame_id=sensor_id,
@@ -898,7 +913,7 @@ class MotionCompensator:
             ),
         )
 
-        return self.MotionCompensationResult(
+        return MotionCompensator.MotionCompensationResult(
             xyz_s_reftime,
             xyz_e_reftime,
             reference_frame_id=sensor_id,
@@ -913,9 +928,10 @@ class MotionCompensator:
         timestamp_us: np.ndarray,
         frame_start_timestamp_us: int,
         frame_end_timestamp_us: int,
+        *,
         reference_timestamp_us: Optional[int] = None,
         anchor_frame_id: str = "world",
-    ) -> np.ndarray:
+    ) -> MotionDecompensationResult:
         """
         Decompensate motion of motion-compensated points to bring points into time-dependent sensor-frame
 
@@ -939,17 +955,22 @@ class MotionCompensator:
             anchor_frame_id(str): common anchor frame used to compose the transforms
                 (defaults to "world"). Must match the anchor used for compensation.
         Returns:
-            xyz_pointtime(np.array): points in time-dependent sensor frame after motion-decompensation [n,3]
+            MotionDecompensationResult: result of the motion-decompensation
         """
 
         # Sanity check timestamp consistency
         assert len(xyz_reftime) == len(timestamp_us)
 
-        if not len(xyz_reftime):
-            return np.empty_like(xyz_reftime, shape=(0, 3))
-
         if reference_timestamp_us is None:
             reference_timestamp_us = frame_end_timestamp_us
+
+        if not len(xyz_reftime):
+            return MotionCompensator.MotionDecompensationResult(
+                np.empty_like(xyz_reftime, shape=(0, 3)),
+                reference_frame_id=sensor_id,
+                reference_timestamp_us=reference_timestamp_us,
+                anchor_frame_id=anchor_frame_id,
+            )
 
         assert frame_start_timestamp_us <= timestamp_us.min() and timestamp_us.max() <= frame_end_timestamp_us, (
             "Point timestamps not in frame time bounds"
@@ -979,7 +1000,12 @@ class MotionCompensator:
             ),
         )
 
-        return xyz_pointtime
+        return MotionCompensator.MotionDecompensationResult(
+            xyz_pointtime,
+            reference_frame_id=sensor_id,
+            reference_timestamp_us=reference_timestamp_us,
+            anchor_frame_id=anchor_frame_id,
+        )
 
 
 class PoseGraphInterpolator:

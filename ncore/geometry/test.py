@@ -40,3 +40,18 @@ class TestPackage(unittest.TestCase):
         self.assertEqual(sorted(public.__all__), sorted(expected))
         for name in expected:
             self.assertIs(getattr(public, name), getattr(transformations, name), name)
+
+    def test_keyword_only_parameters(self):
+        """The parameters of motion compensators and the optional arguments of their (de)compensation methods are
+        keyword-only"""
+        import inspect
+
+        from ncore.geometry import MotionCompensator
+
+        for function, expected in (
+            (MotionCompensator.__init__, ["parameters"]),
+            (MotionCompensator.motion_compensate_points, ["reference_timestamp_us", "anchor_frame_id"]),
+            (MotionCompensator.motion_decompensate_points, ["reference_timestamp_us", "anchor_frame_id"]),
+        ):
+            parameters = inspect.signature(function).parameters.values()
+            self.assertEqual([p.name for p in parameters if p.kind is p.KEYWORD_ONLY], expected, function.__qualname__)
