@@ -42,7 +42,7 @@ Types
      (small archives stay in memory)
    - ``"keep"``: keep the tail read (records near the end of the archive are served from memory for its lifetime)
 
-   See :meth:`IndexedTarArchive.release_index_tail`.
+   See :meth:`Store.release_index_tail` and :meth:`IndexedTarArchive.release_index_tail`.
 
 .. autodata:: ncore.data.stores.BloscCname
 
