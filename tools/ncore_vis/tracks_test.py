@@ -19,7 +19,7 @@ import unittest
 
 import numpy as np
 
-from ncore.impl.data.types import BBox3, CuboidTrackObservation, LabelSource
+from ncore.data import BBox3, CuboidTrackObservation, LabelSource
 from tools.ncore_vis.tracks import CuboidTrack
 
 

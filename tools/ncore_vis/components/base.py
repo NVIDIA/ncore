@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Dict, List, Type
 
 import viser
 
-from ncore.impl.common.transformations import HalfClosedInterval
+from ncore.geometry import HalfClosedInterval
 
 
 if TYPE_CHECKING:

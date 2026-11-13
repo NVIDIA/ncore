@@ -33,7 +33,7 @@ import numpy as np
 
 from scipy.spatial.transform import Rotation
 
-from ncore.impl.common.transformations import se3_inverse
+from ncore.geometry import se3_inverse
 
 
 # Type alias for path arguments (compatible with UPath, Path, and str)

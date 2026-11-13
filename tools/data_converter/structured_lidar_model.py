@@ -53,8 +53,8 @@ from typing import Literal, Optional
 
 import numpy as np
 
-from ncore.impl.common.transformations import MotionCompensator
-from ncore.impl.data.types import RowOffsetStructuredSpinningLidarModelParameters
+from ncore.data import RowOffsetStructuredSpinningLidarModelParameters
+from ncore.geometry import MotionCompensator
 
 
 # --- Data structures -----------------------------------------------------------

@@ -21,8 +21,8 @@ from typing import List
 
 import viser
 
-from ncore.impl.common.transformations import HalfClosedInterval
-from ncore.impl.data.types import LabelSource
+from ncore.data import LabelSource
+from ncore.geometry import HalfClosedInterval
 from tools.ncore_vis.components.base import VisualizationComponent, register_component
 from tools.ncore_vis.utils import se3_from_centroid_euler, se3_to_position_wxyz
 
