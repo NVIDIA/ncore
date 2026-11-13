@@ -36,13 +36,6 @@ from ncore.impl.data.itar import IndexedTarArchive, IndexTailRetention
 from ncore.impl.data.nodes import Group, _backend, check_zarr_format
 
 
-def is_consolidated_metadata_key(key: str) -> bool:
-    """True for keys of consolidated metadata records (ncore's compressed consolidated metadata of both zarr formats,
-    and zarr-python 2's ``.zmetadata``), which :meth:`Store.consolidate` regenerates (e.g., to skip when copying the
-    records of stores)"""
-    return key in (V2_CONSOLIDATED_METADATA_KEY, V3_CONSOLIDATED_METADATA_KEY, ".zmetadata")
-
-
 class Store(ABC):
     """A store of a zarr hierarchy.
 
@@ -83,6 +76,13 @@ class Store(ABC):
         records. Node metadata records are complete as well (e.g., for zarr-python, which opens such hierarchies as
         unconsolidated)."""
         _backend.consolidate(self._zarr_store)
+
+    @staticmethod
+    def is_consolidated_metadata_key(key: str) -> bool:
+        """True for keys of consolidated metadata records (ncore's compressed consolidated metadata of both zarr
+        formats, and zarr-python 2's ``.zmetadata``), which :meth:`Store.consolidate` regenerates (e.g., to skip when
+        copying the records of stores)"""
+        return key in (V2_CONSOLIDATED_METADATA_KEY, V3_CONSOLIDATED_METADATA_KEY, ".zmetadata")
 
     def reload_resources(self) -> None:
         """Re-initializes the resources of the store (e.g., file objects in forked processes), no-op by default"""

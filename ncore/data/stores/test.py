@@ -34,7 +34,6 @@ class TestPackage(unittest.TestCase):
             "Store": stores.Store,
             "IndexedTarZarrStore": stores.IndexedTarZarrStore,
             "ZarrStoreAdapter": stores.ZarrStoreAdapter,
-            "is_consolidated_metadata_key": stores.is_consolidated_metadata_key,
             "Group": nodes.Group,
             "Array": nodes.Array,
             "ZarrFormat": nodes.ZarrFormat,
