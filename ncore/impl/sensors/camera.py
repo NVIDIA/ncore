@@ -884,6 +884,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         pixel_idxs: Union[torch.Tensor, np.ndarray],
         T_sensor_world: Union[torch.Tensor, np.ndarray],
         timestamp_us: Optional[int] = None,
+        *,
         camera_rays: Optional[CameraModel.CameraRaysReturn] = None,
         return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
@@ -892,9 +893,9 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
             self.pixels_to_image_points(pixel_idxs),
             T_sensor_world,
             timestamp_us,
-            camera_rays,
-            return_T_sensor_worlds,
-            return_timestamps,
+            camera_rays=camera_rays,
+            return_T_sensor_worlds=return_T_sensor_worlds,
+            return_timestamps=return_timestamps,
         )
 
     def pixels_to_world_rays_shutter_pose(
@@ -904,6 +905,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         T_sensor_world_end: Union[torch.Tensor, np.ndarray],
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
+        *,
         camera_rays: Optional[CameraModel.CameraRaysReturn] = None,
         return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
@@ -914,9 +916,9 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
             T_sensor_world_end,
             start_timestamp_us,
             end_timestamp_us,
-            camera_rays,
-            return_T_sensor_worlds,
-            return_timestamps,
+            camera_rays=camera_rays,
+            return_T_sensor_worlds=return_T_sensor_worlds,
+            return_timestamps=return_timestamps,
         )
 
     def pixels_to_world_rays_mean_pose(
@@ -926,6 +928,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         T_sensor_world_end: Union[torch.Tensor, np.ndarray],
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
+        *,
         camera_rays: Optional[CameraModel.CameraRaysReturn] = None,
         return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
@@ -943,9 +946,9 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
             T_sensor_world_end,
             start_timestamp_us,
             end_timestamp_us,
-            camera_rays,
-            return_T_sensor_worlds,
-            return_timestamps,
+            camera_rays=camera_rays,
+            return_T_sensor_worlds=return_T_sensor_worlds,
+            return_timestamps=return_timestamps,
         )
 
     def image_points_to_world_rays_static_pose(
@@ -953,6 +956,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         image_points: Union[torch.Tensor, np.ndarray],
         T_sensor_world: Union[torch.Tensor, np.ndarray],
         timestamp_us: Optional[int] = None,
+        *,
         camera_rays: Optional[CameraModel.CameraRaysReturn] = None,
         return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
@@ -1010,6 +1014,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         T_sensor_world_end: Union[torch.Tensor, np.ndarray],
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
+        *,
         camera_rays: Optional[CameraModel.CameraRaysReturn] = None,
         return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
@@ -1041,9 +1046,9 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
                 0.5,
             ),
             timestamp_us,
-            camera_rays,
-            return_T_sensor_worlds,
-            return_timestamps,
+            camera_rays=camera_rays,
+            return_T_sensor_worlds=return_T_sensor_worlds,
+            return_timestamps=return_timestamps,
         )
 
     def image_points_to_world_rays_shutter_pose(
@@ -1053,6 +1058,7 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
         T_sensor_world_end: Union[torch.Tensor, np.ndarray],
         start_timestamp_us: Optional[int] = None,
         end_timestamp_us: Optional[int] = None,
+        *,
         camera_rays: Optional[CameraModel.CameraRaysReturn] = None,
         return_T_sensor_worlds: bool = False,
         return_timestamps: bool = False,
@@ -1069,9 +1075,9 @@ class CameraModel(BaseModel, ABC, Generic[CameraModelParametersT_co]):
                 image_points,
                 T_sensor_world_start,
                 start_timestamp_us,
-                camera_rays,
-                return_T_sensor_worlds,
-                return_timestamps,
+                camera_rays=camera_rays,
+                return_T_sensor_worlds=return_T_sensor_worlds,
+                return_timestamps=return_timestamps,
             )
 
         # Check if the variables are numpy, convert them to torch and send them to correct device
@@ -1282,6 +1288,7 @@ class FThetaCameraModel(CameraModel[types.FThetaCameraModelParameters]):
         camera_model_parameters: types.FThetaCameraModelParameters,
         device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
+        *,
         newton_iterations: int = 3,
         min_2d_norm: float = 1e-6,
     ):
@@ -1736,6 +1743,7 @@ class OpenCVPinholeCameraModel(PinholeCameraModel[types.OpenCVPinholeCameraModel
         camera_model_parameters: types.OpenCVPinholeCameraModelParameters,
         device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
+        *,
         max_normalized_radius_squared: Optional[float] = None,
     ):
         """Initializes an OpenCVPinholeCameraModel to operate on a specific device and floating-point type.
@@ -2053,6 +2061,7 @@ class OpenCVFisheyeCameraModel(CameraModel[types.OpenCVFisheyeCameraModelParamet
         camera_model_parameters: types.OpenCVFisheyeCameraModelParameters,
         device: Union[str, torch.device] = torch.device("cuda"),
         dtype: torch.dtype = torch.float32,
+        *,
         newton_iterations: int = 20,
         min_2d_norm: float = 1e-6,
     ):

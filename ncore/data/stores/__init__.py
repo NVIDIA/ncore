@@ -16,9 +16,18 @@
 """Package exposing NCore's storage APIs: indexed tar archives, the zarr hierarchies stored in them (or in other
 zarr-python stores), and typed access to their groups and arrays"""
 
-from ncore.impl.data.backend import BloscCompression
-from ncore.impl.data.itar import IndexedTarArchive, Record, RecordExistsError
-from ncore.impl.data.nodes import Array, EncodedArray, Group, ZarrFormat
+from ncore.impl.data.backend import (
+    Attributes,
+    BloscCname,
+    BloscCompression,
+    BloscShuffle,
+    FillValue,
+    Selection,
+    ZarrFormat,
+    ZarrStore,
+)
+from ncore.impl.data.itar import IndexedTarArchive, IndexTailRetention, Record, RecordExistsError
+from ncore.impl.data.nodes import Array, EncodedArray, Group, NodeCache
 from ncore.impl.data.stores import IndexedTarZarrStore, Store, ZarrStoreAdapter
 
 
@@ -27,16 +36,24 @@ __all__ = [
     "IndexedTarArchive",
     "Record",
     "RecordExistsError",
+    "IndexTailRetention",
     # zarr hierarchy stores
     "Store",
     "IndexedTarZarrStore",
     "ZarrStoreAdapter",
+    "ZarrStore",
     # groups / arrays of zarr hierarchies
     "Group",
     "Array",
+    "NodeCache",
     "ZarrFormat",
+    "Selection",
+    "FillValue",
+    "Attributes",
     # compression of arrays
     "BloscCompression",
+    "BloscCname",
+    "BloscShuffle",
     # arrays encoded off the writing thread
     "EncodedArray",
 ]

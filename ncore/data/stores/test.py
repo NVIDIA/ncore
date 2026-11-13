@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import tempfile
 import unittest
 
@@ -31,18 +32,67 @@ class TestPackage(unittest.TestCase):
             "IndexedTarArchive": itar.IndexedTarArchive,
             "Record": itar.Record,
             "RecordExistsError": itar.RecordExistsError,
+            "IndexTailRetention": itar.IndexTailRetention,
             "Store": stores.Store,
             "IndexedTarZarrStore": stores.IndexedTarZarrStore,
             "ZarrStoreAdapter": stores.ZarrStoreAdapter,
+            "ZarrStore": backend.ZarrStore,
             "Group": nodes.Group,
             "Array": nodes.Array,
-            "ZarrFormat": nodes.ZarrFormat,
+            "NodeCache": nodes.NodeCache,
+            "ZarrFormat": backend.ZarrFormat,
+            "Selection": backend.Selection,
+            "FillValue": backend.FillValue,
+            "Attributes": backend.Attributes,
             "BloscCompression": backend.BloscCompression,
+            "BloscCname": backend.BloscCname,
+            "BloscShuffle": backend.BloscShuffle,
             "EncodedArray": nodes.EncodedArray,
         }
         self.assertEqual(sorted(public.__all__), sorted(expected))
         for name, value in expected.items():
             self.assertIs(getattr(public, name), value, name)
+
+    def test_zarr_store(self):
+        """ZarrStore is the store base class of the installed zarr-python version (of the stores of adapters)"""
+        from ncore.data.stores import ZarrStore, ZarrStoreAdapter
+
+        with tempfile.TemporaryDirectory() as tmp:
+            adapter = ZarrStoreAdapter.directory(Path(tmp) / "store.zarr")
+            self.assertIsInstance(adapter.zarr, ZarrStore)
+            self.assertIsNot(ZarrStore, object)
+
+    def test_keyword_only_parameters(self):
+        """The optional parameters of archives and stores are keyword-only"""
+        from ncore.data.stores import IndexedTarArchive, IndexedTarZarrStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "store.itar"
+            with IndexedTarZarrStore(path, mode="w") as store:
+                store.create_root_group({})
+                store.consolidate()
+
+            # (untyped: the calls don't type check)
+            archive: Any = IndexedTarArchive
+            store: Any = IndexedTarZarrStore
+            calls = {
+                "IndexedTarArchive": lambda: archive(path, "r"),
+                "IndexedTarArchive.open_async": lambda: archive.open_async(path, 1 << 20),
+                "IndexedTarZarrStore": lambda: store(path, "r"),
+                "IndexedTarZarrStore.open_async": lambda: store.open_async(path, 1 << 20),
+            }
+            for name, call in calls.items():
+                with self.subTest(name), self.assertRaisesRegex(TypeError, "positional argument"):
+                    call()
+
+            # (keyword arguments are accepted)
+            IndexedTarArchive(path, mode="r", index_tail_read_size=None).close()
+            IndexedTarZarrStore(path, mode="r", index_tail_read_size=None).close()
+            for opened in (
+                asyncio.run(IndexedTarArchive.open_async(path, index_tail_read_size=None)),
+                asyncio.run(IndexedTarZarrStore.open_async(path, index_tail_read_size=None)),
+            ):
+                opened.close()
 
     def test_archive_records(self):
         """Records of an archive are exposed read-only, with the offset and size of their payload"""
