@@ -93,11 +93,13 @@ Behavior worth knowing before you pick or adapt one:
 ## Run a converter
 
 Each `convert` binary takes shared base flags (`--root-dir`, `--output-dir`,
-`--verbose`, and `--no-cameras` / `--camera-id` / `--no-lidars` / `--lidar-id`
-/ `--no-radars` / `--radar-id` to restrict which sensors are processed),
-followed by a subcommand carrying format-specific flags. The sensor-restriction
-flags are for narrowing a run during development, not for making an unsupported
-host work.
+`--verbose`, `--zarr-format {2,3}`, and `--no-cameras` / `--camera-id` /
+`--no-lidars` / `--lidar-id` / `--no-radars` / `--radar-id` to restrict which
+sensors are processed), followed by a subcommand carrying format-specific
+flags. The sensor-restriction flags are for narrowing a run during
+development, not for making an unsupported host work. `--zarr-format`
+defaults to `2`, readable by every NCore and zarr-python version; `3` needs
+zarr-python 3 (Python >= 3.11) both to write and to read the output.
 
 Common subcommand flags, though not every subcommand offers every one:
 
@@ -292,7 +294,7 @@ doing real work and its endpoints are worth checking.
 - `Frame start timestamp must be contained in the sequence time range`. The
   frame falls outside the half-open sequence interval. Trim the frame or widen
   the interval; the writer does not clamp.
-- An assertion that row elevations must be sorted descending. Sort
+- `ValueError: Row elevation angles must be sorted in descending order`. Sort
   `row_elevations_rad` descending and separate duplicates by about 1e-6 rad.
 - Dynamic poses must cover the full sequence time range. The pose track starts
   after the sequence start or ends before its last microsecond. Extend it, or

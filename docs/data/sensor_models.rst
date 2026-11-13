@@ -320,7 +320,12 @@ The OpenCV Fisheye model uses a fisheye distortion polynomial:
       \begin{bmatrix} f_u \delta(\theta) x_n + u_0 \\ 
       f_v \delta(\theta) y_n + v_0 \end{bmatrix}
 
-The inverse operation uses Newton-Raphson iteration to invert the ninth-degree polynomial. **Example:** The radial_coeffs parameter contains [k₁, k₂, k₃, k₄] (float32, [4,]).
+The inverse operation inverts the ninth-degree polynomial :math:`\delta(\theta)` on its increasing branch (up to
+its first stationary point, which may extend beyond ``max_angle``) by Newton-Raphson iterations, safeguarded by a
+bracket on that branch for points where plain Newton iterations don't converge. The ``newton_iterations`` argument
+of ``OpenCVFisheyeCameraModel`` (keyword-only, 20 by default) bounds the number of iterations, which stop early once
+all points converged. Image points beyond the maximum of the polynomial have no inverse and are mapped to the boundary
+ray of the branch. **Example:** The radial_coeffs parameter contains :math:`[k_1, k_2, k_3, k_4]` (float32, [4,]).
 
 .. _external_distortion_models:
 
@@ -501,8 +506,10 @@ It exposes:
 
 * ``sample_map`` - ``[H, W, 2]`` source image coordinates to sample for each
   target pixel (usable directly with custom / GPU / OpenCV resampling).
-* ``valid_mask`` - ``[H, W]`` boolean mask of target pixels whose ray projects
-  inside the source image.
+* ``valid_mask`` - ``[H, W]`` boolean mask of target pixels that have a valid
+  ray within the target's calibrated field of view, which projects validly into
+  the source (inside the source image and within the source's field of view, see
+  :ref:`ray_validity`).
 * ``apply(image, mode="bilinear", padding_mode="zeros")`` - resamples a source
   image (``[H, W]``, ``[H, W, C]`` or ``[N, H, W, C]``, channels-last) into the
   target domain, zeroing invalid pixels. ``mode`` selects the interpolation
@@ -600,3 +607,95 @@ The following parameters will be available in ``lidar_model_parameters``:
 * ``n_columns`` - number of azimuth divisions per revolution (int)
 
 **Example:** A Hesai P128 lidar would have n_rows=128 (for 128 laser channels), with row_elevations_rad containing 128 elevation angles and row_azimuth_offsets_rad containing 128 azimuth offsets.
+
+
+.. _ray_validity:
+
+Ray Validity
+------------
+
+Camera and lidar models return a boolean ``valid_flag`` per point or ray with
+every projection and unprojection. Values of invalid entries are undefined
+(model-specific, possibly non-finite) and need to be masked.
+
+Unprojections
+^^^^^^^^^^^^^
+
+:meth:`CameraModel.image_points_to_camera_rays
+<ncore.sensors.CameraModel.image_points_to_camera_rays>` and
+``pixels_to_camera_rays`` return a
+:class:`~ncore.sensors.CameraModel.CameraRaysReturn` (``camera_rays`` and
+``valid_flag``). A ray is valid if the model has a well-defined ray for the
+image point within its calibrated field of view, independent of the image
+bounds:
+
+* FTheta / OpenCV fisheye: the angle of the ray with the principal direction is
+  smaller than ``max_angle`` (FTheta: and the inverse polynomial yields a finite,
+  non-negative angle).
+* OpenCV pinhole: the iterative undistortion converged, and the normalized
+  coordinates of the ray lie within the bound of the radial distortion (see
+  below).
+* Ideal pinhole: always valid.
+
+The world-ray unprojections (``image_points_to_world_rays_*`` /
+``pixels_to_world_rays_*``) forward the flag of the camera rays
+(:attr:`WorldRaysReturn.valid_flag <ncore.sensors.CameraModel.WorldRaysReturn>`).
+Precomputed camera rays are passed via ``camera_rays=`` as a
+``CameraRaysReturn``, whose flag is forwarded the same way; wrap rays known to
+be valid with :meth:`CameraRaysReturn.all_valid(rays)
+<ncore.sensors.CameraModel.CameraRaysReturn.all_valid>`.
+
+Structured lidar models return the rays of their elements with a flag as well:
+``elements_to_sensor_rays`` returns a
+:class:`~ncore.sensors.LidarModel.SensorRaysReturn` (``sensor_rays`` and
+``valid_flag``), ``elements_to_sensor_points`` a
+:class:`~ncore.sensors.LidarModel.SensorPointsReturn` (``sensor_points`` and
+``valid_flag``), and ``elements_to_world_rays_shutter_pose`` forwards the flag
+to :class:`LidarModel.WorldRaysReturn <ncore.sensors.LidarModel.WorldRaysReturn>`
+(precomputed rays are passed via ``sensor_rays=`` as a ``SensorRaysReturn``, see
+:meth:`SensorRaysReturn.all_valid
+<ncore.sensors.LidarModel.SensorRaysReturn.all_valid>`). Rays of the elements
+of the row-offset spinning lidar model are always valid.
+
+Projections
+^^^^^^^^^^^
+
+``camera_rays_to_image_points`` / ``camera_rays_to_pixels`` flag projections as
+valid if the ray projects into the image and lies within the model's field of
+view: for FTheta / OpenCV fisheye within ``max_angle``, for pinholes in front of
+the camera (and for OpenCV pinhole within the bound of the radial distortion). If
+the rays are given as a ``CameraRaysReturn``, their flag is combined with the
+projection's, i.e., invalid rays result in invalid image points (e.g., the
+:class:`~ncore.sensors.Rectificator` marks target pixels without a valid target
+ray invalid).
+
+The ``world_points_to_*`` projections of camera and lidar models return the
+projections of the valid points (of all points with
+``return_all_projections=True``) and a ``valid_flag`` over all input points
+(:class:`~ncore.sensors.CameraModel.WorldPointsToImagePointsReturn`,
+:class:`~ncore.sensors.CameraModel.WorldPointsToPixelsReturn`,
+:class:`~ncore.sensors.LidarModel.WorldPointsToSensorAnglesReturn`).
+``valid_indices`` (``return_valid_indices=True``) are the 1-D indices of the
+valid points.
+
+Lidar sensor angles are valid within the field of view of the sensor
+(:meth:`LidarModel.sensor_rays_to_sensor_angles
+<ncore.sensors.LidarModel.sensor_rays_to_sensor_angles>`, which combines the
+flag of rays given as a ``SensorRaysReturn``).
+
+OpenCV pinhole radius bound
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The rational radial distortion of the OpenCV pinhole model maps distinct rays to
+the same image points beyond the first extremum of the distorted radius
+:math:`r \, d_r(r)`. Rays whose squared normalized radius
+:math:`r^2 = {x'}^2 + {y'}^2` is at or beyond the first extremum (or a pole of
+:math:`d_r`) are invalid, for projections and unprojections alike. The bound is
+derived from the radial coefficients by
+:meth:`OpenCVPinholeCameraModelParameters.compute_max_normalized_radius_squared
+<ncore.data.OpenCVPinholeCameraModelParameters.compute_max_normalized_radius_squared>`
+(``math.inf`` if the distortion has neither). The keyword-only
+``max_normalized_radius_squared`` argument of ``OpenCVPinholeCameraModel``
+overrides it (``math.inf``: no bound); it is a setting of the model instance,
+not a camera model parameter, so stored data is unaffected. Tangential and
+thin-prism distortions are not taken into account.

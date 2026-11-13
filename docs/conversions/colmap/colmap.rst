@@ -132,6 +132,10 @@ subdirectory is treated as a separate sequence.
        base converter compatibility)
    * - ``--verbose``
      - Enable debug-level logging
+   * - ``--zarr-format {2,3}``
+     - On-disk zarr format of the written component stores (default ``2``, readable
+       with all NCore and zarr-python versions; ``3`` requires zarr-python 3 for
+       writing and reading)
 
 **Subcommand arguments** (``colmap-v4``):
 
