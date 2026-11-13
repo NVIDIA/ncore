@@ -18,7 +18,21 @@ from __future__ import annotations
 import asyncio
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Generator, List, Optional, Sequence, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Generator,
+    List,
+    Literal,
+    Mapping,
+    Optional,
+    Sequence,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+)
 
 import numpy as np
 import PIL.Image as PILImage
@@ -56,6 +70,7 @@ from ncore.impl.data.v4.components import (
     BaseRayBundleSensorComponentReader,
     CameraLabelsComponent,
     CameraSensorComponent,
+    ComponentReader,
     CuboidsComponent,
     IntrinsicsComponent,
     LidarSensorComponent,
@@ -70,12 +85,14 @@ from ncore.impl.data.v4.components import (
 if TYPE_CHECKING:
     import numpy.typing as npt
 
+CR = TypeVar("CR", bound=ComponentReader)
+
 
 class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
     """SequenceLoader implementation for NCore V4 data (with asynchronous reads, see :class:`AsyncSequenceLoaderProtocol`).
 
     The constructor takes an opened (synchronously or asynchronously) :class:`SequenceComponentGroupsReader`, see
-    :meth:`open_async` for opening a sequence's component stores and the loader asynchronously in one step.
+    :meth:`open` / :meth:`open_async` for opening a sequence's component stores and the loader in one step.
 
     Provides a unified interface to access V4 format sequence data including sensors,
     poses, intrinsics, masks, and cuboid annotations.
@@ -103,35 +120,25 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
     ):
         self._reader: SequenceComponentGroupsReader = reader
 
-        # open all mandatory component readers
-        poses_readers = self._reader.open_component_readers(PosesComponent.Reader)
-        assert poses_component_group_name in poses_readers, (
-            f"PosesComponent group '{poses_component_group_name}' not found"
+        # open all mandatory component readers (a missing component group raises KeyError)
+        self._poses_reader: PosesComponent.Reader = self._component_reader(
+            PosesComponent.Reader, poses_component_group_name
         )
-        self._poses_reader: PosesComponent.Reader = poses_readers[poses_component_group_name]
-
-        intrinsics_readers = self._reader.open_component_readers(IntrinsicsComponent.Reader)
-        assert intrinsics_component_group_name in intrinsics_readers, (
-            f"IntrinsicsComponent group '{intrinsics_component_group_name}' not found"
+        self._intrinsics_reader: IntrinsicsComponent.Reader = self._component_reader(
+            IntrinsicsComponent.Reader, intrinsics_component_group_name
         )
-        self._intrinsics_reader: IntrinsicsComponent.Reader = intrinsics_readers[intrinsics_component_group_name]
 
-        # open optional component readers if available
-        self._masks_reader: Optional[MasksComponent.Reader] = None
-        if masks_component_group_name is not None:
-            masks_readers = self._reader.open_component_readers(MasksComponent.Reader)
-            assert masks_component_group_name in masks_readers, (
-                f"MasksComponent group '{masks_component_group_name}' not found"
-            )
-            self._masks_reader = masks_readers[masks_component_group_name]
-
-        self._cuboids_reader: Optional[CuboidsComponent.Reader] = None
-        if cuboids_component_group_name is not None:
-            cuboids_readers = self._reader.open_component_readers(CuboidsComponent.Reader)
-            assert cuboids_component_group_name in cuboids_readers, (
-                f"CuboidsComponent group '{cuboids_component_group_name}' not found"
-            )
-            self._cuboids_reader = cuboids_readers[cuboids_component_group_name]
+        # open optional component readers if requested
+        self._masks_reader: Optional[MasksComponent.Reader] = (
+            self._component_reader(MasksComponent.Reader, masks_component_group_name)
+            if masks_component_group_name is not None
+            else None
+        )
+        self._cuboids_reader: Optional[CuboidsComponent.Reader] = (
+            self._component_reader(CuboidsComponent.Reader, cuboids_component_group_name)
+            if cuboids_component_group_name is not None
+            else None
+        )
         self._cuboid_observations_cache: Optional[List[CuboidTrackObservation]] = None
 
         self._cameras_readers: Dict[str, CameraSensorComponent.Reader] = self._reader.open_component_readers(
@@ -174,16 +181,72 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
             self._pose_graph, parameters=motion_compensator_parameters
         )
 
+    def _component_reader(self, component_reader_type: Type[CR], component_group_name: str) -> CR:
+        """The reader of a component group, raises KeyError if the sequence doesn't have the group"""
+        readers = self._reader.open_component_readers(component_reader_type)
+        if (reader := readers.get(component_group_name)) is None:
+            raise KeyError(
+                f"{component_reader_type.get_component_name()} component group '{component_group_name}' not found "
+                f"(available: {sorted(readers)})"
+            )
+        return reader
+
     @classmethod
-    async def open_async(
+    def open(
         cls,
-        component_group_paths: Union[List[UPath], List[Path]],
+        component_group_paths: Sequence[Union[UPath, Path]],
         *,
         poses_component_group_name: str = "default",
         intrinsics_component_group_name: str = "default",
         masks_component_group_name: Optional[str] = "default",
         cuboids_component_group_name: Optional[str] = "default",
-        open_consolidated: bool = True,
+        open_consolidated: Union[bool, Literal["auto"]] = True,
+        itar_index_tail_read_size: Optional[int] = DEFAULT_INDEX_TAIL_READ_SIZE,
+        itar_index_tail_retention: IndexTailRetention = "release_if_consolidated",
+        itar_remote_range_reads: bool = False,
+        max_threads: Optional[int] = None,
+        node_cache_size: Optional[int] = None,
+        motion_compensator_parameters: Optional[MotionCompensator.Parameters] = None,
+    ) -> SequenceLoaderV4:
+        """Opens a sequence synchronously (blocking, see :meth:`SequenceComponentGroupsReader.__init__` and
+        :meth:`__init__` for the parameters), see :meth:`open_async` for opening it asynchronously.
+
+        ``max_threads`` bounds the threads opening the component stores (the asynchronous :meth:`open_async` bounds
+        the stores opened at once with ``max_concurrent_requests`` instead), all other parameters are the ones of
+        :meth:`open_async`.
+
+        .. code-block:: python
+
+            loader = SequenceLoaderV4.open([sequence_meta_path])
+        """
+        reader = SequenceComponentGroupsReader(
+            component_group_paths,
+            open_consolidated=open_consolidated,
+            itar_index_tail_read_size=itar_index_tail_read_size,
+            itar_index_tail_retention=itar_index_tail_retention,
+            itar_remote_range_reads=itar_remote_range_reads,
+            max_threads=max_threads,
+            node_cache_size=node_cache_size,
+        )
+        return cls(
+            reader,
+            poses_component_group_name=poses_component_group_name,
+            intrinsics_component_group_name=intrinsics_component_group_name,
+            masks_component_group_name=masks_component_group_name,
+            cuboids_component_group_name=cuboids_component_group_name,
+            motion_compensator_parameters=motion_compensator_parameters,
+        )
+
+    @classmethod
+    async def open_async(
+        cls,
+        component_group_paths: Sequence[Union[UPath, Path]],
+        *,
+        poses_component_group_name: str = "default",
+        intrinsics_component_group_name: str = "default",
+        masks_component_group_name: Optional[str] = "default",
+        cuboids_component_group_name: Optional[str] = "default",
+        open_consolidated: Union[bool, Literal["auto"]] = True,
         itar_index_tail_read_size: Optional[int] = DEFAULT_INDEX_TAIL_READ_SIZE,
         itar_index_tail_retention: IndexTailRetention = "release_if_consolidated",
         itar_remote_range_reads: bool = False,
@@ -192,7 +255,8 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
         motion_compensator_parameters: Optional[MotionCompensator.Parameters] = None,
     ) -> SequenceLoaderV4:
         """Opens a sequence asynchronously, without blocking the running event loop (see
-        :meth:`SequenceComponentGroupsReader.open_async` and :meth:`__init__` for the parameters).
+        :meth:`SequenceComponentGroupsReader.open_async` and :meth:`__init__` for the parameters), see :meth:`open`
+        for opening it synchronously.
 
         Opening many sequences concurrently overlaps their requests, e.g. with a shared bound of the requests in
         flight:
@@ -249,6 +313,9 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
 
     @override
     def get_sequence_meta(self) -> JsonDocument:
+        """Returns the sequence meta-data summary as a JSON document (the format of
+        :meth:`SequenceLoaderProtocol.get_sequence_meta`): the dictionary of the
+        :class:`~ncore.data.v4.SequenceMeta` that :meth:`SequenceComponentGroupsReader.get_sequence_meta` returns"""
         return cast(JsonDocument, self._reader.get_sequence_meta().to_dict())
 
     @property
@@ -275,24 +342,23 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
         """Base sensor implementation for V4 data providing common sensor functionality.
 
         Args:
-            sensor_reader: Component reader for the sensor data
+            reader: Component reader for the sensor data
             pose_graph: Pose graph interpolator for coordinate transformations
         """
 
         def __init__(
             self,
-            sensor_reader: Union[
-                CameraSensorComponent.Reader, LidarSensorComponent.Reader, RadarSensorComponent.Reader
-            ],
+            reader: Union[CameraSensorComponent.Reader, LidarSensorComponent.Reader, RadarSensorComponent.Reader],
+            *,
             pose_graph: PoseGraphInterpolator,
         ):
-            self.set_pose_graph(pose_graph)
+            self._pose_graph = pose_graph
 
             self._reader: Union[
                 CameraSensorComponent.Reader, LidarSensorComponent.Reader, RadarSensorComponent.Reader
-            ] = sensor_reader
+            ] = reader
 
-            # preload frame timestamps once
+            # frame timestamps (loaded by the reader when opened)
             self._frames_timestamps_us = self._reader.frames_timestamps_us
 
         @property
@@ -356,19 +422,20 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
 
         Args:
             reader: Camera component reader
-            mask_reader: Masks component reader for camera masks
-            model_parameters: Camera intrinsic model parameters
             pose_graph: Pose graph interpolator for coordinate transformations
+            model_parameters: Camera intrinsic model parameters
+            mask_reader: Masks component reader for camera masks (None: the camera has no masks)
         """
 
         def __init__(
             self,
             reader: CameraSensorComponent.Reader,
-            mask_reader: Optional[MasksComponent.Reader],
-            model_parameters: CameraModelParameters,
+            *,
             pose_graph: PoseGraphInterpolator,
+            model_parameters: CameraModelParameters,
+            mask_reader: Optional[MasksComponent.Reader] = None,
         ):
-            super().__init__(reader, pose_graph)
+            super().__init__(reader, pose_graph=pose_graph)
 
             self._mask_reader: Optional[MasksComponent.Reader] = mask_reader
             self._model_parameters: CameraModelParameters = model_parameters
@@ -413,13 +480,19 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
                 self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item()
             )
 
+    @staticmethod
+    def _sensor_reader(readers: Mapping[str, CR], sensor_id: str, sensor_type: str) -> CR:
+        """The reader of a sensor (raises KeyError for sensors not available in the loaded component groups)"""
+        if (reader := readers.get(sensor_id)) is None:
+            raise KeyError(
+                f"{sensor_type.capitalize()} sensor '{sensor_id}' not available in loaded {sensor_type} sensor groups"
+            )
+        return reader
+
     @override
     def get_camera_sensor(self, sensor_id: str) -> AsyncCameraSensorProtocol:
         return self.CameraSensor(
-            reader=unpack_optional(
-                self._cameras_readers.get(sensor_id),
-                msg=f"Camera sensor '{sensor_id}' not available in loaded camera sensor groups",
-            ),
+            reader=self._sensor_reader(self._cameras_readers, sensor_id, "camera"),
             mask_reader=self._masks_reader,
             pose_graph=self._pose_graph,
             model_parameters=self._intrinsics_reader.get_camera_model_parameters(sensor_id),
@@ -428,21 +501,42 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
     class RayBundleSensor(Sensor, AsyncRayBundleSensorProtocol):
         """Base ray bundle sensor implementation for V4 data (lidar/radar).
 
+        Motion-compensated point clouds use the sensor's motion compensator: a passed `motion_compensator` (e.g., the
+        loader's, shared by its sensors) or a default :class:`MotionCompensator` of the sensor's pose graph.
+        :meth:`set_pose_graph` replaces it by a compensator of the new pose graph with the same parameters.
+
         Args:
             reader: Ray bundle sensor component reader (lidar or radar)
             pose_graph: Pose graph interpolator for coordinate transformations
-            motion_compensator: Motion compensator of the point clouds
+            motion_compensator: Motion compensator of the point clouds (None: ``MotionCompensator(pose_graph)``)
         """
 
         def __init__(
             self,
             reader: Union[LidarSensorComponent.Reader, RadarSensorComponent.Reader],
+            *,
             pose_graph: PoseGraphInterpolator,
-            motion_compensator: MotionCompensator,
+            motion_compensator: Optional[MotionCompensator] = None,
         ):
-            super().__init__(reader, pose_graph)
+            super().__init__(reader, pose_graph=pose_graph)
 
-            self._motion_compensator: MotionCompensator = motion_compensator
+            self._motion_compensator: MotionCompensator = (
+                MotionCompensator(pose_graph) if motion_compensator is None else motion_compensator
+            )
+
+        @property
+        def motion_compensator(self) -> MotionCompensator:
+            """The motion compensator of the sensor's point clouds"""
+            return self._motion_compensator
+
+        @override
+        def set_pose_graph(self, pose_graph: PoseGraphInterpolator) -> None:
+            """Assigns a new pose graph to the sensor instance (e.g., to overwrite / use a sensor-exclusive pose graph).
+
+            The motion compensator is replaced by a compensator of the new pose graph with the parameters of the
+            current one (e.g., the loader's motion compensation method)."""
+            super().set_pose_graph(pose_graph)
+            self._motion_compensator = MotionCompensator(pose_graph, parameters=self._motion_compensator.parameters)
 
         @property
         def ray_bundle_reader(self) -> BaseRayBundleSensorComponentReader:
@@ -588,6 +682,7 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
                 motion_compensation=True,
                 xyz_m_start=motion_compensation_result.xyz_s_reftime if with_start_points else None,
                 xyz_m_end=motion_compensation_result.xyz_e_reftime,
+                timestamp_us=timestamp_us,
             )
 
         @override
@@ -596,8 +691,7 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
         ) -> npt.NDArray[np.float32]:
             """Returns the per-ray measured metric distances for the ray bundle return for a specific frame"""
 
-            # V4 stores non-motion-compensated point cloud in 'xyz_m' field, so we can use it's norm
-            # as the measured distance
+            # (V4 stores the measured, non-motion-compensated distances of each return in its 'distance_m' field)
             return self.ray_bundle_reader.get_frame_ray_bundle_return_data(
                 self.frames_timestamps_us[frame_index, FrameTimepoint.END.value].item(),
                 "distance_m",
@@ -644,17 +738,19 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
             reader: Lidar component reader
             pose_graph: Pose graph interpolator for coordinate transformations
             model_parameters: Lidar intrinsic model parameters, if available
-            motion_compensator: Motion compensator of the point clouds
+            motion_compensator: Motion compensator of the point clouds (None: ``MotionCompensator(pose_graph)``, see
+                :class:`SequenceLoaderV4.RayBundleSensor`)
         """
 
         def __init__(
             self,
             reader: LidarSensorComponent.Reader,
+            *,
             pose_graph: PoseGraphInterpolator,
-            model_parameters: Optional[LidarModelParameters],
-            motion_compensator: MotionCompensator,
+            model_parameters: Optional[LidarModelParameters] = None,
+            motion_compensator: Optional[MotionCompensator] = None,
         ):
-            super().__init__(reader, pose_graph, motion_compensator)
+            super().__init__(reader, pose_graph=pose_graph, motion_compensator=motion_compensator)
 
             self._model_parameters: Optional[LidarModelParameters] = model_parameters
 
@@ -722,10 +818,7 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
     @override
     def get_lidar_sensor(self, sensor_id: str) -> AsyncLidarSensorProtocol:
         return self.LidarSensor(
-            reader=unpack_optional(
-                self._lidars_readers.get(sensor_id),
-                msg=f"Lidar sensor '{sensor_id}' not available in loaded lidar sensor groups",
-            ),
+            reader=self._sensor_reader(self._lidars_readers, sensor_id, "lidar"),
             pose_graph=self._pose_graph,
             model_parameters=self._intrinsics_reader.get_lidar_model_parameters(sensor_id),
             motion_compensator=self._motion_compensator,
@@ -737,16 +830,18 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
         Args:
             reader: Radar component reader
             pose_graph: Pose graph interpolator for coordinate transformations
-            motion_compensator: Motion compensator of the point clouds
+            motion_compensator: Motion compensator of the point clouds (None: ``MotionCompensator(pose_graph)``, see
+                :class:`SequenceLoaderV4.RayBundleSensor`)
         """
 
         def __init__(
             self,
             reader: RadarSensorComponent.Reader,
+            *,
             pose_graph: PoseGraphInterpolator,
-            motion_compensator: MotionCompensator,
+            motion_compensator: Optional[MotionCompensator] = None,
         ):
-            super().__init__(reader, pose_graph, motion_compensator)
+            super().__init__(reader, pose_graph=pose_graph, motion_compensator=motion_compensator)
 
         @property
         def radar_reader(self) -> RadarSensorComponent.Reader:
@@ -755,16 +850,17 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
     @override
     def get_radar_sensor(self, sensor_id: str) -> AsyncRadarSensorProtocol:
         return self.RadarSensor(
-            reader=unpack_optional(
-                self._radars_readers.get(sensor_id),
-                msg=f"Radar sensor '{sensor_id}' not available in loaded radar sensor groups",
-            ),
+            reader=self._sensor_reader(self._radars_readers, sensor_id, "radar"),
             pose_graph=self._pose_graph,
             motion_compensator=self._motion_compensator,
         )
 
     class CameraLabels(AsyncCameraLabelsProtocol):
-        """Wraps a :class:`CameraLabelsComponent.Reader` to implement :class:`AsyncCameraLabelsProtocol`."""
+        """Wraps a :class:`CameraLabelsComponent.Reader` to implement :class:`AsyncCameraLabelsProtocol`.
+
+        Args:
+            reader: Component reader for the camera labels.
+        """
 
         def __init__(self, reader: CameraLabelsComponent.Reader) -> None:
             self._reader = reader
@@ -824,6 +920,9 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
 
         @override
         async def get_pc_async(self, pc_index: int) -> PointCloud:
+            """Returns the point cloud at *pc_index* with its points read asynchronously; its reference frame
+            timestamp is taken from the source's timestamps (loaded on first use, like :attr:`pc_timestamps_us`), and
+            its attributes are loaded lazily, synchronously, on access"""
             return self._point_cloud(pc_index, await self._reader.get_pc_xyz_async(pc_index))
 
         def _point_cloud(self, pc_index: int, xyz: npt.NDArray[np.float32]) -> PointCloud:

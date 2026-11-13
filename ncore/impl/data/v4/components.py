@@ -36,6 +36,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Sequence,
     Tuple,
     Type,
     TypeVar,
@@ -296,7 +297,8 @@ class SequenceComponentGroupsWriter:
         keep ``group_name`` and ``generic_meta_data`` at their defaults."""
         generic_meta_data = unpack_optional(generic_meta_data, default={})
 
-        assert len(component_instance_name) > 0, "Component instance name must not be empty"
+        if not component_instance_name:
+            raise ValueError("Component instance name must not be empty")
 
         # The signature uses Callable[Concatenate[...], CW] for type-safe kwargs
         # inference, but we also need access to ComponentWriter static class attributes.
@@ -306,7 +308,8 @@ class SequenceComponentGroupsWriter:
         component_base_name = writer_cls.get_component_name()
         component_id = f"{component_base_name}:{component_instance_name}"
 
-        assert component_id not in self._component_writers, f"Component writer for {component_id} already registered"
+        if component_id in self._component_writers:
+            raise ValueError(f"Component writer for {component_id} already registered")
 
         # Create the component in the requested group, separated by component base name
         component_group = (
@@ -338,7 +341,7 @@ class SequenceComponentGroupsReader:
 
     @staticmethod
     def expand_component_group_paths(
-        component_group_paths: List[UPath] | List[Path],
+        component_group_paths: Sequence[Union[UPath, Path]],
     ) -> List[UPath]:
         """Expands possible sequence meta-data files in the given list of component group
         paths to the actual component group paths they reference"""
@@ -364,14 +367,14 @@ class SequenceComponentGroupsReader:
 
     def __init__(
         self,
-        component_group_paths: List[UPath] | List[Path],
+        component_group_paths: Sequence[Union[UPath, Path]],
         *,
-        open_consolidated: bool = True,
-        itar_index_tail_read_size: int | None = DEFAULT_INDEX_TAIL_READ_SIZE,
+        open_consolidated: Union[bool, Literal["auto"]] = True,
+        itar_index_tail_read_size: Optional[int] = DEFAULT_INDEX_TAIL_READ_SIZE,
         itar_index_tail_retention: IndexTailRetention = "release_if_consolidated",
         itar_remote_range_reads: bool = False,
-        max_threads: int | None = None,
-        node_cache_size: int | None = None,
+        max_threads: Optional[int] = None,
+        node_cache_size: Optional[int] = None,
     ):
         """Initialize a SequenceComponentReader for a virtual sequence represented by a list of components.
 
@@ -385,7 +388,9 @@ class SequenceComponentGroupsReader:
                                This is advisable if component data is accessed from *non-local*
                                storage to prevent latencies introduced when accessing the data.
                                If the component data is available on fast *local* storage, disabling
-                               this option can speed up initial load times.
+                               this option can speed up initial load times. "auto" opens each component store
+                               from its consolidated meta-data if it has one, and from its node meta-data otherwise
+                               (see :meth:`ncore.data.stores.Store.open_root_group`).
             itar_index_tail_read_size: When loading component groups from .itar files, the size of the tail buffer to read in a
                                single I/O call to initialize the tar file index to minimize reads.
                                Default 1 MiB size fits typical use cases, but may be increased if the compressed
@@ -403,8 +408,11 @@ class SequenceComponentGroupsReader:
                                the synchronous reader APIs, so reads of multiple threads fetch their data concurrently
                                (e.g., thread pools reading frames), instead of via a buffered file object (blocks of the
                                filesystem's block size, one request at a time, suits sequential reading).
-            max_threads:       The maximum number of threads used to open the component stores concurrently (if
-                               None, use interpreter-default number of threads for a ThreadPoolExecutor)
+            max_threads:       The maximum number of threads of the thread pool opening the component stores
+                               concurrently (if None, use interpreter-default number of threads for a
+                               ThreadPoolExecutor). It bounds the threads of the synchronous opening, the
+                               asynchronous opening (:meth:`open_async`) bounds the stores opened at once with
+                               ``max_concurrent_requests`` instead.
             node_cache_size:   Number of opened groups / arrays (with their decoded meta-data, but not their data)
                                each component reader caches for repeated accesses (e.g., of frames). None caches
                                all accessed nodes for the lifetime of the reader, a positive number the most recently
@@ -415,7 +423,8 @@ class SequenceComponentGroupsReader:
 
         component_group_upaths: List[UPath] = self.expand_component_group_paths(component_group_paths)
 
-        assert len(component_group_upaths), "No component inputs provided"
+        if not component_group_upaths:
+            raise ValueError("No component inputs provided")
 
         # Component stores are opened concurrently (hiding the latency of remote archive index reads), their
         # hierarchies are opened from their consolidated metadata sequentially on the calling thread (pure-Python CPU
@@ -444,32 +453,35 @@ class SequenceComponentGroupsReader:
     @classmethod
     async def open_async(
         cls,
-        component_group_paths: List[UPath] | List[Path],
+        component_group_paths: Sequence[Union[UPath, Path]],
         *,
-        open_consolidated: bool = True,
-        itar_index_tail_read_size: int | None = DEFAULT_INDEX_TAIL_READ_SIZE,
+        open_consolidated: Union[bool, Literal["auto"]] = True,
+        itar_index_tail_read_size: Optional[int] = DEFAULT_INDEX_TAIL_READ_SIZE,
         itar_index_tail_retention: IndexTailRetention = "release_if_consolidated",
         itar_remote_range_reads: bool = False,
-        max_concurrent_requests: int | asyncio.Semaphore | None = None,
-        node_cache_size: int | None = None,
+        max_concurrent_requests: Union[int, asyncio.Semaphore, None] = None,
+        node_cache_size: Optional[int] = None,
     ) -> SequenceComponentGroupsReader:
         """Opens a reader asynchronously, without blocking the running event loop (see :meth:`__init__` for the
         parameters).
 
         The component stores of remote sequences (e.g. ``.zarr.itar`` archives on S3) are opened via asynchronous
-        requests (one per archive, see :meth:`ncore.impl.data.itar.IndexedTarArchive.open_async`), so opening the
+        requests (one per archive, see :meth:`ncore.data.stores.IndexedTarArchive.open_async`), so opening the
         stores of a sequence, and of many sequences concurrently (e.g., via ``asyncio.gather``), overlaps their requests.
 
         Args:
-            max_concurrent_requests: The maximum number of component stores opened concurrently: a number (for this
-                sequence), a semaphore shared by readers opened concurrently (e.g., to bound the requests of many
-                sequences opened via ``asyncio.gather``), or None (all component stores at once).
+            max_concurrent_requests: The maximum number of component stores opened concurrently (their requests in
+                flight, on the event loop: no threads are used for remote archives): a number (for this sequence), a
+                semaphore shared by readers opened concurrently (e.g., to bound the requests of many sequences opened
+                via ``asyncio.gather``), or None (all component stores at once). It takes the place of the
+                ``max_threads`` of the synchronous constructor.
         """
         reader = cls.__new__(cls)
         reader._init(node_cache_size, itar_index_tail_retention)
 
         component_group_upaths = await run_in_thread(cls.expand_component_group_paths, component_group_paths)
-        assert len(component_group_upaths), "No component inputs provided"
+        if not component_group_upaths:
+            raise ValueError("No component inputs provided")
 
         semaphore = (
             asyncio.Semaphore(max_concurrent_requests)
@@ -506,7 +518,7 @@ class SequenceComponentGroupsReader:
         reader._check_version()
         return reader
 
-    def _init(self, node_cache_size: int | None, itar_index_tail_retention: IndexTailRetention) -> None:
+    def _init(self, node_cache_size: Optional[int], itar_index_tail_retention: IndexTailRetention) -> None:
         if node_cache_size is not None and node_cache_size < 0:
             raise ValueError(f"node_cache_size needs to be None or non-negative, got {node_cache_size}")
         self._node_cache_size = node_cache_size
@@ -517,7 +529,7 @@ class SequenceComponentGroupsReader:
 
     @staticmethod
     def _open_component_store(
-        component_store_upath: UPath, itar_index_tail_read_size: int | None, itar_remote_range_reads: bool
+        component_store_upath: UPath, itar_index_tail_read_size: Optional[int], itar_remote_range_reads: bool
     ) -> stores.Store:
         """Opens a component store (blocking)"""
         _logger.info(f"SequenceStoreReader: Loading component store {component_store_upath}")
@@ -535,7 +547,7 @@ class SequenceComponentGroupsReader:
 
     @staticmethod
     async def _open_component_store_async(
-        component_store_upath: UPath, itar_index_tail_read_size: int | None, itar_remote_range_reads: bool
+        component_store_upath: UPath, itar_index_tail_read_size: Optional[int], itar_remote_range_reads: bool
     ) -> stores.Store:
         """Opens a component store asynchronously (see :meth:`_open_component_store`): archives via asynchronous
         requests, directory stores on a worker thread"""
@@ -560,7 +572,10 @@ class SequenceComponentGroupsReader:
         return stores.ZarrStoreAdapter.directory(component_store_upath)
 
     def _add_component_store(
-        self, component_store: stores.Store, component_store_path: UPath, open_consolidated: bool
+        self,
+        component_store: stores.Store,
+        component_store_path: UPath,
+        open_consolidated: Union[bool, Literal["auto"]],
     ) -> None:
         """Opens the hierarchy of an opened component store and checks its sequence compatibility"""
         component_root = component_store.open_root_group(consolidated=open_consolidated)
@@ -643,9 +658,8 @@ class SequenceComponentGroupsReader:
 
             # instantiate a reader for each of the components
             for component_instance_name, component_group in component_root_group.group(component_name).groups():
-                assert component_instance_name not in ret, (
-                    f"Component instance {component_instance_name} encountered multiple times"
-                )
+                if component_instance_name in ret:
+                    raise RuntimeError(f"Component instance {component_instance_name} encountered multiple times")
 
                 # check if the reader supports the component version
                 if not component_reader_type.supports_component_version(component_group.attr_str("component_version")):
@@ -660,7 +674,8 @@ class SequenceComponentGroupsReader:
         return ret
 
     def get_sequence_meta(self) -> SequenceMeta:
-        """Returns full sequence meta-data summary (json-serializable)"""
+        """Returns full sequence meta-data summary as a :class:`SequenceMeta` (json-serializable via
+        :meth:`SequenceMeta.to_dict`, the JSON document :meth:`SequenceLoaderV4.get_sequence_meta` returns)"""
 
         # collect component names and instances per store and component
         component_stores_info: List[SequenceMeta.ComponentStoreMeta] = []
@@ -749,8 +764,8 @@ class ComponentWriter(ABC):
         self,
         data: Dict[str, np.ndarray],
         meta_data: Optional[JsonDocumentLike] = None,
-    ) -> None:
-        """Attach named generic data arrays (and optional metadata) to this component.
+    ) -> "Self":
+        """Attach named generic data arrays (and optional metadata) to this component, returns the writer.
 
         Parameters
         ----------
@@ -768,6 +783,8 @@ class ComponentWriter(ABC):
         if meta_data is not None:
             # Merge generic_meta_data: init-time / set_generic_data meta overwrites
             self._generic_meta_data.update(to_json_document(meta_data))
+
+        return self
 
     def finalize(self) -> None:
         """Overwrite to perform final operations after all user-data was written.
@@ -857,17 +874,19 @@ CR = TypeVar("CR", bound=ComponentReader)
 P = ParamSpec("P")
 
 
-def validate_frame_name(name: str) -> str:
-    """Checks if the given name is a valid frame name (non-empty, no whitespace), returns it if valid, raises AssertionError otherwise"""
-    assert len(name) and not name.isspace(), f"Frame '{name}' is invalid, must not be empty or contain whitespace"
-
-    return name
-
-
 class PosesComponent:
     """Represents a generic set of static / dynamic poses (rigid transformations) between named coordinate frames"""
 
     COMPONENT_NAME: str = "poses"
+
+    @staticmethod
+    def validate_frame_name(name: str) -> str:
+        """Checks if the given name is a valid frame name (not empty or whitespace only), returns it if valid, raises
+        ValueError otherwise"""
+        if not name or name.isspace():
+            raise ValueError(f"Frame '{name}' is invalid, must not be empty or contain whitespace")
+
+        return name
 
     class Writer(ComponentWriter):
         """Poses data component writer"""
@@ -910,7 +929,10 @@ class PosesComponent:
             assert np.issubdtype(pose.dtype, np.floating), "Poses must be of float type"
             assert np.all(pose[3, :] == [0.0, 0.0, 0.0, 1.0]), "Invalid SE3 transformation"
 
-            key = (validate_frame_name(source_frame_id), validate_frame_name(target_frame_id))
+            key = (
+                PosesComponent.validate_frame_name(source_frame_id),
+                PosesComponent.validate_frame_name(target_frame_id),
+            )
             inv_key = key[::-1]
 
             assert key not in self.data["static_poses"], f"Static pose {key} already exists"
@@ -966,7 +988,10 @@ class PosesComponent:
                     "the last timestamp is before the sequence end time"
                 )
 
-            key = (validate_frame_name(source_frame_id), validate_frame_name(target_frame_id))
+            key = (
+                PosesComponent.validate_frame_name(source_frame_id),
+                PosesComponent.validate_frame_name(target_frame_id),
+            )
             inv_key = key[::-1]
 
             assert key not in self.data["dynamic_poses"], f"Dynamic poses {key} already exists"
@@ -1038,7 +1063,12 @@ class PosesComponent:
 
             if (
                 static_pose := self._static_poses().get(
-                    key := str((validate_frame_name(source_frame_id), validate_frame_name(target_frame_id)))
+                    key := str(
+                        (
+                            PosesComponent.validate_frame_name(source_frame_id),
+                            PosesComponent.validate_frame_name(target_frame_id),
+                        )
+                    )
                 )
             ) is None:
                 raise KeyError(f"Static pose {key} not found")
@@ -1053,7 +1083,12 @@ class PosesComponent:
 
             if (
                 dynamic_poses := self._dynamic_poses().get(
-                    key := str((validate_frame_name(source_frame_id), validate_frame_name(target_frame_id)))
+                    key := str(
+                        (
+                            PosesComponent.validate_frame_name(source_frame_id),
+                            PosesComponent.validate_frame_name(target_frame_id),
+                        )
+                    )
                 )
             ) is None:
                 raise KeyError(f"Dynamic poses {key} not found")
@@ -1338,7 +1373,8 @@ class BaseSensorComponentReader(ComponentReader):
         # preload frame timestamps and create map
         self._frames_timestamps_us = np.array(
             self._group.group("frames").attr_list("frames_timestamps_us"), dtype=np.uint64
-        )
+        ).reshape((-1, 2))
+        self._frames_timestamps_us.setflags(write=False)
         self._frame_end_to_frame_timestamps_us = {
             end: np.array([self._frames_timestamps_us[i, 0], end], dtype=np.uint64)
             for i, end in enumerate(self._frames_timestamps_us[:, 1])
@@ -1373,7 +1409,8 @@ class BaseSensorComponentReader(ComponentReader):
 
     @property
     def frames_timestamps_us(self) -> npt.NDArray[np.uint64]:
-        return np.array(self._group.group("frames").attr_list("frames_timestamps_us"), dtype=np.uint64)
+        """The start / end timestamps of all frames [(N,2) array, read-only, loaded when opening the reader]"""
+        return self._frames_timestamps_us
 
     @property
     def frames_count(self) -> int:
@@ -1998,7 +2035,7 @@ class PointCloudsComponent:
             attributes: Optional[Dict[str, npt.NDArray[Any]]] = None,
             generic_data: Optional[Dict[str, npt.NDArray[Any]]] = None,
             generic_meta_data: Optional[JsonDocumentLike] = None,
-        ) -> None:
+        ) -> "Self":
             """Store a single point cloud.
 
             Attributes represent per-point data with a schema declared in the component-level ``attribute_schemas`` meta-data.
@@ -2062,6 +2099,8 @@ class PointCloudsComponent:
 
             self._pc_timestamps.append(reference_frame_timestamp_us)
 
+            return self
+
         def finalize(self) -> None:
             """Write pc_timestamps_us array (derived from per-pc reference_frame_timestamp_us values)."""
             self._group.create_array(
@@ -2122,8 +2161,10 @@ class PointCloudsComponent:
         # -- schema access -----------------------------------------------------
 
         def get_attribute_schema(self, name: str) -> PointCloudsComponent.AttributeSchema:
-            assert name in self._attribute_schemas, f"Unknown attribute: {name}"
-            return self._attribute_schemas[name]
+            """Returns the schema of a named attribute (raises KeyError for unknown attributes)"""
+            if (schema := self._attribute_schemas.get(name)) is None:
+                raise KeyError(f"Unknown attribute: {name}")
+            return schema
 
         # -- per-pc data access ------------------------------------------------
 
@@ -2221,7 +2262,7 @@ class CameraLabelsComponent:
             timestamp_us: int,
             *,
             generic_meta_data: Optional[JsonDocumentLike] = None,
-        ) -> None:
+        ) -> "Self":
             """Store a single camera label.
 
             Parameters
@@ -2296,6 +2337,8 @@ class CameraLabelsComponent:
 
             self._timestamps.append(timestamp_us)
 
+            return self
+
         def finalize(self) -> None:
             """Write sorted timestamps_us array."""
             self._group.create_array(
@@ -2349,9 +2392,10 @@ class CameraLabelsComponent:
         # -- per-label access --------------------------------------------------
 
         def _label_group(self, timestamp_us: int) -> nodes.Group:
-            assert timestamp_us in self._timestamp_to_index, (
-                f"Unknown timestamp: {timestamp_us}. Available: {list(self._timestamp_to_index.keys())[:5]}..."
-            )
+            if timestamp_us not in self._timestamp_to_index:
+                raise KeyError(
+                    f"Unknown timestamp: {timestamp_us}. Available: {list(self._timestamp_to_index.keys())[:5]}..."
+                )
             return self._group.group(f"labels/{timestamp_us}")
 
         class CameraLabelHandle:

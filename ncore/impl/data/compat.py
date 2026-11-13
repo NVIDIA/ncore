@@ -13,13 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Abstract compatibility layer for unified access to different NCore sequence data formats.
+"""Abstract compatibility layer for unified access to NCore sequence data.
 
 This module provides protocol-based interfaces and adapter implementations that enable
-unified access to both different NCore data formats through a common API.
-
-For instance, while deprecated V3 is a monolithic shard-based format, V4 is a more
-general component-based format.
+unified access to sequence data through a common API, independent of how a loader stores
+the data (e.g., V4 component stores, see :class:`ncore.data.v4.SequenceLoaderV4`).
 
 Key Components:
     - SequenceLoaderProtocol: Unified interface for sequence-level data access
@@ -30,23 +28,18 @@ Key Components:
     - Async*Protocol (e.g. AsyncSequenceLoaderProtocol): the synchronous protocols plus asynchronous reads of sensor
       data (``*_async``), implemented by loaders with asynchronous reads (V4)
 
-The compatibility layer handles differences between different NCore data formats including:
-    - Different storage mechanisms (shards vs. components)
-    - Motion compensation conventions (e.g., deprecated V3 stores compensated, V4 stores uncompensated)
+The protocols cover:
+    - Sensor data (frames, ray bundles, motion-compensated point clouds)
     - Pose graph construction and transformation APIs
     - Frame indexing and timestamp access patterns
     - Metadata retrieval
 
 Example:
-    # Load V4 data
-    reader = SequenceComponentGroupsReader([Path("file.zarr.itar"), Path("some/folder.zarr")])
-    loader = SequenceLoaderV4(reader)
 
-    # Load V3 data [deprecated]
-    shard_loader = ShardDataLoader(["data_shard_*.zarr.itar"])
-    loader = SequenceLoaderV3(shard_loader)
+.. code-block:: python
 
-    # Use unified API for either format
+    loader = SequenceLoaderV4.open([Path("file.zarr.itar"), Path("some/folder.zarr")])
+
     camera = loader.get_camera_sensor("camera_front")
     image = camera.get_frame_image(0)
 """
@@ -113,7 +106,8 @@ class SequenceLoaderProtocol(Protocol):
         ...
 
     def get_sequence_meta(self) -> JsonDocument:
-        """Returns sequence-wide meta-data summary (format is instance-dependent)"""
+        """Returns sequence-wide meta-data summary as a JSON document (format is instance-dependent, e.g. the
+        dictionary of a :class:`~ncore.data.v4.SequenceMeta` for V4 loaders)"""
         ...
 
     @property
@@ -240,7 +234,12 @@ class SensorProtocol(Protocol):
 
     ## Convenience pose accessors for common sensor transforms
     @property
-    def T_sensor_rig(self, rig_node: str = "rig") -> Optional[npt.NDArray[np.floating]]:
+    def T_sensor_rig(self) -> Optional[npt.NDArray[np.floating]]:
+        """Static extrinsic transformation from the sensor to the ``"rig"`` coordinate frame (4x4), None if the pose
+        graph has no static transformation between them (see :meth:`get_T_sensor_rig` for other rig frames)"""
+        return self.get_T_sensor_rig()
+
+    def get_T_sensor_rig(self, rig_node: str = "rig") -> Optional[npt.NDArray[np.floating]]:
         """Return static extrinsic transformation from sensor to named rig coordinate frame.
 
         Returns the 4x4 homogeneous transformation matrix T_sensor_rig that transforms
@@ -394,15 +393,15 @@ class SensorProtocol(Protocol):
     def get_closest_frame_index(self, timestamp_us: int, relative_frame_time: float = 1.0) -> int:
         """Given a timestamp, returns the frame index of the closest frame based on the specified relative frame time-point (0.0 ~= start-of-frames / 1.0 ~= end-of-frames)"""
 
+        if not 0.0 <= relative_frame_time <= 1.0:
+            raise ValueError(f"relative_frame_time must be in [0, 1], got {relative_frame_time}")
+
         # Special cases: avoid computation for boundary values
         if relative_frame_time == 0.0:
             target_timestamps_us = self.frames_timestamps_us[:, 0]
         elif relative_frame_time == 1.0:
             target_timestamps_us = self.frames_timestamps_us[:, 1]
         else:
-            assert 0.0 <= relative_frame_time <= 1.0, (
-                f"relative_frame_time must be in [0, 1], got {relative_frame_time}"
-            )
             target_timestamps_us = (
                 self.frames_timestamps_us[:, 0]
                 + relative_frame_time * (self.frames_timestamps_us[:, 1] - self.frames_timestamps_us[:, 0])
@@ -434,7 +433,7 @@ class CameraSensorProtocol(SensorProtocol, Protocol):
             ...
 
     def get_frame_handle(self, frame_index: int) -> EncodedImageDataHandleProtocol:
-        """Returns the frame's encoded image data"""
+        """Returns a handle of the frame's encoded image data"""
         ...
 
     def get_frame_data(self, frame_index: int) -> EncodedImageData:
@@ -448,6 +447,11 @@ class CameraSensorProtocol(SensorProtocol, Protocol):
     def get_frame_image_array(self, frame_index: int) -> npt.NDArray[np.uint8]:
         """Returns decoded image data as array [W,H,C]"""
         return np.asarray(self.get_frame_image(frame_index))
+
+
+#: References encoded image data without loading it (e.g., file-based, container-based, memory-based): an alias of
+#: :class:`CameraSensorProtocol.EncodedImageDataHandleProtocol`
+EncodedImageHandle = CameraSensorProtocol.EncodedImageDataHandleProtocol
 
 
 @runtime_checkable
@@ -533,6 +537,9 @@ class RayBundleSensorProtocol(SensorProtocol, Protocol):
         xyz_m_start: Optional[npt.NDArray[np.floating]]
         #: Motion-compensated ray segment end points [N,3]
         xyz_m_end: npt.NDArray[np.floating]
+        #: Per-ray timestamps [N] read for the motion compensation, or None if not read (e.g., without motion
+        #: compensation)
+        timestamp_us: Optional[npt.NDArray[np.uint64]] = None
 
     def get_frame_point_cloud(
         self,
@@ -671,7 +678,13 @@ class RayBundleSensorPointCloudsSourceAdapter:
     Additionally, generic_data entries listed in ``promote_generic_data`` are
     **auto-promoted** to :class:`PointCloud.Attribute` instances when their name
     matches (case-insensitive).  By default, ``"rgb"`` with shape ``(N, 3)``
-    is promoted.  Shape validation happens lazily on first access.
+    is promoted.  Shape validation happens lazily on first access (ValueError for
+    mismatching shapes).
+
+    The ``timestamp_us`` attribute holds the per-ray timestamps read for the motion
+    compensation of the point cloud (if the sensor returns them, see
+    :attr:`RayBundleSensorProtocol.FramePointCloud.timestamp_us`), other attributes
+    are loaded lazily, synchronously, on first access.
 
     Args:
         sensor: The ray-bundle sensor to adapt.
@@ -753,9 +766,13 @@ class RayBundleSensorPointCloudsSourceAdapter:
         # Build lazy attributes
         attributes: Dict[str, PointCloud.Attribute] = {}
 
-        # timestamp_us -- per-ray timestamps (INVARIANT)
-        def _load_timestamp_us(s: RayBundleSensorProtocol = sensor, i: int = pc_index) -> "npt.NDArray":
-            return s.get_frame_ray_bundle_timestamp_us(i)
+        # timestamp_us: per-ray timestamps (INVARIANT), the ones read for the motion compensation if available
+        def _load_timestamp_us(
+            s: RayBundleSensorProtocol = sensor,
+            i: int = pc_index,
+            read: Optional["npt.NDArray[np.uint64]"] = frame_pc.timestamp_us,
+        ) -> "npt.NDArray":
+            return s.get_frame_ray_bundle_timestamp_us(i) if read is None else read
 
         attributes["timestamp_us"] = PointCloud.Attribute(
             loader=_load_timestamp_us,
@@ -822,9 +839,8 @@ class RayBundleSensorPointCloudsSourceAdapter:
                 ) -> "npt.NDArray":
                     arr = s.get_frame_generic_data(i, n)
                     expected_shape = (expected_n,) + suffix
-                    assert arr.shape == expected_shape, (
-                        f"Promoted generic_data '{n}' shape {arr.shape} != expected {expected_shape}"
-                    )
+                    if arr.shape != expected_shape:
+                        raise ValueError(f"Promoted generic_data '{n}' shape {arr.shape} != expected {expected_shape}")
                     return arr
 
                 attributes[gd_name_normalized] = PointCloud.Attribute(
@@ -885,6 +901,9 @@ class AsyncRayBundleSensorPointCloudsSourceAdapter(RayBundleSensorPointCloudsSou
         self._async_sensor = sensor
 
     async def get_pc_async(self, pc_index: int) -> PointCloud:
+        """Returns the point cloud of a sensor frame with its points (and model elements) read asynchronously (see
+        :class:`RayBundleSensorPointCloudsSourceAdapter` for its attributes: lazily loaded ones are read
+        synchronously on access)"""
         sensor = self._async_sensor
 
         async def no_model_element() -> None:
@@ -1081,7 +1100,8 @@ class AsyncPointCloudsSourceProtocol(PointCloudsSourceProtocol, Protocol):
 
     async def get_pc_async(self, pc_index: int) -> PointCloud:
         """Returns the point cloud at *pc_index* like :meth:`PointCloudsSourceProtocol.get_pc`, with its points read
-        asynchronously (attributes are loaded lazily, as for :meth:`PointCloudsSourceProtocol.get_pc`)"""
+        asynchronously (attributes are loaded lazily, as for :meth:`PointCloudsSourceProtocol.get_pc`: their loads on
+        access are synchronous reads)"""
         ...
 
     async def get_pc_generic_data_async(self, pc_index: int, name: str) -> npt.NDArray:
