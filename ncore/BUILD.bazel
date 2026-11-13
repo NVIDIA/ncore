@@ -56,14 +56,24 @@ py_wheel(
         "numpy",
         # dataclasses_json version restriction rationale: deserialization fails with earlier versions
         "dataclasses_json>=0.2.12",
-        "pillow",
+        # pillow version rationale:
+        # - 12.2.0 fixes CVE-2026-42311 (out-of-bounds write in decode.c/encode.c), requires python>=3.10
+        "pillow>=12.2.0; python_version>='3.10'",
+        "pillow; python_version<'3.10'",
         # zarr version restrictions / suggestions rationale:
-        # - both zarr-python 2 and zarr-python 3 are supported
-        # - 2.17.0 contains crucial perf improvements ["Cache result of FSStore._fsspec_installed()" https://github.com/zarr-developers/zarr-python/pull/1581]
-        # - 2.12.0 is the last version supporting python3.8 with old numpy versions, which we still want to support for now
+        # - both zarr-python 2 and zarr-python 3 are supported, zarr-python 3 requires python>=3.11
+        # - 2.18.7 is the first zarr-python 2 version with the correct numcodecs<0.16 restriction (requires python>=3.11)
         # - 3.1.4 is the oldest supported zarr-python 3 version (Array.async_array, Store ABC without set_partial_values)
-        "zarr>=2.12.0,!=3.0.*,!=3.1.0,!=3.1.1,!=3.1.2,!=3.1.3",
-        "cbor2",
+        # - 2.12.0 is the last version supporting python3.8 with old numpy versions, which we still want to support for now
+        "zarr>=2.18.7,!=3.0.*,!=3.1.0,!=3.1.1,!=3.1.2,!=3.1.3; python_version>='3.11'",
+        "zarr>=2.12.0,<3; python_version<'3.11'",
+        # imported directly (zarr compressors / codecs, and asynchronous filesystems of remote archives)
+        "numcodecs",
+        "fsspec",
+        # cbor2 version rationale:
+        # - 5.9.0 fixes CWE-674 / CVE-2026-26209 (uncontrolled recursion DoS), requires python>=3.9
+        "cbor2>=5.9.0; python_version>='3.9'",
+        "cbor2; python_version<'3.9'",
         "scipy",
         "torch",
         "typing_extensions",
