@@ -19,7 +19,7 @@ import json
 import os
 import unittest
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, cast
 
 import numpy as np
 import parameterized
@@ -795,6 +795,8 @@ class TestLidarRollingShutterReturnAllProjections(unittest.TestCase):
         world_points[:, 0] = ranges * torch.cos(angles_el) * torch.cos(angles_az)
         world_points[:, 1] = ranges * torch.cos(angles_el) * torch.sin(angles_az)
         world_points[:, 2] = ranges * torch.sin(angles_el)
+        # (a point straight above the sensor, outside of its vertical FOV, never projects validly)
+        world_points[7] = torch.tensor([0.0, 0.0, 10.0], device=self.device)
 
         T_start = np.eye(4, dtype=np.float32)
         T_end = _make_pose(np.array([0.1, 0.0, 2.0]), np.array([1.0, 0.05, 0.0], dtype=np.float32))
@@ -810,7 +812,7 @@ class TestLidarRollingShutterReturnAllProjections(unittest.TestCase):
         )
         n_valid = result_valid_only.sensor_angles.shape[0]
         self.assertGreater(n_valid, 0)
-        self.assertLessEqual(n_valid, n)
+        self.assertLess(n_valid, n)
 
         # With return_all_projections: returns all n points
         result_all = self.lidar.world_points_to_sensor_angles_shutter_pose(
@@ -831,6 +833,20 @@ class TestLidarRollingShutterReturnAllProjections(unittest.TestCase):
         # Valid points in return_all_projections should match the valid-only result
         valid_from_all = result_all.sensor_angles[result_all.valid_indices]
         torch.testing.assert_close(valid_from_all, result_valid_only.sensor_angles, atol=1e-5, rtol=1e-5)
+
+        # The valid flag covers all input points in both cases, consistent with the valid indices
+        for result in (result_valid_only, result_all):
+            self.assertEqual(result.valid_flag.shape, (n,))
+            self.assertEqual(result.valid_flag.dtype, torch.bool)
+            self.assertEqual(torch.where(result.valid_flag)[0].tolist(), result_all.valid_indices.tolist())
+            self.assertFalse(bool(result.valid_flag[7]))
+
+        # The return flags are keyword-only
+        with self.assertRaisesRegex(TypeError, "positional argument"):
+            # (untyped: the positional call doesn't type check)
+            cast(Any, self.lidar.world_points_to_sensor_angles_shutter_pose)(
+                world_points, T_start, T_end, None, None, 10, 1e-4, 1e-6, True
+            )
 
     def test_return_all_projections_with_timestamps(self) -> None:
         """Verify return_all_projections + return_timestamps gives consistent outputs."""

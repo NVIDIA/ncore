@@ -135,7 +135,8 @@ The FTheta model projects 3D camera rays to image coordinates through the follow
 
 The inverse operation uses the backward polynomial (either reference or approximate inverse).
 With tangential distortion, the inverse is evaluated by a fixed number of fixed-point iterations
-(``FThetaCameraModel.tangential_iterations``) starting from the purely radial solution.
+(the keyword-only ``tangential_iterations`` argument of ``FThetaCameraModel``, 4 by default) starting from
+the purely radial solution.
 
 **Example:** For a typical FTheta model, both forward and backward polynomials contain 6 coefficients each (float32, [6,]).
 
@@ -262,6 +263,11 @@ The OpenCV Pinhole model applies radial, tangential, and thin prism distortions:
       f_v(y'd_r + \Delta y_t + \Delta y_p) + v_0 \end{bmatrix}
 
 **Example:** Typical parameter sizes: radial_coeffs [6,], tangential_coeffs [2,], thin_prism_coeffs [4,], all float32.
+
+The inverse operation undistorts image points by fixed-point iterations, which run until every point
+converged (or for a maximum number of iterations); points whose iteration did not converge are invalid.
+Camera rays beyond the first extremum of the radially distorted radius are invalid as well (see
+:meth:`~ncore.data.OpenCVPinholeCameraModelParameters.compute_max_normalized_radius_squared`).
 
 .. _opencv_fisheye_camera_model:
 

@@ -34,7 +34,7 @@ from ncore.impl.data.types import (
 from ncore.impl.data.util import padded_index_string
 from ncore.impl.data.v4.compat import SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
-from ncore.impl.sensors.camera import CameraModel
+from ncore.impl.sensors.camera import camera_model_from_parameters
 from ncore.impl.sensors.rectification import Rectificator
 
 
@@ -226,8 +226,8 @@ def _build_rectificator(
             image_domain_scale=scale, new_resolution=params.rectify_resolution
         )
 
-    source_model = CameraModel.from_parameters(source_parameters, device="cpu")
-    target_model = CameraModel.from_parameters(target_parameters, device="cpu")
+    source_model = camera_model_from_parameters(source_parameters, device="cpu")
+    target_model = camera_model_from_parameters(target_parameters, device="cpu")
     return Rectificator(source_model, target_model), target_parameters
 
 

@@ -47,6 +47,7 @@ import numpy as np
 import PIL.Image as PILImage
 
 from dataclasses_json.core import Json
+from numpy.polynomial import polynomial as np_polynomial
 
 
 if TYPE_CHECKING:
@@ -896,6 +897,52 @@ class OpenCVPinholeCameraModelParameters(PinholeCameraModelParameters):
             and not self.has_tangential_distortion
             and not self.has_thin_prism_distortion
         )
+
+    @staticmethod
+    def compute_max_normalized_radius_squared(radial_coeffs: np.ndarray) -> float:
+        """Computes the largest squared radius of normalized coordinates up to which the radial distortion is valid
+
+        With ``s = r^2`` the squared radius of the normalized coordinates ``(x/z, y/z)`` and ``d(s) = N(s) / D(s)``
+        the rational radial distortion factor (``N(s) = 1 + k1 s + k2 s^2 + k3 s^3``,
+        ``D(s) = 1 + k4 s + k5 s^2 + k6 s^3``), the distorted radius ``r d(s)`` is a one-to-one function of the
+        radius ``r`` up to its first extremum (beyond it, distinct rays project to the same image points). The bound
+        is the smallest positive root of either the derivative of the distorted radius (whose sign is the one of the
+        polynomial ``N D + 2 s (N' D - N D')``) or of ``D`` (a pole of the distortion factor), and ``math.inf`` if
+        the distortion has neither.
+
+        Only the radial distortion is taken into account (tangential and thin-prism distortions are not).
+
+        Args:
+            radial_coeffs: the radial distortion coefficients ``[k1, k2, k3, k4, k5, k6]``
+
+        Returns:
+            the exclusive bound on the squared radius of the normalized coordinates of valid camera rays
+        """
+        k = np.asarray(radial_coeffs, dtype=np.float64).reshape(6)
+
+        numerator = np.array([1.0, k[0], k[1], k[2]])
+        denominator = np.array([1.0, k[3], k[4], k[5]])
+        derivative = np_polynomial.polyadd(
+            np_polynomial.polymul(numerator, denominator),
+            np_polynomial.polymulx(
+                2.0
+                * np_polynomial.polysub(
+                    np_polynomial.polymul(np_polynomial.polyder(numerator), denominator),
+                    np_polynomial.polymul(numerator, np_polynomial.polyder(denominator)),
+                )
+            ),
+        )
+
+        max_r2 = math.inf
+        for polynomial in (derivative, denominator):
+            polynomial = np.trim_zeros(polynomial, "b")
+            if len(polynomial) < 2:
+                continue  # constant (both are 1 at s = 0), no root
+            for root in np_polynomial.polyroots(polynomial):
+                # (multiple roots, e.g., where the derivative only touches zero, are computed as nearly real pairs)
+                if root.real > 0.0 and abs(root.imag) <= 1e-6 * abs(root):
+                    max_r2 = min(max_r2, float(root.real))
+        return max_r2
 
 
 @register_camera_model_parameters

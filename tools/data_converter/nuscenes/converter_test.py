@@ -44,7 +44,7 @@ from ncore.impl.data.v4.components import (
     RadarSensorComponent,
     SequenceComponentGroupsReader,
 )
-from ncore.impl.sensors.lidar import StructuredLidarModel
+from ncore.impl.sensors.lidar import StructuredLidarModel, maybe_lidar_model_from_parameters
 from tools.data_converter.nuscenes.converter import NuScenesConverter4, NuScenesConverter4Config
 from tools.data_converter.nuscenes.utils import get_nuscenes
 
@@ -272,8 +272,8 @@ class TestNuScenesConverter(unittest.TestCase):
         params = intrinsics_reader.get_lidar_model_parameters("lidar_top")
         assert isinstance(params, RowOffsetStructuredSpinningLidarModelParameters)
 
-        lidar_model = StructuredLidarModel.maybe_from_parameters(params, device="cpu")
-        assert lidar_model is not None
+        lidar_model = maybe_lidar_model_from_parameters(params, device="cpu")
+        assert isinstance(lidar_model, StructuredLidarModel)
 
         lidar_readers = self.reader.open_component_readers(LidarSensorComponent.Reader)
         lidar_reader = lidar_readers["lidar_top"]
