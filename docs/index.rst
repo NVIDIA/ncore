@@ -30,6 +30,7 @@ The project is developed within the `NVIDIA SIL Lab <https://research.nvidia.com
    :caption: APIs
 
    apis/install
+   apis/upgrading_20
    apis/ncore
 
 .. toctree::

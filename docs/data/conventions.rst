@@ -117,6 +117,58 @@ timestamps for each sensor frame (e.g., the start- and end-times of a
 rolling-shutter camera frame / spinning lidar frame).
 
 
+.. _motion_compensation:
+
+Motion Compensation
+^^^^^^^^^^^^^^^^^^^
+
+Lidar and radar frames store their rays in the sensor frame at each ray's
+measurement time (per-ray ``timestamp_us``, see :ref:`data_formats`), i.e., not
+motion-compensated. :class:`~ncore.geometry.MotionCompensator` transforms such
+points into the sensor frame at a single reference time of the frame (by
+default its end) using the pose graph
+(:meth:`~ncore.geometry.MotionCompensator.motion_compensate_points`), and back
+(:meth:`~ncore.geometry.MotionCompensator.motion_decompensate_points`, returning
+a :class:`~ncore.geometry.MotionCompensator.MotionDecompensationResult` whose
+``xyz_pointtime`` holds the points). Decompensation needs the same reference
+timestamp and anchor frame as the compensation.
+
+:class:`MotionCompensator.Parameters <ncore.geometry.MotionCompensator.Parameters>`
+selects how the per-point transformations are evaluated:
+
+* ``Method.EXACT`` (default) interpolates the poses at each distinct point
+  timestamp.
+* ``Method.INTERPOLATED`` interpolates the poses on an adaptive grid of
+  timestamps spanning the points' timestamps, and linearly interpolates the
+  transformations of the points in between, within ``interpolation_tolerance``
+  of the exact ones (default ``1e-5``, in the units of the pose graph's
+  translations, e.g. meters, in addition to float32 rounding). It is several
+  times faster for frames with many distinct point timestamps (e.g., spinning
+  lidars).
+
+The parameters are passed to ``MotionCompensator(pose_graph, parameters=...)`` /
+:meth:`MotionCompensator.from_sensor_rig(..., parameters=...)
+<ncore.geometry.MotionCompensator.from_sensor_rig>`, and to the loader for the
+point clouds of a sequence's lidar / radar sensors
+(``get_frame_point_cloud(..., motion_compensation=True)``):
+
+.. code-block:: python
+
+   from ncore.data.v4 import SequenceLoaderV4
+   from ncore.geometry import MotionCompensator
+
+   loader = SequenceLoaderV4.open(
+       [sequence_meta_path],
+       motion_compensator_parameters=MotionCompensator.Parameters(
+           method=MotionCompensator.Parameters.Method.INTERPOLATED
+       ),
+   )
+
+A sensor's ``set_pose_graph`` replaces its motion compensator by one of the new
+pose graph with the same parameters, so point clouds of a sensor with its own
+pose graph are compensated with that pose graph.
+
+
 Camera and Image Coordinate System
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

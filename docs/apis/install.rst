@@ -16,7 +16,8 @@ The NCore Python APIs are provided as ``pip``-installable wheels published to
 
 ``nvidia-ncore`` supports Python 3.8 and above. It works with zarr-python 2 and zarr-python 3 (see
 :ref:`zarr_versions`); zarr-python 3 requires Python 3.11 or above, and is installed by default there (pin
-``"zarr<3"`` to keep zarr-python 2). Writing zarr format v3 stores requires zarr-python 3.
+``"zarr<3"`` to keep zarr-python 2, which resolves to zarr-python 2 >= 2.18.7 there). Writing zarr format v3 stores
+requires zarr-python 3.
 
 Pre-releases are only installed with ``--pre`` or an exact version:
 
