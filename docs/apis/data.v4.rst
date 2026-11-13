@@ -13,5 +13,5 @@ Types
 .. autodata:: ncore.data.v4.IndexTailRetention
 
    Index tail retention policies of indexed tar archives (``itar_index_tail_retention`` of
-   :class:`SequenceComponentGroupsReader` and :meth:`SequenceLoaderV4.open_async`), see
+   :class:`SequenceComponentGroupsReader`, :meth:`SequenceLoaderV4.open` and :meth:`SequenceLoaderV4.open_async`), see
    :data:`ncore.data.stores.IndexTailRetention`.

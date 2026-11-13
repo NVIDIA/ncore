@@ -235,7 +235,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
             xyz_target = point_cloud.xyz
         elif params.frame == "rig":
             if lidar_sensor is not None:
-                T_sensor_rig = unpack_optional(lidar_sensor.T_sensor_rig)
+                T_sensor_rig = unpack_optional(lidar_sensor.get_T_sensor_rig())
                 xyz_target = transform_point_cloud(point_cloud.xyz, T_sensor_rig)
             else:
                 # For non-lidar sources, transform via pose graph to rig frame
@@ -257,7 +257,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
             if params.frame == "sensor":
                 T_sensor_target = np.identity(4)
             elif params.frame == "rig":
-                T_sensor_target = unpack_optional(lidar_sensor.T_sensor_rig)
+                T_sensor_target = unpack_optional(lidar_sensor.get_T_sensor_rig())
             elif params.frame == "world":
                 T_sensor_target = lidar_sensor.get_frames_T_sensor_target("world", pc_index)
             tm.vertex_data.custom_attributes["xyz_s"] = transform_point_cloud(

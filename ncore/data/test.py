@@ -53,7 +53,7 @@ def test_public_names():
         "SpinningLidarModelParameters": types.SpinningLidarModelParameters,
         "StructuredSpinningLidarModelParameters": types.StructuredSpinningLidarModelParameters,
         "EncodedImageData": types.EncodedImageData,
-        "EncodedImageHandle": types.EncodedImageHandle,
+        "EncodedImageHandle": compat.CameraSensorProtocol.EncodedImageDataHandleProtocol,
         "CameraModelParameters": types.CameraModelParameters,
         "ConcreteCameraModelParametersUnion": types.ConcreteCameraModelParametersUnion,
         "ConcreteExternalDistortionParametersUnion": types.ConcreteExternalDistortionParametersUnion,

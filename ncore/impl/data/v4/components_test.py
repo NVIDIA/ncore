@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import asyncio
+import concurrent.futures
 import contextlib
 import dataclasses
 import io
@@ -2983,10 +2984,23 @@ class TestReaderOpening(unittest.TestCase):
             return open_root_group(store, consolidated=consolidated)
 
         with mock.patch.object(stores.Store, "open_root_group", autospec=True, side_effect=recording_open_root_group):
-            reader = SequenceComponentGroupsReader(self.store_paths, max_threads=4)
+            reader = SequenceComponentGroupsReader(self.store_paths, max_concurrent_requests=4)
         self.assertEqual(len(threads), len(self.store_paths))
         self.assertEqual(set(threads), {threading.current_thread()})
         self.assertEqual(sorted(reader.open_component_readers(PosesComponent.Reader)), ["a", "b", "c"])
+
+    def test_max_concurrent_requests_bounds_the_threads(self):
+        """max_concurrent_requests is the size of the thread pool of the synchronous opening (positive or None)"""
+        pool = concurrent.futures.ThreadPoolExecutor
+        for max_concurrent_requests in (1, 2, None):
+            with self.subTest(max_concurrent_requests=max_concurrent_requests):
+                with mock.patch.object(concurrent.futures, "ThreadPoolExecutor", side_effect=pool) as executor:
+                    SequenceComponentGroupsReader(self.store_paths, max_concurrent_requests=max_concurrent_requests)
+                executor.assert_called_once_with(max_workers=max_concurrent_requests)
+        for max_concurrent_requests in (0, -1):
+            with self.subTest(max_concurrent_requests=max_concurrent_requests):
+                with self.assertRaisesRegex(ValueError, "max_concurrent_requests needs to be positive"):
+                    SequenceComponentGroupsReader(self.store_paths, max_concurrent_requests=max_concurrent_requests)
 
     def test_hierarchies_are_opened_while_stores_are_opened(self):
         """The hierarchy of an opened store is opened while the remaining stores are still being opened"""
@@ -3011,7 +3025,7 @@ class TestReaderOpening(unittest.TestCase):
             with mock.patch.object(
                 stores.Store, "open_root_group", autospec=True, side_effect=recording_open_root_group
             ):
-                SequenceComponentGroupsReader(self.store_paths, max_threads=len(self.store_paths))
+                SequenceComponentGroupsReader(self.store_paths, max_concurrent_requests=len(self.store_paths))
         last = events.index(f"store {self.store_paths[-1].name}")
         self.assertIn("hierarchy", events[:last])
 
@@ -3837,3 +3851,182 @@ class TestMissingComponentStores(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 SequenceComponentGroupsReader([path])
             self.assertFalse((UPath(tmp) / "missing").exists())
+
+
+@parameterized_class(("store_type", "zarr_format"), STORE_TYPES_AND_ZARR_FORMATS)
+class TestComponentAPIs(unittest.TestCase):
+    """Writers returning themselves, asynchronous reads of generic data / point-cloud attributes, cached frame
+    timestamps, and the errors of invalid arguments"""
+
+    store_type: Literal["itar", "directory"]
+    zarr_format: nodes.ZarrFormat
+
+    def setUp(self):
+        _require_zarr_format(self, self.zarr_format)
+        self._tmp = tempfile.TemporaryDirectory()
+        writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(self._tmp.name),
+            store_base_name="seq",
+            sequence_id="seq",
+            sequence_timestamp_interval_us=HalfClosedInterval(0, 10_000_001),
+            generic_meta_data={},
+            store_type=self.store_type,
+            zarr_format=self.zarr_format,
+        )
+        self.poses_writer = writer.register_component_writer(PosesComponent.Writer, "poses")
+        self.poses_writer.store_static_pose("x", "y", np.eye(4, dtype=np.float32))
+        self.assertIs(
+            self.poses_writer.set_generic_data({"weights": np.arange(6, dtype=np.float32).reshape(2, 3)}),
+            self.poses_writer,
+        )
+
+        pc_writer = writer.register_component_writer(
+            PointCloudsComponent.Writer,
+            "pc",
+            coordinate_unit=PointCloud.CoordinateUnit.METERS,
+            attribute_schemas={
+                "rgb": PointCloudsComponent.AttributeSchema(
+                    transform_type=PointCloud.AttributeTransformType.INVARIANT,
+                    dtype=np.dtype("uint8"),
+                    shape_suffix=(3,),
+                )
+            },
+        )
+        self.rgb = np.arange(12, dtype=np.uint8).reshape(4, 3)
+        xyz = np.ones((4, 3), dtype=np.float32)
+        self.assertIs(
+            pc_writer.store_pc(xyz, "world", 1_000_000, attributes={"rgb": self.rgb}).store_pc(
+                xyz, "world", 2_000_000, attributes={"rgb": self.rgb + 1}
+            ),
+            pc_writer,
+        )
+
+        labels_writer = writer.register_component_writer(
+            CameraLabelsComponent.Writer,
+            "depth",
+            descriptor=CameraLabelDescriptor(
+                camera_id="front",
+                label_type=LabelType.DEPTH_Z_M,
+                label_schema=LabelSchema(dtype=np.dtype("float32"), encoding=LabelEncoding.RAW),
+                label_source=LabelSource.EXTERNAL,
+            ),
+        )
+        depth = np.ones((2, 3), dtype=np.float32)
+        self.assertIs(labels_writer.store_label(depth, 1_000_000).store_label(depth, 2_000_000), labels_writer)
+
+        lidar_writer = writer.register_component_writer(LidarSensorComponent.Writer, "lidar")
+        for end_us in (100_000, 200_000):
+            lidar_writer.store_frame(
+                np.array([[1.0, 0.0, 0.0]], dtype=np.float32),
+                np.array([end_us], dtype=np.uint64),
+                None,
+                np.ones((1, 1), dtype=np.float32),
+                np.ones((1, 1), dtype=np.float32),
+                np.array([end_us - 50_000, end_us], dtype=np.uint64),
+                generic_data={},
+                generic_meta_data={},
+            )
+        self.reader = SequenceComponentGroupsReader(writer.finalize())
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_get_generic_data_async(self):
+        poses = self.reader.open_component_readers(PosesComponent.Reader)["poses"]
+        np.testing.assert_array_equal(
+            asyncio.run(poses.get_generic_data_async("weights")), np.arange(6, dtype=np.float32).reshape(2, 3)
+        )
+        with self.assertRaises(KeyError):
+            asyncio.run(poses.get_generic_data_async("missing"))
+
+    def test_get_pc_attribute_async(self):
+        pcs = self.reader.open_component_readers(PointCloudsComponent.Reader)["pc"]
+        for pc_index, expected in enumerate((self.rgb, self.rgb + 1)):
+            np.testing.assert_array_equal(asyncio.run(pcs.get_pc_attribute_async(pc_index, "rgb")), expected)
+            np.testing.assert_array_equal(pcs.get_pc_attribute(pc_index, "rgb"), expected)
+
+    def test_frames_timestamps_us_are_cached(self):
+        lidar = self.reader.open_component_readers(LidarSensorComponent.Reader)["lidar"]
+        timestamps = lidar.frames_timestamps_us
+        np.testing.assert_array_equal(timestamps, [[50_000, 100_000], [150_000, 200_000]])
+        self.assertIs(lidar.frames_timestamps_us, timestamps)
+        self.assertFalse(timestamps.flags.writeable)
+
+    def test_invalid_arguments(self):
+        pcs = self.reader.open_component_readers(PointCloudsComponent.Reader)["pc"]
+        with self.assertRaisesRegex(KeyError, "Unknown attribute"):
+            pcs.get_attribute_schema("normal")
+        labels = self.reader.open_component_readers(CameraLabelsComponent.Reader)["depth"]
+        with self.assertRaisesRegex(KeyError, "Unknown timestamp"):
+            labels.get_label(1_500_000)
+        for name in ("", "  "):
+            with self.assertRaisesRegex(ValueError, "is invalid"):
+                PosesComponent.validate_frame_name(name)
+            with self.assertRaisesRegex(ValueError, "is invalid"):
+                self.poses_writer.store_static_pose(name, "y", np.eye(4, dtype=np.float32))
+            poses = self.reader.open_component_readers(PosesComponent.Reader)["poses"]
+            with self.assertRaisesRegex(ValueError, "is invalid"):
+                poses.get_static_pose("x", name)
+        self.assertEqual(PosesComponent.validate_frame_name("rig"), "rig")
+        writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(self._tmp.name) / "other",
+            store_base_name="seq",
+            sequence_id="seq",
+            sequence_timestamp_interval_us=HalfClosedInterval(0, 10_000_001),
+            generic_meta_data={},
+            store_type=self.store_type,
+            zarr_format=self.zarr_format,
+        )
+        with self.assertRaisesRegex(ValueError, "must not be empty"):
+            writer.register_component_writer(PosesComponent.Writer, "")
+        writer.register_component_writer(PosesComponent.Writer, "poses")
+        with self.assertRaisesRegex(ValueError, "already registered"):
+            writer.register_component_writer(PosesComponent.Writer, "poses")
+        with self.assertRaisesRegex(ValueError, "No component inputs"):
+            SequenceComponentGroupsReader([])
+        with self.assertRaisesRegex(ValueError, "No component inputs"):
+            asyncio.run(SequenceComponentGroupsReader.open_async([]))
+
+
+class TestReaderOpenConsolidated(unittest.TestCase):
+    """open_consolidated="auto" opens stores from their consolidated metadata if they have one"""
+
+    def test_auto(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            writer = SequenceComponentGroupsWriter(
+                output_dir_path=UPath(tmp),
+                store_base_name="seq",
+                sequence_id="seq",
+                sequence_timestamp_interval_us=HalfClosedInterval(0, 10_000_001),
+                generic_meta_data={},
+                store_type="directory",
+            )
+            for name in ("a", "b"):
+                writer.register_component_writer(PosesComponent.Writer, name, f"poses_{name}").store_static_pose(
+                    "x", "y", np.eye(4, dtype=np.float32)
+                )
+            paths = writer.finalize()
+            # (the second store loses its consolidated metadata)
+            for record in UPath(paths[1]).iterdir():
+                if stores.Store.is_consolidated_metadata_key(record.name):
+                    record.unlink()
+
+            with self.assertRaises(KeyError):
+                SequenceComponentGroupsReader(paths)
+            opened_consolidated: List[Any] = []
+            open_root_group = stores.Store.open_root_group
+
+            def recording_open_root_group(store: stores.Store, *, consolidated: Any = True) -> nodes.Group:
+                opened_consolidated.append(consolidated)
+                return open_root_group(store, consolidated=consolidated)
+
+            with mock.patch.object(
+                stores.Store, "open_root_group", autospec=True, side_effect=recording_open_root_group
+            ):
+                readers = [
+                    SequenceComponentGroupsReader(paths, open_consolidated="auto"),
+                    asyncio.run(SequenceComponentGroupsReader.open_async(paths, open_consolidated="auto")),
+                ]
+            self.assertEqual(opened_consolidated, ["auto"] * 4)
+            for reader in readers:
+                self.assertEqual(sorted(reader.open_component_readers(PosesComponent.Reader)), ["a", "b"])
