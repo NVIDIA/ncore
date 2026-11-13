@@ -18,3 +18,48 @@ def test_import_package():
     """Make sure package can be imported"""
 
     import ncore.data_converter  # noqa: F401
+
+
+def test_config_defaults():
+    """Converter configs write zarr format 2 by default, file-based configs require a root directory"""
+
+    import pytest
+
+    from ncore.data_converter import BaseDataConverterConfig, FileBasedDataConverterConfig
+
+    def base_config(**kwargs) -> BaseDataConverterConfig:
+        return BaseDataConverterConfig(
+            output_dir="/tmp/out",
+            no_cameras=False,
+            camera_ids=None,
+            no_lidars=False,
+            lidar_ids=None,
+            no_radars=False,
+            radar_ids=None,
+            verbose=False,
+            debug=False,
+            debug_port=5678,
+            **kwargs,
+        )
+
+    def file_based_config(**kwargs) -> FileBasedDataConverterConfig:
+        return FileBasedDataConverterConfig(
+            output_dir="/tmp/out",
+            no_cameras=False,
+            camera_ids=None,
+            no_lidars=False,
+            lidar_ids=None,
+            no_radars=False,
+            radar_ids=None,
+            verbose=False,
+            debug=False,
+            debug_port=5678,
+            **kwargs,
+        )
+
+    assert base_config().zarr_format == 2
+    assert base_config(zarr_format=3).zarr_format == 3
+    assert file_based_config(root_dir="/tmp/in").zarr_format == 2
+
+    with pytest.raises(ValueError, match="--root-dir is required"):
+        file_based_config()
