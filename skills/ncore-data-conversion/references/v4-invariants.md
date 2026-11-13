@@ -15,11 +15,10 @@ and transformations, `docs/data/formats.rst` for the component layout,
 
 - The sequence interval is **half-open**, `[start, stop)`, in microseconds. The
   inclusive last timestamp is therefore `stop - 1`. `docs/` gives the field
-  name but not the semantics; see `HalfClosedInterval` in
-  `ncore/impl/common/transformations.py`.
+  name but not the semantics; see `ncore.geometry.HalfClosedInterval`.
 - `store_dynamic_pose(..., require_sequence_time_coverage=True)` is the
-  default, and asserts the first timestamp equals the sequence start and the
-  last equals `stop - 1`. Setting it `False` relaxes only that endpoint
+  default, and requires the first timestamp to equal the sequence start and the
+  last to equal `stop - 1` (`ValueError` otherwise). Setting it `False` relaxes only that endpoint
   exactness. Containment, strict increase, and a minimum of two poses are
   enforced either way. The COLMAP converter passes `False` because per-camera
   pose tracks are ragged.
@@ -27,9 +26,9 @@ and transformations, `docs/data/formats.rst` for the component layout,
   the end-of-frame timestamp. The format does not define these as exposure or
   sweep bounds; a global-shutter camera legitimately stores `start == end`, as
   COLMAP does.
-- Out-of-range frames are **not clamped**. The writer asserts both endpoints
-  lie inside the sequence interval and fails with `Frame start timestamp must
-  be contained in the sequence time range`. Trim frames or widen the interval
+- Out-of-range frames are **not clamped**. The writer requires both endpoints
+  to lie inside the sequence interval and raises `ValueError: Frame start
+  timestamp must be contained in the sequence time range`. Trim frames or widen the interval
   yourself. Converters generally skip such frames rather than adjusting them.
 
 ## Poses
@@ -37,9 +36,9 @@ and transformations, `docs/data/formats.rst` for the component layout,
 - Pose dtype is not fixed by the format. Both `store_static_pose` and
   `store_dynamic_pose` accept and round-trip float32 and float64. If a
   downstream consumer raises `RuntimeError: double != float`, match that
-  consumer rather than assuming V4 requires float32. Note the singular getters
-  return float64 regardless of what was stored, while the plural generators
-  honour the stored dtype.
+  consumer rather than assuming V4 requires float32. All pose getters (the
+  singular `get_static_pose` / `get_dynamic_pose` and the plural generators)
+  return the stored dtype.
 - Pose **density** drives motion compensation, independently of the coverage
   rule above. Synchronized cameras share one trigger time, so N cameras and M
   frames dedupe to about M unique waypoints. Adding cameras does not densify
@@ -112,9 +111,8 @@ and transformations, `docs/data/formats.rst` for the component layout,
 
 ## Motion compensation
 
-Not documented outside docstrings; `MotionCompensator` lives in
-`ncore/impl/common/transformations.py` and is not exported from a public
-package.
+`ncore.geometry.MotionCompensator` is documented in the specification's
+motion compensation section and its docstrings.
 
 `motion_decompensate_points` expects `xyz_reftime` **already in the sensor
 frame** at one reference timestamp, namely the timestamp the data was
