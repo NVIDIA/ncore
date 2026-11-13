@@ -524,17 +524,14 @@ class RayBundleSensorProtocol(SensorProtocol, Protocol):
 
     @dataclass
     class FramePointCloud:
-        """Container for point cloud data with optional motion compensation.
+        """Container for point cloud data with optional motion compensation"""
 
-        Attributes:
-            motion_compensation: Whether coordinates are relative to sensor frame at
-                end-of-frame time (True) or sensor frame at point-time (False)
-            xyz_m_start: Motion-compensated ray segment start points [N,3], or None if not requested
-            xyz_m_end: Motion-compensated ray segment end points [N,3]
-        """
-
+        #: Whether coordinates are relative to sensor frame at end-of-frame time (True) or sensor frame at point-time
+        #: (False)
         motion_compensation: bool
+        #: Motion-compensated ray segment start points [N,3], or None if not requested
         xyz_m_start: Optional[npt.NDArray[np.floating]]
+        #: Motion-compensated ray segment end points [N,3]
         xyz_m_end: npt.NDArray[np.floating]
 
     def get_frame_point_cloud(
@@ -702,6 +699,7 @@ class RayBundleSensorPointCloudsSourceAdapter:
     def __init__(
         self,
         sensor: RayBundleSensorProtocol,
+        *,
         return_index: int = 0,
         promote_generic_data: Dict[str, GenericDataPromotion] = DEFAULT_GENERIC_DATA_PROMOTIONS,
     ) -> None:
@@ -877,12 +875,13 @@ class AsyncRayBundleSensorPointCloudsSourceAdapter(RayBundleSensorPointCloudsSou
     def __init__(
         self,
         sensor: AsyncRayBundleSensorProtocol,
+        *,
         return_index: int = 0,
         promote_generic_data: Dict[
             str, RayBundleSensorPointCloudsSourceAdapter.GenericDataPromotion
         ] = RayBundleSensorPointCloudsSourceAdapter.DEFAULT_GENERIC_DATA_PROMOTIONS,
     ) -> None:
-        super().__init__(sensor, return_index, promote_generic_data)
+        super().__init__(sensor, return_index=return_index, promote_generic_data=promote_generic_data)
         self._async_sensor = sensor
 
     async def get_pc_async(self, pc_index: int) -> PointCloud:

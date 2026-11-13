@@ -15,8 +15,13 @@
 
 """Package exposing methods related to NCore's V4 data interaction APIs"""
 
+from ncore.impl.data.itar import IndexTailRetention
 from ncore.impl.data.v4.compat import SequenceLoaderV4
 from ncore.impl.data.v4.components import (
+    BaseRayBundleSensorComponentReader,
+    BaseRayBundleSensorComponentWriter,
+    BaseSensorComponentReader,
+    BaseSensorComponentWriter,
     CameraLabelsComponent,
     CameraSensorComponent,
     ComponentReader,
@@ -39,8 +44,13 @@ __all__ = [
     # component APIs
     "SequenceComponentGroupsWriter",
     "SequenceComponentGroupsReader",
+    "IndexTailRetention",
     "ComponentWriter",
     "ComponentReader",
+    "BaseSensorComponentWriter",
+    "BaseSensorComponentReader",
+    "BaseRayBundleSensorComponentWriter",
+    "BaseRayBundleSensorComponentReader",
     "PosesComponent",
     "IntrinsicsComponent",
     "MasksComponent",

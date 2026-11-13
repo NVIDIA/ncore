@@ -35,5 +35,6 @@ pytest_test(
     srcs = ["test.py"],
     deps = [
         ":pylib",
+        "//ncore/data:pylib",
     ],
 )
