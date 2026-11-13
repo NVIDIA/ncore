@@ -29,7 +29,7 @@ import viser
 
 from viser import Icon
 
-from ncore.impl.common.transformations import HalfClosedInterval
+from ncore.geometry import HalfClosedInterval
 from tools.ncore_vis.components import VisualizationComponent, get_registered_components
 from tools.ncore_vis.data_loader import DataLoader
 

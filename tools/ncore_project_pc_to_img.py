@@ -26,20 +26,18 @@ import tqdm
 
 from scipy.spatial.transform import Rotation as R
 
-from ncore.impl.common.transformations import MotionCompensator, se3_inverse, transform_point_cloud
-from ncore.impl.common.util import unpack_optional
-from ncore.impl.data import types
-from ncore.impl.data.compat import (
+from ncore.data import (
+    FrameTimepoint,
     LidarSensorProtocol,
     PointCloudsSourceProtocol,
     RayBundleSensorProtocol,
     SequenceLoaderProtocol,
 )
+from ncore.data.v4 import SequenceComponentGroupsReader, SequenceLoaderV4
+from ncore.geometry import MotionCompensator, se3_inverse, transform_point_cloud
+from ncore.impl.common.util import unpack_optional
 from ncore.impl.data.util import padded_index_string
-from ncore.impl.data.v4.compat import SequenceLoaderV4
-from ncore.impl.data.v4.components import SequenceComponentGroupsReader
-from ncore.impl.sensors.camera import camera_model_from_parameters
-from ncore.impl.sensors.lidar import StructuredLidarModel, maybe_lidar_model_from_parameters
+from ncore.sensors import StructuredLidarModel, camera_model_from_parameters, maybe_lidar_model_from_parameters
 from tools.colormaps import jet as jet_colormap
 
 
@@ -311,8 +309,8 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
 
     for frame_index in tqdm.tqdm(indices):
         # Get the camera timestamp and find the closest point cloud
-        cam_timestamp_start_us = cam_sensor.get_frame_timestamp_us(frame_index, types.FrameTimepoint.START)
-        cam_timestamp_end_us = cam_sensor.get_frame_timestamp_us(frame_index, types.FrameTimepoint.END)
+        cam_timestamp_start_us = cam_sensor.get_frame_timestamp_us(frame_index, FrameTimepoint.START)
+        cam_timestamp_end_us = cam_sensor.get_frame_timestamp_us(frame_index, FrameTimepoint.END)
         cam_center_us = cam_timestamp_start_us + (cam_timestamp_end_us - cam_timestamp_start_us) // 2
 
         # Load the camera image
@@ -343,14 +341,14 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
                 sensor_id=source_id,
                 xyz_pointtime=sensor_pc,
                 timestamp_us=ray_sensor.get_frame_ray_bundle_timestamp_us(pc_frame_index),
-                frame_start_timestamp_us=ray_sensor.get_frame_timestamp_us(pc_frame_index, types.FrameTimepoint.START),
-                frame_end_timestamp_us=ray_sensor.get_frame_timestamp_us(pc_frame_index, types.FrameTimepoint.END),
+                frame_start_timestamp_us=ray_sensor.get_frame_timestamp_us(pc_frame_index, FrameTimepoint.START),
+                frame_end_timestamp_us=ray_sensor.get_frame_timestamp_us(pc_frame_index, FrameTimepoint.END),
             ).xyz_e_reftime
 
             # Transform the point cloud to the world coordinate frame
             pc_xyz = transform_point_cloud(
                 pc_xyz,
-                ray_sensor.get_frames_T_sensor_target("world", pc_frame_index, types.FrameTimepoint.END),
+                ray_sensor.get_frames_T_sensor_target("world", pc_frame_index, FrameTimepoint.END),
             )
         elif ray_sensor is not None:
             # Ray-bundle sensor (lidar/radar) without structured lidar model:
@@ -366,7 +364,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
 
             # Transform the point cloud to the world coordinate frame
             pc_xyz = transform_point_cloud(
-                pc, ray_sensor.get_frames_T_sensor_target("world", pc_frame_index, types.FrameTimepoint.END)
+                pc, ray_sensor.get_frames_T_sensor_target("world", pc_frame_index, FrameTimepoint.END)
             )
         else:
             # Generic PointCloudsSourceProtocol path (native point cloud sources)
@@ -381,10 +379,10 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
             pc_xyz = world_pc.xyz
 
         T_world_camera_start = se3_inverse(
-            cam_sensor.get_frames_T_sensor_target("world", frame_index, types.FrameTimepoint.START)
+            cam_sensor.get_frames_T_sensor_target("world", frame_index, FrameTimepoint.START)
         )
         T_world_camera_end = se3_inverse(
-            cam_sensor.get_frames_T_sensor_target("world", frame_index, types.FrameTimepoint.END)
+            cam_sensor.get_frames_T_sensor_target("world", frame_index, FrameTimepoint.END)
         )
 
         match params.pose:
