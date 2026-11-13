@@ -33,7 +33,6 @@ from typing import (
     Literal,
     Mapping,
     Optional,
-    Protocol,
     Tuple,
     Type,
     TypedDict,
@@ -1847,12 +1846,6 @@ class EncodedImageData:
                 io.BytesIO(self.get_encoded_image_data()), formats=[self.get_encoded_image_format()]
             )
         return self._decoded_image
-
-
-class EncodedImageHandle(Protocol):
-    """Protocol type to reference encoded image data (e.g., file-based, container-based, memory-based)"""
-
-    def get_data(self) -> EncodedImageData: ...
 
 
 class LabelTypeDict(TypedDict):
