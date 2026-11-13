@@ -19,7 +19,7 @@ zarr-python stores), and typed access to their groups and arrays"""
 from ncore.impl.data.backend import BloscCompression
 from ncore.impl.data.itar import IndexedTarArchive, Record, RecordExistsError
 from ncore.impl.data.nodes import Array, EncodedArray, Group, ZarrFormat
-from ncore.impl.data.stores import IndexedTarZarrStore, Store, ZarrStoreAdapter, is_consolidated_metadata_key
+from ncore.impl.data.stores import IndexedTarZarrStore, Store, ZarrStoreAdapter
 
 
 __all__ = [
@@ -31,7 +31,6 @@ __all__ = [
     "Store",
     "IndexedTarZarrStore",
     "ZarrStoreAdapter",
-    "is_consolidated_metadata_key",
     # groups / arrays of zarr hierarchies
     "Group",
     "Array",

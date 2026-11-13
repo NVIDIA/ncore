@@ -51,7 +51,7 @@ from ncore.impl.data.backend import V2_CONSOLIDATED_METADATA_KEY, V3_CONSOLIDATE
 from ncore.impl.data.encoding import decode_cbor_xz, decode_cbor_zlib, encode_cbor_xz
 from ncore.impl.data.itar import IndexedTarArchive, IndexFormat, IndexTailRetention, is_node_metadata_key
 from ncore.impl.data.json_types import JsonDocument, JsonLike, to_json, to_json_document
-from ncore.impl.data.stores import IndexedTarZarrStore, Store, ZarrStoreAdapter, is_consolidated_metadata_key
+from ncore.impl.data.stores import IndexedTarZarrStore, Store, ZarrStoreAdapter
 from ncore.impl.data.testing_fs import RemoteFileSystem
 
 
@@ -769,13 +769,13 @@ class TestStores(unittest.TestCase):
             _write(store, zarr_format=zarr_format)
             keys = store.archive.keys()
         consolidated_key = V2_CONSOLIDATED_METADATA_KEY if zarr_format == 2 else V3_CONSOLIDATED_METADATA_KEY
-        self.assertEqual([key for key in keys if is_consolidated_metadata_key(key)], [consolidated_key])
+        self.assertEqual([key for key in keys if Store.is_consolidated_metadata_key(key)], [consolidated_key])
 
     def test_consolidated_metadata_key_names(self):
         for key in (V2_CONSOLIDATED_METADATA_KEY, V3_CONSOLIDATED_METADATA_KEY, ".zmetadata"):
-            self.assertTrue(is_consolidated_metadata_key(key), key)
+            self.assertTrue(Store.is_consolidated_metadata_key(key), key)
         for key in (".zgroup", ".zattrs", "zarr.json", "a/.zmetadata", "a/.zmetadata.cbor.xz", "a/zarr.json.cbor.zlib"):
-            self.assertFalse(is_consolidated_metadata_key(key), key)
+            self.assertFalse(Store.is_consolidated_metadata_key(key), key)
 
     def test_remote_directory_stores_are_rejected(self):
         with self.assertRaises(ValueError):
@@ -2566,7 +2566,7 @@ class TestEncodedArrays(unittest.TestCase):
             records = {key: archive[key] for key in archive.keys()}
         else:
             records = {str(p.relative_to(path)): p.read_bytes() for p in Path(path).rglob("*") if p.is_file()}
-        return {key: value for key, value in records.items() if not is_consolidated_metadata_key(key)}
+        return {key: value for key, value in records.items() if not Store.is_consolidated_metadata_key(key)}
 
     @parameterized.parameterized.expand(
         [
