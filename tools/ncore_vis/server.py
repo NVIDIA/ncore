@@ -23,7 +23,7 @@ from typing import Dict, Optional
 
 import viser
 
-from ncore.impl.data.compat import SequenceLoaderProtocol
+from ncore.data import SequenceLoaderProtocol
 from tools.ncore_vis.data_loader import DataLoader
 from tools.ncore_vis.renderer import NCoreVisRenderer
 

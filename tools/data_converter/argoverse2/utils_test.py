@@ -35,8 +35,8 @@ import pyarrow.feather as feather
 
 from upath import UPath
 
-from ncore.impl.data.types import IdealPinholeCameraModelParameters, ShutterType
-from ncore.impl.sensors.lidar import StructuredLidarModel, maybe_lidar_model_from_parameters
+from ncore.data import IdealPinholeCameraModelParameters, ShutterType
+from ncore.sensors import StructuredLidarModel, maybe_lidar_model_from_parameters
 from tools.data_converter.argoverse2.utils import (
     VLP32C_N_BEAMS,
     VLP32C_SCAN_DURATION_US,

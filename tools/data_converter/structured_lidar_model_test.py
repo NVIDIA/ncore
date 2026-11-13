@@ -19,7 +19,7 @@ from typing import Literal, cast
 
 import numpy as np
 
-from ncore.impl.common.transformations import MotionCompensator
+from ncore.geometry import MotionCompensator
 from ncore.impl.data import util as data_util
 from tools.data_converter.structured_lidar_model import (
     HDL32E_ELEVATIONS_RAD,

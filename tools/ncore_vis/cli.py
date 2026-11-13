@@ -31,9 +31,8 @@ from typing import Optional, Tuple
 
 import click
 
-from ncore.impl.data.compat import SequenceLoaderProtocol
-from ncore.impl.data.v4.compat import SequenceLoaderV4
-from ncore.impl.data.v4.components import SequenceComponentGroupsReader
+from ncore.data import SequenceLoaderProtocol
+from ncore.data.v4 import SequenceComponentGroupsReader, SequenceLoaderV4
 from tools.cli import OptionalStrParamType
 from tools.debug import breakpoint as debug_breakpoint
 from tools.ncore_vis.server import NCoreVisServer

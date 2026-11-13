@@ -24,7 +24,7 @@ py_library(
     deps = [
         requirement("numpy"),
         requirement("scipy"),
-        "//ncore/impl/common:pylib_transformations",
+        "//ncore/geometry:pylib",
     ],
 )
 

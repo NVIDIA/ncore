@@ -56,15 +56,17 @@ import cv2
 import numpy as np
 import tqdm
 
-from ncore.impl.common.transformations import MotionCompensator, se3_inverse, transform_point_cloud
+from ncore.data import FrameTimepoint, LidarSensorProtocol, SequenceLoaderProtocol
+from ncore.data.v4 import SequenceComponentGroupsReader, SequenceLoaderV4
+from ncore.geometry import MotionCompensator, se3_inverse, transform_point_cloud
 from ncore.impl.common.util import unpack_optional
-from ncore.impl.data import types
-from ncore.impl.data.compat import LidarSensorProtocol, SequenceLoaderProtocol
 from ncore.impl.data.util import padded_index_string
-from ncore.impl.data.v4.compat import SequenceLoaderV4
-from ncore.impl.data.v4.components import SequenceComponentGroupsReader
-from ncore.impl.sensors.camera import CameraModel, camera_model_from_parameters
-from ncore.impl.sensors.lidar import StructuredLidarModel, maybe_lidar_model_from_parameters
+from ncore.sensors import (
+    CameraModel,
+    StructuredLidarModel,
+    camera_model_from_parameters,
+    maybe_lidar_model_from_parameters,
+)
 
 
 try:
@@ -370,8 +372,8 @@ def _render_frame_comparison(
 ) -> None:
     """Render side-by-side and error overlay images for one frame."""
     # Find closest camera frame to this lidar frame
-    lidar_start_us = ray_sensor.get_frame_timestamp_us(frame_index, types.FrameTimepoint.START)
-    lidar_end_us = ray_sensor.get_frame_timestamp_us(frame_index, types.FrameTimepoint.END)
+    lidar_start_us = ray_sensor.get_frame_timestamp_us(frame_index, FrameTimepoint.START)
+    lidar_end_us = ray_sensor.get_frame_timestamp_us(frame_index, FrameTimepoint.END)
     lidar_center_us = lidar_start_us + (lidar_end_us - lidar_start_us) // 2
 
     cam_frame_index = cam_sensor.get_closest_frame_index(lidar_center_us, relative_frame_time=0.5)
@@ -379,11 +381,9 @@ def _render_frame_comparison(
 
     # Get camera transforms
     T_world_cam_start = se3_inverse(
-        cam_sensor.get_frames_T_sensor_target("world", cam_frame_index, types.FrameTimepoint.START)
+        cam_sensor.get_frames_T_sensor_target("world", cam_frame_index, FrameTimepoint.START)
     )
-    T_world_cam_end = se3_inverse(
-        cam_sensor.get_frames_T_sensor_target("world", cam_frame_index, types.FrameTimepoint.END)
-    )
+    T_world_cam_end = se3_inverse(cam_sensor.get_frames_T_sensor_target("world", cam_frame_index, FrameTimepoint.END))
 
     # Compute world-frame points from NATIVE directions
     valid_mask = distances > 0
@@ -394,9 +394,9 @@ def _render_frame_comparison(
 
     # Motion compensate and transform to world
     timestamps = ray_sensor.get_frame_ray_bundle_timestamp_us(frame_index)
-    frame_start_us = ray_sensor.get_frame_timestamp_us(frame_index, types.FrameTimepoint.START)
-    frame_end_us = ray_sensor.get_frame_timestamp_us(frame_index, types.FrameTimepoint.END)
-    T_lidar_world = ray_sensor.get_frames_T_sensor_target("world", frame_index, types.FrameTimepoint.END)
+    frame_start_us = ray_sensor.get_frame_timestamp_us(frame_index, FrameTimepoint.START)
+    frame_end_us = ray_sensor.get_frame_timestamp_us(frame_index, FrameTimepoint.END)
+    T_lidar_world = ray_sensor.get_frames_T_sensor_target("world", frame_index, FrameTimepoint.END)
 
     if motion_compensator is not None:
         native_mc = motion_compensator.motion_compensate_points(

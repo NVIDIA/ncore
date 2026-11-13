@@ -31,8 +31,8 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 import viser
 
-from ncore.impl.common.transformations import HalfClosedInterval, transform_point_cloud
-from ncore.impl.data.types import FrameTimepoint
+from ncore.data import FrameTimepoint
+from ncore.geometry import HalfClosedInterval, transform_point_cloud
 from tools.colormaps import jet as jet_colormap
 from tools.colormaps import turbo as turbo_colormap
 from tools.ncore_vis.components.base import VisualizationComponent, register_component
