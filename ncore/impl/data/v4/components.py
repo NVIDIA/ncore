@@ -54,7 +54,7 @@ from ncore.impl.common.async_util import run_in_thread
 from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import MD5Hasher, unpack_optional
 from ncore.impl.data import nodes, stores, types, util
-from ncore.impl.data.itar import IndexTailRetention, check_index_tail_retention
+from ncore.impl.data.itar import DEFAULT_INDEX_TAIL_READ_SIZE, IndexTailRetention, check_index_tail_retention
 from ncore.impl.data.json_types import JsonDocument, JsonDocumentLike, to_json_document
 from ncore.impl.data.types import PointCloud
 
@@ -367,7 +367,7 @@ class SequenceComponentGroupsReader:
         component_group_paths: List[UPath] | List[Path],
         *,
         open_consolidated: bool = True,
-        itar_index_tail_read_size: int = 1 << 20,  # 1 MiB default
+        itar_index_tail_read_size: int | None = DEFAULT_INDEX_TAIL_READ_SIZE,
         itar_index_tail_retention: IndexTailRetention = "release_if_consolidated",
         itar_remote_range_reads: bool = False,
         max_threads: int | None = None,
@@ -390,6 +390,7 @@ class SequenceComponentGroupsReader:
                                single I/O call to initialize the tar file index to minimize reads.
                                Default 1 MiB size fits typical use cases, but may be increased if the compressed
                                index size is expected to be larger or decreased if remote access chunk sizes are smaller.
+                               None reads the index header and the index separately.
             itar_index_tail_retention: Which index tail reads of .itar files (the end of the archives read when opening
                                them, see `itar_index_tail_read_size`) are kept in memory once the hierarchies are opened:
                                "release_if_consolidated" (default) releases them if the hierarchies are opened from
@@ -446,7 +447,7 @@ class SequenceComponentGroupsReader:
         component_group_paths: List[UPath] | List[Path],
         *,
         open_consolidated: bool = True,
-        itar_index_tail_read_size: int = 1 << 20,
+        itar_index_tail_read_size: int | None = DEFAULT_INDEX_TAIL_READ_SIZE,
         itar_index_tail_retention: IndexTailRetention = "release_if_consolidated",
         itar_remote_range_reads: bool = False,
         max_concurrent_requests: int | asyncio.Semaphore | None = None,
@@ -516,7 +517,7 @@ class SequenceComponentGroupsReader:
 
     @staticmethod
     def _open_component_store(
-        component_store_upath: UPath, itar_index_tail_read_size: int, itar_remote_range_reads: bool
+        component_store_upath: UPath, itar_index_tail_read_size: int | None, itar_remote_range_reads: bool
     ) -> stores.Store:
         """Opens a component store (blocking)"""
         _logger.info(f"SequenceStoreReader: Loading component store {component_store_upath}")
@@ -534,7 +535,7 @@ class SequenceComponentGroupsReader:
 
     @staticmethod
     async def _open_component_store_async(
-        component_store_upath: UPath, itar_index_tail_read_size: int, itar_remote_range_reads: bool
+        component_store_upath: UPath, itar_index_tail_read_size: int | None, itar_remote_range_reads: bool
     ) -> stores.Store:
         """Opens a component store asynchronously (see :meth:`_open_component_store`): archives via asynchronous
         requests, directory stores on a worker thread"""
@@ -562,9 +563,8 @@ class SequenceComponentGroupsReader:
         self, component_store: stores.Store, component_store_path: UPath, open_consolidated: bool
     ) -> None:
         """Opens the hierarchy of an opened component store and checks its sequence compatibility"""
-        component_root = component_store.open_root_group(open_consolidated)
-        if isinstance(component_store, stores.IndexedTarZarrStore):
-            component_store.release_index_tail(self._itar_index_tail_retention, consolidated=open_consolidated)
+        component_root = component_store.open_root_group(consolidated=open_consolidated)
+        component_store.release_index_tail(self._itar_index_tail_retention)
 
         # Check sequence compatibility
         component_root_version = component_root.attr_str("version")
@@ -831,7 +831,7 @@ class ComponentReader(ABC):
 
     def get_generic_data_names(self) -> List[str]:
         """Returns the list of all generic data array names on this component"""
-        return self._generic_data_group.members() if self._generic_data_group is not None else []
+        return self._generic_data_group.keys() if self._generic_data_group is not None else []
 
     def get_generic_data(self, name: str) -> np.ndarray:
         """Returns a named generic data array from this component.
@@ -1386,7 +1386,7 @@ class BaseSensorComponentReader(ComponentReader):
     def get_frame_generic_data_names(self, timestamp_us: int) -> List[str]:
         """List of all generic frame-data names"""
 
-        return self._get_frame_generic_data_group(timestamp_us).members()
+        return self._get_frame_generic_data_group(timestamp_us).keys()
 
     def has_frame_generic_data(self, timestamp_us: int, name: str) -> bool:
         """Signals if named generic frame-data exists"""
@@ -1502,7 +1502,7 @@ class BaseRayBundleSensorComponentReader(BaseSensorComponentReader):
     def get_frame_ray_bundle_data_names(self, timestamp_us: int) -> List[str]:
         """List of all ray bundle data names for a frame"""
 
-        return self._get_ray_bundle_group(timestamp_us).members()
+        return self._get_ray_bundle_group(timestamp_us).keys()
 
     def has_frame_ray_bundle_data(self, timestamp_us: int, name: str) -> bool:
         """Signals if named ray bundle data exists for a frame"""
@@ -1533,7 +1533,7 @@ class BaseRayBundleSensorComponentReader(BaseSensorComponentReader):
     def get_frame_ray_bundle_return_data_names(self, timestamp_us: int) -> List[str]:
         """List of all ray bundle return data names for a frame"""
 
-        return self._get_ray_bundle_returns_group(timestamp_us).members()
+        return self._get_ray_bundle_returns_group(timestamp_us).keys()
 
     def has_frame_ray_bundle_return_data(self, timestamp_us: int, name: str) -> bool:
         """Signals if named ray bundle return data exists for a frame"""
@@ -2160,7 +2160,7 @@ class PointCloudsComponent:
             return int(self._pc_timestamps_us[pc_index])
 
         def get_pc_generic_data_names(self, pc_index: int) -> List[str]:
-            return self._pc_group(pc_index, "generic_data").members()
+            return self._pc_group(pc_index, "generic_data").keys()
 
         def has_pc_generic_data(self, pc_index: int, name: str) -> bool:
             return name in self._pc_group(pc_index, "generic_data")
