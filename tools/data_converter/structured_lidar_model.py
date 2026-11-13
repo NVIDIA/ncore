@@ -817,7 +817,7 @@ def align_frame(
             timestamp_us=point_timestamps,
             frame_start_timestamp_us=frame_start_us,
             frame_end_timestamp_us=frame_end_us,
-        )
+        ).xyz_pointtime
 
     # --- Final output: filter to overlap region + valid distance ---
     assert alignment is not None
@@ -842,7 +842,7 @@ def align_frame(
         timestamp_us=final_timestamps,
         frame_start_timestamp_us=frame_start_us,
         frame_end_timestamp_us=frame_end_us,
-    )
+    ).xyz_pointtime
 
     return AlignedFrameData(
         xyz_decompensated=xyz_decompensated,

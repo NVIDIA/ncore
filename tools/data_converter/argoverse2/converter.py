@@ -458,13 +458,17 @@ class Argoverse2Converter4(FileBasedDataConverter):
                 # firing geometry is clean (un-smeared by ego motion).
                 T_rig_unit = se3_inverse(T_unit_rig[unit_id])
                 xyz_sensor_first = (T_rig_unit[:3, :3] @ first_sweep.xyz[mask_first].T).T + T_rig_unit[:3, 3]
-                xyz_decomp_first = compensators[unit_id].motion_decompensate_points(
-                    sensor_id=unit_id,
-                    xyz_reftime=xyz_sensor_first,
-                    timestamp_us=first_pt_ts_us[mask_first],
-                    frame_start_timestamp_us=first_start_us,
-                    frame_end_timestamp_us=first_end_us,
-                    reference_timestamp_us=first_ref_ts_us,
+                xyz_decomp_first = (
+                    compensators[unit_id]
+                    .motion_decompensate_points(
+                        sensor_id=unit_id,
+                        xyz_reftime=xyz_sensor_first,
+                        timestamp_us=first_pt_ts_us[mask_first],
+                        frame_start_timestamp_us=first_start_us,
+                        frame_end_timestamp_us=first_end_us,
+                        reference_timestamp_us=first_ref_ts_us,
+                    )
+                    .xyz_pointtime
                 )
 
                 geometry = derive_vlp32c_geometry(
@@ -514,13 +518,17 @@ class Argoverse2Converter4(FileBasedDataConverter):
 
                 # Decompensate from the reference-time sensor frame (the sweep start,
                 # AV2's compensation reference) to each point's own measurement time.
-                xyz_raw = compensators[unit_id].motion_decompensate_points(
-                    sensor_id=unit_id,
-                    xyz_reftime=xyz_sensor,
-                    timestamp_us=ts_unit,
-                    frame_start_timestamp_us=frame_start_us,
-                    frame_end_timestamp_us=frame_end_us,
-                    reference_timestamp_us=reference_ts_us,
+                xyz_raw = (
+                    compensators[unit_id]
+                    .motion_decompensate_points(
+                        sensor_id=unit_id,
+                        xyz_reftime=xyz_sensor,
+                        timestamp_us=ts_unit,
+                        frame_start_timestamp_us=frame_start_us,
+                        frame_end_timestamp_us=frame_end_us,
+                        reference_timestamp_us=reference_ts_us,
+                    )
+                    .xyz_pointtime
                 )
 
                 distance_m = np.linalg.norm(xyz_raw, axis=1)
