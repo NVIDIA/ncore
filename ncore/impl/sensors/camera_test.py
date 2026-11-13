@@ -773,25 +773,67 @@ class TestReferenceFThetaCamera(CommonTestCase):
         ray = np.array([0, 1, 0]).reshape(1, 3)
 
         # Test invalid inputs
-        self.assertRaises(AssertionError, ftheta_cam.image_points_to_camera_rays, pixel.astype(np.int32))
-        self.assertRaises(AssertionError, ftheta_cam.pixels_to_camera_rays, pixel.astype(np.float32))
+        with self.assertRaisesRegex(ValueError, "image_points must be floating point values, got dtype torch.int32"):
+            ftheta_cam.image_points_to_camera_rays(pixel.astype(np.int32))
+        with self.assertRaisesRegex(ValueError, "Pixel indices must be integers, got dtype torch.float32"):
+            ftheta_cam.pixels_to_camera_rays(pixel.astype(np.float32))
+        with self.assertRaisesRegex(ValueError, "Image points must be floating point values, got dtype torch.int32"):
+            ftheta_cam.image_points_to_pixels(pixel.astype(np.int32))
 
-        self.assertRaises(
-            AssertionError,
-            ftheta_cam.world_points_to_image_points_shutter_pose,
-            ray,
-            np.eye(4),
-            np.eye(4),
-            **{"return_timestamps": True},
-        )
-        self.assertRaises(
-            AssertionError,
-            ftheta_cam.world_points_to_image_points_shutter_pose,
-            ray,
-            np.eye(4),
-            np.eye(4),
-            **{"start_timestamp_us": 100, "end_timestamp_us": 90, "return_timestamps": True},
-        )
+        with self.assertRaisesRegex(ValueError, "start_timestamp_us is required when return_timestamps=True"):
+            ftheta_cam.world_points_to_image_points_shutter_pose(ray, np.eye(4), np.eye(4), return_timestamps=True)
+        with self.assertRaisesRegex(ValueError, "end_timestamp_us is required when return_timestamps=True"):
+            ftheta_cam.world_points_to_image_points_shutter_pose(
+                ray, np.eye(4), np.eye(4), start_timestamp_us=90, return_timestamps=True
+            )
+        with self.assertRaisesRegex(ValueError, "End timestamp must be larger or equal to the start timestamp"):
+            ftheta_cam.world_points_to_image_points_shutter_pose(
+                ray, np.eye(4), np.eye(4), start_timestamp_us=100, end_timestamp_us=90, return_timestamps=True
+            )
+        with self.assertRaisesRegex(ValueError, "End timestamp must be larger or equal to the start timestamp"):
+            ftheta_cam.world_points_to_pixels_shutter_pose(
+                ray, np.eye(4), np.eye(4), start_timestamp_us=100, end_timestamp_us=90, return_timestamps=True
+            )
+        with self.assertRaisesRegex(ValueError, "End timestamp must be larger or equal to the start timestamp"):
+            ftheta_cam.world_points_to_image_points_mean_pose(
+                ray, np.eye(4), np.eye(4), start_timestamp_us=100, end_timestamp_us=90, return_timestamps=True
+            )
+        with self.assertRaisesRegex(ValueError, "End timestamp must be larger or equal to the start timestamp"):
+            ftheta_cam.image_points_to_world_rays_mean_pose(
+                pixel.astype(np.float32), np.eye(4), np.eye(4), 100, 90, return_timestamps=True
+            )
+        with self.assertRaisesRegex(ValueError, "End timestamp must be larger or equal to the start timestamp"):
+            ftheta_cam.image_points_to_world_rays_shutter_pose(
+                pixel.astype(np.float32), np.eye(4), np.eye(4), 100, 90, return_timestamps=True
+            )
+        with self.assertRaisesRegex(ValueError, "timestamp_us is required when return_timestamps=True"):
+            ftheta_cam.world_points_to_image_points_static_pose(ray, np.eye(4), return_timestamps=True)
+        with self.assertRaisesRegex(ValueError, "timestamp_us is required when return_timestamps=True"):
+            ftheta_cam.image_points_to_world_rays_static_pose(
+                pixel.astype(np.float32), np.eye(4), return_timestamps=True
+            )
+
+        with self.assertRaisesRegex(ValueError, r"T_world_sensor_start must have shape \(4, 4\), got shape \(3, 4\)"):
+            ftheta_cam.world_points_to_image_points_shutter_pose(ray, np.eye(4)[:3], np.eye(4))
+        with self.assertRaisesRegex(ValueError, r"world_points must have shape \[n, 3\], got shape \(1, 2\)"):
+            ftheta_cam.world_points_to_image_points_shutter_pose(ray[:, :2], np.eye(4), np.eye(4))
+        with self.assertRaisesRegex(ValueError, "max_iterations must be positive, got 0"):
+            ftheta_cam.world_points_to_image_points_shutter_pose(ray, np.eye(4), np.eye(4), max_iterations=0)
+        with self.assertRaisesRegex(ValueError, "max_iterations must be an int, got float"):
+            ftheta_cam.world_points_to_image_points_shutter_pose(
+                ray,
+                np.eye(4),
+                np.eye(4),
+                max_iterations=cast(int, 1.0),
+            )
+        with self.assertRaisesRegex(ValueError, "world_points must be 2-dimensional, got shape"):
+            ftheta_cam.world_points_to_image_points_static_pose(ray[0], np.eye(4))
+        with self.assertRaisesRegex(ValueError, r"T_world_sensor must have shape \(4, 4\)"):
+            ftheta_cam.world_points_to_image_points_static_pose(ray, np.eye(3))
+        with self.assertRaisesRegex(ValueError, r"image_points must have shape \[n, 2\], got shape \(1, 3\)"):
+            ftheta_cam.image_points_to_world_rays_static_pose(ray.astype(np.float32), np.eye(4))
+        with self.assertRaisesRegex(ValueError, r"T_sensor_world_end must have shape \(4, 4\)"):
+            ftheta_cam.image_points_to_world_rays_shutter_pose(pixel.astype(np.float32), np.eye(4), np.eye(3))
 
         # Test valid inputs
         ftheta_cam.image_points_to_camera_rays(pixel.astype(np.float32))
@@ -3179,6 +3221,111 @@ class TestOpenCVPinholeUndistortionPeriphery(CameraModelsBaseTestCase):
                 torch.testing.assert_close(
                     rays.camera_rays.to(torch.float64), reference.camera_rays, rtol=0.0, atol=1e-6
                 )
+
+
+class TestCameraModelConstructorValidation(unittest.TestCase):
+    """Constructor validation (on CPU, so it runs without a GPU)"""
+
+    device = torch.device("cpu")
+
+    def test_min_2d_norm_must_be_positive(self):
+        ftheta_parameters = ftheta_parameters_from_reference(
+            ReferenceFThetaCamera(np.array([1000, 1000]), [10, 10], [0, np.radians(90) / 1000])
+        )
+        fisheye_parameters = OpenCVFisheyeCameraModelParameters(
+            resolution=np.array([640, 480], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array([320.0, 240.0], dtype=np.float32),
+            focal_length=np.array([300.0, 300.0], dtype=np.float32),
+            radial_coeffs=np.zeros(4, dtype=np.float32),
+            max_angle=np.deg2rad(60),
+        )
+        for min_2d_norm in (0.0, -1.0, float("nan")):
+            with self.subTest(min_2d_norm=min_2d_norm):
+                with self.assertRaisesRegex(ValueError, "min_2d_norm must be positive"):
+                    FThetaCameraModel(ftheta_parameters, self.device, min_2d_norm=min_2d_norm)
+                with self.assertRaisesRegex(ValueError, "min_2d_norm must be positive"):
+                    OpenCVFisheyeCameraModel(fisheye_parameters, self.device, min_2d_norm=min_2d_norm)
+
+    def test_newton_iterations_must_be_non_negative(self):
+        ftheta_parameters = ftheta_parameters_from_reference(
+            ReferenceFThetaCamera(np.array([1000, 1000]), [10, 10], [0, np.radians(90) / 1000])
+        )
+        fisheye_parameters = OpenCVFisheyeCameraModelParameters(
+            resolution=np.array([640, 480], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array([320.0, 240.0], dtype=np.float32),
+            focal_length=np.array([300.0, 300.0], dtype=np.float32),
+            radial_coeffs=np.zeros(4, dtype=np.float32),
+            max_angle=np.deg2rad(60),
+        )
+        with self.assertRaisesRegex(ValueError, "newton_iterations must be non-negative, got -1"):
+            FThetaCameraModel(ftheta_parameters, self.device, newton_iterations=-1)
+        with self.assertRaisesRegex(ValueError, "newton_iterations must be non-negative, got -1"):
+            OpenCVFisheyeCameraModel(fisheye_parameters, self.device, newton_iterations=-1)
+        # (zero iterations are valid)
+        self.assertEqual(FThetaCameraModel(ftheta_parameters, self.device, newton_iterations=0).newton_iterations, 0)
+
+    def test_reused_camera_rays_are_validated(self):
+        """Camera rays passed to the world-ray unprojections and projections must match the image points / rays"""
+        model = IdealPinholeCameraModel(
+            IdealPinholeCameraModelParameters(
+                resolution=np.array([640, 480], dtype=np.uint64),
+                shutter_type=ShutterType.GLOBAL,
+                principal_point=np.array([320.0, 240.0], dtype=np.float32),
+                focal_length=np.array([500.0, 500.0], dtype=np.float32),
+            ),
+            self.device,
+        )
+        image_points = torch.tensor([[320.0, 240.0], [100.0, 100.0]])
+        rays = model.image_points_to_camera_rays(image_points)
+        eye = np.eye(4, dtype=np.float32)
+        for camera_rays, message in (
+            (
+                cast(CameraModel.CameraRaysReturn, rays.camera_rays),
+                "camera_rays must be a CameraModel.CameraRaysReturn",
+            ),
+            (
+                CameraModel.CameraRaysReturn(camera_rays=rays.camera_rays[:1], valid_flag=rays.valid_flag[:1]),
+                r"camera_rays must have shape \(2, 3\) \(one ray per image point\), got shape \(1, 3\)",
+            ),
+            (
+                CameraModel.CameraRaysReturn(camera_rays=rays.camera_rays, valid_flag=rays.valid_flag[:1]),
+                r"The valid flag of camera_rays must have shape \(2,\), got shape \(1,\)",
+            ),
+            (
+                CameraModel.CameraRaysReturn(camera_rays=rays.camera_rays, valid_flag=rays.valid_flag.int()),
+                "The valid flag of camera_rays must be of dtype torch.bool",
+            ),
+        ):
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(ValueError, message):
+                    model.image_points_to_world_rays_static_pose(image_points, eye, camera_rays=camera_rays)
+        with self.assertRaisesRegex(
+            ValueError, r"The valid flag of camera_rays must have shape \(2,\) \(one flag per ray\), got shape \(1,\)"
+        ):
+            model.camera_rays_to_image_points(
+                CameraModel.CameraRaysReturn(camera_rays=rays.camera_rays, valid_flag=rays.valid_flag[:1])
+            )
+
+    def test_to_torch_rejects_unsigned_overflow(self):
+        for dtype, signed in ((np.uint16, np.int16), (np.uint32, np.int32), (np.uint64, np.int64)):
+            with self.subTest(dtype=dtype.__name__):
+                in_range = np.array([0, np.iinfo(signed).max], dtype=dtype)
+                self.assertEqual(to_torch(in_range, self.device).tolist(), [0, np.iinfo(signed).max])
+                with self.assertRaisesRegex(ValueError, "exceeds max range"):
+                    to_torch(np.array([np.iinfo(signed).max + 1], dtype=dtype), self.device)
+
+    def test_invalid_shutter_type_is_rejected(self):
+        parameters = IdealPinholeCameraModelParameters(
+            resolution=np.array([640, 480], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array([320.0, 240.0], dtype=np.float32),
+            focal_length=np.array([500.0, 500.0], dtype=np.float32),
+        )
+        parameters.shutter_type = cast(ShutterType, 42)
+        with self.assertRaisesRegex(ValueError, "Unsupported shutter type 42"):
+            IdealPinholeCameraModel(parameters, self.device)
 
 
 @parameterized.parameterized_class(

@@ -16,6 +16,7 @@
 import unittest
 
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 
@@ -28,6 +29,7 @@ from ncore.impl.common.transformations import (
     PoseGraphInterpolator,
     PoseInterpolator,
     is_within_3d_bboxes,
+    time_bounds,
     transform_point_cloud,
 )
 from ncore.impl.common.util import unpack_optional
@@ -97,6 +99,30 @@ class TestIsWithin3DBBox(unittest.TestCase):
         """Test to verify that points inside the bounding boxes are correctly classified as inside"""
         self.assertTrue(is_within_3d_bboxes(self.inliner_points, self.inliner_bboxes).all())
 
+    def test_invalid_shapes_raise(self):
+        with self.assertRaisesRegex(ValueError, r"pc must have shape \[N, 3\]"):
+            is_within_3d_bboxes(self.pc[:, :2], self.bboxes)
+        with self.assertRaisesRegex(ValueError, "bboxes must be a 2D array, got ndim=1"):
+            is_within_3d_bboxes(self.pc, self.bboxes[0])
+        with self.assertRaisesRegex(ValueError, r"bboxes must have shape \[M, 9\]"):
+            is_within_3d_bboxes(self.pc, self.bboxes[:, :8])
+
+
+class TestTimeBounds(unittest.TestCase):
+    def test_valid(self):
+        self.assertEqual(time_bounds([0, 10_000_000], None, None), (0, 10_000_000))
+        self.assertEqual(time_bounds([0, 10_000_000], 1.0, 2.0), (1_000_000, 3_000_000))
+
+    def test_invalid_arguments_raise(self):
+        with self.assertRaisesRegex(ValueError, "seek_sec must be non-negative, got -1.0"):
+            time_bounds([0, 10_000_000], -1.0, None)
+        with self.assertRaisesRegex(ValueError, "duration_sec must be positive, got 0.0"):
+            time_bounds([0, 10_000_000], None, 0.0)
+        with self.assertRaisesRegex(ValueError, "duration_sec must be positive, got nan"):
+            time_bounds([0, 10_000_000], None, float("nan"))
+        with self.assertRaisesRegex(ValueError, "invalid time bounds"):
+            time_bounds([0, 10_000_000], 20.0, None)
+
 
 class TestHalfClosedInterval(unittest.TestCase):
     def test_init_len(self):
@@ -114,8 +140,12 @@ class TestHalfClosedInterval(unittest.TestCase):
         self.assertEqual(len(HalfClosedInterval.from_start_end(1, 0)), 0)
 
         # Invalid interval -> exception
-        with self.assertRaises(Exception):
+        with self.assertRaisesRegex(ValueError, "start must not exceed stop, got start=0, stop=-1"):
             HalfClosedInterval(0, -1)
+        with self.assertRaisesRegex(ValueError, "start must be an int, got float"):
+            HalfClosedInterval(cast(int, 0.0), 1)
+        with self.assertRaisesRegex(ValueError, "stop must be an int, got float"):
+            HalfClosedInterval(0, cast(int, 1.0))
 
     def test_contains(self):
         """Test to verify HalfClosedInterval.__contains__()"""
@@ -854,11 +884,11 @@ class TestMotionCompensatorRegression(unittest.TestCase):
             compensator = MotionCompensator(pose_graph, parameters=MotionCompensator.Parameters(method))
             for function in (compensator.motion_compensate_points, compensator.motion_decompensate_points):
                 with self.subTest(method=method.name, function=function.__name__):
-                    with self.assertRaises(AssertionError):  # number of points and timestamps differ
+                    with self.assertRaisesRegex(ValueError, "must have the same length, got 3 and 2"):
                         function("lidar", xyz, timestamp_us[:2], start, end)
-                    with self.assertRaises(AssertionError):  # point timestamps outside the frame
+                    with self.assertRaisesRegex(ValueError, "Point timestamps .* not in frame time bounds"):
                         function("lidar", xyz, timestamp_us, start + 1, end)
-                    with self.assertRaises(AssertionError):  # reference timestamp outside the frame
+                    with self.assertRaisesRegex(ValueError, "Reference timestamp .* not in frame time bounds"):
                         function("lidar", xyz, timestamp_us, start, end, reference_timestamp_us=end + 1)
                     with self.assertRaises(ValueError):  # point timestamps beyond the poses
                         late = self.T0 + 400_000
@@ -1083,13 +1113,21 @@ class TestPoseGraphInterpolator(unittest.TestCase):
     def test_init_graph(self):
         """Test to verify pose graph initialization / path computation is correct"""
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, r"static edge must have shape \(4, 4\)"):
             # invalid edge
             PoseGraphInterpolator.Edge("V3", "V4", np.stack([np.eye(4), get_SE3(np.array([0, 0, 1]))]), None)
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, r"dynamic edge must have shape \[2, 4, 4\]"):
             # invalid edge
             PoseGraphInterpolator.Edge("V3", "V4", get_SE3(np.array([0, 1, 0])), np.array([0, 10], dtype=np.uint64))
+
+        with self.assertRaisesRegex(ValueError, r"dynamic edge must have shape \[n, 4, 4\]"):
+            # invalid edge
+            PoseGraphInterpolator.Edge("V3", "V4", np.zeros((2, 3, 4)), np.array([0, 10], dtype=np.uint64))
+
+        with self.assertRaisesRegex(ValueError, "timestamps_us must be of integer type, got float64"):
+            # non-integer evaluation timestamps
+            PoseGraphInterpolator.Edge("V3", "V4", np.eye(4), None).get_T("V3", "V4", np.array([0.5]))
 
         with self.assertRaises(ValueError):
             # cycle in graph
@@ -1241,6 +1279,15 @@ class TestPoseInterpolator(unittest.TestCase):
             sorted(name for name in dir(interpolator) if not name.startswith("_")),
             ["extrapolate_to_timestamps", "in_range", "interpolate_to_timestamps", "poses", "timestamps"],
         )
+
+    def test_invalid_inputs_raise(self):
+        poses = np.stack([get_SE3(np.array([float(t), 0.0, 0.0])) for t in (0, 1)])
+        with self.assertRaisesRegex(ValueError, r"poses must be a floating point \[m, 4, 4\] array"):
+            PoseInterpolator(poses[:, :3], np.array([0, 100]))
+        with self.assertRaisesRegex(ValueError, r"poses must be a floating point \[m, 4, 4\] array"):
+            PoseInterpolator(poses.astype(np.int64), np.array([0, 100]))
+        with self.assertRaisesRegex(ValueError, "timestamps must be a 1-dimensional array of at least 2 elements"):
+            PoseInterpolator(poses[:1], np.array([0]))
 
     def test_accepts_array_likes(self):
         """Poses and timestamps may be given as sequences"""
