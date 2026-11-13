@@ -272,7 +272,7 @@ class TestArgoverse2Converter(unittest.TestCase):
         by the stored per-point (row, column), should reproduce the stored ray
         directions to within a small angular error for far-range returns.
         """
-        from ncore.impl.sensors.lidar import StructuredLidarModel
+        from ncore.impl.sensors.lidar import StructuredLidarModel, maybe_lidar_model_from_parameters
 
         intrinsics_reader = list(self.reader.open_component_readers(IntrinsicsComponent.Reader).values())[0]
         lidar_readers = self.reader.open_component_readers(LidarSensorComponent.Reader)
@@ -290,8 +290,8 @@ class TestArgoverse2Converter(unittest.TestCase):
             far = np.isfinite(distance) & (distance > 20.0) & (np.linalg.norm(direction, axis=1) > 0)
             self.assertGreater(int(far.sum()), 100, f"{unit}: too few far returns to validate")
 
-            model = StructuredLidarModel.maybe_from_parameters(model_params, device="cpu")
-            assert model is not None
+            model = maybe_lidar_model_from_parameters(model_params, device="cpu")
+            assert isinstance(model, StructuredLidarModel)
             predicted = model.elements_to_sensor_points(elem[far], np.ones(int(far.sum()), dtype=np.float32))
             predicted = predicted.sensor_points.cpu().numpy()
             predicted /= np.linalg.norm(predicted, axis=1, keepdims=True)

@@ -63,8 +63,8 @@ from ncore.impl.data.compat import LidarSensorProtocol, SequenceLoaderProtocol
 from ncore.impl.data.util import padded_index_string
 from ncore.impl.data.v4.compat import SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
-from ncore.impl.sensors.camera import CameraModel
-from ncore.impl.sensors.lidar import StructuredLidarModel
+from ncore.impl.sensors.camera import CameraModel, camera_model_from_parameters
+from ncore.impl.sensors.lidar import StructuredLidarModel, maybe_lidar_model_from_parameters
 
 
 try:
@@ -746,8 +746,8 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
     assert isinstance(ray_sensor, LidarSensorProtocol), f"Sensor {source_id} is not a lidar"
 
     # Load the structured lidar model
-    lidar_model = StructuredLidarModel.maybe_from_parameters(ray_sensor.model_parameters, device=device)
-    if lidar_model is None:
+    lidar_model = maybe_lidar_model_from_parameters(ray_sensor.model_parameters, device=device)
+    if not isinstance(lidar_model, StructuredLidarModel):
         raise click.ClickException(f"No structured lidar model available for sensor '{source_id}'")
 
     logger.info(f"Lidar model: {lidar_model.n_rows} rows x {lidar_model.n_columns} columns")
@@ -765,7 +765,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
     if camera_id is not None:
         cam_sensor = loader.get_camera_sensor(camera_id)
         cam_model_params = cam_sensor.model_parameters
-        cam_model = CameraModel.from_parameters(cam_model_params, device=device)
+        cam_model = camera_model_from_parameters(cam_model_params, device=device)
         fl = getattr(cam_model_params, "focal_length", None)
         focal_length_px = float(fl[0]) if fl is not None else None
         if focal_length_px is not None:
