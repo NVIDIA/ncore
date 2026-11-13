@@ -833,6 +833,29 @@ class TestModelParametersRegistry(unittest.TestCase):
         self.assertIn("no-such-lidar", str(ctx.exception))
 
 
+class TestRowOffsetStructuredSpinningLidarModelParametersValidation(unittest.TestCase):
+    @staticmethod
+    def _parameters(column_azimuths_rad: List[float]) -> RowOffsetStructuredSpinningLidarModelParameters:
+        return RowOffsetStructuredSpinningLidarModelParameters(
+            n_rows=2,
+            n_columns=len(column_azimuths_rad),
+            spinning_frequency_hz=10.0,
+            spinning_direction="ccw",
+            row_elevations_rad=np.array([0.1, -0.1], dtype=np.float32),
+            column_azimuths_rad=np.array(column_azimuths_rad, dtype=np.float32),
+            row_azimuth_offsets_rad=np.zeros(2, dtype=np.float32),
+        )
+
+    def test_column_azimuths_within_one_revolution_are_accepted(self):
+        self._parameters([-3.0, 0.0, 3.0])
+
+    def test_column_azimuths_wrapping_around_the_start_element_are_rejected(self):
+        # Sorted in the spinning direction modulo 2*pi, but the last column lies more than a full revolution
+        # past the first one
+        with self.assertRaisesRegex(ValueError, "Column azimuth angles .* must not wrap around the start element"):
+            self._parameters([0.0, 0.5, 7.0])
+
+
 class TestParaxialPinholeGeometry(unittest.TestCase):
     """Validation of the geometry an out-of-tree model hands back"""
 

@@ -261,6 +261,106 @@ class TestLidarModelFactory(unittest.TestCase):
         self.assertIn("type", LidarModelParameters.__abstractmethods__)
 
 
+class TestRowOffsetStructuredSpinningLidarModelInputValidation(unittest.TestCase):
+    """Invalid inputs to the public lidar model methods raise ValueError (on CPU, so it runs without a GPU)"""
+
+    @classmethod
+    def setUpClass(cls):
+        with open("ncore/impl/sensors/test_data/row-offset-spinning-lidar-model-parameters-hesai-at128.json") as fp:
+            parameters = RowOffsetStructuredSpinningLidarModelParameters.from_dict(json.load(fp))
+        cls.lidar_model = RowOffsetStructuredSpinningLidarModel(
+            parameters, angles_to_columns_map_init=False, device=torch.device("cpu"), dtype=torch.float32
+        )
+
+    def test_rank_checks(self):
+        elements = np.zeros((3, 2), dtype=np.int64)
+        with self.assertRaisesRegex(ValueError, r"elements must be 2-dimensional, got shape \(2,\)"):
+            self.lidar_model.elements_to_sensor_points(elements[0], np.ones(3, dtype=np.float32))
+        with self.assertRaisesRegex(ValueError, r"element_distances must be 1-dimensional, got shape \(3, 1\)"):
+            self.lidar_model.elements_to_sensor_points(elements, np.ones((3, 1), dtype=np.float32))
+        with self.assertRaisesRegex(ValueError, "elements must be 2-dimensional"):
+            self.lidar_model.elements_to_sensor_angles(elements[0])
+        with self.assertRaisesRegex(ValueError, "sensor_rays must be 2-dimensional"):
+            self.lidar_model.sensor_rays_to_sensor_angles(np.array([1.0, 0.0, 0.0], dtype=np.float32))
+        with self.assertRaisesRegex(ValueError, "sensor_angles must be 2-dimensional"):
+            self.lidar_model.sensor_angles_to_sensor_rays(np.array([0.0, 0.0], dtype=np.float32))
+
+    def test_angles_to_columns_map_dtype(self):
+        """The dtype of the angles to columns map is validated by the constructor"""
+        with open("ncore/impl/sensors/test_data/row-offset-spinning-lidar-model-parameters-hesai-at128.json") as fp:
+            parameters = RowOffsetStructuredSpinningLidarModelParameters.from_dict(json.load(fp))
+        for dtype, message in (
+            (torch.float32, "angles_to_columns_map_dtype must be an integer type, got torch.float32"),
+            (torch.bool, "angles_to_columns_map_dtype must be an integer type, got torch.bool"),
+            (torch.int8, "angles_to_columns_map_dtype must be able to store the maximum column index"),
+        ):
+            with self.subTest(dtype=dtype):
+                with self.assertRaisesRegex(ValueError, message):
+                    RowOffsetStructuredSpinningLidarModel(
+                        parameters, torch.device("cpu"), angles_to_columns_map_dtype=dtype
+                    )
+
+    def test_reused_sensor_rays_are_validated(self):
+        """Sensor rays passed to the world-ray unprojection and angle conversion must match the elements / rays"""
+        elements = np.array([[0, 0], [1, 1]], dtype=np.int64)
+        rays = self.lidar_model.elements_to_sensor_rays(elements)
+        eye = np.eye(4, dtype=np.float32)
+        for sensor_rays, message in (
+            (cast(LidarModel.SensorRaysReturn, rays.sensor_rays), "sensor_rays must be a LidarModel.SensorRaysReturn"),
+            (
+                LidarModel.SensorRaysReturn(sensor_rays=rays.sensor_rays[:1], valid_flag=rays.valid_flag[:1]),
+                r"sensor_rays must have shape \(2, 3\) \(one ray per element\), got shape \(1, 3\)",
+            ),
+            (
+                LidarModel.SensorRaysReturn(sensor_rays=rays.sensor_rays, valid_flag=rays.valid_flag[:1]),
+                r"The valid flag of sensor_rays must have shape \(2,\), got shape \(1,\)",
+            ),
+            (
+                LidarModel.SensorRaysReturn(sensor_rays=rays.sensor_rays, valid_flag=rays.valid_flag.int()),
+                "The valid flag of sensor_rays must be of dtype torch.bool",
+            ),
+        ):
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(ValueError, message):
+                    self.lidar_model.elements_to_world_rays_shutter_pose(elements, eye, eye, sensor_rays=sensor_rays)
+        with self.assertRaisesRegex(
+            ValueError, r"The valid flag of sensor_rays must have shape \(2,\) \(one flag per ray\), got shape \(1,\)"
+        ):
+            self.lidar_model.sensor_rays_to_sensor_angles(
+                LidarModel.SensorRaysReturn(sensor_rays=rays.sensor_rays, valid_flag=rays.valid_flag[:1])
+            )
+
+    def test_world_points_to_sensor_angles_shutter_pose(self):
+        points = np.array([[10.0, 0.0, 0.0]], dtype=np.float32)
+        eye = np.eye(4, dtype=np.float32)
+        project = self.lidar_model.world_points_to_sensor_angles_shutter_pose
+        with self.assertRaisesRegex(ValueError, "start_timestamp_us is required when return_timestamps=True"):
+            project(points, eye, eye, return_timestamps=True)
+        with self.assertRaisesRegex(ValueError, "end_timestamp_us is required when return_timestamps=True"):
+            project(points, eye, eye, start_timestamp_us=0, return_timestamps=True)
+        with self.assertRaisesRegex(ValueError, "End timestamp must be larger or equal to the start timestamp"):
+            project(points, eye, eye, start_timestamp_us=100, end_timestamp_us=90, return_timestamps=True)
+        with self.assertRaisesRegex(ValueError, r"T_world_sensor_end must have shape \(4, 4\), got shape \(3, 4\)"):
+            project(points, eye, eye[:3])
+        with self.assertRaisesRegex(ValueError, r"world_points must have shape \[n, 3\], got shape \(1, 2\)"):
+            project(points[:, :2], eye, eye)
+        with self.assertRaisesRegex(ValueError, "max_iterations must be positive, got 0"):
+            project(points, eye, eye, max_iterations=0)
+
+    def test_elements_to_world_rays_shutter_pose(self):
+        elements = np.zeros((3, 2), dtype=np.int64)
+        eye = np.eye(4, dtype=np.float32)
+        unproject = self.lidar_model.elements_to_world_rays_shutter_pose
+        with self.assertRaisesRegex(ValueError, "start_timestamp_us is required when return_timestamps=True"):
+            unproject(elements, eye, eye, return_timestamps=True)
+        with self.assertRaisesRegex(ValueError, "End timestamp must be larger or equal to the start timestamp"):
+            unproject(elements, eye, eye, 100, 90, return_timestamps=True)
+        with self.assertRaisesRegex(ValueError, r"T_sensor_world_start must have shape \(4, 4\)"):
+            unproject(elements, eye[:3], eye)
+        with self.assertRaisesRegex(ValueError, r"elements must have shape \[n, 2\], got shape \(3, 3\)"):
+            unproject(np.zeros((3, 3), dtype=np.int64), eye, eye)
+
+
 # NOTE: Uses _get_test_devices() to skip GPU tests when NCORE_NO_GPU_TESTS is set
 @parameterized.parameterized_class(
     ("device", "dtype", "param_file_mapresfactor"),

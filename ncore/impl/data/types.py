@@ -111,7 +111,8 @@ class ExternalDistortionParameters(dataclasses_json.DataClassJsonMixin, ABC):
         # `type()` is deliberately non-abstract here so that out-of-tree subclasses stay
         # instantiable. Guard the base explicitly: `dataclasses_json` constructs whatever type a
         # field is annotated with, so an abstract annotation would otherwise yield a silently
-        # useless base instance instead of a concrete model's parameters.
+        # useless base instance instead of a concrete model's parameters. (TypeError, as for any abstract class:
+        # this is a programming error, not an invalid value.)
         if type(self) is ExternalDistortionParameters:
             raise TypeError(
                 "ExternalDistortionParameters is abstract; instantiate a concrete external distortion model's parameters"
@@ -1257,7 +1258,8 @@ class LidarModelParameters(dataclasses_json.DataClassJsonMixin, ABC):
         # `type()` is deliberately non-abstract here so that out-of-tree subclasses stay
         # instantiable. Guard the base explicitly: `dataclasses_json` constructs whatever type a
         # field is annotated with, so an abstract annotation would otherwise yield a silently
-        # useless base instance instead of a concrete model's parameters.
+        # useless base instance instead of a concrete model's parameters. (TypeError, as for any abstract class:
+        # this is a programming error, not an invalid value.)
         if type(self) is LidarModelParameters:
             raise TypeError("LidarModelParameters is abstract; instantiate a concrete lidar model's parameters")
 
@@ -1358,7 +1360,7 @@ class RowOffsetStructuredSpinningLidarModelParameters(StructuredSpinningLidarMod
             raise ValueError(
                 "Column azimuth angles must be sorted in the spinning direction so the diff between relative angles of consecutive columns should always be positive"
             )
-        if not np.all(~relative_row_elevations_rad.wrap_around_flag):
+        if not np.all(~relative_column_azimuths_rad.wrap_around_flag):
             raise ValueError("Column azimuth angles (without offsets) must not wrap around the start element")
 
     @staticmethod
