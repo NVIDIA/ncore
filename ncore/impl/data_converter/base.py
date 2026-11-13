@@ -46,7 +46,7 @@ class BaseDataConverterConfig:
     debug_port: int
 
     ## Output
-    zarr_format: Literal[2, 3]  # On-disk zarr format of written component stores (3 requires zarr-python 3)
+    zarr_format: Literal[2, 3] = 2  # On-disk zarr format of written component stores (3 requires zarr-python 3)
 
 
 class BaseDataConverter(ABC):
@@ -170,7 +170,7 @@ class FileBasedDataConverterConfig(BaseDataConverterConfig):
     """
 
     ## IO
-    root_dir: str  # Path to the raw data sequences
+    root_dir: str = ""  # Path to the raw data sequences (required, validated by __post_init__)
 
     def __post_init__(self) -> None:
         if not self.root_dir:
