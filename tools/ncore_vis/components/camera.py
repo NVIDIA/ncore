@@ -32,7 +32,7 @@ from scipy.spatial.transform import Rotation as RotLib
 from ncore.impl.common.transformations import HalfClosedInterval, transform_point_cloud
 from ncore.impl.data.types import FrameTimepoint, IdealPinholeCameraModelParameters, LabelCategory, LabelSource
 from ncore.impl.data.util import closest_index_sorted
-from ncore.impl.sensors.camera import CameraModel
+from ncore.impl.sensors.camera import CameraModel, camera_model_from_parameters
 from ncore.impl.sensors.rectification import Rectificator
 from tools.colormaps import jet as jet_colormap
 from tools.colormaps import turbo as turbo_colormap
@@ -757,7 +757,7 @@ class CameraComponent(VisualizationComponent):
         ``self._rectify`` or ``self._rectify_fov_factor``.
         """
         self._camera_models = {
-            camera_id: CameraModel.from_parameters(
+            camera_id: camera_model_from_parameters(
                 self.data_loader.get_camera_sensor(camera_id).model_parameters,
                 device=self._device,
                 dtype=torch.float32,
@@ -772,7 +772,7 @@ class CameraComponent(VisualizationComponent):
                 source_params = self.data_loader.get_camera_sensor(camera_id).model_parameters
                 target_fov = self._rectify_fov_factor * IdealPinholeCameraModelParameters.natural_fov(source_params)
                 target_params = IdealPinholeCameraModelParameters.from_source(source_params, target_fov=target_fov)
-                target_model = CameraModel.from_parameters(target_params, device=self._device, dtype=torch.float32)
+                target_model = camera_model_from_parameters(target_params, device=self._device, dtype=torch.float32)
                 self._target_models[camera_id] = target_model
                 self._rectificators[camera_id] = Rectificator(self._camera_models[camera_id], target_model)
 

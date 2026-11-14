@@ -22,7 +22,7 @@ import os
 import unittest
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import cv2
 import numpy as np
@@ -1087,7 +1087,7 @@ class TestJacobian(CommonTestCase):
         cam_model_ref = ReferenceSimplePinholeCamera(
             cam_model_params, cast(np.dtype, {torch.float32: np.float32, torch.float64: np.float64}[self.dtype])
         )
-        cam_model = CameraModel.from_parameters(cam_model_params, device=self.device, dtype=self.dtype)
+        cam_model = camera_model_from_parameters(cam_model_params, device=self.device, dtype=self.dtype)
 
         camera_rays = cam_model.image_points_to_camera_rays(torch.Tensor([[20, 40], [11, 12], [15, 20], [500, 500]]))
         self.assertTrue(bool(camera_rays.valid_flag.all()))
@@ -1110,7 +1110,7 @@ class TestJacobian(CommonTestCase):
 
         cam_models = [
             # Ideal pinhole camera parameters
-            CameraModel.from_parameters(
+            camera_model_from_parameters(
                 OpenCVPinholeCameraModelParameters(
                     resolution=np.array([1920, 1280], dtype=np.uint64),
                     shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
@@ -1140,7 +1140,7 @@ class TestJacobian(CommonTestCase):
                 dtype=self.dtype,
             ),
             # Waymo camera parameters
-            CameraModel.from_parameters(
+            camera_model_from_parameters(
                 OpenCVPinholeCameraModelParameters(
                     resolution=np.array([1920, 1280], dtype=np.uint64),
                     shutter_type=ShutterType.ROLLING_RIGHT_TO_LEFT,
@@ -1170,7 +1170,7 @@ class TestJacobian(CommonTestCase):
                 dtype=self.dtype,
             ),
             # NV 120deg instance
-            CameraModel.from_parameters(
+            camera_model_from_parameters(
                 FThetaCameraModelParameters(
                     resolution=np.array([3848, 2168], dtype=np.uint64),
                     shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
@@ -1197,10 +1197,10 @@ class TestJacobian(CommonTestCase):
                 dtype=self.dtype,
             ),
             # NV FTheta instances with tangential distortion
-            CameraModel.from_parameters(_ftheta_front_tele_params(), device=self.device, dtype=self.dtype),
-            CameraModel.from_parameters(_ftheta_cross_right_params(), device=self.device, dtype=self.dtype),
+            camera_model_from_parameters(_ftheta_front_tele_params(), device=self.device, dtype=self.dtype),
+            camera_model_from_parameters(_ftheta_cross_right_params(), device=self.device, dtype=self.dtype),
             # External costumer fisheye model
-            CameraModel.from_parameters(
+            camera_model_from_parameters(
                 OpenCVFisheyeCameraModelParameters(
                     resolution=np.array([3840, 2160], dtype=np.uint64),
                     shutter_type=ShutterType.ROLLING_TOP_TO_BOTTOM,
@@ -1970,7 +1970,7 @@ class TestParameterIO(CameraModelsBaseTestCase):
 
         for cam_model_params in self.cam_model_params + self.cam_model_params_wsd:
             with self.subTest(cam_model_params=cam_model_params):
-                cam_model = CameraModel.from_parameters(cam_model_params, device=self.device, dtype=self.dtype)
+                cam_model = camera_model_from_parameters(cam_model_params, device=self.device, dtype=self.dtype)
 
                 self.assertEqual(
                     cam_model.resolution.device.type, self.device.type
@@ -2125,6 +2125,87 @@ class TestProjectionValidIndices(CameraModelsBaseTestCase):
 @parameterized.parameterized_class(
     ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
 )
+class TestProjectionValidFlag(CameraModelsBaseTestCase):
+    """valid_flag of world-point projections for all camera models, shutter types and projection methods"""
+
+    device: torch.device
+    dtype: torch.dtype
+
+    def _projections(self, cam_model: CameraModel, world_points: np.ndarray, **kwargs):
+        T_world_sensor = np.eye(4)
+        return {
+            "image_points_shutter": cam_model.world_points_to_image_points_shutter_pose(
+                world_points, T_world_sensor, T_world_sensor, **kwargs
+            ),
+            "image_points_static": cam_model.world_points_to_image_points_static_pose(
+                world_points, T_world_sensor, **kwargs
+            ),
+            "image_points_mean": cam_model.world_points_to_image_points_mean_pose(
+                world_points, T_world_sensor, T_world_sensor, **kwargs
+            ),
+            "pixels_shutter": cam_model.world_points_to_pixels_shutter_pose(
+                world_points, T_world_sensor, T_world_sensor, **kwargs
+            ),
+            "pixels_static": cam_model.world_points_to_pixels_static_pose(world_points, T_world_sensor, **kwargs),
+            "pixels_mean": cam_model.world_points_to_pixels_mean_pose(
+                world_points, T_world_sensor, T_world_sensor, **kwargs
+            ),
+        }
+
+    def test_valid_flag(self):
+        """The valid flag covers all input points, with and without return_all_projections"""
+        # Points on the optical axis project to the principal point of every camera model
+        world_points = np.array([[0, 0, 10], [0, 0, -10], [0, 0, 20], [0, 0, -5]])
+        expected = [True, False, True, False]
+
+        for cam_model_params in self.cam_model_params + self.cam_model_params_wsd:
+            for shutter_type in (ShutterType.GLOBAL, ShutterType.ROLLING_TOP_TO_BOTTOM):
+                cam_model = camera_model_from_parameters(
+                    dataclasses.replace(cam_model_params, shutter_type=shutter_type),
+                    device=self.device,
+                    dtype=self.dtype,
+                )
+                for return_all_projections in (False, True):
+                    projections = self._projections(
+                        cam_model, world_points, return_all_projections=return_all_projections
+                    )
+                    for name, projection in projections.items():
+                        with self.subTest(
+                            model=type(cam_model).__name__,
+                            shutter_type=shutter_type,
+                            method=name,
+                            return_all_projections=return_all_projections,
+                        ):
+                            self.assertEqual(projection.valid_flag.dtype, torch.bool)
+                            self.assertEqual(projection.valid_flag.cpu().tolist(), expected)
+                            points = (
+                                projection.pixels
+                                if isinstance(projection, CameraModel.WorldPointsToPixelsReturn)
+                                else projection.image_points
+                            )
+                            self.assertEqual(len(points), len(world_points) if return_all_projections else 2)
+
+    def test_return_flags_are_keyword_only(self):
+        cam_model = camera_model_from_parameters(self.cam_model_params[0], device=self.device, dtype=self.dtype)
+        world_points = np.array([[0, 0, 10]])
+        T = np.eye(4)
+        # (untyped: the positional calls don't type check)
+        for method, args in (
+            (cam_model.world_points_to_image_points_shutter_pose, (world_points, T, T, 0, 1, 10, 1e-4, True)),
+            (cam_model.world_points_to_pixels_shutter_pose, (world_points, T, T, 0, 1, 10, 1e-4, True)),
+            (cam_model.world_points_to_image_points_static_pose, (world_points, T, 0, True)),
+            (cam_model.world_points_to_pixels_static_pose, (world_points, T, 0, True)),
+            (cam_model.world_points_to_image_points_mean_pose, (world_points, T, T, 0, 1, True)),
+            (cam_model.world_points_to_pixels_mean_pose, (world_points, T, T, 0, 1, True)),
+        ):
+            with self.subTest(method=method.__name__):
+                with self.assertRaisesRegex(TypeError, "positional argument"):
+                    cast(Any, method)(*args)
+
+
+@parameterized.parameterized_class(
+    ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
+)
 class TestTransformParameters(CameraModelsBaseTestCase):
     device: torch.device
     dtype: torch.dtype
@@ -2167,11 +2248,11 @@ class TestTransformParameters(CameraModelsBaseTestCase):
                     with self.subTest(msg=f"offset {offset}", offset=offset):
                         for cam_model_params in self.cam_model_params:
                             with self.subTest(cam_model_params=cam_model_params):
-                                cam_model = CameraModel.from_parameters(
+                                cam_model = camera_model_from_parameters(
                                     cam_model_params, device=self.device, dtype=self.dtype
                                 )
 
-                                cam_model_transformed = CameraModel.from_parameters(
+                                cam_model_transformed = camera_model_from_parameters(
                                     cam_model_params_transformed := cam_model_params.transform(
                                         image_domain_scale=scale_factor,
                                         image_domain_offset=offset,
@@ -2650,8 +2731,8 @@ class TestOpenCVPinholeZeroTerms(CameraModelsBaseTestCase):
             with self.subTest(params=params):
                 model = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
                 assert isinstance(model, OpenCVPinholeCameraModel)
-                self.assertEqual(model._has_tangential, bool(np.any(params.tangential_coeffs)))
-                self.assertEqual(model._has_thin_prism, bool(np.any(params.thin_prism_coeffs)))
+                self.assertEqual(model._has_tangential_distortion, bool(np.any(params.tangential_coeffs)))
+                self.assertEqual(model._has_thin_prism_distortion, bool(np.any(params.thin_prism_coeffs)))
 
     def test_zero_terms_bit_identical_to_full_evaluation(self):
         """Skipping zero terms gives exactly the outputs of evaluating all terms"""
@@ -2660,8 +2741,8 @@ class TestOpenCVPinholeZeroTerms(CameraModelsBaseTestCase):
                 fast = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
                 full = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
                 assert isinstance(full, OpenCVPinholeCameraModel)
-                full._has_tangential = True
-                full._has_thin_prism = True
+                full._has_tangential_distortion = True
+                full._has_thin_prism_distortion = True
                 for actual, expected in zip(self._evaluate(fast), self._evaluate(full)):
                     self.assertTrue(torch.equal(actual, expected))
 
@@ -2692,6 +2773,171 @@ class TestOpenCVPinholeZeroTerms(CameraModelsBaseTestCase):
                             torch.testing.assert_close(actual, expected, rtol=0.0, atol=0.0)
 
 
+class TestCameraModelConventions(unittest.TestCase):
+    """Buffers, code path flags and extension hooks shared by the camera models"""
+
+    _ftheta = staticmethod(_ftheta_front_tele_params)
+
+    @staticmethod
+    def _opencv() -> OpenCVPinholeCameraModelParameters:
+        return OpenCVPinholeCameraModelParameters(
+            resolution=np.array([1920, 1280], dtype=np.uint64),
+            shutter_type=ShutterType.GLOBAL,
+            principal_point=np.array([958.3, 641.7], dtype=np.float32),
+            focal_length=np.array([2061.5, 2060.25], dtype=np.float32),
+            radial_coeffs=np.array([0.0424, -0.3417, 0.01, 0.02, -0.01, 0.02], dtype=np.float32),
+            tangential_coeffs=np.array([0.0018, -0.00005], dtype=np.float32),
+            thin_prism_coeffs=np.array([0.01, 0.02, 0.02, 0.01], dtype=np.float32),
+        )
+
+    def test_coefficient_buffers_are_persistent(self):
+        """Coefficient buffers of all camera models are part of the state dict, and restore a model"""
+        params_list: List[Union[FThetaCameraModelParameters, OpenCVPinholeCameraModelParameters]] = [
+            self._ftheta(),
+            self._opencv(),
+        ]
+        for params, names in zip(
+            params_list,
+            (
+                ("fw_poly", "bw_poly", "A", "Ainv", "tangential_coeffs"),
+                ("radial_coeffs", "tangential_coeffs", "thin_prism_coeffs"),
+            ),
+        ):
+            with self.subTest(model=type(params).__name__):
+                model = camera_model_from_parameters(params, device="cpu", dtype=torch.float64)
+                state_dict = model.state_dict()
+                for name in names:
+                    self.assertIn(name, state_dict)
+                    self.assertTrue(torch.equal(state_dict[name], getattr(model, name)))
+
+                restored = camera_model_from_parameters(params, device="cpu", dtype=torch.float64)
+                getattr(restored, "tangential_coeffs").mul_(2.0)
+                restored.load_state_dict(state_dict)
+                self.assertTrue(
+                    torch.equal(getattr(restored, "tangential_coeffs"), getattr(model, "tangential_coeffs"))
+                )
+
+    def test_ftheta_loads_state_dicts_without_tangential_coeffs(self):
+        """FTheta state dicts without tangential coefficients load strictly, keeping the constructed coefficients"""
+        params = self._ftheta()
+        model = camera_model_from_parameters(params, device="cpu", dtype=torch.float64)
+        state_dict = model.state_dict()
+        del state_dict["tangential_coeffs"]
+
+        restored = camera_model_from_parameters(params, device="cpu", dtype=torch.float64)
+        restored.load_state_dict(state_dict)
+        np.testing.assert_array_equal(restored.get_parameters().tangential_coeffs, params.tangential_coeffs)
+        # (the given state dict is not modified)
+        self.assertNotIn("tangential_coeffs", state_dict)
+
+    def test_code_path_flags(self):
+        ftheta = camera_model_from_parameters(self._ftheta(), device="cpu")
+        self.assertTrue(ftheta._has_tangential_distortion)
+        opencv = camera_model_from_parameters(self._opencv(), device="cpu")
+        self.assertTrue(opencv._has_tangential_distortion)
+        self.assertTrue(opencv._has_thin_prism_distortion)
+        for model in (ftheta, opencv):
+            for name in ("_has_tangentials", "_has_tangential", "_has_thin_prism"):
+                self.assertFalse(hasattr(model, name), name)
+
+    def test_no_name_mangled_methods(self):
+        for model_type in (
+            CameraModel,
+            FThetaCameraModel,
+            IdealPinholeCameraModel,
+            OpenCVPinholeCameraModel,
+            OpenCVFisheyeCameraModel,
+        ):
+            with self.subTest(model=model_type.__name__):
+                mangled = [name for name in vars(model_type) if name.startswith(f"_{model_type.__name__}__")]
+                self.assertEqual(mangled, [])
+
+    def test_ftheta_tangential_iterations(self):
+        params = self._ftheta()
+        self.assertEqual(FThetaCameraModel(params, "cpu").tangential_iterations, 4)
+        with self.assertRaisesRegex(TypeError, "positional argument"):
+            # (untyped: the positional call doesn't type check)
+            cast(Any, FThetaCameraModel)(params, "cpu", torch.float64, 3, 1e-6, 2)
+        with self.assertRaises(ValueError):
+            FThetaCameraModel(params, "cpu", tangential_iterations=-1)
+
+        # The unprojection inverts the tangential distortion by the given number of iterations
+        reference = FThetaCameraModel(params, "cpu", torch.float64, tangential_iterations=20)
+        rays = reference.image_points_to_camera_rays(np.array([[100.5, 80.5], [3700.5, 2100.5]]))
+        errors = []
+        for iterations in (0, 1, 4):
+            model = FThetaCameraModel(params, "cpu", torch.float64, tangential_iterations=iterations)
+            self.assertEqual(model.tangential_iterations, iterations)
+            camera_rays = model.image_points_to_camera_rays(np.array([[100.5, 80.5], [3700.5, 2100.5]]))
+            errors.append(float((camera_rays.camera_rays - rays.camera_rays).abs().max()))
+        self.assertGreater(errors[0], errors[1])
+        self.assertGreater(errors[1], errors[2])
+
+    def test_opencv_pinhole_distortion_hook(self):
+        """Projection and undistortion evaluate the distortion through the overridable _compute_distortion"""
+
+        class RadialOnlyModel(OpenCVPinholeCameraModel):
+            def _compute_distortion(self, xy):
+                icD, _, r_2 = super()._compute_distortion(xy)
+                return icD, None, r_2
+
+        params = self._opencv()
+        radial_only = dataclasses.replace(
+            params, tangential_coeffs=np.zeros(2, dtype=np.float32), thin_prism_coeffs=np.zeros(4, dtype=np.float32)
+        )
+        overridden = RadialOnlyModel(params, "cpu", torch.float64)
+        expected = OpenCVPinholeCameraModel(radial_only, "cpu", torch.float64)
+
+        rays = torch.tensor([[0.1, 0.05, 1.0], [-0.2, 0.15, 1.0]], dtype=torch.float64)
+        image_points = overridden.camera_rays_to_image_points(rays).image_points
+        torch.testing.assert_close(image_points, expected.camera_rays_to_image_points(rays).image_points)
+        torch.testing.assert_close(
+            overridden.image_points_to_camera_rays(image_points).camera_rays,
+            expected.image_points_to_camera_rays(image_points).camera_rays,
+        )
+
+    def test_opencv_pinhole_undistort_hook(self):
+        class CountingModel(OpenCVPinholeCameraModel):
+            calls = 0
+
+            def _iterative_undistort(self, image_points, **kwargs):
+                CountingModel.calls += 1
+                return super()._iterative_undistort(image_points, max_iterations=20)
+
+        model = CountingModel(self._opencv(), "cpu", torch.float64)
+        model.image_points_to_camera_rays(np.array([[100.0, 200.0]]))
+        self.assertEqual(CountingModel.calls, 1)
+        with self.assertRaisesRegex(TypeError, "positional argument"):
+            # (untyped: the positional call doesn't type check)
+            cast(Any, OpenCVPinholeCameraModel._iterative_undistort)(model, torch.zeros((1, 2)), 1e-12)
+
+    def test_opencv_fisheye_inverse_max_angle_is_private(self):
+        model = camera_model_from_parameters(TestIdealPinholeFromSource._fisheye(), device="cpu")
+        self.assertFalse(hasattr(model, "inverse_max_angle"))
+        self.assertGreater(model._inverse_max_angle, model.max_angle)
+
+    def test_camera_rays_keyword(self):
+        """The camera rays argument of the projections is named camera_rays"""
+        model = camera_model_from_parameters(self._opencv(), device="cpu", dtype=torch.float64)
+        rays = torch.tensor([[0.1, 0.05, 1.0]], dtype=torch.float64)
+        expected = model.camera_rays_to_image_points(rays)
+        torch.testing.assert_close(
+            model.camera_rays_to_image_points(camera_rays=rays).image_points, expected.image_points
+        )
+        self.assertTrue(
+            torch.equal(
+                model.camera_rays_to_pixels(camera_rays=rays).pixels,
+                model.image_points_to_pixels(expected.image_points),
+            )
+        )
+        self.assertTrue(
+            torch.equal(
+                model._camera_rays_to_image_points_impl(camera_rays=rays, return_jacobians=False).image_points,
+                expected.image_points,
+            )
+        )
+
+
 class TestOpenCVPinholeMaxNormalizedRadiusSquared(unittest.TestCase):
     """Bound on the squared radius of normalized coordinates of the OpenCV pinhole radial distortion"""
 
@@ -2713,7 +2959,7 @@ class TestOpenCVPinholeMaxNormalizedRadiusSquared(unittest.TestCase):
         for k1 in (-0.05, -0.1, -0.3, -1.0):
             with self.subTest(k1=k1):
                 coeffs = [k1, 0, 0, 0, 0, 0]
-                max_r2 = OpenCVPinholeCameraModel.compute_max_normalized_radius_squared(np.array(coeffs))
+                max_r2 = OpenCVPinholeCameraModelParameters.compute_max_normalized_radius_squared(np.array(coeffs))
                 self.assertAlmostEqual(max_r2, -1.0 / (3.0 * k1), places=12)
                 self._assert_first_extremum(coeffs, max_r2)
 
@@ -2726,13 +2972,13 @@ class TestOpenCVPinholeMaxNormalizedRadiusSquared(unittest.TestCase):
         ):
             with self.subTest(coeffs=coeffs):
                 self.assertEqual(
-                    OpenCVPinholeCameraModel.compute_max_normalized_radius_squared(np.array(coeffs)), math.inf
+                    OpenCVPinholeCameraModelParameters.compute_max_normalized_radius_squared(np.array(coeffs)), math.inf
                 )
 
     def test_pole(self):
         # D(s) = 1 - 0.5 s has its root at s = 2 (with an increasing distorted radius before it)
         self.assertAlmostEqual(
-            OpenCVPinholeCameraModel.compute_max_normalized_radius_squared(np.array([0.1, 0, 0, -0.5, 0, 0])),
+            OpenCVPinholeCameraModelParameters.compute_max_normalized_radius_squared(np.array([0.1, 0, 0, -0.5, 0, 0])),
             2.0,
             places=12,
         )
@@ -2740,7 +2986,7 @@ class TestOpenCVPinholeMaxNormalizedRadiusSquared(unittest.TestCase):
     def test_rational_first_extremum(self):
         # The distorted radius of this rational distortion has a maximum, a minimum, and increases again beyond
         coeffs = [-0.3, 0.05, 0, 0.2, 0, 0]
-        max_r2 = OpenCVPinholeCameraModel.compute_max_normalized_radius_squared(np.array(coeffs))
+        max_r2 = OpenCVPinholeCameraModelParameters.compute_max_normalized_radius_squared(np.array(coeffs))
         self._assert_first_extremum(coeffs, max_r2)
         r2 = np.linspace(max_r2, 20.0, 10001)
         self.assertTrue(np.any(np.diff(self._distorted_radius(coeffs, r2)) > 0))
@@ -2750,13 +2996,15 @@ class TestOpenCVPinholeMaxNormalizedRadiusSquared(unittest.TestCase):
         # double root is computed as a nearly real complex pair for the second coefficients)
         for k1, k2 in ((-0.2, 0.018), (-0.3, 0.0405)):
             with self.subTest(k1=k1, k2=k2):
-                max_r2 = OpenCVPinholeCameraModel.compute_max_normalized_radius_squared(np.array([k1, k2, 0, 0, 0, 0]))
+                max_r2 = OpenCVPinholeCameraModelParameters.compute_max_normalized_radius_squared(
+                    np.array([k1, k2, 0, 0, 0, 0])
+                )
                 self.assertAlmostEqual(max_r2, -3.0 * k1 / (10.0 * k2), places=5)
 
     def test_waymo(self):
         # Extremum of the radial distortion of the Waymo fixture
         coeffs = [0.04239636827428756, -0.34165672675852826, 0, 0, 0, 0]
-        max_r2 = OpenCVPinholeCameraModel.compute_max_normalized_radius_squared(np.array(coeffs))
+        max_r2 = OpenCVPinholeCameraModelParameters.compute_max_normalized_radius_squared(np.array(coeffs))
         self._assert_first_extremum(coeffs, max_r2)
 
 
@@ -2792,7 +3040,7 @@ class TestOpenCVPinholeRadialValidity(CommonTestCase):
     def test_derived_bound(self):
         params = self._params()
         model = OpenCVPinholeCameraModel(params, device=self.device, dtype=self.dtype)
-        expected_max_r2 = OpenCVPinholeCameraModel.compute_max_normalized_radius_squared(params.radial_coeffs)
+        expected_max_r2 = OpenCVPinholeCameraModelParameters.compute_max_normalized_radius_squared(params.radial_coeffs)
         self.assertEqual(model.max_normalized_radius_squared, expected_max_r2)
         self.assertAlmostEqual(expected_max_r2, 10.0 / 3.0, places=5)
         # (the generic factory derives the bound)
@@ -2832,8 +3080,7 @@ class TestOpenCVPinholeRadialValidity(CommonTestCase):
         bounded = OpenCVPinholeCameraModel(
             self._params(), device=self.device, dtype=self.dtype, max_normalized_radius_squared=0.75
         )
-        # (rays where the fixed-point undistortion converges, which is slow towards the extremum; unprojected one by
-        # one, as the undistortion stops on the mean residual of all points)
+        # (rays where the fixed-point undistortion converges, which is slow towards the extremum)
         for r2 in (0.5, 1.0):
             with self.subTest(r2=r2):
                 ray = self._rays([r2])
@@ -2848,7 +3095,7 @@ class TestOpenCVPinholeRadialValidity(CommonTestCase):
 
     def test_explicit_bound(self):
         params = self._params()
-        max_r2 = OpenCVPinholeCameraModel.compute_max_normalized_radius_squared(params.radial_coeffs)
+        max_r2 = OpenCVPinholeCameraModelParameters.compute_max_normalized_radius_squared(params.radial_coeffs)
         rays = self._rays([1.0, 2.0, 1.05 * max_r2])
         for bound, expected_valid in (
             (1.5, [True, False, False]),  # stricter than the derived bound
@@ -2895,6 +3142,45 @@ class TestOpenCVPinholeRadialValidity(CommonTestCase):
                     )
 
 
+@parameterized.parameterized_class(("device",), [(device,) for device in _get_test_devices()])
+class TestOpenCVPinholeUndistortionPeriphery(CameraModelsBaseTestCase):
+    """Float32 unprojections of image points up to the image corners are valid and accurate (also unprojected
+    together with points closer to the principal point)"""
+
+    device: torch.device
+
+    def _image_points(self, resolution: np.ndarray) -> np.ndarray:
+        # Grid over the full image, including its borders and corners
+        width, height = (float(v) for v in resolution)
+        xs, ys = np.meshgrid(np.linspace(0.0, width, 49), np.linspace(0.0, height, 33))
+        return np.stack([xs.reshape(-1), ys.reshape(-1)], axis=1)
+
+    def test_float32_periphery_rays_converge(self):
+        params_list = [p for p in self.cam_model_params if isinstance(p, OpenCVPinholeCameraModelParameters)]
+        self.assertGreater(len(params_list), 0)
+        for params in params_list:
+            with self.subTest(params=params):
+                model32 = camera_model_from_parameters(params, device=self.device, dtype=torch.float32)
+                model64 = camera_model_from_parameters(params, device=self.device, dtype=torch.float64)
+                image_points = self._image_points(params.resolution)
+
+                reference = model64.image_points_to_camera_rays(image_points)
+                self.assertTrue(bool(reference.valid_flag.all()))
+
+                # (one by one, and all at once: points converging faster than others don't stop the iteration)
+                for image_point, reference_ray in zip(image_points, reference.camera_rays):
+                    rays = model32.image_points_to_camera_rays(image_point[None])
+                    self.assertTrue(bool(rays.valid_flag[0]), f"invalid ray for image point {image_point}")
+                    torch.testing.assert_close(
+                        rays.camera_rays[0].to(torch.float64), reference_ray, rtol=0.0, atol=1e-6
+                    )
+                rays = model32.image_points_to_camera_rays(image_points)
+                self.assertTrue(bool(rays.valid_flag.all()))
+                torch.testing.assert_close(
+                    rays.camera_rays.to(torch.float64), reference.camera_rays, rtol=0.0, atol=1e-6
+                )
+
+
 @parameterized.parameterized_class(
     ("device", "dtype"), itertools.product(_get_test_devices(), (torch.float32, torch.float64))
 )
@@ -2915,7 +3201,7 @@ class TestExternalDistortion(CommonTestCase):
             horizontal_poly_inverse,
             vertical_poly_inverse,
         )
-        res_ws = ExternalDistortionModel.from_parameters(windshield_params, self.device, self.dtype)
+        res_ws = external_distortion_model_from_parameters(windshield_params, self.device, self.dtype)
         self.assertTrue(isinstance(res_ws, BivariateWindshieldModel))
 
 
@@ -3301,7 +3587,7 @@ class TestIdealPinholeCamera(CommonTestCase):
             principal_point=np.array([320.0, 240.0], dtype=np.float32),
             focal_length=np.array([500.0, 510.0], dtype=np.float32),
         )
-        model = CameraModel.from_parameters(params, device=self.device, dtype=self.dtype)
+        model = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
         assert isinstance(model, IdealPinholeCameraModel)
         return model
 
@@ -3315,7 +3601,7 @@ class TestIdealPinholeCamera(CommonTestCase):
             tangential_coeffs=np.zeros(2, dtype=np.float32),
             thin_prism_coeffs=np.zeros(4, dtype=np.float32),
         )
-        model = CameraModel.from_parameters(params, device=self.device, dtype=self.dtype)
+        model = camera_model_from_parameters(params, device=self.device, dtype=self.dtype)
         assert isinstance(model, OpenCVPinholeCameraModel)
         return model
 
@@ -3404,7 +3690,7 @@ class TestIdealPinholeCamera(CommonTestCase):
             thin_prism_coeffs=np.zeros(4, dtype=np.float32),
         )
         self.assertFalse(distorted.is_distortion_free)
-        model = CameraModel.from_parameters(distorted, device=self.device, dtype=self.dtype)
+        model = camera_model_from_parameters(distorted, device=self.device, dtype=self.dtype)
         assert isinstance(model, OpenCVPinholeCameraModel)
         self.assertFalse(model._is_distortion_free)
 
@@ -3511,8 +3797,8 @@ class TestIdealPinholeFromSource(unittest.TestCase):
         ideal = IdealPinholeCameraModelParameters.from_source(params)
         np.testing.assert_allclose(ideal.principal_point, np.array([960.0, 540.0], dtype=np.float32), atol=1e-4)
 
-        source_model = CameraModel.from_parameters(params, device=device, dtype=torch.float64)
-        ideal_model = CameraModel.from_parameters(ideal, device=device, dtype=torch.float64)
+        source_model = camera_model_from_parameters(params, device=device, dtype=torch.float64)
+        ideal_model = camera_model_from_parameters(ideal, device=device, dtype=torch.float64)
         principal_ray = np.array([[0.0, 0.0, 1.0]], dtype=np.float32)
         src_pt = source_model.camera_rays_to_image_points(principal_ray).image_points[0].cpu().numpy()
         ideal_pt = ideal_model.camera_rays_to_image_points(principal_ray).image_points[0].cpu().numpy()
@@ -3795,11 +4081,24 @@ class TestCameraModelFactory(unittest.TestCase):
                 # The parameters round-trip back out through the abstract interface
                 self.assertEqual(model.get_parameters().type(), params.type())
 
-    def test_deprecated_static_factory_forwards(self):
-        params = self._ideal()
-        self.assertIsInstance(
-            CameraModel.from_parameters(params, device="cpu", dtype=torch.float32), IdealPinholeCameraModel
-        )
+    def test_static_factory_removed(self):
+        self.assertFalse(hasattr(CameraModel, "from_parameters"))
+
+    def test_forwards_model_kwargs(self):
+        """Keyword arguments after dtype reach the concrete model's constructor"""
+        model = camera_model_from_parameters(self._ftheta(), device="cpu", newton_iterations=7, tangential_iterations=2)
+        self.assertEqual((model.newton_iterations, model.tangential_iterations), (7, 2))
+        model = camera_model_from_parameters(self._fisheye(), device="cpu", newton_iterations=9, min_2d_norm=1e-4)
+        self.assertEqual(model.newton_iterations, 9)
+        self.assertAlmostEqual(float(model.min_2d_norm), 1e-4)
+        model = camera_model_from_parameters(self._opencv(), device="cpu", max_normalized_radius_squared=0.5)
+        self.assertEqual(model.max_normalized_radius_squared, 0.5)
+
+    def test_rejects_unknown_model_kwargs(self):
+        for params in (self._ftheta(), self._ideal(), self._opencv(), self._fisheye()):
+            with self.subTest(params=type(params).__name__):
+                with self.assertRaisesRegex(TypeError, "unexpected keyword argument 'not_an_argument'"):
+                    camera_model_from_parameters(params, device="cpu", not_an_argument=1)
 
     def test_unregistered_parameters_raise(self):
         not_a_camera = cast(ConcreteCameraModelParametersUnion, object())
@@ -3825,17 +4124,24 @@ class TestCameraModelFactory(unittest.TestCase):
         )
         self.assertIsInstance(camera_model_from_parameters(params, device="cpu"), IdealPinholeCameraModel)
 
+        received_kwargs: List[dict] = []
+
         @register_camera_model
         def _(
             cam_model_parameters: CustomCameraModelParameters,
             device: Union[str, torch.device] = torch.device("cuda"),
             dtype: torch.dtype = torch.float32,
+            **model_kwargs,
         ) -> CustomCameraModel:
+            received_kwargs.append(model_kwargs)
             return CustomCameraModel(cam_model_parameters, device, dtype)
 
         # The registry is process-global and singledispatch offers no unregister; keying it on a
         # method-local parameter type keeps the registration unreachable from other tests
         self.assertIsInstance(camera_model_from_parameters(params, device="cpu"), CustomCameraModel)
+        # (keyword arguments reach registered factories)
+        camera_model_from_parameters(params, device="cpu", custom_option=3)
+        self.assertEqual(received_kwargs, [{}, {"custom_option": 3}])
 
     def test_camera_model_parameters_type_is_covariant(self):
         # A heterogeneous collection of concrete camera models must still have `CameraModel` as a
@@ -3897,10 +4203,12 @@ class TestExternalDistortionModelFactory(unittest.TestCase):
         # The parameters round-trip back out through the abstract interface
         self.assertEqual(model.get_parameters().type(), parameters.type())
 
-    def test_deprecated_static_factory_forwards(self):
-        self.assertIsInstance(
-            ExternalDistortionModel.from_parameters(self._windshield(), device="cpu"), BivariateWindshieldModel
-        )
+    def test_static_factory_removed(self):
+        self.assertFalse(hasattr(ExternalDistortionModel, "from_parameters"))
+
+    def test_rejects_unknown_model_kwargs(self):
+        with self.assertRaisesRegex(TypeError, "unexpected keyword argument 'not_an_argument'"):
+            external_distortion_model_from_parameters(self._windshield(), device="cpu", not_an_argument=1)
 
     def test_unregistered_parameters_raise(self):
         with self.assertRaises(TypeError):

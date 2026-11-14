@@ -30,7 +30,7 @@ from ncore.impl.data.types import (
     OpenCVPinholeCameraModelParameters,
     ShutterType,
 )
-from ncore.impl.sensors.camera import CameraModel
+from ncore.impl.sensors.camera import CameraModel, camera_model_from_parameters
 from ncore.impl.sensors.rectification import Rectificator
 
 
@@ -99,7 +99,7 @@ _SOURCE_PARAM_FACTORIES = {
 
 
 def _model(params: ConcreteCameraModelParametersUnion, device, dtype) -> CameraModel:
-    return CameraModel.from_parameters(params, device=device, dtype=dtype)
+    return camera_model_from_parameters(params, device=device, dtype=dtype)
 
 
 def _ideal_target_params(focal=300.0, resolution=(640, 480)) -> IdealPinholeCameraModelParameters:

@@ -20,6 +20,38 @@ def test_import_package():
     import ncore.sensors  # noqa: F401
 
 
+def test_public_names():
+    """The package exposes the sensor models of the implementation (the same objects)"""
+    import ncore.sensors as public
+
+    from ncore.impl.sensors import camera, lidar, rectification
+
+    expected = {
+        "CameraModel": camera,
+        "camera_model_from_parameters": camera,
+        "register_camera_model": camera,
+        "FThetaCameraModel": camera,
+        "PinholeCameraModel": camera,
+        "IdealPinholeCameraModel": camera,
+        "OpenCVPinholeCameraModel": camera,
+        "OpenCVFisheyeCameraModel": camera,
+        "ExternalDistortionModel": camera,
+        "external_distortion_model_from_parameters": camera,
+        "register_external_distortion_model": camera,
+        "BivariateWindshieldModel": camera,
+        "LidarModel": lidar,
+        "lidar_model_from_parameters": lidar,
+        "maybe_lidar_model_from_parameters": lidar,
+        "register_lidar_model": lidar,
+        "StructuredLidarModel": lidar,
+        "RowOffsetStructuredSpinningLidarModel": lidar,
+        "Rectificator": rectification,
+    }
+    assert sorted(public.__all__) == sorted(expected)
+    for name, module in expected.items():
+        assert getattr(public, name) is getattr(module, name), name
+
+
 def test_camera_model_keyword_only_parameters():
     """The tuning parameters of camera models (after the device and dtype) are keyword-only"""
     from typing import Any, cast

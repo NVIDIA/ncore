@@ -38,8 +38,8 @@ from ncore.impl.data.compat import (
 from ncore.impl.data.util import padded_index_string
 from ncore.impl.data.v4.compat import SequenceLoaderV4
 from ncore.impl.data.v4.components import SequenceComponentGroupsReader
-from ncore.impl.sensors.camera import CameraModel
-from ncore.impl.sensors.lidar import StructuredLidarModel
+from ncore.impl.sensors.camera import camera_model_from_parameters
+from ncore.impl.sensors.lidar import StructuredLidarModel, maybe_lidar_model_from_parameters
 from tools.colormaps import jet as jet_colormap
 
 
@@ -290,7 +290,7 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
     if cam_model_params.external_distortion_parameters is not None:
         msg += " | with external distortion"
 
-    cam_model = CameraModel.from_parameters(cam_model_params, device=params.device)
+    cam_model = camera_model_from_parameters(cam_model_params, device=params.device)
 
     # Initialize motion compensator and lidar model for the structured-lidar-model path
     motion_compensator: Optional[MotionCompensator] = None
@@ -298,8 +298,10 @@ def run(params: CLIBaseParams, loader: SequenceLoaderProtocol) -> None:
     if ray_sensor is not None:
         motion_compensator = MotionCompensator(ray_sensor.pose_graph)
         if params.enable_lidar_model and isinstance(ray_sensor, LidarSensorProtocol):
-            lidar_model = StructuredLidarModel.maybe_from_parameters(ray_sensor.model_parameters, device=params.device)
-            assert lidar_model is not None, f"No structured lidar model available for sensor {source_id}"
+            maybe_lidar_model = maybe_lidar_model_from_parameters(ray_sensor.model_parameters, device=params.device)
+            if not isinstance(maybe_lidar_model, StructuredLidarModel):
+                raise click.ClickException(f"No structured lidar model available for sensor '{source_id}'")
+            lidar_model = maybe_lidar_model
             msg += " | with structured lidar model"
 
     logger.info(msg)
