@@ -199,18 +199,18 @@ class TestHalfClosedInterval(unittest.TestCase):
 
         # self-intersection
         self.assertEqual(cover_range := interval_0_3.cover_range(test_range := np.arange(0, 3)), range(0, 3))
-        self.assertTrue([test_range[i] in interval_0_3 for i in cover_range])
+        self.assertTrue(all(test_range[i] in interval_0_3 for i in cover_range))
 
         # full interval cover
         self.assertEqual(cover_range := interval_0_3.cover_range(test_range := np.arange(-5, 10)), range(5, 8))
-        self.assertTrue([test_range[i] in interval_0_3 for i in cover_range])
+        self.assertTrue(all(test_range[i] in interval_0_3 for i in cover_range))
 
         # subranges (partial covers)
         self.assertEqual(cover_range := interval_0_3.cover_range(test_range := np.arange(1, 10)), range(0, 2))
-        self.assertTrue([test_range[i] in interval_0_3 for i in cover_range])
+        self.assertTrue(all(test_range[i] in interval_0_3 for i in cover_range))
 
         self.assertEqual(cover_range := interval_0_3.cover_range(test_range := np.arange(-5, 2)), range(5, 7))
-        self.assertTrue([test_range[i] in interval_0_3 for i in cover_range])
+        self.assertTrue(all(test_range[i] in interval_0_3 for i in cover_range))
 
         # no cover (left)
         self.assertEqual(cover_range := interval_0_3.cover_range(test_range := np.arange(-5, 0)), range(0, 0))
@@ -228,6 +228,32 @@ class TestHalfClosedInterval(unittest.TestCase):
         interval_5_5 = HalfClosedInterval(5, 5)
         self.assertEqual(cover_range := interval_5_5.cover_range(test_range := np.arange(0, 10)), range(0, 0))
         self.assertFalse([test_range[i] in interval_5_5 for i in cover_range])
+
+    def test_cover_range_matches_samples_within_interval(self):
+        """Test to verify HalfClosedInterval.cover_range() covers exactly the samples within the interval"""
+
+        def reference_range(interval: HalfClosedInterval, sorted_samples: np.ndarray) -> range:
+            indices = np.flatnonzero((interval.start <= sorted_samples) & (sorted_samples < interval.stop))
+            return range(int(indices[0]), int(indices[-1]) + 1) if len(indices) else range(0)
+
+        ns = 1_700_000_000_000_000_000  # nanosecond timestamp scale, above 2**53
+        for interval, sorted_samples in [
+            # last sample at the (exclusive) stop of the interval
+            (HalfClosedInterval(0, 3), np.arange(0, 4)),
+            (HalfClosedInterval(0, 3), np.arange(-5, 4)),
+            (HalfClosedInterval(0, 3), np.array([1, 2, 3, 3])),
+            (HalfClosedInterval(ns, ns + 2), np.array([ns, ns + 1, ns + 2], dtype=np.uint64)),
+            # non-integer samples
+            (HalfClosedInterval(3, 5), np.array([2.5])),
+            (HalfClosedInterval(3, 5), np.array([1.0, 2.5])),
+            (HalfClosedInterval(3, 5), np.array([2.2, 4.0])),
+            (HalfClosedInterval(3, 5), np.array([3.0, 4.5, 5.0])),
+            # uint64 samples above 2**53
+            (HalfClosedInterval(ns + 1, ns + 2), np.array([ns + 1], dtype=np.uint64)),
+            (HalfClosedInterval(ns + 2, ns + 4), np.array([ns, ns + 1, ns + 2, ns + 3, ns + 4], dtype=np.uint64)),
+        ]:
+            with self.subTest(interval=interval, sorted_samples=sorted_samples):
+                self.assertEqual(interval.cover_range(sorted_samples), reference_range(interval, sorted_samples))
 
 
 class TestMotionCompensator(unittest.TestCase):
