@@ -170,7 +170,9 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
             ]
         )
         # motion compensator of the ray bundle sensors' point clouds
-        self._motion_compensator: MotionCompensator = MotionCompensator(self._pose_graph, motion_compensator_parameters)
+        self._motion_compensator: MotionCompensator = MotionCompensator(
+            self._pose_graph, parameters=motion_compensator_parameters
+        )
 
     @classmethod
     async def open_async(

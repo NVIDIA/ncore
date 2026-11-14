@@ -648,7 +648,7 @@ class WaymoConverter4(FileBasedDataConverter):
                     timestamp_us=point_timestamps_us,
                     frame_start_timestamp_us=frame_start_timestamp_us,
                     frame_end_timestamp_us=frame_end_timestamp_us,
-                )
+                ).xyz_pointtime
 
                 # Combine first and second return data
                 distance_m = np.full(

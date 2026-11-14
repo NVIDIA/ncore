@@ -509,7 +509,7 @@ class NuScenesConverter4(FileBasedDataConverter):
                     timestamp_us=ts_j,
                     frame_start_timestamp_us=frame_start_j,
                     frame_end_timestamp_us=frame_end_j,
-                )
+                ).xyz_pointtime
 
                 lidar_model_parameters = derive_model_from_decompensated(
                     xyz_decompensated=xyz_decomp_j,
