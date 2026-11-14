@@ -178,11 +178,11 @@ instead, e.g. to rule out the direct path when debugging.
 
 .. note::
 
-   Custom components should access their data via ``self._group``, an
-   ``ncore.impl.data.nodes.Group`` (e.g. ``create_array``, ``array(path).read()``,
-   ``create_bytes_array`` / ``read_bytes``, ``attrs``), which works with both zarr-python
-   versions and zarr formats. Records of ``.itar`` archives are write-once: write each
-   array once, attributes can be updated until the store is closed.
+   Custom components should access their data via ``self._group``, a
+   :class:`ncore.data.stores.Group` (e.g. ``create_array``, ``array(path).read()``,
+   ``create_bytes_array`` / ``read_bytes``, ``attrs``, see :ref:`stores_api`), which works
+   with both zarr-python versions and zarr formats. Records of ``.itar`` archives are
+   write-once: write each array once, attributes can be updated until the store is closed.
 
 .. |check| unicode:: U+2713
 .. |ge| unicode:: U+2265
@@ -194,18 +194,35 @@ V4 sequences are loaded by specifying one or more component store paths:
 
 .. code-block:: python
 
-   from ncore.data.v4 import SequenceComponentGroupsReader
    from pathlib import Path
-   
+
+   from ncore.data.v4 import CameraSensorComponent, PosesComponent, SequenceComponentGroupsReader
+
    # Load sequence from multiple component stores
    reader = SequenceComponentGroupsReader([
        Path("ncore4.zarr.itar"),           # default components
        Path("ncore4-calibv2.zarr.itar"),   # alternative calibration
    ])
-   
+
    # Access specific components
    poses_readers = reader.open_component_readers(PosesComponent.Reader)
    camera_readers = reader.open_component_readers(CameraSensorComponent.Reader)
+
+Arrays returned by component readers are read-only views of the stored data (e.g., frame
+timestamps, ray bundles, poses): copy them (``np.array(data)``) before modifying them in place.
+Poses are returned with their stored dtype (float32 or float64, e.g.
+:meth:`PosesComponent.Reader.get_static_pose <ncore.data.v4.PosesComponent.Reader.get_static_pose>`);
+convert them if a specific dtype is required.
+
+The sequence-level compatibility API (:class:`~ncore.data.v4.SequenceLoaderV4`, implementing
+:class:`~ncore.data.SequenceLoaderProtocol`) opens the component stores and the loader in one
+step:
+
+.. code-block:: python
+
+   from ncore.data.v4 import SequenceLoaderV4
+
+   loader = SequenceLoaderV4.open([Path("sequence.json")])  # or SequenceLoaderV4.open_async(...)
 
 .. _async_reads:
 
@@ -388,6 +405,48 @@ and ``SequenceLoaderV4.open`` / ``open_async`` selects the policy:
 .. code-block:: python
 
    reader = SequenceComponentGroupsReader(paths, itar_index_tail_retention="keep")
+
+.. _stores_api:
+
+Storage API (``ncore.data.stores``)
+-----------------------------------
+
+Below the components, :mod:`ncore.data.stores` provides the stores, groups and arrays NCore
+reads and writes, working the same with both zarr-python versions and zarr formats:
+
+* :class:`~ncore.data.stores.IndexedTarArchive`: the records of an ``.itar`` archive (key ->
+  bytes, independent of zarr-python), opened for reading or writing; ``records`` maps keys to
+  their :class:`~ncore.data.stores.Record` (payload offset and size).
+* Stores of zarr hierarchies (:class:`~ncore.data.stores.Store`):
+  :class:`~ncore.data.stores.IndexedTarZarrStore` (a hierarchy in an ``.itar`` archive) and
+  :class:`~ncore.data.stores.ZarrStoreAdapter` for other zarr-python stores (e.g.,
+  ``ZarrStoreAdapter.directory(path)`` for directory stores). ``create_root_group`` /
+  ``open_root_group`` create / open the root :class:`~ncore.data.stores.Group` of the
+  hierarchy, ``consolidate`` stores its compressed consolidated metadata, and the wrapped
+  zarr-python store is accessible via ``store.zarr``.
+* :class:`~ncore.data.stores.Group` / :class:`~ncore.data.stores.Array`: typed nodes of
+  hierarchies (``create_array``, ``create_bytes_array``, ``create_empty_array`` +
+  ``Array.write``, ``array(path).read()`` / ``read_async()``, ``attrs`` / ``update_attrs``).
+  Arrays are read as read-only arrays (or into a preallocated ``out=`` buffer). Writes through
+  hierarchies opened for reading raise ``ValueError``.
+* :class:`~ncore.data.stores.EncodedArray`: chunk records encoded without a store (e.g., on
+  worker threads), stored by ``Group.create_encoded_array``.
+* :class:`~ncore.data.stores.NodeCache`: a cache of opened nodes, used by component readers
+  (``node_cache_size``).
+
+.. code-block:: python
+
+   import numpy as np
+
+   from ncore.data.stores import IndexedTarZarrStore
+
+   with IndexedTarZarrStore("data.zarr.itar", mode="w") as store:
+       root = store.create_root_group({"version": 1})
+       root.create_array("points", np.zeros((100, 3), dtype=np.float32))
+       store.consolidate()
+
+   with IndexedTarZarrStore("data.zarr.itar") as store:
+       points = store.open_root_group().array("points").read()
 
 .. _cloud_storage_access:
 

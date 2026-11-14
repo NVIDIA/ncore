@@ -26,9 +26,9 @@ import numpy as np
 from parameterized import parameterized_class
 from upath import UPath
 
-from ncore.impl.data import nodes
-from ncore.impl.data.types import IdealPinholeCameraModelParameters
-from ncore.impl.data.v4.components import (
+from ncore.data import IdealPinholeCameraModelParameters
+from ncore.data.stores import ZarrFormat
+from ncore.data.v4 import (
     CameraSensorComponent,
     CuboidsComponent,
     IntrinsicsComponent,
@@ -36,12 +36,13 @@ from ncore.impl.data.v4.components import (
     PosesComponent,
     SequenceComponentGroupsReader,
 )
+from ncore.impl.data.nodes import SUPPORTED_ZARR_FORMATS
 from tools.data_converter.kitti.converter import KittiConverter4, KittiConverter4Config
 
 
 @parameterized_class(
     ("store_type", "zarr_format"),
-    [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in nodes.SUPPORTED_ZARR_FORMATS],
+    [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in SUPPORTED_ZARR_FORMATS],
 )
 class TestKittiConverter(unittest.TestCase):
     """Integration tests for KITTI raw data converter.
@@ -52,7 +53,7 @@ class TestKittiConverter(unittest.TestCase):
     """
 
     store_type: Literal["itar", "directory"]
-    zarr_format: nodes.ZarrFormat
+    zarr_format: ZarrFormat
 
     @classmethod
     def setUpClass(cls):

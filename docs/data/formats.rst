@@ -110,16 +110,16 @@ might attach raw GPS/IMU measurements to the poses component:
            ├── {array_name}        [shape] dtype  (lz4-compressed array)
            └── ...
 
-Writers use :meth:`~ncore.impl.data.v4.components.ComponentWriter.set_generic_data`
+Writers use :meth:`~ncore.data.v4.ComponentWriter.set_generic_data`
 to provide generic data arrays and optional additional metadata before finalization.
 Metadata keys passed via ``set_generic_data(meta_data={...})`` **replace** keys with
 the same name from the initial ``register_component_writer(generic_meta_data={...})``
 call.
 
 Readers access generic data via
-:meth:`~ncore.impl.data.v4.components.ComponentReader.has_generic_data`,
-:meth:`~ncore.impl.data.v4.components.ComponentReader.get_generic_data_names`, and
-:meth:`~ncore.impl.data.v4.components.ComponentReader.get_generic_data`.
+:meth:`~ncore.data.v4.ComponentReader.has_generic_data`,
+:meth:`~ncore.data.v4.ComponentReader.get_generic_data_names`, and
+:meth:`~ncore.data.v4.ComponentReader.get_generic_data`.
 
 Poses Component
 ~~~~~~~~~~~~~~~
@@ -504,10 +504,11 @@ A minimal custom component looks like:
                )
 
 The groups of component writers / readers (``self._group``) are
-``ncore.impl.data.nodes.Group`` instances with a typed API to create and read groups, arrays
+:class:`ncore.data.stores.Group` instances with a typed API to create and read groups, arrays
 (``create_array`` / ``array(path).read()``), binary blobs (``create_bytes_array`` /
-``read_bytes``), and attributes. The wrapped zarr-python group is accessible via
-``self._group.zarr``.
+``read_bytes``), and attributes (see :ref:`stores_api`). The wrapped zarr-python group is
+accessible via ``self._group.zarr``. Arrays read by component readers are read-only (copy them
+before modifying them in place).
 
 Writers must ensure that all stored timestamps fall within the sequence's
 ``sequence_timestamp_interval_us`` time range. Existing datasets can be extended

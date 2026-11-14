@@ -15,11 +15,11 @@
 
 """Cuboid track type with temporal interpolation.
 
-A :class:`CuboidTrack` groups all :class:`~ncore.impl.data.types.CuboidTrackObservation`
+A :class:`CuboidTrack` groups all :class:`~ncore.data.CuboidTrackObservation`
 instances that share the same ``track_id`` and exposes
 :meth:`CuboidTrack.interpolate_at` to obtain an interpolated observation at any
 target timestamp.  Translation is interpolated linearly and rotation via SLERP,
-using :class:`~ncore.impl.common.transformations.PoseInterpolator`.
+using :class:`~ncore.geometry.PoseInterpolator`.
 """
 
 from __future__ import annotations
@@ -29,8 +29,8 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from ncore.impl.common.transformations import PoseInterpolator, bbox_pose, pose_bbox
-from ncore.impl.data.types import BBox3, CuboidTrackObservation
+from ncore.data import BBox3, CuboidTrackObservation
+from ncore.geometry import PoseInterpolator, bbox_pose, pose_bbox
 
 
 @dataclass
@@ -90,7 +90,7 @@ class CuboidTrack:
 
         The interpolated bbox pose (centroid + orientation) is computed by
         finding the two observations that bracket *timestamp_us* and blending
-        them via :class:`~ncore.impl.common.transformations.PoseInterpolator`
+        them via :class:`~ncore.geometry.PoseInterpolator`
         (linear translation + SLERP rotation).  ``bbox3.dim`` (dimensions) are
         taken from the earlier bracketing observation and are **not** interpolated.
 
@@ -107,7 +107,7 @@ class CuboidTrack:
                 track's first/last observation.  ``None`` disables clamping.
 
         Returns:
-            A :class:`~ncore.impl.data.types.CuboidTrackObservation` whose
+            A :class:`~ncore.data.CuboidTrackObservation` whose
             ``timestamp_us`` equals *timestamp_us* and whose ``bbox3`` is
             interpolated to that time, or ``None`` when *timestamp_us* is outside
             the (optionally extended) time range.
@@ -172,7 +172,7 @@ class CuboidTrack:
         returned list is deterministic (insertion order of first occurrence).
 
         Args:
-            observations: Flat list of :class:`~ncore.impl.data.types.CuboidTrackObservation`
+            observations: Flat list of :class:`~ncore.data.CuboidTrackObservation`
                 instances, potentially spanning multiple tracks.
 
         Returns:

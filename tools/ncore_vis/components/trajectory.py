@@ -24,7 +24,7 @@ import viser
 
 from scipy.spatial.transform import Rotation
 
-from ncore.impl.common.transformations import HalfClosedInterval
+from ncore.geometry import HalfClosedInterval
 from tools.ncore_vis.components.base import VisualizationComponent, register_component
 from tools.ncore_vis.utils import se3_to_position_wxyz
 

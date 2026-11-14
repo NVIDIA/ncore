@@ -25,11 +25,10 @@ import tqdm
 
 from point_cloud_utils import TriangleMesh
 
-from ncore.impl.data.compat import PointCloudsSourceProtocol, SequenceLoaderProtocol
+from ncore.data import PointCloudsSourceProtocol, SequenceLoaderProtocol
+from ncore.data.v4 import SequenceComponentGroupsReader, SequenceLoaderV4
 from ncore.impl.data.util import padded_index_string
-from ncore.impl.data.v4.compat import SequenceLoaderV4
-from ncore.impl.data.v4.components import SequenceComponentGroupsReader
-from ncore.impl.sensors.camera import camera_model_from_parameters
+from ncore.sensors import camera_model_from_parameters
 
 
 try:

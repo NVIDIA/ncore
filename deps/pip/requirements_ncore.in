@@ -20,8 +20,9 @@ dataclasses_json>=0.2.12 # deserialization fails with earlier versions
 # pillow version rationale:
 # - 12.2.0 fixes CVE-2026-42311 (out-of-bounds write in decode.c/encode.c)
 # - 12.x dropped Python 3.8 support; last 3.8-compatible version is 10.4.0
-pillow>=12.2.0; python_version>="3.9"
-pillow; python_version<"3.9"
+# - 12.2.0 requires python>=3.10
+pillow>=12.2.0; python_version>="3.10"
+pillow; python_version<"3.10"
 
 # zarr version rationales:
 # - both zarr-python 2 and zarr-python 3 are supported

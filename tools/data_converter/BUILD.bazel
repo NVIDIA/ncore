@@ -41,8 +41,8 @@ py_library(
         "structured_lidar_model.py",
     ],
     deps = [
-        "//ncore/impl/common:pylib_transformations",
-        "//ncore/impl/data:pylib_types",
+        "//ncore/data:pylib",
+        "//ncore/geometry:pylib",
         requirement("numpy"),
     ],
 )
@@ -53,7 +53,8 @@ pytest_test(
     args = ["--import-mode=importlib"],
     deps = [
         ":pylib_structured_lidar_model",
-        "//ncore/impl/common:pylib_transformations",
+        "//ncore/geometry:pylib",
+        "//ncore/impl/data:pylib_util",
         requirement("numpy"),
         requirement("parameterized"),
     ],

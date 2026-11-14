@@ -33,13 +33,9 @@ import numpy as np
 from parameterized import parameterized_class
 from upath import UPath
 
-from ncore.impl.data import nodes
-from ncore.impl.data.types import (
-    IdealPinholeCameraModelParameters,
-    RowOffsetStructuredSpinningLidarModelParameters,
-    ShutterType,
-)
-from ncore.impl.data.v4.components import (
+from ncore.data import IdealPinholeCameraModelParameters, RowOffsetStructuredSpinningLidarModelParameters, ShutterType
+from ncore.data.stores import ZarrFormat
+from ncore.data.v4 import (
     CameraSensorComponent,
     CuboidsComponent,
     IntrinsicsComponent,
@@ -48,13 +44,14 @@ from ncore.impl.data.v4.components import (
     RadarSensorComponent,
     SequenceComponentGroupsReader,
 )
+from ncore.impl.data.nodes import SUPPORTED_ZARR_FORMATS
 from tools.data_converter.argoverse2.converter import Argoverse2Converter4, Argoverse2Converter4Config
 from tools.data_converter.argoverse2.utils import CAMERA_NAMES, LIDAR_NAMES, list_log_ids
 
 
 @parameterized_class(
     ("store_type", "zarr_format"),
-    [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in nodes.SUPPORTED_ZARR_FORMATS],
+    [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in SUPPORTED_ZARR_FORMATS],
 )
 class TestArgoverse2Converter(unittest.TestCase):
     """Integration tests for the Argoverse 2 data converter.
@@ -64,7 +61,7 @@ class TestArgoverse2Converter(unittest.TestCase):
     """
 
     store_type: Literal["itar", "directory"]
-    zarr_format: nodes.ZarrFormat
+    zarr_format: ZarrFormat
 
     @classmethod
     def setUpClass(cls):
@@ -272,7 +269,7 @@ class TestArgoverse2Converter(unittest.TestCase):
         by the stored per-point (row, column), should reproduce the stored ray
         directions to within a small angular error for far-range returns.
         """
-        from ncore.impl.sensors.lidar import StructuredLidarModel, maybe_lidar_model_from_parameters
+        from ncore.sensors import StructuredLidarModel, maybe_lidar_model_from_parameters
 
         intrinsics_reader = list(self.reader.open_component_readers(IntrinsicsComponent.Reader).values())[0]
         lidar_readers = self.reader.open_component_readers(LidarSensorComponent.Reader)
@@ -331,7 +328,7 @@ class TestArgoverse2Converter(unittest.TestCase):
         own per-point rig pose, transform the active cuboids from ``rig`` at the
         sweep timestamp to ``world``, and count points inside.
         """
-        from ncore.impl.common.transformations import is_within_3d_bboxes, transform_bbox
+        from ncore.geometry import is_within_3d_bboxes, transform_bbox
 
         cuboid_readers = self.reader.open_component_readers(CuboidsComponent.Reader)
         if not cuboid_readers:
