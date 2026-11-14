@@ -116,25 +116,11 @@ class HalfClosedInterval:
 
     def cover_range(self, sorted_samples: np.ndarray) -> range:
         """Given a set of *sorted* samples (not validated), return the corresponding range for samples
-        that are within the interval"""
-        if (
-            not len(sorted_samples)
-            or len(self) == 0
-            or not self.intersection(
-                # generate closed integer interval [floor(sample[0]), ceil(samples[-1])+1] guaranteed to containing all samples[i]
-                HalfClosedInterval(int(np.floor(sorted_samples[0])), int(np.ceil(sorted_samples[-1])) + 1)
-            )
-        ):
-            # empty range for empty samples, empty interval, or missing intersection
-            return range(0)
-
-        # non-empty range case
-        cover_range_start = np.argmax(self.start <= sorted_samples).item()
-        cover_range_stop = (
-            np.argmin(sorted_samples < self.stop).item() if self.stop < sorted_samples[-1] else len(sorted_samples)
-        )  # full range of frames
-
-        return range(cover_range_start, cover_range_stop)
+        that are within the interval (``start <= sample < stop``; an empty range if no sample is within it)"""
+        # The samples before the interval's start / stop are prefixes of the sorted samples, so their counts are the
+        # bounds of the range. Comparing the samples with the bounds keeps this exact for any sample dtype (numpy 1
+        # converts uint64 samples to float64 when rounding them or searching them for a python int, lossy above 2**53)
+        return range(np.count_nonzero(sorted_samples < self.start), np.count_nonzero(sorted_samples < self.stop))
 
 
 class PoseInterpolator:
