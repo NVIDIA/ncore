@@ -346,6 +346,15 @@ sequences opened together:
 
 Local stores are opened on worker threads.
 
+``SequenceLoaderV4.open`` is the synchronous counterpart with the same parameters, except
+for the bound of the concurrent opening: the synchronous opening opens the component
+stores on a thread pool of at most ``max_threads`` threads, while ``max_concurrent_requests``
+bounds the stores opened at once on the event loop:
+
+.. code-block:: python
+
+   loader = SequenceLoaderV4.open([sequence_meta_path], max_threads=8)
+
 .. note::
 
    The filesystem may bound the requests in flight as well: ``s3fs`` uses at most
@@ -365,7 +374,7 @@ records, or all records of small archives. Once a hierarchy is opened from its
 consolidated metadata, readers release its tail read by default, so opened sequences only
 hold their decoded indices (records near the end of the archives are then read from
 storage when accessed). ``itar_index_tail_retention`` of ``SequenceComponentGroupsReader``
-and ``SequenceLoaderV4.open_async`` selects the policy:
+and ``SequenceLoaderV4.open`` / ``open_async`` selects the policy:
 
 - ``"release_if_consolidated"`` (default): release the tail reads of hierarchies opened
   from their consolidated metadata, keep them otherwise (``open_consolidated=False``:
@@ -582,7 +591,9 @@ Performance Recommendations
   parameter on :class:`~ncore.data.v4.SequenceComponentGroupsReader` is
   ``True`` by default, which pre-loads all zarr metadata in a single read.
   This is especially important for remote stores where each metadata
-  lookup would otherwise be a separate round-trip.
+  lookup would otherwise be a separate round-trip. ``"auto"`` opens each
+  store from its consolidated metadata if it has one (e.g., to read stores
+  of which only some are consolidated).
 
 * **Keep the node cache enabled** (the default). Component readers cache the
   groups / arrays they open (including their decoded metadata, but not their

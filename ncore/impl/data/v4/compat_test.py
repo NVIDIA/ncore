@@ -16,7 +16,7 @@
 import tempfile
 import unittest
 
-from typing import List, Literal, Tuple
+from typing import Any, Dict, List, Literal, Tuple, cast
 
 import numpy as np
 
@@ -27,7 +27,7 @@ from upath import UPath
 
 from ncore.impl.common.transformations import HalfClosedInterval
 from ncore.impl.common.util import unpack_optional
-from ncore.impl.data.compat import SensorProtocol
+from ncore.impl.data.compat import RayBundleSensorPointCloudsSourceAdapter, SensorProtocol
 from ncore.impl.data.types import (
     CameraLabelDescriptor,
     LabelCategory,
@@ -47,6 +47,7 @@ from ncore.impl.data.v4.components import (
     PosesComponent,
     SequenceComponentGroupsReader,
     SequenceComponentGroupsWriter,
+    SequenceMeta,
 )
 
 
@@ -104,6 +105,17 @@ class TestCompatV4(unittest.TestCase):
         # Test radar_ids
         radar_ids = self.loader.radar_ids
         self.assertEqual(len(radar_ids), 18)
+
+    def test_unknown_sensor_ids_raise_key_error(self) -> None:
+        """Unknown sensor ids raise KeyError, as the other getters of unknown ids"""
+        for get in (self.loader.get_camera_sensor, self.loader.get_lidar_sensor, self.loader.get_radar_sensor):
+            with self.subTest(get=get.__name__):
+                with self.assertRaises(KeyError) as raised:
+                    get("unknown_sensor")
+                self.assertIn("'unknown_sensor' not available", str(raised.exception))
+        # (sensors of other types are unknown as well)
+        with self.assertRaises(KeyError):
+            self.loader.get_lidar_sensor(self.loader.camera_ids[0])
 
     def test_pose_graph(self) -> None:
         """Test pose graph access in V4"""
@@ -270,11 +282,50 @@ class TestCompatV4(unittest.TestCase):
         self.assertEqual(intensities.shape[0], count)
 
     def test_get_sequence_meta(self) -> None:
-        """Test get_sequence_meta returns a non-empty dict without raising"""
+        """get_sequence_meta returns the JSON document of the reader's SequenceMeta"""
         meta = self.loader.get_sequence_meta()
         self.assertIsInstance(meta, dict)
-        # Should contain at least sequence_id or equivalent high-level info
-        self.assertGreater(len(meta), 0)
+        reader_meta = SequenceComponentGroupsReader([_TEST_DATA_PATH]).get_sequence_meta()
+        self.assertIsInstance(reader_meta, SequenceMeta)
+        self.assertEqual(meta, reader_meta.to_dict())
+
+    def test_get_T_sensor_rig(self) -> None:
+        """T_sensor_rig is the transformation to the "rig" frame, get_T_sensor_rig to any named frame (None without a
+        static transformation)"""
+        lidar = self.loader.get_lidar_sensor("lidar_gt_top_p128_v4p5")
+        T_sensor_rig = unpack_optional(lidar.T_sensor_rig)
+        np.testing.assert_array_equal(unpack_optional(lidar.get_T_sensor_rig()), T_sensor_rig)
+        np.testing.assert_array_equal(unpack_optional(lidar.get_T_sensor_rig("rig")), T_sensor_rig)
+        camera_id = "camera_front_wide_120fov"
+        T_lidar_camera = unpack_optional(lidar.get_T_sensor_rig(camera_id))
+        np.testing.assert_allclose(
+            T_lidar_camera,
+            np.linalg.inv(unpack_optional(self.loader.get_camera_sensor(camera_id).T_sensor_rig)) @ T_sensor_rig,
+            rtol=0,
+            atol=1e-5,
+        )
+        self.assertFalse(np.allclose(T_lidar_camera, T_sensor_rig))
+        self.assertIsNone(lidar.get_T_sensor_rig("missing"))
+
+    def test_missing_component_groups(self) -> None:
+        """Missing component groups requested by name raise KeyError"""
+        reader = SequenceComponentGroupsReader([_TEST_DATA_PATH])
+        kwargs: Dict[str, str]
+        for kwargs in (
+            {"poses_component_group_name": "missing"},
+            {"intrinsics_component_group_name": "missing"},
+            {"masks_component_group_name": "missing"},
+            {"cuboids_component_group_name": "missing"},
+        ):
+            with self.subTest(**kwargs):
+                with self.assertRaisesRegex(KeyError, "component group 'missing' not found"):
+                    SequenceLoaderV4(reader, **cast(Any, kwargs))
+
+    def test_relative_frame_time_out_of_range(self) -> None:
+        camera = self.loader.get_camera_sensor("camera_front_wide_120fov")
+        for relative_frame_time in (-0.5, 1.5):
+            with self.assertRaisesRegex(ValueError, "relative_frame_time"):
+                camera.get_closest_frame_index(int(camera.frames_timestamps_us[0, 1]), relative_frame_time)
 
     def test_radar_sensor_basic(self) -> None:
         """Test basic radar sensor properties through the compat layer"""
@@ -980,6 +1031,16 @@ class TestPointCloudsSourceIntegration(unittest.TestCase):
         """has_pc_generic_data returns False for non-existent names."""
         src = self.loader.get_point_clouds_source("test_lidar")
         self.assertFalse(src.has_pc_generic_data(0, "nonexistent"))
+
+    def test_promoted_generic_data_shape_mismatch(self) -> None:
+        """A promoted generic data entry of an unexpected shape raises ValueError when accessed"""
+        src = RayBundleSensorPointCloudsSourceAdapter(
+            self.loader.get_lidar_sensor("test_lidar"),
+            promote_generic_data={"rgb": RayBundleSensorPointCloudsSourceAdapter.GenericDataPromotion((4,))},
+        )
+        pc0 = src.get_pc(0)
+        with self.assertRaisesRegex(ValueError, "Promoted generic_data 'rgb' shape"):
+            pc0.get_attribute("rgb")
 
     def test_unknown_id_raises_key_error(self) -> None:
         """Requesting a non-existent source raises KeyError."""

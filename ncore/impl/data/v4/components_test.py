@@ -202,7 +202,7 @@ class TestData4Reload(unittest.TestCase):
             "throwaway_poses_type",
             group_name=None,  # use default component group
         )
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "the last timestamp .* is before the sequence end time"):
             coverate_pose_writer.store_dynamic_pose(
                 source_frame_id="rig",
                 target_frame_id="world",
@@ -216,7 +216,7 @@ class TestData4Reload(unittest.TestCase):
             timestamps_us=T_rig_world_timestamps_us[: len(T_rig_worlds) - 1],
             require_sequence_time_coverage=False,
         )
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "the first timestamp .* is after the sequence start time"):
             coverate_pose_writer.store_dynamic_pose(
                 source_frame_id="rig",
                 target_frame_id="world",
@@ -583,14 +583,14 @@ class TestData4Reload(unittest.TestCase):
             source_version="v0",
         )
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "observation timestamp .* not in the sequence time range"):
             cuboids_writer.store_observations(
                 cuboid_observations=[
                     dataclasses.replace(ref_observation, timestamp_us=ref_sequence_timestamp_interval_us.stop + 10)
                 ]
             )
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "reference frame timestamp .* not in the sequence time range"):
             cuboids_writer.store_observations(
                 cuboid_observations=[
                     dataclasses.replace(
@@ -2033,7 +2033,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         self.assertEqual(rt.shape_suffix, ())
 
     def test_writer_rejects_undeclared_attribute(self):
-        """store_pc with attr not in schema -> AssertionError."""
+        """store_pc with attr not in schema -> ValueError."""
         schemas = {
             "rgb": PointCloudsComponent.AttributeSchema(
                 transform_type=PointCloud.AttributeTransformType.INVARIANT,
@@ -2047,7 +2047,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         rgb = np.array([[128, 64, 32]], dtype=np.uint8)
         extra = np.array([[0.1, 0.2, 0.3]], dtype=np.float32)
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "Attribute keys mismatch"):
             pc_writer.store_pc(
                 xyz=xyz,
                 reference_frame_id="world",
@@ -2058,7 +2058,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         tmpdir.cleanup()
 
     def test_writer_rejects_missing_schema_attribute(self):
-        """store_pc missing a schema attr -> AssertionError."""
+        """store_pc missing a schema attr -> ValueError."""
         schemas = {
             "rgb": PointCloudsComponent.AttributeSchema(
                 transform_type=PointCloud.AttributeTransformType.INVARIANT,
@@ -2076,7 +2076,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         xyz = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
         rgb = np.array([[128, 64, 32]], dtype=np.uint8)
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "Attribute keys mismatch"):
             pc_writer.store_pc(
                 xyz=xyz,
                 reference_frame_id="world",
@@ -2087,7 +2087,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         tmpdir.cleanup()
 
     def test_writer_rejects_wrong_shape(self):
-        """store_pc with wrong-shaped array -> AssertionError."""
+        """store_pc with wrong-shaped array -> ValueError."""
         schemas = {
             "rgb": PointCloudsComponent.AttributeSchema(
                 transform_type=PointCloud.AttributeTransformType.INVARIANT,
@@ -2102,7 +2102,7 @@ class TestPointCloudsComponent(unittest.TestCase):
         # Wrong shape: (N, 4) instead of (N, 3)
         rgb_wrong = np.random.default_rng().integers(0, 256, size=(N, 4), dtype=np.uint8)
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "shape mismatch"):
             pc_writer.store_pc(
                 xyz=xyz,
                 reference_frame_id="world",
@@ -2113,11 +2113,11 @@ class TestPointCloudsComponent(unittest.TestCase):
         tmpdir.cleanup()
 
     def test_writer_rejects_reference_frame_timestamp_out_of_range(self):
-        """store_pc with reference_frame_timestamp_us outside sequence range -> AssertionError."""
+        """store_pc with reference_frame_timestamp_us outside sequence range -> ValueError."""
         pc_writer, _, tmpdir, _ = self._make_writer_reader()
 
         xyz = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "not in sequence time range"):
             pc_writer.store_pc(
                 xyz=xyz,
                 reference_frame_id="world",
@@ -2127,11 +2127,11 @@ class TestPointCloudsComponent(unittest.TestCase):
         tmpdir.cleanup()
 
     def test_writer_rejects_wrong_xyz_dtype(self):
-        """store_pc with float64 xyz raises AssertionError (float32 required)."""
+        """store_pc with float64 xyz raises ValueError (float32 required)."""
         pc_writer, _, tmpdir, _ = self._make_writer_reader()
 
         xyz_f64 = np.array([[1.0, 2.0, 3.0]], dtype=np.float64)
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "xyz must be of dtype float32, got float64"):
             pc_writer.store_pc(
                 xyz=xyz_f64,
                 reference_frame_id="world",
@@ -2534,9 +2534,9 @@ class TestCameraLabelsComponent(unittest.TestCase):
     def test_quantization_params_rejects_float_dtype(self) -> None:
         """QuantizationParams must reject non-integer quantized_dtype."""
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "quantized_dtype must be an integer type"):
             QuantizationParams(quantized_dtype=np.dtype("float32"), scale=1.0, offset=0.0)
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "quantized_dtype must be an integer type"):
             QuantizationParams(quantized_dtype=np.dtype("float64"), scale=1.0, offset=0.0)
 
     # ------------------------------------------------------------------
@@ -2545,11 +2545,11 @@ class TestCameraLabelsComponent(unittest.TestCase):
     def test_quantization_params_rejects_non_float_intermediate(self) -> None:
         """QuantizationParams must reject non-floating intermediate_dtype."""
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "intermediate_dtype must be a floating type"):
             QuantizationParams(
                 quantized_dtype=np.dtype("uint16"), scale=1.0, offset=0.0, intermediate_dtype=np.dtype("int32")
             )
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "intermediate_dtype must be a floating type"):
             QuantizationParams(
                 quantized_dtype=np.dtype("uint16"), scale=1.0, offset=0.0, intermediate_dtype=np.dtype("uint8")
             )
@@ -2721,7 +2721,7 @@ class TestCameraLabelsComponent(unittest.TestCase):
     # 8. test_reject_empty_camera_id
     # ------------------------------------------------------------------
     def test_reject_empty_camera_id(self) -> None:
-        """Passing an empty camera_id should raise AssertionError."""
+        """Passing an empty camera_id should raise ValueError."""
 
         tmpdir = tempfile.TemporaryDirectory()
         timestamp_interval = HalfClosedInterval(0, 10_000_001)
@@ -2736,7 +2736,7 @@ class TestCameraLabelsComponent(unittest.TestCase):
             generic_meta_data={},
         )
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "camera_id should be a non-empty string"):
             store_writer.register_component_writer(
                 CameraLabelsComponent.Writer,
                 "depth.z@front",
@@ -3837,3 +3837,182 @@ class TestMissingComponentStores(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 SequenceComponentGroupsReader([path])
             self.assertFalse((UPath(tmp) / "missing").exists())
+
+
+@parameterized_class(("store_type", "zarr_format"), STORE_TYPES_AND_ZARR_FORMATS)
+class TestComponentAPIs(unittest.TestCase):
+    """Writers returning themselves, asynchronous reads of generic data / point-cloud attributes, cached frame
+    timestamps, and the errors of invalid arguments"""
+
+    store_type: Literal["itar", "directory"]
+    zarr_format: nodes.ZarrFormat
+
+    def setUp(self):
+        _require_zarr_format(self, self.zarr_format)
+        self._tmp = tempfile.TemporaryDirectory()
+        writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(self._tmp.name),
+            store_base_name="seq",
+            sequence_id="seq",
+            sequence_timestamp_interval_us=HalfClosedInterval(0, 10_000_001),
+            generic_meta_data={},
+            store_type=self.store_type,
+            zarr_format=self.zarr_format,
+        )
+        self.poses_writer = writer.register_component_writer(PosesComponent.Writer, "poses")
+        self.poses_writer.store_static_pose("x", "y", np.eye(4, dtype=np.float32))
+        self.assertIs(
+            self.poses_writer.set_generic_data({"weights": np.arange(6, dtype=np.float32).reshape(2, 3)}),
+            self.poses_writer,
+        )
+
+        pc_writer = writer.register_component_writer(
+            PointCloudsComponent.Writer,
+            "pc",
+            coordinate_unit=PointCloud.CoordinateUnit.METERS,
+            attribute_schemas={
+                "rgb": PointCloudsComponent.AttributeSchema(
+                    transform_type=PointCloud.AttributeTransformType.INVARIANT,
+                    dtype=np.dtype("uint8"),
+                    shape_suffix=(3,),
+                )
+            },
+        )
+        self.rgb = np.arange(12, dtype=np.uint8).reshape(4, 3)
+        xyz = np.ones((4, 3), dtype=np.float32)
+        self.assertIs(
+            pc_writer.store_pc(xyz, "world", 1_000_000, attributes={"rgb": self.rgb}).store_pc(
+                xyz, "world", 2_000_000, attributes={"rgb": self.rgb + 1}
+            ),
+            pc_writer,
+        )
+
+        labels_writer = writer.register_component_writer(
+            CameraLabelsComponent.Writer,
+            "depth",
+            descriptor=CameraLabelDescriptor(
+                camera_id="front",
+                label_type=LabelType.DEPTH_Z_M,
+                label_schema=LabelSchema(dtype=np.dtype("float32"), encoding=LabelEncoding.RAW),
+                label_source=LabelSource.EXTERNAL,
+            ),
+        )
+        depth = np.ones((2, 3), dtype=np.float32)
+        self.assertIs(labels_writer.store_label(depth, 1_000_000).store_label(depth, 2_000_000), labels_writer)
+
+        lidar_writer = writer.register_component_writer(LidarSensorComponent.Writer, "lidar")
+        for end_us in (100_000, 200_000):
+            lidar_writer.store_frame(
+                np.array([[1.0, 0.0, 0.0]], dtype=np.float32),
+                np.array([end_us], dtype=np.uint64),
+                None,
+                np.ones((1, 1), dtype=np.float32),
+                np.ones((1, 1), dtype=np.float32),
+                np.array([end_us - 50_000, end_us], dtype=np.uint64),
+                generic_data={},
+                generic_meta_data={},
+            )
+        self.reader = SequenceComponentGroupsReader(writer.finalize())
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_get_generic_data_async(self):
+        poses = self.reader.open_component_readers(PosesComponent.Reader)["poses"]
+        np.testing.assert_array_equal(
+            asyncio.run(poses.get_generic_data_async("weights")), np.arange(6, dtype=np.float32).reshape(2, 3)
+        )
+        with self.assertRaises(KeyError):
+            asyncio.run(poses.get_generic_data_async("missing"))
+
+    def test_get_pc_attribute_async(self):
+        pcs = self.reader.open_component_readers(PointCloudsComponent.Reader)["pc"]
+        for pc_index, expected in enumerate((self.rgb, self.rgb + 1)):
+            np.testing.assert_array_equal(asyncio.run(pcs.get_pc_attribute_async(pc_index, "rgb")), expected)
+            np.testing.assert_array_equal(pcs.get_pc_attribute(pc_index, "rgb"), expected)
+
+    def test_frames_timestamps_us_are_cached(self):
+        lidar = self.reader.open_component_readers(LidarSensorComponent.Reader)["lidar"]
+        timestamps = lidar.frames_timestamps_us
+        np.testing.assert_array_equal(timestamps, [[50_000, 100_000], [150_000, 200_000]])
+        self.assertIs(lidar.frames_timestamps_us, timestamps)
+        self.assertFalse(timestamps.flags.writeable)
+
+    def test_invalid_arguments(self):
+        pcs = self.reader.open_component_readers(PointCloudsComponent.Reader)["pc"]
+        with self.assertRaisesRegex(KeyError, "Unknown attribute"):
+            pcs.get_attribute_schema("normal")
+        labels = self.reader.open_component_readers(CameraLabelsComponent.Reader)["depth"]
+        with self.assertRaisesRegex(KeyError, "Unknown timestamp"):
+            labels.get_label(1_500_000)
+        for name in ("", "  "):
+            with self.assertRaisesRegex(ValueError, "is invalid"):
+                PosesComponent.validate_frame_name(name)
+            with self.assertRaisesRegex(ValueError, "is invalid"):
+                self.poses_writer.store_static_pose(name, "y", np.eye(4, dtype=np.float32))
+            poses = self.reader.open_component_readers(PosesComponent.Reader)["poses"]
+            with self.assertRaisesRegex(ValueError, "is invalid"):
+                poses.get_static_pose("x", name)
+        self.assertEqual(PosesComponent.validate_frame_name("rig"), "rig")
+        writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(self._tmp.name) / "other",
+            store_base_name="seq",
+            sequence_id="seq",
+            sequence_timestamp_interval_us=HalfClosedInterval(0, 10_000_001),
+            generic_meta_data={},
+            store_type=self.store_type,
+            zarr_format=self.zarr_format,
+        )
+        with self.assertRaisesRegex(ValueError, "must not be empty"):
+            writer.register_component_writer(PosesComponent.Writer, "")
+        writer.register_component_writer(PosesComponent.Writer, "poses")
+        with self.assertRaisesRegex(ValueError, "already registered"):
+            writer.register_component_writer(PosesComponent.Writer, "poses")
+        with self.assertRaisesRegex(ValueError, "No component inputs"):
+            SequenceComponentGroupsReader([])
+        with self.assertRaisesRegex(ValueError, "No component inputs"):
+            asyncio.run(SequenceComponentGroupsReader.open_async([]))
+
+
+class TestReaderOpenConsolidated(unittest.TestCase):
+    """open_consolidated="auto" opens stores from their consolidated metadata if they have one"""
+
+    def test_auto(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            writer = SequenceComponentGroupsWriter(
+                output_dir_path=UPath(tmp),
+                store_base_name="seq",
+                sequence_id="seq",
+                sequence_timestamp_interval_us=HalfClosedInterval(0, 10_000_001),
+                generic_meta_data={},
+                store_type="directory",
+            )
+            for name in ("a", "b"):
+                writer.register_component_writer(PosesComponent.Writer, name, f"poses_{name}").store_static_pose(
+                    "x", "y", np.eye(4, dtype=np.float32)
+                )
+            paths = writer.finalize()
+            # (the second store loses its consolidated metadata)
+            for record in UPath(paths[1]).iterdir():
+                if stores.Store.is_consolidated_metadata_key(record.name):
+                    record.unlink()
+
+            with self.assertRaises(KeyError):
+                SequenceComponentGroupsReader(paths)
+            opened_consolidated: List[Any] = []
+            open_root_group = stores.Store.open_root_group
+
+            def recording_open_root_group(store: stores.Store, *, consolidated: Any = True) -> nodes.Group:
+                opened_consolidated.append(consolidated)
+                return open_root_group(store, consolidated=consolidated)
+
+            with mock.patch.object(
+                stores.Store, "open_root_group", autospec=True, side_effect=recording_open_root_group
+            ):
+                readers = [
+                    SequenceComponentGroupsReader(paths, open_consolidated="auto"),
+                    asyncio.run(SequenceComponentGroupsReader.open_async(paths, open_consolidated="auto")),
+                ]
+            self.assertEqual(opened_consolidated, ["auto"] * 4)
+            for reader in readers:
+                self.assertEqual(sorted(reader.open_component_readers(PosesComponent.Reader)), ["a", "b"])

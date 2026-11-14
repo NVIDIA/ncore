@@ -36,6 +36,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Sequence,
     Tuple,
     Type,
     TypeVar,
@@ -296,7 +297,8 @@ class SequenceComponentGroupsWriter:
         keep ``group_name`` and ``generic_meta_data`` at their defaults."""
         generic_meta_data = unpack_optional(generic_meta_data, default={})
 
-        assert len(component_instance_name) > 0, "Component instance name must not be empty"
+        if not component_instance_name:
+            raise ValueError("Component instance name must not be empty")
 
         # The signature uses Callable[Concatenate[...], CW] for type-safe kwargs
         # inference, but we also need access to ComponentWriter static class attributes.
@@ -306,7 +308,8 @@ class SequenceComponentGroupsWriter:
         component_base_name = writer_cls.get_component_name()
         component_id = f"{component_base_name}:{component_instance_name}"
 
-        assert component_id not in self._component_writers, f"Component writer for {component_id} already registered"
+        if component_id in self._component_writers:
+            raise ValueError(f"Component writer for {component_id} already registered")
 
         # Create the component in the requested group, separated by component base name
         component_group = (
@@ -338,7 +341,7 @@ class SequenceComponentGroupsReader:
 
     @staticmethod
     def expand_component_group_paths(
-        component_group_paths: List[UPath] | List[Path],
+        component_group_paths: Sequence[Union[UPath, Path]],
     ) -> List[UPath]:
         """Expands possible sequence meta-data files in the given list of component group
         paths to the actual component group paths they reference"""
@@ -364,14 +367,14 @@ class SequenceComponentGroupsReader:
 
     def __init__(
         self,
-        component_group_paths: List[UPath] | List[Path],
+        component_group_paths: Sequence[Union[UPath, Path]],
         *,
-        open_consolidated: bool = True,
-        itar_index_tail_read_size: int | None = DEFAULT_INDEX_TAIL_READ_SIZE,
+        open_consolidated: Union[bool, Literal["auto"]] = True,
+        itar_index_tail_read_size: Optional[int] = DEFAULT_INDEX_TAIL_READ_SIZE,
         itar_index_tail_retention: IndexTailRetention = "release_if_consolidated",
         itar_remote_range_reads: bool = False,
-        max_threads: int | None = None,
-        node_cache_size: int | None = None,
+        max_threads: Optional[int] = None,
+        node_cache_size: Optional[int] = None,
     ):
         """Initialize a SequenceComponentReader for a virtual sequence represented by a list of components.
 
@@ -385,7 +388,9 @@ class SequenceComponentGroupsReader:
                                This is advisable if component data is accessed from *non-local*
                                storage to prevent latencies introduced when accessing the data.
                                If the component data is available on fast *local* storage, disabling
-                               this option can speed up initial load times.
+                               this option can speed up initial load times. "auto" opens each component store
+                               from its consolidated meta-data if it has one, and from its node meta-data otherwise
+                               (see :meth:`ncore.data.stores.Store.open_root_group`).
             itar_index_tail_read_size: When loading component groups from .itar files, the size of the tail buffer to read in a
                                single I/O call to initialize the tar file index to minimize reads.
                                Default 1 MiB size fits typical use cases, but may be increased if the compressed
@@ -403,8 +408,11 @@ class SequenceComponentGroupsReader:
                                the synchronous reader APIs, so reads of multiple threads fetch their data concurrently
                                (e.g., thread pools reading frames), instead of via a buffered file object (blocks of the
                                filesystem's block size, one request at a time, suits sequential reading).
-            max_threads:       The maximum number of threads used to open the component stores concurrently (if
-                               None, use interpreter-default number of threads for a ThreadPoolExecutor)
+            max_threads:       The maximum number of threads of the thread pool opening the component stores
+                               concurrently (if None, use interpreter-default number of threads for a
+                               ThreadPoolExecutor). It bounds the threads of the synchronous opening, the
+                               asynchronous opening (:meth:`open_async`) bounds the stores opened at once with
+                               ``max_concurrent_requests`` instead.
             node_cache_size:   Number of opened groups / arrays (with their decoded meta-data, but not their data)
                                each component reader caches for repeated accesses (e.g., of frames). None caches
                                all accessed nodes for the lifetime of the reader, a positive number the most recently
@@ -415,7 +423,8 @@ class SequenceComponentGroupsReader:
 
         component_group_upaths: List[UPath] = self.expand_component_group_paths(component_group_paths)
 
-        assert len(component_group_upaths), "No component inputs provided"
+        if not component_group_upaths:
+            raise ValueError("No component inputs provided")
 
         # Component stores are opened concurrently (hiding the latency of remote archive index reads), their
         # hierarchies are opened from their consolidated metadata sequentially on the calling thread (pure-Python CPU
@@ -444,32 +453,35 @@ class SequenceComponentGroupsReader:
     @classmethod
     async def open_async(
         cls,
-        component_group_paths: List[UPath] | List[Path],
+        component_group_paths: Sequence[Union[UPath, Path]],
         *,
-        open_consolidated: bool = True,
-        itar_index_tail_read_size: int | None = DEFAULT_INDEX_TAIL_READ_SIZE,
+        open_consolidated: Union[bool, Literal["auto"]] = True,
+        itar_index_tail_read_size: Optional[int] = DEFAULT_INDEX_TAIL_READ_SIZE,
         itar_index_tail_retention: IndexTailRetention = "release_if_consolidated",
         itar_remote_range_reads: bool = False,
-        max_concurrent_requests: int | asyncio.Semaphore | None = None,
-        node_cache_size: int | None = None,
+        max_concurrent_requests: Union[int, asyncio.Semaphore, None] = None,
+        node_cache_size: Optional[int] = None,
     ) -> SequenceComponentGroupsReader:
         """Opens a reader asynchronously, without blocking the running event loop (see :meth:`__init__` for the
         parameters).
 
         The component stores of remote sequences (e.g. ``.zarr.itar`` archives on S3) are opened via asynchronous
-        requests (one per archive, see :meth:`ncore.impl.data.itar.IndexedTarArchive.open_async`), so opening the
+        requests (one per archive, see :meth:`ncore.data.stores.IndexedTarArchive.open_async`), so opening the
         stores of a sequence, and of many sequences concurrently (e.g., via ``asyncio.gather``), overlaps their requests.
 
         Args:
-            max_concurrent_requests: The maximum number of component stores opened concurrently: a number (for this
-                sequence), a semaphore shared by readers opened concurrently (e.g., to bound the requests of many
-                sequences opened via ``asyncio.gather``), or None (all component stores at once).
+            max_concurrent_requests: The maximum number of component stores opened concurrently (their requests in
+                flight, on the event loop: no threads are used for remote archives): a number (for this sequence), a
+                semaphore shared by readers opened concurrently (e.g., to bound the requests of many sequences opened
+                via ``asyncio.gather``), or None (all component stores at once). It takes the place of the
+                ``max_threads`` of the synchronous constructor.
         """
         reader = cls.__new__(cls)
         reader._init(node_cache_size, itar_index_tail_retention)
 
         component_group_upaths = await run_in_thread(cls.expand_component_group_paths, component_group_paths)
-        assert len(component_group_upaths), "No component inputs provided"
+        if not component_group_upaths:
+            raise ValueError("No component inputs provided")
 
         semaphore = (
             asyncio.Semaphore(max_concurrent_requests)
@@ -506,7 +518,7 @@ class SequenceComponentGroupsReader:
         reader._check_version()
         return reader
 
-    def _init(self, node_cache_size: int | None, itar_index_tail_retention: IndexTailRetention) -> None:
+    def _init(self, node_cache_size: Optional[int], itar_index_tail_retention: IndexTailRetention) -> None:
         if node_cache_size is not None and node_cache_size < 0:
             raise ValueError(f"node_cache_size needs to be None or non-negative, got {node_cache_size}")
         self._node_cache_size = node_cache_size
@@ -517,7 +529,7 @@ class SequenceComponentGroupsReader:
 
     @staticmethod
     def _open_component_store(
-        component_store_upath: UPath, itar_index_tail_read_size: int | None, itar_remote_range_reads: bool
+        component_store_upath: UPath, itar_index_tail_read_size: Optional[int], itar_remote_range_reads: bool
     ) -> stores.Store:
         """Opens a component store (blocking)"""
         _logger.info(f"SequenceStoreReader: Loading component store {component_store_upath}")
@@ -535,7 +547,7 @@ class SequenceComponentGroupsReader:
 
     @staticmethod
     async def _open_component_store_async(
-        component_store_upath: UPath, itar_index_tail_read_size: int | None, itar_remote_range_reads: bool
+        component_store_upath: UPath, itar_index_tail_read_size: Optional[int], itar_remote_range_reads: bool
     ) -> stores.Store:
         """Opens a component store asynchronously (see :meth:`_open_component_store`): archives via asynchronous
         requests, directory stores on a worker thread"""
@@ -560,7 +572,10 @@ class SequenceComponentGroupsReader:
         return stores.ZarrStoreAdapter.directory(component_store_upath)
 
     def _add_component_store(
-        self, component_store: stores.Store, component_store_path: UPath, open_consolidated: bool
+        self,
+        component_store: stores.Store,
+        component_store_path: UPath,
+        open_consolidated: Union[bool, Literal["auto"]],
     ) -> None:
         """Opens the hierarchy of an opened component store and checks its sequence compatibility"""
         component_root = component_store.open_root_group(consolidated=open_consolidated)
@@ -643,9 +658,8 @@ class SequenceComponentGroupsReader:
 
             # instantiate a reader for each of the components
             for component_instance_name, component_group in component_root_group.group(component_name).groups():
-                assert component_instance_name not in ret, (
-                    f"Component instance {component_instance_name} encountered multiple times"
-                )
+                if component_instance_name in ret:
+                    raise RuntimeError(f"Component instance {component_instance_name} encountered multiple times")
 
                 # check if the reader supports the component version
                 if not component_reader_type.supports_component_version(component_group.attr_str("component_version")):
@@ -660,7 +674,8 @@ class SequenceComponentGroupsReader:
         return ret
 
     def get_sequence_meta(self) -> SequenceMeta:
-        """Returns full sequence meta-data summary (json-serializable)"""
+        """Returns full sequence meta-data summary as a :class:`SequenceMeta` (json-serializable via
+        :meth:`SequenceMeta.to_dict`, the JSON document :meth:`SequenceLoaderV4.get_sequence_meta` returns)"""
 
         # collect component names and instances per store and component
         component_stores_info: List[SequenceMeta.ComponentStoreMeta] = []
@@ -710,17 +725,18 @@ class ComponentWriter(ABC):
 
     @staticmethod
     def _check_nonzero_dims(shape: Tuple[int, ...], dims: Tuple[int, ...], name: str) -> None:
-        """Asserts that the given dimensions of the shape of the named data are non-zero.
+        """Checks that the given dimensions of the shape of the named data are non-zero.
 
         Other dimensions are allowed to be zero (arrays with zero-sized dimensions are supported).
 
         Args:
             shape: The shape of the data.
-            dims: Indices of the dimensions that MUST be non-zero (raises AssertionError otherwise).
+            dims: Indices of the dimensions that MUST be non-zero (raises ValueError otherwise).
             name: Name of the data (for error messages).
         """
         for d in dims:
-            assert shape[d] != 0, f"Dimension {d} of {name} must be non-zero, got shape {shape}"
+            if shape[d] == 0:
+                raise ValueError(f"Dimension {d} of {name} must be non-zero, got shape {shape}")
 
     @staticmethod
     @abstractmethod
@@ -749,8 +765,8 @@ class ComponentWriter(ABC):
         self,
         data: Dict[str, np.ndarray],
         meta_data: Optional[JsonDocumentLike] = None,
-    ) -> None:
-        """Attach named generic data arrays (and optional metadata) to this component.
+    ) -> "Self":
+        """Attach named generic data arrays (and optional metadata) to this component, returns the writer.
 
         Parameters
         ----------
@@ -768,6 +784,8 @@ class ComponentWriter(ABC):
         if meta_data is not None:
             # Merge generic_meta_data: init-time / set_generic_data meta overwrites
             self._generic_meta_data.update(to_json_document(meta_data))
+
+        return self
 
     def finalize(self) -> None:
         """Overwrite to perform final operations after all user-data was written.
@@ -857,17 +875,19 @@ CR = TypeVar("CR", bound=ComponentReader)
 P = ParamSpec("P")
 
 
-def validate_frame_name(name: str) -> str:
-    """Checks if the given name is a valid frame name (non-empty, no whitespace), returns it if valid, raises AssertionError otherwise"""
-    assert len(name) and not name.isspace(), f"Frame '{name}' is invalid, must not be empty or contain whitespace"
-
-    return name
-
-
 class PosesComponent:
     """Represents a generic set of static / dynamic poses (rigid transformations) between named coordinate frames"""
 
     COMPONENT_NAME: str = "poses"
+
+    @staticmethod
+    def validate_frame_name(name: str) -> str:
+        """Checks if the given name is a valid frame name (not empty or whitespace only), returns it if valid, raises
+        ValueError otherwise"""
+        if not name or name.isspace():
+            raise ValueError(f"Frame '{name}' is invalid, must not be empty or contain whitespace")
+
+        return name
 
     class Writer(ComponentWriter):
         """Poses data component writer"""
@@ -906,15 +926,23 @@ class PosesComponent:
             Makes sure the inverse transformation is not already stored."""
 
             # Sanity checks
-            assert pose.shape == (4, 4)
-            assert np.issubdtype(pose.dtype, np.floating), "Poses must be of float type"
-            assert np.all(pose[3, :] == [0.0, 0.0, 0.0, 1.0]), "Invalid SE3 transformation"
+            if pose.shape != (4, 4):
+                raise ValueError(f"pose must have shape (4, 4), got shape {np.shape(pose)}")
+            if not np.issubdtype(pose.dtype, np.floating):
+                raise ValueError(f"Poses must be of float type, got {pose.dtype}")
+            if not np.all(pose[3, :] == [0.0, 0.0, 0.0, 1.0]):
+                raise ValueError("Invalid SE3 transformation")
 
-            key = (validate_frame_name(source_frame_id), validate_frame_name(target_frame_id))
+            key = (
+                PosesComponent.validate_frame_name(source_frame_id),
+                PosesComponent.validate_frame_name(target_frame_id),
+            )
             inv_key = key[::-1]
 
-            assert key not in self.data["static_poses"], f"Static pose {key} already exists"
-            assert inv_key not in self.data["static_poses"], f"Inverse static pose {inv_key} already exists"
+            if key in self.data["static_poses"]:
+                raise ValueError(f"Static pose {key} already exists")
+            if inv_key in self.data["static_poses"]:
+                raise ValueError(f"Inverse static pose {inv_key} already exists")
 
             self.data["static_poses"][str(key)] = {"pose": pose.tolist(), "dtype": str(pose.dtype)}
 
@@ -938,39 +966,60 @@ class PosesComponent:
             Makes sure the inverse transformation is not already stored."""
 
             # Sanity / timestamp consistency checks
-            assert poses.shape[1:] == (4, 4)
-            assert np.issubdtype(poses.dtype, np.floating), "Poses must be of float type"
-            assert np.all(poses[:, 3, :] == [0.0, 0.0, 0.0, 1.0]), "Invalid SE3 transformations"
+            if poses.shape[1:] != (4, 4):
+                raise ValueError(f"poses must have shape[1:] (4, 4), got shape {np.shape(poses)}")
+            if not np.issubdtype(poses.dtype, np.floating):
+                raise ValueError(f"Poses must be of float type, got {poses.dtype}")
+            if not np.all(poses[:, 3, :] == [0.0, 0.0, 0.0, 1.0]):
+                raise ValueError("Invalid SE3 transformations")
 
-            assert timestamps_us.ndim == 1
-            assert timestamps_us.dtype == np.dtype("uint64")
+            if timestamps_us.ndim != 1:
+                raise ValueError(f"timestamps_us must be 1-dimensional, got ndim={timestamps_us.ndim}")
+            if timestamps_us.dtype != np.dtype("uint64"):
+                raise ValueError(f"timestamps_us must be of dtype uint64, got {timestamps_us.dtype}")
 
-            assert len(poses) == len(timestamps_us)
+            if len(poses) != len(timestamps_us):
+                raise ValueError(
+                    f"poses and timestamps_us must have the same length, got {len(poses)} and {len(timestamps_us)}"
+                )
 
-            assert len(poses) > 1, "At least two poses required for a dynamic pose trajectory to support interpolation"
+            if len(poses) < 2:
+                raise ValueError(
+                    f"At least two poses required for a dynamic pose trajectory to support interpolation, got {len(poses)}"
+                )
 
-            assert np.all(np.diff(timestamps_us) > 0), "Timestamps must be strictly increasing"
+            if not np.all(np.diff(timestamps_us) > 0):
+                raise ValueError("Timestamps must be strictly increasing")
 
-            assert (
+            if not (
                 timestamps_us[0].item() in self._sequence_timestamp_interval_us
                 and timestamps_us[-1].item() in self._sequence_timestamp_interval_us
-            ), "Dynamic poses samples must be fully contained in the sequence time range"
+            ):
+                raise ValueError("Dynamic poses samples must be fully contained in the sequence time range")
 
             if require_sequence_time_coverage:
-                assert timestamps_us[0] == self._sequence_timestamp_interval_us.start, (
-                    "Dynamic poses must cover the full sequence time range - "
-                    "the first timestamp is after the sequence start time"
-                )
-                assert timestamps_us[-1] == self._sequence_timestamp_interval_us.stop - 1, (
-                    "Dynamic poses must cover the full sequence time range - "
-                    "the last timestamp is before the sequence end time"
-                )
+                if timestamps_us[0] != self._sequence_timestamp_interval_us.start:
+                    raise ValueError(
+                        "Dynamic poses must cover the full sequence time range: the first timestamp "
+                        f"{timestamps_us[0]} is after the sequence start time {self._sequence_timestamp_interval_us.start}"
+                    )
+                if timestamps_us[-1] != self._sequence_timestamp_interval_us.stop - 1:
+                    raise ValueError(
+                        "Dynamic poses must cover the full sequence time range: the last timestamp "
+                        f"{timestamps_us[-1]} is before the sequence end time "
+                        f"{self._sequence_timestamp_interval_us.stop - 1}"
+                    )
 
-            key = (validate_frame_name(source_frame_id), validate_frame_name(target_frame_id))
+            key = (
+                PosesComponent.validate_frame_name(source_frame_id),
+                PosesComponent.validate_frame_name(target_frame_id),
+            )
             inv_key = key[::-1]
 
-            assert key not in self.data["dynamic_poses"], f"Dynamic poses {key} already exists"
-            assert inv_key not in self.data["dynamic_poses"], f"Inverse dynamic poses {inv_key} already exists"
+            if key in self.data["dynamic_poses"]:
+                raise ValueError(f"Dynamic poses {key} already exists")
+            if inv_key in self.data["dynamic_poses"]:
+                raise ValueError(f"Inverse dynamic poses {inv_key} already exists")
 
             self.data["dynamic_poses"][str(key)] = {
                 "poses": poses.tolist(),
@@ -1038,7 +1087,12 @@ class PosesComponent:
 
             if (
                 static_pose := self._static_poses().get(
-                    key := str((validate_frame_name(source_frame_id), validate_frame_name(target_frame_id)))
+                    key := str(
+                        (
+                            PosesComponent.validate_frame_name(source_frame_id),
+                            PosesComponent.validate_frame_name(target_frame_id),
+                        )
+                    )
                 )
             ) is None:
                 raise KeyError(f"Static pose {key} not found")
@@ -1053,7 +1107,12 @@ class PosesComponent:
 
             if (
                 dynamic_poses := self._dynamic_poses().get(
-                    key := str((validate_frame_name(source_frame_id), validate_frame_name(target_frame_id)))
+                    key := str(
+                        (
+                            PosesComponent.validate_frame_name(source_frame_id),
+                            PosesComponent.validate_frame_name(target_frame_id),
+                        )
+                    )
                 )
             ) is None:
                 raise KeyError(f"Dynamic poses {key} not found")
@@ -1267,12 +1326,10 @@ class BaseSensorComponentWriter(ComponentWriter):
         ).reshape((-1, 2))
 
         # Validate all start/end-of-frame timestamps to be monotonically increasing
-        assert np.all(frames_timestamps_us[:-1, 0] < frames_timestamps_us[1:, 0]), (
-            "Start of frame timestamps are not monotonically increasing"
-        )
-        assert np.all(frames_timestamps_us[:-1, 1] < frames_timestamps_us[1:, 1]), (
-            "End of frame timestamps are not monotonically increasing"
-        )
+        if not np.all(frames_timestamps_us[:-1, 0] < frames_timestamps_us[1:, 0]):
+            raise ValueError("Start of frame timestamps are not monotonically increasing")
+        if not np.all(frames_timestamps_us[:-1, 1] < frames_timestamps_us[1:, 1]):
+            raise ValueError("End of frame timestamps are not monotonically increasing")
 
         # Store as meta-data of frames group
         self._frames_group.update_attrs({"frames_timestamps_us": frames_timestamps_us.tolist()})
@@ -1295,24 +1352,26 @@ class BaseSensorComponentWriter(ComponentWriter):
         generic_meta_data: JsonDocumentLike,
     ) -> nodes.Group:
         # Sanity / timestamp consistency checks
-        assert np.shape(frame_timestamps_us) == (2,)
-        assert frame_timestamps_us.dtype == np.dtype("uint64")
-        assert frame_timestamps_us[1] >= frame_timestamps_us[0]
+        if np.shape(frame_timestamps_us) != (2,):
+            raise ValueError(f"frame_timestamps_us must have shape (2,), got shape {np.shape(frame_timestamps_us)}")
+        if frame_timestamps_us.dtype != np.dtype("uint64"):
+            raise ValueError(f"frame_timestamps_us must be of dtype uint64, got {frame_timestamps_us.dtype}")
+        if frame_timestamps_us[1] < frame_timestamps_us[0]:
+            raise ValueError(
+                f"Frame end timestamp must not precede the frame start timestamp, got {frame_timestamps_us}"
+            )
 
-        assert frame_timestamps_us[0].item() in self._sequence_timestamp_interval_us, (
-            "Frame start timestamp must be contained in the sequence time range"
-        )
-        assert frame_timestamps_us[1].item() in self._sequence_timestamp_interval_us, (
-            "Frame end timestamp must be contained in the sequence time range"
-        )
+        if frame_timestamps_us[0].item() not in self._sequence_timestamp_interval_us:
+            raise ValueError("Frame start timestamp must be contained in the sequence time range")
+        if frame_timestamps_us[1].item() not in self._sequence_timestamp_interval_us:
+            raise ValueError("Frame end timestamp must be contained in the sequence time range")
 
         # Initialize frame group
         frame_group = self._get_frame_group(frame_timestamps_us)
 
         # Store timestamp data
-        assert frame_timestamps_us[1].item() not in self._frames_timestamps_us, (
-            "Frame with the same end-of-frame timestamp already exists"
-        )
+        if frame_timestamps_us[1].item() in self._frames_timestamps_us:
+            raise ValueError("Frame with the same end-of-frame timestamp already exists")
         self._frames_timestamps_us[frame_timestamps_us[1].item()] = frame_timestamps_us[0].item()
 
         # Store additional generic frame data and meta-data (not dimension / dtype checked)
@@ -1338,7 +1397,8 @@ class BaseSensorComponentReader(ComponentReader):
         # preload frame timestamps and create map
         self._frames_timestamps_us = np.array(
             self._group.group("frames").attr_list("frames_timestamps_us"), dtype=np.uint64
-        )
+        ).reshape((-1, 2))
+        self._frames_timestamps_us.setflags(write=False)
         self._frame_end_to_frame_timestamps_us = {
             end: np.array([self._frames_timestamps_us[i, 0], end], dtype=np.uint64)
             for i, end in enumerate(self._frames_timestamps_us[:, 1])
@@ -1373,7 +1433,8 @@ class BaseSensorComponentReader(ComponentReader):
 
     @property
     def frames_timestamps_us(self) -> npt.NDArray[np.uint64]:
-        return np.array(self._group.group("frames").attr_list("frames_timestamps_us"), dtype=np.uint64)
+        """The start / end timestamps of all frames [(N,2) array, read-only, loaded when opening the reader]"""
+        return self._frames_timestamps_us
 
     @property
     def frames_count(self) -> int:
@@ -1431,7 +1492,8 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
         # Store per-ray data (zero-sized chunk dimensions are clamped to 1, default compression is fast to decode on
         # modern hardware)
         for name, (ray_data_data, chunks) in ray_data.items():
-            assert len(ray_data_data) == n_rays, f"{name} doesn't have required ray count"
+            if len(ray_data_data) != n_rays:
+                raise ValueError(f"{name} doesn't have the required ray count {n_rays}, got {len(ray_data_data)}")
             ray_bundle_group.create_array(name, ray_data_data, chunks=chunks)
 
         ## Initialize ray bundle returns group
@@ -1440,9 +1502,11 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
         # Store per-return data
         absent_mask = None
         for name, (return_data_data, chunks) in return_data.items():
-            assert return_data_data.shape[:2] == (n_returns, n_rays), (
-                f"{name} doesn't have required ray / return count {(n_returns, n_rays)}"
-            )
+            if return_data_data.shape[:2] != (n_returns, n_rays):
+                raise ValueError(
+                    f"{name} doesn't have the required return / ray count {(n_returns, n_rays)}, got shape "
+                    f"{return_data_data.shape}"
+                )
 
             # Determine local absent mask from NaN values,
             # which needs to be consistent over all dimensions of a return
@@ -1452,21 +1516,22 @@ class BaseRayBundleSensorComponentWriter(BaseSensorComponentWriter):
                 d_axes = tuple(range(2, return_data_data.ndim))
                 all_nan = local_absent_mask.all(axis=d_axes)
                 any_nan = local_absent_mask.any(axis=d_axes)
-                assert np.array_equal(all_nan, any_nan), (
-                    f"Partial NaN detected at positions: {np.argwhere(all_nan != any_nan)[:5].tolist()} in higher-dimensional return data {name}"
-                )
+                if not np.array_equal(all_nan, any_nan):
+                    raise ValueError(
+                        f"Partial NaN detected at positions: {np.argwhere(all_nan != any_nan)[:5].tolist()} in higher-dimensional return data {name}"
+                    )
                 local_absent_mask = all_nan
 
-            assert local_absent_mask.shape == (n_returns, n_rays), (
-                f"Invalid NaN mask shape {local_absent_mask.shape} for return data {name}"
-            )
+            if local_absent_mask.shape != (n_returns, n_rays):
+                raise ValueError(f"Invalid NaN mask shape {local_absent_mask.shape} for return data {name}")
 
             if absent_mask is None:
                 # initialize absent mask from first return data
                 absent_mask = local_absent_mask
             else:
                 # validate absent mask consistency
-                assert np.array_equal(absent_mask, local_absent_mask), f"Inconsistent NaN masks in return data {name}"
+                if not np.array_equal(absent_mask, local_absent_mask):
+                    raise ValueError(f"Inconsistent NaN masks in return data {name}")
 
             ray_bundle_returns_group.create_array(name, return_data_data, chunks=chunks)
 
@@ -1707,12 +1772,16 @@ class LidarSensorComponent:
             generic_meta_data: JsonDocumentLike,
         ) -> "Self":
             ## Sanity / consistency checks
-            assert direction.ndim == 2
-            assert np.shape(direction)[1] == 3
-            assert direction.dtype == np.dtype("float32")
+            if direction.ndim != 2:
+                raise ValueError(f"direction must be 2-dimensional, got ndim={direction.ndim}")
+            if np.shape(direction)[1] != 3:
+                raise ValueError(f"direction must have shape (N, 3), got shape {np.shape(direction)}")
+            if direction.dtype != np.dtype("float32"):
+                raise ValueError(f"direction must be of dtype float32, got {direction.dtype}")
 
             # make sure directions are unit-norm
-            assert np.all(np.abs(np.sum(direction**2, axis=1) - 1.0) < 1e-4), "Direction vectors are not unit-norm"
+            if not np.all(np.abs(np.sum(direction**2, axis=1) - 1.0) < 1e-4):
+                raise ValueError("Direction vectors are not unit-norm")
 
             n_rays = len(direction)
 
@@ -1724,17 +1793,27 @@ class LidarSensorComponent:
                 "direction": (direction, direction.shape),
             }
 
-            assert timestamp_us.dtype == np.dtype("uint64")
-            assert timestamp_us.shape == (n_rays,)
+            if timestamp_us.dtype != np.dtype("uint64"):
+                raise ValueError(f"timestamp_us must be of dtype uint64, got {timestamp_us.dtype}")
+            if timestamp_us.shape != (n_rays,):
+                raise ValueError(f"timestamp_us must have shape {(n_rays,)}, got shape {np.shape(timestamp_us)}")
             if n_rays:
-                assert (frame_timestamps_us[0] <= timestamp_us.min()) and (
-                    timestamp_us.max() <= frame_timestamps_us[1]
-                ), "Point timestamps outside frame time bounds"
+                if not (
+                    (frame_timestamps_us[0] <= timestamp_us.min()) and (timestamp_us.max() <= frame_timestamps_us[1])
+                ):
+                    raise ValueError(
+                        f"Point timestamps [{timestamp_us.min()}, {timestamp_us.max()}] outside frame time bounds "
+                        f"{frame_timestamps_us}"
+                    )
             ray_data["timestamp_us"] = (timestamp_us, timestamp_us.shape)
 
             if model_element is not None:
-                assert model_element.shape == (n_rays, 2)
-                assert model_element.dtype == np.dtype("uint16")
+                if model_element.shape != (n_rays, 2):
+                    raise ValueError(
+                        f"model_element must have shape {(n_rays, 2)}, got shape {np.shape(model_element)}"
+                    )
+                if model_element.dtype != np.dtype("uint16"):
+                    raise ValueError(f"model_element must be of dtype uint16, got {model_element.dtype}")
                 ray_data["model_element"] = (model_element, model_element.shape)
 
             ## Per return data
@@ -1742,19 +1821,28 @@ class LidarSensorComponent:
             return_data: Dict[str, Tuple[npt.NDArray[np.float32], Tuple[int, ...]]] = {}
 
             # distance
-            assert distance_m.ndim == 2
+            if distance_m.ndim != 2:
+                raise ValueError(f"distance_m must be 2-dimensional, got ndim={distance_m.ndim}")
             n_returns = distance_m.shape[0]
-            assert distance_m.shape[1] == n_rays
-            assert distance_m.dtype == np.dtype("float32")
+            if distance_m.shape[1] != n_rays:
+                raise ValueError(
+                    f"distance_m must have shape (R, {n_rays}) (the ray count of direction), got shape {distance_m.shape}"
+                )
+            if distance_m.dtype != np.dtype("float32"):
+                raise ValueError(f"distance_m must be of dtype float32, got {distance_m.dtype}")
             distance_m_finite = distance_m[np.isfinite(distance_m)]
-            assert np.all(distance_m_finite >= 0.0), "Distance contains negative values"
+            if not np.all(distance_m_finite >= 0.0):
+                raise ValueError("Distance contains negative values")
             return_data["distance_m"] = (distance_m, (1, n_rays))  # chunk along returns
 
             # intensity
-            assert intensity.shape == (n_returns, n_rays)
-            assert intensity.dtype == np.dtype("float32")
+            if intensity.shape != (n_returns, n_rays):
+                raise ValueError(f"intensity must have shape {(n_returns, n_rays)}, got shape {np.shape(intensity)}")
+            if intensity.dtype != np.dtype("float32"):
+                raise ValueError(f"intensity must be of dtype float32, got {intensity.dtype}")
             intensity_finite = intensity[np.isfinite(intensity)]
-            assert np.all(0.0 <= intensity_finite) and np.all(intensity_finite <= 1.0), "Intensity not normalized"
+            if not (np.all(0.0 <= intensity_finite) and np.all(intensity_finite <= 1.0)):
+                raise ValueError("Intensity not normalized")
             return_data["intensity"] = (intensity, (1, n_rays))  # chunk along returns
 
             # Store point-clouds data
@@ -1812,12 +1900,16 @@ class RadarSensorComponent:
             generic_meta_data: JsonDocumentLike,
         ) -> "Self":
             ## Sanity / consistency checks
-            assert direction.ndim == 2
-            assert np.shape(direction)[1] == 3
-            assert direction.dtype == np.dtype("float32")
+            if direction.ndim != 2:
+                raise ValueError(f"direction must be 2-dimensional, got ndim={direction.ndim}")
+            if np.shape(direction)[1] != 3:
+                raise ValueError(f"direction must have shape (N, 3), got shape {np.shape(direction)}")
+            if direction.dtype != np.dtype("float32"):
+                raise ValueError(f"direction must be of dtype float32, got {direction.dtype}")
 
             # make sure directions are unit-norm
-            assert np.all(np.abs(np.sum(direction**2, axis=1) - 1.0) < 1e-4), "Direction vectors are not unit-norm"
+            if not np.all(np.abs(np.sum(direction**2, axis=1) - 1.0) < 1e-4):
+                raise ValueError("Direction vectors are not unit-norm")
 
             n_rays = len(direction)
 
@@ -1829,12 +1921,18 @@ class RadarSensorComponent:
                 "direction": (direction, direction.shape),
             }
 
-            assert timestamp_us.dtype == np.dtype("uint64")
-            assert timestamp_us.shape == (n_rays,)
+            if timestamp_us.dtype != np.dtype("uint64"):
+                raise ValueError(f"timestamp_us must be of dtype uint64, got {timestamp_us.dtype}")
+            if timestamp_us.shape != (n_rays,):
+                raise ValueError(f"timestamp_us must have shape {(n_rays,)}, got shape {np.shape(timestamp_us)}")
             if n_rays:
-                assert (frame_timestamps_us[0] <= timestamp_us.min()) and (
-                    timestamp_us.max() <= frame_timestamps_us[1]
-                ), "Point timestamps outside frame time bounds"
+                if not (
+                    (frame_timestamps_us[0] <= timestamp_us.min()) and (timestamp_us.max() <= frame_timestamps_us[1])
+                ):
+                    raise ValueError(
+                        f"Point timestamps [{timestamp_us.min()}, {timestamp_us.max()}] outside frame time bounds "
+                        f"{frame_timestamps_us}"
+                    )
             ray_data["timestamp_us"] = (timestamp_us, timestamp_us.shape)
 
             ## Per return data
@@ -1842,12 +1940,18 @@ class RadarSensorComponent:
             return_data: Dict[str, Tuple[npt.NDArray[np.float32], Tuple[int, ...]]] = {}
 
             # distance
-            assert distance_m.ndim == 2
+            if distance_m.ndim != 2:
+                raise ValueError(f"distance_m must be 2-dimensional, got ndim={distance_m.ndim}")
             n_returns = distance_m.shape[0]
-            assert distance_m.shape[1] == n_rays
-            assert distance_m.dtype == np.dtype("float32")
+            if distance_m.shape[1] != n_rays:
+                raise ValueError(
+                    f"distance_m must have shape (R, {n_rays}) (the ray count of direction), got shape {distance_m.shape}"
+                )
+            if distance_m.dtype != np.dtype("float32"):
+                raise ValueError(f"distance_m must be of dtype float32, got {distance_m.dtype}")
             distance_m_finite = distance_m[np.isfinite(distance_m)]
-            assert np.all(distance_m_finite >= 0.0), "Distance contains negative values"
+            if not np.all(distance_m_finite >= 0.0):
+                raise ValueError("Distance contains negative values")
             return_data["distance_m"] = (distance_m, (1, n_rays))  # chunk along returns
 
             # Store point-clouds data
@@ -1894,12 +1998,14 @@ class CuboidsComponent:
             obs_dict_list = []
             for obs in cuboid_observations:
                 # Check timestamp validity before serialization
-                assert obs.timestamp_us in self._sequence_timestamp_interval_us, (
-                    f"Cuboid track observation timestamp {obs.timestamp_us} not in the sequence time range"
-                )
-                assert obs.reference_frame_timestamp_us in self._sequence_timestamp_interval_us, (
-                    f"Cuboid track observation reference frame timestamp {obs.reference_frame_timestamp_us} not in the sequence time range"
-                )
+                if obs.timestamp_us not in self._sequence_timestamp_interval_us:
+                    raise ValueError(
+                        f"Cuboid track observation timestamp {obs.timestamp_us} not in the sequence time range"
+                    )
+                if obs.reference_frame_timestamp_us not in self._sequence_timestamp_interval_us:
+                    raise ValueError(
+                        f"Cuboid track observation reference frame timestamp {obs.reference_frame_timestamp_us} not in the sequence time range"
+                    )
                 obs_dict_list.append(obs.to_dict())
 
             self._group.create_group("cuboids", attributes={"cuboid_track_observations": obs_dict_list})
@@ -1998,7 +2104,7 @@ class PointCloudsComponent:
             attributes: Optional[Dict[str, npt.NDArray[Any]]] = None,
             generic_data: Optional[Dict[str, npt.NDArray[Any]]] = None,
             generic_meta_data: Optional[JsonDocumentLike] = None,
-        ) -> None:
+        ) -> "Self":
             """Store a single point cloud.
 
             Attributes represent per-point data with a schema declared in the component-level ``attribute_schemas`` meta-data.
@@ -2012,29 +2118,33 @@ class PointCloudsComponent:
             generic_meta_data = unpack_optional(generic_meta_data, default={})
 
             # -- Validate xyz --
-            assert xyz.dtype == np.dtype("float32")
-            assert xyz.ndim == 2 and xyz.shape[1] == 3, f"xyz must be (N, 3), got {xyz.shape}"
+            if xyz.dtype != np.dtype("float32"):
+                raise ValueError(f"xyz must be of dtype float32, got {xyz.dtype}")
+            if not (xyz.ndim == 2 and xyz.shape[1] == 3):
+                raise ValueError(f"xyz must be (N, 3), got {xyz.shape}")
             N = xyz.shape[0]
 
             # -- Validate timestamp --
-            assert reference_frame_timestamp_us in self._sequence_timestamp_interval_us, (
-                f"reference_frame_timestamp_us {reference_frame_timestamp_us} not in sequence time range"
-            )
+            if reference_frame_timestamp_us not in self._sequence_timestamp_interval_us:
+                raise ValueError(
+                    f"reference_frame_timestamp_us {reference_frame_timestamp_us} not in sequence time range"
+                )
 
             # -- Validate attributes against schema --
-            assert (provided_keys := set(attributes.keys())) == (schema_keys := set(self._attribute_schemas.keys())), (
-                f"Attribute keys mismatch: expected {schema_keys}, got {provided_keys}"
-            )
+            if (provided_keys := set(attributes.keys())) != (schema_keys := set(self._attribute_schemas.keys())):
+                raise ValueError(f"Attribute keys mismatch: expected {schema_keys}, got {provided_keys}")
 
             for attr_name, attr_array in attributes.items():
                 schema = self._attribute_schemas[attr_name]
                 expected_shape = (N,) + schema.shape_suffix
-                assert attr_array.shape == expected_shape, (
-                    f"Attribute '{attr_name}' shape mismatch: expected {expected_shape}, got {attr_array.shape}"
-                )
-                assert np.dtype(attr_array.dtype) == schema.dtype, (
-                    f"Attribute '{attr_name}' dtype mismatch: expected {schema.dtype}, got {attr_array.dtype}"
-                )
+                if attr_array.shape != expected_shape:
+                    raise ValueError(
+                        f"Attribute '{attr_name}' shape mismatch: expected {expected_shape}, got {attr_array.shape}"
+                    )
+                if np.dtype(attr_array.dtype) != schema.dtype:
+                    raise ValueError(
+                        f"Attribute '{attr_name}' dtype mismatch: expected {schema.dtype}, got {attr_array.dtype}"
+                    )
 
             # -- Create per-pc group --
             pc_group = self._pcs_group.require_group(str(len(self._pc_timestamps)))
@@ -2061,6 +2171,8 @@ class PointCloudsComponent:
                 gd_group.create_array(gd_name, gd_array, chunks="single")
 
             self._pc_timestamps.append(reference_frame_timestamp_us)
+
+            return self
 
         def finalize(self) -> None:
             """Write pc_timestamps_us array (derived from per-pc reference_frame_timestamp_us values)."""
@@ -2122,8 +2234,10 @@ class PointCloudsComponent:
         # -- schema access -----------------------------------------------------
 
         def get_attribute_schema(self, name: str) -> PointCloudsComponent.AttributeSchema:
-            assert name in self._attribute_schemas, f"Unknown attribute: {name}"
-            return self._attribute_schemas[name]
+            """Returns the schema of a named attribute (raises KeyError for unknown attributes)"""
+            if (schema := self._attribute_schemas.get(name)) is None:
+                raise KeyError(f"Unknown attribute: {name}")
+            return schema
 
         # -- per-pc data access ------------------------------------------------
 
@@ -2221,7 +2335,7 @@ class CameraLabelsComponent:
             timestamp_us: int,
             *,
             generic_meta_data: Optional[JsonDocumentLike] = None,
-        ) -> None:
+        ) -> "Self":
             """Store a single camera label.
 
             Parameters
@@ -2239,32 +2353,37 @@ class CameraLabelsComponent:
             generic_meta_data = unpack_optional(generic_meta_data, default={})
 
             # Sanity checks
-            assert timestamp_us in self._sequence_timestamp_interval_us, (
-                f"timestamp_us {timestamp_us} not in sequence time range"
-            )
-            assert timestamp_us not in self._timestamps, f"Duplicate timestamp_us: {timestamp_us}"
+            if timestamp_us not in self._sequence_timestamp_interval_us:
+                raise ValueError(f"timestamp_us {timestamp_us} not in sequence time range")
+            if timestamp_us in self._timestamps:
+                raise ValueError(f"Duplicate timestamp_us: {timestamp_us}")
 
             # Store label-associated data in a dedicated subgroup named by the timestamp
             label_group = self._labels_group.require_group(str(timestamp_us))
 
             if self._descriptor.label_schema.encoding == types.LabelEncoding.RAW:
-                assert isinstance(data, np.ndarray), "RAW encoding requires a numpy array"
+                if not isinstance(data, np.ndarray):
+                    raise ValueError("RAW encoding requires a numpy array")
 
                 # Validate shape: (H, W) for scalar, (H, W, *shape_suffix) for multi-channel
                 if self._descriptor.label_schema.shape_suffix:
-                    assert data.ndim == 2 + len(self._descriptor.label_schema.shape_suffix), (
-                        f"Expected ndim={2 + len(self._descriptor.label_schema.shape_suffix)}, got {data.ndim}"
-                    )
-                    assert data.shape[2:] == self._descriptor.label_schema.shape_suffix, (
-                        f"shape_suffix mismatch: expected {self._descriptor.label_schema.shape_suffix}, got {data.shape[2:]}"
-                    )
+                    if data.ndim != 2 + len(self._descriptor.label_schema.shape_suffix):
+                        raise ValueError(
+                            f"Expected ndim={2 + len(self._descriptor.label_schema.shape_suffix)}, got {data.ndim}"
+                        )
+                    if data.shape[2:] != self._descriptor.label_schema.shape_suffix:
+                        raise ValueError(
+                            f"shape_suffix mismatch: expected {self._descriptor.label_schema.shape_suffix}, got {data.shape[2:]}"
+                        )
                 else:
-                    assert data.ndim == 2, f"Scalar label must be 2-D (H, W), got ndim={data.ndim}"
+                    if data.ndim != 2:
+                        raise ValueError(f"Scalar label must be 2-D (H, W), got ndim={data.ndim}")
 
                 # Validate dtype — caller must pass data in the expected dtype
-                assert np.dtype(data.dtype) == self._descriptor.label_schema.dtype, (
-                    f"dtype mismatch: expected {self._descriptor.label_schema.dtype}, got {data.dtype}"
-                )
+                if np.dtype(data.dtype) != self._descriptor.label_schema.dtype:
+                    raise ValueError(
+                        f"dtype mismatch: expected {self._descriptor.label_schema.dtype}, got {data.dtype}"
+                    )
 
                 # Quantize if configured
                 stored = data
@@ -2277,7 +2396,8 @@ class CameraLabelsComponent:
                 label_group.create_array("data", stored, chunks="single")
 
             elif self._descriptor.label_schema.encoding == types.LabelEncoding.IMAGE_ENCODED:
-                assert isinstance(data, bytes), "IMAGE_ENCODED encoding requires bytes"
+                if not isinstance(data, bytes):
+                    raise ValueError("IMAGE_ENCODED encoding requires bytes")
 
                 # store encoded image data as uncompressed 1-d uint8 array (as already encoded), with chunks
                 # determined by zarr-python's chunk shape heuristic
@@ -2295,6 +2415,8 @@ class CameraLabelsComponent:
             label_group.update_attrs({"generic_meta_data": generic_meta_data})
 
             self._timestamps.append(timestamp_us)
+
+            return self
 
         def finalize(self) -> None:
             """Write sorted timestamps_us array."""
@@ -2349,9 +2471,10 @@ class CameraLabelsComponent:
         # -- per-label access --------------------------------------------------
 
         def _label_group(self, timestamp_us: int) -> nodes.Group:
-            assert timestamp_us in self._timestamp_to_index, (
-                f"Unknown timestamp: {timestamp_us}. Available: {list(self._timestamp_to_index.keys())[:5]}..."
-            )
+            if timestamp_us not in self._timestamp_to_index:
+                raise KeyError(
+                    f"Unknown timestamp: {timestamp_us}. Available: {list(self._timestamp_to_index.keys())[:5]}..."
+                )
             return self._group.group(f"labels/{timestamp_us}")
 
         class CameraLabelHandle:

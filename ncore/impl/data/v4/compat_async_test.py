@@ -20,11 +20,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import io
 import tempfile
 import unittest
 
-from typing import Any, Awaitable, Callable, Iterator, List, Literal, Optional, Tuple, TypeVar
+from typing import Any, Awaitable, Callable, Iterator, List, Literal, Optional, Tuple, TypeVar, cast
 from unittest import mock
 
 import numpy as np
@@ -35,7 +36,7 @@ from python.runfiles import Runfiles
 from upath import UPath
 
 from ncore.impl.common.transformations import HalfClosedInterval, MotionCompensator, PoseGraphInterpolator
-from ncore.impl.data import nodes
+from ncore.impl.data import nodes, stores
 from ncore.impl.data.compat import (
     AsyncCameraLabelsProtocol,
     AsyncCameraSensorProtocol,
@@ -271,7 +272,8 @@ class TestSequenceLoaderV4AsyncReads(_AsyncReadsTestCase):
 class TestSequenceLoaderV4MotionCompensation(_AsyncReadsTestCase):
     """Motion-compensated point clouds of the lidar and radar sensors (sync and async) with both methods: ``EXACT``
     reproduces the previous per-point evaluation up to rounding, ``INTERPOLATED`` within its tolerance; the sensors use
-    the loader's motion compensator, also after replacing a sensor's pose graph"""
+    the loader's motion compensator, and after replacing a sensor's pose graph a compensator of the new pose graph with
+    the loader's parameters"""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -335,14 +337,38 @@ class TestSequenceLoaderV4MotionCompensation(_AsyncReadsTestCase):
             self.assertEqual(len({id(compensator) for compensator in compensators}), 1)
             self.assertIs(compensators[0].parameters.method, method)
 
-    def test_replaced_pose_graph_keeps_the_loaders_motion_compensation(self) -> None:
-        """A sensor's replaced pose graph (``set_pose_graph``, e.g. per-sensor poses) is used for its sensor poses;
-        its point clouds keep using the loader's motion compensator (as before)"""
-        loader = self.loaders[MotionCompensator.Parameters.Method.EXACT]
-        lidar = loader.get_lidar_sensor(loader.lidar_ids[0])
-        expected = lidar.get_frame_point_cloud(0, True, False).xyz_m_end
-        # a pose graph without motion (the time-dependent edges' poses replaced by identities)
-        static = PoseGraphInterpolator(
+    def test_replaced_pose_graph_is_used_for_motion_compensation(self) -> None:
+        """A sensor's replaced pose graph (``set_pose_graph``, e.g. per-sensor poses) is used for its sensor poses and
+        for the motion compensation of its point clouds, with the motion compensation parameters of the loader"""
+        for method, loader in self.loaders.items():
+            with self.subTest(method=method.name):
+                lidar = loader.get_lidar_sensor(loader.lidar_ids[0])
+                assert isinstance(lidar, SequenceLoaderV4.RayBundleSensor)
+                compensated = lidar.get_frame_point_cloud(0, True, False).xyz_m_end
+                uncompensated = lidar.get_frame_point_cloud(0, False, False).xyz_m_end
+                # (the lidar moves within its frames)
+                self.assertGreater(float(np.abs(compensated - uncompensated).max()), 1e-2)
+
+                static = self._static_pose_graph(lidar.pose_graph)
+                lidar.set_pose_graph(static)
+                self.assertIs(lidar.pose_graph, static)
+                self.assertIsNot(lidar.motion_compensator, loader._motion_compensator)  # noqa: SLF001
+                self.assertIs(lidar.motion_compensator.parameters.method, method)
+                # (without motion, the points don't move)
+                np.testing.assert_allclose(
+                    lidar.get_frame_point_cloud(0, True, False).xyz_m_end, uncompensated, rtol=0, atol=1e-4
+                )
+                np.testing.assert_allclose(
+                    self.run_async(lidar.get_frame_point_cloud_async(0, True, False)).xyz_m_end,
+                    uncompensated,
+                    rtol=0,
+                    atol=1e-4,
+                )
+
+    @staticmethod
+    def _static_pose_graph(pose_graph: PoseGraphInterpolator) -> PoseGraphInterpolator:
+        """A pose graph without motion (the time-dependent edges' poses replaced by identities)"""
+        return PoseGraphInterpolator(
             [
                 PoseGraphInterpolator.Edge(
                     edge.source_node,
@@ -352,15 +378,171 @@ class TestSequenceLoaderV4MotionCompensation(_AsyncReadsTestCase):
                     else np.tile(np.eye(4, dtype=edge.T_source_target.dtype), (len(edge.timestamps_us), 1, 1)),
                     edge.timestamps_us,
                 )
-                for edge in lidar.pose_graph.normalized_edge_map.values()
+                for edge in pose_graph.normalized_edge_map.values()
             ]
         )
-        lidar.set_pose_graph(static)
-        self.assertIs(lidar.pose_graph, static)
-        np.testing.assert_array_equal(lidar.get_frame_point_cloud(0, True, False).xyz_m_end, expected)
-        # (with the replaced pose graph, the points would not move)
-        uncompensated = lidar.get_frame_point_cloud(0, False, False).xyz_m_end
+
+    def test_default_motion_compensator(self) -> None:
+        """Ray bundle sensors constructed without a motion compensator use a default one of their pose graph (the
+        exact method); set_pose_graph replaces default and passed compensators by one of the new pose graph with the
+        same parameters"""
+        loader = self.loaders[MotionCompensator.Parameters.Method.EXACT]
+        for sensor_type, readers, sensor_id in (
+            (SequenceLoaderV4.LidarSensor, loader._lidars_readers, loader.lidar_ids[0]),  # noqa: SLF001
+            (SequenceLoaderV4.RadarSensor, loader._radars_readers, loader.radar_ids[0]),  # noqa: SLF001
+        ):
+            with self.subTest(sensor_id=sensor_id):
+                reader = cast(Any, readers[sensor_id])
+                sensor = sensor_type(reader, pose_graph=loader.pose_graph)
+                expected = (
+                    loader.get_lidar_sensor(sensor_id)
+                    if sensor_type is SequenceLoaderV4.LidarSensor
+                    else loader.get_radar_sensor(sensor_id)
+                ).get_frame_point_cloud(0, True, True)
+                self.assertIsInstance(sensor.motion_compensator, MotionCompensator)
+                self.assertIs(sensor.motion_compensator.parameters.method, MotionCompensator.Parameters.Method.EXACT)
+                self.assertFramePointCloudEqual(sensor.get_frame_point_cloud(0, True, True), expected)
+                self.assertFramePointCloudEqual(
+                    self.run_async(sensor.get_frame_point_cloud_async(0, True, True)), expected
+                )
+
+                # a passed compensator is used as is
+                compensator = MotionCompensator(loader.pose_graph)
+                passed = sensor_type(reader, pose_graph=loader.pose_graph, motion_compensator=compensator)
+                self.assertIs(passed.motion_compensator, compensator)
+
+        # a replaced pose graph replaces default and passed compensators (without motion, the points don't move; the
+        # lidar moves within its frames, unlike the radar's short frames)
+        lidar_reader = cast(Any, loader._lidars_readers[loader.lidar_ids[0]])  # noqa: SLF001
+        expected = loader.get_lidar_sensor(loader.lidar_ids[0]).get_frame_point_cloud(0, True, False).xyz_m_end
+        default = SequenceLoaderV4.LidarSensor(lidar_reader, pose_graph=loader.pose_graph)
+        uncompensated = default.get_frame_point_cloud(0, False, False).xyz_m_end
         self.assertGreater(float(np.abs(expected - uncompensated).max()), 1e-2)
+        default.set_pose_graph(self._static_pose_graph(loader.pose_graph))
+        np.testing.assert_allclose(default.get_frame_point_cloud(0, True, False).xyz_m_end, uncompensated, atol=1e-4)
+
+        compensator = MotionCompensator(
+            loader.pose_graph, parameters=MotionCompensator.Parameters(MotionCompensator.Parameters.Method.INTERPOLATED)
+        )
+        passed = SequenceLoaderV4.LidarSensor(
+            lidar_reader, pose_graph=loader.pose_graph, motion_compensator=compensator
+        )
+        passed.set_pose_graph(self._static_pose_graph(loader.pose_graph))
+        self.assertIsNot(passed.motion_compensator, compensator)
+        self.assertEqual(passed.motion_compensator.parameters, compensator.parameters)
+        np.testing.assert_allclose(passed.get_frame_point_cloud(0, True, False).xyz_m_end, uncompensated, atol=1e-4)
+
+    def test_sensor_constructors_are_keyword_only(self) -> None:
+        """Sensors take their reader positionally, all other parameters by keyword"""
+        loader = self.loaders[MotionCompensator.Parameters.Method.EXACT]
+        lidar_reader = cast(Any, loader._lidars_readers[loader.lidar_ids[0]])  # noqa: SLF001
+        radar_reader = cast(Any, loader._radars_readers[loader.radar_ids[0]])  # noqa: SLF001
+        camera_reader = cast(Any, loader._cameras_readers[loader.camera_ids[0]])  # noqa: SLF001
+        for construct in (
+            lambda: cast(Any, SequenceLoaderV4.LidarSensor)(lidar_reader, loader.pose_graph),
+            lambda: cast(Any, SequenceLoaderV4.RadarSensor)(radar_reader, loader.pose_graph),
+            lambda: cast(Any, SequenceLoaderV4.CameraSensor)(camera_reader, loader.pose_graph),
+            lambda: cast(Any, SequenceLoaderV4.Sensor)(camera_reader, loader.pose_graph),
+        ):
+            with self.assertRaisesRegex(TypeError, "positional argument"):
+                construct()
+        # (a camera without a mask reader has no masks)
+        camera = SequenceLoaderV4.CameraSensor(
+            camera_reader,
+            pose_graph=loader.pose_graph,
+            model_parameters=loader.get_camera_sensor(loader.camera_ids[0]).model_parameters,
+        )
+        self.assertEqual(camera.get_mask_images(), {})
+
+
+class TestSequenceLoaderV4Open(unittest.TestCase):
+    """SequenceLoaderV4.open opens the same sequence as the constructor, with the parameters of open_async"""
+
+    def test_open(self) -> None:
+        expected = SequenceLoaderV4(SequenceComponentGroupsReader([_TEST_DATA_PATH]))
+        loader = SequenceLoaderV4.open([_TEST_DATA_PATH])
+        self.assertIsInstance(loader, AsyncSequenceLoaderProtocol)
+        self.assertEqual(loader.sequence_id, expected.sequence_id)
+        self.assertEqual(loader.camera_ids, expected.camera_ids)
+        self.assertEqual(loader.lidar_ids, expected.lidar_ids)
+        self.assertEqual(
+            loader.get_camera_sensor("camera_front_wide_120fov").get_frame_data(0).get_encoded_image_data(),
+            expected.get_camera_sensor("camera_front_wide_120fov").get_frame_data(0).get_encoded_image_data(),
+        )
+
+    def test_parameters_are_passed_through(self) -> None:
+        reader_kwargs = dict(
+            open_consolidated="auto",
+            itar_index_tail_read_size=1 << 16,
+            itar_index_tail_retention="keep",
+            itar_remote_range_reads=True,
+            max_threads=2,
+            node_cache_size=7,
+        )
+        parameters = MotionCompensator.Parameters(MotionCompensator.Parameters.Method.INTERPOLATED)
+        with mock.patch.object(
+            SequenceComponentGroupsReader, "__init__", autospec=True, side_effect=SequenceComponentGroupsReader.__init__
+        ) as init:
+            loader = SequenceLoaderV4.open(
+                [_TEST_DATA_PATH],
+                masks_component_group_name=None,
+                cuboids_component_group_name=None,
+                motion_compensator_parameters=parameters,
+                **cast(Any, reader_kwargs),
+            )
+        init.assert_called_once()
+        self.assertEqual(init.call_args.args[1], [_TEST_DATA_PATH])
+        self.assertEqual(init.call_args.kwargs, reader_kwargs)
+        lidar = loader.get_lidar_sensor(loader.lidar_ids[0])
+        assert isinstance(lidar, SequenceLoaderV4.RayBundleSensor)
+        self.assertIs(lidar.motion_compensator.parameters, parameters)
+        self.assertEqual(loader.get_camera_sensor(loader.camera_ids[0]).get_mask_images(), {})
+        self.assertEqual(list(loader.get_cuboid_track_observations()), [])
+
+    def test_same_parameters_as_open_async(self) -> None:
+        """open and open_async take the same parameters, except for the bound of the concurrent opening of the
+        component stores (threads, or stores opened at once on the event loop)"""
+        sync_parameters = dict(inspect.signature(SequenceLoaderV4.open).parameters)
+        async_parameters = dict(inspect.signature(SequenceLoaderV4.open_async).parameters)
+        self.assertEqual(sync_parameters.pop("max_threads").default, None)
+        self.assertEqual(async_parameters.pop("max_concurrent_requests").default, None)
+        self.assertEqual(
+            [(p.name, p.kind, p.default) for p in sync_parameters.values()],
+            [(p.name, p.kind, p.default) for p in async_parameters.values()],
+        )
+
+    def test_open_consolidated_auto(self) -> None:
+        """open_consolidated="auto" is passed to the stores: a store without consolidated metadata opens from its
+        node metadata records"""
+        with tempfile.TemporaryDirectory() as tmp:
+            writer = SequenceComponentGroupsWriter(
+                output_dir_path=UPath(tmp),
+                store_base_name="seq",
+                sequence_id="seq",
+                sequence_timestamp_interval_us=HalfClosedInterval(0, 1_000_001),
+                generic_meta_data={},
+                store_type="directory",
+            )
+            writer.register_component_writer(PosesComponent.Writer, "default", group_name=None).store_static_pose(
+                "lidar", "rig", np.eye(4, dtype=np.float32)
+            )
+            writer.register_component_writer(IntrinsicsComponent.Writer, "default", "intrinsics")
+            paths = writer.finalize()
+            for path in paths:
+                for record in UPath(path).iterdir():
+                    if stores.Store.is_consolidated_metadata_key(record.name):
+                        record.unlink()
+            open_kwargs: Any = dict(masks_component_group_name=None, cuboids_component_group_name=None)
+            with self.assertRaises(KeyError):
+                SequenceLoaderV4.open(paths, **open_kwargs)
+            for loader in (
+                SequenceLoaderV4.open(paths, open_consolidated="auto", **open_kwargs),
+                asyncio.run(SequenceLoaderV4.open_async(paths, open_consolidated="auto", **open_kwargs)),
+            ):
+                self.assertEqual(loader.sequence_id, "seq")
+                np.testing.assert_array_equal(
+                    loader.pose_graph.evaluate_poses("lidar", "rig", np.array(0, dtype=np.uint64)), np.eye(4)
+                )
 
 
 class TestSequenceLoaderV4OpenAsync(unittest.TestCase):
@@ -590,6 +772,21 @@ class TestSequenceLoaderV4AsyncPointCloudsAndLabels(_AsyncReadsTestCase):
         self.assertIn(
             "model_element", asyncio.run(self.loader.get_point_clouds_source("lidar").get_pc_async(0)).attribute_names
         )
+
+    def test_lidar_adapted_point_cloud_timestamps(self) -> None:
+        """The per-ray timestamps read for the motion compensation are the point cloud's timestamp attribute (not
+        read again); the other attributes are loaded on access, synchronously"""
+        source = self.loader.get_point_clouds_source("lidar")
+        lidar = self.loader.get_lidar_sensor("lidar")
+        for pc_index in range(source.pcs_count):
+            with self.subTest(pc_index=pc_index):
+                expected = lidar.get_frame_ray_bundle_timestamp_us(pc_index)
+                for point_cloud in (source.get_pc(pc_index), asyncio.run(source.get_pc_async(pc_index))):
+                    with _array_reads() as reads:
+                        np.testing.assert_array_equal(point_cloud.get_attribute("timestamp_us"), expected)
+                        self.assertEqual(reads, [])
+                        point_cloud.get_attribute("valid_mask")
+                        self.assertEqual(reads, ["sync"])
 
     def test_camera_labels(self) -> None:
         labels = self.loader.query_camera_labels("front")

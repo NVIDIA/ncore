@@ -547,11 +547,11 @@ class TestFThetaTangentialParameters(unittest.TestCase):
         np.testing.assert_array_equal(q.tangential_coeffs, p.tangential_coeffs)
 
     def test_validation(self):
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, r"tangential_coeffs must have shape \(2,\), got shape \(3,\)"):
             _ftheta(tangential_coeffs=np.zeros(3, np.float32))
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "tangential_coeffs must be of dtype float32, got float64"):
             _ftheta(tangential_coeffs=np.zeros(2, np.float64))
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(ValueError, "max_angle < pi/2"):
             _ftheta(max_angle=np.pi / 2, tangential_coeffs=np.array([0.1, 0.0], np.float32))
         # fisheye with explicit zeros: accepted
         _ftheta(max_angle=2.44, tangential_coeffs=np.zeros(2, np.float32))
@@ -833,6 +833,29 @@ class TestModelParametersRegistry(unittest.TestCase):
         self.assertIn("no-such-lidar", str(ctx.exception))
 
 
+class TestRowOffsetStructuredSpinningLidarModelParametersValidation(unittest.TestCase):
+    @staticmethod
+    def _parameters(column_azimuths_rad: List[float]) -> RowOffsetStructuredSpinningLidarModelParameters:
+        return RowOffsetStructuredSpinningLidarModelParameters(
+            n_rows=2,
+            n_columns=len(column_azimuths_rad),
+            spinning_frequency_hz=10.0,
+            spinning_direction="ccw",
+            row_elevations_rad=np.array([0.1, -0.1], dtype=np.float32),
+            column_azimuths_rad=np.array(column_azimuths_rad, dtype=np.float32),
+            row_azimuth_offsets_rad=np.zeros(2, dtype=np.float32),
+        )
+
+    def test_column_azimuths_within_one_revolution_are_accepted(self):
+        self._parameters([-3.0, 0.0, 3.0])
+
+    def test_column_azimuths_wrapping_around_the_start_element_are_rejected(self):
+        # Sorted in the spinning direction modulo 2*pi, but the last column lies more than a full revolution
+        # past the first one
+        with self.assertRaisesRegex(ValueError, "Column azimuth angles .* must not wrap around the start element"):
+            self._parameters([0.0, 0.5, 7.0])
+
+
 class TestParaxialPinholeGeometry(unittest.TestCase):
     """Validation of the geometry an out-of-tree model hands back"""
 
@@ -858,7 +881,7 @@ class TestParaxialPinholeGeometry(unittest.TestCase):
             with self.subTest(field=field):
                 kwargs = self._valid()
                 kwargs[field] = bad
-                with self.assertRaises(AssertionError):
+                with self.assertRaisesRegex(ValueError, f"{field} must be of dtype"):
                     ParaxialPinholeGeometry(**kwargs)
 
     def test_wrong_shape_is_rejected(self):
@@ -870,7 +893,7 @@ class TestParaxialPinholeGeometry(unittest.TestCase):
             with self.subTest(field=field):
                 kwargs = self._valid()
                 kwargs[field] = bad
-                with self.assertRaises(AssertionError):
+                with self.assertRaisesRegex(ValueError, f"{field} must have shape"):
                     ParaxialPinholeGeometry(**kwargs)
 
     def test_non_positive_focal_is_rejected(self):
@@ -879,7 +902,7 @@ class TestParaxialPinholeGeometry(unittest.TestCase):
             with self.subTest(focal=focal):
                 kwargs = self._valid()
                 kwargs["focal_length"] = np.array(focal, dtype=np.float32)
-                with self.assertRaises(AssertionError):
+                with self.assertRaisesRegex(ValueError, "focal_length must be positive"):
                     ParaxialPinholeGeometry(**kwargs)
 
 

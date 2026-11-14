@@ -205,8 +205,10 @@ class StructuredLidarModel(LidarModel[StructuredLidarModelParametersT_co], ABC):
         Elements are given as (row, column) indices."""
 
         # elements: N x 2 array of (row, column) indices
-        assert elements.ndim == 2
-        assert element_distances.ndim == 1
+        if elements.ndim != 2:
+            raise ValueError(f"elements must be 2-dimensional, got shape {tuple(elements.shape)}")
+        if element_distances.ndim != 1:
+            raise ValueError(f"element_distances must be 1-dimensional, got shape {tuple(element_distances.shape)}")
 
         elements = to_torch(elements, device=self.device, dtype=torch.long)
         element_distances = to_torch(element_distances, device=self.device, dtype=self.dtype)
@@ -288,6 +290,18 @@ class RowOffsetStructuredSpinningLidarModel(
         self.n_rows: int = parameters.n_rows
         self.n_columns: int = parameters.n_columns
 
+        if (
+            angles_to_columns_map_dtype.is_floating_point
+            or angles_to_columns_map_dtype.is_complex
+            or angles_to_columns_map_dtype == torch.bool
+        ):
+            raise ValueError(f"angles_to_columns_map_dtype must be an integer type, got {angles_to_columns_map_dtype}")
+        if torch.iinfo(angles_to_columns_map_dtype).max < self.n_columns - 1:
+            raise ValueError(
+                f"angles_to_columns_map_dtype must be able to store the maximum column index {self.n_columns - 1}, got "
+                f"{angles_to_columns_map_dtype} (consider a larger integer type)"
+            )
+
         # Compute FOV bounds from parameters (using same precision as current model)
         self.fov_eps_rad: float = fov_eps_factor * torch.finfo(self.dtype).eps
         np_dtype = {
@@ -319,7 +333,8 @@ class RowOffsetStructuredSpinningLidarModel(
         Elements are given as (row, column) indices."""
 
         # elements: N x 2 array of (row, column) indices
-        assert elements.ndim == 2
+        if elements.ndim != 2:
+            raise ValueError(f"elements must be 2-dimensional, got shape {tuple(elements.shape)}")
 
         elements = to_torch(elements, device=self.device, dtype=torch.long)
 
@@ -352,7 +367,8 @@ class RowOffsetStructuredSpinningLidarModel(
             sensor_rays = sensor_rays.sensor_rays
 
         # sensor_rays: N x 3 array of sensor rays
-        assert sensor_rays.ndim == 2
+        if sensor_rays.ndim != 2:
+            raise ValueError(f"sensor_rays must be 2-dimensional, got shape {tuple(sensor_rays.shape)}")
 
         sensor_rays = to_torch(sensor_rays, device=self.device, dtype=self.dtype)
 
@@ -367,7 +383,11 @@ class RowOffsetStructuredSpinningLidarModel(
 
         valid_flag = self._valid_sensor_angles(sensor_angles)
         if rays_valid_flag is not None:
-            assert rays_valid_flag.shape == valid_flag.shape
+            if rays_valid_flag.shape != valid_flag.shape:
+                raise ValueError(
+                    f"The valid flag of sensor_rays must have shape {tuple(valid_flag.shape)} (one flag per ray), "
+                    f"got shape {tuple(rays_valid_flag.shape)}"
+                )
             valid_flag = valid_flag & rays_valid_flag
 
         return LidarModel.SensorAnglesReturn(sensor_angles=sensor_angles, valid_flag=valid_flag)
@@ -378,7 +398,8 @@ class RowOffsetStructuredSpinningLidarModel(
         """Computes the sensor rays for elevation/azimuth angles."""
 
         # sensor_angles: N x 2 array of elevation and azimuth angles
-        assert len(sensor_angles.shape) == 2
+        if len(sensor_angles.shape) != 2:
+            raise ValueError(f"sensor_angles must be 2-dimensional, got shape {tuple(sensor_angles.shape)}")
 
         sensor_angles = to_torch(sensor_angles, device=self.device, dtype=self.dtype)
 
@@ -395,14 +416,6 @@ class RowOffsetStructuredSpinningLidarModel(
 
     def _init_angles_to_columns_map(self) -> None:
         """Computes angles to column map as a 2D array of shape resolution_factor * (n_rows, n_columns)."""
-
-        assert torch.iinfo(self.angles_to_columns_map_dtype).max >= self.n_columns - 1, (
-            "The dtype for the angles to columns map must be able to store the maximum column index, consider increasing angles_to_columns_map_dtype"
-        )
-
-        assert (
-            not self.angles_to_columns_map_dtype.is_floating_point and not self.angles_to_columns_map_dtype.is_complex
-        ), "The dtype for the angles to columns map must be an integer type"
 
         # Create all element indices [relative to the static model]
         elements = torch.stack(
@@ -541,11 +554,15 @@ class RowOffsetStructuredSpinningLidarModel(
         """
 
         if return_timestamps:
-            assert start_timestamp_us is not None
-            assert end_timestamp_us is not None
-            assert end_timestamp_us >= start_timestamp_us, (
-                "[LidarModel]: End timestamp must be larger or equal to the start timestamp"
-            )
+            if start_timestamp_us is None:
+                raise ValueError("[LidarModel]: start_timestamp_us is required when return_timestamps=True")
+            if end_timestamp_us is None:
+                raise ValueError("[LidarModel]: end_timestamp_us is required when return_timestamps=True")
+            if not end_timestamp_us >= start_timestamp_us:
+                raise ValueError(
+                    "[LidarModel]: End timestamp must be larger or equal to the start timestamp, "
+                    f"got start_timestamp_us={start_timestamp_us}, end_timestamp_us={end_timestamp_us}"
+                )
 
             # Make sure timestamps have correct type (might be, e.g., np.uint64, which torch doesn't like)
             start_timestamp_us = int(start_timestamp_us)
@@ -556,15 +573,26 @@ class RowOffsetStructuredSpinningLidarModel(
         T_world_sensor_start = to_torch(T_world_sensor_start, device=self.device, dtype=self.dtype)
         T_world_sensor_end = to_torch(T_world_sensor_end, device=self.device, dtype=self.dtype)
 
-        assert T_world_sensor_start.shape == (4, 4)
-        assert T_world_sensor_end.shape == (4, 4)
-        assert len(world_points.shape) == 2
-        assert world_points.shape[1] == 3
-        assert world_points.dtype == self.dtype
-        assert T_world_sensor_start.dtype == self.dtype
-        assert T_world_sensor_end.dtype == self.dtype
-        assert isinstance(max_iterations, int)
-        assert max_iterations > 0
+        if T_world_sensor_start.shape != (4, 4):
+            raise ValueError(
+                f"T_world_sensor_start must have shape (4, 4), got shape {tuple(T_world_sensor_start.shape)}"
+            )
+        if T_world_sensor_end.shape != (4, 4):
+            raise ValueError(f"T_world_sensor_end must have shape (4, 4), got shape {tuple(T_world_sensor_end.shape)}")
+        if len(world_points.shape) != 2:
+            raise ValueError(f"world_points must be 2-dimensional, got shape {tuple(world_points.shape)}")
+        if world_points.shape[1] != 3:
+            raise ValueError(f"world_points must have shape [n, 3], got shape {tuple(world_points.shape)}")
+        if world_points.dtype != self.dtype:
+            raise ValueError(f"world_points must be of dtype {self.dtype}, got {world_points.dtype}")
+        if T_world_sensor_start.dtype != self.dtype:
+            raise ValueError(f"T_world_sensor_start must be of dtype {self.dtype}, got {T_world_sensor_start.dtype}")
+        if T_world_sensor_end.dtype != self.dtype:
+            raise ValueError(f"T_world_sensor_end must be of dtype {self.dtype}, got {T_world_sensor_end.dtype}")
+        if not isinstance(max_iterations, int):
+            raise ValueError(f"max_iterations must be an int, got {type(max_iterations).__name__}")
+        if not max_iterations > 0:
+            raise ValueError(f"max_iterations must be positive, got {max_iterations}")
 
         iter_result = RollingShutterSolver.solve(
             world_points=world_points,
@@ -598,8 +626,10 @@ class RowOffsetStructuredSpinningLidarModel(
             return_var.valid_indices = torch.argwhere(projection_valid).squeeze(1)
 
         if return_timestamps:
-            assert start_timestamp_us is not None
-            assert end_timestamp_us is not None
+            if start_timestamp_us is None:
+                raise ValueError("[LidarModel]: start_timestamp_us is required when return_timestamps=True")
+            if end_timestamp_us is None:
+                raise ValueError("[LidarModel]: end_timestamp_us is required when return_timestamps=True")
             return_var.timestamps_us = (
                 start_timestamp_us
                 + (relative_time_final[:, None] * (end_timestamp_us - start_timestamp_us)).to(torch.int64)
@@ -642,20 +672,33 @@ class RowOffsetStructuredSpinningLidarModel(
         T_sensor_world_start = to_torch(T_sensor_world_start, device=self.device, dtype=self.dtype)
         T_sensor_world_end = to_torch(T_sensor_world_end, device=self.device, dtype=self.dtype)
 
-        assert T_sensor_world_start.shape == (4, 4)
-        assert T_sensor_world_end.shape == (4, 4)
-        assert len(elements.shape) == 2
-        assert elements.shape[1] == 2
-        assert elements.dtype == torch.long
-        assert T_sensor_world_start.dtype == self.dtype
-        assert T_sensor_world_end.dtype == self.dtype
+        if T_sensor_world_start.shape != (4, 4):
+            raise ValueError(
+                f"T_sensor_world_start must have shape (4, 4), got shape {tuple(T_sensor_world_start.shape)}"
+            )
+        if T_sensor_world_end.shape != (4, 4):
+            raise ValueError(f"T_sensor_world_end must have shape (4, 4), got shape {tuple(T_sensor_world_end.shape)}")
+        if len(elements.shape) != 2:
+            raise ValueError(f"elements must be 2-dimensional, got shape {tuple(elements.shape)}")
+        if elements.shape[1] != 2:
+            raise ValueError(f"elements must have shape [n, 2], got shape {tuple(elements.shape)}")
+        if elements.dtype != torch.long:
+            raise ValueError(f"elements must be of dtype torch.long, got {elements.dtype}")
+        if T_sensor_world_start.dtype != self.dtype:
+            raise ValueError(f"T_sensor_world_start must be of dtype {self.dtype}, got {T_sensor_world_start.dtype}")
+        if T_sensor_world_end.dtype != self.dtype:
+            raise ValueError(f"T_sensor_world_end must be of dtype {self.dtype}, got {T_sensor_world_end.dtype}")
 
         if return_timestamps:
-            assert start_timestamp_us is not None
-            assert end_timestamp_us is not None
-            assert end_timestamp_us >= start_timestamp_us, (
-                "[LidarModel]: End timestamp must be larger or equal to the start timestamp"
-            )
+            if start_timestamp_us is None:
+                raise ValueError("[LidarModel]: start_timestamp_us is required when return_timestamps=True")
+            if end_timestamp_us is None:
+                raise ValueError("[LidarModel]: end_timestamp_us is required when return_timestamps=True")
+            if not end_timestamp_us >= start_timestamp_us:
+                raise ValueError(
+                    "[LidarModel]: End timestamp must be larger or equal to the start timestamp, "
+                    f"got start_timestamp_us={start_timestamp_us}, end_timestamp_us={end_timestamp_us}"
+                )
 
             # Make sure timestamps have correct type (might be, e.g., np.uint64, which torch doesn't like)
             start_timestamp_us = int(start_timestamp_us)
@@ -668,16 +711,22 @@ class RowOffsetStructuredSpinningLidarModel(
         # Compute the sensor rays for the elements
         if sensor_rays is not None:
             # Reuse provided sensor rays
-            assert isinstance(sensor_rays, LidarModel.SensorRaysReturn), (
-                "[LidarModel]: sensor_rays need to be provided as LidarModel.SensorRaysReturn"
-            )
+            if not isinstance(sensor_rays, LidarModel.SensorRaysReturn):
+                raise ValueError(f"sensor_rays must be a LidarModel.SensorRaysReturn, got {type(sensor_rays).__name__}")
             sensor_rays_tensor = to_torch(sensor_rays.sensor_rays, device=self.device, dtype=self.dtype)
             valid_flag = to_torch(sensor_rays.valid_flag, device=self.device)
-            assert len(sensor_rays_tensor.shape) == 2
-            assert len(sensor_rays_tensor) == len(elements)
-            assert sensor_rays_tensor.shape[1] == 3
-            assert valid_flag.shape == (len(elements),)
-            assert valid_flag.dtype == torch.bool
+            n = len(elements)
+            if tuple(sensor_rays_tensor.shape) != (n, 3):
+                raise ValueError(
+                    f"sensor_rays must have shape ({n}, 3) (one ray per element), "
+                    f"got shape {tuple(sensor_rays_tensor.shape)}"
+                )
+            if tuple(valid_flag.shape) != (n,):
+                raise ValueError(
+                    f"The valid flag of sensor_rays must have shape ({n},), got shape {tuple(valid_flag.shape)}"
+                )
+            if valid_flag.dtype != torch.bool:
+                raise ValueError(f"The valid flag of sensor_rays must be of dtype torch.bool, got {valid_flag.dtype}")
         else:
             computed_sensor_rays = self.elements_to_sensor_rays(elements)
             sensor_rays_tensor, valid_flag = computed_sensor_rays.sensor_rays, computed_sensor_rays.valid_flag
@@ -720,8 +769,10 @@ class RowOffsetStructuredSpinningLidarModel(
             return_var.T_sensor_worlds[:, 3, 3] = 1
 
         if return_timestamps:
-            assert start_timestamp_us is not None
-            assert end_timestamp_us is not None
+            if start_timestamp_us is None:
+                raise ValueError("[LidarModel]: start_timestamp_us is required when return_timestamps=True")
+            if end_timestamp_us is None:
+                raise ValueError("[LidarModel]: end_timestamp_us is required when return_timestamps=True")
             return_var.timestamps_us = (
                 start_timestamp_us + (t[..., None] * (end_timestamp_us - start_timestamp_us)).to(torch.int64)
             ).squeeze(-1)  # [n_elements]
