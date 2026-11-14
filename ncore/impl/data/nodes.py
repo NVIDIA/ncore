@@ -49,6 +49,7 @@ from zarr import Array as ZarrArray
 from zarr import Group as ZarrGroup
 
 from ncore.impl.data.backend import (
+    ZARR_PYTHON_MAJOR,
     Attributes,
     Backend,
     BloscCompression,
@@ -71,7 +72,7 @@ if TYPE_CHECKING:
 
 def _installed_backend() -> Backend[ZarrStore]:
     """The backend of the installed zarr-python version"""
-    if int(zarr.__version__.split(".", 1)[0]) >= 3:
+    if ZARR_PYTHON_MAJOR >= 3:
         from ncore.impl.data.backend_zarr3 import backend as zarr3_backend
 
         return zarr3_backend

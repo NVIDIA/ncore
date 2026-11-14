@@ -93,6 +93,7 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
     def __init__(
         self,
         reader: SequenceComponentGroupsReader,
+        *,
         # Component group names to load
         poses_component_group_name: str = "default",
         intrinsics_component_group_name: str = "default",
@@ -175,6 +176,7 @@ class SequenceLoaderV4(AsyncSequenceLoaderProtocol):
     async def open_async(
         cls,
         component_group_paths: Union[List[UPath], List[Path]],
+        *,
         poses_component_group_name: str = "default",
         intrinsics_component_group_name: str = "default",
         masks_component_group_name: Optional[str] = "default",

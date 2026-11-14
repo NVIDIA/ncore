@@ -114,6 +114,7 @@ class SequenceComponentGroupsWriter:
         output_dir_path: UPath,
         store_base_name: str,
         sequence_reader: SequenceComponentGroupsReader,
+        *,
         store_type: Literal["itar", "directory"] = "itar",  # valid values: ['itar', 'directory']
         zarr_format: nodes.ZarrFormat = 2,
     ) -> SequenceComponentGroupsWriter:
@@ -139,6 +140,7 @@ class SequenceComponentGroupsWriter:
         sequence_timestamp_interval_us: HalfClosedInterval,
         # Generic sequence meta-data (needs to be json-serializable) - will be stored into each component store group
         generic_meta_data: JsonDocumentLike,
+        *,
         # Zarr store type: either serialize as .itar archive store (default / production) or plain "directory" store (simpler for introspection / asynchronous / external setup)
         store_type: Literal["itar", "directory"] = "itar",  # valid values: ['itar', 'directory']
         # On-disk zarr format of the component stores: format v2 (default) is readable with all zarr-python versions
@@ -287,7 +289,11 @@ class SequenceComponentGroupsWriter:
         constructor.  Because the first parameter is typed with
         :data:`~typing.ParamSpec` + :data:`~typing.Concatenate`, type checkers
         can infer the correct extra-argument signature from the concrete writer
-        class that is passed in."""
+        class that is passed in.
+
+        Extra positional arguments follow ``group_name`` and ``generic_meta_data``
+        (which are then positional as well): pass writer arguments by keyword to
+        keep ``group_name`` and ``generic_meta_data`` at their defaults."""
         generic_meta_data = unpack_optional(generic_meta_data, default={})
 
         assert len(component_instance_name) > 0, "Component instance name must not be empty"
@@ -359,6 +365,7 @@ class SequenceComponentGroupsReader:
     def __init__(
         self,
         component_group_paths: List[UPath] | List[Path],
+        *,
         open_consolidated: bool = True,
         itar_index_tail_read_size: int = 1 << 20,  # 1 MiB default
         itar_index_tail_retention: IndexTailRetention = "release_if_consolidated",
@@ -437,6 +444,7 @@ class SequenceComponentGroupsReader:
     async def open_async(
         cls,
         component_group_paths: List[UPath] | List[Path],
+        *,
         open_consolidated: bool = True,
         itar_index_tail_read_size: int = 1 << 20,
         itar_index_tail_retention: IndexTailRetention = "release_if_consolidated",
@@ -1962,6 +1970,7 @@ class PointCloudsComponent:
             component_group: nodes.Group,
             sequence_timestamp_interval_us: HalfClosedInterval,
             coordinate_unit: PointCloud.CoordinateUnit,
+            *,
             attribute_schemas: Optional[Dict[str, PointCloudsComponent.AttributeSchema]] = None,
         ) -> None:
             super().__init__(component_group, sequence_timestamp_interval_us)
@@ -1985,6 +1994,7 @@ class PointCloudsComponent:
             xyz: npt.NDArray[np.float32],
             reference_frame_id: str,
             reference_frame_timestamp_us: int,
+            *,
             attributes: Optional[Dict[str, npt.NDArray[Any]]] = None,
             generic_data: Optional[Dict[str, npt.NDArray[Any]]] = None,
             generic_meta_data: Optional[JsonDocumentLike] = None,
@@ -2209,6 +2219,7 @@ class CameraLabelsComponent:
             self,
             data: "Union[npt.NDArray[Any], bytes]",
             timestamp_us: int,
+            *,
             generic_meta_data: Optional[JsonDocumentLike] = None,
         ) -> None:
             """Store a single camera label.
