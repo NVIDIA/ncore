@@ -92,8 +92,10 @@ from ncore.impl.data.backend import (
     Selection,
     ZarrFormat,
     ZarrNode,
+    decode_v2_consolidated_metadata,
+    encode_v2_consolidated_metadata,
 )
-from ncore.impl.data.encoding import decode_cbor_xz, decode_cbor_zlib, encode_cbor_xz, encode_cbor_zlib
+from ncore.impl.data.encoding import decode_cbor_zlib, encode_cbor_zlib
 from ncore.impl.data.itar import IndexedTarArchive, is_node_metadata_key
 from ncore.impl.data.json_types import JsonDocument, to_json_document
 
@@ -105,14 +107,6 @@ if TYPE_CHECKING:
 __all__ = ["TransposeCodec", "ZstdCodec"]  # (zarr-python 3 codecs of the tests)
 
 T = TypeVar("T")
-
-
-class _V2ConsolidatedMetadata(TypedDict):
-    """zarr-python 2's consolidated metadata document (``.zmetadata``)"""
-
-    zarr_consolidated_format: int
-    #: node metadata documents by node metadata key (e.g., ``a/.zarray``)
-    metadata: Dict[str, JsonDocument]
 
 
 class _InlineConsolidatedMetadata(TypedDict):
@@ -705,6 +699,11 @@ class Zarr3Backend(Backend[Store]):
             return list(group.groups())
 
     @override
+    def member_arrays(self, group: zarr.Group) -> List[Tuple[str, zarr.Array]]:
+        with self._ignored_warnings():
+            return list(group.arrays())
+
+    @override
     def create_group(self, group: zarr.Group, name: str, attributes: Optional[Attributes]) -> zarr.Group:
         return group.create_group(name, attributes=None if attributes is None else self._json_document(attributes))
 
@@ -937,10 +936,7 @@ class Zarr3Backend(Backend[Store]):
         group document (members by node path), which is built from the ``.zmetadata`` document (members by node
         metadata key) as zarr-python's ``AsyncGroup._from_bytes_v2`` does.
         """
-        consolidated = cast(_V2ConsolidatedMetadata, decode_cbor_xz(record))
-        if (consolidated_format := consolidated["zarr_consolidated_format"]) != 1:
-            raise ValueError(f"Unsupported zarr consolidated metadata format: {consolidated_format}")
-        metadata = cls._parent_grouped(consolidated["metadata"], lambda key: key.rpartition("/")[0])
+        metadata = cls._parent_grouped(decode_v2_consolidated_metadata(record), lambda key: key.rpartition("/")[0])
         members: Dict[str, JsonDocument] = {}
         for key, value in metadata.items():
             path, _, name = key.rpartition("/")
@@ -989,6 +985,10 @@ class Zarr3Backend(Backend[Store]):
         return documents
 
     @override
+    def is_read_only(self, store: Store) -> bool:
+        return store.read_only
+
+    @override
     def indexed_tar_store(self, archive: IndexedTarArchive) -> Store:
         return _IndexedTarStore(archive)
 
@@ -1034,15 +1034,12 @@ class Zarr3Backend(Backend[Store]):
             key, value = V3_CONSOLIDATED_METADATA_KEY, encode_cbor_zlib(document)
         else:
             # zarr format v2: the .zmetadata document (node metadata documents by node metadata key)
-            consolidated: _V2ConsolidatedMetadata = {
-                "zarr_consolidated_format": 1,
-                "metadata": {
-                    key: json.loads(value)
-                    for key in self._keys(store)
-                    if is_node_metadata_key(key) and (value := self._get(store, key)) is not None
-                },
+            metadata = {
+                key: json.loads(value)
+                for key in self._keys(store)
+                if is_node_metadata_key(key) and (value := self._get(store, key)) is not None
             }
-            key, value = V2_CONSOLIDATED_METADATA_KEY, encode_cbor_xz(cast(JsonDocument, consolidated))
+            key, value = V2_CONSOLIDATED_METADATA_KEY, encode_v2_consolidated_metadata(metadata)
         run(store.set(key, default_buffer_prototype().buffer.from_bytes(value)))
 
 

@@ -17,8 +17,9 @@
 
 An indexed tar archive is a regular tar archive with a compressed record index appended after the tar end-of-archive
 blocks, enabling O(1) lookups of record payloads. :class:`IndexedTarArchive` provides raw access to the records of such
-archives; zarr-python version specific store adapters (see :mod:`ncore.impl.data.stores`) store zarr hierarchies in
-them.
+archives; the zarr-python version specific stores of :mod:`ncore.impl.data.backend_zarr2` and
+:mod:`ncore.impl.data.backend_zarr3` (wrapped by :class:`ncore.impl.data.stores.IndexedTarZarrStore`) store zarr
+hierarchies in them.
 
 Records are *write-once*: archives are append-only, and writing a record twice raises a ``ValueError``. The only
 exception are zarr node metadata records (see :func:`is_node_metadata_key`), which zarr-python 3 rewrites on every
@@ -59,6 +60,7 @@ from typing import (
     Mapping,
     NamedTuple,
     Optional,
+    Sequence,
     Tuple,
     Union,
     cast,
@@ -76,6 +78,10 @@ from ncore.impl.data.encoding import decode_cbor_xz, encode_cbor_xz
 
 _logger = logging.getLogger(__name__)
 
+
+#: Default size of the read of the end of an archive that loads its record index (1 MiB, see ``index_tail_read_size`` of
+#: :class:`IndexedTarArchive`)
+DEFAULT_INDEX_TAIL_READ_SIZE = 1 << 20
 
 #: Names of the records of zarr node metadata (zarr format v2 and v3)
 NODE_METADATA_NAMES = (".zarray", ".zgroup", ".zattrs", "zarr.json")
@@ -523,13 +529,15 @@ class IndexedTarArchive:
     index_tail_read_size : int or None, optional, default 1 << 20 (1 MiB)
         Maximum bytes read from the end of the archive in a single I/O call to load the record index. Covers both the
         small index header and (ideally) the compressed index. Values smaller than the tar block size (512 bytes), or
-        None, result in separate reads of the index header and index, which is more robust for large indices.
+        None, result in separate reads of the index header and index, which is more robust for large indices. Applies to
+        reading only (ignored by archives opened for writing).
     remote_range_reads : bool, optional, default False
         Read records of remote archives (see :attr:`is_remote`) synchronously via exact byte-range requests, like
         :meth:`read_async`, instead of via the archive's buffered file object (blocks of the filesystem's block size,
         cached by its cache type, one request at a time). Synchronous reads of multiple threads then fetch their records
         concurrently, which suits random access to high-latency storage (e.g., thread pools reading frames of S3
-        archives); the buffered file object suits sequential reading of nearby records.
+        archives); the buffered file object suits sequential reading of nearby records. Applies to reading only (ignored
+        by archives opened for writing).
 
     Notes
     -----
@@ -543,7 +551,7 @@ class IndexedTarArchive:
     the module documentation), and are served from memory. Closed archives release their file resources: records not
     held in memory can't be read anymore.
 
-    All methods are thread-safe.
+    All methods are thread-safe, except :meth:`reload_resources` (see there).
     """
 
     def __init__(
@@ -551,7 +559,7 @@ class IndexedTarArchive:
         itar_path: Union[str, Path, UPath],
         *,
         mode: Literal["r", "w"] = "r",
-        index_tail_read_size: Optional[int] = 1 << 20,  # 1 MiB by default
+        index_tail_read_size: Optional[int] = DEFAULT_INDEX_TAIL_READ_SIZE,
         remote_range_reads: bool = False,
     ) -> None:
         """Opens the archive synchronously (blocking: e.g., the index read of remote archives, see the class
@@ -565,9 +573,9 @@ class IndexedTarArchive:
         cls,
         itar_path: Union[str, Path, UPath],
         *,
-        index_tail_read_size: Optional[int] = 1 << 20,
+        index_tail_read_size: Optional[int] = DEFAULT_INDEX_TAIL_READ_SIZE,
         remote_range_reads: bool = False,
-        prefetch_keys: Tuple[str, ...] = (),
+        prefetch_keys: Sequence[str] = (),
     ) -> IndexedTarArchive:
         """Opens an archive for reading asynchronously, without blocking the running event loop (see the class
         documentation for the parameters).
@@ -660,7 +668,7 @@ class IndexedTarArchive:
     def records(self) -> Mapping[str, Record]:
         """The records of the archive by key, with the offset and size of their payload in the archive file (a
         read-only view: for archives opened for writing, of the records appended so far, which excludes the node
-        metadata records appended when closing the archive)"""
+        metadata records appended when closing the archive, which :meth:`keys` includes)"""
         return MappingProxyType(self._records)
 
     @property
@@ -794,7 +802,8 @@ class IndexedTarArchive:
     def reload_resources(self) -> None:
         """Re-opens the file resources of the archive's record source (file object, file descriptor of local archives),
         and lets the writer of archives opened for writing append to the re-opened file object (required in processes
-        forked after opening the archive)"""
+        forked after opening the archive). Not safe concurrently with reads of the archive (e.g., call it in the forked
+        process before using the archive there)."""
         with self._lock:
             self._source.reload()
             if self._writer is not None:

@@ -104,8 +104,8 @@ def _check_reference(test: unittest.TestCase, root: nodes.Group) -> None:
     test.assertEqual(root.attrs, _ROOT_ATTRIBUTES)
     test.assertEqual(root.group("subgroup").attrs, {"other": [1, 2, 3]})
     test.assertEqual(root.array("subgroup/foo").attrs, {"unit": "m"})
-    test.assertEqual(sorted(root.members()), ["foo", "subgroup"])
-    test.assertEqual(sorted(root.group("subgroup").members()), ["blob", "empty", "foo"])
+    test.assertEqual(root.keys(), ["foo", "subgroup"])
+    test.assertEqual(root.group("subgroup").keys(), ["blob", "empty", "foo"])
     test.assertEqual([name for name, _ in root.groups()], ["subgroup"])
     test.assertIn("blob", root.group("subgroup"))
     test.assertNotIn("missing", root.group("subgroup"))
@@ -425,7 +425,7 @@ class TestStores(unittest.TestCase):
         _write(self._store(store_type, "w"), zarr_format=zarr_format)
 
         with self._store(store_type, "r") as store:
-            root = store.open_root_group(consolidated)
+            root = store.open_root_group(consolidated=consolidated)
             _check_reference(self, root)
             self.assertEqual(root.zarr_format, zarr_format)
             self.assertEqual(root.array("subgroup/foo").zarr_format, zarr_format)
@@ -473,9 +473,9 @@ class TestStores(unittest.TestCase):
         root.create_array("after", np.ones(2))
 
         self.assertEqual(
-            sorted(self._store("directory", "r").open_root_group(consolidated=False).members()), ["after", "before"]
+            sorted(self._store("directory", "r").open_root_group(consolidated=False).keys()), ["after", "before"]
         )
-        self.assertEqual(sorted(self._store("directory", "r").open_root_group(consolidated=True).members()), ["before"])
+        self.assertEqual(sorted(self._store("directory", "r").open_root_group(consolidated=True).keys()), ["before"])
 
     @parameterized.parameterized.expand(
         [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in ZARR_FORMATS]
@@ -502,7 +502,7 @@ class TestStores(unittest.TestCase):
                 store.consolidate()
             root.create_array("after", np.ones(2))
             self.assertEqual(
-                sorted(self._store("directory", "r").open_root_group(consolidated="auto").members()), ["before"]
+                sorted(self._store("directory", "r").open_root_group(consolidated="auto").keys()), ["before"]
             )
 
     @parameterized.parameterized.expand(
@@ -746,13 +746,194 @@ class TestStores(unittest.TestCase):
         with self.assertRaises(Exception):  # (zarr-python's error of missing groups)
             IndexedTarZarrStore(self.itar_path).open_root_group(consolidated=True)
 
-    @parameterized.parameterized.expand([(zarr_format,) for zarr_format in ZARR_FORMATS])
-    def test_read_only(self, zarr_format: ZarrFormat):
+    @parameterized.parameterized.expand(
+        [
+            (store_type, zarr_format, consolidated)
+            for store_type in ("itar", "directory")
+            for zarr_format in ZARR_FORMATS
+            for consolidated in (True, False)
+        ]
+    )
+    def test_read_only(self, store_type: str, zarr_format: ZarrFormat, consolidated: bool):
+        """All writing methods of groups and arrays of stores opened for reading raise the same ValueError with both
+        zarr-python versions, before writing"""
         _require(self, zarr_format)
-        _write(self._store("itar", "w"), zarr_format=zarr_format)
-        root = IndexedTarZarrStore(self.itar_path).open_root_group()
-        with self.assertRaises(Exception):
-            root.create_group("new")
+        _write(self._store(store_type, "w"), zarr_format=zarr_format)
+        store = self._store(store_type, "r")
+        root = store.open_root_group(consolidated=consolidated)
+        writes = {
+            "Group.create_group": lambda: root.create_group("x"),
+            "Group.require_group": lambda: root.require_group("x"),
+            "Group.require_group (existing)": lambda: root.require_group("subgroup"),
+            "Group.require_group (attributes)": lambda: root.require_group("x", attributes={"a": 1}),
+            "Group.create_array": lambda: root.create_array("x", np.ones(2)),
+            "Group.create_empty_array": lambda: root.create_empty_array("x", shape=(2,), dtype=np.float32, chunks=(2,)),
+            "Group.create_encoded_array": lambda: root.create_encoded_array(
+                "x", nodes.EncodedArray.encode(np.ones(2), zarr_format=zarr_format)
+            ),
+            "Group.create_bytes_array": lambda: root.create_bytes_array("x", b"blob"),
+            "Group.update_attrs": lambda: root.update_attrs({"some": "other"}),
+            "Array.update_attrs": lambda: root.array("foo").update_attrs({"unit": "km"}),
+            "Array.write": lambda: root.array("foo").write(slice(0, 2), np.ones((2, 3, 3))),
+        }
+        if store_type == "itar":  # (directory stores have no read-only mode, their hierarchies are opened for reading)
+            writes["Store.create_root_group"] = lambda: store.create_root_group(zarr_format=zarr_format)
+            writes["Store.consolidate"] = lambda: store.consolidate()
+        for name, write in writes.items():
+            with self.subTest(name):
+                with self.assertRaises(ValueError) as raised:
+                    write()
+                self.assertIs(type(raised.exception), ValueError)
+                self.assertIn("is opened for reading", str(raised.exception))
+        reopened = self._store(store_type, "r").open_root_group(consolidated=False)
+        self.assertNotIn("x", reopened)
+        _check_reference(self, reopened)
+
+    def test_store_writes_of_read_only_zarr_stores(self):
+        """Store-level writes of adapters of read-only zarr-python stores raise ValueError before writing"""
+        if ZARR_PYTHON_3:
+            # (untyped: checked against the zarr-python 2 MemoryStore signature as well)
+            zarr_store = cast(Any, zarr.storage.MemoryStore)(read_only=True)
+        else:
+
+            class ReadOnlyMemoryStore(zarr.storage.MemoryStore):
+                _writeable = False
+
+            zarr_store = ReadOnlyMemoryStore()
+        store = ZarrStoreAdapter(zarr_store)
+        for name, write in (("create_root_group", store.create_root_group), ("consolidate", store.consolidate)):
+            with self.subTest(name):
+                with self.assertRaisesRegex(ValueError, "is opened for reading"):
+                    write()
+        self.assertFalse(Backend.is_read_only(nodes._backend, zarr.storage.MemoryStore()))
+
+    @parameterized.parameterized.expand(
+        [(zarr_format, consolidated) for zarr_format in ZARR_FORMATS for consolidated in (True, False)]
+    )
+    def test_require_group_of_an_array(self, zarr_format: ZarrFormat, consolidated: bool):
+        """require_group of an existing array raises ValueError naming its path with both zarr-python versions"""
+        _require(self, zarr_format)
+        with self._store("itar", "w") as store:
+            root = store.create_root_group(zarr_format=zarr_format)
+            root.create_group("g").create_array("a", np.ones(2))
+            for attributes in (None, {"a": 1}):
+                with self.subTest(attributes=attributes):
+                    with self.assertRaises(ValueError) as raised:
+                        root.group("g").require_group("a", attributes=attributes)
+                    self.assertIs(type(raised.exception), ValueError)
+                    self.assertIn("'g/a' is an array", str(raised.exception))
+            store.consolidate()
+        self.assertEqual(self._store("itar", "r").open_root_group(consolidated=consolidated).group("g").keys(), ["a"])
+
+    @parameterized.parameterized.expand(
+        [(store_type, zarr_format) for store_type in ("itar", "directory") for zarr_format in ZARR_FORMATS]
+    )
+    def test_writes_of_stores_opened_for_writing(self, store_type: str, zarr_format: ZarrFormat):
+        """All writing methods of groups and arrays of stores opened for writing write"""
+        _require(self, zarr_format)
+        with self._store(store_type, "w") as store:
+            root = store.create_root_group(zarr_format=zarr_format)
+            root.update_attrs({"root": True})
+            root.create_group("g", attributes={"a": 1})
+            root.require_group("g").require_group("h", attributes={"b": 2})
+            root.require_group("g", attributes={"ignored": True})  # (existing: attributes unchanged)
+            root.create_array("a", np.arange(3)).update_attrs({"unit": "m"})
+            root.create_empty_array("e", shape=(4,), dtype=np.int32, chunks=(2,)).write(slice(0, 2), np.array([1, 2]))
+            root.create_encoded_array("c", nodes.EncodedArray.encode(np.ones(2), zarr_format=zarr_format))
+            root.create_bytes_array("b", b"blob")
+            store.consolidate()
+        root = self._store(store_type, "r").open_root_group()
+        self.assertEqual(root.attrs, {"root": True})
+        self.assertEqual(root.group("g").attrs, {"a": 1})
+        self.assertEqual(root.group("g/h").attrs, {"b": 2})
+        self.assertEqual(root.array("a").attrs, {"unit": "m"})
+        np.testing.assert_array_equal(root.array("e").read(), [1, 2, 0, 0])
+        np.testing.assert_array_equal(root.array("c").read(), [1, 1])
+        self.assertEqual(root.array("b").read_bytes(), b"blob")
+
+    def test_root_groups_without_attributes(self):
+        with self._store("itar", "w") as store:
+            self.assertEqual(store.create_root_group().attrs, {})
+            store.consolidate()
+        self.assertEqual(self._store("itar", "r").open_root_group().attrs, {})
+
+    def test_open_root_group_consolidated_is_keyword_only(self):
+        _write(self._store("itar", "w"))
+        with self.assertRaisesRegex(TypeError, "positional argument"):
+            cast(Any, self._store("itar", "r")).open_root_group(True)
+
+    def test_stores_are_not_constructible(self):
+        """Store is a base class only, zarr-python stores are wrapped by ZarrStoreAdapter"""
+        with self.assertRaisesRegex(TypeError, "ZarrStoreAdapter"):
+            Store(zarr.storage.MemoryStore())
+
+        class Custom(Store):
+            pass
+
+        _write(Custom(zarr.storage.MemoryStore()))
+
+    @parameterized.parameterized.expand(
+        [
+            # (retention, opened from consolidated metadata (None: not opened), tail read kept)
+            ("release_if_consolidated", True, False),
+            ("release_if_consolidated", False, True),
+            ("release_if_consolidated", None, True),
+            ("release_if_consolidated", "auto", False),
+            ("release_after_opening", False, False),
+            ("keep", True, True),
+        ]
+    )
+    def test_release_index_tail(self, retention: IndexTailRetention, consolidated: Any, kept: bool):
+        """Stores release the index tail read of their archive as recorded by opening their hierarchy"""
+        _write(self._store("itar", "w"))
+        store = IndexedTarZarrStore(self.itar_path)
+        if consolidated is not None:
+            store.open_root_group(consolidated=consolidated)
+        store.release_index_tail(retention)
+        self.assertEqual(len(_index(store.archive).tail.data) > 0, kept)
+        _check_reference(self, store.open_root_group(consolidated=consolidated or False))
+
+    def test_release_index_tail_records_the_last_opening(self):
+        _write(self._store("itar", "w"))
+        store = IndexedTarZarrStore(self.itar_path)
+        store.open_root_group(consolidated=True)
+        store.open_root_group(consolidated=False)
+        store.release_index_tail("release_if_consolidated")
+        self.assertTrue(_index(store.archive).tail.data)
+        store.open_root_group(consolidated=True)
+        store.release_index_tail("release_if_consolidated")
+        self.assertFalse(_index(store.archive).tail.data)
+
+    def test_release_index_tail_of_other_stores(self):
+        """A no-op for stores of other zarr-python stores, and of archives opened for writing"""
+        _write(self._store("directory", "w"))
+        store = self._store("directory", "r")
+        store.release_index_tail("release_after_opening")
+        _check_reference(self, store.open_root_group())
+        with self._store("itar", "w") as writing:
+            writing.release_index_tail("release_after_opening")
+
+    def test_open_async(self):
+        """Stores opened asynchronously open their hierarchy from the prefetched consolidated metadata record"""
+        _write(self._store("itar", "w"))
+        store = asyncio.run(IndexedTarZarrStore.open_async(self.itar_path, index_tail_read_size=None))
+        self.assertEqual((store.archive.mode, store.archive.itar_upath.path), ("r", os.path.abspath(self.itar_path)))
+        self.assertEqual(sorted(_index(store.archive)._prefetched), [V2_CONSOLIDATED_METADATA_KEY])
+        with mock.patch("os.pread", side_effect=AssertionError("read")):
+            root = store.open_root_group()
+        _check_reference(self, root)
+        self.assertIs(root.store, store)
+        store.close()
+
+    def test_default_index_tail_read_size(self):
+        _write(self._store("itar", "w"))
+        for opened in (
+            IndexedTarZarrStore(self.itar_path),
+            asyncio.run(IndexedTarZarrStore.open_async(self.itar_path)),
+        ):
+            # (the whole archive lies within the default tail read)
+            self.assertEqual(_index(opened.archive).tail.start, 0)
+        self.assertEqual(itar.DEFAULT_INDEX_TAIL_READ_SIZE, 1 << 20)
 
     def test_context_managers_return_the_store(self):
         with IndexedTarZarrStore(self.itar_path, mode="w") as store:
@@ -813,9 +994,9 @@ class TestHierarchies(unittest.TestCase):
             store.consolidate()
 
         root = IndexedTarZarrStore(self.path).open_root_group(consolidated=consolidated)
-        self.assertEqual(sorted(root.members()), ["a", "b", "z"])
-        self.assertEqual(sorted(root.group("a").members()), ["x0", "x1", "x2"])
-        self.assertEqual(sorted(root.group("b").members()), ["g0", "g1", "g2"])
+        self.assertEqual(root.keys(), ["a", "b", "z"])
+        self.assertEqual(root.group("a").keys(), ["x0", "x1", "x2"])
+        self.assertEqual(root.group("b").keys(), ["g0", "g1", "g2"])
         for i in range(3):
             np.testing.assert_array_equal(root.array(f"a/x{i}").read(), [i, i])
             np.testing.assert_array_equal(root.group("b").group(f"g{i}").array("y").read(), [10 + i] * 2)
@@ -1740,6 +1921,20 @@ class TestNodes(unittest.TestCase):
         self.root.update_attrs({"i": 4, "new": None})
         self.assertEqual(self.root.attrs, {"s": "x", "i": 4, "b": True, "l": [1], "d": {"k": 1}, "new": None})
 
+    def test_float_and_bool_attributes(self):
+        """Floats are read from JSON numbers (floats and integers, not booleans), booleans only from booleans"""
+        self.root.update_attrs({"f": 2.5, "zero": 0})
+        self.assertEqual(self.root.attr_float("f"), 2.5)
+        self.assertEqual(self.root.attr_float("i"), 3.0)
+        self.assertIs(type(self.root.attr_float("i")), float)
+        self.assertIs(self.root.attr_bool("b"), True)
+        for name, getter in (("b", self.root.attr_float), ("s", self.root.attr_float), ("zero", self.root.attr_bool)):
+            with self.subTest(name), self.assertRaises(TypeError):
+                getter(name)
+        for getter in (self.root.attr_float, self.root.attr_bool):
+            with self.assertRaises(KeyError):
+                getter("missing")
+
     def test_attributes_of_abstract_collections(self):
         """Attribute values of any mappings / sequences are written (and read back) as plain dicts / lists"""
 
@@ -1819,6 +2014,29 @@ class TestNodes(unittest.TestCase):
         with self.assertRaises(TypeError):
             array.read_bytes()
 
+    def test_array_properties(self):
+        array = self.root.create_array("a", np.zeros((5, 3), dtype=np.int16), chunks=(2, 3))
+        self.assertEqual((array.ndim, array.chunks), (2, (2, 3)))
+        self.assertEqual(self.root.create_array("s", np.float32(1.5)).ndim, 0)
+        self.assertIs(array.store, self.root.store)
+        self.assertIsNotNone(array.store)
+        self.assertIs(self.root.array("a").store, self.root.store)
+        self.assertIs(cast(nodes.Array, self.root["a"]).store, self.root.store)
+
+        fill_value = array.fill_value
+        self.assertEqual((fill_value, type(fill_value)), (0, np.int16))
+        empty = self.root.create_empty_array("e", shape=(4,), dtype=np.float32, chunks=(2,), fill_value=np.nan)
+        self.assertEqual(type(empty.fill_value), np.float32)
+        self.assertTrue(np.isnan(cast(np.float32, empty.fill_value)))
+        empty = self.root.create_empty_array("u", shape=(2,), dtype="<U3", chunks=(2,), fill_value="ab")
+        self.assertEqual((empty.fill_value, type(empty.fill_value)), ("ab", np.str_))
+
+        assert (store := self.root.store) is not None
+        store.consolidate()
+        reopened = store.open_root_group().array("a")
+        self.assertEqual((reopened.ndim, reopened.chunks, reopened.fill_value), (2, (2, 3), 0))
+        self.assertIs(reopened.store, store)
+
     def test_bytes_arrays(self):
         for data in (b"\x89PNG\x00binary", b"", b"\x00"):
             array = self.root.create_bytes_array(f"blob{len(data)}", data, attributes={"format": "png"})
@@ -1826,6 +2044,12 @@ class TestNodes(unittest.TestCase):
             self.assertEqual(array.read_bytes(), data.rstrip(b"\x00") if self.zarr_format == 2 else data)
             self.assertEqual(array.attrs, {"format": "png"})
             self.assertIsNone(array.compression)
+            # (zarr format v2: empty bytes of the fixed-length bytes dtype, v3: zero of uint8)
+            fill_value = array.fill_value
+            if self.zarr_format == 2:
+                self.assertEqual((fill_value, type(fill_value)), (b"", np.bytes_))
+            else:
+                self.assertEqual((fill_value, type(fill_value)), (0, np.uint8))
         # (zarr format v2: fixed-length bytes, as ncore <= 19.8, which strip trailing NUL bytes)
         self.assertEqual(self.root.array("blob11").dtype, np.dtype("S11") if self.zarr_format == 2 else np.uint8)
 
@@ -1836,6 +2060,55 @@ class TestNodes(unittest.TestCase):
         array = self.root.create_array("a", np.arange(1000, dtype=np.int32), compression=compression)
         self.assertEqual(array.compression, compression)
         np.testing.assert_array_equal(array.read(), np.arange(1000))
+
+    def test_require_group_attributes(self):
+        """Attributes of required groups are written if the group is created only"""
+        created = self.root.require_group("g", attributes={"a": 1})
+        self.assertEqual(created.attrs, {"a": 1})
+        self.assertEqual(self.root.require_group("g", attributes={"a": 2, "b": 3}).attrs, {"a": 1})
+        self.assertEqual(self.root.require_group("h").attrs, {})
+        self.assertEqual(self.root.require_group("h", attributes={"c": 1}).attrs, {})
+
+    def test_member_listings_are_ordered_by_name(self):
+        for name in ("c", "a", "b"):
+            self.root.create_group(f"g{name}")
+            self.root.create_array(f"x{name}", np.arange(2))
+        expected = ["ga", "gb", "gc", "xa", "xb", "xc"]
+        assert (store := self.root.store) is not None
+        store.consolidate()
+        for consolidated in (True, False):
+            root = store.open_root_group(consolidated=consolidated)
+            with self.subTest(consolidated=consolidated):
+                self.assertEqual(root.keys(), expected)
+                self.assertEqual(list(root), expected)
+                self.assertEqual([name for name, _ in root.items()], expected)
+                self.assertEqual([name for name, _ in root.groups()], expected[:3])
+                self.assertEqual([name for name, _ in root.arrays()], expected[3:])
+                self.assertTrue(all(isinstance(array, nodes.Array) for _, array in root.arrays()))
+                self.assertEqual([array.path for _, array in root.arrays()], expected[3:])
+                self.assertIs(next(root.arrays())[1].store, store)
+        self.assertFalse(hasattr(self.root, "members"))
+
+    def test_keyword_only_group_construction(self):
+        with self.assertRaisesRegex(TypeError, "positional argument"):
+            cast(Any, nodes.Group)(self.root.zarr, nodes.NodeCache())
+        group = nodes.Group(self.root.zarr, cache=(cache := nodes.NodeCache()), store=self.root.store)
+        self.assertIs(group.cache, cache)
+        self.assertIs(group.store, self.root.store)
+
+    def test_created_groups_share_the_cache_and_store(self):
+        root = self.root.with_cache(cache := nodes.NodeCache())
+        for group in (
+            root.create_group("a"),
+            root.require_group("a"),
+            root.require_group("b"),
+            root.require_group("c", attributes={"x": 1}),
+            root.group("a"),
+        ):
+            with self.subTest(group.path):
+                self.assertIs(group.cache, cache)
+                self.assertIs(group.store, self.root.store)
+        self.assertIsNotNone(self.root.store)
 
     def test_groups(self):
         self.root.create_group("b")
@@ -1878,8 +2151,8 @@ class TestNodes(unittest.TestCase):
         self.assertIsNone(group.get("missing"))
         self.assertIsNone(self.root.get("g/b/missing"))
 
-        self.assertEqual(sorted(group), ["a", "b", "empty"])
-        self.assertEqual(sorted(group.keys()), ["a", "b", "empty"])
+        self.assertEqual(list(group), ["a", "b", "empty"])
+        self.assertEqual(group.keys(), ["a", "b", "empty"])
         self.assertEqual(len(group), 3)
         self.assertEqual(len(self.root), 1)
         self.assertEqual((len(empty), list(empty), empty.keys(), list(empty.items())), (0, [], [], []))
@@ -1887,7 +2160,7 @@ class TestNodes(unittest.TestCase):
         self.assertTrue(group)
 
         items = dict(group.items())
-        self.assertEqual(sorted(items), ["a", "b", "empty"])
+        self.assertEqual(list(items), ["a", "b", "empty"])
         self.assertIsInstance(items["a"], nodes.Array)
         self.assertIsInstance(items["b"], nodes.Group)
         self.assertEqual((items["a"].path, items["b"].path), ("g/a", "g/b"))
@@ -2457,7 +2730,7 @@ class TestPartialWrites(unittest.TestCase):
         self, store_type: str, zarr_format: ZarrFormat, consolidated: bool
     ):
         self._create(store_type, zarr_format, lambda array: None)
-        array = self._store(store_type, "r").open_root_group(consolidated).array("a")
+        array = self._store(store_type, "r").open_root_group(consolidated=consolidated).array("a")
         with self.assertRaises(ValueError) as raised:
             array.write(slice(0, 10), np.ones((10, 3)))
         # (the same error with both zarr-python versions and all stores, raised before writing)
@@ -2470,7 +2743,7 @@ class TestPartialWrites(unittest.TestCase):
         self, store_type: str, zarr_format: ZarrFormat, consolidated: bool
     ):
         self._create(store_type, zarr_format, lambda array: None)
-        root = self._store(store_type, "r").open_root_group(consolidated)
+        root = self._store(store_type, "r").open_root_group(consolidated=consolidated)
         with self.assertRaises(ValueError) as raised:
             root.create_empty_array("b", shape=(5,), dtype=np.float32, chunks=(5,))
         self.assertEqual(type(raised.exception), ValueError)
@@ -2512,11 +2785,11 @@ class TestPartialWrites(unittest.TestCase):
         for consolidated in (True, "auto"):
             with self.subTest(consolidated=consolidated):
                 with self.assertRaisesRegex(ValueError, "writable NoReadOnlyViews"):
-                    ZarrStoreAdapter(NoReadOnlyViews(records)).open_root_group(consolidated)
+                    ZarrStoreAdapter(NoReadOnlyViews(records)).open_root_group(consolidated=consolidated)
         with self.assertRaisesRegex(ValueError, "not read-only"):  # (raised by zarr-python)
-            ZarrStoreAdapter(NoReadOnlyViews(records)).open_root_group(False)
+            ZarrStoreAdapter(NoReadOnlyViews(records)).open_root_group(consolidated=False)
         read_only: Dict[str, Any] = {"read_only": True}  # (a keyword of zarr-python 3 stores only)
-        root = ZarrStoreAdapter(NoReadOnlyViews(records, **read_only)).open_root_group(True)
+        root = ZarrStoreAdapter(NoReadOnlyViews(records, **read_only)).open_root_group(consolidated=True)
         _check_reference(self, root)
 
     @parameterized.parameterized.expand(
@@ -2777,7 +3050,7 @@ class TestEncodedArrays(unittest.TestCase):
         with self._store(store_type, "encoded") as store:
             store.create_root_group({}, zarr_format=zarr_format)
             store.consolidate()
-        root = self._store(store_type, "encoded", "r").open_root_group(consolidated)
+        root = self._store(store_type, "encoded", "r").open_root_group(consolidated=consolidated)
         encoded = nodes.EncodedArray.encode(np.ones((5, 3)), zarr_format=zarr_format)
         with self.assertRaises(ValueError) as raised:
             root.create_encoded_array("x", encoded)

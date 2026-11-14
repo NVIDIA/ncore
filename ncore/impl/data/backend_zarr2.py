@@ -46,8 +46,9 @@ from ncore.impl.data.backend import (
     Selection,
     ZarrFormat,
     ZarrNode,
+    decode_v2_consolidated_metadata,
+    encode_v2_consolidated_metadata,
 )
-from ncore.impl.data.encoding import decode_cbor_xz, encode_cbor_xz
 from ncore.impl.data.itar import IndexedTarArchive, is_node_metadata_key
 from ncore.impl.data.json_types import to_json_document
 
@@ -107,10 +108,7 @@ class _CompressedConsolidatedStore(zarr.storage.ConsolidatedMetadataStore):
 
     def __init__(self, store: BaseStore) -> None:
         self.store = store
-        consolidated = decode_cbor_xz(store[V2_CONSOLIDATED_METADATA_KEY])
-        if (consolidated_format := consolidated.get("zarr_consolidated_format")) != 1:
-            raise zarr.errors.MetadataError(f"unsupported zarr consolidated metadata format: {consolidated_format}")
-        self.meta_store = zarr.storage.KVStore(consolidated["metadata"])
+        self.meta_store = zarr.storage.KVStore(decode_v2_consolidated_metadata(store[V2_CONSOLIDATED_METADATA_KEY]))
 
 
 class Zarr2Backend(Backend[BaseStore]):
@@ -139,6 +137,10 @@ class Zarr2Backend(Backend[BaseStore]):
     @override
     def member_groups(self, group: zarr.Group) -> List[Tuple[str, zarr.Group]]:
         return list(group.groups())
+
+    @override
+    def member_arrays(self, group: zarr.Group) -> List[Tuple[str, zarr.Array]]:
+        return list(group.arrays())
 
     @override
     def create_group(self, group: zarr.Group, name: str, attributes: Optional[Attributes]) -> zarr.Group:
@@ -289,6 +291,12 @@ class Zarr2Backend(Backend[BaseStore]):
         return store
 
     @override
+    def is_read_only(self, store: BaseStore) -> bool:
+        if isinstance(store, _IndexedTarStore):
+            return store.archive.mode != "w"
+        return not store.is_writeable()
+
+    @override
     def indexed_tar_store(self, archive: IndexedTarArchive) -> BaseStore:
         return _IndexedTarStore(archive)
 
@@ -318,7 +326,7 @@ class Zarr2Backend(Backend[BaseStore]):
     @override
     def consolidate(self, store: BaseStore) -> None:
         metadata = {key: json.loads(store[key]) for key in store if is_node_metadata_key(key)}
-        store[V2_CONSOLIDATED_METADATA_KEY] = encode_cbor_xz({"zarr_consolidated_format": 1, "metadata": metadata})
+        store[V2_CONSOLIDATED_METADATA_KEY] = encode_v2_consolidated_metadata(metadata)
 
 
 backend = Zarr2Backend()

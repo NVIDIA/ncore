@@ -181,9 +181,9 @@ def _summary(reader: SequenceComponentGroupsReader, subsampled: bool = False, fr
             # default-valued fields that older writers stored explicitly
             {
                 camera_id: types.decode_camera_model_parameters(cameras_group.group(camera_id).attrs).to_dict()
-                for camera_id in sorted(cameras_group.members())
+                for camera_id in sorted(cameras_group.keys())
             },
-            {lidar_id: lidars_group.group(lidar_id).attrs for lidar_id in sorted(lidars_group.members())},
+            {lidar_id: lidars_group.group(lidar_id).attrs for lidar_id in sorted(lidars_group.keys())},
         )
 
     for name, cuboids in sorted(reader.open_component_readers(CuboidsComponent.Reader).items()):
@@ -197,7 +197,7 @@ def _summary(reader: SequenceComponentGroupsReader, subsampled: bool = False, fr
             camera_id: {
                 mask_name: np.asarray(image).tobytes() for mask_name, image in masks.get_camera_mask_images(camera_id)
             }
-            for camera_id in masks._group.group("cameras").members()
+            for camera_id in masks._group.group("cameras").keys()
         }
 
     for name, cameras in sorted(reader.open_component_readers(CameraSensorComponent.Reader).items()):
@@ -215,7 +215,7 @@ async def _summary_async(reader: SequenceComponentGroupsReader) -> SequenceSumma
 
     async def masks(masks: MasksComponent.Reader) -> Dict[str, Dict[str, bytes]]:
         images: Dict[str, Dict[str, bytes]] = {}
-        for camera_id in masks._group.group("cameras").members():
+        for camera_id in masks._group.group("cameras").keys():
             images[camera_id] = {}
             for mask_name in masks.get_camera_mask_names(camera_id):
                 image = await masks.get_camera_mask_image_async(camera_id, mask_name)
@@ -374,15 +374,15 @@ def _copy_components(reader: SequenceComponentGroupsReader, writer: SequenceComp
         intrinsics_writer = writer.register_component_writer(
             IntrinsicsComponent.Writer, name, name, intrinsics.generic_meta_data
         )
-        for camera_id in intrinsics._group.group("cameras").members():
+        for camera_id in intrinsics._group.group("cameras").keys():
             intrinsics_writer.store_camera_intrinsics(camera_id, intrinsics.get_camera_model_parameters(camera_id))
-        for lidar_id in intrinsics._group.group("lidars").members():
+        for lidar_id in intrinsics._group.group("lidars").keys():
             if (lidar_model := intrinsics.get_lidar_model_parameters(lidar_id)) is not None:
                 intrinsics_writer.store_lidar_intrinsics(lidar_id, lidar_model)
 
     for name, masks in reader.open_component_readers(MasksComponent.Reader).items():
         masks_writer = writer.register_component_writer(MasksComponent.Writer, name, name, masks.generic_meta_data)
-        for camera_id in masks._group.group("cameras").members():
+        for camera_id in masks._group.group("cameras").keys():
             masks_writer.store_camera_masks(camera_id, dict(masks.get_camera_mask_images(camera_id)))
 
     for name, cameras in reader.open_component_readers(CameraSensorComponent.Reader).items():
