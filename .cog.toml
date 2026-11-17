@@ -44,6 +44,11 @@ repository = "ncore"
 
 # GitHub usernames of commit authors, mentioned in the change list of the release notes (matched by
 # git author name, authors without an entry are listed by name)
+# Dezhen Lu, who commits as 0z5a
+[[changelog.authors]]
+signature = "0z5a"
+username = "0z5a"
+
 [[changelog.authors]]
 signature = "Alex Perec"
 username = "aperec-nvidia"
