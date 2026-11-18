@@ -33,7 +33,7 @@ import unittest
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict, Iterator, List, Mapping, Optional, Tuple, cast
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple, cast
 from unittest import mock
 
 import fsspec.asyn
@@ -44,6 +44,7 @@ import zarr
 import zarr.errors
 import zarr.storage
 
+from typing_extensions import Buffer
 from upath import UPath
 
 from ncore.impl.common.util import unpack_optional
@@ -53,7 +54,7 @@ from ncore.impl.data.encoding import decode_cbor_xz, decode_cbor_zlib, encode_cb
 from ncore.impl.data.itar import IndexedTarArchive, IndexFormat, IndexTailRetention, is_node_metadata_key
 from ncore.impl.data.json_types import JsonDocument, JsonLike, to_json, to_json_document
 from ncore.impl.data.stores import IndexedTarZarrStore, Store, ZarrStoreAdapter
-from ncore.impl.data.testing_fs import MscRemoteFileSystem, RemoteFileSystem
+from ncore.impl.data.testing_fs import MscRemoteFileSystem, ReadOnlyBuffer, RemoteFileSystem, SyncRemoteFileSystem
 
 
 #: None / values < 512 (separate reads of index header and index), 1 KiB, 1 MiB (default), edge cases around 512
@@ -1947,6 +1948,102 @@ class TestMscVersionCheck(unittest.TestCase):
     def test_other_filesystems_are_not_checked(self):
         archive = self._open("1.1.0", protocol=RemoteFileSystem.protocol)
         self.assertEqual(archive.read("a"), b"payload")
+
+
+#: Buffer types filesystems may return for range requests and file object reads (other than the ``bytes`` of the fsspec
+#: API): e.g., native clients return buffer-protocol objects that aren't ``bytes``
+PAYLOAD_TYPES = [bytes, bytearray, memoryview, ReadOnlyBuffer]
+
+
+@parameterized.parameterized_class(
+    ("payload_type",),
+    [(payload_type,) for payload_type in PAYLOAD_TYPES],
+    class_name_func=lambda cls, _, params: f"{cls.__name__}_{params['payload_type'].__name__}",
+)
+class TestRemotePayloadTypes(unittest.TestCase):
+    """Reads of remote archives return ``bytes`` whatever buffer type their filesystem returns for range requests and
+    file object reads (e.g. buffer-protocol objects of native clients), for records of the tail read, prefetched
+    records and records read from the source"""
+
+    payload_type: Callable[[bytes], Buffer]
+
+    #: The tail read when opening: it holds the small record, not the others (checked in setUp)
+    TAIL_READ_SIZE = 16384
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self._tmp.name, "store.itar")
+        rng = np.random.default_rng(0)
+        # (the consolidated metadata record is prefetched when opening asynchronously, the small record lies within
+        # the tail read, the large one outside of it)
+        self.records = {
+            V2_CONSOLIDATED_METADATA_KEY: rng.bytes(19920),
+            "large": rng.bytes(300000),
+            "small": rng.bytes(16),
+        }
+        with IndexedTarArchive(self.path, mode="w") as archive:
+            for key, value in self.records.items():
+                archive[key] = value
+        index = _index(IndexedTarArchive(self.path, index_tail_read_size=self.TAIL_READ_SIZE))
+        in_tail = {key for key, record in index.records.items() if index.in_memory(record) is not None}
+        self.assertEqual(in_tail, {"small"})
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _assert_records(self, values: Dict[str, bytes]) -> None:
+        for key, value in values.items():
+            self.assertIs(type(value), bytes, key)
+            self.assertEqual(value, self.records[key], key)
+
+    @parameterized.parameterized.expand([(range_reads,) for range_reads in (False, True)])
+    def test_reads(self, range_reads: bool):
+        upath = UPath(f"{RemoteFileSystem.protocol}://{self.path}", payload_type=self.payload_type)
+        archive = IndexedTarArchive(upath, index_tail_read_size=self.TAIL_READ_SIZE, remote_range_reads=range_reads)
+        self._assert_records({key: archive.read(key) for key in self.records})
+
+    @parameterized.parameterized.expand([(range_reads,) for range_reads in (False, True)])
+    def test_async_reads(self, range_reads: bool):
+        upath = UPath(f"{RemoteFileSystem.protocol}://{self.path}", payload_type=self.payload_type)
+
+        async def read() -> Dict[str, bytes]:
+            archive = await IndexedTarArchive.open_async(
+                upath,
+                index_tail_read_size=self.TAIL_READ_SIZE,
+                remote_range_reads=range_reads,
+                prefetch_keys=[V2_CONSOLIDATED_METADATA_KEY],
+            )
+            # (the prefetched record read both ways: synchronously, then from the source asynchronously)
+            values = {V2_CONSOLIDATED_METADATA_KEY: archive.read(V2_CONSOLIDATED_METADATA_KEY)}
+            values.update({key: await archive.read_async(key) for key in self.records})
+            return values
+
+        self._assert_records(asyncio.run(read()))
+
+    def test_reads_of_synchronous_filesystems(self):
+        """Archives of synchronous filesystems load their index and read records via the file object"""
+        archive = IndexedTarArchive(
+            UPath(f"{SyncRemoteFileSystem.protocol}://{self.path}", payload_type=self.payload_type),
+            index_tail_read_size=self.TAIL_READ_SIZE,
+        )
+        self.assertFalse(archive.is_remote)
+        self._assert_records({key: archive.read(key) for key in self.records})
+
+
+class TestAsBytes(unittest.TestCase):
+    """``bytes`` are passed through without a copy, other buffers are copied"""
+
+    def test_bytes_are_not_copied(self):
+        data = b"payload"
+        self.assertIs(itar.as_bytes(data), data)
+
+    @parameterized.parameterized.expand(
+        [(payload_type.__name__, payload_type) for payload_type in PAYLOAD_TYPES if payload_type is not bytes]
+    )
+    def test_buffers_are_copied_to_bytes(self, _: str, payload_type: Callable[[bytes], Buffer]):
+        value = itar.as_bytes(payload_type(b"payload"))
+        self.assertIs(type(value), bytes)
+        self.assertEqual(value, b"payload")
 
 
 @parameterized.parameterized_class(("zarr_format",), [(zarr_format,) for zarr_format in ZARR_FORMATS])
