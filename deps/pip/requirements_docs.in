@@ -16,6 +16,7 @@
 # Docs dependencies
 ipython
 nbsphinx
+packaging  # docs/conf.py: normalized version of the documented release
 pexpect
 sphinx
 nvidia_sphinx_theme
