@@ -18,6 +18,7 @@ import concurrent.futures
 import dataclasses
 import gc
 import hashlib
+import importlib.metadata
 import io
 import json
 import os
@@ -52,7 +53,7 @@ from ncore.impl.data.encoding import decode_cbor_xz, decode_cbor_zlib, encode_cb
 from ncore.impl.data.itar import IndexedTarArchive, IndexFormat, IndexTailRetention, is_node_metadata_key
 from ncore.impl.data.json_types import JsonDocument, JsonLike, to_json, to_json_document
 from ncore.impl.data.stores import IndexedTarZarrStore, Store, ZarrStoreAdapter
-from ncore.impl.data.testing_fs import RemoteFileSystem
+from ncore.impl.data.testing_fs import MscRemoteFileSystem, RemoteFileSystem
 
 
 #: None / values < 512 (separate reads of index header and index), 1 KiB, 1 MiB (default), edge cases around 512
@@ -1892,6 +1893,60 @@ class TestRemoteOpening(unittest.TestCase):
             f.write(b"itar")
         with self.assertRaisesRegex(ValueError, "invalid index header"):
             IndexedTarArchive(UPath(f"{RemoteFileSystem.protocol}://{tiny}"))
+
+
+class TestMscVersionCheck(unittest.TestCase):
+    """Remote archives of multi-storage-client filesystems require multi-storage-client >= 1.4.0 (earlier versions
+    ignore the byte ranges of range requests and read whole archives), checked before any request"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self._tmp.name, "store.itar")
+        with IndexedTarArchive(self.path, mode="w") as archive:
+            archive["a"] = b"payload"
+        RemoteFileSystem.all_requests = []
+
+    def tearDown(self):
+        RemoteFileSystem.all_requests = None
+        self._tmp.cleanup()
+
+    def _open(self, version: Optional[str], protocol: str = MscRemoteFileSystem.protocol, use_async: bool = False):
+        side_effect = importlib.metadata.PackageNotFoundError("multi-storage-client") if version is None else None
+        with mock.patch.object(itar, "_msc_version", return_value=version, side_effect=side_effect):
+            upath = UPath(f"{protocol}://{self.path}")
+            if use_async:
+                return asyncio.run(IndexedTarArchive.open_async(upath))
+            return IndexedTarArchive(upath)
+
+    @parameterized.parameterized.expand(
+        [
+            (version, use_async)
+            for version in ("1.1.0", "1.2.0", "1.3.0", "1.3.9", "0.50.0", None)
+            for use_async in (False, True)
+        ]
+    )
+    def test_unsupported_versions_raise_before_any_request(self, version: Optional[str], use_async: bool):
+        with self.assertRaisesRegex(RuntimeError, r"multi-storage-client>=1\.4\.0") as context:
+            self._open(version, use_async=use_async)
+        self.assertIn(f"multi-storage-client {version or 'unknown'} ", str(context.exception))
+        self.assertEqual(RemoteFileSystem.all_requests, [])
+
+    @parameterized.parameterized.expand(
+        [
+            (version, use_async)
+            for version in ("1.4.0", "1.4", "1.10.0", "2.0.0", "1.4.1rc1")
+            for use_async in (False, True)
+        ]
+    )
+    def test_supported_versions(self, version: str, use_async: bool):
+        archive = self._open(version, use_async=use_async)
+        self.assertTrue(archive.is_remote)
+        self.assertEqual(archive.read("a"), b"payload")
+        self.assertEqual(RemoteFileSystem.all_requests, [("cat", "store.itar")])  # (single suffix range request)
+
+    def test_other_filesystems_are_not_checked(self):
+        archive = self._open("1.1.0", protocol=RemoteFileSystem.protocol)
+        self.assertEqual(archive.read("a"), b"payload")
 
 
 @parameterized.parameterized_class(("zarr_format",), [(zarr_format,) for zarr_format in ZARR_FORMATS])
