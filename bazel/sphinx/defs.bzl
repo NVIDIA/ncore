@@ -78,12 +78,18 @@ def _sphinx_html_impl(ctx):
     args.add(root_dir)
     args.add(output_dir.path)
 
+    # The stable workspace status (the version of `--embed_label` and the git commit of
+    # `--workspace_status_command`), read by conf.py to show the documented version. Stable keys only change
+    # with the version or commit, so the docs are not rebuilt by unrelated builds.
     ctx.actions.run(
         outputs = [output_dir],
-        inputs = [sandbox] + ctx.files._nbconvert_data,
+        inputs = [sandbox, ctx.info_file] + ctx.files._nbconvert_data,
         executable = ctx.executable._sphinx_build,
         arguments = [args],
-        env = {"JUPYTER_DATA_DIR": jupyter_data_dir},
+        env = {
+            "JUPYTER_DATA_DIR": jupyter_data_dir,
+            "SPHINX_BUILD_INFO_FILE": ctx.info_file.path,
+        },
         mnemonic = "SphinxBuild",
         progress_message = "Building Sphinx HTML documentation for {}".format(ctx.label.name),
         use_default_shell_env = True,

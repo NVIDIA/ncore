@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import re
 import sys
 
@@ -21,4 +22,8 @@ from sphinx.cmd.build import main
 
 if __name__ == "__main__":
     sys.argv[0] = re.sub(r"(-script\.pyw|\.exe)?$", "", sys.argv[0])
+    # Sphinx evaluates conf.py from the configuration directory: resolve the execroot-relative path of the build
+    # information file (see defs.bzl) before it changes directories
+    if "SPHINX_BUILD_INFO_FILE" in os.environ:
+        os.environ["SPHINX_BUILD_INFO_FILE"] = os.path.abspath(os.environ["SPHINX_BUILD_INFO_FILE"])
     sys.exit(main())

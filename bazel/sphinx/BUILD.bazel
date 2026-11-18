@@ -27,6 +27,7 @@ py_binary(
         requirement("pexpect"),
         requirement("sphinx"),
         requirement("nvidia_sphinx_theme"),
+        requirement("packaging"),  # docs/conf.py: normalized version of the documented release
         requirement("sphinx_copybutton"),
         "@ncore_repo//ncore/data:pylib",
         "@ncore_repo//ncore/data/stores:pylib",
