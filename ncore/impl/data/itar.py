@@ -70,7 +70,7 @@ from typing import (
 
 import fsspec.asyn
 
-from typing_extensions import Self
+from typing_extensions import Buffer, Self
 from upath import UPath
 
 from ncore.impl.common.async_util import run_in_thread
@@ -301,6 +301,13 @@ class RecordIndex:
 # -------------------------------------------------------------------------------------------------------------------
 
 
+def as_bytes(data: Buffer) -> bytes:
+    """`data` as ``bytes``: the object itself if it is ``bytes``, a copy of its buffer otherwise. Filesystems may
+    return other buffer types for range requests than the ``bytes`` of the fsspec API, e.g. ``bytearray``,
+    ``memoryview`` or buffer-protocol objects of native clients (multi-storage-client with its Rust client)."""
+    return data if type(data) is bytes else bytes(data)
+
+
 class _Source:
     """Reads byte ranges of an archive and owns its file resources: reads via the archive's (buffered) file object,
     serialized by the lock (archives being written, which the writer appends to with the lock held, and archives of
@@ -327,7 +334,7 @@ class _Source:
             file = self.file
             position = file.tell()
             file.seek(offset)
-            value = file.read(size)
+            value = as_bytes(file.read(size))
             file.seek(position)
             return value
 
@@ -346,11 +353,11 @@ class _Source:
             file_size = self.file.seek(0, os.SEEK_END)
             tail_size = min(file_size, IndexFormat.tail_size(tail_read_size))
             self.file.seek(file_size - tail_size)
-            tail = TailBuffer(file_size - tail_size, self.file.read(tail_size))
+            tail = TailBuffer(file_size - tail_size, as_bytes(self.file.read(tail_size)))
             location = IndexFormat.locate(tail)
             if (index := IndexFormat.index_in_tail(location, tail)) is None:
                 self.file.seek(location.offset)
-                index = self.file.read(location.size)
+                index = as_bytes(self.file.read(location.size))
             return RecordIndex(IndexFormat.decode(location, index), tail)
 
     def reload(self) -> None:
@@ -479,16 +486,16 @@ class _RemoteSource(_Source):
         # (`_cat_file` is the coroutine asynchronous fsspec filesystems implement, `cat_file` its synchronous wrapper)
         request = self.fs._cat_file(self._path, start=start, end=end)
         if (fs_loop := self.fs.loop) is None or fs_loop is asyncio.get_running_loop():
-            return await request
+            return as_bytes(await request)
         # (filesystems are bound to fsspec's I/O event loop, their sessions can't be used on other event loops)
-        return await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(request, fs_loop))
+        return as_bytes(await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(request, fs_loop)))
 
     def read(self, offset: int, size: int) -> bytes:
         """Reads a byte range synchronously: via a range request (``remote_range_reads``, concurrent for multiple
         threads), or via the buffered file object (serialized)"""
         if self.range_reads:
             # (an exact range request on the filesystem's I/O loop, concurrent with those of other threads)
-            return self.fs.cat_file(self._path, start=offset, end=offset + size)
+            return as_bytes(self.fs.cat_file(self._path, start=offset, end=offset + size))
         return super().read(offset, size)
 
     async def read_async(self, offset: int, size: int) -> bytes:
@@ -750,7 +757,7 @@ class IndexedTarArchive:
         ``remote_range_reads``), all others via the archive's file object.
         """
         value = self._lookup(key)
-        return value if isinstance(value, bytes) else self._source.read(*value)
+        return self._source.read(*value) if isinstance(value, Record) else value
 
     async def read_async(self, key: str) -> bytes:
         """Reads the payload of a record asynchronously, without blocking the running event loop (raises KeyError if it
@@ -761,7 +768,7 @@ class IndexedTarArchive:
         archives (e.g., local) on a worker thread.
         """
         value = self._lookup(key)
-        return value if isinstance(value, bytes) else await self._source.read_async(*value)
+        return await self._source.read_async(*value) if isinstance(value, Record) else value
 
     def _lookup(self, key: str) -> Union[bytes, Record]:
         """The payload of a record held in memory, or the record to read from the source (raises KeyError if it doesn't
