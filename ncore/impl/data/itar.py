@@ -37,6 +37,7 @@ file object of remote archives, the file being written. :class:`IndexedTarArchiv
 from __future__ import annotations
 
 import asyncio
+import importlib.metadata
 import io
 import logging
 import os
@@ -406,6 +407,42 @@ class _LocalSource(_Source):
         self._fd_finalizer()
 
 
+#: Oldest supported multi-storage-client version for remote archives: earlier versions ignore the byte range of
+#: ``cat_file`` / ``_cat_file`` (< 1.3.0, every range request reads the whole archive) or resolve suffix ranges with an
+#: additional metadata request (1.3.0)
+MIN_MSC_VERSION = (1, 4, 0)
+
+
+def _msc_version() -> str:
+    """The installed multi-storage-client version (raises PackageNotFoundError if its metadata isn't found)"""
+    return importlib.metadata.version("multi-storage-client")
+
+
+def check_range_requests(fs: fsspec.asyn.AsyncFileSystem) -> None:
+    """Raises RuntimeError if the filesystem `fs` is known to ignore the byte ranges of range requests: filesystems of
+    multi-storage-client before :data:`MIN_MSC_VERSION`, which would read whole archives for each range request"""
+    if not any(cls.__module__.split(".", 1)[0] == "multistorageclient" for cls in type(fs).__mro__):
+        return
+    required = ".".join(map(str, MIN_MSC_VERSION))
+    try:
+        version = _msc_version()
+    except importlib.metadata.PackageNotFoundError:
+        version = "unknown"
+    else:
+        release = []
+        for part in version.split("."):
+            if not part.isdigit():
+                break
+            release.append(int(part))
+        if tuple(release + [0] * (len(MIN_MSC_VERSION) - len(release))) >= MIN_MSC_VERSION:
+            return
+    raise RuntimeError(
+        f"IndexedTarArchive: multi-storage-client {version} (filesystem {type(fs).__name__}) is not supported for "
+        f"remote archives, versions before {required} ignore the byte ranges of range requests and read whole "
+        f"archives instead. Upgrade to multi-storage-client>={required}."
+    )
+
+
 class _RemoteSource(_Source):
     """Reads a remote archive (on an asynchronous fsspec filesystem): asynchronously via range requests, synchronously
     via range requests (``remote_range_reads``) or the buffered file object (opened on first use)"""
@@ -414,7 +451,9 @@ class _RemoteSource(_Source):
         self, fs: fsspec.asyn.AsyncFileSystem, path: str, open_file: Callable[[bool], IO[bytes]], range_reads: bool
     ) -> None:
         """A source of the archive at `path` of the filesystem `fs` (synchronous range reads if `range_reads`), opening
-        the buffered file object via `open_file` on first use (only synchronous reads without range reads use it)"""
+        the buffered file object via `open_file` on first use (only synchronous reads without range reads use it).
+        Raises RuntimeError for filesystems that ignore byte ranges (see :func:`check_range_requests`)."""
+        check_range_requests(fs)
         super().__init__(open_file, lazy=True)
         self.fs = fs
         self._path = path

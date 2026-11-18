@@ -115,4 +115,14 @@ class RemoteFileSystem(fsspec.asyn.AsyncFileSystem):
         return cast(IO[bytes], SimpleNamespace(read=counting_read, seek=file.seek, tell=file.tell, close=file.close))
 
 
+class MscRemoteFileSystem(RemoteFileSystem):
+    """A :class:`RemoteFileSystem` identifying as a filesystem of multi-storage-client (by its module)"""
+
+    protocol = "ncoretestmsc"
+
+
+MscRemoteFileSystem.__module__ = "multistorageclient.contrib.async_fs"
+
+
 fsspec.register_implementation(RemoteFileSystem.protocol, RemoteFileSystem)
+fsspec.register_implementation(MscRemoteFileSystem.protocol, MscRemoteFileSystem)

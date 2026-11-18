@@ -31,6 +31,9 @@ Dependencies
   :class:`~ncore.data.v4.SequenceComponentGroupsWriter`, ``--zarr-format 3`` of the data converters), and need
   zarr-python 3 for writing and reading. zarr format v2 stays the default.
 * Python 3.8 remains supported (with zarr-python 2). ``numcodecs`` and ``fsspec`` are declared dependencies.
+* Remote archives are read via byte-range requests of their fsspec filesystem. Reading them via multi-storage-client
+  (``msc://``) requires ``multi-storage-client>=1.4.0`` (not a declared dependency): earlier versions ignore the byte
+  ranges and read whole archives for each request, so opening such archives raises ``RuntimeError``.
 
 Public packages
 ---------------
