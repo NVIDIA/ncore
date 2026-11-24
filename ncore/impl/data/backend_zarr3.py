@@ -689,7 +689,13 @@ class Zarr3Backend(Backend[Store]):
 
     @override
     def has_member(self, group: zarr.Group, name: str) -> bool:
-        return name in self.member_names(group)
+        # A lookup of the name instead of a listing of all members. Unlike zarr-python 2 (see the zarr-python 2
+        # backend's consolidated store), listings of zarr-python 3 don't scan the whole hierarchy: groups opened from
+        # consolidated metadata hold the metadata of their direct members only. But listing a group constructs the
+        # zarr-python array / group objects of all its members, which costs ~6x a lookup of a single name (~250 us vs.
+        # ~40 us for groups of a few arrays). Lookups use the consolidated metadata without I/O, and read the node
+        # metadata of the name only in hierarchies opened without consolidated metadata.
+        return run(group._async_group.contains(name))
 
     @override
     def member_groups(self, group: zarr.Group) -> List[Tuple[str, zarr.Group]]:

@@ -2324,6 +2324,21 @@ class TestNodes(unittest.TestCase):
         # (groups are not mappings: they compare by identity)
         self.assertNotEqual(self.root.group("g/empty"), empty)
 
+    def test_membership_checks_do_not_list_members(self):
+        """Membership checks look up the name only (listing members opens all of them with zarr-python 3), in
+        consolidated and unconsolidated hierarchies"""
+        group = self.root.create_group("g")
+        group.create_group("b").create_array("nested", np.arange(2))
+        group.create_array("a", np.arange(3))
+        assert (store := self.root.store) is not None
+        store.consolidate()
+        for consolidated in (True, False):
+            group = store.open_root_group(consolidated=consolidated).group("g")
+            listing = mock.patch.object(nodes._backend, "member_names", side_effect=AssertionError("members listed"))
+            with self.subTest(consolidated=consolidated), listing:
+                self.assertEqual([name in group for name in ("a", "b", "missing")], [True, True, False])
+                self.assertEqual(["nested" in group.group("b"), "a" in group.group("b")], [True, False])
+
     def test_names(self):
         """Node names as zarr-python names them (paths with a leading slash)"""
         self.assertEqual((self.root.path, self.root.name), ("", "/"))
@@ -3361,6 +3376,49 @@ class TestEdgeCases(unittest.TestCase):
             with self.assertRaises(NotImplementedError):
                 del writing["b"]
         writing.close()
+
+    @unittest.skipIf(ZARR_PYTHON_3, "zarr-python 2 backend")
+    def test_zarr_python_2_consolidated_listings_do_not_scan_all_keys(self):
+        """Listings of groups of consolidated hierarchies are the listings of zarr-python 2's consolidated metadata
+        store, without scanning all node metadata keys per listing (as zarr-python 2's key-value store does)"""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "store.itar")
+            with IndexedTarZarrStore(path, mode="w") as store:
+                frames = store.create_root_group({}).create_group("frames")
+                for i in range(3):
+                    generic_data = frames.create_group(str(i)).create_group("generic_data")
+                    for name in ("a", "b")[: 2 - i % 2]:
+                        generic_data.create_array(name, np.zeros(2))
+                store.consolidate()
+
+            root = IndexedTarZarrStore(path).open_root_group(consolidated=True)
+            consolidated_store: Any = root.zarr.store
+            # (zarr-python 2 APIs, resolved at runtime: type checking runs against zarr-python 3)
+            reference = getattr(zarr.storage, "ConsolidatedMetadataStore").listdir
+            paths: List[Optional[str]] = [
+                "",
+                "frames",
+                "frames/0",
+                "frames/0/generic_data",
+                "frames/1/generic_data",
+                "frames/0/generic_data/a",
+                "missing",
+                "frames/missing",
+                None,
+            ]
+            expected = {path: reference(consolidated_store, path) for path in paths}
+
+            with mock.patch.object(
+                importlib.import_module("zarr._storage.store"),
+                "_listdir_from_keys",
+                side_effect=AssertionError("all keys scanned"),
+            ):
+                for path in paths:
+                    with self.subTest(path=path):
+                        self.assertEqual(consolidated_store.listdir(path), expected[path])
+                self.assertEqual(root.group("frames/0/generic_data").keys(), ["a", "b"])
+                self.assertEqual(root.group("frames/1/generic_data").keys(), ["a"])
+                self.assertEqual([name for name, _ in root.group("frames").groups()], ["0", "1", "2"])
 
     @unittest.skipIf(ZARR_PYTHON_3, "zarr-python 2 backend")
     def test_zarr_python_2_backend(self):
