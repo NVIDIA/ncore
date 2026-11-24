@@ -19,8 +19,9 @@ from __future__ import annotations
 
 import itertools
 import json
+import threading
 
-from typing import TYPE_CHECKING, Iterator, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Iterable, Iterator, List, Literal, Optional, Set, Tuple, Union
 
 import numcodecs
 import numpy as np
@@ -33,6 +34,7 @@ from numcodecs.compat import ensure_bytes
 from typing_extensions import override
 from upath import UPath
 from zarr._storage.store import BaseStore, Store
+from zarr.util import normalize_storage_path
 
 from ncore.impl.common.async_util import run_in_thread
 from ncore.impl.data.backend import (
@@ -104,11 +106,48 @@ class _IndexedTarStore(Store):
 
 
 class _CompressedConsolidatedStore(zarr.storage.ConsolidatedMetadataStore):
-    """A store serving all node metadata from the compressed consolidated metadata of the wrapped store"""
+    """A store serving all node metadata from the compressed consolidated metadata of the wrapped store
+
+    Group listings (``listdir``, used by zarr-python 2 for ``Group.keys()`` / ``groups()`` / ``arrays()``) are served
+    from an index of the children of all paths of the node metadata keys. zarr-python 2's key-value store, which holds
+    the decoded metadata, has no listing of its own: it scans all node metadata keys of the hierarchy per listing,
+    which makes every listing cost time proportional to the size of the whole hierarchy (e.g., ~10 ms per listing of a
+    frame's group for sequences of ~36,000 node metadata keys) instead of to the size of the listed group.
+
+    The index is built once, on the first listing (a single pass over all keys), and kept for the lifetime of the store
+    (its size is proportional to the number of keys, as the decoded metadata itself). The consolidated metadata is
+    read-only, so the index never needs to be invalidated. Hierarchies opened without consolidated metadata list groups
+    via the wrapped store and don't use this index (zarr-python 2 then scans the keys of all records of the store per
+    listing).
+    """
 
     def __init__(self, store: BaseStore) -> None:
         self.store = store
         self.meta_store = zarr.storage.KVStore(decode_v2_consolidated_metadata(store[V2_CONSOLIDATED_METADATA_KEY]))
+        # (the sorted children names by path, built on the first listing: see listdir)
+        self._children: Optional[Dict[str, List[str]]] = None
+        self._children_lock = threading.Lock()
+
+    @override
+    def listdir(self, path: Optional[str] = None) -> List[str]:
+        """The names of the children of a path, as zarr-python 2's key-value store lists them, from the index of the
+        node metadata keys (built on the first listing, thread-safe; copies, so callers may modify them)"""
+        if self._children is None:
+            with self._children_lock:
+                if self._children is None:
+                    self._children = self._index_children(self.meta_store)
+        return list(self._children.get(normalize_storage_path(path), []))
+
+    @staticmethod
+    def _index_children(keys: Iterable[str]) -> Dict[str, List[str]]:
+        """The sorted names of the children of all paths of the keys (all prefixes of each key, as zarr-python 2's
+        key-value store lists them)"""
+        children: Dict[str, Set[str]] = {}
+        for key in keys:
+            parts = key.split("/")
+            for depth in range(len(parts)):
+                children.setdefault("/".join(parts[:depth]), set()).add(parts[depth])
+        return {path: sorted(names) for path, names in children.items()}
 
 
 class Zarr2Backend(Backend[BaseStore]):

@@ -1134,6 +1134,41 @@ class TestData4Reload(unittest.TestCase):
 
         self.assertEqual(list(cuboid_reader.get_observations()), ref_cuboid_observations)
 
+    @parameterized.expand([(True,), (False,)])
+    def test_has_frame_generic_data_does_not_list_members(self, open_consolidated: bool) -> None:
+        """Membership checks of generic frame-data look up the name only: listing the members of a group can scan all
+        node metadata of a consolidated hierarchy (zarr-python 2) or open all members (zarr-python 3)"""
+
+        tempdir = tempfile.TemporaryDirectory()
+        store_writer = SequenceComponentGroupsWriter(
+            output_dir_path=UPath(tempdir.name),
+            store_base_name=(seq_id := "generic-frame-data-test"),
+            sequence_id=seq_id,
+            sequence_timestamp_interval_us=HalfClosedInterval(0, 3_001),
+            store_type=self.store_type,
+            zarr_format=self.zarr_format,
+            generic_meta_data={},
+        )
+        camera_writer = store_writer.register_component_writer(CameraSensorComponent.Writer, "camera", "cameras", {})
+        frames_generic_data = [{"a": np.zeros(2), "b": np.ones(3)}, {"b": np.ones(3)}, {}]
+        for i, generic_data in enumerate(frames_generic_data):
+            camera_writer.store_frame(
+                b"image", "png", np.array([i * 1_000, i * 1_000 + 1], dtype=np.uint64), generic_data, {}
+            )
+
+        store_reader = SequenceComponentGroupsReader(store_writer.finalize(), open_consolidated=open_consolidated)
+        camera_reader = store_reader.open_component_readers(CameraSensorComponent.Reader)["camera"]
+
+        with mock.patch.object(nodes._backend, "member_names", side_effect=AssertionError("members listed")):
+            for i, generic_data in enumerate(frames_generic_data):
+                for name in ("a", "b", "missing"):
+                    with self.subTest(frame=i, name=name):
+                        self.assertEqual(
+                            camera_reader.has_frame_generic_data(i * 1_000 + 1, name), name in generic_data
+                        )
+
+        tempdir.cleanup()
+
     # ------------------------------------------------------------------
     # Component-level generic_data tests
     # ------------------------------------------------------------------
