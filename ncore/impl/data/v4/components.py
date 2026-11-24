@@ -1217,7 +1217,11 @@ class BaseSensorComponentReader(ComponentReader):
     def has_frame_generic_data(self, timestamp_us: int, name: str) -> bool:
         """Signals if named generic frame-data exists"""
 
-        return name in self.get_frame_generic_data_names(timestamp_us)
+        # A lookup of the name in the frame's generic data group, not a listing of all its names: listings are more
+        # expensive, and listings of hierarchies opened without consolidated metadata scan the keys of all records of
+        # the store (milliseconds per listing for large sequences), while a lookup checks the node metadata keys of
+        # the name only.
+        return name in cast(zarr.Group, self._get_frame_group(timestamp_us)["generic_data"])
 
     def get_frame_generic_data(self, timestamp_us: int, name: str) -> npt.NDArray[Any]:
         """Returns generic frame-data for a specific frame and name"""

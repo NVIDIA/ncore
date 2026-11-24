@@ -25,8 +25,8 @@ import tarfile
 from dataclasses import dataclass, field
 from enum import IntEnum, auto, unique
 from pathlib import Path
-from threading import RLock
-from typing import IO, Any, Dict, Iterator, Literal, NamedTuple, Optional, Union, cast
+from threading import Lock, RLock
+from typing import IO, Any, Dict, Iterable, Iterator, List, Literal, NamedTuple, Optional, Set, Union, cast
 
 import cbor2
 import zarr
@@ -34,7 +34,7 @@ import zarr
 from numcodecs import compat
 from upath import UPath
 from zarr._storage.store import Store
-from zarr.util import json_loads
+from zarr.util import json_loads, normalize_storage_path
 
 
 _logger = logging.getLogger(__name__)
@@ -455,7 +455,20 @@ def consolidate_compressed_metadata(store: zarr.storage.BaseStore, metadata_key=
 
 
 class ConsolidatedCompressedMetadataStore(zarr.storage.ConsolidatedMetadataStore):
-    """A layer over other storage, where the metadata has been consolidated into a single compressed key."""
+    """A layer over other storage, where the metadata has been consolidated into a single compressed key.
+
+    Group listings (``listdir``, used by zarr-python for ``Group.keys()`` / ``groups()`` / ``arrays()``) are served
+    from an index of the children of all paths of the node metadata keys. zarr-python's key-value store, which holds
+    the decoded metadata, has no listing of its own: it scans all node metadata keys of the hierarchy per listing,
+    which makes every listing cost time proportional to the size of the whole hierarchy (e.g., ~10 ms per listing of a
+    frame's group for sequences of ~36,000 node metadata keys) instead of to the size of the listed group.
+
+    The index is built once, on the first listing (a single pass over all keys), and kept for the lifetime of the store
+    (its size is proportional to the number of keys, as the decoded metadata itself). The consolidated metadata is
+    read-only, so the index never needs to be invalidated. Hierarchies opened without consolidated metadata list groups
+    via the underlying store and don't use this index (zarr-python then scans the keys of all records of the store per
+    listing).
+    """
 
     # Overwrite constructor to perform decompression of metadata
     def __init__(self, store: zarr.storage.StoreLike, metadata_key=".zmetadata.cbor.xz") -> None:
@@ -471,6 +484,29 @@ class ConsolidatedCompressedMetadataStore(zarr.storage.ConsolidatedMetadataStore
 
         # decode metadata
         self.meta_store: zarr.storage.Store = zarr.KVStore(meta["metadata"])
+        # (the sorted children names by path, built on the first listing: see listdir)
+        self._children: Optional[Dict[str, List[str]]] = None
+        self._children_lock = Lock()
+
+    def listdir(self, path: Optional[str] = None) -> List[str]:
+        """The names of the children of a path, as zarr-python's key-value store lists them, from the index of the node
+        metadata keys (built on the first listing, thread-safe; copies, so callers may modify them)"""
+        if self._children is None:
+            with self._children_lock:
+                if self._children is None:
+                    self._children = self._index_children(self.meta_store)
+        return list(self._children.get(normalize_storage_path(path), []))
+
+    @staticmethod
+    def _index_children(keys: Iterable[str]) -> Dict[str, List[str]]:
+        """The sorted names of the children of all paths of the keys (all prefixes of each key, as zarr-python's
+        key-value store lists them)"""
+        children: Dict[str, Set[str]] = {}
+        for key in keys:
+            parts = key.split("/")
+            for depth in range(len(parts)):
+                children.setdefault("/".join(parts[:depth]), set()).add(parts[depth])
+        return {path: sorted(names) for path, names in children.items()}
 
 
 def open_compressed_consolidated(
