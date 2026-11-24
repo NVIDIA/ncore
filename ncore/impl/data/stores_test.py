@@ -19,10 +19,12 @@ import unittest
 
 from pathlib import Path
 from typing import IO, Any, Optional
+from unittest import mock
 
 import numpy as np
 import parameterized
 import zarr
+import zarr._storage.store
 
 from ncore.impl.data.stores import IndexedTarStore, consolidate_compressed_metadata, open_compressed_consolidated
 
@@ -205,3 +207,45 @@ class TestIndexedTarStore(unittest.TestCase):
             self.assertGreater(len(values), 0)
             g_reload = zarr.open(store=store, mode="r")
             self.assertIsNone(np.testing.assert_array_equal(g_ref["x"][()], g_reload["x"][()]))
+
+
+class TestConsolidatedCompressedMetadataStore(unittest.TestCase):
+    """Listings of the compressed consolidated metadata store"""
+
+    def test_listings_do_not_scan_all_keys(self):
+        """Listings of the consolidated store are the listings of zarr-python's consolidated metadata store, without
+        scanning all node metadata keys per listing (as zarr-python's key-value store does)"""
+        with tempfile.NamedTemporaryFile(suffix=".itar") as f:
+            with IndexedTarStore(f.name, mode="w") as store:
+                frames = zarr.group(store=store).create_group("frames")
+                for i in range(3):
+                    generic_data = frames.create_group(str(i)).create_group("generic_data")
+                    for name in ("a", "b")[: 2 - i % 2]:
+                        generic_data.create_dataset(name, data=np.zeros(2))
+                consolidate_compressed_metadata(store)
+
+            root = open_compressed_consolidated(IndexedTarStore(f.name), mode="r")
+            consolidated_store: Any = root.store
+            reference = zarr.storage.ConsolidatedMetadataStore.listdir
+            paths = [
+                "",
+                "frames",
+                "frames/0",
+                "frames/0/generic_data",
+                "frames/1/generic_data",
+                "frames/0/generic_data/a",
+                "missing",
+                "frames/missing",
+                None,
+            ]
+            expected = {path: reference(consolidated_store, path) for path in paths}
+
+            with mock.patch.object(
+                zarr._storage.store, "_listdir_from_keys", side_effect=AssertionError("all keys scanned")
+            ):
+                for path in paths:
+                    with self.subTest(path=path):
+                        self.assertEqual(consolidated_store.listdir(path), expected[path])
+                self.assertEqual(list(root["frames/0/generic_data"].keys()), ["a", "b"])
+                self.assertEqual(list(root["frames/1/generic_data"].keys()), ["a"])
+                self.assertEqual(list(root["frames"].group_keys()), ["0", "1", "2"])
