@@ -272,6 +272,31 @@ synchronously. Custom components can implement asynchronous accessors via
 
 .. note::
 
+   Concurrent reads and decodes on many threads can raise the memory of each loading
+   process, e.g. of PyTorch ``DataLoader`` workers, without holding more data: glibc's
+   ``malloc`` gives threads their own memory arenas (by default up to 8 per CPU core),
+   each of which keeps memory freed by its threads (e.g., of decompressed or decoded
+   frames) for reuse instead of returning it to the system. Limiting the number of arenas,
+   e.g. with ``MALLOC_ARENA_MAX=2``, typically removes this overhead without slowing reads
+   down.
+
+   glibc reads ``MALLOC_ARENA_MAX`` when a process starts, so set it in the environment of
+   the job, before Python starts (e.g., ``export MALLOC_ARENA_MAX=2`` in a job script). It
+   then also applies to the processes it starts, including forked ``DataLoader`` workers.
+   Setting ``os.environ`` in a running interpreter only applies to processes started
+   afterwards without forking (e.g., the ``spawn`` start method). Alternatively, limit the
+   arenas in each worker process (e.g., in a ``DataLoader``'s ``worker_init_fn``) with
+   glibc's ``mallopt`` (``M_ARENA_MAX`` is ``-8``), which limits the arenas created
+   afterwards:
+
+   .. code-block:: python
+
+      import ctypes
+
+      ctypes.CDLL("libc.so.6").mallopt(-8, 2)  # M_ARENA_MAX
+
+.. note::
+
    On remote storage (e.g., ``s3://`` archives), the synchronous and the asynchronous
    (``*_async``) reader APIs fetch data differently:
 
