@@ -15,6 +15,7 @@
 
 import asyncio
 import concurrent.futures
+import contextlib
 import dataclasses
 import gc
 import hashlib
@@ -1069,6 +1070,22 @@ class TestZarr3Backend(unittest.TestCase):
             return await asyncio.wait_for(future, timeout=5)
 
         self.assertEqual(backend_zarr3.run(woken_by_thread()), 42)
+
+    def test_thread_pools_are_sized_from_the_usable_cpus(self):
+        """The backend's thread pools are sized from the CPUs the process may run on (e.g., its share of a node in a
+        batch job), not from all CPUs of the machine (os.cpu_count)"""
+        saved = backend_zarr3._Loop._executor, backend_zarr3._ParallelReads._state
+        try:
+            for usable, expected_reads, expected_chunks in ((2, 6, 2), (16, 20, 8), (64, 32, 8)):
+                backend_zarr3._Loop._executor, backend_zarr3._ParallelReads._state = None, None
+                with self.subTest(usable=usable), contextlib.ExitStack() as patches:
+                    cpus = set(range(usable))
+                    patches.enter_context(mock.patch.object(os, "sched_getaffinity", return_value=cpus, create=True))
+                    patches.enter_context(mock.patch.object(os, "cpu_count", return_value=96))
+                    self.assertEqual(backend_zarr3._Loop.executor()._max_workers, expected_reads)
+                    self.assertEqual(backend_zarr3._ParallelReads.get().pool()._max_workers, expected_chunks)
+        finally:
+            backend_zarr3._Loop._executor, backend_zarr3._ParallelReads._state = saved
 
     def test_byte_ranges(self):
         with tempfile.TemporaryDirectory() as tmp:

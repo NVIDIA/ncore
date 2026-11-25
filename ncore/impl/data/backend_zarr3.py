@@ -116,6 +116,18 @@ class _InlineConsolidatedMetadata(TypedDict):
     metadata: Dict[str, JsonDocument]
 
 
+def _usable_cpus() -> int:
+    """The number of CPUs the process may run on, which sizes the backend's thread pools.
+
+    ``os.cpu_count()`` counts all CPUs of the machine, also those the process is restricted from (e.g., in batch jobs
+    allocated a share of a node, or in containers with CPU affinity): thread pools sized from it start threads the
+    process can't run in parallel.
+    """
+    if hasattr(os, "sched_getaffinity"):  # (Linux)
+        return len(os.sched_getaffinity(0)) or 1
+    return os.cpu_count() or 1  # pragma: no cover
+
+
 # -----------------------------------------------------------------------------
 # Execution of coroutines on event loops of the calling threads
 # -----------------------------------------------------------------------------
@@ -174,7 +186,7 @@ class _Loop:
             cls._executor = (
                 os.getpid(),
                 concurrent.futures.ThreadPoolExecutor(
-                    max_workers=min(32, (os.cpu_count() or 1) + 4), thread_name_prefix="ncore_zarr3_reads"
+                    max_workers=min(32, _usable_cpus() + 4), thread_name_prefix="ncore_zarr3_reads"
                 ),
             )
         return cls._executor[1]
@@ -338,8 +350,8 @@ _PARALLEL_READS = 2
 class _ParallelReads:
     """Bounds the number of reads decoding their chunks concurrently (per process).
 
-    At most :data:`_PARALLEL_READS` reads decode concurrently, each on all threads of the shared pool (one per core, at
-    most 8), so the pool is sized for the chunks of one read, not for the number of reads.
+    At most :data:`_PARALLEL_READS` reads decode concurrently, each on all threads of the shared pool (one per CPU the
+    process may run on, at most 8), so the pool is sized for the chunks of one read, not for the number of reads.
     """
 
     def __init__(self) -> None:
@@ -353,7 +365,7 @@ class _ParallelReads:
         with self.lock:
             if self.executor is None:
                 self.executor = concurrent.futures.ThreadPoolExecutor(
-                    max_workers=min(8, os.cpu_count() or 1), thread_name_prefix="ncore_zarr3_chunks"
+                    max_workers=min(8, _usable_cpus()), thread_name_prefix="ncore_zarr3_chunks"
                 )
             return self.executor
 
