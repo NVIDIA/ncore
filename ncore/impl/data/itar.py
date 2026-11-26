@@ -578,12 +578,14 @@ class IndexedTarArchive:
         None, result in separate reads of the index header and index, which is more robust for large indices. Applies to
         reading only (ignored by archives opened for writing).
     remote_range_reads : bool, optional, default False
-        Read records of remote archives (see :attr:`is_remote`) synchronously via exact byte-range requests, like
-        :meth:`read_async`, instead of via the archive's buffered file object (blocks of the filesystem's block size,
-        cached by its cache type, one request at a time). Synchronous reads of multiple threads then fetch their records
-        concurrently, which suits random access to high-latency storage (e.g., thread pools reading frames of S3
-        archives); the buffered file object suits sequential reading of nearby records. Applies to reading only (ignored
-        by archives opened for writing).
+        How synchronous reads (e.g., :meth:`read`) fetch the records of remote archives (see :attr:`is_remote`). By
+        default via the archive's buffered file object: blocks of the filesystem's block size, cached by its cache type,
+        one request at a time (reads of multiple threads are serialized), which suits sequential reading of nearby
+        records. True fetches each record via its own exact byte-range request instead, so synchronous reads of
+        multiple threads fetch their records concurrently, which suits random access to high-latency storage (e.g.,
+        thread pools reading frames of S3 archives). Only applies to synchronous reads: asynchronous reads
+        (:meth:`read_async`) always fetch exact byte ranges. Applies to reading only (ignored by archives opened for
+        writing).
 
     Notes
     -----
@@ -685,7 +687,8 @@ class IndexedTarArchive:
 
     @property
     def remote_range_reads(self) -> bool:
-        """True if synchronous reads of remote archives use exact range requests (see the class documentation)"""
+        """True if synchronous reads of remote archives use exact range requests, False if they use the buffered file
+        object (asynchronous reads always use exact range requests, see the class documentation)"""
         return self._remote_range_reads
 
     @property

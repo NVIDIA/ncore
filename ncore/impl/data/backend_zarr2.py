@@ -17,11 +17,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import itertools
 import json
 import threading
 
-from typing import TYPE_CHECKING, Dict, Iterable, Iterator, List, Literal, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Iterator, List, Literal, Optional, Set, Tuple, Union
 
 import numcodecs
 import numpy as np
@@ -103,6 +104,40 @@ class _IndexedTarStore(Store):
     @override
     def close(self) -> None:
         self.archive.close()
+
+
+class _RecordsStore(Store):
+    """A read-only zarr-python 2 store of fetched chunk records (see :meth:`Zarr2Backend.read_async`): chunks not in
+    it read as the fill value, as chunks not stored in the archive"""
+
+    _erasable = False
+
+    def __init__(self, records: Dict[str, bytes]) -> None:
+        self._records = records
+
+    @override
+    def __getitem__(self, key: str) -> bytes:
+        return self._records[key]
+
+    @override
+    def __setitem__(self, key: str, value: object) -> None:
+        raise zarr.errors.ReadOnlyError()
+
+    @override
+    def __delitem__(self, key: str) -> None:
+        raise zarr.errors.ReadOnlyError()
+
+    @override
+    def __contains__(self, key: object) -> bool:
+        return key in self._records
+
+    @override
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._records)
+
+    @override
+    def __len__(self) -> int:
+        return len(self._records)
 
 
 class _CompressedConsolidatedStore(zarr.storage.ConsolidatedMetadataStore):
@@ -310,8 +345,42 @@ class Zarr2Backend(Backend[BaseStore]):
     @override
     async def read_async(self, array: zarr.Array, selection: Selection, out: Optional[np.ndarray] = None) -> ReadResult:
         """Asynchronous :meth:`read`, returning the same results (zarr-python 2 is synchronous: reads run on worker
-        threads, so the running event loop isn't blocked)"""
+        threads, so the running event loop isn't blocked).
+
+        Chunks of remote archives (see :attr:`IndexedTarArchive.is_remote`) are fetched first, concurrently via exact
+        range requests (:meth:`IndexedTarArchive.read_async`), independent of the archive's ``remote_range_reads``
+        (which only selects how synchronous reads fetch records); zarr-python's synchronous read then decodes them from
+        memory. Other stores are read synchronously on a worker thread."""
+        if (fetched := await self._fetch_remote_chunks_async(array, selection)) is not None:
+            return await run_in_thread(self.read, self._with_chunk_store(array, fetched), selection, out)
         return await run_in_thread(self.read, array, selection, out)
+
+    @staticmethod
+    async def _fetch_remote_chunks_async(array: zarr.Array, selection: Selection) -> Optional[Dict[str, bytes]]:
+        """The stored chunk records a basic selection of an array reads, fetched concurrently via range requests, if the
+        array's chunks are stored in a remote archive (None otherwise, also for selections zarr-python's basic indexer
+        rejects, whose errors the synchronous read raises)"""
+        store = array.chunk_store
+        if not isinstance(store, _IndexedTarStore) or not store.archive.is_remote:
+            return None
+        try:
+            coords = [p.chunk_coords for p in zarr.indexing.BasicIndexer(selection, array)]
+        except (IndexError, TypeError, ValueError):
+            return None
+        # (zarr-python 2 stores 0-dimensional arrays as a single chunk at coordinates (0,), its indexer yields ())
+        keys = [array._chunk_key(c if c else (0,)) for c in coords]
+        archive = store.archive
+        keys = [key for key in dict.fromkeys(keys) if key in archive]  # (chunks not stored read as the fill value)
+        return dict(zip(keys, await asyncio.gather(*(archive.read_async(key) for key in keys))))
+
+    @staticmethod
+    def _with_chunk_store(array: zarr.Array, records: Dict[str, bytes]) -> zarr.Array:
+        """The array with its chunk store replaced by the given chunk records (in memory, read-only)"""
+        # (zarr-python 2's Array constructor, resolved at runtime: type checking runs against zarr-python 3's)
+        array_type: Any = zarr.Array
+        return array_type(
+            array.store, path=array.path, read_only=True, chunk_store=_RecordsStore(records), cache_attrs=False
+        )
 
     @override
     def compression(self, array: zarr.Array) -> Optional[BloscCompression]:

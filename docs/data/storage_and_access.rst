@@ -319,6 +319,14 @@ synchronously. Custom components can implement asynchronous accessors via
    Only enable it for concurrent reads: a single thread reading records one by one pays
    the request latency for each record, and is likely slower than with the buffered file
    object (which serves nearby records from its cached blocks).
+   ``itar_remote_range_reads`` only applies to the synchronous APIs: the asynchronous
+   APIs always fetch exact byte ranges.
+
+   With multi-storage-client (``msc://``), the buffered file object of the synchronous APIs
+   doesn't fetch blocks: multi-storage-client's file objects download the whole object when
+   opened by default (without a cache, for objects up to its ``memory_load_limit``). Read
+   ``msc://`` archives via the asynchronous APIs or with ``itar_remote_range_reads=True``
+   to fetch exact byte ranges only.
 
 .. _async_compat:
 

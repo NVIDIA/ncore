@@ -1756,6 +1756,76 @@ class TestRemoteRangeReads(unittest.TestCase):
         self.assertEqual(fs.requests, [])
         self.assertGreater(fs.file_reads, 0)
 
+    @parameterized.parameterized.expand([(False,), (True,)])
+    def test_async_reads_use_range_requests(self, remote_range_reads: bool):
+        """Asynchronous reads fetch their records via exact range requests with all zarr-python versions, independent of
+        remote_range_reads (which only selects how synchronous reads fetch)"""
+        root, archive, fs = self._open(remote_range_reads=remote_range_reads)
+        fs.file_reads = 0
+        fs.calls.clear()
+
+        async def reads() -> Dict[str, np.ndarray]:
+            arrays = await asyncio.gather(*(root.array(name).read_async() for name in self.expected))
+            return dict(zip(self.expected, arrays))
+
+        self._assert_expected(asyncio.run(reads()))
+        self.assertNotIn(("open",), fs.calls)  # (no buffered file object)
+        self.assertEqual(fs.file_reads, 0)
+        chunks = [_index(archive).records[f"frame{i}/0.0"] for i in range(8)]  # (single-chunk arrays, zarr format v2)
+        self.assertEqual(sorted(fs.requests), sorted((r.offset, r.offset + r.size) for r in chunks))
+
+    def test_concurrent_async_reads_overlap_their_requests(self):
+        """Asynchronous reads awaited concurrently have their range requests in flight at once (default options)"""
+        root, _, fs = self._open(latency=0.05)
+
+        async def reads() -> List[np.ndarray]:
+            return await asyncio.gather(*(root.array(name).read_async() for name in self.expected))
+
+        self._assert_expected(dict(zip(self.expected, asyncio.run(reads()))))
+        self.assertEqual(len(fs.requests), 8)
+        self.assertGreater(fs.max_in_flight, 1)
+
+    def test_async_reads_of_all_array_kinds(self):
+        """Asynchronous reads of remote archives return the synchronous reads' results (and fill output arrays) for
+        multi-chunk, compressed, 0-dimensional and partially stored arrays, partial selections and binary blobs"""
+        path = os.path.join(self._tmp.name, "kinds.itar")
+        rng = np.random.default_rng(1)
+        with IndexedTarZarrStore(path, mode="w") as store:
+            root = store.create_root_group({})
+            root.create_array("multi", rng.random((40, 30)).astype(np.float32), chunks=(16, 16))
+            root.create_array("compressed", rng.random((50, 3)), compression=nodes.BloscCompression())
+            root.create_array("scalar", np.array(7, dtype=np.int64))
+            root.create_bytes_array("blob", b"\x89PNG binary data")
+            sparse = root.create_empty_array("sparse", shape=(32,), dtype=np.float32, chunks=(8,), fill_value=0.5)
+            sparse.write(slice(8, 16), np.arange(8, dtype=np.float32))  # (only the second chunk is stored)
+            store.consolidate()
+        store = IndexedTarZarrStore(UPath(f"{RemoteFileSystem.protocol}://{path}"), index_tail_read_size=1024)
+        root = store.open_root_group()
+        fs = cast(RemoteFileSystem, store.archive.itar_upath.fs)
+        fs.calls.clear()
+        cases = [
+            ("multi", ...),
+            ("multi", (slice(3, 21), slice(5, 17))),
+            ("multi", (2, 4)),
+            ("compressed", ...),
+            ("scalar", ()),
+            ("sparse", ...),
+        ]
+        for name, selection in cases:
+            with self.subTest(name=name, selection=selection):
+                array = root.array(name)
+                expected = array.read(selection)
+                actual = asyncio.run(array.read_async(selection))
+                np.testing.assert_array_equal(actual, expected)
+                self.assertEqual((actual.dtype, actual.shape), (expected.dtype, expected.shape))
+                out = np.empty(expected.shape, expected.dtype)
+                asyncio.run(array.read_async(selection, out=out))
+                np.testing.assert_array_equal(out, expected)
+        self.assertEqual(asyncio.run(root.array("blob").read_bytes_async()), b"\x89PNG binary data")
+        with self.assertRaises(IndexError):
+            asyncio.run(root.array("multi").read_async((99, 0)))
+        self.assertNotIn(("open",), fs.calls)  # (range requests only)
+
     def test_local_archives_use_positional_reads(self):
         """Local archives are read via positional reads, also with remote range reads"""
         archive = IndexedTarArchive(self.path, index_tail_read_size=1024, remote_range_reads=True)
