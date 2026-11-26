@@ -404,10 +404,13 @@ class SequenceComponentGroupsReader:
                                keeps them otherwise (node metadata records may lie within them). "release_after_opening"
                                releases them, "keep_complete_archives" keeps them only for archives which fit into them
                                completely (small stores are then read without requests), "keep" keeps them.
-            itar_remote_range_reads: Read data of remote .itar files (e.g., on S3) via exact byte-range requests also with
-                               the synchronous reader APIs, so reads of multiple threads fetch their data concurrently
-                               (e.g., thread pools reading frames), instead of via a buffered file object (blocks of the
-                               filesystem's block size, one request at a time, suits sequential reading).
+            itar_remote_range_reads: How the synchronous reader APIs fetch data of remote .itar files (e.g., on S3). By
+                               default via a buffered file object (blocks of the filesystem's block size, one request at
+                               a time, reads of multiple threads are serialized), which suits sequential reading. True
+                               fetches each record via its own exact byte-range request, so reads of multiple threads
+                               fetch their data concurrently (e.g., thread pools reading frames). Only applies to the
+                               synchronous reader APIs: the asynchronous ones (``*_async``) always fetch exact byte
+                               ranges.
             max_concurrent_requests: The maximum number of component stores opened concurrently: the number of
                                threads of the thread pool opening them (if None, the interpreter-default number of
                                threads of a ThreadPoolExecutor). :meth:`open_async` takes the same parameter (opening
